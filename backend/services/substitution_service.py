@@ -469,9 +469,459 @@ async def revoke_substitute(
     return {"success": True, "id": substitution_id}
 
 
+async def list_vacant_slots_for_absent_teacher(
+    session,
+    *,
+    school_id: str,
+    absent_teacher_id: str,
+    absence_date: str,
+    limit_per_slot: int = 3,
+) -> Dict[str, Any]:
+    """يُرجع كل الحصص الشاغرة لمعلم غائب في تاريخ معيّن مع المرشحين لكل خانة.
+
+    تُستخدم لتغذية لوحة "تغطية كل حصص المعلم الغائب" (Bulk substitution).
+    لا تشمل الخانات التي سبق إسناد بديل لها (تجنّباً للازدواج).
+    """
+    if not absent_teacher_id or not absence_date:
+        return {
+            "absent_teacher_id": absent_teacher_id,
+            "absence_date": absence_date,
+            "slots": [],
+            "error_ar": "بيانات ناقصة",
+        }
+
+    try:
+        day_of_week = datetime.fromisoformat(absence_date).strftime("%A").lower()
+    except (TypeError, ValueError):
+        return {
+            "absent_teacher_id": absent_teacher_id,
+            "absence_date": absence_date,
+            "slots": [],
+            "error_ar": "تاريخ غير صالح",
+        }
+
+    timetable = await _resolve_active_timetable(session, school_id)
+    if not timetable:
+        return {
+            "absent_teacher_id": absent_teacher_id,
+            "absence_date": absence_date,
+            "day_of_week": day_of_week,
+            "slots": [],
+        }
+
+    teacher = await gd_find_one(session, "teachers", {"id": absent_teacher_id})
+    if not teacher or teacher.get("school_id") != school_id:
+        return {
+            "absent_teacher_id": absent_teacher_id,
+            "absence_date": absence_date,
+            "day_of_week": day_of_week,
+            "slots": [],
+            "error_ar": "المعلم غير موجود في هذه المدرسة",
+        }
+
+    teacher_sessions = await gd_find(
+        session,
+        "timetable_sessions",
+        {
+            "timetable_id": timetable.get("id"),
+            "teacher_id": absent_teacher_id,
+            "day_of_week": day_of_week,
+        },
+        limit=200,
+    )
+
+    existing_subs = await gd_find(
+        session,
+        "substitute_assignments",
+        {
+            "school_id": school_id,
+            "original_teacher_id": absent_teacher_id,
+            "absence_date": absence_date,
+        },
+        limit=200,
+    )
+    already_covered = {s.get("original_session_id") for s in existing_subs if s.get("original_session_id")}
+
+    slots: list[dict] = []
+    for sess in teacher_sessions:
+        sid = sess.get("id")
+        if not sid or sid in already_covered:
+            continue
+        period = _safe_int(sess.get("period_number"), 0)
+        if period not in PERIODS:
+            continue
+        scoring = await score_candidates_for_slot(
+            session,
+            school_id=school_id,
+            day_of_week=day_of_week,
+            period_number=period,
+            absence_date=absence_date,
+            limit=limit_per_slot,
+        )
+        slots.append({
+            "original_session_id": sid,
+            "day_of_week": day_of_week,
+            "period_number": period,
+            "class_id": sess.get("class_id"),
+            "class_name": sess.get("class_name"),
+            "subject_id": sess.get("subject_id"),
+            "subject_name": sess.get("subject_name"),
+            "candidates": scoring.get("candidates", []),
+            "total_eligible": scoring.get("total_eligible", 0),
+        })
+
+    slots.sort(key=lambda x: x["period_number"])
+
+    return {
+        "absent_teacher_id": absent_teacher_id,
+        "absent_teacher_name": teacher.get("full_name") or teacher.get("name") or "—",
+        "absence_date": absence_date,
+        "day_of_week": day_of_week,
+        "day_label_ar": DAY_LABEL_AR.get(day_of_week, day_of_week),
+        "slots": slots,
+        "formula": "S = T − (C × 2) + (W × 3)",
+        "formula_legend_ar": (
+            "T = حصصك اليوم · C = حصص مجاورة · W = مرات الانتظار هذا الأسبوع · الأقل = الأفضل"
+        ),
+    }
+
+
+async def assign_bulk_substitutes(
+    session,
+    *,
+    school_id: str,
+    items: list[dict],
+    absence_date: str,
+    notification_engine: NotificationEngine,
+    actor_user_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """يُسند عدّة حصص شاغرة دفعة واحدة ويُرسل إشعاراً مجمَّعاً لكل معلم بديل.
+
+    items: قائمة من {original_session_id, substitute_teacher_id}.
+    يحفظ لكل سجل ناجح حقل `batch_id` مشترك ليتمكّن المستخدم من التراجع عن
+    كامل الدفعة بضغطة واحدة، أو تراجع الإسنادات الفردية عبر endpoint الأحادي.
+
+    لا يُجهض على فشل صف واحد — يُرجع نتيجة تفصيلية لكل عنصر، ويرسل
+    الإشعار المجمَّع فقط للمعلمين البدلاء الذين نجح لهم على الأقل إسناد واحد.
+    """
+    if not items:
+        return {
+            "success": False,
+            "error": "empty_batch",
+            "message_ar": "لا توجد عناصر للإسناد",
+            "results": [],
+        }
+    if not absence_date:
+        return {
+            "success": False,
+            "error": "missing_fields",
+            "message_ar": "تاريخ الغياب مطلوب",
+            "results": [],
+        }
+
+    batch_id = str(uuid.uuid4())
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    results: list[dict] = []
+    successful_docs: list[dict] = []
+    per_substitute: dict[str, list[dict]] = {}
+
+    # In-memory guard against duplicate (sub, slot) pairs within the same batch.
+    intra_batch_slots: set[tuple] = set()
+
+    for item in items:
+        orig_id = (item or {}).get("original_session_id")
+        sub_tid = (item or {}).get("substitute_teacher_id")
+        if not orig_id or not sub_tid:
+            results.append({
+                "success": False,
+                "original_session_id": orig_id,
+                "error": "missing_fields",
+                "message_ar": "بيانات ناقصة",
+            })
+            continue
+
+        orig = await gd_find_one(session, "timetable_sessions", {"id": orig_id})
+        if not orig:
+            results.append({
+                "success": False,
+                "original_session_id": orig_id,
+                "error": "session_not_found",
+                "message_ar": "الحصة غير موجودة",
+            })
+            continue
+        if orig.get("school_id") and orig.get("school_id") != school_id:
+            results.append({
+                "success": False,
+                "original_session_id": orig_id,
+                "error": "cross_tenant",
+                "message_ar": "الحصة لا تنتمي لهذه المدرسة",
+            })
+            continue
+
+        sub_teacher = await gd_find_one(session, "teachers", {"id": sub_tid})
+        if not sub_teacher or sub_teacher.get("school_id") != school_id:
+            results.append({
+                "success": False,
+                "original_session_id": orig_id,
+                "error": "invalid_teacher",
+                "message_ar": "المعلم البديل غير صالح",
+            })
+            continue
+
+        day = (orig.get("day_of_week") or orig.get("day") or "").lower()
+        period = _safe_int(orig.get("period_number"), 0)
+        if day not in DAYS or period not in PERIODS:
+            results.append({
+                "success": False,
+                "original_session_id": orig_id,
+                "error": "invalid_slot",
+                "message_ar": "بيانات الحصة غير سليمة",
+            })
+            continue
+
+        # Hard-constraint: substitute must be free at this slot in the timetable.
+        main_conflict = await gd_count(session, "timetable_sessions", {
+            "timetable_id": orig.get("timetable_id"),
+            "teacher_id": sub_tid,
+            "day_of_week": day,
+            "period_number": period,
+        })
+        if main_conflict:
+            results.append({
+                "success": False,
+                "original_session_id": orig_id,
+                "error": "teacher_busy",
+                "message_ar": "المعلم البديل لديه حصة في هذا الوقت",
+            })
+            continue
+
+        intra_key = (sub_tid, day, period)
+        parallel_sub = await gd_find_one(session, "substitute_assignments", {
+            "school_id": school_id,
+            "substitute_teacher_id": sub_tid,
+            "day_of_week": day,
+            "period_number": period,
+            "absence_date": absence_date,
+        })
+        if parallel_sub or intra_key in intra_batch_slots:
+            results.append({
+                "success": False,
+                "original_session_id": orig_id,
+                "error": "already_substituting",
+                "message_ar": "المعلم البديل يغطّي حصة أخرى في نفس الخانة",
+            })
+            continue
+
+        existing = await gd_find_one(session, "substitute_assignments", {
+            "school_id": school_id,
+            "original_session_id": orig_id,
+            "absence_date": absence_date,
+        })
+        if existing:
+            results.append({
+                "success": False,
+                "original_session_id": orig_id,
+                "error": "already_assigned",
+                "message_ar": "تم إسناد بديل لهذه الحصة مسبقاً",
+                "existing_id": existing.get("id"),
+            })
+            continue
+
+        sub_id = str(uuid.uuid4())
+        sub_doc = {
+            "id": sub_id,
+            "school_id": school_id,
+            "timetable_id": orig.get("timetable_id"),
+            "original_session_id": orig_id,
+            "original_teacher_id": orig.get("teacher_id"),
+            "substitute_teacher_id": sub_tid,
+            "absence_date": absence_date,
+            "day_of_week": day,
+            "period_number": period,
+            "class_id": orig.get("class_id"),
+            "class_name": orig.get("class_name"),
+            "subject_id": orig.get("subject_id"),
+            "subject_name": orig.get("subject_name"),
+            "created_by": actor_user_id,
+            "created_at": now_iso,
+            "batch_id": batch_id,
+            "notification_id": None,
+        }
+        await gd_insert(session, "substitute_assignments", sub_doc)
+
+        # Race guard — same as single-row endpoint.
+        dup_for_session = await gd_count(session, "substitute_assignments", {
+            "school_id": school_id,
+            "original_session_id": orig_id,
+            "absence_date": absence_date,
+        })
+        dup_for_substitute = await gd_count(session, "substitute_assignments", {
+            "school_id": school_id,
+            "substitute_teacher_id": sub_tid,
+            "day_of_week": day,
+            "period_number": period,
+            "absence_date": absence_date,
+        })
+        if dup_for_session > 1 or dup_for_substitute > 1:
+            await gd_delete_one(session, "substitute_assignments", {"id": sub_id})
+            results.append({
+                "success": False,
+                "original_session_id": orig_id,
+                "error": "race_conflict",
+                "message_ar": "تم إسناد بديل لهذه الحصة من جلسة أخرى — حدّث الصفحة",
+            })
+            continue
+
+        intra_batch_slots.add(intra_key)
+        successful_docs.append(sub_doc)
+        per_substitute.setdefault(sub_tid, []).append(sub_doc)
+        results.append({
+            "success": True,
+            "original_session_id": orig_id,
+            "substitution": sub_doc,
+        })
+
+    # ── Send one grouped notification per substitute teacher ──────────────
+    notif_id_by_substitute: dict[str, str] = {}
+    for sub_tid, docs in per_substitute.items():
+        sub_teacher = await gd_find_one(session, "teachers", {"id": sub_tid})
+        sub_user_id = sub_teacher.get("user_id") if sub_teacher else None
+        if not sub_user_id:
+            continue
+        try:
+            day_key = docs[0].get("day_of_week") or ""
+            day_ar = DAY_LABEL_AR.get(day_key, day_key)
+            count = len(docs)
+            sorted_docs = sorted(docs, key=lambda x: x.get("period_number") or 0)
+            slot_lines = "\n".join(
+                f"• الحصة {d.get('period_number')} — {d.get('class_name') or '—'} ({d.get('subject_name') or '—'})"
+                for d in sorted_docs
+            )
+            if count == 1:
+                d = sorted_docs[0]
+                title = "إسناد حصة انتظار جديدة"
+                message = (
+                    f"تم إسنادك لتغطية حصة في {day_ar} — الحصة {d.get('period_number')} · "
+                    f"{d.get('class_name') or '—'} · {d.get('subject_name') or '—'}."
+                )
+            else:
+                title = f"إسناد {count} حصص انتظار"
+                message = f"تم إسنادك لتغطية {count} حصص في {day_ar}:\n{slot_lines}"
+
+            notif = await notification_engine.create_notification(
+                tenant_id=school_id,
+                recipient_id=sub_user_id,
+                title=title,
+                message=message,
+                notification_type=NotificationType.ALERT.value,
+                category=NotificationCategory.SCHEDULE.value,
+                priority=NotificationPriority.HIGH.value,
+                entity_type="substitute_assignment_batch" if count > 1 else "substitute_assignment",
+                entity_id=batch_id if count > 1 else docs[0].get("id"),
+                action_url="/schedule",
+                metadata={
+                    "absence_date": absence_date,
+                    "day_of_week": day_key,
+                    "batch_id": batch_id,
+                    "count": count,
+                    "substitution_ids": [d.get("id") for d in sorted_docs],
+                },
+            )
+            notification_id = notif.get("id")
+            if notification_id:
+                notif_id_by_substitute[sub_tid] = notification_id
+                from engines.sql_utils import gd_update_one
+                for d in docs:
+                    await gd_update_one(
+                        session, "substitute_assignments",
+                        {"id": d.get("id")},
+                        {"notification_id": notification_id},
+                    )
+                    d["notification_id"] = notification_id
+        except Exception:
+            import logging
+            logging.getLogger("nassaq.substitution").exception(
+                "Failed to send grouped substitute notification (batch=%s, sub=%s)",
+                batch_id, sub_tid,
+            )
+
+    succeeded = sum(1 for r in results if r.get("success"))
+    failed = len(results) - succeeded
+    return {
+        "success": succeeded > 0,
+        "batch_id": batch_id if succeeded > 0 else None,
+        "absence_date": absence_date,
+        "total": len(items),
+        "succeeded": succeeded,
+        "failed": failed,
+        "results": results,
+    }
+
+
+async def revoke_substitute_batch(
+    session,
+    *,
+    school_id: str,
+    batch_id: str,
+    notification_engine: NotificationEngine,
+) -> Dict[str, Any]:
+    """يحذف كامل الإسنادات التي تشترك في `batch_id` ويُزيل إشعاراتها المجمَّعة."""
+    if not batch_id:
+        return {"success": False, "error": "missing_fields", "message_ar": "معرف الدفعة مطلوب"}
+
+    rows = await gd_find(
+        session,
+        "substitute_assignments",
+        {"school_id": school_id, "batch_id": batch_id},
+        limit=500,
+    )
+    if not rows:
+        return {"success": False, "error": "not_found", "message_ar": "الدفعة غير موجودة"}
+
+    notif_user_pairs: list[tuple] = []
+    deleted_ids: list[str] = []
+    for row in rows:
+        sub_id = row.get("id")
+        notif_id = row.get("notification_id")
+        sub_tid = row.get("substitute_teacher_id")
+        if notif_id and sub_tid:
+            sub_teacher = await gd_find_one(session, "teachers", {"id": sub_tid})
+            sub_user_id = sub_teacher.get("user_id") if sub_teacher else None
+            if sub_user_id:
+                notif_user_pairs.append((notif_id, sub_user_id))
+        ok = await gd_delete_one(session, "substitute_assignments", {"id": sub_id})
+        if ok:
+            deleted_ids.append(sub_id)
+
+    seen: set[tuple] = set()
+    for notif_id, user_id in notif_user_pairs:
+        key = (notif_id, user_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            await notification_engine.delete_notification(notif_id, user_id)
+        except Exception:
+            import logging
+            logging.getLogger("nassaq.substitution").exception(
+                "Failed to delete batch notification (notif_id=%s)", notif_id,
+            )
+
+    return {
+        "success": True,
+        "batch_id": batch_id,
+        "revoked": len(deleted_ids),
+        "ids": deleted_ids,
+    }
+
+
 __all__ = [
     "score_candidates_for_slot",
     "assign_substitute",
     "revoke_substitute",
+    "list_vacant_slots_for_absent_teacher",
+    "assign_bulk_substitutes",
+    "revoke_substitute_batch",
     "DAY_LABEL_AR",
 ]

@@ -118,3 +118,86 @@ export function useStandbyCandidates(api, slot, opts = {}) {
 
   return { ...data, loading, error, refetch: fetchCandidates };
 }
+
+/**
+ * يجلب كل الحصص الشاغرة لمعلم غائب في تاريخ محدد، مع المرشحين لكل خانة.
+ *   GET /api/standby/candidates/bulk?absent_teacher_id=&absence_date=
+ *
+ * @param {object} api  - axios instance
+ * @param {object|null} target - { absent_teacher_id, absence_date?, school_id? }
+ * @param {object} opts - { limit_per_slot, enabled }
+ */
+export function useBulkStandbyCandidates(api, target, opts = {}) {
+  const [data, setData] = useState({
+    slots: [],
+    formula: '',
+    formula_legend_ar: '',
+    absent_teacher_name: '',
+    day_of_week: '',
+    day_label_ar: '',
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const reqIdRef = useRef(0);
+  const limitPerSlot = opts.limit_per_slot || 3;
+  const enabled = opts.enabled !== false;
+
+  const fetchSlots = useCallback(async () => {
+    if (!enabled || !target || !target.absent_teacher_id) {
+      setData({
+        slots: [],
+        formula: '',
+        formula_legend_ar: '',
+        absent_teacher_name: '',
+        day_of_week: '',
+        day_label_ar: '',
+      });
+      return;
+    }
+    const reqId = ++reqIdRef.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const params = {
+        absent_teacher_id: target.absent_teacher_id,
+        limit_per_slot: limitPerSlot,
+      };
+      if (target.absence_date) params.absence_date = target.absence_date;
+      if (target.school_id) params.school_id = target.school_id;
+
+      const res = await api.get('/standby/candidates/bulk', {
+        params,
+        headers: target.school_id ? { 'X-School-Context': target.school_id } : undefined,
+      });
+      if (reqIdRef.current !== reqId) return;
+      setData({
+        slots: res.data?.slots || [],
+        formula: res.data?.formula || '',
+        formula_legend_ar: res.data?.formula_legend_ar || '',
+        absent_teacher_name: res.data?.absent_teacher_name || '',
+        day_of_week: res.data?.day_of_week || '',
+        day_label_ar: res.data?.day_label_ar || '',
+      });
+    } catch (err) {
+      if (reqIdRef.current !== reqId) return;
+      const msg = err.response?.data?.detail || err.message || 'فشل جلب الحصص الشاغرة';
+      setError(msg);
+      setData({
+        slots: [],
+        formula: '',
+        formula_legend_ar: '',
+        absent_teacher_name: '',
+        day_of_week: '',
+        day_label_ar: '',
+      });
+    } finally {
+      if (reqIdRef.current === reqId) setLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, target?.absent_teacher_id, target?.absence_date, target?.school_id,
+      limitPerSlot, enabled]);
+
+  useEffect(() => { fetchSlots(); }, [fetchSlots]);
+
+  return { ...data, loading, error, refetch: fetchSlots };
+}

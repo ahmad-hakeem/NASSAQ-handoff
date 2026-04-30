@@ -20,6 +20,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
+from typing import List
 
 from dependencies import db, get_current_user
 from engines.notification_engine import NotificationEngine
@@ -34,8 +35,11 @@ from services.standby_roster_service import (
     fetch_standby_overrides,
 )
 from services.substitution_service import (
+    assign_bulk_substitutes,
     assign_substitute,
+    list_vacant_slots_for_absent_teacher,
     revoke_substitute,
+    revoke_substitute_batch,
     score_candidates_for_slot,
 )
 
@@ -132,6 +136,109 @@ async def create_substitution(
         elif err in ("teacher_busy", "already_substituting", "already_assigned"):
             status = 409
         raise HTTPException(status_code=status, detail=result.get("message_ar") or err or "فشل الإسناد")
+    return result
+
+
+@router.get("/standby/candidates/bulk")
+async def get_bulk_candidates(
+    absent_teacher_id: str = Query(..., description="معرف المعلم الغائب"),
+    absence_date: Optional[str] = Query(None, description="تاريخ الغياب YYYY-MM-DD (افتراضياً اليوم)"),
+    limit_per_slot: int = Query(3, ge=1, le=10),
+    school_id: Optional[str] = Query(None),
+    x_school_context: Optional[str] = Header(None),
+    current_user: dict = Depends(get_current_user),
+):
+    """يُرجع كل الحصص الشاغرة لمعلم غائب اليوم مع المرشحين الأنسب لكل خانة.
+
+    تُستخدم لتغذية لوحة "تغطية كل حصص المعلم الغائب" — تختصر عدّة طلبات
+    `/standby/candidates` في طلب واحد، وتستثني الحصص التي سبق إسناد بديل لها.
+    """
+    sid = resolve_school_id(current_user, school_id or x_school_context)
+    if not sid:
+        raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
+    assert_school_access(current_user, str(sid))
+
+    abs_date = absence_date or _today_iso()
+    return await list_vacant_slots_for_absent_teacher(
+        db.session,
+        school_id=str(sid),
+        absent_teacher_id=absent_teacher_id,
+        absence_date=abs_date,
+        limit_per_slot=int(limit_per_slot),
+    )
+
+
+class BulkSubstitutionItem(BaseModel):
+    original_session_id: str = Field(..., min_length=1)
+    substitute_teacher_id: str = Field(..., min_length=1)
+
+
+class BulkSubstitutionRequest(BaseModel):
+    items: List[BulkSubstitutionItem] = Field(..., min_length=1, max_length=20)
+    absence_date: Optional[str] = None
+
+
+@router.post("/substitutions/bulk", status_code=201)
+async def create_bulk_substitutions(
+    body: BulkSubstitutionRequest,
+    school_id: Optional[str] = Query(None),
+    x_school_context: Optional[str] = Header(None),
+    current_user: dict = Depends(get_current_user),
+):
+    """يُسند عدّة حصص شاغرة دفعة واحدة ويُرسل إشعاراً مجمَّعاً لكل بديل.
+
+    لا يُجهض الدفعة على فشل صف واحد — يُرجع 201 مع نتيجة تفصيلية لكل عنصر.
+    إذا فشلت كل العناصر، يُعاد 409.
+    """
+    sid = resolve_school_id(current_user, school_id or x_school_context)
+    if not sid:
+        raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
+    assert_school_access(current_user, str(sid))
+
+    abs_date = body.absence_date or _today_iso()
+    notif_engine = NotificationEngine(db)
+    items = [{"original_session_id": it.original_session_id,
+              "substitute_teacher_id": it.substitute_teacher_id}
+             for it in body.items]
+
+    result = await assign_bulk_substitutes(
+        db.session,
+        school_id=str(sid),
+        items=items,
+        absence_date=abs_date,
+        notification_engine=notif_engine,
+        actor_user_id=current_user.get("id") if current_user else None,
+    )
+    if result.get("succeeded", 0) == 0:
+        # All rows failed — surface a 409 with the per-row breakdown.
+        raise HTTPException(status_code=409, detail=result)
+    return result
+
+
+@router.delete("/substitutions/batch/{batch_id}")
+async def delete_substitution_batch(
+    batch_id: str,
+    school_id: Optional[str] = Query(None),
+    x_school_context: Optional[str] = Header(None),
+    current_user: dict = Depends(get_current_user),
+):
+    """يحذف كامل دفعة الإسنادات ويزيل إشعاراتها المجمَّعة (Undo)."""
+    sid = resolve_school_id(current_user, school_id or x_school_context)
+    if not sid:
+        raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
+    assert_school_access(current_user, str(sid))
+
+    notif_engine = NotificationEngine(db)
+    result = await revoke_substitute_batch(
+        db.session,
+        school_id=str(sid),
+        batch_id=batch_id,
+        notification_engine=notif_engine,
+    )
+    if not result.get("success"):
+        err = result.get("error")
+        status = 404 if err == "not_found" else 400
+        raise HTTPException(status_code=status, detail=result.get("message_ar") or err or "فشل التراجع")
     return result
 
 

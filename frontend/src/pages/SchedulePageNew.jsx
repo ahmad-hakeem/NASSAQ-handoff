@@ -29,9 +29,10 @@ import {
   Wand2, UserX, Sparkles, Loader2, RefreshCw,
   Scale, Hourglass, UserMinus, AlertOctagon, AlertTriangle, Repeat,
   ShieldAlert, Settings, ArrowLeft, ListChecks,
-  Undo2,
+  Undo2, Layers,
 } from 'lucide-react';
 import CandidatesSidePanel from '../components/schedule/CandidatesSidePanel';
+import BulkSubstitutionPanel from '../components/schedule/BulkSubstitutionPanel';
 
 // ─── Infeasibility issue → contextual next step ────────────────────────────
 // كل كود INF يحدد الصفحة الأنسب التي تحل المشكلة. عند غياب الكود نوجِّه إلى
@@ -174,6 +175,10 @@ export default function SchedulePageNew() {
   // Substitution drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerSlot, setDrawerSlot] = useState(null);
+
+  // Bulk substitution drawer state
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkTarget, setBulkTarget] = useState(null);
 
   // إنشاء الجدول تلقائياً
   const [generating, setGenerating] = useState(false);
@@ -450,6 +455,54 @@ export default function SchedulePageNew() {
     });
   }, [loadGrid, handleUndoSubstitution]);
 
+  // ── Bulk substitution handlers ─────────────────────────────────────
+  const handleOpenBulkPanel = useCallback((teacher) => {
+    if (!teacher?.id) return;
+    const todayDate = new Date().toISOString().slice(0, 10);
+    setBulkTarget({
+      absent_teacher_id: teacher.id,
+      absent_teacher_name: teacher.full_name,
+      absence_date: todayDate,
+      school_id: schoolId,
+    });
+    setBulkOpen(true);
+  }, [schoolId]);
+
+  const handleUndoBulkBatch = useCallback(async (batchId) => {
+    if (!batchId) return;
+    try {
+      await api.delete(`/substitutions/batch/${batchId}`, {
+        params: { school_id: schoolId },
+        headers: { 'X-School-Context': schoolId },
+      });
+      await loadGrid();
+      toast.success('تم التراجع عن الدفعة بالكامل');
+    } catch (err) {
+      const msg = err.response?.data?.detail || err.message || 'فشل التراجع عن الدفعة';
+      toast.error(msg);
+    }
+  }, [api, schoolId, loadGrid]);
+
+  const handleAssignedBatch = useCallback((batchResult) => {
+    loadGrid();
+    const succeeded = batchResult?.succeeded || 0;
+    const failed = batchResult?.failed || 0;
+    const batchId = batchResult?.batch_id;
+    if (succeeded === 0) return;
+
+    const description = failed > 0
+      ? `نجح ${succeeded} وفشل ${failed} — تم إرسال إشعار مجمَّع لكل بديل`
+      : `تم إرسال إشعار مجمَّع لكل بديل — ${succeeded} حصة`;
+
+    toast.success(`تم إسناد ${succeeded} حصة دفعة واحدة`, {
+      description,
+      duration: 12000,
+      action: batchId
+        ? { label: 'تراجع عن الدفعة', onClick: () => handleUndoBulkBatch(batchId) }
+        : undefined,
+    });
+  }, [loadGrid, handleUndoBulkBatch]);
+
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     loadGrid();
@@ -575,13 +628,22 @@ export default function SchedulePageNew() {
           </div>
         )}
 
-        {/* ── Substitution drawer ───────────────────────────────────── */}
+        {/* ── Substitution drawer (single slot) ─────────────────────── */}
         <CandidatesSidePanel
           open={drawerOpen}
           onOpenChange={setDrawerOpen}
           slot={drawerSlot}
           api={api}
           onAssigned={handleAssigned}
+        />
+
+        {/* ── Bulk substitution drawer (full absent teacher) ─────────── */}
+        <BulkSubstitutionPanel
+          open={bulkOpen}
+          onOpenChange={setBulkOpen}
+          target={bulkTarget}
+          api={api}
+          onAssignedBatch={handleAssignedBatch}
         />
 
         {/* ── Master matrix grid ───────────────────────────────────── */}
@@ -607,6 +669,7 @@ export default function SchedulePageNew() {
                 dayLabelMap={dayLabelMap}
                 onVacantClick={handleVacantClick}
                 onUndoAbsence={handleRequestUndoAbsence}
+                onBulkCoverClick={handleOpenBulkPanel}
                 today={grid?.today}
               />
             )}
@@ -874,7 +937,7 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
 // ─── Master Matrix Grid Component ─────────────────────────────────────────
 // ملاحظة: نستخدم CSS Grid مع `position: sticky` على عمود المعلم وصف الرأس
 // للحصول على تثبيت بالاتجاهين في RTL مع تمرير سلس.
-function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, today }) {
+function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, today }) {
   // ترتيب الأعمدة: لكل يوم تُضاف أعمدة الحصص (1..7) متتالية.
   const totalDataCols = days.length * periods.length;
   // عرض كل عمود حصة + عرض عمود المعلم الجانبي.
@@ -939,6 +1002,12 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
           const rowBg = rowAbsentTint
             ? 'bg-red-50'
             : (idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60');
+          // Count vacant slots for the absent teacher today (drives the
+          // bulk-cover button visibility/label).
+          const todayCells = (today && teacherCells[today]) || {};
+          const vacantTodayCount = teacher.is_absent_today
+            ? Object.values(todayCells).filter((c) => c && c.is_vacant).length
+            : 0;
           return (
             <React.Fragment key={teacher.id}>
               {/* Sticky teacher column */}
@@ -968,17 +1037,29 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                   </div>
                 </div>
                 {teacher.is_absent_today && (
-                  <div className="mt-1.5 flex">
+                  <div className="mt-1.5 flex flex-col gap-1.5">
                     <button
                       type="button"
                       onClick={() => onUndoAbsence?.(teacher)}
                       title="إعادة المعلم إلى حالة الحضور لهذا اليوم"
                       aria-label={`إلغاء غياب ${teacher.full_name}`}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-md border border-emerald-400 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-500 hover:text-emerald-800 transition-colors px-2 py-0.5 cursor-pointer"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-md border border-emerald-400 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-500 hover:text-emerald-800 transition-colors px-2 py-0.5 cursor-pointer self-start"
                     >
                       <Undo2 className="h-3 w-3" aria-hidden="true" />
                       <span>إلغاء الغياب</span>
                     </button>
+                    {vacantTodayCount > 0 && onBulkCoverClick && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => onBulkCoverClick(teacher)}
+                        className="w-full h-7 text-[11px] font-bold bg-gradient-to-r from-[#1C3D74] to-[#2BB5A0] hover:from-[#152d57] text-white shadow-sm"
+                        title="فتح لوحة تغطية كل الحصص الشاغرة لهذا المعلم اليوم"
+                      >
+                        <Layers className="h-3 w-3 ml-1" />
+                        تغطية كل حصصه ({vacantTodayCount})
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
