@@ -583,9 +583,12 @@ export default function SchedulePageNew() {
 
   return (
     <Sidebar>
-      <div dir="rtl" className="p-4 md:p-6 space-y-5 bg-slate-50 min-h-full text-slate-900">
+      <div
+        dir="rtl"
+        className="flex flex-col h-[calc(100dvh-3.5rem)] lg:h-[100dvh] p-4 md:p-6 gap-5 bg-slate-50 text-slate-900 overflow-hidden"
+      >
         {/* ── Header ───────────────────────────────────────────────── */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 shrink-0">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-[#1C3D74] flex items-center gap-2">
               <Sparkles className="h-7 w-7 text-violet-600" />
@@ -639,7 +642,7 @@ export default function SchedulePageNew() {
         </div>
 
         {/* ── KPI cards ────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
           <KpiCard
             icon={Scale}
             label="عدالة التوزيع"
@@ -685,7 +688,7 @@ export default function SchedulePageNew() {
 
         {/* ── Smart alert banner ───────────────────────────────────── */}
         {alertText && (
-          <div className="flex items-center gap-3 p-3 rounded-lg border border-red-300 bg-red-50 text-red-800">
+          <div className="flex items-center gap-3 p-3 rounded-lg border border-red-300 bg-red-50 text-red-800 shrink-0">
             <AlertTriangle className="h-5 w-5 shrink-0" />
             <p className="text-sm font-medium">{alertText}</p>
           </div>
@@ -710,10 +713,10 @@ export default function SchedulePageNew() {
         />
 
         {/* ── Master matrix grid ───────────────────────────────────── */}
-        <Card className="border border-slate-200 shadow-sm overflow-hidden">
-          <CardContent className="p-0">
+        <Card className="border border-slate-200 shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
+          <CardContent className="p-0 flex-1 min-h-0 flex flex-col">
             {loading ? (
-              <div className="flex items-center justify-center py-20 text-slate-500">
+              <div className="flex flex-1 items-center justify-center py-20 text-slate-500">
                 <Loader2 className="h-6 w-6 animate-spin ml-2" />
                 جارٍ تحميل المصفوفة…
               </div>
@@ -1004,31 +1007,37 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
   // ترتيب الأعمدة: لكل يوم تُضاف أعمدة الحصص (1..7) متتالية.
   const totalDataCols = days.length * periods.length;
   // عرض كل عمود حصة + عرض عمود المعلم الجانبي.
-  const TEACHER_COL_WIDTH = 240;
-  const PERIOD_COL_WIDTH = 78;
+  // عرض أكبر للخلايا حتى يتنفّس النص العربي ويُقرأ بسهولة؛ التمرير الأفقي
+  // الطبيعي مفضَّل على نص مضغوط غير مقروء.
+  const TEACHER_COL_WIDTH = 280;
+  const PERIOD_COL_WIDTH = 112;
+  const DAY_HEADER_HEIGHT = 44; // ارتفاع صف الرأس الأول (أيام الأسبوع)
   const DAY_COLS_TOTAL_PX = totalDataCols * PERIOD_COL_WIDTH;
 
   // gridTemplateColumns: عمود المعلم + (يوم × حصص).
   const gridTemplate = `${TEACHER_COL_WIDTH}px repeat(${totalDataCols}, ${PERIOD_COL_WIDTH}px)`;
 
   return (
-    <div className="overflow-auto max-h-[calc(100vh-360px)] relative">
+    // h-full + overflow-auto => تمرير عمودي وأفقي طبيعي داخل بطاقة المصفوفة،
+    // مع شريط تمرير واحد يصل إلى أسفل الشاشة بدلاً من صندوق صغير داخلي.
+    <div className="h-full w-full overflow-auto relative">
       <div
         className="grid text-[12px]"
         style={{ gridTemplateColumns: gridTemplate, minWidth: TEACHER_COL_WIDTH + DAY_COLS_TOTAL_PX }}
       >
         {/* ── Sticky header row 1: day spans ─────────────────────── */}
+        {/* الزاوية العلوية الجانبية (تقاطع رأس + عمود المعلم) — أعلى z-index */}
         <div
-          className="sticky top-0 z-30 bg-[#1C3D74] text-white font-bold px-3 py-2 border-l border-white/20"
-          style={{ position: 'sticky', insetInlineStart: 0, zIndex: 40 }}
+          className="sticky top-0 bg-[#1C3D74] text-white font-bold px-3 flex items-center border-l border-white/20"
+          style={{ insetInlineStart: 0, zIndex: 50, height: DAY_HEADER_HEIGHT }}
         >
           المعلم
         </div>
         {days.map((dayKey) => (
           <div
             key={`day-h-${dayKey}`}
-            className="sticky top-0 z-20 bg-[#1C3D74] text-white text-center font-bold py-2 border-l border-white/20"
-            style={{ gridColumn: `span ${periods.length}` }}
+            className="sticky top-0 z-30 bg-[#1C3D74] text-white text-center font-bold flex items-center justify-center border-l border-white/20"
+            style={{ gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
           >
             {dayLabelMap[dayKey] || dayKey}
             {dayKey === today && (
@@ -1041,8 +1050,8 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
 
         {/* ── Sticky header row 2: period numbers ────────────────── */}
         <div
-          className="sticky z-30 bg-[#243f6a] text-white text-xs px-3 py-1.5 text-right"
-          style={{ top: 38, position: 'sticky', insetInlineStart: 0, zIndex: 40 }}
+          className="sticky bg-[#243f6a] text-white text-xs px-3 py-1.5 text-right border-l border-white/20"
+          style={{ top: DAY_HEADER_HEIGHT, insetInlineStart: 0, zIndex: 50 }}
         >
           {teachers.length} معلم • {periods.length} حصص × {days.length} أيام
         </div>
@@ -1050,8 +1059,8 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
           periods.map((p) => (
             <div
               key={`ph-${dayKey}-${p}`}
-              className="sticky z-20 bg-[#243f6a] text-white text-center text-[11px] py-1.5 border-l border-white/10"
-              style={{ top: 38 }}
+              className="sticky z-30 bg-[#243f6a] text-white text-center text-[11px] py-1.5 border-l border-white/10"
+              style={{ top: DAY_HEADER_HEIGHT }}
             >
               {p}
             </div>
@@ -1075,7 +1084,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
             <React.Fragment key={teacher.id}>
               {/* Sticky teacher column */}
               <div
-                className={`sticky z-10 px-3 py-2 border-t border-l border-slate-200 ${rowBg}`}
+                className={`sticky z-20 px-3 py-2 border-t border-l border-slate-200 ${rowBg}`}
                 style={{ insetInlineStart: 0 }}
               >
                 <div className="flex items-center justify-between gap-2">
