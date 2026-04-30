@@ -7,9 +7,13 @@ Standby Roster Service — جدول الانتظار الذكي (Smart Standby R
 
 البنية:
   - لكل معلم نحسب فترات الفراغ (free periods) من timetable_sessions.
+  - نستثني الأيام المحظورة على المعلم (`constraints.blocked_days`) فلا نولّد
+    له خانات انتظار في يوم إجازته.
   - نشتق "السعة" (standby_capacity) = max(weekly_quota - assigned_periods, 0)
-    أو نأخذها من إعداد teacher.standby_periods إن وُجد، أيهما أكبر.
-  - نوزّعها على الأيام بحدّ يومي ⌈capacity / 5⌉ كحدّ أعلى لكل معلم.
+    ثم نُسقفها بـ `teacher.standby_periods` إن كان مضبوطاً (>0) — أي
+    الإعداد الصريح هو حدّ أعلى لا أرضية.
+  - نوزّعها على الأيام المتاحة بحدّ يومي ⌈capacity / working_days⌉ كحدّ أعلى
+    لكل معلم.
   - النتيجة: قاموس {teacher_id: set[(day, period)]} يمثّل خانات الانتظار
     المتاحة لكل معلم.
 
@@ -117,26 +121,43 @@ async def compute_standby_roster(
             weekly_quota = DEFAULT_WEEKLY_QUOTA
         configured_standby = _safe_int(t.get("standby_periods"), 0)
         load = teacher_load.get(tid, 0)
+        # Derived headroom from the main timetable: how many periods of the
+        # weekly quota the teacher hasn't been assigned to teach.
         derived_capacity = max(weekly_quota - load, 0)
-        # Use the larger of the configured setting and derived headroom — the
-        # explicit standby_periods is a hint of willingness, but we never
-        # promise more standby than the quota actually allows.
-        capacity = max(configured_standby, derived_capacity)
+        # The explicit `standby_periods` setting (when present and > 0) is an
+        # UPPER BOUND on how often this teacher can be tagged for standby
+        # duty in a week — it expresses a school-policy cap, not a floor. We
+        # therefore take the smaller of the two when the cap is configured.
+        if configured_standby > 0:
+            capacity = min(configured_standby, derived_capacity)
+        else:
+            capacity = derived_capacity
         if capacity <= 0:
             continue
 
-        # Identify free slots, deterministic order: by day index then period.
+        # Day-off / blocked-day exclusion: a teacher must never receive a
+        # standby slot on a day they're not working. We pull both the
+        # explicit `constraints.blocked_days` (Task #95) and the legacy
+        # `working_days` whitelist if present.
+        blocked = _resolve_blocked_days(t)
+        eligible_days = [d for d in DAYS if d not in blocked]
+        if not eligible_days:
+            continue
+
+        # Identify free slots on eligible days, deterministic order:
+        # by day index then period.
         free_slots: List[Tuple[str, int]] = []
-        for day in DAYS:
+        for day in eligible_days:
             for period in PERIODS:
                 if (day, period) not in busy[tid]:
                     free_slots.append((day, period))
         if not free_slots:
             continue
 
-        # Daily cap: spread evenly so no day exceeds ⌈capacity / 5⌉.
-        per_day_cap = max(1, ceil(capacity / len(DAYS)))
-        per_day_count: Dict[str, int] = {d: 0 for d in DAYS}
+        # Daily cap: spread evenly so no day exceeds
+        # ⌈capacity / eligible_working_days⌉.
+        per_day_cap = max(1, ceil(capacity / len(eligible_days)))
+        per_day_count: Dict[str, int] = {d: 0 for d in eligible_days}
         chosen: Set[Tuple[str, int]] = set()
 
         # Round-robin pass: prefer earliest available slot per day to spread
@@ -145,15 +166,103 @@ async def compute_standby_roster(
             if len(chosen) >= capacity:
                 break
             day, period = slot
-            if per_day_count[day] >= per_day_cap:
+            if per_day_count.get(day, 0) >= per_day_cap:
                 continue
             chosen.add(slot)
-            per_day_count[day] += 1
+            per_day_count[day] = per_day_count.get(day, 0) + 1
 
         if chosen:
             roster[tid] = chosen
 
     return roster
+
+
+def _resolve_blocked_days(teacher: dict) -> Set[str]:
+    """Returns the set of weekdays on which `teacher` must not be assigned
+    standby duty.
+
+    Sources merged:
+      - `teacher.constraints.blocked_days` (Task #95 — explicit hard
+        constraint, e.g. ["thursday"]).
+      - `teacher.working_days` (legacy whitelist) — anything in DAYS that is
+        absent from the whitelist is treated as a day-off.
+      - Localized values like "الخميس" are normalized via _AR_DAY_KEYS.
+    """
+    blocked: Set[str] = set()
+
+    constraints = teacher.get("constraints") or {}
+    if isinstance(constraints, dict):
+        raw = constraints.get("blocked_days") or []
+        if isinstance(raw, list):
+            for item in raw:
+                key = _normalize_day_key(item)
+                if key:
+                    blocked.add(key)
+        elif isinstance(raw, dict):
+            # Map shape: {"thursday": True, ...}
+            for k, v in raw.items():
+                key = _normalize_day_key(k)
+                if key and v:
+                    blocked.add(key)
+
+    # `working_days` is a whitelist. If the field is *present* on the teacher
+    # row (even when empty / all-false / unrecognized), treat unlisted days
+    # as blocked — the school explicitly opted into a per-teacher schedule.
+    # When the field is missing entirely we fall back to "all DAYS allowed"
+    # (the default before per-teacher day-offs existed).
+    if "working_days" in teacher and teacher.get("working_days") is not None:
+        working = teacher.get("working_days")
+        allowed: Set[str] = set()
+        if isinstance(working, list):
+            allowed = {_normalize_day_key(d) for d in working if _normalize_day_key(d)}
+        elif isinstance(working, dict):
+            allowed = {
+                _normalize_day_key(k)
+                for k, v in working.items()
+                if v and _normalize_day_key(k)
+            }
+        else:
+            # Unknown payload shape — log and treat as "no whitelist" so we
+            # don't accidentally block every day on a data glitch.
+            import logging
+            logging.getLogger("nassaq.standby").warning(
+                "Ignoring malformed teacher.working_days payload (type=%s) "
+                "for teacher_id=%s",
+                type(working).__name__,
+                teacher.get("id"),
+            )
+            allowed = None  # type: ignore[assignment]
+
+        if allowed is not None:
+            # An explicit whitelist (even empty) blocks any DAYS not in it.
+            for d in DAYS:
+                if d not in allowed:
+                    blocked.add(d)
+
+    return blocked
+
+
+_AR_DAY_KEYS = {
+    "الأحد": "sunday", "الاحد": "sunday",
+    "الإثنين": "monday", "الاثنين": "monday",
+    "الثلاثاء": "tuesday",
+    "الأربعاء": "wednesday", "الاربعاء": "wednesday",
+    "الخميس": "thursday",
+    "الجمعة": "friday",
+    "السبت": "saturday",
+}
+
+
+def _normalize_day_key(value) -> str | None:
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    low = s.lower()
+    if low in DAYS or low in ("friday", "saturday"):
+        return low
+    return _AR_DAY_KEYS.get(s)
 
 
 __all__ = [
