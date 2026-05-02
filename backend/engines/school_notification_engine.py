@@ -10,7 +10,7 @@ from enum import Enum
 
 from sqlalchemy import select, and_, func, desc as sa_desc
 
-from pg_models import Notification, Student, Teacher, Parent
+from pg_models import Notification, Student, Teacher, Parent, User
 from engines.sql_utils import (
     model_to_dict, models_to_dicts, dict_to_model, apply_updates,
     gd_insert, gd_insert_many, gd_find, gd_count,
@@ -120,29 +120,64 @@ class SchoolNotificationEngine:
                 "created_at": now.isoformat(),
             }
 
-            obj = dict_to_model(Notification, {
-                "id": notification_id,
-                "tenant_id": tenant_id,
-                "user_id": sent_by,
-                "title": request.title_ar,
-                "message": request.message_ar,
-                "type": request.notification_type.value,
-                "priority": request.priority.value,
-                "is_read": False,
-                "extra_data": notification_doc,
-            })
-            self.session.add(obj)
-            await self.session.flush()
-
+            # Fan-out: insert one notification row per recipient user so each
+            # one shows up in their own inbox. The inbox endpoint
+            # (GET /notifications) filters by notifications.user_id, so a
+            # single broadcast row keyed to the admin would be invisible to
+            # everyone else (this was the "black hole" bug).
+            delivered_count = 0
             if not request.scheduled_at:
+                import secrets as _secrets
+                for rec in recipients:
+                    rec_user_id = rec.get("user_id")
+                    if not rec_user_id:
+                        continue
+                    per_user_id = f"{notification_id}-{_secrets.token_hex(3).upper()}"
+                    self.session.add(dict_to_model(Notification, {
+                        "id": per_user_id,
+                        "tenant_id": tenant_id,
+                        "user_id": rec_user_id,
+                        "title": request.title_ar,
+                        "message": request.message_ar,
+                        "type": request.notification_type.value,
+                        "priority": request.priority.value,
+                        "is_read": False,
+                        "extra_data": {
+                            **notification_doc,
+                            "broadcast_id": notification_id,
+                            "recipient_user_id": rec_user_id,
+                            "recipient_role": rec.get("type"),
+                            "recipient_name": rec.get("name"),
+                            "sender_id": sent_by,
+                        },
+                    }))
+                    delivered_count += 1
+                await self.session.flush()
+
                 await self._create_recipient_logs(notification_id, recipients, tenant_id, now)
+            else:
+                # Scheduled broadcasts keep an audit row owned by the sender;
+                # the scheduler is responsible for fanning out at delivery time.
+                self.session.add(dict_to_model(Notification, {
+                    "id": notification_id,
+                    "tenant_id": tenant_id,
+                    "user_id": sent_by,
+                    "title": request.title_ar,
+                    "message": request.message_ar,
+                    "type": request.notification_type.value,
+                    "priority": request.priority.value,
+                    "is_read": False,
+                    "extra_data": notification_doc,
+                }))
+                await self.session.flush()
 
             return {
                 "success": True,
                 "notification_id": notification_id,
                 "recipient_count": len(recipients),
-                "message": f"تم إرسال الإشعار إلى {len(recipients)} مستلم",
-                "message_en": f"Notification sent to {len(recipients)} recipients"
+                "delivered_count": delivered_count,
+                "message": f"تم إرسال الإشعار إلى {delivered_count or len(recipients)} مستلم",
+                "message_en": f"Notification sent to {delivered_count or len(recipients)} recipients"
             }
 
         except Exception as e:
@@ -155,29 +190,51 @@ class SchoolNotificationEngine:
         recipient_filter: Optional[Dict[str, Any]],
         tenant_id: str
     ) -> List[Dict[str, Any]]:
-        """Resolve recipients based on type and filter"""
-        recipients = []
+        """Resolve recipients to ``users.id`` for the notifications fan-out.
 
-        if recipient_type == RecipientType.all_students:
-            stmt = select(Student).where(
-                and_(Student.school_id == tenant_id, Student.is_active == True)
+        Every entry in the returned list carries ``user_id`` (the FK target on
+        ``notifications.user_id``) so the caller can insert per-user rows that
+        the inbox query (``WHERE user_id = current_user.id``) actually reads.
+        """
+        recipients: List[Dict[str, Any]] = []
+
+        async def _users_for_role(roles: List[str]) -> List[Dict[str, Any]]:
+            stmt = select(User).where(
+                and_(
+                    User.tenant_id == tenant_id,
+                    User.role.in_(roles),
+                    User.is_active.is_(True),
+                )
             )
             result = await self.session.execute(stmt)
-            recipients = [{"id": s.id, "type": "student", "name": s.full_name} for s in result.scalars().all()]
+            return [
+                {"user_id": u.id, "id": u.id, "type": u.role, "name": u.full_name, "email": u.email}
+                for u in result.scalars().all()
+            ]
 
-        elif recipient_type == RecipientType.all_teachers:
-            stmt = select(Teacher).where(
-                and_(Teacher.school_id == tenant_id, Teacher.is_active == True)
+        async def _user_ids_from_emails(emails: List[str], roles: List[str]) -> Dict[str, Dict[str, Any]]:
+            clean = [e for e in emails if e]
+            if not clean:
+                return {}
+            stmt = select(User).where(
+                and_(
+                    User.tenant_id == tenant_id,
+                    User.role.in_(roles),
+                    User.email.in_(clean),
+                    User.is_active.is_(True),
+                )
             )
             result = await self.session.execute(stmt)
-            recipients = [{"id": t.id, "type": "teacher", "name": t.full_name} for t in result.scalars().all()]
+            return {u.email: {"user_id": u.id, "id": u.id, "type": u.role, "name": u.full_name} for u in result.scalars().all()}
+
+        if recipient_type == RecipientType.all_teachers:
+            recipients = await _users_for_role(["teacher", "school_teacher", "independent_teacher"])
+
+        elif recipient_type == RecipientType.all_students:
+            recipients = await _users_for_role(["student"])
 
         elif recipient_type == RecipientType.all_parents:
-            stmt = select(Parent).where(
-                and_(Parent.school_id == tenant_id, Parent.is_active == True)
-            )
-            result = await self.session.execute(stmt)
-            recipients = [{"id": p.id, "type": "parent", "name": p.full_name} for p in result.scalars().all()]
+            recipients = await _users_for_role(["parent"])
 
         elif recipient_type == RecipientType.grade_students:
             grade_id = recipient_filter.get("grade_id") if recipient_filter else None
@@ -186,7 +243,30 @@ class SchoolNotificationEngine:
                     and_(Student.school_id == tenant_id, Student.grade == grade_id, Student.is_active == True)
                 )
                 result = await self.session.execute(stmt)
-                recipients = [{"id": s.id, "type": "student", "name": s.full_name} for s in result.scalars().all()]
+                students = list(result.scalars().all())
+                emails = [s.email for s in students if s.email]
+                by_email = await _user_ids_from_emails(emails, ["student"])
+                for s in students:
+                    u = by_email.get(s.email) if s.email else None
+                    if u:
+                        recipients.append({**u, "name": u.get("name") or s.full_name})
+
+        elif recipient_type == RecipientType.grade_parents:
+            grade_id = recipient_filter.get("grade_id") if recipient_filter else None
+            if grade_id:
+                stmt = select(Student).where(
+                    and_(Student.school_id == tenant_id, Student.grade == grade_id, Student.is_active == True)
+                )
+                result = await self.session.execute(stmt)
+                students = list(result.scalars().all())
+                emails = [s.parent_email for s in students if s.parent_email]
+                by_email = await _user_ids_from_emails(emails, ["parent"])
+                seen = set()
+                for u in by_email.values():
+                    if u["user_id"] in seen:
+                        continue
+                    seen.add(u["user_id"])
+                    recipients.append(u)
 
         elif recipient_type == RecipientType.class_students:
             class_id = recipient_filter.get("class_id") if recipient_filter else None
@@ -195,14 +275,58 @@ class SchoolNotificationEngine:
                     and_(Student.school_id == tenant_id, Student.class_id == class_id, Student.is_active == True)
                 )
                 result = await self.session.execute(stmt)
-                recipients = [{"id": s.id, "type": "student", "name": s.full_name} for s in result.scalars().all()]
+                students = list(result.scalars().all())
+                emails = [s.email for s in students if s.email]
+                by_email = await _user_ids_from_emails(emails, ["student"])
+                for s in students:
+                    u = by_email.get(s.email) if s.email else None
+                    if u:
+                        recipients.append({**u, "name": u.get("name") or s.full_name})
+
+        elif recipient_type == RecipientType.class_parents:
+            class_id = recipient_filter.get("class_id") if recipient_filter else None
+            if class_id:
+                stmt = select(Student).where(
+                    and_(Student.school_id == tenant_id, Student.class_id == class_id, Student.is_active == True)
+                )
+                result = await self.session.execute(stmt)
+                students = list(result.scalars().all())
+                emails = [s.parent_email for s in students if s.parent_email]
+                by_email = await _user_ids_from_emails(emails, ["parent"])
+                seen = set()
+                for u in by_email.values():
+                    if u["user_id"] in seen:
+                        continue
+                    seen.add(u["user_id"])
+                    recipients.append(u)
 
         elif recipient_type == RecipientType.specific_users:
             user_ids = recipient_filter.get("user_ids", []) if recipient_filter else []
-            for uid in user_ids:
-                recipients.append({"id": uid, "type": "user", "name": ""})
+            clean_ids = [uid for uid in user_ids if uid]
+            if clean_ids:
+                stmt = select(User).where(
+                    and_(
+                        User.tenant_id == tenant_id,
+                        User.id.in_(clean_ids),
+                        User.is_active.is_(True),
+                    )
+                )
+                result = await self.session.execute(stmt)
+                recipients = [
+                    {"user_id": u.id, "id": u.id, "type": u.role, "name": u.full_name, "email": u.email}
+                    for u in result.scalars().all()
+                ]
 
-        return recipients
+        # De-duplicate on user_id in case the same user appears via multiple roles.
+        seen_uids = set()
+        deduped: List[Dict[str, Any]] = []
+        for r in recipients:
+            uid = r.get("user_id")
+            if not uid or uid in seen_uids:
+                continue
+            seen_uids.add(uid)
+            deduped.append(r)
+        return deduped
 
     async def _create_recipient_logs(
         self,
