@@ -13,7 +13,7 @@ import uuid, os, logging, json, random, re, io, base64
 
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
-    hash_password, verify_password, create_access_token,
+    hash_password, verify_password, create_access_token, create_refresh_token,
     JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE, security, logger,
     audit_engine, AuditAction, AuditSeverity,
     smart_scheduling_engine, TimetableRunStatus, TimetableStatus,
@@ -22,10 +22,12 @@ from dependencies import (
     REPORT_TYPES, generate_student_qr_code
 )
 
-from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate, dict_to_model
 from shared_models import (
-    RegistrationRequest, RegistrationRequestResponse, ApproveRequestData, RejectRequestData, RequestMoreInfoData
+    RegistrationRequest, RegistrationRequestResponse, ApproveRequestData, RejectRequestData, RequestMoreInfoData,
+    UserResponse,
 )
+from pg_models import School, User as UserModel, SchoolSettings
 
 router = APIRouter()
 
@@ -94,9 +96,281 @@ async def check_school_name(name: str = Query(..., min_length=2)):
     }
 
 
-@router.post("/registration-requests", response_model=RegistrationRequestResponse)
+async def _generate_school_code_instant() -> str:
+    """Generate a unique school code (mirrors SchoolApprovalHandler logic)."""
+    from sqlalchemy import select, desc as sa_desc
+    session = db.session
+    year_suffix = datetime.now().strftime("%y")
+    prefix = f"NSS-SA-{year_suffix}-"
+
+    stmt = (
+        select(School)
+        .where(School.code.like(f"{prefix}%"))
+        .order_by(sa_desc(School.code))
+        .limit(1)
+    )
+    result = await session.execute(stmt)
+    last_school = result.scalars().first()
+
+    next_num = 1
+    if last_school and last_school.code:
+        try:
+            next_num = int(last_school.code.split("-")[-1]) + 1
+        except (ValueError, IndexError):
+            pass
+
+    school_code = f"{prefix}{str(next_num).zfill(4)}"
+    stmt2 = select(School).where(School.code == school_code).limit(1)
+    result2 = await session.execute(stmt2)
+    if result2.scalars().first():
+        school_code = f"{prefix}{str(next_num + 1).zfill(4)}"
+    return school_code
+
+
+async def _create_school_instant(
+    request_data: RegistrationRequest,
+    full_name: str,
+    phone_clean: str,
+    raw_phone: str,
+):
+    """
+    Direct sign-up flow for new schools: creates the School + active Principal user
+    and returns an auth token so the user is immediately logged in.
+    """
+    from sqlalchemy import select
+    import secrets, string
+
+    session = db.session
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    school_email = (request_data.school_email or "").strip().lower()
+    school_phone = (request_data.school_phone or "").strip() or (phone_clean or raw_phone)
+    school_name = (request_data.school_name or "").strip()
+    school_city = (request_data.school_city or "").strip()
+
+    if not school_name:
+        raise HTTPException(status_code=400, detail="يرجى إدخال اسم المدرسة")
+    if not school_email:
+        raise HTTPException(status_code=400, detail="يرجى إدخال البريد الإلكتروني للمدرسة")
+    if not school_city:
+        raise HTTPException(status_code=400, detail="يرجى إدخال مدينة المدرسة")
+
+    stmt = select(UserModel).where(UserModel.email == school_email).limit(1)
+    result = await session.execute(stmt)
+    if result.scalars().first():
+        raise HTTPException(status_code=400, detail="يوجد حساب مسجل مسبقًا بنفس البريد الإلكتروني")
+
+    capacity_raw = request_data.student_capacity or "500"
+    try:
+        student_capacity = int(capacity_raw)
+    except (ValueError, TypeError):
+        student_capacity = 500
+
+    school_code = await _generate_school_code_instant()
+    school_id = str(uuid.uuid4())
+    principal_id = str(uuid.uuid4())
+    request_id = str(uuid.uuid4())
+
+    temp_password = ''.join(
+        secrets.choice(string.ascii_letters + string.digits + "!@#$%") for _ in range(12)
+    )
+
+    school_obj = dict_to_model(School, {
+        "id": school_id,
+        "name": school_name,
+        "name_ar": school_name,
+        "name_en": "",
+        "code": school_code,
+        "email": school_email,
+        "phone": school_phone,
+        "address": (request_data.school_address or "").strip(),
+        "city": school_city,
+        "region": "",
+        "country": "SA",
+        "status": "active",
+        "student_capacity": student_capacity,
+        "current_students": 0,
+        "current_teachers": 0,
+        "school_type": "public",
+        "principal_name": full_name,
+        "principal_email": school_email,
+        "principal_phone": school_phone,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "created_by": None,
+    })
+    session.add(school_obj)
+    await session.flush()
+
+    principal_obj = dict_to_model(UserModel, {
+        "id": principal_id,
+        "email": school_email,
+        "password_hash": hash_password(temp_password),
+        "full_name": full_name,
+        "role": "school_principal",
+        "school_id": school_id,
+        "tenant_id": school_id,
+        "phone": school_phone,
+        "is_active": True,
+        "must_change_password": True,
+        "preferred_language": "ar",
+        "preferred_theme": "light",
+        "permissions": ["manage_school", "manage_teachers", "manage_students", "view_reports", "manage_settings"],
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "created_by": None,
+    })
+    session.add(principal_obj)
+    await session.flush()
+
+    try:
+        default_settings = await gd_find_one(session, "default_settings", {"id": "default-school-settings"})
+        if default_settings:
+            from routes.school_settings_mod import normalize_school_settings_doc
+            settings_obj = dict_to_model(SchoolSettings, normalize_school_settings_doc({
+                "id": f"settings-{school_id}",
+                "school_id": school_id,
+                "working_days": default_settings.get("working_days"),
+                "working_days_ar": default_settings.get("working_days_ar"),
+                "working_days_en": default_settings.get("working_days_en"),
+                "weekend_days_ar": default_settings.get("weekend_days_ar"),
+                "weekend_days_en": default_settings.get("weekend_days_en"),
+                "periods_per_day": default_settings.get("periods_per_day"),
+                "period_duration_minutes": default_settings.get("period_duration_minutes"),
+                "break_duration_minutes": default_settings.get("break_duration_minutes"),
+                "prayer_duration_minutes": default_settings.get("prayer_duration_minutes"),
+                "school_day_start": default_settings.get("school_day_start"),
+                "school_day_end": default_settings.get("school_day_end"),
+                "time_slots": default_settings.get("time_slots"),
+                "education_track": "track-general",
+                "created_at": now_iso,
+                "updated_at": now_iso,
+            }))
+            session.add(settings_obj)
+            await session.flush()
+    except Exception as e:
+        logger.warning(f"[InstantSignup] Skipped default school settings seed for {school_id}: {e}")
+
+    submission_data = request_data.model_dump()
+    submission_data["account_type"] = "school"
+    submission_data["full_name"] = full_name
+
+    extra_fields = {k: v for k, v in submission_data.items() if k not in ("id", "type", "name", "email", "phone", "school_name", "status", "source")}
+    extra_fields["account_type"] = "school"
+    extra_fields["full_name"] = full_name
+    extra_fields["auto_approved"] = True
+
+    request_doc = {
+        "id": request_id,
+        "type": "school",
+        "name": full_name,
+        "email": school_email,
+        "phone": phone_clean or raw_phone,
+        "school_name": school_name,
+        "status": "approved",
+        "source": "public_signup_instant",
+        "data": extra_fields,
+        "payload_snapshot": submission_data,
+        "linked_entity_type": "school",
+        "linked_entity_id": school_id,
+        "review_notes": "Auto-approved (instant sign-up)",
+        "reviewed_at": now_iso,
+        "reviewed_by": None,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+    }
+    await gd_insert(session, "registration_requests", request_doc)
+
+    try:
+        audit_entry = {
+            "id": str(uuid.uuid4()),
+            "action": "account_auto_approved",
+            "event_type": "School Account Auto-Approved",
+            "entity_type": "school",
+            "entity_id": school_id,
+            "actor_name": full_name,
+            "actor_id": principal_id,
+            "details": {
+                "account_type": "school",
+                "source": "public_signup_instant",
+                "school_code": school_code,
+                "request_id": request_id,
+            },
+            "timestamp": now_iso,
+            "created_at": now_iso,
+        }
+        await gd_insert(session, "audit_logs", audit_entry)
+    except Exception as e:
+        logger.error(f"[InstantSignup] Failed to write audit log: {e}")
+
+    token_payload = {
+        "sub": principal_id,
+        "role": "school_principal",
+        "tenant_id": school_id,
+        "school_id": school_id,
+    }
+    access_token = create_access_token(token_payload)
+    try:
+        import jwt as _jwt
+        access_jti = _jwt.decode(access_token, JWT_SECRET, algorithms=[JWT_ALGORITHM]).get("jti")
+    except Exception:
+        access_jti = None
+    refresh = create_refresh_token(token_payload, remember_me=False, linked_access_jti=access_jti)
+
+    user_response = UserResponse(
+        id=principal_id,
+        email=school_email,
+        full_name=full_name,
+        full_name_en=None,
+        role=UserRole("school_principal"),
+        tenant_id=school_id,
+        phone=school_phone,
+        avatar_url=None,
+        is_active=True,
+        must_change_password=True,
+        preferred_language="ar",
+        preferred_theme="light",
+        created_at=now_iso,
+    )
+
+    logger.info(f"[InstantSignup] School created and auto-logged-in: {school_name} (code={school_code}, principal={principal_id[:8]}…)")
+
+    # NOTE: temp_password is intentionally NOT returned. The principal is
+    # auto-logged-in via the issued access_token and `must_change_password=True`
+    # forces a password reset on first dashboard load. Echoing the generated
+    # password back to the client would expose credentials in browser logs,
+    # screenshots, and proxy/telemetry surfaces.
+    _ = temp_password
+
+    return {
+        "id": request_id,
+        "status": "approved",
+        "account_type": "school",
+        "school_id": school_id,
+        "school_code": school_code,
+        "school_name": school_name,
+        "full_name": full_name,
+        "email": school_email,
+        "phone": phone_clean or raw_phone,
+        "created_at": now_iso,
+        "access_token": access_token,
+        "refresh_token": refresh,
+        "token_type": "bearer",
+        "user": user_response.model_dump(),
+    }
+
+
+@router.post("/registration-requests", response_model=None)
 async def create_registration_request(request_data: RegistrationRequest):
-    """Create a new registration request for admin review"""
+    """
+    Create a new registration request.
+
+    For account_type == "school" this is an INSTANT sign-up: the school + an
+    active principal user are created immediately and an auth token is returned
+    so the front end can log the user in directly.
+
+    For other account types the legacy "pending admin review" flow still applies.
+    """
 
     VALID_ACCOUNT_TYPES = {"school", "teacher", "parent", "student"}
     account_type = (request_data.account_type or "").strip().lower()
@@ -138,6 +412,9 @@ async def create_registration_request(request_data: RegistrationRequest):
                     status_code=400,
                     detail="يوجد طلب تسجيل معلق بنفس رقم الهاتف"
                 )
+
+    if account_type == "school":
+        return await _create_school_instant(request_data, full_name, phone_clean, raw_phone)
 
     request_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()

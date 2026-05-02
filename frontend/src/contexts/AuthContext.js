@@ -318,6 +318,30 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const applyAuthSession = useCallback(({ access_token, refresh_token: refreshToken, user: userData }) => {
+    if (!access_token || !userData) return;
+    localStorage.setItem('nassaq_token', access_token);
+    setToken(access_token);
+    setUser(userData);
+
+    if (refreshToken) {
+      sessionStorage.setItem('nassaq_refresh_token', refreshToken);
+      localStorage.removeItem('nassaq_refresh_token');
+    }
+
+    if (userData?.preferred_theme) {
+      localStorage.setItem('nassaq_theme', userData.preferred_theme);
+      const root = window.document.documentElement;
+      root.classList.remove('light', 'dark');
+      root.classList.add(userData.preferred_theme);
+      root.setAttribute('data-theme', userData.preferred_theme);
+      window.dispatchEvent(new CustomEvent('nassaq-theme-sync', { detail: { theme: userData.preferred_theme } }));
+    }
+    if (userData?.preferred_language) {
+      localStorage.setItem('nassaq_language', userData.preferred_language);
+    }
+  }, []);
+
   const logout = useCallback(() => {
     try {
       const currentToken = localStorage.getItem('nassaq_token');
@@ -457,6 +481,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     register,
+    applyAuthSession,
     logout,
     updateToken,
     updatePreferences,

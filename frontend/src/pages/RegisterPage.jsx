@@ -26,9 +26,7 @@ import {
   Mail,
   MapPin,
   FileText,
-  Eye,
   AlertTriangle,
-  Edit3,
 } from 'lucide-react';
 
 const LOGO_WHITE = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/q04svb5j_Nassaq%20LinkedIn%20Logo%20White.png';
@@ -37,12 +35,12 @@ const BG_PATTERN = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-
 export const RegisterPage = () => {
   const { t } = useTranslation();
   const { isRTL, toggleLanguage } = useTheme();
-  const { api } = useAuth();
+  const { api, applyAuthSession } = useAuth();
   const navigate = useNavigate();
   
   const [currentStep, setCurrentStep] = useState(1);
   const { nassaqError, nassaqWarning } = useNassaqAlert();
-  const totalSteps = 5;
+  const totalSteps = 4;
   
   const [formData, setFormData] = useState({
     full_name: '',
@@ -210,6 +208,7 @@ export const RegisterPage = () => {
   };
 
   const handleSubmit = async () => {
+    if (!validateStep4()) return;
     setLoading(true);
 
     try {
@@ -217,7 +216,6 @@ export const RegisterPage = () => {
         full_name: formData.full_name,
         phone: formData.phone,
         account_type: formData.accountType,
-        status: 'pending',
         ...(formData.accountType === 'school' ? {
           school_name: formData.school_name,
           school_email: formData.school_email,
@@ -234,17 +232,52 @@ export const RegisterPage = () => {
       };
 
       const response = await api.post('/registration-requests', requestData);
-      
-      navigate('/registration-confirmation', { 
-        state: { 
-          requestId: response.data?.id,
+      const data = response.data || {};
+
+      if (data.access_token && data.user) {
+        applyAuthSession({
+          access_token: data.access_token,
+          refresh_token: data.refresh_token,
+          user: data.user,
+        });
+
+        toast.success(t('accountCreatedSuccessfully'));
+
+        const role = data.user.role;
+        let target = '/dashboard';
+        switch (role) {
+          case 'school_principal':
+          case 'school_admin':
+            target = '/principal';
+            break;
+          case 'school_sub_admin':
+            target = '/school';
+            break;
+          case 'teacher':
+          case 'independent_teacher':
+            target = '/teacher';
+            break;
+          case 'platform_admin':
+          case 'platform_operations_manager':
+            target = '/admin';
+            break;
+          default:
+            target = '/dashboard';
+        }
+        navigate(target, { replace: true });
+        return;
+      }
+
+      navigate('/registration-confirmation', {
+        state: {
+          requestId: data.id,
           fullName: formData.full_name,
           accountType: formData.accountType,
           email: formData.accountType === 'school' ? formData.school_email : formData.teacher_email,
           phone: formData.phone,
           schoolName: formData.school_name,
         },
-        replace: true
+        replace: true,
       });
     } catch (err) {
       console.error('Registration error:', err);
@@ -266,35 +299,7 @@ export const RegisterPage = () => {
     { number: 2, title: t('privacyPolicy'), icon: Shield },
     { number: 3, title: t('accountType'), icon: Building2 },
     { number: 4, title: t('completeInfo'), icon: FileText },
-    { number: 5, title: t('reviewSubmit'), icon: Eye },
   ];
-
-  const getReviewData = () => {
-    const common = [
-      { label: t('fullName'), value: formData.full_name },
-      { label: t('phone3'), value: formData.phone },
-      { label: t('accountType'), value: formData.accountType === 'school' ? (t('newSchool')) : (t('teacher3')) },
-    ];
-
-    if (formData.accountType === 'school') {
-      return [
-        ...common,
-        { label: t('schoolName'), value: formData.school_name },
-        { label: t('email2'), value: formData.school_email },
-        { label: t('city'), value: formData.school_city },
-        ...(formData.school_phone ? [{ label: t('schoolPhone'), value: formData.school_phone }] : []),
-        ...(formData.student_capacity ? [{ label: isRTL ? 'سعة الطلاب' : 'Capacity', value: formData.student_capacity }] : []),
-      ];
-    } else {
-      return [
-        ...common,
-        { label: t('email2'), value: formData.teacher_email },
-        { label: t('specialization'), value: formData.specialization },
-        ...(formData.school_code ? [{ label: t('schoolCode'), value: formData.school_code }] : []),
-        ...(formData.years_of_experience ? [{ label: t('experience'), value: formData.years_of_experience }] : []),
-      ];
-    }
-  };
 
   return (
     <div className="min-h-screen flex" dir={isRTL ? 'rtl' : 'ltr'} data-testid="register-page">
@@ -778,59 +783,6 @@ export const RegisterPage = () => {
                     </>
                   )}
 
-                  <div className="bg-brand-turquoise/10 border border-brand-turquoise/20 rounded-xl p-4 mt-4">
-                    <p className="text-sm text-foreground font-tajawal">
-                      <span className="font-bold">{t('note2')}</span>
-                      {t('yourRequestWillBeReviewedByPlatformAdminAndYouWill')}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {currentStep === 5 && (
-                <div className="space-y-5" data-testid="step-5-content">
-                  <div className="bg-brand-navy/5 rounded-2xl p-5 space-y-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-cairo font-bold text-lg text-foreground">
-                        {t('requestSummary')}
-                      </h3>
-                      <Badge className="bg-brand-turquoise/10 text-brand-turquoise border-brand-turquoise/20">
-                        {t('review')}
-                      </Badge>
-                    </div>
-
-                    <div className="space-y-3">
-                      {getReviewData().map((item, index) => (
-                        <div key={index} className="flex items-center justify-between py-2 border-b border-border/30 last:border-0">
-                          <span className="text-sm text-muted-foreground font-tajawal">{item.label}</span>
-                          <span className="text-sm font-medium font-tajawal text-foreground max-w-[60%] text-end" dir="auto">
-                            {item.value || '—'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentStep(1)}
-                      className="rounded-xl font-tajawal text-xs"
-                    >
-                      <Edit3 className="h-3.5 w-3.5 me-1" />
-                      {t('editInfo')}
-                    </Button>
-                  </div>
-
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                    <div className="flex items-start gap-3">
-                      <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
-                      <p className="text-sm text-amber-700 font-tajawal leading-relaxed">
-                        {t('byClickingSubmitRequestIConfirmTheAccuracyOfTheEnt')}
-                      </p>
-                    </div>
-                  </div>
                 </div>
               )}
 
@@ -865,11 +817,11 @@ export const RegisterPage = () => {
                     {loading ? (
                       <span className="flex items-center gap-2">
                         <Loader2 className="h-5 w-5 animate-spin" />
-                        {t('submitting')}
+                        {t('creatingAccount')}
                       </span>
                     ) : (
                       <span className="flex items-center gap-2">
-                        {t('submitRequest')}
+                        {t('createAccount')}
                         <CheckCircle2 className="h-5 w-5" />
                       </span>
                     )}
