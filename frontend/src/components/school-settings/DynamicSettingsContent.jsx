@@ -801,6 +801,9 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                             ) : (
                               <p className="text-xs text-red-600">متكرر: {item.day} - الحصة {item.period}</p>
                             )}
+                            {item.alternative_location && (
+                              <p className="text-xs text-orange-700 font-semibold">نُقل إلى: {item.alternative_location}</p>
+                            )}
                           </div>
                         </div>
                         <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500" onClick={() => handleDeleteUnavailability(item.id, 'class')}><X className="h-3 w-3" /></Button>

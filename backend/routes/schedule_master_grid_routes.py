@@ -26,6 +26,20 @@ router = APIRouter()
 
 
 DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday"]
+
+# خرائط ترجمة أسماء الأيام: نموذج عدم التوفر يحفظ اليوم بالعربية
+# (الأحد..الخميس)، أما الجلسات في timetable_sessions فتُخزَّن بالإنجليزية
+# (sunday..thursday). نوحّد الاتجاهين عبر هذه الخريطة.
+_AR_DAY_TO_EN = {
+    "الأحد": "sunday",
+    "الإثنين": "monday",
+    "الاثنين": "monday",
+    "الثلاثاء": "tuesday",
+    "الأربعاء": "wednesday",
+    "الخميس": "thursday",
+    "الجمعة": "friday",
+    "السبت": "saturday",
+}
 # DEFAULT_PERIODS هو fallback نهائي فقط عند تعذّر قراءة إعدادات المدرسة.
 # في كل طلب نستخرج عدد الحصص الفعلي من school_settings.periods_per_day أو
 # من time_slots المعرّفة لكل مدرسة — لا نفترض 7 حصص بعد الآن.
@@ -329,6 +343,48 @@ async def get_master_grid(
             # Tooltip enrichment is best-effort; never fail the grid for it.
             pass
 
+    # ── Class-relocation overlay ─────────────────────────────────────────
+    # When a class is marked unavailable with an alternative location, we
+    # surface that on the matching grid cell so the assigned teacher can
+    # immediately see "نُقل إلى: …" without leaving the schedule view. We
+    # build two lookups keyed by class_id: one for recurring (day, period)
+    # and one for long-term ranges that include today.
+    relocation_recurring: dict[str, dict[tuple[str, str], str]] = {}
+    relocation_today: dict[str, str] = {}
+    today_iso_for_unavail = datetime.now(timezone.utc).date().isoformat()
+    try:
+        unavail_rows = await gd_find(
+            db.session,
+            "unavailability",
+            {"school_id": sid, "entity_type": "class"},
+            limit=2000,
+        )
+    except Exception:
+        unavail_rows = []
+    for row in unavail_rows:
+        alt = (row.get("alternative_location") or "").strip()
+        if not alt:
+            continue
+        cls_id = row.get("entity_id")
+        if not cls_id:
+            continue
+        utype = row.get("unavailability_type") or "recurring"
+        if utype == "long_term":
+            start = (row.get("start_date") or "")
+            end = (row.get("end_date") or "")
+            if start and end and start <= today_iso_for_unavail <= end:
+                # Last-write wins; long-term records affect every cell of
+                # this class on today's column.
+                relocation_today[cls_id] = alt
+        else:
+            day_raw = (row.get("day") or "").strip()
+            day_en = _AR_DAY_TO_EN.get(day_raw, day_raw.lower())
+            try:
+                period_key = str(int(row.get("period")))
+            except (TypeError, ValueError):
+                continue
+            relocation_recurring.setdefault(cls_id, {})[(day_en, period_key)] = alt
+
     cells: dict[str, dict[str, dict[str, object]]] = {}
     assigned_count: dict[str, int] = {}
 
@@ -349,7 +405,7 @@ async def get_master_grid(
         cls_name = class_name_map.get(cls_id, sess.get("class_name") or "")
         subj_name = subject_name_map.get(sess.get("subject_id"), sess.get("subject_name") or "")
         is_vacant_today = (day == today_key) and (tid in absent_ids)
-        day_cells[period_key] = {
+        cell_doc: dict[str, object] = {
             "session_id": sess.get("id"),
             "class_id": cls_id,
             "class_name": cls_name,
@@ -357,6 +413,19 @@ async def get_master_grid(
             "subject_name": subj_name,
             "is_vacant": is_vacant_today,
         }
+        # Apply relocation overlay (recurring match first, then today's
+        # long-term blanket). Both flags are additive — they never replace
+        # is_vacant / is_substituted styling, the frontend just composes a
+        # subtle "نُقل إلى" hint on top of existing states.
+        alt_loc = None
+        if cls_id and cls_id in relocation_recurring:
+            alt_loc = relocation_recurring[cls_id].get((day, period_key))
+        if not alt_loc and cls_id and day == today_key:
+            alt_loc = relocation_today.get(cls_id)
+        if alt_loc:
+            cell_doc["is_relocated"] = True
+            cell_doc["alternative_location"] = alt_loc
+        day_cells[period_key] = cell_doc
         assigned_count[tid] = assigned_count.get(tid, 0) + 1
 
     # ── Merge today's substitute assignments ──────────────────────────────
@@ -383,6 +452,16 @@ async def get_master_grid(
         absent_tid = sub.get("original_teacher_id")
         sub_tid = sub.get("substitute_teacher_id")
 
+        # Re-evaluate relocation status for this substitute slot so the
+        # synthetic cells we're about to write/patch carry the same overlay
+        # the original timetable cells received above.
+        sub_cls_id = sub.get("class_id")
+        sub_alt_loc = None
+        if sub_cls_id and sub_cls_id in relocation_recurring:
+            sub_alt_loc = relocation_recurring[sub_cls_id].get((sub_day, sub_period_key))
+        if not sub_alt_loc and sub_cls_id and sub_day == today_key:
+            sub_alt_loc = relocation_today.get(sub_cls_id)
+
         # Flip the absent teacher's vacant cell to substituted.
         if absent_tid:
             absent_day_cells = cells.setdefault(absent_tid, {}).setdefault(sub_day, {})
@@ -393,16 +472,19 @@ async def get_master_grid(
                 existing["substitution_id"] = sub.get("id")
                 existing["substitute_teacher_id"] = sub_tid
                 existing["substitute_teacher_name"] = teacher_name_map.get(sub_tid, "")
+                if sub_alt_loc:
+                    existing["is_relocated"] = True
+                    existing["alternative_location"] = sub_alt_loc
                 substituted_today += 1
 
         # Add synthetic cell to substitute teacher's row.
         if sub_tid:
             sub_day_cells = cells.setdefault(sub_tid, {}).setdefault(sub_day, {})
             if sub_period_key not in sub_day_cells:
-                sub_day_cells[sub_period_key] = {
+                synth: dict[str, object] = {
                     "session_id": sub.get("original_session_id"),
-                    "class_id": sub.get("class_id"),
-                    "class_name": sub.get("class_name") or class_name_map.get(sub.get("class_id"), ""),
+                    "class_id": sub_cls_id,
+                    "class_name": sub.get("class_name") or class_name_map.get(sub_cls_id, ""),
                     "subject_id": sub.get("subject_id"),
                     "subject_name": sub.get("subject_name") or subject_name_map.get(sub.get("subject_id"), ""),
                     "is_vacant": False,
@@ -411,6 +493,10 @@ async def get_master_grid(
                     "original_teacher_id": absent_tid,
                     "original_teacher_name": teacher_name_map.get(absent_tid, ""),
                 }
+                if sub_alt_loc:
+                    synth["is_relocated"] = True
+                    synth["alternative_location"] = sub_alt_loc
+                sub_day_cells[sub_period_key] = synth
 
     teacher_rows: list[dict] = []
     fairness_values: list[float] = []

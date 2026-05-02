@@ -613,6 +613,10 @@ export function useSchoolSettings() {
         start_date: data.start_date || null,
         end_date: data.end_date || null,
         reason: data.reason || null,
+        // Class-only: where to send the students while the room is unavailable.
+        // The backend ignores this for teacher records and uses it both to
+        // craft a clearer notification and to flag the cell on the master grid.
+        alternative_location: unavailabilityType === 'class' ? (data.alternative_location || null) : null,
       });
 
       const serverId = res.data?.id || localId;

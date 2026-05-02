@@ -285,6 +285,10 @@ class UnavailabilityCreate(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     reason: Optional[str] = None
+    # موقع بديل لطلاب الفصل عند تعطّله (مثلاً: المعمل / الساحة).
+    # يخصّ سجلات الفصول فقط (entity_type == "class")؛ يتجاهَل لسجلات
+    # المعلمين. اختياري — عند غيابه يبقى السلوك القديم بإرسال رسالة عامة.
+    alternative_location: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_unavailability_fields(self):
@@ -1912,6 +1916,8 @@ async def create_unavailability(
         "start_date": data.start_date,
         "end_date": data.end_date,
         "reason": data.reason,
+        # نخزّن الموقع البديل فقط لسجلات الفصول؛ لا معنى له للمعلمين.
+        "alternative_location": (data.alternative_location or None) if data.entity_type == "class" else None,
         "created_at": now,
         "created_by": current_user.get("id"),
     }
@@ -1922,22 +1928,129 @@ async def create_unavailability(
     if data.entity_type == "class":
         from routes.notification_routes_mod import create_notification_internal
 
-        class_assignments = await gd_find(db.session, "teacher_class_assignments", {
-            "school_id": school_id,
-            "class_id": data.entity_id
-        }, limit=500)
+        # Period-aware recipient resolution: instead of notifying every teacher
+        # ever assigned to this class, only notify teachers who actually have a
+        # session in this class during the affected day/period (recurring) or
+        # any session in this class within the date range (long-term). We pull
+        # from the latest published/draft timetable so substitutions and stale
+        # assignments don't pollute the recipient list.
+        active_timetable = await gd_find_one(
+            db.session,
+            "timetables",
+            {"school_id": school_id, "status": {"$in": ["published", "draft"]}},
+            sort=[("updated_at", -1)],
+        )
 
-        teacher_ids = list(set(a.get("teacher_id") for a in class_assignments if a.get("teacher_id")))
+        affected_sessions: list[dict] = []
+        if active_timetable:
+            session_query = {
+                "timetable_id": active_timetable.get("id"),
+                "class_id": data.entity_id,
+            }
+            all_class_sessions = await gd_find(
+                db.session, "timetable_sessions", session_query, limit=2000
+            )
+            if data.unavailability_type == "recurring":
+                # Sessions store day in English (sunday..thursday); the modal
+                # writes the Arabic name. Translate before comparing so we
+                # don't silently miss the affected slots.
+                ar_to_en = {
+                    "الأحد": "sunday",
+                    "الإثنين": "monday",
+                    "الاثنين": "monday",
+                    "الثلاثاء": "tuesday",
+                    "الأربعاء": "wednesday",
+                    "الخميس": "thursday",
+                    "الجمعة": "friday",
+                    "السبت": "saturday",
+                }
+                target_day = ar_to_en.get((data.day or "").strip(), (data.day or "").strip().lower())
+                try:
+                    target_period = int(data.period) if data.period is not None else None
+                except (TypeError, ValueError):
+                    target_period = None
+                for sess in all_class_sessions:
+                    sess_day = (sess.get("day_of_week") or sess.get("day") or "").lower()
+                    try:
+                        sess_period = int(sess.get("period_number"))
+                    except (TypeError, ValueError):
+                        continue
+                    if sess_day == target_day and sess_period == target_period:
+                        affected_sessions.append(sess)
+            else:
+                # long_term: only notify teachers whose sessions actually fall
+                # on a weekday inside [start_date, end_date]. Without this the
+                # principal would also page teachers who teach the class on
+                # days outside the closure window — e.g. a one-day Monday
+                # closure would still wake every Sunday/Tuesday teacher.
+                from datetime import date as _date, timedelta as _td
+                weekday_names = ["monday", "tuesday", "wednesday", "thursday",
+                                 "friday", "saturday", "sunday"]
+                window_days: set[str] = set()
+                try:
+                    s_dt = _date.fromisoformat((data.start_date or "").strip())
+                    e_dt = _date.fromisoformat((data.end_date or "").strip())
+                except (TypeError, ValueError):
+                    s_dt = e_dt = None
+                if s_dt and e_dt and s_dt <= e_dt:
+                    cursor = s_dt
+                    # Cap iteration so a malformed multi-year window can't
+                    # spin the worker; a year is more than enough for the
+                    # set to saturate to all 7 weekday names.
+                    for _ in range(min((e_dt - s_dt).days + 1, 366)):
+                        window_days.add(weekday_names[cursor.weekday()])
+                        cursor += _td(days=1)
+                if window_days:
+                    for sess in all_class_sessions:
+                        sess_day = (sess.get("day_of_week") or sess.get("day") or "").lower()
+                        if sess_day in window_days:
+                            affected_sessions.append(sess)
+                else:
+                    # Couldn't parse the window — fall back to the broader set
+                    # so we don't silently drop notifications.
+                    affected_sessions = all_class_sessions
+
+        # Fallback: if there's no active timetable yet (e.g. school setting
+        # things up before generating), keep the legacy "notify everyone
+        # assigned" behaviour so principals still hear back about the change.
+        if not affected_sessions and not active_timetable:
+            class_assignments = await gd_find(db.session, "teacher_class_assignments", {
+                "school_id": school_id,
+                "class_id": data.entity_id
+            }, limit=500)
+            teacher_ids = list({a.get("teacher_id") for a in class_assignments if a.get("teacher_id")})
+        else:
+            teacher_ids = list({s.get("teacher_id") for s in affected_sessions if s.get("teacher_id")})
 
         if data.unavailability_type == "long_term":
             period_desc = f"من {data.start_date} إلى {data.end_date}"
         else:
             period_desc = f"يوم {data.day} - الحصة {data.period}"
 
+        class_label = data.entity_name or data.entity_id
+        if data.alternative_location:
+            title_ar = "تم نقل طلاب الفصل إلى موقع بديل"
+            title_en = "Class students relocated to alternative location"
+            message_ar = (
+                f"تم نقل طلاب فصل {class_label} في {period_desc} إلى {data.alternative_location}."
+            )
+            message_en = (
+                f"Students of class {class_label} have been relocated to {data.alternative_location} during {period_desc}."
+            )
+        else:
+            title_ar = "تنبيه: عدم توفر فصل دراسي"
+            title_en = "Alert: Classroom Unavailable"
+            message_ar = (
+                f"الفصل '{class_label}' غير متوفر ({period_desc}). يرجى نقل الطلاب إلى فصل بديل."
+            )
+            message_en = (
+                f"Classroom '{class_label}' is unavailable ({period_desc}). Please relocate students to an alternative classroom."
+            )
+
         for teacher_id in teacher_ids:
             await create_notification_internal(
-                title="تنبيه: عدم توفر فصل دراسي",
-                message=f"الفصل '{data.entity_name or data.entity_id}' غير متوفر ({period_desc}). يرجى نقل الطلاب إلى فصل بديل.",
+                title=title_ar,
+                message=message_ar,
                 recipient_id=teacher_id,
                 notification_type="schedule",
                 priority="high",
@@ -1945,8 +2058,8 @@ async def create_unavailability(
                 related_entity="class",
                 related_entity_id=data.entity_id,
                 school_id=school_id,
-                title_en="Alert: Classroom Unavailable",
-                message_en=f"Classroom '{data.entity_name or data.entity_id}' is unavailable ({period_desc}). Please relocate students to an alternative classroom."
+                title_en=title_en,
+                message_en=message_en,
             )
 
         notifications_sent = len(teacher_ids)

@@ -389,24 +389,28 @@ export function SettingsModals({ hook }) {
             <form onSubmit={(e) => {
               e.preventDefault();
               const entityName = getEntityName();
+              const formData = new FormData(e.target);
+              const altLocation = unavailabilityType === 'class'
+                ? (formData.get('alternative_location') || '').toString().trim()
+                : '';
               if (unavailMode === 'recurring') {
-                const formData = new FormData(e.target);
                 handleSaveUnavailability({
                   [unavailabilityType === 'teacher' ? 'teacher_id' : 'class_id']: selectedEntityId,
                   [unavailabilityType === 'teacher' ? 'teacher_name' : 'class_name']: entityName,
                   unavailability_type: 'recurring',
                   day: formData.get('day'),
-                  period: formData.get('period')
+                  period: formData.get('period'),
+                  alternative_location: altLocation || null,
                 });
               } else {
-                const formData = new FormData(e.target);
                 handleSaveUnavailability({
                   [unavailabilityType === 'teacher' ? 'teacher_id' : 'class_id']: selectedEntityId,
                   [unavailabilityType === 'teacher' ? 'teacher_name' : 'class_name']: entityName,
                   unavailability_type: 'long_term',
                   start_date: formData.get('start_date'),
                   end_date: formData.get('end_date'),
-                  reason: formData.get('reason') || ''
+                  reason: formData.get('reason') || '',
+                  alternative_location: altLocation || null,
                 });
               }
             }} className="p-6 space-y-4">
@@ -496,6 +500,21 @@ export function SettingsModals({ hook }) {
                     <Label>السبب (اختياري)</Label>
                     <Input name="reason" placeholder="مثال: صيانة الفصل، إجازة..." className="mt-1" />
                   </div>
+                </div>
+              )}
+
+              {unavailabilityType === 'class' && (
+                <div>
+                  <Label>الموقع البديل (اختياري)</Label>
+                  <Input
+                    name="alternative_location"
+                    placeholder="نقل الطلاب إلى: المعمل / الساحة"
+                    className="mt-1"
+                    data-testid="input-alternative-location"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    سيتم إشعار المعلم المسؤول عن الحصة وعرض الموقع البديل على الجدول الرئيسي.
+                  </p>
                 </div>
               )}
 

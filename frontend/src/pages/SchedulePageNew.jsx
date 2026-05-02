@@ -165,13 +165,22 @@ function KpiCard({ icon: Icon, label, value, suffix, accent }) {
 // Compact, "data-dense" cells: tiny text, subtle borders, no boxy borders
 // inside cells — the matrix relies on the parent grid lines for separation.
 function FilledCell({ cell, onClick }) {
+  // ── علم نقل الفصل ──────────────────────────────────────────────────────
+  // الإدارة وسمَت فصل هذه الحصة بأنه غير متوفر وحدّدت موقعاً بديلاً.
+  // نُلوّن الخانة العادية بصبغة تحذير برتقالية ونعرض نص "نُقل إلى: …".
+  // للحالات الخاصة (شاغرة/مُستبدلة/بديل) نُبقي على لونها الأصلي ونكتفي
+  // بإلحاق التلميح في الـtooltip حتى لا نخفي معلومة الاستبدال أو الشغور.
+  const relocated = !!cell?.is_relocated && !!cell?.alternative_location;
+  const relocationTip = relocated ? `نُقل إلى: ${cell.alternative_location}` : '';
+
   // cell.is_vacant => حصة شاغرة (معلمها غائب) — تفتح نافذة المرشحين عند الضغط
   if (cell?.is_vacant) {
+    const baseTitle = 'اضغط لاختيار بديل من جدول الانتظار';
     return (
       <button
         type="button"
         onClick={onClick}
-        title="اضغط لاختيار بديل من جدول الانتظار"
+        title={relocated ? `${baseTitle} • ${relocationTip}` : baseTitle}
         className="w-full h-full flex flex-col items-center justify-center text-[10px] font-semibold leading-tight px-1
                    bg-red-50 hover:bg-red-100 text-red-600 transition-colors"
       >
@@ -182,11 +191,12 @@ function FilledCell({ cell, onClick }) {
   }
   // cell.is_substituted => الخانة الأصلية للمعلم الغائب بعد إسناد بديل
   if (cell?.is_substituted) {
+    const subTitle = `بديل: ${cell.substitute_teacher_name || ''}`;
     return (
       <div
         className="w-full h-full flex flex-col items-center justify-center text-[10px] leading-tight px-1
                    bg-emerald-50/70 text-emerald-700"
-        title={`بديل: ${cell.substitute_teacher_name || ''}`}
+        title={relocated ? `${subTitle} • ${relocationTip}` : subTitle}
       >
         <span className="font-semibold">{cell.class_name || '—'}</span>
         <span className="text-[9px] truncate max-w-full opacity-80">
@@ -197,16 +207,34 @@ function FilledCell({ cell, onClick }) {
   }
   // cell.is_substitute => الخانة المضافة لصف المعلم البديل
   if (cell?.is_substitute) {
+    const subTitle = `بديل عن ${cell.original_teacher_name || ''}`;
     return (
       <div
         className="w-full h-full flex flex-col items-center justify-center text-[10px] leading-tight px-1
                    bg-violet-50/70 text-violet-700 relative"
-        title={`بديل عن ${cell.original_teacher_name || ''}`}
+        title={relocated ? `${subTitle} • ${relocationTip}` : subTitle}
       >
         <Repeat className="absolute top-0.5 right-0.5 h-2.5 w-2.5 opacity-60" />
         <span className="font-semibold">{cell.class_name || '—'}</span>
         <span className="text-[9px] truncate max-w-full opacity-80">
           {cell.subject_name || ''}
+        </span>
+      </div>
+    );
+  }
+  // الخانة العادية — هنا نطبّق صبغة "نُقل إلى" بشكل واضح إذا وُجدت.
+  if (relocated) {
+    return (
+      <div
+        className="w-full h-full flex flex-col items-center justify-center text-[10px] leading-tight px-1
+                   bg-orange-50 text-orange-700 relative"
+        title={`${cell?.subject_name ? cell.subject_name + ' • ' : ''}${relocationTip}`}
+        data-testid="cell-relocated"
+      >
+        <AlertTriangle className="absolute top-0.5 right-0.5 h-2.5 w-2.5 text-orange-500" />
+        <span className="font-semibold truncate max-w-full">{cell?.class_name || '—'}</span>
+        <span className="text-[9px] font-semibold truncate max-w-full">
+          نُقل إلى: {cell.alternative_location}
         </span>
       </div>
     );
