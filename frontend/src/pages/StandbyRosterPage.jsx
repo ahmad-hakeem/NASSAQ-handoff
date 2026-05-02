@@ -25,6 +25,7 @@ import {
   Hourglass, Loader2, RefreshCw, ArrowRight, Sparkles,
   CheckCircle2, MinusCircle, Lock, CalendarOff, Wand2,
 } from 'lucide-react';
+import ScheduleTabNav from '../components/schedule/ScheduleTabNav';
 
 const DAYS = [
   { key: 'sunday',    ar: 'الأحد' },
@@ -224,6 +225,9 @@ export default function StandbyRosterPage() {
         dir="rtl"
         className="flex flex-col h-[calc(100dvh-3.5rem)] lg:h-[100dvh] p-4 md:p-6 gap-5 bg-slate-50 text-slate-900 overflow-hidden"
       >
+        {/* ── Primary tab nav (Master / Standby / Settings) ─────────── */}
+        <ScheduleTabNav active="standby" />
+
         {/* ── Header ───────────────────────────────────────────────── */}
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 shrink-0">
           <div>

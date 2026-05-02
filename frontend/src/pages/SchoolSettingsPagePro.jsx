@@ -6,21 +6,18 @@ import { Badge } from '../components/ui/badge';
 import {
   Save, CheckCircle2, AlertTriangle,
   AlertCircle, Play, RefreshCw, X, GraduationCap,
-  Building2, Zap, School, Link2, Edit2,
-  Clock, UserX, Shield
+  Building2, Zap, Edit2,
 } from 'lucide-react';
 import { AcademicStructureContent } from './AcademicStructurePage';
 import { useSchoolSettings } from '../hooks/useSchoolSettings';
 import { DynamicSettingsContent } from '../components/school-settings/DynamicSettingsContent';
 import { SettingsModals } from '../components/school-settings/SettingsModals';
 
+// بعد المهمة #114 لم يعد يُعرض هنا سوى تبويب "بيانات المدرسة" — نُقلت بقية
+// تبويبات الإعدادات (التوقيت، الفصول، الإسناد، عدم التوفر، القيود) إلى
+// تبويب جديد داخل صفحة "الجدول المدرسي الذكي".
 const dynamicTabs = [
   { id: 'school-info', label: 'بيانات المدرسة', icon: Building2 },
-  { id: 'timings', label: 'التوقيت والحصص', icon: Clock },
-  { id: 'classes', label: 'الفصول والشعب', icon: School },
-  { id: 'teacher-assignments', label: 'إسناد المعلمين', icon: Link2 },
-  { id: 'unavailability', label: 'أوقات عدم التوفر', icon: UserX },
-  { id: 'constraints', label: 'قيود الجدول', icon: Shield },
 ];
 
 
@@ -31,6 +28,14 @@ function SchoolSettingsPagePro() {
     loading, saving, hasChanges, readinessData,
     fetchData, saveAllSettings, navigateToFix,
   } = hook;
+
+  // نضمن أن يكون التبويب النشط هو دائماً "بيانات المدرسة" داخل صفحة
+  // إعدادات المدرسة، حتى لو كان الرابط يحمل قيمة أخرى تركتها صفحة أخرى.
+  React.useEffect(() => {
+    if (activeSection === 'dynamic' && activeTab !== 'school-info') {
+      setActiveTab('school-info');
+    }
+  }, [activeSection, activeTab, setActiveTab]);
 
   if (loading) {
     return (
@@ -56,7 +61,7 @@ function SchoolSettingsPagePro() {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold text-slate-900">إعدادات المدرسة</h1>
-              <p className="text-slate-500 mt-1">إدارة بيانات الجدول والمعلومات المرجعية</p>
+              <p className="text-slate-500 mt-1">بيانات المدرسة الأساسية والهيكل الأكاديمي</p>
             </div>
             <div className="flex items-center gap-3">
               <Button variant="outline" onClick={fetchData} disabled={loading} data-testid="refresh-btn">

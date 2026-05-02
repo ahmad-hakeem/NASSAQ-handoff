@@ -10,7 +10,7 @@
  */
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
@@ -31,11 +31,13 @@ import {
 import {
   Wand2, UserX, Sparkles, Loader2, RefreshCw,
   Scale, Hourglass, UserMinus, AlertOctagon, AlertTriangle, Repeat,
-  ShieldAlert, Settings, ArrowLeft, ListChecks,
+  ShieldAlert, Settings, ArrowLeft,
   Undo2, Layers,
 } from 'lucide-react';
 import CandidatesSidePanel from '../components/schedule/CandidatesSidePanel';
 import BulkSubstitutionPanel from '../components/schedule/BulkSubstitutionPanel';
+import ScheduleTabNav from '../components/schedule/ScheduleTabNav';
+import ScheduleSettingsTabContent from '../components/schedule/ScheduleSettingsTabContent';
 
 // ─── Infeasibility issue → contextual next step ────────────────────────────
 // كل كود INF يحدد الصفحة الأنسب التي تحل المشكلة. عند غياب الكود نوجِّه إلى
@@ -44,10 +46,10 @@ const ISSUE_NEXT_STEP = {
   'INF-01': { label: 'فتح إعدادات الهيكل الأكاديمي', path: '/school/settings?section=academic' },
   'INF-02': { label: 'فتح إعدادات الهيكل الأكاديمي', path: '/school/settings?section=academic' },
   'INF-03': { label: 'فتح صفحة المعلمين والإسنادات',  path: '/school/teachers' },
-  'INF-04': { label: 'فتح إعدادات القاعات',           path: '/school/settings?section=dynamic' },
-  'INF-05': { label: 'فتح إعدادات اليوم الدراسي',     path: '/school/settings?section=dynamic' },
+  'INF-04': { label: 'فتح إعدادات القاعات',           path: '/school/schedule?view=settings&tab=timings' },
+  'INF-05': { label: 'فتح إعدادات اليوم الدراسي',     path: '/school/schedule?view=settings&tab=timings' },
 };
-const DEFAULT_NEXT_STEP = { label: 'فتح إعدادات المدرسة', path: '/school/settings' };
+const DEFAULT_NEXT_STEP = { label: 'فتح إعدادات الجدول المدرسي', path: '/school/schedule?view=settings' };
 
 const DAYS = [
   { key: 'sunday',    ar: 'الأحد' },
@@ -220,10 +222,21 @@ function EmptyCell() {
 }
 
 // ─── Main page ─────────────────────────────────────────────────────────────
+// ─── Active primary tab from URL ────────────────────────────────────────────
+// نقرأ مَعلَم البحث `view` لتحديد التبويب الفعّال؛ القيمة الافتراضية هي
+// "master" (شاشة المصفوفة)، و"settings" تعرض إعدادات الجدول داخل نفس الصفحة.
+function useScheduleView() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const raw = params.get('view');
+  return raw === 'settings' ? 'settings' : 'master';
+}
+
 export default function SchedulePageNew() {
   const { user, api } = useAuth();
   const navigate = useNavigate();
   const schoolId = user?.tenant_id;
+  const view = useScheduleView();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -273,7 +286,11 @@ export default function SchedulePageNew() {
     }
   }, [api, schoolId]);
 
-  useEffect(() => { loadGrid(); }, [loadGrid]);
+  useEffect(() => {
+    // نتفادى تحميل المصفوفة عند فتح تبويب الإعدادات لتجنّب طلبات شبكية لا داعي لها.
+    if (view !== 'master') return;
+    loadGrid();
+  }, [loadGrid, view]);
 
   const handleAutoGenerate = useCallback(async () => {
     if (!schoolId) {
@@ -576,12 +593,46 @@ export default function SchedulePageNew() {
 
   const dayLabelMap = useMemo(() => Object.fromEntries(DAYS.map(d => [d.key, d.ar])), []);
 
+  if (view === 'settings') {
+    return (
+      <Sidebar>
+        <div
+          dir="rtl"
+          className="min-h-[calc(100dvh-3.5rem)] lg:min-h-[100dvh] bg-slate-50 text-slate-900"
+        >
+          <div className="p-4 md:p-6 flex flex-col gap-5">
+            {/* ── Primary tab nav (Master / Standby / Settings) ─────────── */}
+            <ScheduleTabNav active="settings" />
+
+            {/* ── Header ───────────────────────────────────────────────── */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold text-[#1C3D74] flex items-center gap-2">
+                  <Settings className="h-7 w-7 text-[#1C3D74]" />
+                  إعدادات الجدول المدرسي
+                </h1>
+                <p className="text-sm text-slate-500 mt-1">
+                  أَعِدّ التوقيت والحصص والفصول والإسناد وأوقات عدم التوفر وقيود الجدول من مكان واحد.
+                </p>
+              </div>
+            </div>
+
+            <ScheduleSettingsTabContent />
+          </div>
+        </div>
+      </Sidebar>
+    );
+  }
+
   return (
     <Sidebar>
       <div
         dir="rtl"
         className="flex flex-col h-[calc(100dvh-3.5rem)] lg:h-[100dvh] p-4 md:p-6 gap-5 bg-slate-50 text-slate-900 overflow-hidden"
       >
+        {/* ── Primary tab nav (Master / Standby / Settings) ─────────── */}
+        <ScheduleTabNav active="master" />
+
         {/* ── Header ───────────────────────────────────────────────── */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 shrink-0">
           <div>
@@ -595,15 +646,6 @@ export default function SchedulePageNew() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              onClick={() => navigate('/school/standby')}
-              variant="outline"
-              className="border-amber-300 text-amber-800 hover:bg-amber-50"
-              title="فتح جدول الانتظار للتعديل اليدوي"
-            >
-              <ListChecks className="h-4 w-4 ml-2" />
-              جدول الانتظار
-            </Button>
             <Button
               onClick={handleAutoGenerate}
               disabled={generating}

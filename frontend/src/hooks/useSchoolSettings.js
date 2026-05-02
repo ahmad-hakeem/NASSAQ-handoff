@@ -42,6 +42,17 @@ export function useSchoolSettings() {
     }
   }, [location.search]);
 
+  // مزامنة التبويب الفرعي من ?tab= عند تغيّر الـ URL أثناء بقاء الصفحة
+  // مركّبة (مثلاً عند الانتقال بين تبويبات الإعدادات عبر روابط داخلية
+  // كزر "إصلاح" في بطاقة الجاهزية).
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const urlTab = params.get('tab');
+    if (urlTab && validDynamicTabs.includes(urlTab) && urlTab !== activeTab) {
+      setActiveTab(urlTab);
+    }
+  }, [location.search]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -882,7 +893,10 @@ export function useSchoolSettings() {
   };
 
   const navigateToFix = (category) => {
-    setActiveSection('dynamic');
+    // بعد المهمة #114 جميع تبويبات إعدادات الجدول انتقلت إلى صفحة
+    // "الجدول المدرسي الذكي" تحت تبويب "إعدادات الجدول المدرسي". نوجِّه
+    // المستخدم مباشرةً إلى التبويب الفرعي الصحيح هناك بدلاً من تبديل
+    // الأقسام داخل صفحة إعدادات المدرسة.
     const tabMapping = {
       'academic_context': 'timings',
       'school_days': 'timings',
@@ -890,10 +904,10 @@ export function useSchoolSettings() {
       'classes': 'classes',
       'teachers': 'teacher-assignments',
       'teacher_assignments': 'teacher-assignments',
-      'constraints': 'constraints'
+      'constraints': 'constraints',
     };
     const tab = tabMapping[category] || 'timings';
-    setActiveTab(tab);
+    navigate(`/school/schedule?view=settings&tab=${tab}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 

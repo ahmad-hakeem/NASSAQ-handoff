@@ -1,0 +1,71 @@
+/**
+ * شريط التبويبات الرئيسي لصفحة الجدول الذكي
+ * نَسَّق | NASSAQ — Task #114
+ *
+ * يعرض ثلاثة تبويبات بنفس النمط البصري في كل صفحات الجدول:
+ *   1) الجدول الرئيسي (المصفوفة)
+ *   2) جدول حصص الانتظار
+ *   3) إعدادات الجدول المدرسي
+ *
+ * كل تبويب يُحدِّث المسار ليبقى التنقل قابلاً للحفظ والمشاركة عبر الـ URL.
+ */
+
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { CalendarDays, Hourglass, Settings as SettingsIcon } from 'lucide-react';
+
+const TABS = [
+  {
+    id: 'master',
+    label: 'الجدول الرئيسي',
+    icon: CalendarDays,
+    path: '/school/schedule',
+  },
+  {
+    id: 'standby',
+    label: 'جدول حصص الانتظار',
+    icon: Hourglass,
+    path: '/school/standby',
+  },
+  {
+    id: 'settings',
+    label: 'إعدادات الجدول المدرسي',
+    icon: SettingsIcon,
+    path: '/school/schedule?view=settings',
+  },
+];
+
+export default function ScheduleTabNav({ active }) {
+  const navigate = useNavigate();
+
+  return (
+    <div
+      className="bg-white rounded-2xl p-1.5 shadow-sm border border-slate-200 flex flex-row gap-1 shrink-0"
+      role="tablist"
+      data-testid="schedule-tab-nav"
+    >
+      {TABS.map((tab) => {
+        const Icon = tab.icon;
+        const isActive = active === tab.id;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => navigate(tab.path)}
+            data-testid={`schedule-nav-${tab.id}`}
+            className={`flex-1 min-w-0 rounded-xl px-3 py-2.5 text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+              isActive
+                ? 'bg-[#1C3D74] text-white shadow-md'
+                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <Icon className="h-4 w-4 shrink-0" />
+            <span className="truncate">{tab.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
