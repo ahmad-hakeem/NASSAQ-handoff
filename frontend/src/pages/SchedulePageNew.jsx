@@ -841,6 +841,9 @@ export default function SchedulePageNew() {
       class_name: cellData.session.class_name,
       subject_id: cellData.session.subject_id,
       subject_name: cellData.session.subject_name,
+      // معرف المعلم الغائب (إلى جانب الاسم) ليتمكّن درج الانتظار من
+      // استبعاده من قائمة المرشحين وربط الإسناد بسجل الغياب الصحيح.
+      absent_teacher_id: cellData.teacher_id,
       absent_teacher_name: cellData.teacher_name,
       absence_date: cellData.day_of_week === today ? todayDate : todayDate,
       school_id: schoolId,
@@ -935,6 +938,29 @@ export default function SchedulePageNew() {
   const periods = grid?.periods || FALLBACK_PERIODS;
   const kpis = grid?.kpis || { fairness_pct: 0, assigned_waiting: 0, absent_teachers_today: 0, vacant_sessions_today: 0 };
   const alertText = grid?.alert;
+
+  // ── KPI: حصة شاغرة (محسوبة من الشبكة) ──────────────────────────────
+  // نُعيد حساب عدد الحصص الشاغرة على الواجهة من نفس مصدر العرض حتى
+  // يبقى العدد متوافقاً مع ما يراه المستخدم بعد cascade الغياب
+  // (يشمل الخانات التي رفعت الواجهة عليها is_vacant عند الغياب لو
+  // لم يكن الـbackend قد رفعها بعد). يعتمد فقط على يوم اليوم لأن
+  // KPI يقيس "اليوم" بالتعريف.
+  const todayKey = grid?.today;
+  const vacantSessionsToday = useMemo(() => {
+    if (!todayKey) return kpis.vacant_sessions_today || 0;
+    let n = 0;
+    for (const teacher of teacherRows) {
+      const dayCells = cellsByTeacher[teacher.id]?.[todayKey];
+      if (!dayCells) continue;
+      for (const c of Object.values(dayCells)) {
+        if (!c) continue;
+        if (c.is_vacant) { n += 1; continue; }
+        // Cascade الواجهة: غائب + خانة معبَّأة بدون بديل ⇒ شاغرة فعلياً.
+        if (teacher.is_absent_today && !c.is_substituted && !c.is_substitute) n += 1;
+      }
+    }
+    return n;
+  }, [teacherRows, cellsByTeacher, todayKey, kpis.vacant_sessions_today]);
 
   const dayLabelMap = useMemo(() => Object.fromEntries(DAYS.map(d => [d.key, d.ar])), []);
 
@@ -1075,7 +1101,7 @@ export default function SchedulePageNew() {
           <KpiCard
             icon={AlertOctagon}
             label="حصة شاغرة"
-            value={kpis.vacant_sessions_today}
+            value={vacantSessionsToday}
             accent={{
               topBorder: 'border-t-red-500',
               iconBg: 'bg-red-50', iconText: 'text-red-600',
@@ -1599,7 +1625,21 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
             {/* Cells: per day, per period */}
             {days.map((dayKey) => (
               periods.map((p) => {
-                const cell = teacherCells[dayKey]?.[String(p)] || null;
+                const rawCell = teacherCells[dayKey]?.[String(p)] || null;
+                // ── Cascade الغياب → شاغرة ───────────────────────────────
+                // الـbackend عادةً يرفع is_vacant عند تسجيل الغياب، لكن
+                // نضيف هنا شبكة أمان: إذا كان المعلم غائباً اليوم وله حصة
+                // معبَّأة في يوم الـtoday بدون علم is_vacant ولا بديل
+                // مُسنَد، فإنّ الخانة فعلياً شاغرة وننبّه عليها بصرياً
+                // ونفعِّل النقر عليها لفتح درج المرشحين.
+                const cell = (
+                  rawCell &&
+                  teacher.is_absent_today &&
+                  dayKey === today &&
+                  !rawCell.is_vacant &&
+                  !rawCell.is_substituted &&
+                  !rawCell.is_substitute
+                ) ? { ...rawCell, is_vacant: true } : rawCell;
                 const cellData = {
                   teacher_id: teacher.id,
                   teacher_name: teacher.full_name,

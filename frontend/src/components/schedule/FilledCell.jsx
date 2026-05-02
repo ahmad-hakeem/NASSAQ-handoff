@@ -36,8 +36,8 @@ export default function FilledCell({ cell, onClick, onAcknowledgeRelocation }) {
         type="button"
         onClick={onClick}
         title={relocated ? `${baseTitle} • ${relocationTip}` : baseTitle}
-        className="w-full h-full flex flex-col items-center justify-center text-[10px] font-semibold leading-tight px-1
-                   bg-red-50 hover:bg-red-100 text-red-600 transition-colors"
+        className="w-full h-full flex flex-col items-center justify-center text-xs font-bold leading-tight px-1
+                   bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 cursor-pointer transition-colors"
       >
         <span className="font-bold">شاغرة</span>
         <span className="text-[9px] opacity-75 truncate max-w-full">{cell.class_name}</span>
