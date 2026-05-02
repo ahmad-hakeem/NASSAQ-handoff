@@ -30,7 +30,7 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
     schoolInfo, teachers, classes, assignments,
     subjects, draggingSubject, setDraggingSubject,
     assignmentSubTab, setAssignmentSubTab,
-    classAssignments, classAssignmentsLoading, draggingClass, setDraggingClass,
+    classAssignments, classAssignmentsLoading, classAssignmentsLoaded, draggingClass, setDraggingClass,
     editedSchoolInfo, setEditedSchoolInfo,
     workDays, timingSettings, timeSlotsCount, generatingSlots,
     breakTimes, teacherUnavailability, classUnavailability,
@@ -477,8 +477,8 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${assignmentSubTab === 'classes' ? 'bg-brand-turquoise text-white' : 'bg-slate-100 text-slate-500'}`}><GraduationCap className="h-5 w-5" /></div>
                 <div className="text-right">
                   <h4 className={`font-bold ${assignmentSubTab === 'classes' ? 'text-brand-turquoise-dark' : 'text-slate-700'}`}>إسناد الفصول</h4>
-                  {classAssignmentsLoading && classAssignments.length === 0 ? (
-                    <p className="text-xs text-slate-400 flex items-center gap-1.5">
+                  {!classAssignmentsLoaded ? (
+                    <p className="text-xs text-slate-500 flex items-center gap-1.5">
                       <span className="inline-block w-3 h-3 rounded-full border-2 border-slate-300 border-t-brand-turquoise animate-spin" />
                       جارٍ التحميل…
                     </p>
@@ -626,9 +626,9 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                       <div className="w-10 h-10 rounded-xl bg-brand-turquoise flex items-center justify-center"><GraduationCap className="h-5 w-5 text-white" /></div>
                       <div>
                         <h3 className="text-lg font-bold text-brand-turquoise-dark">ربط المعلمين بالفصول</h3>
-                        {classAssignmentsLoading && classAssignments.length === 0 ? (
+                        {!classAssignmentsLoaded ? (
                           <p className="text-xs text-slate-600 flex items-center gap-1.5">
-                            {teachers.length} معلم • {classes.length} فصل •
+                            <span>{teachers.length} معلم • {classes.length} فصل •</span>
                             <span className="inline-block w-3 h-3 rounded-full border-2 border-slate-300 border-t-brand-turquoise animate-spin" />
                             <span>جارٍ تحميل الإسنادات…</span>
                           </p>

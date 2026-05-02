@@ -2744,18 +2744,72 @@ class SmartSchedulingEngine:
         # قبل أيّ قراءة لـ teacher_class_assignments. الواجهة تكتفي بـ "lazy
         # populate" عند فتح تبويب إسناد الفصول، فإن لم يفتحه المدير قبل
         # الضغط على "إنشاء الجدول تلقائياً" يقرأ المحرّك جدولاً فارغاً
-        # ويولّد جدولاً متدنّي الجودة. الاستدعاء أدناه آمن لأنه no-op لأي
-        # مدرسة يوجد بها صف واحد على الأقل (الـ helper يتحقّق من
-        # existing_count > 0 ويعود فوراً)، ويستخدم جلسة مستقلّة بـ commit
-        # خاص لئلا يتداخل مع معاملات المحرّك.
+        # ويولّد جدولاً متدنّي الجودة. الاستدعاء آمن لأنه no-op لأي مدرسة
+        # يوجد بها صف واحد على الأقل (الـ helper يتحقّق من existing_count > 0
+        # ويعود فوراً)، ويستخدم جلسة مستقلّة بـ commit خاص لئلا يتداخل مع
+        # معاملات المحرّك. نسجّل سبب فشل الـ seed (إن حدث) ليُربط لاحقاً
+        # بفحص الجاهزية الصارم أدناه ولا نمرّر فشلاً صامتاً للتوليد.
+        seed_error: Optional[str] = None
         try:
             from routes.school_settings_mod import _auto_populate_teacher_class_assignments
             await _auto_populate_teacher_class_assignments(school_id)
         except Exception as _seed_err:
-            logger.warning(
-                "auto-populate teacher_class_assignments before generate failed school=%s err=%s",
+            seed_error = str(_seed_err)
+            logger.error(
+                "auto-populate teacher_class_assignments before generate FAILED school=%s err=%s",
                 school_id, _seed_err,
             )
+
+        # فحص جاهزية صارم: لا نسمح بالتوليد بجدول إسنادات فارغ عندما يوجد
+        # معلّمون وفصول. هذا يلتقط فشل الـ seed أعلاه، أو أيّ سيناريو آخر
+        # يجعل المخطّط يبدأ بمدخلات فارغة (ينتج جدول متدنّي الجودة بصمت).
+        teachers_check_count = await gd_count(self.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}})
+        classes_check_count = await gd_count(self.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}})
+        if teachers_check_count > 0 and classes_check_count > 0:
+            tca_check_count = await gd_count(self.session, "teacher_class_assignments", {"school_id": school_id, "is_active": True})
+            if tca_check_count == 0:
+                msg_en = (
+                    f"Refusing to generate: teacher_class_assignments is empty despite "
+                    f"{teachers_check_count} teacher(s) and {classes_check_count} class(es)."
+                    + (f" Auto-seed error: {seed_error}" if seed_error else " Auto-seed produced no rows.")
+                )
+                msg_ar = (
+                    f"تعذّر إنشاء الجدول: لا يوجد إسناد للفصول رغم وجود "
+                    f"{teachers_check_count} معلّم و{classes_check_count} فصل."
+                )
+                logger.error("generate_timetable precondition_failed school=%s reason=%s", school_id, msg_en)
+                # نُنشئ سجلّ تشغيل فاشلاً صريحاً ليظهر للمدير في سجلّ المحاولات
+                fail_run_id = str(uuid.uuid4())
+                fail_now = datetime.now(timezone.utc).isoformat()
+                await gd_insert(self.session, "timetable_runs", {
+                    "id": fail_run_id,
+                    "school_id": school_id,
+                    "academic_year_id": academic_year_id,
+                    "term_id": term_id,
+                    "run_type": "per_class_generation" if (class_ids or []) else "full_generation",
+                    "target_class_ids": [str(c) for c in (class_ids or []) if c],
+                    "status": TimetableRunStatus.FAILED.value,
+                    "started_at": fail_now,
+                    "finished_at": fail_now,
+                    "created_by": created_by,
+                    "completion_percentage": 0,
+                    "conflicts_count": 0,
+                    "unscheduled_count": 0,
+                    "notes": msg_en,
+                })
+                return GenerationResult(
+                    success=False,
+                    run_id=fail_run_id,
+                    status=TimetableRunStatus.FAILED.value,
+                    completion_percentage=0,
+                    total_sessions=0,
+                    scheduled_sessions=0,
+                    conflicts_count=0,
+                    unscheduled_count=0,
+                    optimization_score=0,
+                    message_ar=msg_ar,
+                    message_en=msg_en,
+                )
 
         # عقد "حمولة سياق حكيم" — تأتي مسبَّقة من الـ Route عبر
         # `_assemble_hakim_context_payload` وتُمرَّر كوسيط محلّي لكل مرحلة.

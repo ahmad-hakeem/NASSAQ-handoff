@@ -72,6 +72,10 @@ export function useSchoolSettings() {
   const [assignmentSubTab, setAssignmentSubTab] = useState('subjects');
   const [classAssignments, setClassAssignments] = useState([]);
   const [classAssignmentsLoading, setClassAssignmentsLoading] = useState(false);
+  // علامة "تم التحميل مرة على الأقل" لمنع وميض "0 إسناد" قبل أوّل جلب.
+  // الـ loading وحده لا يكفي لأنه يبدأ false ولا يصبح true إلا بعد تشغيل
+  // الـ effect المسؤول، فبين الرسم الأوّل وتشغيل الـ effect سيظهر "0".
+  const [classAssignmentsLoaded, setClassAssignmentsLoaded] = useState(false);
   const [draggingClass, setDraggingClass] = useState(null);
 
   const [showEditSchool, setShowEditSchool] = useState(false);
@@ -664,6 +668,7 @@ export function useSchoolSettings() {
       console.error('Error loading class assignments:', error);
     } finally {
       setClassAssignmentsLoading(false);
+      setClassAssignmentsLoaded(true);
     }
   };
 
@@ -941,7 +946,7 @@ export function useSchoolSettings() {
     stageCurriculums, loadingCurriculum, expandedStages, expandedTracks, expandedGrades,
     subjects, draggingSubject, setDraggingSubject, selectedSubject, setSelectedSubject,
     assignmentSaving, assignmentSubTab, setAssignmentSubTab,
-    classAssignments, classAssignmentsLoading, draggingClass, setDraggingClass,
+    classAssignments, classAssignmentsLoading, classAssignmentsLoaded, draggingClass, setDraggingClass,
     showEditSchool, setShowEditSchool, showBreakModal, setShowBreakModal,
     showUnavailabilityModal, setShowUnavailabilityModal,
     editingBreak, setEditingBreak, unavailabilityType, setUnavailabilityType,
