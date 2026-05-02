@@ -2738,6 +2738,25 @@ class SmartSchedulingEngine:
             generate more classes into it).
         """
         self._assert_tenant(school_id, calling_user)
+
+        # ──────────────────────────────────────────────────────────────────
+        # ضمان مصدر الحقيقة لقاعدة "كل المعلمين مرتبطون بكل الفصول افتراضياً"
+        # قبل أيّ قراءة لـ teacher_class_assignments. الواجهة تكتفي بـ "lazy
+        # populate" عند فتح تبويب إسناد الفصول، فإن لم يفتحه المدير قبل
+        # الضغط على "إنشاء الجدول تلقائياً" يقرأ المحرّك جدولاً فارغاً
+        # ويولّد جدولاً متدنّي الجودة. الاستدعاء أدناه آمن لأنه no-op لأي
+        # مدرسة يوجد بها صف واحد على الأقل (الـ helper يتحقّق من
+        # existing_count > 0 ويعود فوراً)، ويستخدم جلسة مستقلّة بـ commit
+        # خاص لئلا يتداخل مع معاملات المحرّك.
+        try:
+            from routes.school_settings_mod import _auto_populate_teacher_class_assignments
+            await _auto_populate_teacher_class_assignments(school_id)
+        except Exception as _seed_err:
+            logger.warning(
+                "auto-populate teacher_class_assignments before generate failed school=%s err=%s",
+                school_id, _seed_err,
+            )
+
         # عقد "حمولة سياق حكيم" — تأتي مسبَّقة من الـ Route عبر
         # `_assemble_hakim_context_payload` وتُمرَّر كوسيط محلّي لكل مرحلة.
         # نتجنّب تخزينها على self لأن `smart_scheduling_engine` كائن مفرد

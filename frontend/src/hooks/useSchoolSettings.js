@@ -699,10 +699,20 @@ export function useSchoolSettings() {
   };
 
   useEffect(() => {
-    if (assignmentSubTab === 'classes' && classAssignments.length === 0) {
+    if (assignmentSubTab === 'classes' && classAssignments.length === 0 && !classAssignmentsLoading) {
       loadClassAssignments();
     }
   }, [assignmentSubTab]);
+
+  // تحميل عدّاد إسناد الفصول فور دخول تبويب "إسناد المعلمين"، حتى لا
+  // يظهر بادج "0 إسناد" خادع بجوار التبويب الفرعي قبل أن يفتحه المدير.
+  // الـ guard على length يمنع إعادة الجلب لو سبق تحميله (مثلاً المستخدم
+  // فتح تبويب الفصول الفرعي ثم رجع لتبويب الفصول).
+  useEffect(() => {
+    if (activeTab === 'teacher-assignments' && classAssignments.length === 0 && !classAssignmentsLoading) {
+      loadClassAssignments();
+    }
+  }, [activeTab]);
 
   const handleAddCustomConstraint = async (constraintData) => {
     try {
