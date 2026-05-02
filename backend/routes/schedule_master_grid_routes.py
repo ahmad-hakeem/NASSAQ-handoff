@@ -15,7 +15,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 
 from dependencies import db, get_current_user
 from engines.sql_utils import gd_count, gd_find, gd_find_one
@@ -118,26 +118,37 @@ def _normalize_rank(raw) -> str:
 
 
 async def _resolve_active_timetable(school_id: str) -> Optional[dict]:
-    """يبحث عن أحدث جدول منشور، وإن لم يوجد فأحدث مسودة (ترتيب حتمي)."""
-    published = await gd_find(
+    """يختار آخر جدول للمدرسة (مسودة كان أو منشوراً) حسب تاريخ التحديث/الإنشاء.
+
+    السلوك السابق كان يُفضِّل دائماً أحدث جدول منشور حتى لو وُجدت مسودة
+    أحدث منه. النتيجة: بعد الضغط على "إنشاء الجدول تلقائياً" يُنشئ المحرك
+    مسودة جديدة، لكن الشاشة كانت تظل تعرض الجدول المنشور القديم — وهو ما
+    يبدو للمدير وكأن "الجدول لم يتحدّث". الآن نختار الجدول الأحدث فعلياً
+    بصرف النظر عن حالته كي تظهر المسودة المُولَّدة فور انتهاء التوليد،
+    ويبقى الجدول المنشور هو الظاهر متى لم تُولَّد مسودة بعده.
+
+    المفتاح في الترتيب هو ``updated_at`` ثم ``created_at`` كاحتياط لسجلات
+    قديمة ربما لم تكن تحفظ updated_at. نسحب أحدث 5 صفوف ثم نختار الأكبر
+    في بايثون، لأن SQL وحده لا يتعامل بسهولة مع NULL coalescing عبر
+    طبقة gd_find.
+    """
+    rows = await gd_find(
         db.session,
         "timetables",
-        {"school_id": school_id, "status": "published"},
-        order_by="created_at",
+        {"school_id": school_id, "status": {"$in": ["published", "draft"]}},
+        order_by="updated_at",
         desc_order=True,
-        limit=1,
+        limit=5,
     )
-    if published:
-        return published[0]
-    drafts = await gd_find(
-        db.session,
-        "timetables",
-        {"school_id": school_id, "status": "draft"},
-        order_by="created_at",
-        desc_order=True,
-        limit=1,
-    )
-    return drafts[0] if drafts else None
+    if not rows:
+        return None
+
+    def _ts(t: dict) -> str:
+        # نُفضّل updated_at؛ وإن غاب نسقط إلى created_at؛ وإلا سلسلة فارغة.
+        return str(t.get("updated_at") or t.get("created_at") or "")
+
+    rows.sort(key=_ts, reverse=True)
+    return rows[0]
 
 
 def _date_matches_today(date_val, today_iso: str) -> bool:
@@ -217,6 +228,7 @@ async def _absent_teacher_ids_today(
 
 @router.get("/schedule/master-grid")
 async def get_master_grid(
+    response: Response,
     school_id: Optional[str] = Query(None, description="معرف المدرسة (اختياري — يُشتق من المستخدم)"),
     x_school_context: Optional[str] = Header(None),
     current_user: dict = Depends(get_current_user),
@@ -467,6 +479,14 @@ async def get_master_grid(
         alert = (
             f"يوجد {vacant_today} حصة شاغرة بلا معلم — اضغط على الخلية الحمراء لعرض المرشحين"
         )
+
+    # تعطيل أي طبقة كاش (متصفح/وسيط) — هذه الاستجابة تعتمد على آخر حالة
+    # للجداول/الغياب/الاستبدالات وتُحدَّث فور أي تعديل، لذا لا يصحّ تقديم
+    # نسخة مخزَّنة. أهم سيناريو: بعد ضغط "إنشاء الجدول تلقائياً" يجب أن
+    # يلتقط GET التالي البيانات الجديدة لا نسخة سابقة من ذاكرة المتصفح.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
 
     return {
         "school_id": sid,

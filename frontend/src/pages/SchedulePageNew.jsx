@@ -566,17 +566,28 @@ export default function SchedulePageNew() {
   const [undoingAbsence, setUndoingAbsence] = useState(false);
 
   const loadGrid = useCallback(async () => {
-    if (!schoolId) return;
+    if (!schoolId) return false;
     try {
+      // إضافة بصمة زمنية (`_t`) لإجبار المتصفح/أي وسيط على تجاوز أي
+      // نسخة مخزَّنة من الاستجابة. الباك إند يضع Cache-Control: no-store،
+      // ولكن نُضيف هذه الحماية الإضافية لأن بعض الإضافات/البروكسيات
+      // تتجاهل ترويسات منع التخزين. مهم بشكل خاص بعد التوليد التلقائي
+      // كي تُعرض المسودة الجديدة بدلاً من البيانات القديمة.
       const response = await api.get('/schedule/master-grid', {
-        params: { school_id: schoolId },
-        headers: { 'X-School-Context': schoolId },
+        params: { school_id: schoolId, _t: Date.now() },
+        headers: {
+          'X-School-Context': schoolId,
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        },
       });
       setGrid(response.data);
       setError('');
+      return true;
     } catch (e) {
       const msg = e?.response?.data?.error?.message || e?.message || 'تعذّر تحميل الجدول';
       setError(msg);
+      return false;
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -637,8 +648,18 @@ export default function SchedulePageNew() {
         );
       }
 
+      // إعادة تحميل المصفوفة بعد نجاح التوليد. إن فشل الجلب لأي سبب
+      // (شبكة/خادم) فلا نترك المدير أمام شاشة "ناجحة لكن قديمة" —
+      // نُظهر تنبيهاً واضحاً يقترح التحديث اليدوي. النجاح الفعلي للتوليد
+      // محفوظ في قاعدة البيانات؛ المشكلة الوحيدة هي أن العرض لم يلتقطها.
       setRefreshing(true);
-      await loadGrid();
+      const refetched = await loadGrid();
+      if (!refetched) {
+        nassaqWarning(
+          'تم توليد الجدول بنجاح، لكن تعذّر تحميل العرض المحدَّث. اضغط "تحديث" لعرض الجدول الجديد.',
+          { title: 'تعذّر تحديث المصفوفة' },
+        );
+      }
     } catch (e) {
       const detail = e?.response?.data?.detail;
       const status = e?.response?.status;
