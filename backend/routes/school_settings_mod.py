@@ -2026,6 +2026,38 @@ async def create_unavailability(
         else:
             teacher_ids = list({s.get("teacher_id") for s in affected_sessions if s.get("teacher_id")})
 
+        # Resolve teachers.id → users.id before notifying. ``notifications.user_id``
+        # is FK→users.id, while ``timetable_sessions.teacher_id`` and
+        # ``teacher_class_assignments.teacher_id`` reference ``teachers.id``.
+        # Passing the teacher PK straight through used to trip
+        # ``notifications_user_id_fkey`` for any teacher whose linked user was
+        # deleted (or never linked), aborting the whole transaction and
+        # surfacing as "حدث خطأ أثناء حفظ فترة عدم التوفر" even though the
+        # ``unavailability`` row itself was valid. We now drop unresolved
+        # teachers silently so the unavailability still saves; the count of
+        # successful notifications is reported back to the UI.
+        recipient_user_ids: list[str] = []
+        if teacher_ids:
+            teacher_rows = await gd_find(
+                db.session,
+                "teachers",
+                {"id": {"$in": list(teacher_ids)}, "school_id": school_id},
+                limit=len(teacher_ids),
+            )
+            candidate_user_ids = list({
+                t.get("user_id") for t in teacher_rows if t.get("user_id")
+            })
+            if candidate_user_ids:
+                # Confirm the user rows still exist — guards against stale
+                # ``teachers.user_id`` pointing at a deleted user row.
+                existing_users = await gd_find(
+                    db.session,
+                    "users",
+                    {"id": {"$in": candidate_user_ids}},
+                    limit=len(candidate_user_ids),
+                )
+                recipient_user_ids = [u.get("id") for u in existing_users if u.get("id")]
+
         if data.unavailability_type == "long_term":
             period_desc = f"من {data.start_date} إلى {data.end_date}"
         else:
@@ -2062,11 +2094,11 @@ async def create_unavailability(
                 "alternative_location": data.alternative_location,
             }
 
-        for teacher_id in teacher_ids:
+        for user_id in recipient_user_ids:
             await create_notification_internal(
                 title=title_ar,
                 message=message_ar,
-                recipient_id=teacher_id,
+                recipient_id=user_id,
                 notification_type="schedule",
                 priority="high",
                 sender_id=current_user.get("id"),
@@ -2079,17 +2111,19 @@ async def create_unavailability(
                 extra_data=relocation_extra,
             )
 
-        notifications_sent = len(teacher_ids)
+        notifications_sent = len(recipient_user_ids)
 
         # Persist the resolved recipients on the unavailability doc so the
         # ack endpoint can authorize teachers and the audit panel can show
-        # an accurate denominator without re-scanning the timetable.
-        if data.alternative_location and teacher_ids:
+        # an accurate denominator without re-scanning the timetable. We store
+        # the user_ids actually notified (not the raw teacher_ids) so the ack
+        # check matches ``current_user.id`` directly.
+        if data.alternative_location and recipient_user_ids:
             await gd_update_one(
                 db.session,
                 "unavailability",
                 {"id": unavailability_id},
-                {"recipient_ids": list(teacher_ids)},
+                {"recipient_ids": list(recipient_user_ids)},
             )
 
     return {
