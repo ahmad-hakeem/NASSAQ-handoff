@@ -327,6 +327,30 @@ class GenerationResult(BaseModel):
     unresolved_conflicts: List[Dict[str, Any]] = Field(default_factory=list)
 
 
+def _required_periods_per_day(settings: Dict[str, Any]) -> int:
+    """Strict resolver — raises if `periods_per_day` is missing/invalid.
+
+    The engine never silently defaults to 7 anymore. A missing or
+    non-positive value indicates that Schedule Settings (timing tab) was
+    not configured, which is exactly what INF-05 in the infeasibility
+    report is meant to surface BEFORE generation begins. If we still
+    reach this helper without a valid value, generation must fail loudly
+    so the bug is fixed at the source rather than papered over.
+    """
+    val = settings.get("periods_per_day")
+    try:
+        n = int(val) if val is not None else 0
+    except (TypeError, ValueError):
+        n = 0
+    if n <= 0:
+        raise ValueError(
+            "periods_per_day missing or invalid in school settings — "
+            "this should have been blocked by the infeasibility report (INF-05) "
+            "before generation. Please configure Schedule Settings → التوقيت."
+        )
+    return n
+
+
 # ============== SMART SCHEDULING ENGINE ==============
 
 class SmartSchedulingEngine:
@@ -572,22 +596,27 @@ class SmartSchedulingEngine:
         المرحلة 2: تحميل إعدادات المدرسة المعتمدة
         Phase 2: Load approved school settings
         """
-        settings = await gd_find_one(self.session, "school_settings", {"school_id": school_id})
+        # حمولة سياق حكيم — مصدر أوّل (إن مُرّر من الـ Route) قبل أيّ
+        # استعلام DB، حتى يقرأ المحرك من نفس البيانات التي تحقّقت منها
+        # طبقة الـ Route. عند غيابه نعود للقراءة من قاعدة البيانات كالسابق.
+        ctx = getattr(self, "_hakim_context_payload", None) or {}
+        ctx_settings = ctx.get("school_settings") if isinstance(ctx, dict) else None
+
+        settings = ctx_settings or await gd_find_one(self.session, "school_settings", {"school_id": school_id})
         
         if not settings:
             default = await gd_find_one(self.session, "default_settings", {"id": "default-school-settings"})
             if default:
                 settings = default
             else:
-                settings = {
-                    "working_days": ["sunday", "monday", "tuesday", "wednesday", "thursday"],
-                    "periods_per_day": 7,
-                    "period_duration_minutes": 45,
-                    "break_duration_minutes": 20,
-                    "prayer_duration_minutes": 20,
-                    "school_day_start": "07:00",
-                    "school_day_end": "13:15"
-                }
+                # No school_settings AND no default_settings — generation cannot
+                # proceed. INF-05 in the infeasibility report should have
+                # blocked us already; raise loudly instead of inventing a
+                # silent 7-period assumption.
+                raise ValueError(
+                    "school_settings و default_settings مفقودان لهذه المدرسة — "
+                    "يجب ضبط إعدادات التوقيت قبل تشغيل المحرك."
+                )
         
         db_time_slots = await gd_find(self.session, "time_slots", {"school_id": school_id}, limit=500)
         db_time_slots.sort(key=lambda x: x.get("period_number") if x.get("period_number") is not None else (x.get("slot_number") if x.get("slot_number") is not None else 99))
@@ -620,20 +649,20 @@ class SmartSchedulingEngine:
 
             teaching_slots = [s for s in time_slots if s["type"] in ("class", "period")]
             teaching_period_numbers = [s["period"] for s in teaching_slots if s.get("period") is not None]
-            periods_per_day = len(teaching_slots) if teaching_slots else settings.get("periods_per_day", 7)
+            periods_per_day = len(teaching_slots) if teaching_slots else _required_periods_per_day(settings)
         else:
             time_slots = settings.get("time_slots", [])
             if not time_slots:
                 time_slots = self._generate_default_time_slots(
                     settings.get("school_day_start", "07:00"),
-                    settings.get("periods_per_day", 7),
+                    _required_periods_per_day(settings),
                     settings.get("period_duration_minutes", 45),
                     settings.get("break_duration_minutes", 20),
                     settings.get("prayer_duration_minutes", 20)
                 )
             teaching_slots = [s for s in time_slots if s.get("type") in ("class", "period")]
             teaching_period_numbers = [s["period"] for s in teaching_slots if s.get("period") is not None]
-            periods_per_day = len(teaching_slots) if teaching_slots else settings.get("periods_per_day", 7)
+            periods_per_day = len(teaching_slots) if teaching_slots else _required_periods_per_day(settings)
         
         working_days_raw = settings.get("working_days", ["sunday", "monday", "tuesday", "wednesday", "thursday"])
         if isinstance(working_days_raw, dict):
@@ -1030,7 +1059,7 @@ class SmartSchedulingEngine:
                     subject_by_name.setdefault(str(v).strip(), sid_x)
 
         working_days = settings.get("working_days", ["sunday", "monday", "tuesday", "wednesday", "thursday"])
-        periods_per_day = settings.get("periods_per_day", 7)
+        periods_per_day = _required_periods_per_day(settings)
         
         for teacher in teachers:
             teacher_id = teacher.get("id") or teacher.get("teacher_id")
@@ -1149,7 +1178,7 @@ class SmartSchedulingEngine:
         errors = []
         
         working_days = settings.get("working_days", [])
-        periods_per_day = settings.get("periods_per_day", 7)
+        periods_per_day = _required_periods_per_day(settings)
         total_slots_per_week = len(working_days) * periods_per_day
         
         # Calculate total demand
@@ -1372,7 +1401,7 @@ class SmartSchedulingEngine:
         unscheduled = []
         
         working_days = settings.get("working_days", ["sunday", "monday", "tuesday", "wednesday", "thursday"])
-        periods_per_day = settings.get("periods_per_day", 7)
+        periods_per_day = _required_periods_per_day(settings)
         time_slots = settings.get("time_slots", [])
         teaching_period_numbers = settings.get("teaching_period_numbers", list(range(1, periods_per_day + 1)))
         
@@ -1916,7 +1945,7 @@ class SmartSchedulingEngine:
         sessions: list
     ) -> list:
         working_days = settings.get("working_days", [])
-        periods_per_day = settings.get("periods_per_day", 7)
+        periods_per_day = _required_periods_per_day(settings)
         max_slots_per_class = len(working_days) * periods_per_day
 
         subject_demand = {}
@@ -2538,6 +2567,7 @@ class SmartSchedulingEngine:
         created_by: str = "system",
         calling_user: Optional[dict] = None,
         class_ids: Optional[List[str]] = None,
+        context_payload: Optional[Dict[str, Any]] = None,
     ) -> GenerationResult:
         """
         التوليد الرئيسي للجدول
@@ -2555,6 +2585,19 @@ class SmartSchedulingEngine:
             generate more classes into it).
         """
         self._assert_tenant(school_id, calling_user)
+        # عقد "حمولة سياق حكيم": تأتي مسبَّقة من الـ Route عبر
+        # `_assemble_hakim_context_payload`. عند توفّرها نخزّنها على
+        # self لتقرأها مراحل التحميل (settings/timing) كمصدر أوّل، ونمنع
+        # نسخ هذه المعلومات من الذاكرة حتى لا تتغيَّر بين المراحل.
+        self._hakim_context_payload: Optional[Dict[str, Any]] = context_payload or None
+        if context_payload:
+            try:
+                summary = {k: (len(v) if isinstance(v, (list, dict)) else (1 if v is not None else 0))
+                           for k, v in context_payload.items()}
+                logger.info("hakim_context_payload_received school_id=%s summary=%s", school_id, summary)
+            except Exception:
+                pass
+
         run_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         target_class_ids: List[str] = [str(c) for c in (class_ids or []) if c]
@@ -2799,6 +2842,9 @@ class SmartSchedulingEngine:
                     unresolved_conflicts.append({
                         "day_of_week": c.day_of_week,
                         "period_number": c.period_number,
+                        "teacher_id": c.teacher_id,  # نلصق التعارض بمعلم محدد كي
+                        # لا يلوّن الفرونت كل الخلايا في الفترة الزمنية لجميع
+                        # المعلمين بصبغة واحدة.
                         "class_id": c.class_id,
                         "class_name": cls_name_map.get(c.class_id, "") if c.class_id else "",
                         "subject_id": c.subject_id,
@@ -2811,6 +2857,7 @@ class SmartSchedulingEngine:
                     unresolved_conflicts.append({
                         "day_of_week": None,
                         "period_number": None,
+                        "teacher_id": None,  # لا معلم محدد لطلب لم يُسنَد
                         "class_id": u.class_id,
                         "class_name": cls_name_map.get(u.class_id, "") if u.class_id else "",
                         "subject_id": u.subject_id,

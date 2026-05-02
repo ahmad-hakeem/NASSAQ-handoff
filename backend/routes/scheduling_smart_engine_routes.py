@@ -137,10 +137,10 @@ async def smart_generate_timetable(
     assert_school_access(current_user, str(school_id))
     request = request or SmartTimetableGenerateRequest()
 
-    # Strict context payload assembly — counts only (no PII) so we can
-    # confirm Hakeem received every Schedule Settings tab category
-    # (timing, classes, assignments, unavailability, constraints).
-    await _log_hakim_context_payload(school_id)
+    # حمولة سياق حكيم — نُجمِّع البيانات الفعليّة من تبويبات إعدادات الجدول
+    # الخمسة (التوقيت/الفصول/الإسناد/عدم التوفر/قيود الجدول) ونمرّرها صراحةً
+    # للمحرك بدلاً من ترك المحرّك يقرأ القاعدة من جديد لكل مرحلة.
+    context_payload = await _assemble_hakim_context_payload(school_id)
 
     report = await smart_scheduling_engine.build_infeasibility_report(school_id)
     if report.blocks_generation:
@@ -154,37 +154,68 @@ async def smart_generate_timetable(
         academic_year_id=request.academic_year_id,
         term_id=request.term_id,
         created_by=current_user.get("id", "system"),
-        calling_user=current_user
+        calling_user=current_user,
+        context_payload=context_payload,
     )
     
     return result.model_dump()
 
 
-async def _log_hakim_context_payload(school_id: str) -> None:
-    """Log strict context payload counts before invoking Hakeem.
+async def _assemble_hakim_context_payload(school_id: str) -> Dict[str, Any]:
+    """Assemble the strict context payload for Hakeem.
 
-    We never log the rows themselves (PII / size); just the per-category
-    counts, which is enough to confirm in production that every Schedule
-    Settings tab landed in the engine's input set."""
-    try:
-        timing_count = await gd_count(db.session, "time_slots", {"school_id": school_id})
-        classes_count = await gd_count(db.session, "classes", {"school_id": school_id, "is_active": True})
-        assignments_count = await gd_count(db.session, "teacher_assignments", {"school_id": school_id, "is_active": True})
-        teacher_unavail_count = await gd_count(db.session, "teacher_unavailability", {"school_id": school_id})
-        class_unavail_count = await gd_count(db.session, "class_unavailability", {"school_id": school_id})
-        school_constraints_count = await gd_count(db.session, "school_constraints", {"school_id": school_id, "is_active": True})
-        admin_constraints_count = await gd_count(db.session, "administrative_constraints", {"school_id": school_id, "is_active": True})
+    The payload is a single, validated dict that mirrors the five
+    Schedule Settings tabs the user fills in:
 
-        logger.info(
-            "hakim_context_payload school_id=%s timing=%d classes=%d assignments=%d "
-            "teacher_unavailability=%d class_unavailability=%d school_constraints=%d "
-            "administrative_constraints=%d",
-            school_id, timing_count, classes_count, assignments_count,
-            teacher_unavail_count, class_unavail_count,
-            school_constraints_count, admin_constraints_count,
-        )
-    except Exception as _ctx_err:  # never block generation for logging
-        logger.warning("hakim_context_payload logging failed: %s", _ctx_err)
+      - ``school_settings``     — التوقيت + إعدادات اليوم الدراسي
+      - ``time_slots``          — حصص اليوم وأنواعها
+      - ``classes``             — الفصول الفعّالة
+      - ``teacher_assignments`` — الإسنادات الفعّالة
+      - ``teacher_unavailability``
+      - ``class_unavailability``
+      - ``school_constraints``  + ``administrative_constraints``
+
+    We surface a basic structural validation (timing must exist) and
+    log per-category counts; the engine then consumes the payload as
+    its primary source instead of re-querying the DB per phase.
+    """
+    school_settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
+    time_slots = await gd_find(db.session, "time_slots", {"school_id": school_id}, limit=500)
+    classes = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": True}, limit=2000)
+    assignments = await gd_find(db.session, "teacher_assignments", {"school_id": school_id, "is_active": True}, limit=5000)
+    teacher_unavail = await gd_find(db.session, "teacher_unavailability", {"school_id": school_id}, limit=5000)
+    class_unavail = await gd_find(db.session, "class_unavailability", {"school_id": school_id}, limit=5000)
+    school_constraints = await gd_find(db.session, "school_constraints", {"school_id": school_id, "is_active": True}, limit=500)
+    admin_constraints = await gd_find(db.session, "administrative_constraints", {"school_id": school_id, "is_active": True}, limit=500)
+
+    payload: Dict[str, Any] = {
+        "school_id": school_id,
+        "school_settings": school_settings or None,
+        "time_slots": time_slots or [],
+        "classes": classes or [],
+        "teacher_assignments": assignments or [],
+        "teacher_unavailability": teacher_unavail or [],
+        "class_unavailability": class_unavail or [],
+        "school_constraints": school_constraints or [],
+        "administrative_constraints": admin_constraints or [],
+    }
+
+    # Structural validation: timing data is the bare minimum the engine
+    # needs to even start. The infeasibility report (INF-05) will catch
+    # this too, but we surface it here so the wiring contract is explicit.
+    has_timing = bool(payload["time_slots"]) or bool((payload["school_settings"] or {}).get("periods_per_day"))
+    payload["_validated"] = has_timing
+
+    logger.info(
+        "hakim_context_payload school_id=%s timing=%d classes=%d assignments=%d "
+        "teacher_unavailability=%d class_unavailability=%d school_constraints=%d "
+        "administrative_constraints=%d validated=%s",
+        school_id, len(payload["time_slots"]), len(payload["classes"]),
+        len(payload["teacher_assignments"]), len(payload["teacher_unavailability"]),
+        len(payload["class_unavailability"]), len(payload["school_constraints"]),
+        len(payload["administrative_constraints"]), has_timing,
+    )
+    return payload
 
 
 # --- Generate Timetable Smart API (Alternative endpoint for frontend) ---
@@ -219,7 +250,7 @@ async def generate_timetable_smart(
         nested_settings = settings.get("settings", {})
         academic_year = nested_settings.get("academic_year") or settings.get("academicYear") or settings.get("academic_year")
 
-        await _log_hakim_context_payload(school_id)
+        context_payload = await _assemble_hakim_context_payload(school_id)
 
         report = await smart_scheduling_engine.build_infeasibility_report(school_id)
         if report.blocks_generation:
@@ -234,7 +265,8 @@ async def generate_timetable_smart(
             academic_year_id=academic_year,
             term_id=None,
             created_by=current_user.get("id", "system"),
-            calling_user=current_user
+            calling_user=current_user,
+            context_payload=context_payload,
         )
         
         return result.model_dump()

@@ -32,7 +32,7 @@ import {
   Wand2, UserX, Sparkles, Loader2, RefreshCw,
   Scale, Hourglass, UserMinus, AlertOctagon, AlertTriangle, Repeat,
   ShieldAlert, Settings, ArrowLeft,
-  Undo2, Layers, Lightbulb, X,
+  Undo2, Layers, Lightbulb, X, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import CandidatesSidePanel from '../components/schedule/CandidatesSidePanel';
 import BulkSubstitutionPanel from '../components/schedule/BulkSubstitutionPanel';
@@ -258,63 +258,85 @@ function HakimGeneratingOverlay() {
   );
 }
 
-// ─── رؤى حكيم — شريط ملاحظات قابل للإغلاق ─────────────────────────────────
-// يلخّص للمستخدم الخانات التي لم يستطع المحرك جدولتها (تعارض أو طلب متبقٍ)
-// مع أبرز ثلاثة أسباب باللغة العربية، ويترك إمكانية الإغلاق لجلسة العمل.
+// ─── رؤى حكيم — شريط مطوي افتراضياً، يُفتح لعرض القائمة الكاملة ─────────────
+// يلخّص للمستخدم الخانات التي لم يستطع المحرك جدولتها (تعارض أو طلب متبقٍ).
+// تصميم مطوي/مفتوح: العنوان الافتراضي «تعذّر جدولة N حصة — اضغط لعرض
+// التفاصيل»، وعند الفتح يعرض القائمة مجمَّعة حسب الفصل ثم المادة كي يستطيع
+// المستخدم تتبّع المشكلة بدقة. يبقى زر إخفاء جانبي لجلسة العمل.
 function HakimInsightsBanner({ conflicts, dismissed, onDismiss }) {
+  const [expanded, setExpanded] = useState(false);
   if (!conflicts || conflicts.length === 0 || dismissed) return null;
   const total = conflicts.length;
-  // نأخذ حتى ثلاث رؤى مميَّزة (إزالة المكرَّر بنفس reason_ar/الفصل/المادة).
-  const seen = new Set();
-  const top = [];
+
+  // تجميع: class_name → subject_name → [conflicts]
+  const grouped = new Map();
   for (const c of conflicts) {
-    const key = `${c.class_id || ''}|${c.subject_id || ''}|${c.reason_ar || ''}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    top.push(c);
-    if (top.length >= 3) break;
+    const cls = c.class_name || '—';
+    const subj = c.subject_name || '—';
+    if (!grouped.has(cls)) grouped.set(cls, new Map());
+    const subMap = grouped.get(cls);
+    if (!subMap.has(subj)) subMap.set(subj, []);
+    subMap.get(subj).push(c);
   }
+
   return (
-    <div className="flex items-start gap-3 p-3 rounded-lg border border-orange-200 bg-orange-50 text-orange-900 shrink-0">
-      <Lightbulb className="h-5 w-5 shrink-0 text-orange-500 mt-0.5" />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold">
-          رؤى حكيم • {total} ملاحظة لم تُحلّ بعد
-        </p>
-        <ul className="mt-1.5 space-y-0.5 text-[12px] leading-relaxed text-orange-800">
-          {top.map((c, idx) => {
-            const subj = c.subject_name || '—';
-            const cls = c.class_name || '—';
-            return (
-              <li key={idx} className="truncate">
-                <span className="font-semibold">{subj}</span>
-                {' • '}
-                <span>{cls}</span>
-                {c.reason_ar ? (
-                  <>
-                    {' — '}
-                    <span className="text-orange-700">{c.reason_ar}</span>
-                  </>
-                ) : null}
-              </li>
-            );
-          })}
-          {total > top.length && (
-            <li className="text-[11px] text-orange-700">
-              …و{total - top.length} ملاحظة إضافية مُلوَّنة على الخلايا في الشبكة.
-            </li>
-          )}
-        </ul>
+    <div className="rounded-lg border border-orange-200 bg-orange-50 text-orange-900 shrink-0">
+      <div className="flex items-center gap-3 p-3">
+        <Lightbulb className="h-5 w-5 shrink-0 text-orange-500" />
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-controls="hakim-insights-details"
+          className="flex-1 min-w-0 text-right flex items-center justify-between gap-2 hover:bg-orange-100/40 rounded px-2 py-1 -mx-2 transition-colors"
+        >
+          <span className="text-sm font-bold truncate">
+            رؤى حكيم • تعذّر جدولة {total} حصة — اضغط لعرض التفاصيل
+          </span>
+          {expanded
+            ? <ChevronUp className="h-4 w-4 shrink-0 text-orange-700" />
+            : <ChevronDown className="h-4 w-4 shrink-0 text-orange-700" />}
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          title="إخفاء الشريط"
+          aria-label="إخفاء شريط رؤى حكيم"
+          className="shrink-0 rounded p-1 text-orange-700 hover:bg-orange-100 transition-colors"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={onDismiss}
-        title="إخفاء الشريط"
-        aria-label="إخفاء شريط رؤى حكيم"
-        className="shrink-0 rounded p-1 text-orange-700 hover:bg-orange-100 transition-colors"
-      >
-        <X className="h-4 w-4" />
-      </button>
+      {expanded && (
+        <div
+          id="hakim-insights-details"
+          className="border-t border-orange-200 max-h-72 overflow-y-auto px-3 py-2 space-y-2 text-[12px] leading-relaxed"
+        >
+          {Array.from(grouped.entries()).map(([cls, subMap]) => (
+            <div key={cls} className="rounded border border-orange-200 bg-white/60 p-2">
+              <div className="font-bold text-orange-900 mb-1">{cls}</div>
+              <ul className="space-y-1">
+                {Array.from(subMap.entries()).map(([subj, items]) => (
+                  <li key={subj} className="text-orange-800">
+                    <span className="font-semibold">{subj}</span>
+                    <span className="text-orange-600"> • {items.length} عنصر</span>
+                    <ul className="mt-0.5 mr-3 space-y-0.5 text-orange-700">
+                      {items.slice(0, 5).map((c, i) => (
+                        <li key={i} className="truncate">
+                          {c.reason_ar || 'تعذّر الجدولة'}
+                        </li>
+                      ))}
+                      {items.length > 5 && (
+                        <li className="text-[11px] text-orange-600">…و{items.length - 5} عنصر إضافي</li>
+                      )}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1189,13 +1211,15 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
 // (slate-100)، وعمود المعلم على يمين الشاشة (RTL) مع ظل خفيف يفصل المنطقة
 // المثبَّتة عن منطقة التمرير.
 function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, today, unresolvedConflicts = [] }) {
-  // فهرس "رؤى حكيم" بمفتاح day|period → reason_ar كأقدم سبب لكل خانة. نُخزِّن
-  // أيضاً مجموعة الأسباب لاستخدامها داخل tooltip متعدد الأسطر إن لزم.
+  // فهرس "رؤى حكيم" بمفتاح teacher_id|day|period → reason_ar. التحديد
+  // بالمعلم ضروري لئلا يلوّن صفّ معلم تنبيه يخصّ معلماً آخر في نفس
+  // الفترة. العناصر التي لا تحمل teacher_id (مثل طلبات لم تُسنَد لأحد)
+  // لا تظهر هنا — تظهر فقط داخل شريط رؤى حكيم.
   const conflictsByCell = useMemo(() => {
     const m = new Map();
     for (const c of unresolvedConflicts) {
-      if (!c?.day_of_week || !c?.period_number) continue; // عناصر "غير مجدول" بلا خانة محددة
-      const k = `${c.day_of_week}|${c.period_number}`;
+      if (!c?.day_of_week || !c?.period_number || !c?.teacher_id) continue;
+      const k = `${c.teacher_id}|${c.day_of_week}|${c.period_number}`;
       const prev = m.get(k);
       const reason = [c.subject_name, c.class_name].filter(Boolean).join(' / ');
       const tip = reason ? `${reason}: ${c.reason_ar || ''}` : (c.reason_ar || '');
@@ -1352,9 +1376,10 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                   session: cell,
                 };
                 // وسم خلية "تعارض حكيم": تظهر فقط على الخانات الفارغة التي
-                // وردت في unresolved_conflicts (الجلسات المعبَّأة لا تحتاج تنبيه
-                // بصري). نضيف tooltip بسبب الفشل (reason_ar) لإرشاد المستخدم.
-                const conflictKey = `${dayKey}|${p}`;
+                // وردت في unresolved_conflicts ومرتبطة بنفس المعلم (الجلسات
+                // المعبَّأة لا تحتاج تنبيه بصري). المفتاح يضم teacher_id كي
+                // يقتصر التظليل على صفّ المعلم المتضرّر.
+                const conflictKey = `${teacher.id}|${dayKey}|${p}`;
                 const conflictTip = !cell ? conflictsByCell.get(conflictKey) : null;
                 const conflictBg = conflictTip ? 'bg-orange-50 ring-1 ring-inset ring-orange-200' : rowBg;
                 return (
