@@ -70,22 +70,58 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
     grades: [],
     classes: [],
   });
+  const [classesLoading, setClassesLoading] = useState(false);
+  const [gradesLoading, setGradesLoading] = useState(false);
+  const [classesError, setClassesError] = useState(false);
+  const [gradesError, setGradesError] = useState(false);
 
   useEffect(() => {
-    if (open) fetchOptions();
-  }, [open]);
+    if (open && api && token) fetchOptions();
+  }, [open, api, token]);
 
   const fetchOptions = async () => {
-    setLoading(true);
-    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    setClassesLoading(true);
+    setGradesLoading(true);
+    setClassesError(false);
+    setGradesError(false);
+    let gradesFailed = false;
+    let classesFailed = false;
     try {
       const [recipientRes, notifTypeRes, priorityRes, gradesRes, classesRes] = await Promise.all([
-        api.get('/notifications/options/recipient-types').catch(() => ({ data: { types: [] } })),
-        api.get('/notifications/options/notification-types').catch(() => ({ data: { types: [] } })),
-        api.get('/notifications/options/priorities').catch(() => ({ data: { priorities: [] } })),
-        api.get('/classes/options/grades').catch(() => ({ data: { grades: [] } })),
-        api.get('/classes/').catch(() => ({ data: { classes: [] } })),
+        api.get('/notifications/options/recipient-types').catch((err) => {
+          console.error('SendNotificationWizard: failed to load recipient types', err?.response?.data || err);
+          return { data: { types: [] } };
+        }),
+        api.get('/notifications/options/notification-types').catch((err) => {
+          console.error('SendNotificationWizard: failed to load notification types', err?.response?.data || err);
+          return { data: { types: [] } };
+        }),
+        api.get('/notifications/options/priorities').catch((err) => {
+          console.error('SendNotificationWizard: failed to load priorities', err?.response?.data || err);
+          return { data: { priorities: [] } };
+        }),
+        api.get('/classes/options/grades').catch((err) => {
+          console.error('SendNotificationWizard: failed to load grades', err?.response?.data || err);
+          gradesFailed = true;
+          return { data: { grades: [] } };
+        }),
+        api.get('/classes/').catch((err) => {
+          console.error('SendNotificationWizard: failed to load classes', err?.response?.data || err);
+          classesFailed = true;
+          return { data: { classes: [] } };
+        }),
       ]);
+
+      const grades = gradesRes.data.grades || [];
+      const classes = classesRes.data.classes || [];
+      if (gradesFailed) setGradesError(true);
+      if (classesFailed) setClassesError(true);
+      if (!grades.length && !gradesFailed) {
+        console.warn('SendNotificationWizard: grades endpoint returned 0 items');
+      }
+      if (!classes.length && !classesFailed) {
+        console.warn('SendNotificationWizard: classes endpoint returned 0 items');
+      }
 
       setOptions({
         recipientTypes: recipientRes.data.types || [
@@ -110,13 +146,14 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
           { code: 'high', name_ar: 'عالية', name_en: 'High' },
           { code: 'urgent', name_ar: 'عاجلة', name_en: 'Urgent' },
         ],
-        grades: gradesRes.data.grades || [],
-        classes: classesRes.data.classes || [],
+        grades,
+        classes,
       });
     } catch (error) {
-      console.error('Error:', error);
+      console.error('SendNotificationWizard: unexpected error loading options', error);
     } finally {
-      setLoading(false);
+      setClassesLoading(false);
+      setGradesLoading(false);
     }
   };
 
@@ -149,6 +186,20 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
         nassaqWarning(isRTL ? 'يرجى اختيار مستخدم واحد على الأقل' : 'Please select at least one user');
         setSubmitting(false);
         return;
+      }
+
+      if (needsFilter) {
+        const isGrade = data.recipient_type.includes('grade');
+        const filterValue = isGrade ? data.recipient_filter?.grade_id : data.recipient_filter?.class_id;
+        if (!filterValue) {
+          nassaqWarning(
+            isGrade
+              ? (isRTL ? 'يرجى اختيار صف' : 'Please select a grade')
+              : (isRTL ? 'يرجى اختيار فصل' : 'Please select a class')
+          );
+          setSubmitting(false);
+          return;
+        }
       }
 
       const response = await api.post('/notifications/send', payload);
@@ -256,29 +307,56 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
                 </Select>
               </div>
 
-              {needsFilter && (
-                <div className="space-y-2">
-                  <Label>
-                    {data.recipient_type.includes('grade') ? (t('grade')) : (t('class'))}
-                  </Label>
-                  <Select 
-                    value={data.recipient_filter?.grade_id || data.recipient_filter?.class_id || ''} 
-                    onValueChange={(val) => onChange('recipient_filter', 
-                      data.recipient_type.includes('grade') ? { grade_id: val } : { class_id: val }
-                    )}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={t('select2')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {data.recipient_type.includes('grade') 
-                        ? options.grades.map((g) => <SelectItem key={g.id} value={g.id}>{isRTL ? g.name_ar : g.name_en}</SelectItem>)
-                        : options.classes.map((c) => <SelectItem key={c.class_id} value={c.class_id}>{c.name_ar}</SelectItem>)
-                      }
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              {needsFilter && (() => {
+                const isGrade = data.recipient_type.includes('grade');
+                const isLoadingFilter = isGrade ? gradesLoading : classesLoading;
+                const filterItems = isGrade ? options.grades : options.classes;
+                const isEmpty = !isLoadingFilter && filterItems.length === 0;
+                const placeholder = isLoadingFilter
+                  ? (isGrade
+                      ? (isRTL ? 'جاري تحميل الصفوف...' : 'Loading grades...')
+                      : (isRTL ? 'جاري تحميل الفصول...' : 'Loading classes...'))
+                  : isEmpty
+                    ? (isGrade
+                        ? (isRTL ? 'لا توجد صفوف متاحة' : 'No grades available')
+                        : (isRTL ? 'لا توجد فصول متاحة' : 'No classes available'))
+                    : t('select2');
+                return (
+                  <div className="space-y-2">
+                    <Label>
+                      {isGrade ? (t('grade')) : (t('class'))}
+                    </Label>
+                    <Select
+                      value={data.recipient_filter?.grade_id || data.recipient_filter?.class_id || ''}
+                      onValueChange={(val) => onChange('recipient_filter',
+                        isGrade ? { grade_id: val } : { class_id: val }
+                      )}
+                      disabled={isLoadingFilter || isEmpty}
+                    >
+                      <SelectTrigger
+                        data-testid={isGrade ? 'notif-grade-filter' : 'notif-class-filter'}
+                        disabled={isLoadingFilter || isEmpty}
+                      >
+                        <SelectValue placeholder={placeholder} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {isGrade
+                          ? options.grades.map((g) => (
+                              <SelectItem key={g.id} value={g.id}>
+                                {isRTL ? (g.name_ar || g.name_en) : (g.name_en || g.name_ar)}
+                              </SelectItem>
+                            ))
+                          : options.classes.map((c) => (
+                              <SelectItem key={c.class_id} value={c.class_id}>
+                                {isRTL ? (c.name_ar || c.name_en || c.name) : (c.name_en || c.name_ar || c.name)}
+                              </SelectItem>
+                            ))
+                        }
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              })()}
             </div>
 
             {isSpecificUsers && (
