@@ -88,6 +88,137 @@ async def _resolve_periods_for_school(school_id: str) -> list[int]:
     return list(DEFAULT_PERIODS)
 
 
+async def _resolve_period_times(school_id: str, periods: list[int]) -> dict[str, dict]:
+    """Build {period_number: {start, end}} for the given periods.
+
+    Source order:
+      1. ``time_slots`` rows (preferred — already accounts for breaks/prayer).
+      2. Computed from ``school_settings`` (start_time + period_duration +
+         break_duration + breaks[]) so the grid still shows times even before
+         the time_slots table is generated.
+
+    Returns string keys (so it serializes cleanly to JSON / matches the
+    ``periods`` array elements after ``String(p)``).
+    """
+    out: dict[str, dict] = {}
+    try:
+        slots = await gd_find(db.session, "time_slots", {"school_id": school_id}, limit=200)
+        for s in slots:
+            slot_type = s.get("type") or ""
+            if s.get("is_break") or s.get("is_prayer") or slot_type in ("break", "prayer"):
+                continue
+            pn = s.get("period_number") or s.get("slot_number")
+            if pn is None:
+                continue
+            try:
+                key = str(int(pn))
+            except (TypeError, ValueError):
+                continue
+            start = s.get("start_time") or s.get("start") or ""
+            end = s.get("end_time") or s.get("end") or ""
+            if start or end:
+                out[key] = {"start": start, "end": end}
+        if out:
+            return out
+
+        # Fallback: compute from settings the same way regenerate_time_slots_from_settings does.
+        settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id}) or {}
+        cs = settings.get("custom_settings") or {}
+        nested = settings.get("settings") or {}
+
+        def _pick(*vals, default=None):
+            for v in vals:
+                if v not in (None, ""):
+                    return v
+            return default
+
+        day_start = _pick(
+            cs.get("school_day_start"), nested.get("school_day_start"),
+            settings.get("school_day_start"), settings.get("start_time"),
+            default="07:00",
+        )
+        # Mirror the validation/clamping used by
+        # ``regenerate_time_slots_from_settings`` exactly so header times
+        # always match the generated time_slots table even before regen runs.
+        try:
+            parts = str(day_start).split(":")
+            if len(parts) != 2 or not (0 <= int(parts[0]) <= 23 and 0 <= int(parts[1]) <= 59):
+                day_start = "07:00"
+        except (ValueError, AttributeError):
+            day_start = "07:00"
+        h, m = map(int, day_start.split(":"))
+
+        try:
+            period_dur_raw = int(_pick(
+                cs.get("period_duration_minutes"), nested.get("period_duration_minutes"),
+                settings.get("period_duration_minutes"), settings.get("period_duration"),
+                default=45,
+            ))
+        except (TypeError, ValueError):
+            period_dur_raw = 45
+        period_dur = min(max(period_dur_raw, 20), 90)
+
+        try:
+            break_dur_raw = int(_pick(
+                cs.get("break_duration_minutes"), nested.get("break_duration_minutes"),
+                settings.get("break_duration_minutes"), settings.get("break_duration"),
+                default=15,
+            ))
+        except (TypeError, ValueError):
+            break_dur_raw = 15
+        break_dur = min(max(break_dur_raw, 5), 60)
+
+        try:
+            prayer_dur_raw = int(_pick(
+                cs.get("prayer_duration_minutes"), nested.get("prayer_duration_minutes"),
+                default=20,
+            ))
+        except (TypeError, ValueError):
+            prayer_dur_raw = 20
+        prayer_dur = min(max(prayer_dur_raw, 5), 60)
+
+        # Map "after period N → duration". Same defaults as regen: break
+        # after 3 and prayer after 6 (when periods≥6) if no saved breaks.
+        break_after: dict[int, int] = {}
+        for b in (settings.get("breaks") or []):
+            after = b.get("afterPeriod") or b.get("after_period")
+            try:
+                after = int(after) if after is not None else None
+            except (TypeError, ValueError):
+                after = None
+            if after:
+                try:
+                    break_after[after] = int(b.get("duration") or break_dur)
+                except (TypeError, ValueError):
+                    break_after[after] = break_dur
+        if not break_after:
+            n_periods = len(periods)
+            if n_periods >= 3:
+                break_after[3] = break_dur
+            if n_periods >= 6:
+                break_after[6] = prayer_dur
+
+        passing_time = 5
+        cur = h * 60 + m
+        for p in periods:
+            try:
+                p_int = int(p)
+            except (TypeError, ValueError):
+                continue
+            sh, sm = divmod(cur, 60)
+            end_min = cur + period_dur
+            eh, em = divmod(end_min, 60)
+            out[str(p_int)] = {
+                "start": f"{sh:02d}:{sm:02d}",
+                "end": f"{eh:02d}:{em:02d}",
+            }
+            cur = end_min
+            cur += break_after.get(p_int, passing_time)
+    except Exception as _err:
+        logger.warning("period_times resolution failed for school %s: %s", school_id, _err)
+    return out
+
+
 def _today_day_key() -> str:
     """Returns the day-of-week key in lowercase English (sunday..saturday)."""
     return datetime.now(timezone.utc).strftime("%A").lower()
@@ -264,6 +395,7 @@ async def get_master_grid(
     assert_school_access(current_user, str(sid))
 
     periods = await _resolve_periods_for_school(sid)
+    period_times = await _resolve_period_times(sid, periods)
 
     teachers = await gd_find(
         db.session,
@@ -606,6 +738,7 @@ async def get_master_grid(
         "timetable_status": timetable.get("status") if timetable else None,
         "days": DAYS,
         "periods": periods,
+        "period_times": period_times,
         "today": today_key,
         "teachers": teacher_rows,
         "cells": cells,

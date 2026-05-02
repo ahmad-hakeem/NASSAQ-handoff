@@ -1194,6 +1194,7 @@ export default function SchedulePageNew() {
               onBulkCoverClick={handleOpenBulkPanel}
               onAcknowledgeRelocation={handleAcknowledgeRelocation}
               today={grid?.today}
+              periodTimes={grid?.period_times || {}}
               unresolvedConflicts={unresolvedConflicts}
             />
           )}
@@ -1470,7 +1471,7 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
 // التصميم البصري الجديد: خلفية بيضاء، رؤوس فاتحة (slate-50)، حدود رفيعة
 // (slate-100)، وعمود المعلم على يمين الشاشة (RTL) مع ظل خفيف يفصل المنطقة
 // المثبَّتة عن منطقة التمرير.
-function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, onAcknowledgeRelocation, today, unresolvedConflicts = [] }) {
+function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, onAcknowledgeRelocation, today, periodTimes = {}, unresolvedConflicts = [] }) {
   // فهرس "رؤى حكيم" بمفتاح teacher_id|day|period → reason_ar. التحديد
   // بالمعلم ضروري لئلا يلوّن صفّ معلم تنبيه يخصّ معلماً آخر في نفس
   // الفترة. العناصر التي لا تحمل teacher_id (مثل طلبات لم تُسنَد لأحد)
@@ -1496,7 +1497,9 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
   const TEACHER_COL_WIDTH = 220;
   const PERIOD_COL_WIDTH = 56;     // ≥ 48px كما يطلبه التصميم
   const DAY_HEADER_HEIGHT = 28;    // صف رأس الأيام
-  const PERIOD_HEADER_HEIGHT = 24; // صف رأس أرقام الحصص
+  // ارتفاع رأس الحصص: نزيده قليلاً لاستيعاب سطر التوقيت تحت رقم الحصة
+  // (مثل "07:00 – 07:45") المحسوب من إعدادات التوقيت في "إعدادات الجدول".
+  const PERIOD_HEADER_HEIGHT = 38;
   const ROW_HEIGHT = 56;           // h-14 لكل صف بيانات
   const DAY_COLS_TOTAL_PX = totalDataCols * PERIOD_COL_WIDTH;
 
@@ -1543,15 +1546,29 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
         {teachers.length} معلم • {periods.length}×{days.length}
       </div>
       {days.map((dayKey) => (
-        periods.map((p) => (
-          <div
-            key={`ph-${dayKey}-${p}`}
-            className="sticky z-20 bg-slate-50 text-slate-700 text-center text-[11px] flex items-center justify-center border-b border-l border-slate-200"
-            style={{ top: DAY_HEADER_HEIGHT, height: PERIOD_HEADER_HEIGHT }}
-          >
-            {p}
-          </div>
-        ))
+        periods.map((p) => {
+          // توقيت بداية/نهاية الحصة كما هو محفوظ في إعدادات المدرسة
+          // (time_slots أو احتسابه من start_time + period_duration). يظهر
+          // تحت رقم الحصة بخط أصغر، ويُخفى بصمت إن لم يصل من الـbackend
+          // حتى لا يُكسر عرض المدارس قبل ضبط الإعدادات.
+          const t = periodTimes?.[String(p)];
+          const timeLabel = t && (t.start || t.end)
+            ? `${t.start || ''}${t.start && t.end ? ' – ' : ''}${t.end || ''}`
+            : '';
+          return (
+            <div
+              key={`ph-${dayKey}-${p}`}
+              className="sticky z-20 bg-slate-50 text-slate-700 text-center flex flex-col items-center justify-center leading-tight border-b border-l border-slate-200"
+              style={{ top: DAY_HEADER_HEIGHT, height: PERIOD_HEADER_HEIGHT }}
+              title={timeLabel ? `الحصة ${p} • ${timeLabel}` : `الحصة ${p}`}
+            >
+              <span className="text-[11px] font-semibold">{p}</span>
+              {timeLabel && (
+                <span className="text-[8px] text-slate-500 tabular-nums">{timeLabel}</span>
+              )}
+            </div>
+          );
+        })
       ))}
 
       {/* ── Body rows: one per teacher ─────────────────────────── */}
