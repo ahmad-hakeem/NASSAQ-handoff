@@ -75,6 +75,19 @@ class NotificationResponse(BaseModel):
     read_at: Optional[str] = None
     created_at: str
     sender_name: Optional[str] = None
+    # Acknowledgement metadata. Populated for any notification flow that
+    # needs an explicit "تم الاطلاع" beat — currently the relocation
+    # alerts surfaced via /school/settings/unavailability — but the fields
+    # are generic so future flows can reuse the same pipe without a new
+    # migration. Defaults are False/None so legacy records keep working.
+    is_acknowledged: Optional[bool] = False
+    acknowledged_at: Optional[str] = None
+    # Relocation-specific helpers — surfaced so the frontend can render the
+    # ack button and the alternative-location link without hitting another
+    # endpoint. Populated only when the notification stems from a class
+    # unavailability with an alternative location.
+    unavailability_id: Optional[str] = None
+    alternative_location: Optional[str] = None
 
 class NotificationBulkCreate(BaseModel):
     title: str
@@ -102,9 +115,16 @@ async def create_notification_internal(
     action_url: Optional[str] = None,
     title_en: Optional[str] = None,
     message_en: Optional[str] = None,
-    school_id: Optional[str] = None
+    school_id: Optional[str] = None,
+    extra_data: Optional[Dict[str, Any]] = None,
 ):
-    """Internal helper to create notifications from other engines"""
+    """Internal helper to create notifications from other engines.
+
+    ``extra_data`` lets callers attach flow-specific fields (e.g. the
+    ``unavailability_id`` for relocation notifications) without growing the
+    function signature for every new use case. The fields are merged into
+    the notification document and end up in the JSONB ``data`` column, so
+    they're transparently available on read via ``gd_find``."""
     notification_id = str(uuid.uuid4())
     sender_name_resolved = None
     if sender_id:
@@ -129,8 +149,18 @@ async def create_notification_internal(
         "tenant_id": school_id,
         "is_read": False,
         "read_at": None,
+        # Default ack metadata so every notification has a consistent shape
+        # on read; flows that don't require acknowledgement just leave the
+        # fields untouched.
+        "is_acknowledged": False,
+        "acknowledged_at": None,
         "created_at": datetime.now(timezone.utc),
     }
+    if extra_data:
+        # Caller-provided fields win over defaults so a flow can override
+        # e.g. ``is_acknowledged`` if it ever needs to seed pre-acked rows.
+        for k, v in extra_data.items():
+            notification_doc[k] = v
     await gd_insert(db.session, "notifications", notification_doc)
     return notification_id
 
@@ -305,9 +335,13 @@ async def get_my_notifications(
             read_status=n.get('is_read', False),
             read_at=n.get('read_at'),
             created_at=n['created_at'],
-            sender_name=n.get('sender_name')
+            sender_name=n.get('sender_name'),
+            is_acknowledged=bool(n.get('is_acknowledged', False)),
+            acknowledged_at=n.get('acknowledged_at'),
+            unavailability_id=n.get('unavailability_id'),
+            alternative_location=n.get('alternative_location'),
         ))
-    
+
     return result
 
 @router.get("/notifications/unread-count")

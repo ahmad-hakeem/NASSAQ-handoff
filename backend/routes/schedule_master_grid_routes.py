@@ -348,9 +348,11 @@ async def get_master_grid(
     # surface that on the matching grid cell so the assigned teacher can
     # immediately see "نُقل إلى: …" without leaving the schedule view. We
     # build two lookups keyed by class_id: one for recurring (day, period)
-    # and one for long-term ranges that include today.
-    relocation_recurring: dict[str, dict[tuple[str, str], str]] = {}
-    relocation_today: dict[str, str] = {}
+    # and one for long-term ranges that include today. Each lookup carries
+    # both the location text and the unavailability_id so the frontend can
+    # call the ack endpoint right from the cell popover.
+    relocation_recurring: dict[str, dict[tuple[str, str], dict]] = {}
+    relocation_today: dict[str, dict] = {}
     today_iso_for_unavail = datetime.now(timezone.utc).date().isoformat()
     try:
         unavail_rows = await gd_find(
@@ -361,6 +363,9 @@ async def get_master_grid(
         )
     except Exception:
         unavail_rows = []
+    # Pre-compute per-row "did the current viewer ack this?" so the cell
+    # popover renders the right button label without an extra request.
+    viewer_id = (current_user or {}).get("id")
     for row in unavail_rows:
         alt = (row.get("alternative_location") or "").strip()
         if not alt:
@@ -368,6 +373,18 @@ async def get_master_grid(
         cls_id = row.get("entity_id")
         if not cls_id:
             continue
+        ack_list = row.get("acknowledged_by") or []
+        if not isinstance(ack_list, list):
+            ack_list = []
+        recipients_list = row.get("recipient_ids") or []
+        if not isinstance(recipients_list, list):
+            recipients_list = []
+        meta = {
+            "alternative_location": alt,
+            "unavailability_id": row.get("id"),
+            "acknowledged_by_viewer": bool(viewer_id and viewer_id in ack_list),
+            "viewer_is_recipient": bool(viewer_id and viewer_id in recipients_list),
+        }
         utype = row.get("unavailability_type") or "recurring"
         if utype == "long_term":
             start = (row.get("start_date") or "")
@@ -375,7 +392,7 @@ async def get_master_grid(
             if start and end and start <= today_iso_for_unavail <= end:
                 # Last-write wins; long-term records affect every cell of
                 # this class on today's column.
-                relocation_today[cls_id] = alt
+                relocation_today[cls_id] = meta
         else:
             day_raw = (row.get("day") or "").strip()
             day_en = _AR_DAY_TO_EN.get(day_raw, day_raw.lower())
@@ -383,7 +400,7 @@ async def get_master_grid(
                 period_key = str(int(row.get("period")))
             except (TypeError, ValueError):
                 continue
-            relocation_recurring.setdefault(cls_id, {})[(day_en, period_key)] = alt
+            relocation_recurring.setdefault(cls_id, {})[(day_en, period_key)] = meta
 
     cells: dict[str, dict[str, dict[str, object]]] = {}
     assigned_count: dict[str, int] = {}
@@ -417,14 +434,17 @@ async def get_master_grid(
         # long-term blanket). Both flags are additive — they never replace
         # is_vacant / is_substituted styling, the frontend just composes a
         # subtle "نُقل إلى" hint on top of existing states.
-        alt_loc = None
+        alt_meta = None
         if cls_id and cls_id in relocation_recurring:
-            alt_loc = relocation_recurring[cls_id].get((day, period_key))
-        if not alt_loc and cls_id and day == today_key:
-            alt_loc = relocation_today.get(cls_id)
-        if alt_loc:
+            alt_meta = relocation_recurring[cls_id].get((day, period_key))
+        if not alt_meta and cls_id and day == today_key:
+            alt_meta = relocation_today.get(cls_id)
+        if alt_meta:
             cell_doc["is_relocated"] = True
-            cell_doc["alternative_location"] = alt_loc
+            cell_doc["alternative_location"] = alt_meta.get("alternative_location")
+            cell_doc["unavailability_id"] = alt_meta.get("unavailability_id")
+            cell_doc["acknowledged_by_viewer"] = alt_meta.get("acknowledged_by_viewer", False)
+            cell_doc["viewer_is_recipient"] = alt_meta.get("viewer_is_recipient", False)
         day_cells[period_key] = cell_doc
         assigned_count[tid] = assigned_count.get(tid, 0) + 1
 
@@ -456,11 +476,11 @@ async def get_master_grid(
         # synthetic cells we're about to write/patch carry the same overlay
         # the original timetable cells received above.
         sub_cls_id = sub.get("class_id")
-        sub_alt_loc = None
+        sub_alt_meta = None
         if sub_cls_id and sub_cls_id in relocation_recurring:
-            sub_alt_loc = relocation_recurring[sub_cls_id].get((sub_day, sub_period_key))
-        if not sub_alt_loc and sub_cls_id and sub_day == today_key:
-            sub_alt_loc = relocation_today.get(sub_cls_id)
+            sub_alt_meta = relocation_recurring[sub_cls_id].get((sub_day, sub_period_key))
+        if not sub_alt_meta and sub_cls_id and sub_day == today_key:
+            sub_alt_meta = relocation_today.get(sub_cls_id)
 
         # Flip the absent teacher's vacant cell to substituted.
         if absent_tid:
@@ -472,9 +492,12 @@ async def get_master_grid(
                 existing["substitution_id"] = sub.get("id")
                 existing["substitute_teacher_id"] = sub_tid
                 existing["substitute_teacher_name"] = teacher_name_map.get(sub_tid, "")
-                if sub_alt_loc:
+                if sub_alt_meta:
                     existing["is_relocated"] = True
-                    existing["alternative_location"] = sub_alt_loc
+                    existing["alternative_location"] = sub_alt_meta.get("alternative_location")
+                    existing["unavailability_id"] = sub_alt_meta.get("unavailability_id")
+                    existing["acknowledged_by_viewer"] = sub_alt_meta.get("acknowledged_by_viewer", False)
+                    existing["viewer_is_recipient"] = sub_alt_meta.get("viewer_is_recipient", False)
                 substituted_today += 1
 
         # Add synthetic cell to substitute teacher's row.
@@ -493,9 +516,12 @@ async def get_master_grid(
                     "original_teacher_id": absent_tid,
                     "original_teacher_name": teacher_name_map.get(absent_tid, ""),
                 }
-                if sub_alt_loc:
+                if sub_alt_meta:
                     synth["is_relocated"] = True
-                    synth["alternative_location"] = sub_alt_loc
+                    synth["alternative_location"] = sub_alt_meta.get("alternative_location")
+                    synth["unavailability_id"] = sub_alt_meta.get("unavailability_id")
+                    synth["acknowledged_by_viewer"] = sub_alt_meta.get("acknowledged_by_viewer", False)
+                    synth["viewer_is_recipient"] = sub_alt_meta.get("viewer_is_recipient", False)
                 sub_day_cells[sub_period_key] = synth
 
     teacher_rows: list[dict] = []

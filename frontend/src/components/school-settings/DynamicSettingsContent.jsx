@@ -14,7 +14,8 @@ import {
   Sliders, Plus, Edit2, Trash2, Save, CheckCircle2,
   Info, X, GraduationCap, Shield, Building2, MapPin, Phone, Mail,
   Layers, Zap, Lock, Calendar, Timer, Coffee, Moon, UserX, DoorClosed,
-  RefreshCw, Wand2, Database, FileSpreadsheet, Upload, AlertTriangle
+  RefreshCw, Wand2, Database, FileSpreadsheet, Upload, AlertTriangle,
+  CheckCheck
 } from 'lucide-react';
 import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core';
 import {
@@ -803,6 +804,26 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                             )}
                             {item.alternative_location && (
                               <p className="text-xs text-orange-700 font-semibold">نُقل إلى: {item.alternative_location}</p>
+                            )}
+                            {item.alternative_location && (item.recipient_count ?? 0) > 0 && (
+                              // لوحة تدقيق سريعة: تُظهر للمدير كم معلماً
+                              // سجّل اطلاعه على نقل الفصل من أصل عدد
+                              // المستلمين. تختفي للسجلات بدون موقع بديل
+                              // لأن لا يلزم تأكيد استلام لها.
+                              <div className="mt-1 flex items-center gap-1.5">
+                                <Badge
+                                  variant="outline"
+                                  className={`gap-1 text-[10px] border ${
+                                    item.acknowledged_count >= item.recipient_count
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                      : 'bg-amber-50 text-amber-700 border-amber-300'
+                                  }`}
+                                  data-testid={`unavail-ack-badge-${item.id}`}
+                                >
+                                  <CheckCheck className="h-3 w-3" />
+                                  تم الاطلاع: {item.acknowledged_count || 0} / {item.recipient_count}
+                                </Badge>
+                              </div>
                             )}
                           </div>
                         </div>

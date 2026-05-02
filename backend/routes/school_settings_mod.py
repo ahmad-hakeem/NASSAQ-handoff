@@ -1918,6 +1918,10 @@ async def create_unavailability(
         "reason": data.reason,
         # نخزّن الموقع البديل فقط لسجلات الفصول؛ لا معنى له للمعلمين.
         "alternative_location": (data.alternative_location or None) if data.entity_type == "class" else None,
+        # سجل المستلمين والمؤكدين للاطلاع — يُملأ أدناه عند إرسال إشعارات
+        # النقل، ويبقى فارغاً للسجلات بدون موقع بديل (لا حاجة لتأكيد استلام).
+        "recipient_ids": [],
+        "acknowledged_by": [],
         "created_at": now,
         "created_by": current_user.get("id"),
     }
@@ -2047,6 +2051,17 @@ async def create_unavailability(
                 f"Classroom '{class_label}' is unavailable ({period_desc}). Please relocate students to an alternative classroom."
             )
 
+        # Only carry the relocation extras when there's actually an
+        # alternative location to acknowledge. Plain "غير متوفر" alerts
+        # remain a one-way nudge — no ack button, no audit panel.
+        relocation_extra = None
+        if data.alternative_location:
+            relocation_extra = {
+                "unavailability_id": unavailability_id,
+                "class_id": data.entity_id,
+                "alternative_location": data.alternative_location,
+            }
+
         for teacher_id in teacher_ids:
             await create_notification_internal(
                 title=title_ar,
@@ -2060,9 +2075,22 @@ async def create_unavailability(
                 school_id=school_id,
                 title_en=title_en,
                 message_en=message_en,
+                action_url="/school/schedule" if data.alternative_location else None,
+                extra_data=relocation_extra,
             )
 
         notifications_sent = len(teacher_ids)
+
+        # Persist the resolved recipients on the unavailability doc so the
+        # ack endpoint can authorize teachers and the audit panel can show
+        # an accurate denominator without re-scanning the timetable.
+        if data.alternative_location and teacher_ids:
+            await gd_update_one(
+                db.session,
+                "unavailability",
+                {"id": unavailability_id},
+                {"recipient_ids": list(teacher_ids)},
+            )
 
     return {
         "success": True,
@@ -2103,7 +2131,145 @@ async def get_unavailability(
         query["entity_type"] = entity_type
 
     items = await gd_find(db.session, "unavailability", query, limit=1000)
+    # Surface ack progress for relocation rows so the school-settings audit
+    # panel can render "تم الاطلاع: M / N" without an extra round-trip per
+    # row. Non-relocation rows expose 0/0 — the frontend just hides the
+    # badge in that case.
+    for item in items:
+        recipients = item.get("recipient_ids") or []
+        acked = item.get("acknowledged_by") or []
+        item["recipient_count"] = len(recipients) if isinstance(recipients, list) else 0
+        item["acknowledged_count"] = len(acked) if isinstance(acked, list) else 0
     return {"items": items}
+
+
+@router.post("/school/settings/unavailability/{unavailability_id}/acknowledge")
+async def acknowledge_unavailability(
+    unavailability_id: str,
+    current_user: dict = Depends(get_current_user),
+    x_school_context: str = Header(default=None, alias="X-School-Context"),
+):
+    """Mark a relocation alert as acknowledged by the current user.
+
+    Authorized callers are the teachers listed in ``recipient_ids`` (i.e. the
+    same teachers the principal notified when the unavailability was saved).
+    The endpoint is idempotent — re-acking just refreshes ``acknowledged_at``
+    on the user's notifications and is a no-op on the unavailability doc."""
+    school_id = await get_school_id_from_context(current_user, x_school_context)
+    if not school_id:
+        raise HTTPException(status_code=400, detail="School context required")
+
+    record = await gd_find_one(db.session, "unavailability", {"id": unavailability_id, "school_id": school_id})
+    if not record:
+        raise HTTPException(status_code=404, detail="سجل عدم التوفر غير موجود")
+
+    if not record.get("alternative_location"):
+        raise HTTPException(status_code=400, detail="لا يلزم تأكيد الاستلام لهذا السجل")
+
+    user_id = current_user.get("id")
+    recipients = record.get("recipient_ids") or []
+    if not isinstance(recipients, list):
+        recipients = []
+
+    # Allow recipients to ack; allow principals/admins to ack on behalf of
+    # themselves only if they were also a recipient. We deliberately don't
+    # let admins fake acks for teachers — the audit count must reflect who
+    # actually saw the change.
+    if user_id not in recipients:
+        raise HTTPException(status_code=403, detail="غير مخوّل لتأكيد استلام هذا الإشعار")
+
+    acked = record.get("acknowledged_by") or []
+    if not isinstance(acked, list):
+        acked = []
+    if user_id not in acked:
+        acked.append(user_id)
+        await gd_update_one(
+            db.session,
+            "unavailability",
+            {"id": unavailability_id, "school_id": school_id},
+            {"acknowledged_by": acked},
+        )
+
+    # Mark the user's matching notifications as read + acknowledged. We
+    # filter the user's recent schedule notifications in Python because the
+    # ORM filter pipeline can't query JSONB-only fields like
+    # ``unavailability_id`` directly.
+    now_iso = datetime.now(timezone.utc).isoformat()
+    user_notifs = await gd_find(
+        db.session,
+        "notifications",
+        {"user_id": user_id, "type": "schedule"},
+        limit=500,
+    )
+    for n in user_notifs:
+        if n.get("unavailability_id") != unavailability_id:
+            continue
+        await gd_update_one(
+            db.session,
+            "notifications",
+            {"id": n["id"]},
+            {
+                "is_read": True,
+                "read_at": datetime.now(timezone.utc),
+                "is_acknowledged": True,
+                "acknowledged_at": now_iso,
+            },
+        )
+
+    return {
+        "success": True,
+        "acknowledged_count": len(acked),
+        "recipient_count": len(recipients),
+    }
+
+
+@router.get("/school/settings/unavailability/{unavailability_id}/acknowledgements")
+async def list_unavailability_acknowledgements(
+    unavailability_id: str,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN])),
+    x_school_context: str = Header(default=None, alias="X-School-Context"),
+):
+    """Return per-recipient ack status for a relocation unavailability.
+
+    The audit panel uses this to render names and timestamps; the summary
+    counts are also embedded in ``GET /school/settings/unavailability`` so
+    a list view doesn't need to fan out to this endpoint per row."""
+    school_id = await get_school_id_from_context(current_user, x_school_context)
+    if not school_id:
+        raise HTTPException(status_code=400, detail="School context required")
+
+    record = await gd_find_one(db.session, "unavailability", {"id": unavailability_id, "school_id": school_id})
+    if not record:
+        raise HTTPException(status_code=404, detail="سجل عدم التوفر غير موجود")
+
+    recipients = record.get("recipient_ids") or []
+    acked = record.get("acknowledged_by") or []
+    if not isinstance(recipients, list):
+        recipients = []
+    if not isinstance(acked, list):
+        acked = []
+    acked_set = set(acked)
+
+    # Build a single name lookup for everyone we need to render.
+    user_ids = list({*recipients, *acked})
+    user_map: dict[str, str] = {}
+    if user_ids:
+        users = await gd_find(db.session, "users", {"id": {"$in": user_ids}}, limit=len(user_ids))
+        user_map = {u.get("id"): (u.get("full_name") or "") for u in users}
+
+    items = []
+    for uid in recipients:
+        items.append({
+            "user_id": uid,
+            "name": user_map.get(uid, ""),
+            "acknowledged": uid in acked_set,
+        })
+
+    return {
+        "recipient_count": len(recipients),
+        "acknowledged_count": len(acked),
+        "items": items,
+    }
 
 
 @router.put("/school/settings/constraints")

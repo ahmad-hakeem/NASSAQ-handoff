@@ -94,6 +94,11 @@ export const NotificationsPage = () => {
   const [prefSettings, setPrefSettings] = useState(null);
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [acknowledgedIds, setAcknowledgedIds] = useState(() => new Set());
+  // Tracks notification IDs whose underlying relocation alert has been
+  // acknowledged in this session — separate from the circular set so the
+  // two flows can evolve independently. Server also persists the state on
+  // the unavailability doc, but this gives us instant UI feedback.
+  const [acknowledgedRelocationIds, setAcknowledgedRelocationIds] = useState(() => new Set());
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -163,6 +168,39 @@ export const NotificationsPage = () => {
   const handleNotificationClick = (notification) => {
     if (!notification.read_status) handleMarkAsRead(notification.id);
     if (notification.action_url) navigate(notification.action_url);
+  };
+
+  // Acknowledge a class-relocation alert. Mirrors the circular ack flow:
+  // optimistic UI update, server call to /school/settings/unavailability/
+  // {id}/acknowledge, rollback on failure. Also flips the notification's
+  // read state locally so the unread badge updates without a refetch.
+  const handleAcknowledgeRelocation = async (notification) => {
+    if (!notification?.unavailability_id) return;
+    if (acknowledgedRelocationIds.has(notification.id) || notification.is_acknowledged) return;
+    setAcknowledgedRelocationIds(prev => {
+      const next = new Set(prev);
+      next.add(notification.id);
+      return next;
+    });
+    setNotifications(prev => prev.map(n => n.id === notification.id
+      ? { ...n, read_status: true, is_acknowledged: true }
+      : n));
+    try {
+      await api.post(`/school/settings/unavailability/${notification.unavailability_id}/acknowledge`);
+      // Tell other notification UIs (sidebar bell) to re-sync their badge.
+      window.dispatchEvent(new CustomEvent('notifications:refresh'));
+    } catch (error) {
+      setAcknowledgedRelocationIds(prev => {
+        const next = new Set(prev);
+        next.delete(notification.id);
+        return next;
+      });
+      setNotifications(prev => prev.map(n => n.id === notification.id
+        ? { ...n, read_status: notification.read_status, is_acknowledged: notification.is_acknowledged }
+        : n));
+      const detail = error?.response?.data?.detail;
+      nassaqError(detail || (isRTL ? 'تعذر تسجيل اطلاعك على نقل الفصل' : 'Failed to acknowledge relocation'));
+    }
   };
 
   const handleAcknowledgeCircular = async (notification) => {
@@ -270,6 +308,14 @@ export const NotificationsPage = () => {
     const showAcknowledgeButton = isCircular && isReceiverView;
     const showCircularAckCard = isCircularAck && isManagerView;
     const isAcknowledged = acknowledgedIds.has(notification.id);
+    // Relocation ack metadata: surfaced when the backend tagged the
+    // notification with an unavailability_id (i.e. it stems from a class
+    // relocation). The button appears for any recipient — only the user
+    // it was sent to receives this notification, so an extra role check is
+    // unnecessary.
+    const isRelocation = !!notification.unavailability_id;
+    const isRelocationAcked = !!notification.is_acknowledged
+      || acknowledgedRelocationIds.has(notification.id);
 
     if (showCircularAckCard) {
       return (
@@ -374,6 +420,48 @@ export const NotificationsPage = () => {
                     </>
                   )}
                 </Button>
+              </div>
+            )}
+            {isRelocation && (
+              <div className="mt-3 flex items-center gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                <Button
+                  size="sm"
+                  onClick={() => handleAcknowledgeRelocation(notification)}
+                  disabled={isRelocationAcked}
+                  className={`h-8 gap-1.5 ${isRelocationAcked
+                    ? 'bg-emerald-600 hover:bg-emerald-600 text-white'
+                    : 'bg-orange-600 hover:bg-orange-700 text-white'}`}
+                  data-testid={`notif-relocation-ack-btn-${notification.id}`}
+                >
+                  {isRelocationAcked ? (
+                    <>
+                      <CheckCheck className="h-3.5 w-3.5" />
+                      {isRTL ? 'تم الاطلاع' : 'Acknowledged'}
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-3.5 w-3.5" />
+                      {isRTL ? 'تم الاطلاع' : 'Acknowledge'}
+                    </>
+                  )}
+                </Button>
+                {notification.action_url && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => navigate(notification.action_url)}
+                    className="h-8 gap-1.5 border-orange-300 text-orange-700 hover:bg-orange-50"
+                    data-testid={`notif-relocation-open-btn-${notification.id}`}
+                  >
+                    {isRTL ? 'فتح الجدول' : 'Open Schedule'}
+                  </Button>
+                )}
+                {notification.alternative_location && (
+                  <span className="text-[11px] text-orange-700 font-semibold">
+                    {isRTL ? 'الموقع البديل: ' : 'Relocated to: '}
+                    {notification.alternative_location}
+                  </span>
+                )}
               </div>
             )}
             <div className="flex items-center justify-between mt-2.5">

@@ -31,12 +31,15 @@ import {
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from '../components/ui/sheet';
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from '../components/ui/popover';
 import { Badge } from '../components/ui/badge';
 import {
   Wand2, UserX, Sparkles, Loader2, RefreshCw,
   Scale, Hourglass, UserMinus, AlertOctagon, AlertTriangle, Repeat,
   ShieldAlert, Settings, ArrowLeft,
-  Undo2, Layers, Lightbulb, X, ExternalLink,
+  Undo2, Layers, Lightbulb, X, ExternalLink, Check, CheckCheck, MapPin,
 } from 'lucide-react';
 import CandidatesSidePanel from '../components/schedule/CandidatesSidePanel';
 import BulkSubstitutionPanel from '../components/schedule/BulkSubstitutionPanel';
@@ -164,7 +167,7 @@ function KpiCard({ icon: Icon, label, value, suffix, accent }) {
 // ─── Cell renderers ────────────────────────────────────────────────────────
 // Compact, "data-dense" cells: tiny text, subtle borders, no boxy borders
 // inside cells — the matrix relies on the parent grid lines for separation.
-function FilledCell({ cell, onClick }) {
+function FilledCell({ cell, onClick, onAcknowledgeRelocation }) {
   // ── علم نقل الفصل ──────────────────────────────────────────────────────
   // الإدارة وسمَت فصل هذه الحصة بأنه غير متوفر وحدّدت موقعاً بديلاً.
   // نُلوّن الخانة العادية بصبغة تحذير برتقالية ونعرض نص "نُقل إلى: …".
@@ -172,6 +175,10 @@ function FilledCell({ cell, onClick }) {
   // بإلحاق التلميح في الـtooltip حتى لا نخفي معلومة الاستبدال أو الشغور.
   const relocated = !!cell?.is_relocated && !!cell?.alternative_location;
   const relocationTip = relocated ? `نُقل إلى: ${cell.alternative_location}` : '';
+  // معلومات تأكيد الاستلام: نعرض زر "تم الاطلاع" للمستلمين فقط، ونُبدّله إلى
+  // حالة "تم الاطلاع" بلون أخضر بعد النقر — متوافق مع نمط استلام التعاميم.
+  const canAck = relocated && !!cell?.unavailability_id && !!cell?.viewer_is_recipient;
+  const alreadyAcked = !!cell?.acknowledged_by_viewer;
 
   // cell.is_vacant => حصة شاغرة (معلمها غائب) — تفتح نافذة المرشحين عند الضغط
   if (cell?.is_vacant) {
@@ -223,20 +230,100 @@ function FilledCell({ cell, onClick }) {
     );
   }
   // الخانة العادية — هنا نطبّق صبغة "نُقل إلى" بشكل واضح إذا وُجدت.
+  // عند توفر unavailability_id نلفّ الخلية بـPopover يعرض الموقع البديل
+  // وزر "تم الاطلاع" الذي يستدعي endpoint التأكيد ويحدِّث شارة الإشعارات.
   if (relocated) {
-    return (
+    const cellBody = (
       <div
         className="w-full h-full flex flex-col items-center justify-center text-[10px] leading-tight px-1
-                   bg-orange-50 text-orange-700 relative"
+                   bg-orange-50 hover:bg-orange-100 text-orange-700 relative cursor-pointer"
         title={`${cell?.subject_name ? cell.subject_name + ' • ' : ''}${relocationTip}`}
         data-testid="cell-relocated"
       >
         <AlertTriangle className="absolute top-0.5 right-0.5 h-2.5 w-2.5 text-orange-500" />
+        {alreadyAcked && (
+          <CheckCheck className="absolute top-0.5 left-0.5 h-2.5 w-2.5 text-emerald-600" />
+        )}
         <span className="font-semibold truncate max-w-full">{cell?.class_name || '—'}</span>
         <span className="text-[9px] font-semibold truncate max-w-full">
           نُقل إلى: {cell.alternative_location}
         </span>
       </div>
+    );
+    if (!cell?.unavailability_id) {
+      return cellBody;
+    }
+    return (
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="w-full h-full p-0 m-0 bg-transparent border-0"
+            data-testid="cell-relocated-trigger"
+          >
+            {cellBody}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="center"
+          side="bottom"
+          className="w-64 text-right"
+          dir="rtl"
+          data-testid="cell-relocated-popover"
+        >
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5 text-orange-700">
+              <AlertTriangle className="h-4 w-4" />
+              <span className="text-sm font-bold font-cairo">تم نقل الفصل</span>
+            </div>
+            <div className="text-xs text-slate-600">
+              <span className="font-semibold">{cell?.class_name || '—'}</span>
+              {cell?.subject_name ? <span> • {cell.subject_name}</span> : null}
+            </div>
+            <div className="flex items-start gap-1.5 text-sm bg-orange-50 border border-orange-200 rounded-md px-2 py-1.5">
+              <MapPin className="h-3.5 w-3.5 text-orange-600 mt-0.5 shrink-0" />
+              <div>
+                <div className="text-[11px] text-orange-600">الموقع البديل</div>
+                <div className="font-semibold text-orange-800">{cell.alternative_location}</div>
+              </div>
+            </div>
+            {canAck ? (
+              <Button
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!alreadyAcked && onAcknowledgeRelocation) {
+                    onAcknowledgeRelocation(cell);
+                  }
+                }}
+                disabled={alreadyAcked}
+                className={`w-full h-8 gap-1.5 ${alreadyAcked
+                  ? 'bg-emerald-600 hover:bg-emerald-600 text-white'
+                  : 'bg-orange-600 hover:bg-orange-700 text-white'}`}
+                data-testid="cell-relocation-ack"
+              >
+                {alreadyAcked ? (
+                  <>
+                    <CheckCheck className="h-3.5 w-3.5" />
+                    تم الاطلاع
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-3.5 w-3.5" />
+                    تم الاطلاع
+                  </>
+                )}
+              </Button>
+            ) : (
+              <p className="text-[11px] text-slate-500">
+                {alreadyAcked
+                  ? 'لقد سجّلت اطلاعك على هذا النقل سابقاً.'
+                  : 'هذا الإشعار لمعلومات الجدول فقط.'}
+              </p>
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
     );
   }
   return (
@@ -828,6 +915,38 @@ export default function SchedulePageNew() {
     setUndoTeacher({ id: teacher.id, full_name: teacher.full_name || '' });
   }, []);
 
+  // Acknowledge a relocation overlay straight from a master-grid cell. We
+  // hit the same school-settings ack endpoint the notifications page uses,
+  // then refresh the grid so the cell flips to "تم الاطلاع" without forcing
+  // the teacher to navigate to /notifications. The unread badge in the
+  // sidebar listens to a window event so we nudge it here too.
+  const handleAcknowledgeRelocation = useCallback(async (cell) => {
+    if (!cell?.unavailability_id) return;
+    if (!schoolId) {
+      toast.error('تعذّر تحديد المدرسة الحالية');
+      return;
+    }
+    try {
+      await api.post(
+        `/school/settings/unavailability/${cell.unavailability_id}/acknowledge`,
+        {},
+        { headers: { 'X-School-Context': schoolId } },
+      );
+      toast.success('تم تسجيل اطلاعك على نقل الفصل');
+      // Bump the bell so its unread badge re-syncs.
+      window.dispatchEvent(new CustomEvent('notifications:refresh'));
+      await loadGrid();
+    } catch (e) {
+      const status = e?.response?.status;
+      const detail = e?.response?.data?.detail;
+      if (status === 403) {
+        nassaqError(detail || 'هذا الإشعار ليس موجَّهاً إليك.');
+      } else {
+        nassaqError(detail || 'تعذّر تسجيل الاطلاع، حاول مرة أخرى');
+      }
+    }
+  }, [api, schoolId, loadGrid, nassaqError]);
+
   const handleConfirmUndoAbsence = useCallback(async () => {
     if (!undoTeacher?.id) return;
     if (!schoolId) {
@@ -1216,6 +1335,7 @@ export default function SchedulePageNew() {
               onVacantClick={handleVacantClick}
               onUndoAbsence={handleRequestUndoAbsence}
               onBulkCoverClick={handleOpenBulkPanel}
+              onAcknowledgeRelocation={handleAcknowledgeRelocation}
               today={grid?.today}
               unresolvedConflicts={unresolvedConflicts}
             />
@@ -1493,7 +1613,7 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
 // التصميم البصري الجديد: خلفية بيضاء، رؤوس فاتحة (slate-50)، حدود رفيعة
 // (slate-100)، وعمود المعلم على يمين الشاشة (RTL) مع ظل خفيف يفصل المنطقة
 // المثبَّتة عن منطقة التمرير.
-function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, today, unresolvedConflicts = [] }) {
+function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, onAcknowledgeRelocation, today, unresolvedConflicts = [] }) {
   // فهرس "رؤى حكيم" بمفتاح teacher_id|day|period → reason_ar. التحديد
   // بالمعلم ضروري لئلا يلوّن صفّ معلم تنبيه يخصّ معلماً آخر في نفس
   // الفترة. العناصر التي لا تحمل teacher_id (مثل طلبات لم تُسنَد لأحد)
@@ -1675,6 +1795,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                       <FilledCell
                         cell={cell}
                         onClick={cell.is_vacant ? () => onVacantClick(cellData) : undefined}
+                        onAcknowledgeRelocation={onAcknowledgeRelocation}
                       />
                     ) : (
                       <EmptyCell />
