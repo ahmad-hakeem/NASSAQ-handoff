@@ -315,7 +315,19 @@ export default function AddStudentWizard({
       }
     } catch (error) {
       console.error('Error creating student:', error);
-      const errorMessage = error.response?.data?.detail || (t('errorCreatingAccount'));
+      // The backend returns one of three shapes depending on the handler:
+      //   { detail: "..." }                  (axios interceptor fallback)
+      //   { error: { message: "..." } }      (custom HTTP/Integrity handler)
+      //   { error: { detail: "..." } }       (older shape)
+      // Surface the most specific, field-aware message to the admin so they
+      // know exactly which field needs correction.
+      const data = error.response?.data;
+      const errorMessage =
+        data?.detail ||
+        data?.error?.message ||
+        data?.error?.detail ||
+        data?.message ||
+        t('errorCreatingAccount');
       nassaqError(errorMessage);
     } finally {
       setIsSubmitting(false);

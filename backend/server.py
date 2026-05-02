@@ -85,18 +85,12 @@ def create_app() -> FastAPI:
     @application.exception_handler(IntegrityError)
     async def integrity_exception_handler(request: Request, exc: IntegrityError):
         # Convert race-condition unique/foreign-key violations into a clean 409
-        # instead of leaking a 500 to the client.
+        # instead of leaking a 500 to the client. Map known PG constraint
+        # names to actionable, field-specific Arabic messages so the UI can
+        # tell the user exactly what's wrong.
+        from app.integrity_messages import describe_integrity_error
         msg = str(getattr(exc, "orig", exc))
-        lower = msg.lower()
-        if "unique" in lower or "duplicate" in lower:
-            code = "DUPLICATE_RECORD"
-            user_msg = "هذا السجل موجود مسبقاً"
-        elif "foreign key" in lower:
-            code = "INVALID_REFERENCE"
-            user_msg = "مرجع غير صالح في البيانات المُرسَلة"
-        else:
-            code = "DATA_CONFLICT"
-            user_msg = "تعارض في البيانات"
+        code, user_msg = describe_integrity_error(msg)
         logger.warning(
             "IntegrityError on %s %s: %s",
             request.method, request.url.path, msg,

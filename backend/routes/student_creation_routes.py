@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import uuid
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc, _gd_addtoset
 from sqlalchemy.exc import IntegrityError
+from app.integrity_messages import describe_integrity_error
 import re as _re
 
 import qrcode
@@ -139,36 +140,48 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         """
         البحث عن ولي أمر موجود أو إنشاء جديد
         يدعم ربط الأشقاء تلقائياً
+
+        Tenant rules (important):
+          • The parents row is ALWAYS scoped to the current school. We never
+            reuse a parents row from another school — that would break tenant
+            isolation and let a student in School A get linked to a parent
+            record owned by School B.
+          • The users row is global (users.email is globally unique). When a
+            user account already exists for the same email, we reuse the
+            existing user_id and create a fresh per-school parents row that
+            references it. This avoids `users_email_key` IntegrityErrors
+            without leaking data across tenants.
         """
         existing_parent = None
         linked_students = []
-        
-        # Search by national_id first
+
+        # parents lookup is per-school only.
         if parent_data.get("national_id"):
             existing_parent = await gd_find_one(db.session, "parents", {
                 "national_id": parent_data["national_id"],
                 "school_id": school_id
             })
-        
-        # Search by phone if not found
         if not existing_parent and parent_data.get("phone"):
             existing_parent = await gd_find_one(db.session, "parents", {
                 "phone": parent_data["phone"],
                 "school_id": school_id
             })
-        
-        # Search by email if not found
         if not existing_parent and parent_data.get("email"):
             existing_parent = await gd_find_one(db.session, "parents", {
                 "email": parent_data["email"],
                 "school_id": school_id
             })
-        
+
         if existing_parent:
-            # Get linked students (siblings)
+            # Get linked students (siblings) — restrict to this school so we
+            # don't leak siblings from other tenants.
             student_ids = existing_parent.get("student_ids", [])
             if student_ids:
-                siblings = await gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=20)
+                siblings = await gd_find(
+                    db.session, "students",
+                    {"id": {"$in": student_ids}, "school_id": school_id},
+                    limit=20,
+                )
                 linked_students = siblings
 
             # Enrich with linked user_id (parents table has no user_id column;
@@ -186,33 +199,52 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                 "is_new": False,
                 "linked_students": linked_students
             }
-        
+
+        # 3) Reuse a global users row when only the user account exists
+        #    (e.g. a parent whose previous parents row was archived). This
+        #    avoids tripping the users_email_key UNIQUE constraint below.
+        existing_user = None
+        if parent_data.get("email"):
+            existing_user = await gd_find_one(db.session, "users", {
+                "email": parent_data["email"],
+            })
+            if existing_user and existing_user.get("role") != UserRole.PARENT.value:
+                # Email belongs to a non-parent account — refuse with a
+                # specific, actionable message instead of a 500.
+                raise HTTPException(
+                    status_code=409,
+                    detail="البريد الإلكتروني مستخدم مسبقاً لحساب آخر",
+                )
+
         # Create new parent
         parent_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
-        
-        # Generate temp password
-        temp_password = generate_secure_password()
-        
-        # Create user account for parent
-        user_id = str(uuid.uuid4())
-        parent_email = parent_data.get("email") or f"parent_{parent_id[:8]}@nassaq.local"
-        
-        user_doc = {
-            "id": user_id,
-            "email": parent_email,
-            "password_hash": hash_password(temp_password),
-            "full_name": parent_data["full_name"],
-            "role": UserRole.PARENT.value,
-            "phone": parent_data.get("phone"),
-            "is_active": True,
-            "must_change_password": True,
-            "tenant_id": school_id,
-            "created_at": now,
-            "created_by": created_by
-        }
-        await gd_insert(db.session, "users", user_doc)
-        
+
+        if existing_user:
+            user_id = existing_user.get("id")
+            parent_email = existing_user.get("email")
+            temp_password = None  # account already exists
+        else:
+            # Generate temp password and a fresh user account
+            temp_password = generate_secure_password()
+            user_id = str(uuid.uuid4())
+            parent_email = parent_data.get("email") or f"parent_{parent_id[:8]}@nassaq.local"
+
+            user_doc = {
+                "id": user_id,
+                "email": parent_email,
+                "password_hash": hash_password(temp_password),
+                "full_name": parent_data["full_name"],
+                "role": UserRole.PARENT.value,
+                "phone": parent_data.get("phone"),
+                "is_active": True,
+                "must_change_password": True,
+                "tenant_id": school_id,
+                "created_at": now,
+                "created_by": created_by
+            }
+            await gd_insert(db.session, "users", user_doc)
+
         parent_doc = {
             "id": parent_id,
             # parents table has no user_id column; keep this field for
@@ -230,9 +262,9 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             "created_at": now,
             "created_by": created_by,
         }
-        
+
         await gd_insert(db.session, "parents", parent_doc)
-        
+
         return {
             "parent": parent_doc,
             "is_new": True,
@@ -263,20 +295,28 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         city_code = school.get("city_code", "CIT") if school else "CIT"
         school_name = school.get("name_ar", "المدرسة") if school else "المدرسة"
         
-        # Check for duplicate student
+        # Pre-flight duplicate checks for student fields. These produce
+        # specific, field-aware messages BEFORE we touch the DB so the user
+        # sees an actionable error instead of a generic "record exists".
         if request.national_id:
             existing = await gd_find_one(db.session, "students", {
                 "national_id": request.national_id,
                 "school_id": school_id
             })
             if existing:
-                raise HTTPException(status_code=400, detail="الطالب موجود مسبقاً برقم الهوية هذا")
-        
+                raise HTTPException(
+                    status_code=409,
+                    detail="رقم هوية الطالب مسجل مسبقاً في هذه المدرسة",
+                )
+
         if request.email:
             existing = await gd_find_one(db.session, "users", {"email": request.email})
             if existing:
-                raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم مسبقاً")
-        
+                raise HTTPException(
+                    status_code=409,
+                    detail="البريد الإلكتروني للطالب مستخدم مسبقاً",
+                )
+
         # Check if linking to existing parent
         if request.link_to_parent_id:
             existing_parent = await gd_find_one(db.session, "parents", {"id": request.link_to_parent_id, "school_id": school_id})
@@ -298,12 +338,22 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             else:
                 raise HTTPException(status_code=404, detail="ولي الأمر المحدد غير موجود")
         else:
-            # Find or create parent
-            parent_result = await find_or_create_parent(
-                request.parent.model_dump(),
-                school_id,
-                current_user.get("id")
-            )
+            # Find or create parent. Convert any constraint violation that
+            # leaks out of the helper into a specific, actionable message.
+            try:
+                parent_result = await find_or_create_parent(
+                    request.parent.model_dump(),
+                    school_id,
+                    current_user.get("id")
+                )
+            except IntegrityError as ie:
+                _, user_msg = describe_integrity_error(str(getattr(ie, "orig", ie)))
+                # Most parent-side conflicts are about the parent's user
+                # account email — clarify that explicitly when relevant.
+                lower = str(getattr(ie, "orig", ie)).lower()
+                if "users_email_key" in lower or "email" in lower:
+                    user_msg = "بريد ولي الأمر مستخدم مسبقاً لحساب آخر"
+                raise HTTPException(status_code=409, detail=user_msg)
         
         parent = parent_result["parent"]
         is_new_parent = parent_result["is_new"]
@@ -340,7 +390,18 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             "created_at": now,
             "created_by": current_user.get("id")
         }
-        await gd_insert(db.session, "users", user_doc)
+        try:
+            await gd_insert(db.session, "users", user_doc)
+        except IntegrityError as ie:
+            msg = str(getattr(ie, "orig", ie))
+            lower = msg.lower()
+            if "users_email_key" in lower or ("email" in lower and "unique" in lower):
+                raise HTTPException(
+                    status_code=409,
+                    detail="البريد الإلكتروني للطالب مستخدم مسبقاً",
+                )
+            _, user_msg = describe_integrity_error(msg)
+            raise HTTPException(status_code=409, detail=user_msg)
 
         student_doc = {
             "id": student_id,
@@ -371,7 +432,8 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         # Retry on race-time student_number collision. Use a SAVEPOINT
         # (begin_nested) so rolling back a failed student insert does NOT
         # wipe the user/parent rows already written in this request's
-        # transaction. Only student_number conflicts are retried.
+        # transaction. Only student_number conflicts are retried; everything
+        # else is converted to a specific, actionable HTTPException.
         _attempts = 0
         while True:
             try:
@@ -379,19 +441,27 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                     await gd_insert(db.session, "students", student_doc)
                 break
             except IntegrityError as ie:
-                _attempts += 1
-                msg = str(getattr(ie, "orig", ie)).lower()
-                if _attempts < 5 and ("student_number" in msg or "uq_students_number_school" in msg):
+                msg = str(getattr(ie, "orig", ie))
+                lower = msg.lower()
+                if _attempts < 5 and ("student_number" in lower or "uq_students_number_school" in lower):
+                    _attempts += 1
                     next_seq = await _next_student_sequence(db.session, school_id, prefix) + _attempts
                     student_id_code = generate_student_id(school_code, city_code, year, next_seq)
                     student_doc["student_number"] = student_id_code
                     student_doc["qr_code"] = generate_qr_code(student_doc)
                     qr_code = student_doc["qr_code"]
                     continue
-                raise
+                # Map the constraint name → actionable Arabic message.
+                _, user_msg = describe_integrity_error(msg)
+                raise HTTPException(status_code=409, detail=user_msg)
         
-        # Link student to parent
-        await _gd_addtoset(db.session, "parents", {"id": parent.get("id")}, {"student_ids": student_id})
+        # Link student to parent. Scope by both id AND school_id so we can
+        # never accidentally mutate a parent record owned by another tenant.
+        await _gd_addtoset(
+            db.session, "parents",
+            {"id": parent.get("id"), "school_id": school_id},
+            {"student_ids": student_id},
+        )
 
         # Create canonical guardian_link record so downstream queries work (idempotent)
         parent_user_id = parent.get("user_id")
@@ -695,8 +765,13 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                                 continue
                             raise
                 
-                # Link to parent
-                await _gd_addtoset(db.session, "parents", {"id": parent_result["parent"].get("id")}, {"student_ids": student_id})
+                # Link to parent. Scope by school_id to keep tenant
+                # isolation — see the same guard in the single-create flow.
+                await _gd_addtoset(
+                    db.session, "parents",
+                    {"id": parent_result["parent"].get("id"), "school_id": school_id},
+                    {"student_ids": student_id},
+                )
 
                 # Canonical guardian_link (idempotent)
                 parent_user_id = parent_result["parent"].get("user_id")
