@@ -9,15 +9,18 @@ import { toast } from 'sonner';
 import {
   BookOpen, Users, Calendar, ClipboardCheck, Bell, Settings,
   GraduationCap, Clock, CheckCircle2, AlertCircle, ChevronLeft,
-  BarChart3, FileText, Star, TrendingUp, CalendarDays, Menu
+  BarChart3, FileText, Star, TrendingUp, CalendarDays, Menu,
+  Globe, Sun, Moon
 } from 'lucide-react';
 import { Sidebar } from '../components/layout/Sidebar';
+import { NotificationBell } from '../components/notifications/NotificationBell';
 import { formatHijriOnly, formatGregorianArabic } from '../utils/hijriDate';
 
-import { useTranslation } from '../contexts/ThemeContext';
+import { useTheme, useTranslation } from '../contexts/ThemeContext';
 export default function TeacherDashboard() {
   const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
+  const { toggleLanguage, toggleTheme, isDark } = useTheme();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -144,6 +147,25 @@ export default function TeacherDashboard() {
 
       {/* Main Content */}
       <main className={`flex-1 transition-all duration-300 ${sidebarOpen ? (isRTL ? 'mr-64' : 'ml-64') : (isRTL ? 'mr-20' : 'ml-20')}`}>
+        <header className="sticky top-0 z-30 bg-white/80 dark:bg-gray-900/80 backdrop-blur border-b border-border/50 px-4 sm:px-6 py-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="font-cairo text-base sm:text-lg font-bold text-foreground truncate">
+                {t('teacherDashboard')}
+              </h2>
+            </div>
+            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+              <Button variant="ghost" size="icon" onClick={toggleLanguage} className="rounded-xl h-9 w-9" data-testid="teacher-language-toggle">
+                <Globe className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-xl h-9 w-9" data-testid="teacher-theme-toggle">
+                {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </Button>
+              <NotificationBell />
+            </div>
+          </div>
+        </header>
+
         <div className="p-4 sm:p-6 space-y-6">
           
           {/* Welcome Card */}
