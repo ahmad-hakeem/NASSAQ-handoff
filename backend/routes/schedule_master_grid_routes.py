@@ -26,7 +26,52 @@ router = APIRouter()
 
 
 DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday"]
-PERIODS = list(range(1, 8))  # 1..7 لكل يوم
+# DEFAULT_PERIODS هو fallback نهائي فقط عند تعذّر قراءة إعدادات المدرسة.
+# في كل طلب نستخرج عدد الحصص الفعلي من school_settings.periods_per_day أو
+# من time_slots المعرّفة لكل مدرسة — لا نفترض 7 حصص بعد الآن.
+DEFAULT_PERIODS = list(range(1, 8))
+
+
+async def _resolve_periods_for_school(school_id: str) -> list[int]:
+    """Resolve the 1..N teaching periods for a school dynamically.
+
+    Order of resolution (first non-empty wins):
+      1. Distinct ``period_number`` from ``time_slots`` (excludes breaks/prayer
+         when a slot type is provided).
+      2. ``school_settings.periods_per_day`` → ``range(1, N+1)``.
+      3. ``DEFAULT_PERIODS`` (legacy fallback only — should never trigger
+         once a school has any saved schedule settings).
+    """
+    try:
+        slots = await gd_find(db.session, "time_slots", {"school_id": school_id}, limit=200)
+        teaching_periods: list[int] = []
+        for s in slots:
+            slot_type = s.get("type") or ""
+            if s.get("is_break") or s.get("is_prayer") or slot_type in ("break", "prayer"):
+                continue
+            pn = s.get("period_number") or s.get("slot_number")
+            if pn is None:
+                continue
+            try:
+                teaching_periods.append(int(pn))
+            except (TypeError, ValueError):
+                continue
+        if teaching_periods:
+            return sorted(set(teaching_periods))
+
+        settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
+        if settings:
+            ppd = settings.get("periods_per_day")
+            try:
+                ppd_int = int(ppd) if ppd is not None else 0
+            except (TypeError, ValueError):
+                ppd_int = 0
+            if ppd_int > 0:
+                return list(range(1, ppd_int + 1))
+    except Exception as _err:
+        logger.warning("periods resolution failed for school %s: %s", school_id, _err)
+
+    return list(DEFAULT_PERIODS)
 
 
 def _today_day_key() -> str:
@@ -191,6 +236,8 @@ async def get_master_grid(
     if not sid:
         raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
     assert_school_access(current_user, str(sid))
+
+    periods = await _resolve_periods_for_school(sid)
 
     teachers = await gd_find(
         db.session,
@@ -426,7 +473,7 @@ async def get_master_grid(
         "timetable_id": timetable.get("id") if timetable else None,
         "timetable_status": timetable.get("status") if timetable else None,
         "days": DAYS,
-        "periods": PERIODS,
+        "periods": periods,
         "today": today_key,
         "teachers": teacher_rows,
         "cells": cells,

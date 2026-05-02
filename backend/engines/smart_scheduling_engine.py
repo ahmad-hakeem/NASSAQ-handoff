@@ -324,6 +324,7 @@ class GenerationResult(BaseModel):
     message_ar: str
     message_en: str
     capacity_issues: Optional[List[Dict[str, Any]]] = None
+    unresolved_conflicts: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 # ============== SMART SCHEDULING ENGINE ==============
@@ -2778,6 +2779,51 @@ class SmartSchedulingEngine:
                 unscheduled_docs = [u.model_dump() for u in unscheduled]
                 await gd_insert_many(self.session, "timetable_unscheduled_demands", unscheduled_docs)
 
+            # Build رؤى حكيم unresolved_conflicts payload — names resolved
+            # once via batched lookups so the frontend renders the insights
+            # banner + cell tooltips without an extra round-trip.
+            unresolved_conflicts: List[Dict[str, Any]] = []
+            try:
+                referenced_class_ids = {c.class_id for c in conflicts if c.class_id} | {u.class_id for u in unscheduled if u.class_id}
+                referenced_subject_ids = {c.subject_id for c in conflicts if c.subject_id} | {u.subject_id for u in unscheduled if u.subject_id}
+                cls_name_map: Dict[str, str] = {}
+                subj_name_map: Dict[str, str] = {}
+                if referenced_class_ids:
+                    _classes = await gd_find(self.session, "classes", {"id": {"$in": list(referenced_class_ids)}}, limit=len(referenced_class_ids))
+                    cls_name_map = {c.get("id"): (c.get("name") or c.get("name_ar") or "") for c in _classes}
+                if referenced_subject_ids:
+                    _subjects = await gd_find(self.session, "subjects", {"id": {"$in": list(referenced_subject_ids)}}, limit=len(referenced_subject_ids))
+                    subj_name_map = {s.get("id"): (s.get("name_ar") or s.get("name") or "") for s in _subjects}
+
+                for c in conflicts:
+                    unresolved_conflicts.append({
+                        "day_of_week": c.day_of_week,
+                        "period_number": c.period_number,
+                        "class_id": c.class_id,
+                        "class_name": cls_name_map.get(c.class_id, "") if c.class_id else "",
+                        "subject_id": c.subject_id,
+                        "subject_name": subj_name_map.get(c.subject_id, "") if c.subject_id else "",
+                        "reason_code": c.conflict_type,
+                        "reason_ar": c.message_ar,
+                        "kind": "conflict",
+                    })
+                for u in unscheduled:
+                    unresolved_conflicts.append({
+                        "day_of_week": None,
+                        "period_number": None,
+                        "class_id": u.class_id,
+                        "class_name": cls_name_map.get(u.class_id, "") if u.class_id else "",
+                        "subject_id": u.subject_id,
+                        "subject_name": subj_name_map.get(u.subject_id, "") if u.subject_id else "",
+                        "reason_code": "UNSCHEDULED",
+                        "reason_ar": u.reason_ar,
+                        "remaining_periods": u.remaining_periods,
+                        "kind": "unscheduled",
+                    })
+            except Exception as _enrich_err:  # never fail generation for insights enrichment
+                logger.warning(f"unresolved_conflicts enrichment failed: {_enrich_err}")
+                unresolved_conflicts = []
+
             if underutilized_teachers:
                 await self._log_run(run_id, "warning", f"معلمون بحصص أقل من المتوقع: {len(underutilized_teachers)}", {
                     "underutilized_teachers": underutilized_teachers
@@ -2820,7 +2866,8 @@ class SmartSchedulingEngine:
                 optimization_score=optimization_score,
                 message_ar=f"تم توليد الجدول بنجاح ({len(optimized_sessions)} حصة)",
                 message_en=f"Timetable generated successfully ({len(optimized_sessions)} sessions)",
-                capacity_issues=capacity_issues if capacity_issues else None
+                capacity_issues=capacity_issues if capacity_issues else None,
+                unresolved_conflicts=unresolved_conflicts,
             )
             
         except Exception as e:

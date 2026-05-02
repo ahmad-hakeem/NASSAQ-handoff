@@ -32,13 +32,15 @@ import {
   Wand2, UserX, Sparkles, Loader2, RefreshCw,
   Scale, Hourglass, UserMinus, AlertOctagon, AlertTriangle, Repeat,
   ShieldAlert, Settings, ArrowLeft,
-  Undo2, Layers,
+  Undo2, Layers, Lightbulb, X,
 } from 'lucide-react';
 import CandidatesSidePanel from '../components/schedule/CandidatesSidePanel';
 import BulkSubstitutionPanel from '../components/schedule/BulkSubstitutionPanel';
 import ScheduleTabNav from '../components/schedule/ScheduleTabNav';
 import ScheduleSettingsTabContent from '../components/schedule/ScheduleSettingsTabContent';
 import { StandbyRosterContent } from './StandbyRosterPage';
+import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
+import { getPose } from '../components/hakim/hakimPoses';
 
 // ─── Infeasibility issue → contextual next step ────────────────────────────
 // كل كود INF يحدد الصفحة الأنسب التي تحل المشكلة. عند غياب الكود نوجِّه إلى
@@ -59,7 +61,10 @@ const DAYS = [
   { key: 'wednesday', ar: 'الأربعاء' },
   { key: 'thursday',  ar: 'الخميس' },
 ];
-const PERIODS = [1, 2, 3, 4, 5, 6, 7];
+// لا فرض لعدد الحصص في الواجهة بعد الآن — قائمة الحصص تأتي ديناميكياً من
+// الباك‑إند بناءً على إعدادات المدرسة (periods_per_day / time_slots).
+// نُبقي مصفوفة فارغة كـ fallback نهائي لتفادي كسر العرض إن تأخر التحميل.
+const FALLBACK_PERIODS = [];
 
 const RANK_AR = {
   expert: 'خبير',
@@ -222,6 +227,98 @@ function EmptyCell() {
   return <div className="w-full h-full" />;
 }
 
+// ─── Hakeem-branded loading overlay ─────────────────────────────────────────
+// يُعرض فوق المصفوفة أثناء توليد الجدول التلقائي. يستخدم تعبير "ai-thinking"
+// من معرض حكيم مع ضباب أبيض شفّاف ونبضة بنفسجية لتأكيد أن المحرك يعمل.
+function HakimGeneratingOverlay() {
+  const poseSrc = getPose('ai-thinking');
+  return (
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-white/85 backdrop-blur-[2px]">
+      <div className="flex flex-col items-center gap-3 px-6 py-5 rounded-xl bg-white border border-violet-200 shadow-lg">
+        <div className="relative">
+          <div className="absolute inset-0 rounded-full bg-violet-300/40 animate-ping" />
+          <img
+            src={poseSrc}
+            alt="حكيم يفكّر"
+            className="relative h-20 w-20 object-contain"
+            draggable={false}
+          />
+        </div>
+        <div className="flex items-center gap-2 text-violet-700">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-sm font-semibold">
+            حكيم يقوم بتحليل القيود وبناء الجدول الذكي…
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-500 max-w-[260px] text-center">
+          قد تستغرق العملية بضع ثوانٍ بحسب عدد المعلمين والفصول وقيود الجدول.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── رؤى حكيم — شريط ملاحظات قابل للإغلاق ─────────────────────────────────
+// يلخّص للمستخدم الخانات التي لم يستطع المحرك جدولتها (تعارض أو طلب متبقٍ)
+// مع أبرز ثلاثة أسباب باللغة العربية، ويترك إمكانية الإغلاق لجلسة العمل.
+function HakimInsightsBanner({ conflicts, dismissed, onDismiss }) {
+  if (!conflicts || conflicts.length === 0 || dismissed) return null;
+  const total = conflicts.length;
+  // نأخذ حتى ثلاث رؤى مميَّزة (إزالة المكرَّر بنفس reason_ar/الفصل/المادة).
+  const seen = new Set();
+  const top = [];
+  for (const c of conflicts) {
+    const key = `${c.class_id || ''}|${c.subject_id || ''}|${c.reason_ar || ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    top.push(c);
+    if (top.length >= 3) break;
+  }
+  return (
+    <div className="flex items-start gap-3 p-3 rounded-lg border border-orange-200 bg-orange-50 text-orange-900 shrink-0">
+      <Lightbulb className="h-5 w-5 shrink-0 text-orange-500 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold">
+          رؤى حكيم • {total} ملاحظة لم تُحلّ بعد
+        </p>
+        <ul className="mt-1.5 space-y-0.5 text-[12px] leading-relaxed text-orange-800">
+          {top.map((c, idx) => {
+            const subj = c.subject_name || '—';
+            const cls = c.class_name || '—';
+            return (
+              <li key={idx} className="truncate">
+                <span className="font-semibold">{subj}</span>
+                {' • '}
+                <span>{cls}</span>
+                {c.reason_ar ? (
+                  <>
+                    {' — '}
+                    <span className="text-orange-700">{c.reason_ar}</span>
+                  </>
+                ) : null}
+              </li>
+            );
+          })}
+          {total > top.length && (
+            <li className="text-[11px] text-orange-700">
+              …و{total - top.length} ملاحظة إضافية مُلوَّنة على الخلايا في الشبكة.
+            </li>
+          )}
+        </ul>
+      </div>
+      <button
+        type="button"
+        onClick={onDismiss}
+        title="إخفاء الشريط"
+        aria-label="إخفاء شريط رؤى حكيم"
+        className="shrink-0 rounded p-1 text-orange-700 hover:bg-orange-100 transition-colors"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 // ─── Main page ─────────────────────────────────────────────────────────────
 // ─── Active primary tab from URL ────────────────────────────────────────────
 // التبويب الرئيسي للصفحة يُقرأ من معطى ?tab= في الرابط. تُقبل ثلاث قيم
@@ -240,6 +337,7 @@ export default function SchedulePageNew() {
   const navigate = useNavigate();
   const schoolId = user?.tenant_id;
   const tab = useScheduleTab();
+  const { nassaqError, nassaqWarning } = useNassaqAlert();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -256,6 +354,11 @@ export default function SchedulePageNew() {
 
   // إنشاء الجدول تلقائياً
   const [generating, setGenerating] = useState(false);
+
+  // رؤى حكيم — قائمة التعارضات/الخانات التي تعذّر جدولتها بعد آخر تشغيل،
+  // مع خانة قابلة للإغلاق تخزن تفضيل المستخدم لإخفاء الشريط لجلسة العمل.
+  const [unresolvedConflicts, setUnresolvedConflicts] = useState([]);
+  const [insightsDismissed, setInsightsDismissed] = useState(false);
 
   // حوار "تعذّر التوليد" مع تفاصيل الـ infeasibility report
   const [blockedOpen, setBlockedOpen] = useState(false);
@@ -299,15 +402,14 @@ export default function SchedulePageNew() {
 
   const handleAutoGenerate = useCallback(async () => {
     if (!schoolId) {
-      toast.error('تعذّر تحديد المدرسة الحالية');
+      nassaqError('تعذّر تحديد المدرسة الحالية');
       return;
     }
     if (generating) return;
 
     setGenerating(true);
-    const toastId = toast.loading('جارٍ تشغيل محرك التوليد التلقائي…', {
-      description: 'قد تستغرق العملية بضع ثوانٍ بحسب حجم البيانات.',
-    });
+    setInsightsDismissed(false);
+    setUnresolvedConflicts([]);
 
     try {
       const response = await api.post(
@@ -326,16 +428,22 @@ export default function SchedulePageNew() {
         (conflicts ? ` • ${conflicts} تعارض` : '') +
         (unscheduled ? ` • ${unscheduled} حصة لم تُجدول` : '');
 
+      // رؤى حكيم: نلتقط قائمة التعارضات/الخانات غير المجدولة لتغذية شريط
+      // الرؤى وتلوين الخلايا. عند الفشل التام تظل القائمة فارغة.
+      const insights = Array.isArray(data.unresolved_conflicts) ? data.unresolved_conflicts : [];
+      setUnresolvedConflicts(insights);
+
       if (data.success) {
         toast.success(data.message_ar || 'تم توليد الجدول بنجاح', {
-          id: toastId,
           description: summary,
         });
       } else {
-        toast.warning(data.message_ar || 'اكتمل التوليد مع ملاحظات', {
-          id: toastId,
-          description: summary,
-        });
+        // اكتمل التشغيل مع ملاحظات — نرفعها كحوار رؤى حكيم بدلاً من تنبيه toast
+        // عابر، حتى لا تضيع المعلومة المهمّة على المدير.
+        nassaqWarning(
+          (data.message_ar || 'اكتمل التوليد مع ملاحظات') + '\n\n' + summary,
+          { title: 'رؤى حكيم — اكتمل التوليد جزئياً' },
+        );
       }
 
       setRefreshing(true);
@@ -347,7 +455,6 @@ export default function SchedulePageNew() {
       // الحالة الخاصة: المحرك يرفض التشغيل بسبب بيانات ناقصة → نعرض حواراً
       // مفصَّلاً بالأسباب بدلاً من رسالة عامة، حتى يستطيع المدير معالجتها فوراً.
       if (status === 422 && detail?.code === 'GENERATION_BLOCKED' && detail?.report) {
-        toast.dismiss(toastId);
         setBlockedReport(detail.report);
         setBlockedOpen(true);
         return;
@@ -368,11 +475,11 @@ export default function SchedulePageNew() {
       } else if (e?.code === 'ERR_NETWORK' || !e?.response) {
         msg = 'تعذّر الاتصال بالخادم، تحقق من الشبكة وحاول مجدداً';
       }
-      toast.error(msg, { id: toastId });
+      nassaqError(msg, { title: 'تعذّر توليد الجدول' });
     } finally {
       setGenerating(false);
     }
-  }, [api, schoolId, generating, loadGrid]);
+  }, [api, schoolId, generating, loadGrid, nassaqError, nassaqWarning]);
 
   const handleLogAbsence = useCallback(() => {
     setAbsenceTeacherId('');
@@ -592,7 +699,7 @@ export default function SchedulePageNew() {
   const teacherRows = grid?.teachers || [];
   const cellsByTeacher = grid?.cells || {};
   const days = grid?.days || DAYS.map(d => d.key);
-  const periods = grid?.periods || PERIODS;
+  const periods = grid?.periods || FALLBACK_PERIODS;
   const kpis = grid?.kpis || { fairness_pct: 0, assigned_waiting: 0, absent_teachers_today: 0, vacant_sessions_today: 0 };
   const alertText = grid?.alert;
 
@@ -752,6 +859,14 @@ export default function SchedulePageNew() {
           </div>
         )}
 
+        {/* ── رؤى حكيم — شريط ديناميكي يظهر بعد التوليد عندما توجد
+            تعارضات/خانات لم تُجدول. قابل للإغلاق لجلسة العمل الحالية. ─────── */}
+        <HakimInsightsBanner
+          conflicts={unresolvedConflicts}
+          dismissed={insightsDismissed}
+          onDismiss={() => setInsightsDismissed(true)}
+        />
+
         {/* ── Substitution drawer (single slot) ─────────────────────── */}
         <CandidatesSidePanel
           open={drawerOpen}
@@ -774,7 +889,7 @@ export default function SchedulePageNew() {
             Light, breathable container: white surface, single subtle
             border, rounded corners, and a single scroll context that
             owns both axes (no nested boxy scrollbars). */}
-        <div className="flex-1 min-h-0 overflow-auto bg-white border border-slate-200 rounded-lg">
+        <div className="relative flex-1 min-h-0 overflow-auto bg-white border border-slate-200 rounded-lg">
           {loading ? (
             <div className="flex h-full items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin ml-2" />
@@ -797,8 +912,15 @@ export default function SchedulePageNew() {
               onUndoAbsence={handleRequestUndoAbsence}
               onBulkCoverClick={handleOpenBulkPanel}
               today={grid?.today}
+              unresolvedConflicts={unresolvedConflicts}
             />
           )}
+
+          {/* ── Hakeem-branded loading overlay ────────────────────────
+              يظهر فقط أثناء التوليد التلقائي. يستخدم تعبير "ai-thinking"
+              من معرض حكيم مع نبضة ضوئية بنفسجية لتأكيد أن المحرك يقرأ
+              القيود ويبني الجدول الذكي. */}
+          {generating && <HakimGeneratingOverlay />}
         </div>
 
         {/* ── Absence dialog ─────────────────────────────────────── */}
@@ -1066,7 +1188,23 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
 // التصميم البصري الجديد: خلفية بيضاء، رؤوس فاتحة (slate-50)، حدود رفيعة
 // (slate-100)، وعمود المعلم على يمين الشاشة (RTL) مع ظل خفيف يفصل المنطقة
 // المثبَّتة عن منطقة التمرير.
-function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, today }) {
+function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, today, unresolvedConflicts = [] }) {
+  // فهرس "رؤى حكيم" بمفتاح day|period → reason_ar كأقدم سبب لكل خانة. نُخزِّن
+  // أيضاً مجموعة الأسباب لاستخدامها داخل tooltip متعدد الأسطر إن لزم.
+  const conflictsByCell = useMemo(() => {
+    const m = new Map();
+    for (const c of unresolvedConflicts) {
+      if (!c?.day_of_week || !c?.period_number) continue; // عناصر "غير مجدول" بلا خانة محددة
+      const k = `${c.day_of_week}|${c.period_number}`;
+      const prev = m.get(k);
+      const reason = [c.subject_name, c.class_name].filter(Boolean).join(' / ');
+      const tip = reason ? `${reason}: ${c.reason_ar || ''}` : (c.reason_ar || '');
+      if (prev) m.set(k, prev + '\n' + tip);
+      else m.set(k, tip);
+    }
+    return m;
+  }, [unresolvedConflicts]);
+
   // ترتيب الأعمدة: لكل يوم تُضاف أعمدة الحصص (1..7) متتالية.
   const totalDataCols = days.length * periods.length;
   // أبعاد مدمجة لإحساس "data-dense": أعمدة الحصص ضيقة، عمود المعلم
@@ -1213,10 +1351,17 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                   teacher_absent: teacher.is_absent_today,
                   session: cell,
                 };
+                // وسم خلية "تعارض حكيم": تظهر فقط على الخانات الفارغة التي
+                // وردت في unresolved_conflicts (الجلسات المعبَّأة لا تحتاج تنبيه
+                // بصري). نضيف tooltip بسبب الفشل (reason_ar) لإرشاد المستخدم.
+                const conflictKey = `${dayKey}|${p}`;
+                const conflictTip = !cell ? conflictsByCell.get(conflictKey) : null;
+                const conflictBg = conflictTip ? 'bg-orange-50 ring-1 ring-inset ring-orange-200' : rowBg;
                 return (
                   <div
                     key={`${teacher.id}-${dayKey}-${p}`}
-                    className={`min-w-[48px] h-14 border-b border-l border-slate-100 ${rowBg}`}
+                    className={`min-w-[48px] h-14 border-b border-l border-slate-100 ${conflictBg}`}
+                    title={conflictTip || undefined}
                   >
                     {cell ? (
                       <FilledCell

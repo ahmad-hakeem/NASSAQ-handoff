@@ -137,6 +137,11 @@ async def smart_generate_timetable(
     assert_school_access(current_user, str(school_id))
     request = request or SmartTimetableGenerateRequest()
 
+    # Strict context payload assembly — counts only (no PII) so we can
+    # confirm Hakeem received every Schedule Settings tab category
+    # (timing, classes, assignments, unavailability, constraints).
+    await _log_hakim_context_payload(school_id)
+
     report = await smart_scheduling_engine.build_infeasibility_report(school_id)
     if report.blocks_generation:
         raise HTTPException(
@@ -153,6 +158,33 @@ async def smart_generate_timetable(
     )
     
     return result.model_dump()
+
+
+async def _log_hakim_context_payload(school_id: str) -> None:
+    """Log strict context payload counts before invoking Hakeem.
+
+    We never log the rows themselves (PII / size); just the per-category
+    counts, which is enough to confirm in production that every Schedule
+    Settings tab landed in the engine's input set."""
+    try:
+        timing_count = await gd_count(db.session, "time_slots", {"school_id": school_id})
+        classes_count = await gd_count(db.session, "classes", {"school_id": school_id, "is_active": True})
+        assignments_count = await gd_count(db.session, "teacher_assignments", {"school_id": school_id, "is_active": True})
+        teacher_unavail_count = await gd_count(db.session, "teacher_unavailability", {"school_id": school_id})
+        class_unavail_count = await gd_count(db.session, "class_unavailability", {"school_id": school_id})
+        school_constraints_count = await gd_count(db.session, "school_constraints", {"school_id": school_id, "is_active": True})
+        admin_constraints_count = await gd_count(db.session, "administrative_constraints", {"school_id": school_id, "is_active": True})
+
+        logger.info(
+            "hakim_context_payload school_id=%s timing=%d classes=%d assignments=%d "
+            "teacher_unavailability=%d class_unavailability=%d school_constraints=%d "
+            "administrative_constraints=%d",
+            school_id, timing_count, classes_count, assignments_count,
+            teacher_unavail_count, class_unavail_count,
+            school_constraints_count, admin_constraints_count,
+        )
+    except Exception as _ctx_err:  # never block generation for logging
+        logger.warning("hakim_context_payload logging failed: %s", _ctx_err)
 
 
 # --- Generate Timetable Smart API (Alternative endpoint for frontend) ---
@@ -186,6 +218,8 @@ async def generate_timetable_smart(
         
         nested_settings = settings.get("settings", {})
         academic_year = nested_settings.get("academic_year") or settings.get("academicYear") or settings.get("academic_year")
+
+        await _log_hakim_context_payload(school_id)
 
         report = await smart_scheduling_engine.build_infeasibility_report(school_id)
         if report.blocks_generation:
