@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
@@ -7,12 +7,11 @@ import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { CircularProgressRing } from '../components/ui/CircularProgressRing';
 import { toast } from 'sonner';
 import {
   CalendarCheck,
   Users,
-  UserCheck,
-  UserX,
   Clock,
   FileText,
   Sun,
@@ -22,24 +21,10 @@ import {
   Save,
   CheckCircle,
   XCircle,
-  AlertCircle,
-  Calendar,
-  BarChart3,
-  Download,
-  User,
   Briefcase,
+  Shield,
 } from 'lucide-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
-import { Progress } from '../components/ui/progress';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Input } from '../components/ui/input';
 import {
   Dialog,
   DialogContent,
@@ -54,16 +39,7 @@ import {
   PopoverTrigger,
 } from '../components/ui/popover';
 import { Textarea } from '../components/ui/textarea';
-import { Label } from '../components/ui/label';
 import { History, UserCircle2, Undo2 } from 'lucide-react';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '../components/ui/table';
 
 const statusConfig = {
   present: {
@@ -98,8 +74,6 @@ const statusConfig = {
 };
 
 // ─── Audit-trail helpers ──────────────────────────────────────────────────
-// Tiny Arabic relative-time formatter used by the recorder line and the
-// history popover. We avoid pulling a locale package for one short string.
 function formatArabicRelativeTime(iso) {
   if (!iso) return '';
   const then = new Date(iso);
@@ -116,7 +90,6 @@ function formatArabicRelativeTime(iso) {
   return then.toLocaleDateString('ar-EG');
 }
 
-// Map (action, status) → an Arabic verb phrase for the audit row.
 function describeHistoryEntry(entry) {
   if (!entry) return '';
   if (entry.action === 'undone') return 'ألغى الغياب';
@@ -129,126 +102,118 @@ function describeHistoryEntry(entry) {
 
 export const TeacherAttendancePage = () => {
   const { t } = useTranslation();
-  const { user, api } = useAuth();
+  const { api } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const { nassaqWarning, nassaqError } = useNassaqAlert();
-  
-  // State
-  const [teachers, setTeachers] = useState([]);
+
+  const todayDate = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  const [teachersList, setTeachersList] = useState([]);
+  const [adminsList, setAdminsList] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  
-  // Filters
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [searchTerm, setSearchTerm] = useState('');
-  
-  // Attendance records
+  const [savingTeachers, setSavingTeachers] = useState(false);
+  const [savingAdmins, setSavingAdmins] = useState(false);
+
   const [attendanceRecords, setAttendanceRecords] = useState({});
-  const [notesDialog, setNotesDialog] = useState({ open: false, teacherId: null });
+  const [notesDialog, setNotesDialog] = useState({ open: false, subjectId: null });
   const [noteText, setNoteText] = useState('');
-  // Per-teacher history (last 3 changes), lazily fetched when the popover opens.
   const [historyByTeacher, setHistoryByTeacher] = useState({});
   const [historyLoading, setHistoryLoading] = useState({});
-  
-  // Reports
-  const [activeTab, setActiveTab] = useState('record');
-  const [summaryReport, setSummaryReport] = useState(null);
 
-  // Fetch teachers on mount and when date changes
   useEffect(() => {
-    fetchTeachersWithAttendance();
-  }, [selectedDate]);
+    fetchAllStaffWithAttendance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const fetchTeachersWithAttendance = async () => {
+  const fetchAllStaffWithAttendance = async () => {
     try {
       setLoading(true);
-      // Fetch teachers
-      const teachersRes = await api.get('/teachers');
-      setTeachers(teachersRes.data || []);
-      
-      // Try to fetch existing attendance for today
-      try {
-        const attendanceRes = await api.get(`/teacher-attendance?date=${selectedDate}`);
-        const records = {};
-        attendanceRes.data?.forEach(record => {
-          records[record.teacher_id] = {
-            status: record.status,
-            notes: record.notes || '',
-            check_in_time: record.check_in_time,
-            recorded_by: record.recorded_by || null,
-            recorded_by_name: record.recorded_by_name || '',
-            recorded_at: record.recorded_at || record.updated_at || null,
-          };
-        });
-        setAttendanceRecords(records);
-        // Reset cached histories so the popover refetches after a date change.
-        setHistoryByTeacher({});
-      } catch (error) {
-        // If no attendance records exist, initialize empty
-        setAttendanceRecords({});
-        setHistoryByTeacher({});
-      }
+
+      const [teachersRes, adminsRes, attendanceRes] = await Promise.all([
+        api.get('/teachers').catch(() => ({ data: [] })),
+        api.get('/teacher-attendance/school-admins').catch(() => ({ data: [] })),
+        api.get(`/teacher-attendance?date=${todayDate}`).catch(() => ({ data: [] })),
+      ]);
+
+      setTeachersList(Array.isArray(teachersRes.data) ? teachersRes.data : []);
+      setAdminsList(Array.isArray(adminsRes.data) ? adminsRes.data : []);
+
+      const records = {};
+      (attendanceRes.data || []).forEach((record) => {
+        records[record.teacher_id] = {
+          status: record.status,
+          notes: record.notes || '',
+          check_in_time: record.check_in_time,
+          recorded_by: record.recorded_by || null,
+          recorded_by_name: record.recorded_by_name || '',
+          recorded_at: record.recorded_at || record.updated_at || null,
+        };
+      });
+      setAttendanceRecords(records);
+      setHistoryByTeacher({});
     } catch (error) {
-      console.error('Failed to fetch teachers:', error);
+      console.error('Failed to fetch staff attendance data:', error);
       nassaqError(t('failedToLoadTeachersData'));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleStatusChange = (teacherId, status) => {
+  const handleStatusChange = (subjectId, status) => {
     const now = new Date().toTimeString().slice(0, 5);
-    setAttendanceRecords(prev => ({
+    setAttendanceRecords((prev) => ({
       ...prev,
-      [teacherId]: { 
-        ...prev[teacherId], 
+      [subjectId]: {
+        ...prev[subjectId],
         status,
-        check_in_time: status === 'present' ? now : null
-      }
+        check_in_time: status === 'present' ? now : null,
+      },
     }));
   };
 
-  const loadTeacherHistory = async (teacherId) => {
-    if (!teacherId) return;
-    setHistoryLoading((prev) => ({ ...prev, [teacherId]: true }));
+  const loadTeacherHistory = async (subjectId) => {
+    if (!subjectId) return;
+    setHistoryLoading((prev) => ({ ...prev, [subjectId]: true }));
     try {
       const res = await api.get('/teacher-attendance/history', {
-        params: { teacher_id: teacherId, date: selectedDate },
+        params: { teacher_id: subjectId, date: todayDate },
       });
       setHistoryByTeacher((prev) => ({
         ...prev,
-        [teacherId]: Array.isArray(res.data?.history) ? res.data.history : [],
+        [subjectId]: Array.isArray(res.data?.history) ? res.data.history : [],
       }));
     } catch (error) {
-      setHistoryByTeacher((prev) => ({ ...prev, [teacherId]: [] }));
+      setHistoryByTeacher((prev) => ({ ...prev, [subjectId]: [] }));
     } finally {
-      setHistoryLoading((prev) => ({ ...prev, [teacherId]: false }));
+      setHistoryLoading((prev) => ({ ...prev, [subjectId]: false }));
     }
   };
 
   const handleNotesSave = () => {
-    if (notesDialog.teacherId) {
-      setAttendanceRecords(prev => ({
+    if (notesDialog.subjectId) {
+      setAttendanceRecords((prev) => ({
         ...prev,
-        [notesDialog.teacherId]: { 
-          ...prev[notesDialog.teacherId], 
-          notes: noteText 
-        }
+        [notesDialog.subjectId]: {
+          ...prev[notesDialog.subjectId],
+          notes: noteText,
+        },
       }));
     }
-    setNotesDialog({ open: false, teacherId: null });
+    setNotesDialog({ open: false, subjectId: null });
     setNoteText('');
   };
 
-  const handleSaveAttendance = async () => {
-    const records = Object.entries(attendanceRecords)
-      .filter(([_, data]) => data.status)
-      .map(([teacherId, data]) => ({
-        teacher_id: teacherId,
-        date: selectedDate,
+  const saveSection = async (sectionMembers, subjectType) => {
+    const records = sectionMembers
+      .map((member) => ({ member, data: attendanceRecords[member.id] }))
+      .filter(({ data }) => data?.status)
+      .map(({ member, data }) => ({
+        teacher_id: member.id,
+        date: todayDate,
         status: data.status,
         check_in_time: data.check_in_time || null,
-        notes: data.notes || ''
+        notes: data.notes || '',
+        subject_type: subjectType,
       }));
 
     if (records.length === 0) {
@@ -256,21 +221,26 @@ export const TeacherAttendancePage = () => {
       return;
     }
 
-    const unrecordedTeachers = teachers.filter(teacher => !attendanceRecords[teacher.id]?.status);
-    if (unrecordedTeachers.length > 0) {
+    const unrecorded = sectionMembers.filter(
+      (member) => !attendanceRecords[member.id]?.status
+    );
+    if (unrecorded.length > 0) {
+      const noun = subjectType === 'admin'
+        ? (isRTL ? 'إداري' : 'admin')
+        : (isRTL ? 'معلم' : 'teacher');
       nassaqWarning(
-        isRTL 
-          ? `يوجد ${unrecordedTeachers.length} معلم لم يتم تسجيل حضورهم بعد`
-          : `${unrecordedTeachers.length} teachers have not been recorded yet`
+        isRTL
+          ? `يوجد ${unrecorded.length} ${noun} لم يتم تسجيل حضورهم بعد`
+          : `${unrecorded.length} ${noun}${unrecorded.length === 1 ? '' : 's'} have not been recorded yet`
       );
     }
 
+    const setSaving = subjectType === 'admin' ? setSavingAdmins : setSavingTeachers;
     setSaving(true);
     try {
       const BATCH_SIZE = 50;
       let totalSaved = 0;
       let totalUpdated = 0;
-
       for (let i = 0; i < records.length; i += BATCH_SIZE) {
         const batch = records.slice(i, i + BATCH_SIZE);
         const response = await api.post('/teacher-attendance/bulk', { records: batch });
@@ -278,14 +248,18 @@ export const TeacherAttendancePage = () => {
         totalUpdated += response.data?.updated || 0;
       }
 
+      const totalCount = totalSaved + totalUpdated;
+      const noun = subjectType === 'admin'
+        ? (isRTL ? 'إداري' : 'admin')
+        : (isRTL ? 'معلم' : 'teacher');
       toast.success(
-        isRTL 
-          ? `تم حفظ حضور ${totalSaved + totalUpdated} معلم بنجاح` 
-          : `Saved attendance for ${totalSaved + totalUpdated} teachers`
+        isRTL
+          ? `تم حفظ حضور ${totalCount} ${noun} بنجاح`
+          : `Saved attendance for ${totalCount} ${noun}${totalCount === 1 ? '' : 's'}`
       );
-      
-      fetchTeachersWithAttendance();
-      
+
+      const savedIds = new Set(sectionMembers.map((m) => m.id));
+      await refreshRecordsForIds(savedIds);
     } catch (error) {
       console.error('Failed to save attendance:', error);
       const detail = error.response?.data?.detail;
@@ -295,55 +269,315 @@ export const TeacherAttendancePage = () => {
     }
   };
 
-  const handleMarkAllPresent = () => {
-    const now = new Date().toTimeString().slice(0, 5);
-    const newRecords = { ...attendanceRecords };
-    teachers.forEach(teacher => {
-      newRecords[teacher.id] = { 
-        status: 'present', 
-        notes: newRecords[teacher.id]?.notes || '', 
-        check_in_time: newRecords[teacher.id]?.check_in_time || now 
-      };
-    });
-    setAttendanceRecords(newRecords);
-    toast.success(isRTL ? `تم تحديد ${teachers.length} معلم حاضر` : `Marked ${teachers.length} teachers as present`);
-  };
-
-  const fetchSummaryReport = async () => {
+  const refreshRecordsForIds = async (idsToRefresh) => {
     try {
-      const response = await api.get('/teacher-attendance/report/summary');
-      setSummaryReport(response.data);
-    } catch (error) {
-      setSummaryReport({
-        overall: { attendance_rate: 0, total_records: 0, present: 0, absent: 0, late: 0 },
-        daily: []
+      const attendanceRes = await api.get(`/teacher-attendance?date=${todayDate}`);
+      const fresh = {};
+      (attendanceRes.data || []).forEach((record) => {
+        if (!idsToRefresh.has(record.teacher_id)) return;
+        fresh[record.teacher_id] = {
+          status: record.status,
+          notes: record.notes || '',
+          check_in_time: record.check_in_time,
+          recorded_by: record.recorded_by || null,
+          recorded_by_name: record.recorded_by_name || '',
+          recorded_at: record.recorded_at || record.updated_at || null,
+        };
       });
+      setAttendanceRecords((prev) => {
+        const merged = { ...prev };
+        Object.keys(fresh).forEach((id) => {
+          merged[id] = fresh[id];
+        });
+        return merged;
+      });
+      setHistoryByTeacher((prev) => {
+        const next = { ...prev };
+        idsToRefresh.forEach((id) => {
+          delete next[id];
+        });
+        return next;
+      });
+    } catch (error) {
+      // best-effort refresh
     }
   };
 
-  useEffect(() => {
-    if (activeTab === 'summary') {
-      fetchSummaryReport();
-    }
-  }, [activeTab]);
-
-  // Calculate current stats
-  const stats = {
-    total: teachers.length,
-    // late merged into present (hidden from UI but counted as present-equivalent)
-    present: Object.values(attendanceRecords).filter(r => r.status === 'present' || r.status === 'late').length,
-    absent: Object.values(attendanceRecords).filter(r => r.status === 'absent').length,
-    excused: Object.values(attendanceRecords).filter(r => r.status === 'excused').length,
+  const handleMarkAllPresent = (sectionMembers, subjectLabelArSingular, subjectLabelEnSingular) => {
+    const now = new Date().toTimeString().slice(0, 5);
+    setAttendanceRecords((prev) => {
+      const next = { ...prev };
+      sectionMembers.forEach((member) => {
+        next[member.id] = {
+          status: 'present',
+          notes: next[member.id]?.notes || '',
+          check_in_time: next[member.id]?.check_in_time || now,
+          recorded_by: next[member.id]?.recorded_by || null,
+          recorded_by_name: next[member.id]?.recorded_by_name || '',
+          recorded_at: next[member.id]?.recorded_at || null,
+        };
+      });
+      return next;
+    });
+    toast.success(
+      isRTL
+        ? `تم تحديد ${sectionMembers.length} ${subjectLabelArSingular} حاضر`
+        : `Marked ${sectionMembers.length} ${subjectLabelEnSingular}${sectionMembers.length === 1 ? '' : 's'} as present`
+    );
   };
-  
-  const recorded = stats.present + stats.absent + stats.excused;
-  const attendanceRate = recorded > 0 ? (stats.present / recorded * 100).toFixed(1) : 0;
 
-  // Filter teachers by search
-  const filteredTeachers = teachers.filter(teacher => 
-    teacher.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    teacher.specialization?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const overallStats = useMemo(() => {
+    const allMembers = [...teachersList, ...adminsList];
+    const recorded = allMembers.filter(
+      (m) => attendanceRecords[m.id]?.status
+    );
+    const present = recorded.filter(
+      (m) => ['present', 'late'].includes(attendanceRecords[m.id]?.status)
+    ).length;
+    const total = allMembers.length;
+    const recordedCount = recorded.length;
+    const rate = recordedCount > 0
+      ? Math.round((present / recordedCount) * 100)
+      : 0;
+    return { total, recorded: recordedCount, present, rate };
+  }, [teachersList, adminsList, attendanceRecords]);
+
+  const renderStaffCard = (member) => {
+    const currentStatus = attendanceRecords[member.id]?.status;
+    const statusInfo = currentStatus ? statusConfig[currentStatus] : null;
+    const checkInTime = attendanceRecords[member.id]?.check_in_time;
+    const recordedByName = attendanceRecords[member.id]?.recorded_by_name;
+    const recordedAt = attendanceRecords[member.id]?.recorded_at;
+
+    return (
+      <Card
+        key={member.id}
+        className={`transition-all ${statusInfo ? statusInfo.bgColor : 'bg-muted/30'}`}
+        data-testid={`teacher-card-${member.id}`}
+      >
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <Avatar className="h-12 w-12">
+              <AvatarImage src={member.avatar_url} />
+              <AvatarFallback className="bg-brand-navy text-white">
+                {member.full_name?.charAt(0)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <h4 className="font-medium truncate">{member.full_name}</h4>
+              <p className="text-xs text-muted-foreground truncate">
+                {member.specialization}
+              </p>
+            </div>
+            <div className="text-end">
+              {statusInfo && (
+                <Badge className={`${statusInfo.color} text-white`}>
+                  {isRTL ? statusInfo.label.ar : statusInfo.label.en}
+                </Badge>
+              )}
+              {checkInTime && (
+                <p className="text-xs text-muted-foreground mt-1">{checkInTime}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Status Buttons */}
+          <div className="grid grid-cols-4 gap-2">
+            {Object.entries(statusConfig)
+              .filter(([, c]) => !c.hidden)
+              .map(([status, config]) => {
+                const Icon = config.icon;
+                const isSelected = currentStatus === status;
+                return (
+                  <Button
+                    key={status}
+                    variant={isSelected ? 'default' : 'outline'}
+                    size="sm"
+                    className={`rounded-xl ${isSelected ? config.color : ''}`}
+                    onClick={() => handleStatusChange(member.id, status)}
+                    data-testid={`status-btn-${status}-${member.id}`}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </Button>
+                );
+              })}
+          </div>
+
+          {currentStatus && recordedByName && (
+            <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+              <div className="flex items-center gap-1 min-w-0">
+                <UserCircle2 className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">
+                  <span className="font-semibold">سجَّله:</span>{' '}
+                  {recordedByName}
+                  {recordedAt && (
+                    <span className="opacity-70">
+                      {' '}
+                      • {formatArabicRelativeTime(recordedAt)}
+                    </span>
+                  )}
+                </span>
+              </div>
+              <Popover
+                onOpenChange={(open) => {
+                  if (open && historyByTeacher[member.id] === undefined) {
+                    loadTeacherHistory(member.id);
+                  }
+                }}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-[11px]"
+                    data-testid={`history-btn-${member.id}`}
+                  >
+                    <History className="h-3 w-3 me-1" />
+                    السجل
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 p-3" dir="rtl">
+                  <div className="text-xs font-semibold mb-2 text-foreground">
+                    آخر التغييرات (حتى ٣)
+                  </div>
+                  {historyLoading[member.id] ? (
+                    <div className="text-xs text-muted-foreground py-2">
+                      جارٍ التحميل…
+                    </div>
+                  ) : (historyByTeacher[member.id] || []).length === 0 ? (
+                    <div className="text-xs text-muted-foreground py-2">
+                      لا توجد تغييرات مسجَّلة لهذا اليوم.
+                    </div>
+                  ) : (
+                    <ul className="space-y-2">
+                      {(historyByTeacher[member.id] || []).map((entry, idx) => (
+                        <li
+                          key={`${member.id}-h-${idx}`}
+                          className="flex items-start gap-2 text-xs border-b border-border last:border-b-0 pb-1.5 last:pb-0"
+                        >
+                          {entry.action === 'undone' ? (
+                            <Undo2 className="h-3.5 w-3.5 mt-0.5 text-emerald-600 shrink-0" />
+                          ) : (
+                            <UserCircle2 className="h-3.5 w-3.5 mt-0.5 text-brand-navy shrink-0" />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="text-foreground">
+                              <span className="font-semibold">
+                                {entry.actor_name || '—'}
+                              </span>{' '}
+                              <span className="text-muted-foreground">
+                                {describeHistoryEntry(entry)}
+                              </span>
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {formatArabicRelativeTime(entry.at)}
+                            </p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </PopoverContent>
+              </Popover>
+            </div>
+          )}
+
+          {/* Notes Button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full mt-2 text-xs"
+            onClick={() => {
+              setNoteText(attendanceRecords[member.id]?.notes || '');
+              setNotesDialog({ open: true, subjectId: member.id });
+            }}
+          >
+            <FileText className="h-3 w-3 me-1" />
+            {attendanceRecords[member.id]?.notes
+              ? t('editNote')
+              : t('addNote')}
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderSection = ({
+    titleKey,
+    titleFallback,
+    icon: Icon,
+    members,
+    saving,
+    onSave,
+    onMarkAll,
+    emptyKey,
+    emptyFallback,
+    testIdPrefix,
+  }) => {
+    const recordedCount = members.filter(
+      (m) => attendanceRecords[m.id]?.status
+    ).length;
+    return (
+      <Card className="card-nassaq">
+        <CardHeader>
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-brand-turquoise/10 flex items-center justify-center">
+                <Icon className="h-5 w-5 text-brand-turquoise" />
+              </div>
+              <div>
+                <CardTitle className="font-cairo">
+                  {t(titleKey) || titleFallback}
+                </CardTitle>
+                <CardDescription>
+                  {isRTL
+                    ? `${recordedCount} من ${members.length} مسجَّل`
+                    : `${recordedCount} of ${members.length} recorded`}
+                </CardDescription>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={onMarkAll}
+                className="rounded-xl"
+                disabled={members.length === 0}
+                data-testid={`${testIdPrefix}-mark-all-present-btn`}
+              >
+                <CheckCircle className="h-4 w-4 me-2" />
+                {t('allPresent')}
+              </Button>
+              <Button
+                onClick={onSave}
+                disabled={saving || recordedCount === 0}
+                className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-xl"
+                data-testid={`${testIdPrefix}-save-attendance-btn`}
+              >
+                <Save className="h-4 w-4 me-2" />
+                {saving ? t('saving') : t('saveAttendance')}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          {loading ? (
+            <div className="text-center py-8 text-muted-foreground">
+              {t('loading')}
+            </div>
+          ) : members.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              {t(emptyKey) || emptyFallback}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {members.map(renderStaffCard)}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <Sidebar>
@@ -360,7 +594,7 @@ export const TeacherAttendancePage = () => {
                 {t('trackAndManageStaffAttendanceInTheSchool')}
               </p>
             </div>
-            
+
             <div className="flex items-center gap-3">
               <Button variant="ghost" size="icon" onClick={toggleLanguage} className="rounded-xl">
                 <Globe className="h-5 w-5" />
@@ -368,7 +602,7 @@ export const TeacherAttendancePage = () => {
               <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-xl">
                 {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </Button>
-              <Button variant="ghost" size="icon" onClick={fetchTeachersWithAttendance} className="rounded-xl">
+              <Button variant="ghost" size="icon" onClick={fetchAllStaffWithAttendance} className="rounded-xl">
                 <RefreshCw className="h-5 w-5" />
               </Button>
             </div>
@@ -395,384 +629,89 @@ export const TeacherAttendancePage = () => {
             </CardContent>
           </Card>
 
-          {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full max-w-md grid-cols-2">
-              <TabsTrigger value="record" className="rounded-xl">
-                <CalendarCheck className="h-4 w-4 me-2" />
-                {t('recordAttendance')}
-              </TabsTrigger>
-              <TabsTrigger value="summary" className="rounded-xl">
-                <BarChart3 className="h-4 w-4 me-2" />
-                {t('reports')}
-              </TabsTrigger>
-            </TabsList>
-
-            {/* Record Tab */}
-            <TabsContent value="record" className="space-y-6">
-              {/* Filters */}
-              <Card className="card-nassaq">
-                <CardContent className="p-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>{t('date')}</Label>
-                      <Input
-                        type="date"
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                        className="rounded-xl"
-                        data-testid="attendance-date-input"
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label>{t('search2')}</Label>
-                      <Input
-                        type="text"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder={t('searchByNameOrSpecialization')}
-                        className="rounded-xl"
-                        data-testid="search-teachers-input"
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Stats */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                <Card className="card-nassaq">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-brand-navy/10 flex items-center justify-center">
-                        <Users className="h-5 w-5 text-brand-navy" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">{stats.total}</p>
-                        <p className="text-xs text-muted-foreground">{t('totalTeachers')}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                
-                <Card className="card-nassaq">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center">
-                        <UserCheck className="h-5 w-5 text-green-500" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">{stats.present}</p>
-                        <p className="text-xs text-muted-foreground">{t('present')}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                
-                <Card className="card-nassaq">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center">
-                        <UserX className="h-5 w-5 text-red-500" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">{stats.absent}</p>
-                        <p className="text-xs text-muted-foreground">{t('absent')}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                
-                <Card className="card-nassaq">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                        <FileText className="h-5 w-5 text-blue-500" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">{stats.excused}</p>
-                        <p className="text-xs text-muted-foreground">{t('excused2')}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Progress Bar */}
-              {stats.total > 0 && (
-                <Card className="card-nassaq">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">
-                        {t('teacherAttendanceRate')}
-                      </span>
-                      <span className="text-sm font-bold text-brand-turquoise">{attendanceRate}%</span>
-                    </div>
-                    <Progress value={parseFloat(attendanceRate)} className="h-2" />
-                    <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-                      <span>{isRTL ? `${recorded} من ${stats.total} مسجل` : `${recorded} of ${stats.total} recorded`}</span>
-                      <span>{isRTL ? `${stats.total - recorded} متبقي` : `${stats.total - recorded} remaining`}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Teacher List */}
-              <Card className="card-nassaq">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
+          {overallStats.total > 0 && (
+            <Card className="card-nassaq">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-6 flex-wrap">
+                  <div className="flex items-center gap-5">
+                    <CircularProgressRing
+                      value={overallStats.rate}
+                      size={140}
+                      stroke={12}
+                      color="#1B93A4"
+                    />
                     <div>
-                      <CardTitle className="font-cairo">{t('teacherList')}</CardTitle>
-                      <CardDescription>
-                        {t('clickStatusToChangeIt')}
-                      </CardDescription>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button 
-                        variant="outline" 
-                        onClick={handleMarkAllPresent}
-                        className="rounded-xl"
-                        data-testid="mark-all-present-btn"
-                      >
-                        <CheckCircle className="h-4 w-4 me-2" />
-                        {t('allPresent')}
-                      </Button>
-                      <Button 
-                        onClick={handleSaveAttendance}
-                        disabled={saving || recorded === 0}
-                        className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-xl"
-                        data-testid="save-attendance-btn"
-                      >
-                        <Save className="h-4 w-4 me-2" />
-                        {saving ? (t('saving')) : (t('saveAttendance'))}
-                      </Button>
+                      <p className="text-base font-semibold text-foreground font-cairo">
+                        {t('teacherAttendanceRate')}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-tajawal mt-1">
+                        {isRTL
+                          ? `${overallStats.recorded} من ${overallStats.total} مسجَّل`
+                          : `${overallStats.recorded} of ${overallStats.total} recorded`}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-tajawal mt-0.5">
+                        {isRTL
+                          ? `${overallStats.total - overallStats.recorded} متبقي`
+                          : `${overallStats.total - overallStats.recorded} remaining`}
+                      </p>
                     </div>
                   </div>
-                </CardHeader>
-                
-                <CardContent>
-                  {loading ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      {t('loading')}
-                    </div>
-                  ) : filteredTeachers.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      {t('noTeachersFound')}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {filteredTeachers.map((teacher) => {
-                        const currentStatus = attendanceRecords[teacher.id]?.status;
-                        const statusInfo = currentStatus ? statusConfig[currentStatus] : null;
-                        const checkInTime = attendanceRecords[teacher.id]?.check_in_time;
-                        
-                        return (
-                          <Card 
-                            key={teacher.id} 
-                            className={`transition-all ${statusInfo ? statusInfo.bgColor : 'bg-muted/30'}`}
-                            data-testid={`teacher-card-${teacher.id}`}
-                          >
-                            <CardContent className="p-4">
-                              <div className="flex items-center gap-3 mb-3">
-                                <Avatar className="h-12 w-12">
-                                  <AvatarImage src={teacher.avatar_url} />
-                                  <AvatarFallback className="bg-brand-navy text-white">
-                                    {teacher.full_name?.charAt(0)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="flex-1 min-w-0">
-                                  <h4 className="font-medium truncate">{teacher.full_name}</h4>
-                                  <p className="text-xs text-muted-foreground truncate">{teacher.specialization}</p>
-                                </div>
-                                <div className="text-end">
-                                  {statusInfo && (
-                                    <Badge className={`${statusInfo.color} text-white`}>
-                                      {isRTL ? statusInfo.label.ar : statusInfo.label.en}
-                                    </Badge>
-                                  )}
-                                  {checkInTime && (
-                                    <p className="text-xs text-muted-foreground mt-1">{checkInTime}</p>
-                                  )}
-                                </div>
-                              </div>
-                              
-                              {/* Status Buttons */}
-                              <div className="grid grid-cols-4 gap-2">
-                                {Object.entries(statusConfig).filter(([, c]) => !c.hidden).map(([status, config]) => {
-                                  const Icon = config.icon;
-                                  const isSelected = currentStatus === status;
-                                  
-                                  return (
-                                    <Button
-                                      key={status}
-                                      variant={isSelected ? 'default' : 'outline'}
-                                      size="sm"
-                                      className={`rounded-xl ${isSelected ? config.color : ''}`}
-                                      onClick={() => handleStatusChange(teacher.id, status)}
-                                      data-testid={`status-btn-${status}-${teacher.id}`}
-                                    >
-                                      <Icon className="h-4 w-4" />
-                                    </Button>
-                                  );
-                                })}
-                              </div>
-                              
-                              {/* Recorder line — surfaces who last touched this row */}
-                              {currentStatus && attendanceRecords[teacher.id]?.recorded_by_name && (
-                                <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                                  <div className="flex items-center gap-1 min-w-0">
-                                    <UserCircle2 className="h-3.5 w-3.5 shrink-0" />
-                                    <span className="truncate">
-                                      <span className="font-semibold">سجَّله:</span>{' '}
-                                      {attendanceRecords[teacher.id].recorded_by_name}
-                                      {attendanceRecords[teacher.id].recorded_at && (
-                                        <span className="opacity-70">
-                                          {' '}
-                                          • {formatArabicRelativeTime(attendanceRecords[teacher.id].recorded_at)}
-                                        </span>
-                                      )}
-                                    </span>
-                                  </div>
-                                  <Popover
-                                    onOpenChange={(open) => {
-                                      if (open && historyByTeacher[teacher.id] === undefined) {
-                                        loadTeacherHistory(teacher.id);
-                                      }
-                                    }}
-                                  >
-                                    <PopoverTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-6 px-2 text-[11px]"
-                                        data-testid={`history-btn-${teacher.id}`}
-                                      >
-                                        <History className="h-3 w-3 me-1" />
-                                        السجل
-                                      </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent
-                                      align="end"
-                                      className="w-72 p-3"
-                                      dir="rtl"
-                                    >
-                                      <div className="text-xs font-semibold mb-2 text-foreground">
-                                        آخر التغييرات (حتى ٣)
-                                      </div>
-                                      {historyLoading[teacher.id] ? (
-                                        <div className="text-xs text-muted-foreground py-2">
-                                          جارٍ التحميل…
-                                        </div>
-                                      ) : (historyByTeacher[teacher.id] || []).length === 0 ? (
-                                        <div className="text-xs text-muted-foreground py-2">
-                                          لا توجد تغييرات مسجَّلة لهذا اليوم.
-                                        </div>
-                                      ) : (
-                                        <ul className="space-y-2">
-                                          {(historyByTeacher[teacher.id] || []).map((entry, idx) => (
-                                            <li
-                                              key={`${teacher.id}-h-${idx}`}
-                                              className="flex items-start gap-2 text-xs border-b border-border last:border-b-0 pb-1.5 last:pb-0"
-                                            >
-                                              {entry.action === 'undone' ? (
-                                                <Undo2 className="h-3.5 w-3.5 mt-0.5 text-emerald-600 shrink-0" />
-                                              ) : (
-                                                <UserCircle2 className="h-3.5 w-3.5 mt-0.5 text-brand-navy shrink-0" />
-                                              )}
-                                              <div className="min-w-0 flex-1">
-                                                <p className="text-foreground">
-                                                  <span className="font-semibold">
-                                                    {entry.actor_name || '—'}
-                                                  </span>{' '}
-                                                  <span className="text-muted-foreground">
-                                                    {describeHistoryEntry(entry)}
-                                                  </span>
-                                                </p>
-                                                <p className="text-[10px] text-muted-foreground">
-                                                  {formatArabicRelativeTime(entry.at)}
-                                                </p>
-                                              </div>
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      )}
-                                    </PopoverContent>
-                                  </Popover>
-                                </div>
-                              )}
-
-                              {/* Notes Button */}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="w-full mt-2 text-xs"
-                                onClick={() => {
-                                  setNoteText(attendanceRecords[teacher.id]?.notes || '');
-                                  setNotesDialog({ open: true, teacherId: teacher.id });
-                                }}
-                              >
-                                <FileText className="h-3 w-3 me-1" />
-                                {attendanceRecords[teacher.id]?.notes 
-                                  ? (t('editNote'))
-                                  : (t('addNote'))
-                                }
-                              </Button>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Summary Tab */}
-            <TabsContent value="summary" className="space-y-6">
-              {summaryReport ? (
-                <>
-                  {/* Overall Summary */}
-                  <Card className="card-nassaq">
-                    <CardHeader>
-                      <CardTitle className="font-cairo">{t('teacherAttendanceSummary')}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="text-center p-4 bg-muted rounded-xl">
-                          <p className="text-3xl font-bold text-brand-turquoise">{summaryReport.overall.attendance_rate}%</p>
-                          <p className="text-sm text-muted-foreground">{t('attendanceRate2')}</p>
-                        </div>
-                        <div className="text-center p-4 bg-muted rounded-xl">
-                          <p className="text-3xl font-bold">{summaryReport.overall.total_records}</p>
-                          <p className="text-sm text-muted-foreground">{t('totalRecords')}</p>
-                        </div>
-                        <div className="text-center p-4 bg-green-100 dark:bg-green-900/30 rounded-xl">
-                          <p className="text-3xl font-bold text-green-600">{summaryReport.overall.present}</p>
-                          <p className="text-sm text-muted-foreground">{t('present')}</p>
-                        </div>
-                        <div className="text-center p-4 bg-red-100 dark:bg-red-900/30 rounded-xl">
-                          <p className="text-3xl font-bold text-red-600">{summaryReport.overall.absent}</p>
-                          <p className="text-sm text-muted-foreground">{t('absent')}</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  {t('loadingReports')}
+                  <div className="flex gap-3 text-xs text-muted-foreground font-tajawal">
+                    <Badge variant="secondary" className="px-3 py-1.5">
+                      <Users className="h-3.5 w-3.5 me-1.5" />
+                      {isRTL ? 'المعلمون' : 'Teachers'}: {teachersList.length}
+                    </Badge>
+                    <Badge variant="secondary" className="px-3 py-1.5">
+                      <Shield className="h-3.5 w-3.5 me-1.5" />
+                      {isRTL ? 'الإداريون' : 'Admins'}: {adminsList.length}
+                    </Badge>
+                  </div>
                 </div>
-              )}
-            </TabsContent>
-          </Tabs>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Teachers Section */}
+          {renderSection({
+            titleKey: 'teacherList',
+            titleFallback: 'قائمة المعلمين',
+            icon: Users,
+            members: teachersList,
+            saving: savingTeachers,
+            onSave: () => saveSection(teachersList, 'teacher'),
+            onMarkAll: () => handleMarkAllPresent(teachersList, 'معلم', 'teacher'),
+            emptyKey: 'noTeachersFound',
+            emptyFallback: 'لا يوجد معلمون',
+            testIdPrefix: 'teachers',
+          })}
+
+          {/* Admins Section */}
+          {renderSection({
+            titleKey: 'adminList',
+            titleFallback: 'قائمة الإداريين',
+            icon: Shield,
+            members: adminsList,
+            saving: savingAdmins,
+            onSave: () => saveSection(adminsList, 'admin'),
+            onMarkAll: () => handleMarkAllPresent(adminsList, 'إداري', 'admin'),
+            emptyKey: 'noAdminsFound',
+            emptyFallback: 'لا يوجد إداريون',
+            testIdPrefix: 'admins',
+          })}
         </div>
 
         {/* Notes Dialog */}
-        <Dialog open={notesDialog.open} onOpenChange={(open) => setNotesDialog({ open, teacherId: notesDialog.teacherId })}>
+        <Dialog
+          open={notesDialog.open}
+          onOpenChange={(open) =>
+            setNotesDialog({ open, subjectId: notesDialog.subjectId })
+          }
+        >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle className="font-cairo">{t('attendanceNotes')}</DialogTitle>
+              <DialogTitle className="font-cairo">
+                {t('attendanceNotes')}
+              </DialogTitle>
               <DialogDescription>
                 {t('addANoteAboutTeacherAttendance')}
               </DialogDescription>
@@ -784,7 +723,11 @@ export const TeacherAttendancePage = () => {
               className="min-h-[100px] rounded-xl"
             />
             <DialogFooter>
-              <Button variant="outline" onClick={() => setNotesDialog({ open: false, teacherId: null })} className="rounded-xl">
+              <Button
+                variant="outline"
+                onClick={() => setNotesDialog({ open: false, subjectId: null })}
+                className="rounded-xl"
+              >
                 {t('cancel')}
               </Button>
               <Button onClick={handleNotesSave} className="bg-brand-navy rounded-xl">

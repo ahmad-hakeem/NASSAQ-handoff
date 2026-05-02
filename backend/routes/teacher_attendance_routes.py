@@ -26,6 +26,7 @@ class TeacherAttendanceRecord(BaseModel):
     status: str  # present, absent, late, excused
     check_in_time: Optional[str] = None
     notes: Optional[str] = None
+    subject_type: Optional[str] = "teacher"  # "teacher" or "admin"
 
 
 class BulkTeacherAttendance(BaseModel):
@@ -65,10 +66,64 @@ def create_teacher_attendance_routes(db, get_current_user, require_roles, UserRo
     """Create teacher attendance router"""
     router = APIRouter(prefix="/teacher-attendance", tags=["Teacher Attendance"])
     
+    @router.get("/school-admins")
+    async def list_school_admins(
+        current_user: dict = Depends(require_roles([
+            UserRole.SCHOOL_PRINCIPAL,
+            UserRole.SCHOOL_ADMIN,
+            UserRole.PLATFORM_ADMIN,
+        ]))
+    ):
+        """List school-admin staff for the current tenant."""
+        school_id = current_user.get("tenant_id")
+        if not school_id and current_user.get("role") != "platform_admin":
+            raise HTTPException(status_code=403, detail="No school association")
+
+        query = {
+            "role": {"$in": ["school_principal", "school_admin", "school_sub_admin"]},
+        }
+        if school_id:
+            query["tenant_id"] = school_id
+
+        users = await gd_find(db.session, "users", query, limit=500)
+
+        def _label(u):
+            return (u.get("full_name") or u.get("name") or u.get("email") or "").strip()
+
+        users = sorted(users, key=_label)
+
+        ROLE_LABEL_AR = {
+            "school_principal": "مدير المدرسة",
+            "school_admin": "مدير شؤون مدرسية",
+            "school_sub_admin": "مساعد إداري",
+        }
+
+        result = []
+        for u in users:
+            if u.get("is_active") is False:
+                continue
+            role = u.get("role")
+            result.append({
+                "id": u.get("id"),
+                "full_name": _label(u),
+                "email": u.get("email"),
+                "phone": u.get("phone"),
+                "specialization": ROLE_LABEL_AR.get(role, role or ""),
+                "role": role,
+                "avatar_url": u.get("avatar_url"),
+                "school_id": u.get("tenant_id"),
+                "is_active": u.get("is_active", True),
+            })
+        return result
+
     @router.get("")
     async def get_teacher_attendance(
         date: str,
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(require_roles([
+            UserRole.SCHOOL_PRINCIPAL,
+            UserRole.SCHOOL_ADMIN,
+            UserRole.PLATFORM_ADMIN,
+        ]))
     ):
         """Get teacher attendance for a specific date.
 
@@ -161,6 +216,12 @@ def create_teacher_attendance_routes(db, get_current_user, require_roles, UserRo
             existing_history = (existing.get("history") if existing else None) or []
             new_history = ([history_entry] + list(existing_history))[:MAX_HISTORY_ENTRIES]
 
+            subject_type = (
+                record.subject_type
+                or (existing.get("subject_type") if existing else None)
+                or "teacher"
+            )
+
             attendance_doc = {
                 "teacher_id": record.teacher_id,
                 "date": record.date,
@@ -168,6 +229,7 @@ def create_teacher_attendance_routes(db, get_current_user, require_roles, UserRo
                 "check_in_time": record.check_in_time,
                 "notes": record.notes,
                 "school_id": school_id,
+                "subject_type": subject_type,
                 "recorded_by": actor_id,
                 "recorded_by_name": actor_name,
                 "recorded_at": now_iso,
@@ -205,7 +267,11 @@ def create_teacher_attendance_routes(db, get_current_user, require_roles, UserRo
     async def get_teacher_attendance_history_for_day(
         teacher_id: str = Query(..., description="معرف المعلم"),
         date: str = Query(..., description="التاريخ بصيغة YYYY-MM-DD"),
-        current_user: dict = Depends(get_current_user),
+        current_user: dict = Depends(require_roles([
+            UserRole.SCHOOL_PRINCIPAL,
+            UserRole.SCHOOL_ADMIN,
+            UserRole.PLATFORM_ADMIN,
+        ])),
     ):
         """Return the most recent changes for one teacher on one day.
 
@@ -256,7 +322,11 @@ def create_teacher_attendance_routes(db, get_current_user, require_roles, UserRo
 
     @router.get("/report/summary")
     async def get_teacher_attendance_summary(
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(require_roles([
+            UserRole.SCHOOL_PRINCIPAL,
+            UserRole.SCHOOL_ADMIN,
+            UserRole.PLATFORM_ADMIN,
+        ]))
     ):
         """Get teacher attendance summary report"""
         school_id = current_user.get("tenant_id")
@@ -320,7 +390,11 @@ def create_teacher_attendance_routes(db, get_current_user, require_roles, UserRo
     @router.get("/teacher/{teacher_id}")
     async def get_teacher_attendance_history(
         teacher_id: str,
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(require_roles([
+            UserRole.SCHOOL_PRINCIPAL,
+            UserRole.SCHOOL_ADMIN,
+            UserRole.PLATFORM_ADMIN,
+        ]))
     ):
         """Get attendance history for a specific teacher"""
         school_id = current_user.get("tenant_id")

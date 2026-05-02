@@ -24,6 +24,19 @@ import {
 import { Progress } from '../components/ui/progress';
 import { AttendanceRadial } from '../components/dashboard/AttendancePanel';
 import SectionErrorBoundary from '../components/SectionErrorBoundary';
+import { CircularProgressRing } from '../components/ui/CircularProgressRing';
+import { CalendarCheck, FileText, XCircle, Download, Filter } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend,
+} from 'recharts';
 
 const HAKIM_AVATAR = '/hakim-poses/detecting-patterns.png';
 
@@ -646,6 +659,379 @@ const TeacherMonitoringSection = ({ isRTL, api, isTeacher = false }) => {
   );
 };
 
+const StaffAttendanceKpis = ({ todayCounts, staffHeadcount, isRTL, t }) => {
+  const present = todayCounts?.present || 0;
+  const absent = todayCounts?.absent || 0;
+  const excused = todayCounts?.excused || 0;
+  const late = todayCounts?.late || 0;
+  const recorded = present + absent + excused + late;
+  const rate = recorded > 0 ? Math.round(((present + late) / recorded) * 100) : 0;
+
+  const kpis = [
+    {
+      label: isRTL ? 'إجمالي الكوادر' : 'Total Staff',
+      value: staffHeadcount,
+      icon: Users,
+      color: 'text-brand-navy',
+      bg: 'bg-brand-navy/10',
+    },
+    {
+      label: t('present') || (isRTL ? 'حاضر' : 'Present'),
+      value: present,
+      icon: CheckCircle,
+      color: 'text-emerald-600',
+      bg: 'bg-emerald-500/10',
+    },
+    {
+      label: t('absent') || (isRTL ? 'غائب' : 'Absent'),
+      value: absent,
+      icon: XCircle,
+      color: 'text-red-600',
+      bg: 'bg-red-500/10',
+    },
+    {
+      label: isRTL ? 'بعذر/متأخر' : 'Excused/Late',
+      value: excused + late,
+      icon: FileText,
+      color: 'text-blue-600',
+      bg: 'bg-blue-500/10',
+    },
+  ];
+
+  return (
+    <Card className="card-nassaq border-brand-turquoise/20">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-brand-turquoise/10 flex items-center justify-center">
+              <CalendarCheck className="h-5 w-5 text-brand-turquoise" />
+            </div>
+            <div>
+              <CardTitle className="font-cairo text-base">
+                {t('staffAttendance2') || (isRTL ? 'حضور الكوادر' : 'Staff Attendance')}
+              </CardTitle>
+              <p className="text-xs text-muted-foreground font-tajawal">
+                {isRTL ? 'لمحة سريعة لحضور المعلمين والإداريين' : 'Quick overview of teacher & admin attendance'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <CircularProgressRing
+              value={rate}
+              size={72}
+              stroke={7}
+              color="#1B93A4"
+            />
+            <div>
+              <p className="text-[11px] text-muted-foreground font-tajawal">
+                {t('attendanceRate2') || (isRTL ? 'نسبة الحضور' : 'Attendance Rate')}
+              </p>
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {kpis.map((kpi) => {
+            const Icon = kpi.icon;
+            return (
+              <div
+                key={kpi.label}
+                className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background/50"
+                data-testid={`ai-attendance-kpi-${kpi.label}`}
+              >
+                <div className={`w-10 h-10 rounded-xl ${kpi.bg} flex items-center justify-center shrink-0`}>
+                  <Icon className={`h-5 w-5 ${kpi.color}`} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-lg font-bold font-cairo text-foreground leading-none">
+                    {kpi.value}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground font-tajawal mt-1 truncate">
+                    {kpi.label}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+const REPORT_RANGE_OPTIONS = [
+  { value: 7, ar: 'آخر ٧ أيام', en: 'Last 7 days' },
+  { value: 14, ar: 'آخر ١٤ يوماً', en: 'Last 14 days' },
+  { value: 30, ar: 'آخر ٣٠ يوماً', en: 'Last 30 days' },
+  { value: 0, ar: 'الكل', en: 'All' },
+];
+
+const StaffAttendanceReports = ({ report, isRTL, t }) => {
+  const [rangeDays, setRangeDays] = useState(14);
+
+  const allDaily = useMemo(() => report?.daily || [], [report]);
+
+  const filtered = useMemo(() => {
+    if (!rangeDays) return allDaily;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - rangeDays);
+    return allDaily.filter((row) => {
+      const d = new Date(row.date);
+      return Number.isNaN(d.getTime()) ? true : d >= cutoff;
+    });
+  }, [allDaily, rangeDays]);
+
+  const chartData = useMemo(
+    () =>
+      [...filtered]
+        .sort((a, b) => (a.date > b.date ? 1 : -1))
+        .map((row) => ({
+          date: row.date,
+          present: row.present || 0,
+          absent: row.absent || 0,
+          excused: row.excused || 0,
+          late: row.late || 0,
+          rate: row.attendance_rate || 0,
+        })),
+    [filtered]
+  );
+
+  const windowTotals = useMemo(() => {
+    const totals = filtered.reduce(
+      (acc, row) => {
+        acc.present += row.present || 0;
+        acc.absent += row.absent || 0;
+        acc.excused += row.excused || 0;
+        acc.late += row.late || 0;
+        acc.total += row.total || 0;
+        return acc;
+      },
+      { present: 0, absent: 0, excused: 0, late: 0, total: 0 }
+    );
+    const denom = totals.total;
+    totals.rate = denom > 0
+      ? Math.round(((totals.present + totals.late) / denom) * 1000) / 10
+      : 0;
+    return totals;
+  }, [filtered]);
+
+  const handleExportCsv = () => {
+    const header = ['date', 'present', 'absent', 'excused', 'late', 'total', 'attendance_rate'];
+    const rows = [...filtered].sort((a, b) => (a.date > b.date ? 1 : -1));
+    const csv = [
+      header.join(','),
+      ...rows.map((r) =>
+        [
+          r.date,
+          r.present || 0,
+          r.absent || 0,
+          r.excused || 0,
+          r.late || 0,
+          r.total || 0,
+          r.attendance_rate || 0,
+        ].join(',')
+      ),
+    ].join('\n');
+
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `attendance-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const labelFor = (opt) => (isRTL ? opt.ar : opt.en);
+
+  return (
+    <Card className="card-nassaq" data-testid="ai-attendance-reports">
+      <CardHeader>
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-brand-purple/10 flex items-center justify-center">
+              <BarChart3 className="h-5 w-5 text-brand-purple" />
+            </div>
+            <div>
+              <CardTitle className="font-cairo text-base">
+                {t('attendanceReports') || (isRTL ? 'تقارير الحضور' : 'Attendance Reports')}
+              </CardTitle>
+              <p className="text-xs text-muted-foreground font-tajawal">
+                {isRTL
+                  ? `${filtered.length} يوم • نسبة الحضور ${windowTotals.rate}%`
+                  : `${filtered.length} days • ${windowTotals.rate}% attendance rate`}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1 p-1 bg-muted/40 rounded-xl">
+              <Filter className="h-3.5 w-3.5 text-muted-foreground mx-1" />
+              {REPORT_RANGE_OPTIONS.map((opt) => {
+                const active = rangeDays === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    onClick={() => setRangeDays(opt.value)}
+                    className={`px-2.5 py-1 text-xs rounded-lg font-tajawal transition-colors ${
+                      active
+                        ? 'bg-white dark:bg-gray-800 text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                    data-testid={`ai-attendance-range-${opt.value}`}
+                  >
+                    {labelFor(opt)}
+                  </button>
+                );
+              })}
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl"
+              onClick={handleExportCsv}
+              disabled={filtered.length === 0}
+              data-testid="ai-attendance-export-csv-btn"
+            >
+              <Download className="h-3.5 w-3.5 me-1.5" />
+              {isRTL ? 'تصدير CSV' : 'Export CSV'}
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-6">
+        {filtered.length === 0 ? (
+          <div className="text-center py-8 text-sm text-muted-foreground font-tajawal">
+            {isRTL ? 'لا توجد تقارير ضمن هذه الفترة' : 'No reports in this period'}
+          </div>
+        ) : (
+          <>
+            <div className="w-full" style={{ height: 280 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: -16, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-muted/20" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 11 }}
+                    tickFormatter={(v) => v?.slice(5) || v}
+                    reversed={isRTL}
+                  />
+                  <YAxis yAxisId="left" tick={{ fontSize: 11 }} allowDecimals={false} orientation={isRTL ? 'right' : 'left'} />
+                  <YAxis
+                    yAxisId="right"
+                    orientation={isRTL ? 'left' : 'right'}
+                    tick={{ fontSize: 11 }}
+                    domain={[0, 100]}
+                    tickFormatter={(v) => `${v}%`}
+                  />
+                  <RechartsTooltip
+                    contentStyle={{ borderRadius: 12, fontSize: 12 }}
+                    formatter={(value, name) => {
+                      if (name === 'rate') return [`${value}%`, isRTL ? 'نسبة الحضور' : 'Rate'];
+                      const labels = {
+                        present: isRTL ? 'حاضر' : 'Present',
+                        absent: isRTL ? 'غائب' : 'Absent',
+                        excused: isRTL ? 'بعذر' : 'Excused',
+                        late: isRTL ? 'متأخر' : 'Late',
+                      };
+                      return [value, labels[name] || name];
+                    }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: 12 }}
+                    formatter={(name) => {
+                      const labels = {
+                        present: isRTL ? 'حاضر' : 'Present',
+                        absent: isRTL ? 'غائب' : 'Absent',
+                        excused: isRTL ? 'بعذر' : 'Excused',
+                        late: isRTL ? 'متأخر' : 'Late',
+                        rate: isRTL ? 'نسبة الحضور' : 'Attendance Rate',
+                      };
+                      return labels[name] || name;
+                    }}
+                  />
+                  <Bar yAxisId="left" dataKey="present" stackId="a" fill="#10B981" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="left" dataKey="absent" stackId="a" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="left" dataKey="excused" stackId="a" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="left" dataKey="late" stackId="a" fill="#F59E0B" radius={[4, 4, 0, 0]} />
+                  <Line yAxisId="right" type="monotone" dataKey="rate" stroke="#1B93A4" strokeWidth={2} dot={{ r: 3 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" dir={isRTL ? 'rtl' : 'ltr'}>
+                <thead>
+                  <tr className="border-b border-border text-xs text-muted-foreground font-tajawal">
+                    <th className="text-start py-2 px-3 font-medium">
+                      {isRTL ? 'التاريخ' : 'Date'}
+                    </th>
+                    <th className="text-center py-2 px-3 font-medium">
+                      {t('present') || (isRTL ? 'حاضر' : 'Present')}
+                    </th>
+                    <th className="text-center py-2 px-3 font-medium">
+                      {t('absent') || (isRTL ? 'غائب' : 'Absent')}
+                    </th>
+                    <th className="text-center py-2 px-3 font-medium">
+                      {t('excused2') || (isRTL ? 'بعذر' : 'Excused')}
+                    </th>
+                    <th className="text-center py-2 px-3 font-medium">
+                      {isRTL ? 'متأخر' : 'Late'}
+                    </th>
+                    <th className="text-end py-2 px-3 font-medium">
+                      {t('attendanceRate2') || (isRTL ? 'نسبة الحضور' : 'Rate')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((row) => (
+                    <tr
+                      key={row.date}
+                      className="border-b border-border/40 hover:bg-muted/30 transition-colors"
+                    >
+                      <td className="py-2 px-3 font-tajawal">{row.date}</td>
+                      <td className="text-center py-2 px-3">
+                        <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                          {row.present}
+                        </Badge>
+                      </td>
+                      <td className="text-center py-2 px-3">
+                        <Badge variant="secondary" className="bg-red-500/10 text-red-700 dark:text-red-400">
+                          {row.absent}
+                        </Badge>
+                      </td>
+                      <td className="text-center py-2 px-3">
+                        <Badge variant="secondary" className="bg-blue-500/10 text-blue-700 dark:text-blue-400">
+                          {row.excused}
+                        </Badge>
+                      </td>
+                      <td className="text-center py-2 px-3">
+                        <Badge variant="secondary" className="bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                          {row.late || 0}
+                        </Badge>
+                      </td>
+                      <td className="text-end py-2 px-3">
+                        <span className="font-semibold font-cairo text-brand-turquoise">
+                          {row.attendance_rate}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
 export const AIInsightsPage = () => {
   const { t } = useTranslation();
   const { api, user } = useAuth();
@@ -703,19 +1089,39 @@ export const AIInsightsPage = () => {
   const [alerts, setAlerts] = useState([]);
   const [studentRisks, setStudentRisks] = useState([]);
   const [attendanceData, setAttendanceData] = useState(null);
+  const [attendanceReport, setAttendanceReport] = useState(null);
+  const [staffHeadcount, setStaffHeadcount] = useState(0);
+  const [todayAttendanceCounts, setTodayAttendanceCounts] = useState({ present: 0, absent: 0, excused: 0, late: 0 });
 
   const fetchData = useCallback(async () => {
     try {
-      const [overviewRes, predictionsRes, recommendationsRes, alertsRes, risksRes, dashboardRes] = await Promise.all([
+      const todayDate = new Date().toISOString().split('T')[0];
+      const [overviewRes, predictionsRes, recommendationsRes, alertsRes, risksRes, dashboardRes, attendanceReportRes, teachersRes, adminsRes, todayAttendanceRes] = await Promise.all([
         api.get('/ai/insights/overview').catch(() => ({ data: null })),
         api.get('/ai/insights/predictions').catch(() => ({ data: [] })),
         api.get('/ai/insights/recommendations').catch(() => ({ data: [] })),
         api.get('/ai/insights/alerts').catch(() => ({ data: [] })),
         api.get('/ai/insights/at-risk-students').catch(() => ({ data: [] })),
         api.get('/school/dashboard').catch(() => ({ data: null })),
+        api.get('/teacher-attendance/report/summary').catch(() => ({ data: null })),
+        isTeacher ? Promise.resolve({ data: [] }) : api.get('/teachers').catch(() => ({ data: [] })),
+        isTeacher ? Promise.resolve({ data: [] }) : api.get('/teacher-attendance/school-admins').catch(() => ({ data: [] })),
+        isTeacher ? Promise.resolve({ data: [] }) : api.get(`/teacher-attendance?date=${todayDate}`).catch(() => ({ data: [] })),
       ]);
 
       setAttendanceData(dashboardRes?.data?.attendance || null);
+      setAttendanceReport(attendanceReportRes?.data || null);
+      const teacherCount = Array.isArray(teachersRes?.data) ? teachersRes.data.length : 0;
+      const adminCount = Array.isArray(adminsRes?.data) ? adminsRes.data.length : 0;
+      setStaffHeadcount(teacherCount + adminCount);
+
+      const todayRecords = Array.isArray(todayAttendanceRes?.data) ? todayAttendanceRes.data : [];
+      setTodayAttendanceCounts({
+        present: todayRecords.filter((r) => r.status === 'present').length,
+        absent: todayRecords.filter((r) => r.status === 'absent').length,
+        excused: todayRecords.filter((r) => r.status === 'excused').length,
+        late: todayRecords.filter((r) => r.status === 'late').length,
+      });
 
       if (overviewRes.data) {
         setInsights({
@@ -736,7 +1142,7 @@ export const AIInsightsPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [api]);
+  }, [api, isTeacher]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -985,6 +1391,18 @@ export const AIInsightsPage = () => {
             <div className="ai-slide-in">
               <SectionErrorBoundary name="AttendanceRadial" isRTL={isRTL} fallbackMessage={t('failedToLoadAttendanceData')}>
                 <AttendanceRadial data={attendanceData} isRTL={isRTL} />
+              </SectionErrorBoundary>
+            </div>
+          )}
+
+          {!isTeacher && attendanceReport && (
+            <div className="ai-slide-in space-y-6">
+              <SectionErrorBoundary name="StaffAttendanceKPIs" isRTL={isRTL} fallbackMessage={t('failedToLoadAttendanceData')}>
+                <StaffAttendanceKpis todayCounts={todayAttendanceCounts} staffHeadcount={staffHeadcount} isRTL={isRTL} t={t} />
+              </SectionErrorBoundary>
+
+              <SectionErrorBoundary name="StaffAttendanceReports" isRTL={isRTL} fallbackMessage={t('failedToLoadAttendanceData')}>
+                <StaffAttendanceReports report={attendanceReport} isRTL={isRTL} t={t} />
               </SectionErrorBoundary>
             </div>
           )}
