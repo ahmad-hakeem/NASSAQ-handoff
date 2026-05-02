@@ -52,6 +52,7 @@ import {
   SelectValue,
 } from '../components/ui/select';
 import { Checkbox } from '../components/ui/checkbox';
+import { UserMultiSelect } from '../components/ui/UserMultiSelect';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -144,6 +145,7 @@ export const CommunicationCenterPage = () => {
   });
 
   const needsRecipientFilter = ['grade_students', 'grade_parents', 'class_students', 'class_parents'].includes(newMessage.recipient_type);
+  const isSpecificUsers = newMessage.recipient_type === 'specific_users';
 
   // Fetch all data
   const fetchData = useCallback(async () => {
@@ -238,6 +240,7 @@ export const CommunicationCenterPage = () => {
   // so Sent/Scheduled/Inbox tabs keep working without regressions.
   const mapRecipientToAudience = (recipientType) => {
     if (!recipientType) return 'all';
+    if (recipientType === 'specific_users') return 'custom';
     if (recipientType.startsWith('all_')) {
       const seg = recipientType.replace('all_', '');
       if (seg === 'students') return 'students';
@@ -260,6 +263,11 @@ export const CommunicationCenterPage = () => {
       return;
     }
 
+    if (isSpecificUsers && (!newMessage.recipient_filter?.user_ids || newMessage.recipient_filter.user_ids.length === 0)) {
+      nassaqWarning(isRTL ? 'يرجى اختيار مستخدم واحد على الأقل' : 'Please select at least one user');
+      return;
+    }
+
     try {
       setSending(true);
 
@@ -269,17 +277,24 @@ export const CommunicationCenterPage = () => {
       if (newMessage.send_sms) channels.push('sms');
       if (newMessage.send_email) channels.push('email');
 
+      const userIds = isSpecificUsers ? (newMessage.recipient_filter?.user_ids || []) : [];
+
       const payload = {
         title: newMessage.title_ar,
         content: newMessage.message_ar,
         audience: mapRecipientToAudience(newMessage.recipient_type),
+        audience_ids: userIds,
         channels,
         scheduled_at: schedule && newMessage.scheduled_at ? newMessage.scheduled_at : null,
         // Extra wizard metadata — backend may ignore unknown keys
         notification_type: newMessage.notification_type,
         priority: newMessage.priority,
         recipient_type: newMessage.recipient_type,
-        recipient_filter: needsRecipientFilter ? newMessage.recipient_filter : null,
+        recipient_filter: needsRecipientFilter
+          ? newMessage.recipient_filter
+          : isSpecificUsers
+            ? { user_ids: userIds }
+            : null,
       };
 
       const response = await api.post('/communication', payload);
@@ -698,6 +713,20 @@ export const CommunicationCenterPage = () => {
                       </div>
                     )}
                   </div>
+
+                  {isSpecificUsers && (
+                    <div className="space-y-2">
+                      <Label>
+                        {isRTL ? 'المستخدمون' : 'Users'} <span className="text-red-500">*</span>
+                      </Label>
+                      <UserMultiSelect
+                        value={newMessage.recipient_filter?.user_ids || []}
+                        onChange={(ids) => setNewMessage(prev => ({ ...prev, recipient_filter: { user_ids: ids } }))}
+                        placeholder={isRTL ? 'ابحث عن مستخدمين...' : 'Search for users...'}
+                        dataTestId="cc-specific-users"
+                      />
+                    </div>
+                  )}
 
                   {/* Type & Priority */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

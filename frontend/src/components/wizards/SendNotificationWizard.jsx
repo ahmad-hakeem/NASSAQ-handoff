@@ -9,6 +9,7 @@ import { Card, CardContent } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Textarea } from '../../components/ui/textarea';
 import { Checkbox } from '../../components/ui/checkbox';
+import { UserMultiSelect } from '../../components/ui/UserMultiSelect';
 import {
   Select,
   SelectContent,
@@ -122,6 +123,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
   const onChange = (key, value) => setData(prev => ({ ...prev, [key]: value }));
 
   const needsFilter = ['grade_students', 'grade_parents', 'class_students', 'class_parents'].includes(data.recipient_type);
+  const isSpecificUsers = data.recipient_type === 'specific_users';
 
   const handleSubmit = async () => {
     if (!data.title_ar?.trim() || !data.message_ar?.trim()) {
@@ -136,8 +138,18 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
       const { send_whatsapp, ...apiData } = data;
       const payload = {
         ...apiData,
-        recipient_filter: needsFilter ? data.recipient_filter : null,
+        recipient_filter: needsFilter
+          ? data.recipient_filter
+          : isSpecificUsers
+            ? { user_ids: data.recipient_filter?.user_ids || [] }
+            : null,
       };
+
+      if (isSpecificUsers && (!data.recipient_filter?.user_ids || data.recipient_filter.user_ids.length === 0)) {
+        nassaqWarning(isRTL ? 'يرجى اختيار مستخدم واحد على الأقل' : 'Please select at least one user');
+        setSubmitting(false);
+        return;
+      }
 
       const response = await api.post('/notifications/send', payload);
       
@@ -268,6 +280,20 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
                 </div>
               )}
             </div>
+
+            {isSpecificUsers && (
+              <div className="space-y-2">
+                <Label>
+                  {isRTL ? 'المستخدمون' : 'Users'} <span className="text-red-500">*</span>
+                </Label>
+                <UserMultiSelect
+                  value={data.recipient_filter?.user_ids || []}
+                  onChange={(ids) => onChange('recipient_filter', { user_ids: ids })}
+                  placeholder={isRTL ? 'ابحث عن مستخدمين...' : 'Search for users...'}
+                  dataTestId="notif-specific-users"
+                />
+              </div>
+            )}
 
             {/* Notification Type & Priority */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
