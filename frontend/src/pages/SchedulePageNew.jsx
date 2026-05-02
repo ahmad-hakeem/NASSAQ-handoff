@@ -126,19 +126,22 @@ function AbsencePill({ recorderName, recordedAt }) {
 }
 
 // ─── Top-level KPI card ────────────────────────────────────────────────────
+// Light "data-dense" aesthetic: clean white surface, soft shadow, rounded
+// corners, and a thick colored top border that signals the metric's category
+// (operational, attention, critical, etc.).
 function KpiCard({ icon: Icon, label, value, suffix, accent }) {
-  // accent: { bg, ring, iconBg, iconText, valueText }
+  // accent: { topBorder, iconBg, iconText, valueText }
   return (
-    <Card className={`border ${accent.ring} ${accent.bg} shadow-sm`}>
+    <Card className={`bg-white shadow-sm rounded-lg border border-slate-200 border-t-4 ${accent.topBorder}`}>
       <CardContent className="p-4 flex items-center gap-4">
-        <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${accent.iconBg}`}>
-          <Icon className={`h-6 w-6 ${accent.iconText}`} />
+        <div className={`h-11 w-11 rounded-lg flex items-center justify-center ${accent.iconBg}`}>
+          <Icon className={`h-5 w-5 ${accent.iconText}`} />
         </div>
-        <div className="flex-1">
-          <p className="text-xs text-slate-600 mb-1">{label}</p>
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] font-medium text-slate-500 mb-0.5 truncate">{label}</p>
           <div className="flex items-baseline gap-1">
             <span className={`text-2xl font-bold ${accent.valueText}`}>{value}</span>
-            {suffix && <span className="text-sm text-slate-500">{suffix}</span>}
+            {suffix && <span className="text-xs text-slate-400">{suffix}</span>}
           </div>
         </div>
       </CardContent>
@@ -147,6 +150,8 @@ function KpiCard({ icon: Icon, label, value, suffix, accent }) {
 }
 
 // ─── Cell renderers ────────────────────────────────────────────────────────
+// Compact, "data-dense" cells: tiny text, subtle borders, no boxy borders
+// inside cells — the matrix relies on the parent grid lines for separation.
 function FilledCell({ cell, onClick }) {
   // cell.is_vacant => حصة شاغرة (معلمها غائب) — تفتح نافذة المرشحين عند الضغط
   if (cell?.is_vacant) {
@@ -155,11 +160,11 @@ function FilledCell({ cell, onClick }) {
         type="button"
         onClick={onClick}
         title="اضغط لاختيار بديل من جدول الانتظار"
-        className="w-full h-full min-h-[44px] flex flex-col items-center justify-center text-[11px] font-semibold leading-tight px-1 py-1
-                   bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 rounded-md transition-colors"
+        className="w-full h-full flex flex-col items-center justify-center text-[10px] font-semibold leading-tight px-1
+                   bg-red-50 hover:bg-red-100 text-red-600 transition-colors"
       >
         <span className="font-bold">شاغرة</span>
-        <span className="text-[10px] opacity-75 truncate max-w-full">{cell.class_name}</span>
+        <span className="text-[9px] opacity-75 truncate max-w-full">{cell.class_name}</span>
       </button>
     );
   }
@@ -167,11 +172,11 @@ function FilledCell({ cell, onClick }) {
   if (cell?.is_substituted) {
     return (
       <div
-        className="w-full h-full min-h-[44px] flex flex-col items-center justify-center text-[11px] leading-tight px-1 py-1
-                   bg-emerald-50 border border-emerald-300 rounded-md text-emerald-800"
+        className="w-full h-full flex flex-col items-center justify-center text-[10px] leading-tight px-1
+                   bg-emerald-50/70 text-emerald-700"
         title={`بديل: ${cell.substitute_teacher_name || ''}`}
       >
-        <span className="font-bold">{cell.class_name || '—'}</span>
+        <span className="font-semibold">{cell.class_name || '—'}</span>
         <span className="text-[9px] truncate max-w-full opacity-80">
           بديل: {cell.substitute_teacher_name || '—'}
         </span>
@@ -182,12 +187,12 @@ function FilledCell({ cell, onClick }) {
   if (cell?.is_substitute) {
     return (
       <div
-        className="w-full h-full min-h-[44px] flex flex-col items-center justify-center text-[11px] leading-tight px-1 py-1
-                   bg-violet-50 border border-violet-300 rounded-md text-violet-800 relative"
+        className="w-full h-full flex flex-col items-center justify-center text-[10px] leading-tight px-1
+                   bg-violet-50/70 text-violet-700 relative"
         title={`بديل عن ${cell.original_teacher_name || ''}`}
       >
-        <Repeat className="absolute top-0.5 right-0.5 h-2.5 w-2.5 opacity-70" />
-        <span className="font-bold">{cell.class_name || '—'}</span>
+        <Repeat className="absolute top-0.5 right-0.5 h-2.5 w-2.5 opacity-60" />
+        <span className="font-semibold">{cell.class_name || '—'}</span>
         <span className="text-[9px] truncate max-w-full opacity-80">
           {cell.subject_name || ''}
         </span>
@@ -196,32 +201,22 @@ function FilledCell({ cell, onClick }) {
   }
   return (
     <div
-      className="w-full h-full min-h-[44px] flex flex-col items-center justify-center text-[11px] leading-tight px-1 py-1
-                 bg-white border border-slate-200 rounded-md text-slate-800"
+      className="w-full h-full flex flex-col items-center justify-center text-[10px] leading-tight px-1 text-blue-600/80"
       title={cell?.subject_name || ''}
     >
-      <span className="font-bold">{cell?.class_name || '—'}</span>
+      <span className="font-semibold">{cell?.class_name || '—'}</span>
       {cell?.subject_name && (
-        <span className="text-[10px] text-slate-500 truncate max-w-full">{cell.subject_name}</span>
+        <span className="text-[9px] text-slate-400 truncate max-w-full">{cell.subject_name}</span>
       )}
     </div>
   );
 }
 
-function EmptyCell({ teacherAbsent }) {
-  // فراغ في صف المعلم — لا تنبيه. حتى لو كان المعلم غائباً، الخلية الفارغة تبقى
-  // فارغة (تظهر فقط بصبغة حمراء خفيفة على الصف). الخانات التي يجب وسمها "شاغرة"
-  // هي الخانات التي كان فيها حصة مجدولة وتحوّلت إلى vacant بسبب الغياب — وهي
-  // تُرَنْدَر عبر FilledCell.is_vacant = true.
-  return (
-    <div
-      className={`w-full h-full min-h-[44px] rounded-md border border-dashed ${
-        teacherAbsent
-          ? 'bg-red-50/60 border-red-200'
-          : 'bg-slate-50 border-slate-200'
-      }`}
-    />
-  );
+function EmptyCell() {
+  // فراغ في صف المعلم — لا تنبيه. حتى لو كان المعلم غائباً، الخلية الفارغة
+  // تبقى فارغة وتكتفي بصبغة الصف الحمراء الخفيفة. الخانات التي يجب وسمها
+  // "شاغرة" تُرَنْدَر عبر FilledCell.is_vacant = true.
+  return <div className="w-full h-full" />;
 }
 
 // ─── Main page ─────────────────────────────────────────────────────────────
@@ -649,9 +644,9 @@ export default function SchedulePageNew() {
             value={kpis.fairness_pct}
             suffix="%"
             accent={{
-              bg: 'bg-emerald-50', ring: 'border-emerald-200',
-              iconBg: 'bg-emerald-100', iconText: 'text-emerald-700',
-              valueText: 'text-emerald-800',
+              topBorder: 'border-t-orange-400',
+              iconBg: 'bg-orange-50', iconText: 'text-orange-600',
+              valueText: 'text-slate-900',
             }}
           />
           <KpiCard
@@ -659,9 +654,9 @@ export default function SchedulePageNew() {
             label="انتظار مُسند"
             value={kpis.assigned_waiting}
             accent={{
-              bg: 'bg-blue-50', ring: 'border-blue-200',
-              iconBg: 'bg-blue-100', iconText: 'text-[#1C3D74]',
-              valueText: 'text-[#1C3D74]',
+              topBorder: 'border-t-blue-400',
+              iconBg: 'bg-blue-50', iconText: 'text-blue-600',
+              valueText: 'text-slate-900',
             }}
           />
           <KpiCard
@@ -669,9 +664,9 @@ export default function SchedulePageNew() {
             label="معلم غائب"
             value={kpis.absent_teachers_today}
             accent={{
-              bg: 'bg-amber-50', ring: 'border-amber-200',
-              iconBg: 'bg-amber-100', iconText: 'text-amber-700',
-              valueText: 'text-amber-800',
+              topBorder: 'border-t-yellow-400',
+              iconBg: 'bg-yellow-50', iconText: 'text-yellow-600',
+              valueText: 'text-slate-900',
             }}
           />
           <KpiCard
@@ -679,9 +674,9 @@ export default function SchedulePageNew() {
             label="حصة شاغرة"
             value={kpis.vacant_sessions_today}
             accent={{
-              bg: 'bg-red-50', ring: 'border-red-200',
-              iconBg: 'bg-red-100', iconText: 'text-red-700',
-              valueText: 'text-red-800',
+              topBorder: 'border-t-red-500',
+              iconBg: 'bg-red-50', iconText: 'text-red-600',
+              valueText: 'text-red-700',
             }}
           />
         </div>
@@ -712,35 +707,36 @@ export default function SchedulePageNew() {
           onAssignedBatch={handleAssignedBatch}
         />
 
-        {/* ── Master matrix grid ───────────────────────────────────── */}
-        <Card className="border border-slate-200 shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
-          <CardContent className="p-0 flex-1 min-h-0 flex flex-col">
-            {loading ? (
-              <div className="flex flex-1 items-center justify-center py-20 text-slate-500">
-                <Loader2 className="h-6 w-6 animate-spin ml-2" />
-                جارٍ تحميل المصفوفة…
-              </div>
-            ) : error ? (
-              <div className="p-6 text-center text-red-600">{error}</div>
-            ) : teacherRows.length === 0 ? (
-              <div className="p-6 text-center text-slate-500">
-                لا يوجد معلمون مسجَّلون في هذه المدرسة بعد.
-              </div>
-            ) : (
-              <MasterMatrix
-                teachers={teacherRows}
-                cells={cellsByTeacher}
-                days={days}
-                periods={periods}
-                dayLabelMap={dayLabelMap}
-                onVacantClick={handleVacantClick}
-                onUndoAbsence={handleRequestUndoAbsence}
-                onBulkCoverClick={handleOpenBulkPanel}
-                today={grid?.today}
-              />
-            )}
-          </CardContent>
-        </Card>
+        {/* ── Master matrix grid ─────────────────────────────────────
+            Light, breathable container: white surface, single subtle
+            border, rounded corners, and a single scroll context that
+            owns both axes (no nested boxy scrollbars). */}
+        <div className="flex-1 min-h-0 overflow-auto bg-white border border-slate-200 rounded-lg">
+          {loading ? (
+            <div className="flex h-full items-center justify-center py-20 text-slate-500">
+              <Loader2 className="h-6 w-6 animate-spin ml-2" />
+              جارٍ تحميل المصفوفة…
+            </div>
+          ) : error ? (
+            <div className="p-6 text-center text-red-600">{error}</div>
+          ) : teacherRows.length === 0 ? (
+            <div className="p-6 text-center text-slate-500">
+              لا يوجد معلمون مسجَّلون في هذه المدرسة بعد.
+            </div>
+          ) : (
+            <MasterMatrix
+              teachers={teacherRows}
+              cells={cellsByTeacher}
+              days={days}
+              periods={periods}
+              dayLabelMap={dayLabelMap}
+              onVacantClick={handleVacantClick}
+              onUndoAbsence={handleRequestUndoAbsence}
+              onBulkCoverClick={handleOpenBulkPanel}
+              today={grid?.today}
+            />
+          )}
+        </div>
 
         {/* ── Absence dialog ─────────────────────────────────────── */}
         <Dialog open={absenceOpen} onOpenChange={setAbsenceOpen}>
@@ -1003,174 +999,177 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
 // ─── Master Matrix Grid Component ─────────────────────────────────────────
 // ملاحظة: نستخدم CSS Grid مع `position: sticky` على عمود المعلم وصف الرأس
 // للحصول على تثبيت بالاتجاهين في RTL مع تمرير سلس.
+//
+// التصميم البصري الجديد: خلفية بيضاء، رؤوس فاتحة (slate-50)، حدود رفيعة
+// (slate-100)، وعمود المعلم على يمين الشاشة (RTL) مع ظل خفيف يفصل المنطقة
+// المثبَّتة عن منطقة التمرير.
 function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, today }) {
   // ترتيب الأعمدة: لكل يوم تُضاف أعمدة الحصص (1..7) متتالية.
   const totalDataCols = days.length * periods.length;
-  // عرض كل عمود حصة + عرض عمود المعلم الجانبي.
-  // عرض أكبر للخلايا حتى يتنفّس النص العربي ويُقرأ بسهولة؛ التمرير الأفقي
-  // الطبيعي مفضَّل على نص مضغوط غير مقروء.
-  const TEACHER_COL_WIDTH = 280;
-  const PERIOD_COL_WIDTH = 112;
-  const DAY_HEADER_HEIGHT = 44; // ارتفاع صف الرأس الأول (أيام الأسبوع)
+  // أبعاد مدمجة لإحساس "data-dense": أعمدة الحصص ضيقة، عمود المعلم
+  // أوسع لاحتواء الاسم + المادة + الحصة المسندة/الحصة الكلية.
+  const TEACHER_COL_WIDTH = 220;
+  const PERIOD_COL_WIDTH = 56;     // ≥ 48px كما يطلبه التصميم
+  const DAY_HEADER_HEIGHT = 28;    // صف رأس الأيام
+  const PERIOD_HEADER_HEIGHT = 24; // صف رأس أرقام الحصص
+  const ROW_HEIGHT = 56;           // h-14 لكل صف بيانات
   const DAY_COLS_TOTAL_PX = totalDataCols * PERIOD_COL_WIDTH;
 
   // gridTemplateColumns: عمود المعلم + (يوم × حصص).
   const gridTemplate = `${TEACHER_COL_WIDTH}px repeat(${totalDataCols}, ${PERIOD_COL_WIDTH}px)`;
 
+  // ظل أيسر خفيف لعمود المعلم المثبَّت (في RTL يقع على اليمين، فالظل يمتدّ
+  // نحو اليسار داخل منطقة التمرير).
+  const teacherStickyShadow = 'shadow-[-2px_0_5px_rgba(0,0,0,0.02)]';
+
   return (
-    // h-full + overflow-auto => تمرير عمودي وأفقي طبيعي داخل بطاقة المصفوفة،
-    // مع شريط تمرير واحد يصل إلى أسفل الشاشة بدلاً من صندوق صغير داخلي.
-    <div className="h-full w-full overflow-auto relative">
+    <div
+      className="grid text-[11px]"
+      style={{ gridTemplateColumns: gridTemplate, minWidth: TEACHER_COL_WIDTH + DAY_COLS_TOTAL_PX }}
+    >
+      {/* ── Sticky header row 1: day spans ─────────────────────── */}
+      {/* الزاوية العلوية الجانبية (تقاطع رأس + عمود المعلم) — أعلى z-index */}
       <div
-        className="grid text-[12px]"
-        style={{ gridTemplateColumns: gridTemplate, minWidth: TEACHER_COL_WIDTH + DAY_COLS_TOTAL_PX }}
+        className={`sticky top-0 bg-slate-50 text-slate-700 text-xs font-semibold flex items-center justify-center border-b border-l border-slate-200 ${teacherStickyShadow}`}
+        style={{ insetInlineStart: 0, zIndex: 30, height: DAY_HEADER_HEIGHT }}
       >
-        {/* ── Sticky header row 1: day spans ─────────────────────── */}
-        {/* الزاوية العلوية الجانبية (تقاطع رأس + عمود المعلم) — أعلى z-index */}
+        المعلم
+      </div>
+      {days.map((dayKey) => (
         <div
-          className="sticky top-0 bg-[#1C3D74] text-white font-bold px-3 flex items-center border-l border-white/20"
-          style={{ insetInlineStart: 0, zIndex: 50, height: DAY_HEADER_HEIGHT }}
+          key={`day-h-${dayKey}`}
+          className="sticky top-0 z-20 bg-slate-50 text-slate-700 text-xs font-semibold text-center flex items-center justify-center border-b border-l border-slate-200"
+          style={{ gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
         >
-          المعلم
+          {dayLabelMap[dayKey] || dayKey}
+          {dayKey === today && (
+            <span className="mr-2 inline-block px-1.5 py-0 text-[10px] rounded bg-slate-200 text-slate-700">
+              اليوم
+            </span>
+          )}
         </div>
-        {days.map((dayKey) => (
+      ))}
+
+      {/* ── Sticky header row 2: period numbers ────────────────── */}
+      <div
+        className={`sticky bg-slate-50 text-slate-500 text-[10px] font-medium px-2 flex items-center justify-end border-b border-l border-slate-200 ${teacherStickyShadow}`}
+        style={{ top: DAY_HEADER_HEIGHT, insetInlineStart: 0, zIndex: 30, height: PERIOD_HEADER_HEIGHT }}
+      >
+        {teachers.length} معلم • {periods.length}×{days.length}
+      </div>
+      {days.map((dayKey) => (
+        periods.map((p) => (
           <div
-            key={`day-h-${dayKey}`}
-            className="sticky top-0 z-30 bg-[#1C3D74] text-white text-center font-bold flex items-center justify-center border-l border-white/20"
-            style={{ gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
+            key={`ph-${dayKey}-${p}`}
+            className="sticky z-20 bg-slate-50 text-slate-700 text-center text-[11px] flex items-center justify-center border-b border-l border-slate-200"
+            style={{ top: DAY_HEADER_HEIGHT, height: PERIOD_HEADER_HEIGHT }}
           >
-            {dayLabelMap[dayKey] || dayKey}
-            {dayKey === today && (
-              <span className="mr-2 inline-block px-1.5 py-0.5 text-[10px] rounded bg-white/20">
-                اليوم
-              </span>
-            )}
+            {p}
           </div>
-        ))}
+        ))
+      ))}
 
-        {/* ── Sticky header row 2: period numbers ────────────────── */}
-        <div
-          className="sticky bg-[#243f6a] text-white text-xs px-3 py-1.5 text-right border-l border-white/20"
-          style={{ top: DAY_HEADER_HEIGHT, insetInlineStart: 0, zIndex: 50 }}
-        >
-          {teachers.length} معلم • {periods.length} حصص × {days.length} أيام
-        </div>
-        {days.map((dayKey) => (
-          periods.map((p) => (
+      {/* ── Body rows: one per teacher ─────────────────────────── */}
+      {teachers.map((teacher) => {
+        const teacherCells = cells[teacher.id] || {};
+        const rowAbsentTint = teacher.is_absent_today;
+        // الصبغة: صبغة حمراء خفيفة جداً للصف عند غياب المعلم، وإلا أبيض نقي.
+        const rowBg = rowAbsentTint ? 'bg-red-50/40' : 'bg-white';
+        const todayCells = (today && teacherCells[today]) || {};
+        const vacantTodayCount = teacher.is_absent_today
+          ? Object.values(todayCells).filter((c) => c && c.is_vacant).length
+          : 0;
+        return (
+          <React.Fragment key={teacher.id}>
+            {/* Sticky teacher column (الجانب الأيمن في RTL) */}
             <div
-              key={`ph-${dayKey}-${p}`}
-              className="sticky z-30 bg-[#243f6a] text-white text-center text-[11px] py-1.5 border-l border-white/10"
-              style={{ top: DAY_HEADER_HEIGHT }}
+              className={`sticky z-10 px-3 py-2 border-b border-l border-slate-200 ${rowBg} ${teacherStickyShadow}`}
+              style={{ insetInlineStart: 0, minHeight: ROW_HEIGHT }}
             >
-              {p}
-            </div>
-          ))
-        ))}
-
-        {/* ── Body rows: one per teacher ─────────────────────────── */}
-        {teachers.map((teacher, idx) => {
-          const teacherCells = cells[teacher.id] || {};
-          const rowAbsentTint = teacher.is_absent_today;
-          const rowBg = rowAbsentTint
-            ? 'bg-red-50'
-            : (idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60');
-          // Count vacant slots for the absent teacher today (drives the
-          // bulk-cover button visibility/label).
-          const todayCells = (today && teacherCells[today]) || {};
-          const vacantTodayCount = teacher.is_absent_today
-            ? Object.values(todayCells).filter((c) => c && c.is_vacant).length
-            : 0;
-          return (
-            <React.Fragment key={teacher.id}>
-              {/* Sticky teacher column */}
-              <div
-                className={`sticky z-20 px-3 py-2 border-t border-l border-slate-200 ${rowBg}`}
-                style={{ insetInlineStart: 0 }}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-slate-900 text-sm truncate flex items-center gap-1">
-                      {teacher.full_name}
-                      {teacher.is_absent_today && (
-                        <AbsencePill
-                          recorderName={teacher.absence_recorded_by_name}
-                          recordedAt={teacher.absence_recorded_at}
-                        />
-                      )}
-                    </p>
-                    <p className="text-[11px] text-slate-500 truncate">
-                      {teacher.subject || '—'}
-                      {teacher.rank ? ` • ${RANK_AR[teacher.rank] || teacher.rank}` : ''}
-                    </p>
-                  </div>
-                  <div className="text-[11px] font-semibold text-slate-700 whitespace-nowrap">
-                    {teacher.assigned_periods}
-                    <span className="text-slate-400">/</span>
-                    {teacher.weekly_quota || '—'}
-                  </div>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900 truncate flex items-center gap-1">
+                    {teacher.full_name}
+                    {teacher.is_absent_today && (
+                      <AbsencePill
+                        recorderName={teacher.absence_recorded_by_name}
+                        recordedAt={teacher.absence_recorded_at}
+                      />
+                    )}
+                  </p>
+                  <p className="text-[10px] text-slate-500 truncate">
+                    {teacher.subject || '—'}
+                    {teacher.rank ? ` • ${RANK_AR[teacher.rank] || teacher.rank}` : ''}
+                    {' • '}
+                    <span className="font-semibold text-slate-600">
+                      {teacher.assigned_periods}
+                      <span className="text-slate-400">/</span>
+                      {teacher.weekly_quota || '—'}
+                    </span>
+                  </p>
                 </div>
-                {teacher.is_absent_today && (
-                  <div className="mt-1.5 flex flex-col gap-1.5">
-                    <button
+              </div>
+              {teacher.is_absent_today && (
+                <div className="mt-1.5 flex flex-col gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onUndoAbsence?.(teacher)}
+                    title="إعادة المعلم إلى حالة الحضور لهذا اليوم"
+                    aria-label={`إلغاء غياب ${teacher.full_name}`}
+                    className="inline-flex items-center gap-1 text-[10px] font-semibold rounded border border-emerald-400 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors px-1.5 py-0.5 cursor-pointer self-start"
+                  >
+                    <Undo2 className="h-3 w-3" aria-hidden="true" />
+                    <span>إلغاء الغياب</span>
+                  </button>
+                  {vacantTodayCount > 0 && onBulkCoverClick && (
+                    <Button
                       type="button"
-                      onClick={() => onUndoAbsence?.(teacher)}
-                      title="إعادة المعلم إلى حالة الحضور لهذا اليوم"
-                      aria-label={`إلغاء غياب ${teacher.full_name}`}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-md border border-emerald-400 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-500 hover:text-emerald-800 transition-colors px-2 py-0.5 cursor-pointer self-start"
+                      size="sm"
+                      onClick={() => onBulkCoverClick(teacher)}
+                      className="w-full h-6 text-[10px] font-bold bg-gradient-to-r from-[#1C3D74] to-[#2BB5A0] hover:from-[#152d57] text-white shadow-sm px-2"
+                      title="فتح لوحة تغطية كل الحصص الشاغرة لهذا المعلم اليوم"
                     >
-                      <Undo2 className="h-3 w-3" aria-hidden="true" />
-                      <span>إلغاء الغياب</span>
-                    </button>
-                    {vacantTodayCount > 0 && onBulkCoverClick && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => onBulkCoverClick(teacher)}
-                        className="w-full h-7 text-[11px] font-bold bg-gradient-to-r from-[#1C3D74] to-[#2BB5A0] hover:from-[#152d57] text-white shadow-sm"
-                        title="فتح لوحة تغطية كل الحصص الشاغرة لهذا المعلم اليوم"
-                      >
-                        <Layers className="h-3 w-3 ml-1" />
-                        تغطية كل حصصه ({vacantTodayCount})
-                      </Button>
+                      <Layers className="h-3 w-3 ml-1" />
+                      تغطية ({vacantTodayCount})
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Cells: per day, per period */}
+            {days.map((dayKey) => (
+              periods.map((p) => {
+                const cell = teacherCells[dayKey]?.[String(p)] || null;
+                const cellData = {
+                  teacher_id: teacher.id,
+                  teacher_name: teacher.full_name,
+                  day_of_week: dayKey,
+                  period_number: p,
+                  is_today: dayKey === today,
+                  teacher_absent: teacher.is_absent_today,
+                  session: cell,
+                };
+                return (
+                  <div
+                    key={`${teacher.id}-${dayKey}-${p}`}
+                    className={`min-w-[48px] h-14 border-b border-l border-slate-100 ${rowBg}`}
+                  >
+                    {cell ? (
+                      <FilledCell
+                        cell={cell}
+                        onClick={cell.is_vacant ? () => onVacantClick(cellData) : undefined}
+                      />
+                    ) : (
+                      <EmptyCell />
                     )}
                   </div>
-                )}
-              </div>
-
-              {/* Cells: per day, per period */}
-              {days.map((dayKey) => (
-                periods.map((p) => {
-                  const cell = teacherCells[dayKey]?.[String(p)] || null;
-                  const cellData = {
-                    teacher_id: teacher.id,
-                    teacher_name: teacher.full_name,
-                    day_of_week: dayKey,
-                    period_number: p,
-                    is_today: dayKey === today,
-                    teacher_absent: teacher.is_absent_today,
-                    session: cell,
-                  };
-                  return (
-                    <div
-                      key={`${teacher.id}-${dayKey}-${p}`}
-                      className={`p-1 border-t border-l border-slate-200 ${rowBg}`}
-                    >
-                      {cell ? (
-                        <FilledCell
-                          cell={cell}
-                          onClick={cell.is_vacant ? () => onVacantClick(cellData) : undefined}
-                        />
-                      ) : (
-                        <EmptyCell teacherAbsent={rowAbsentTint} />
-                      )}
-                    </div>
-                  );
-                })
-              ))}
-            </React.Fragment>
-          );
-        })}
-      </div>
+                );
+              })
+            ))}
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 }
