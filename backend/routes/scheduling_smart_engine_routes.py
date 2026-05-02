@@ -195,6 +195,99 @@ async def _assemble_hakim_context_payload(school_id: str) -> Dict[str, Any]:
     school_constraints = await gd_find(db.session, "school_constraints", {"school_id": school_id, "is_active": True}, limit=500)
     admin_constraints = await gd_find(db.session, "administrative_constraints", {"school_id": school_id, "is_active": True}, limit=500)
 
+    # ── Constraints UI tab #1: Hard Constraints (القيود الإلزامية) ───────
+    # ACTIVATION MODEL: hard constraints are SYSTEM-LEVEL. The
+    # `timetable_hard_constraints` collection is global (no per-school
+    # override collection exists, by design — hard constraints are the
+    # spec's "absolute blockers"). The UI displays them as read-only
+    # category cards; principals do not toggle them per-school. The
+    # row-level `is_active` flag here is the platform admin's master
+    # switch, and the registry honours it via `active_validation_keys`.
+    hard_constraints = await gd_find(
+        db.session, "timetable_hard_constraints", {"is_system": True},
+        order_by="order", desc_order=False, limit=50,
+    )
+
+    # ── Constraints UI tab #2: Soft Constraints (القيود التفضيلية) ───────
+    # Global immutable list + per-school overrides (is_active / weight /
+    # target_subject_ids) merged in, plus any custom soft constraints
+    # the principal added. Engine uses `weight` as the soft-scoring
+    # multiplier and treats `is_active=False` as a no-op.
+    global_soft = await gd_find(
+        db.session, "timetable_soft_constraints", {},
+        order_by="order", desc_order=False, limit=50,
+    )
+    soft_overrides_rows = await gd_find(
+        db.session, "school_soft_constraint_overrides", {"school_id": school_id}, limit=200,
+    )
+    soft_overrides_by_code = {ov["code"]: ov for ov in soft_overrides_rows if ov.get("code")}
+    merged_soft: list = []
+    for c in global_soft:
+        merged = dict(c)
+        ov = soft_overrides_by_code.get(c.get("code"))
+        if ov:
+            for k in ("is_active", "weight", "target_subject_ids"):
+                if k in ov:
+                    merged[k] = ov[k]
+        merged_soft.append(merged)
+    custom_soft = await gd_find(
+        db.session, "custom_soft_constraints", {"school_id": school_id, "is_active": True},
+        limit=100,
+    )
+
+    # ── Constraints UI tab #3: Teacher Quotas (النصاب والتكليفات) ────────
+    # Per-teacher effective teaching cap = total_periods (from rank)
+    #   − other_duty_periods (sum of teacher_other_duties.equivalent_periods)
+    #   − standby_override (manual override on teacher_workload_overrides)
+    # Engine treats `max_teaching_periods` as a strict ceiling: once a
+    # teacher's `resource_usage` reaches it, the teacher is removed from
+    # the candidate pool for every remaining demand.
+    from routes.school_settings_mod import RANK_TOTAL_PERIODS
+    teachers_for_quota = await gd_find(
+        db.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500,
+    )
+    duties_rows = await gd_find(
+        db.session, "teacher_other_duties", {"school_id": school_id}, limit=500,
+    )
+    duties_by_teacher: Dict[str, int] = {}
+    for d in duties_rows:
+        tid = d.get("teacher_id")
+        if not tid:
+            continue
+        try:
+            eq = int(d.get("equivalent_periods", 0) or 0)
+        except (TypeError, ValueError):
+            eq = 0
+        duties_by_teacher[tid] = duties_by_teacher.get(tid, 0) + eq
+    overrides_rows = await gd_find(
+        db.session, "teacher_workload_overrides", {"school_id": school_id}, limit=500,
+    )
+    overrides_by_teacher: Dict[str, int] = {}
+    for o in overrides_rows:
+        tid = o.get("teacher_id")
+        std = o.get("standby_override")
+        if tid and isinstance(std, int):
+            overrides_by_teacher[tid] = std
+    teacher_quotas: Dict[str, Dict[str, int]] = {}
+    for t in teachers_for_quota:
+        tid = t.get("id") or t.get("teacher_id")
+        if not tid:
+            continue
+        rank = t.get("rank", "") or ""
+        total = RANK_TOTAL_PERIODS.get(rank, 24)
+        other_duty = duties_by_teacher.get(tid, 0)
+        standby = overrides_by_teacher.get(tid, 0)
+        # Teaching cap can never go negative, and must be at least 0 so
+        # an over-allocated teacher is simply never picked rather than
+        # crashing the placement loop.
+        max_teaching = max(0, int(total) - int(other_duty) - int(standby))
+        teacher_quotas[tid] = {
+            "total_periods": int(total),
+            "other_duty_periods": int(other_duty),
+            "standby_override_periods": int(standby),
+            "max_teaching_periods": max_teaching,
+        }
+
     # Strict contract — sections mirror the five Schedule Settings tabs
     # the user fills in (timing / classes / assignments / unavailability /
     # constraints). The engine reads from these named sections only.
@@ -214,6 +307,15 @@ async def _assemble_hakim_context_payload(school_id: str) -> Dict[str, Any]:
             "school": school_constraints or [],
             "administrative": admin_constraints or [],
         },
+        # Three Schedule Settings → Constraints categories — the engine
+        # consumes these directly so the principal's UI toggles take
+        # effect on the very next generation run.
+        "hard_constraints": hard_constraints or [],
+        "soft_constraints": {
+            "system": merged_soft,
+            "custom": custom_soft or [],
+        },
+        "teacher_quotas": teacher_quotas,
     }
 
     has_timing = bool(payload["timing"]["time_slots"]) or bool(
@@ -228,7 +330,8 @@ async def _assemble_hakim_context_payload(school_id: str) -> Dict[str, Any]:
     logger.info(
         "hakim_context_payload school_id=%s timing.time_slots=%d classes=%d assignments=%d "
         "unavailability.teacher=%d unavailability.class=%d constraints.school=%d "
-        "constraints.administrative=%d validated=%s",
+        "constraints.administrative=%d hard_constraints=%d soft_constraints.system=%d "
+        "soft_constraints.custom=%d teacher_quotas=%d validated=%s",
         school_id,
         len(payload["timing"]["time_slots"]),
         len(payload["classes"]),
@@ -237,6 +340,10 @@ async def _assemble_hakim_context_payload(school_id: str) -> Dict[str, Any]:
         len(payload["unavailability"]["class"]),
         len(payload["constraints"]["school"]),
         len(payload["constraints"]["administrative"]),
+        len(payload["hard_constraints"]),
+        len(payload["soft_constraints"]["system"]),
+        len(payload["soft_constraints"]["custom"]),
+        len(payload["teacher_quotas"]),
         has_timing,
     )
     return payload

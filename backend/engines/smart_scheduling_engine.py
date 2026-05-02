@@ -1080,6 +1080,12 @@ class SmartSchedulingEngine:
         ctx_assignments = ctx.get("assignments")
         ctx_unavailability = ctx.get("unavailability") or {}
         ctx_teacher_unavail = ctx_unavailability.get("teacher") if isinstance(ctx_unavailability, dict) else None
+        # ── Constraints UI tab #3 — Teacher Quotas (النصاب والتكليفات) ──
+        # When the route assembled per-teacher caps from total/other-duty/
+        # standby data, override the rank-derived weekly_load with the
+        # principal's effective teaching cap so the engine evicts the
+        # teacher from the candidate pool the moment that cap is hit.
+        ctx_quotas = ctx.get("teacher_quotas") if isinstance(ctx.get("teacher_quotas"), dict) else {}
 
         assignments_by_teacher: Dict[str, List[Dict[str, Any]]] = {}
         if isinstance(ctx_assignments, list):
@@ -1141,6 +1147,17 @@ class SmartSchedulingEngine:
                     rank = await gd_find_one(self.session, "reference_teacher_ranks", {"id": rank_id})
                 if rank:
                     weekly_load = rank.get("max_weekly_load", 24)
+
+            # Quota override: principal's effective teaching cap from the
+            # Constraints → Teacher Quotas tab wins over the rank default.
+            # Once `resource_usage[teacher_id] >= weekly_load` the existing
+            # placement loop drops the teacher from every remaining demand.
+            quota = ctx_quotas.get(teacher_id) if teacher_id else None
+            if isinstance(quota, dict) and "max_teaching_periods" in quota:
+                try:
+                    weekly_load = max(0, int(quota["max_teaching_periods"]))
+                except (TypeError, ValueError):
+                    pass
             
             # Get subject IDs from teacher doc + teacher_assignments
             subject_ids = list(teacher.get("subject_ids", []) or [])
@@ -1517,6 +1534,15 @@ class SmartSchedulingEngine:
         # Sort by difficulty (hardest first)
         sorted_demands.sort(key=lambda x: (-x["difficulty"], -x["priority"]))
 
+        # Sub-optimal placement counter — every time the *winning* candidate
+        # for a slot ends up with a lower score after soft-constraint
+        # scoring than before, we treat the placement as "sub-optimal":
+        # it satisfied all hard constraints but violated at least one
+        # weighted preference. We log a final summary at the end of
+        # Phase 6; this is the basis for the future health score.
+        suboptimal_placements = 0
+        suboptimal_samples: List[Dict[str, Any]] = []
+
         # ---- HardConstraintRegistry wiring (Task 6) -------------------------
         # Split incoming constraints by shape. Hard-constraint rows (sourced
         # from timetable_hard_constraints) carry a validation_key; legacy
@@ -1543,11 +1569,12 @@ class SmartSchedulingEngine:
         from engines.hard_constraints import validate_placement as _validate_placement
 
         def _registry_rejects(candidate: Dict[str, Any]) -> bool:
-            violations = _validate_placement(ctx, candidate)
-            for v in violations:
-                if v.severity in (ConflictSeverity.CRITICAL, ConflictSeverity.HIGH):
-                    return True
-            return False
+            # Hard constraints are absolute blockers per the spec — any
+            # violation emitted by an *active* hard validator rejects the
+            # placement, regardless of severity. Severity is preserved on
+            # the resulting ConstraintViolation for downstream
+            # conflict-tier reporting, but it does NOT gate placement.
+            return bool(_validate_placement(ctx, candidate))
         # ---------------------------------------------------------------------
 
         # Schedule each demand
@@ -1709,11 +1736,18 @@ class SmartSchedulingEngine:
                                 rejection_counts["constraint_rejected"] += 1
                                 continue
 
+                            # Capture pre/post soft-scoring scores so we can
+                            # detect a sub-optimal placement (soft penalty
+                            # applied) independently of the later
+                            # teacher-preference bonus, which can otherwise
+                            # mask the soft violation.
+                            pre_soft_score = score
                             score = self._apply_soft_constraint_scoring(
                                 score, settings, grid, teacher_grid, resource_usage,
                                 class_id, subject_id, teacher_id, day, period,
                                 working_days, teaching_period_numbers
                             )
+                            post_soft_score = score
 
                             # Task #95: bias toward each teacher's stored
                             # preferences (preferred_days, preferred_subjects).
@@ -1727,7 +1761,9 @@ class SmartSchedulingEngine:
                                     "teacher_id": teacher_id,
                                     "day": day,
                                     "period": period,
-                                    "score": score
+                                    "score": score,
+                                    "pre_soft_score": pre_soft_score,
+                                    "post_soft_score": post_soft_score,
                                 }
                     
                     if best_candidate:
@@ -1768,6 +1804,28 @@ class SmartSchedulingEngine:
                         
                         scheduled_count += 1
                         remaining -= 1
+
+                        # Sub-optimal placement: winning candidate's score
+                        # was reduced by soft constraints. We keep the
+                        # placement (soft constraints are weighted
+                        # preferences, not blockers) but tally it for
+                        # the future health score. Compare pre vs the
+                        # *immediate* post-soft score so a later
+                        # teacher-preference bonus can't mask the
+                        # underlying soft violation.
+                        pre = best_candidate.get("pre_soft_score")
+                        post = best_candidate.get("post_soft_score")
+                        if isinstance(pre, (int, float)) and isinstance(post, (int, float)) and post < pre:
+                            suboptimal_placements += 1
+                            if len(suboptimal_samples) < 25:
+                                suboptimal_samples.append({
+                                    "class_id": class_id,
+                                    "subject_id": subject_id,
+                                    "teacher_id": best_candidate["teacher_id"],
+                                    "day": best_candidate["day"],
+                                    "period": best_candidate["period"],
+                                    "penalty": round(pre - post, 2),
+                                })
             
             if scheduled_count < weekly_periods:
                 # نختار سبب الرفض الغالب (الأكثر تكراراً أثناء البحث) لإفادة
@@ -2010,6 +2068,24 @@ class SmartSchedulingEngine:
         underutilized_teachers = self._detect_underutilized_teachers(
             sorted_demands, resources, resource_usage, sessions
         )
+
+        # Sub-optimal placement summary (Constraints UI tab #2 — soft).
+        # Surfaces in the run log as the basis for the future health score.
+        if suboptimal_placements:
+            await self._log_run(
+                run_id, "info",
+                f"Sub-optimal placements: {suboptimal_placements} (basis for future health score)",
+                {
+                    "suboptimal_placements": suboptimal_placements,
+                    "samples": suboptimal_samples,
+                },
+            )
+        else:
+            await self._log_run(
+                run_id, "info",
+                "Sub-optimal placements: 0 (all placements satisfied every active soft constraint)",
+                {"suboptimal_placements": 0},
+            )
 
         return timetable_id, sessions, conflicts, final_unscheduled, underutilized_teachers
     
@@ -2904,12 +2980,33 @@ class SmartSchedulingEngine:
             if not pre_check["can_schedule"]:
                 await self._log_run(run_id, "warning", "يوجد مشاكل قد تؤثر على الجدولة", {"errors": len(pre_check["errors"])})
             
-            # Load hard constraints (system rules)
-            hard_constraints = await gd_find(self.session, "timetable_hard_constraints", {"is_system": True, "is_active": True}, limit=50)
-            await self._log_run(run_id, "info", f"تم تحميل {len(hard_constraints)} قيد إلزامي من النظام", {"hard_constraints_count": len(hard_constraints)})
+            # ── Constraints UI tab #1 — Hard Constraints (القيود الإلزامية) ──
+            # Prefer the school-aware list assembled by the route from the
+            # principal's UI toggles; fall back to the global system list
+            # for legacy callers that don't pass a context payload.
+            hard_payload = (ctx_payload or {}).get("hard_constraints") if ctx_payload else None
+            if isinstance(hard_payload, list):
+                hard_constraints = [c for c in hard_payload if c.get("is_active", True)]
+                hard_source = "ui_payload"
+            else:
+                hard_constraints = await gd_find(self.session, "timetable_hard_constraints", {"is_system": True, "is_active": True}, limit=50)
+                hard_source = "db_fallback"
+            await self._log_run(run_id, "info", f"تم تحميل {len(hard_constraints)} قيد إلزامي ({hard_source})", {"hard_constraints_count": len(hard_constraints), "source": hard_source})
 
-            soft_constraints_list = await gd_find(self.session, "timetable_soft_constraints", {"is_active": True}, limit=50)
-            await self._log_run(run_id, "info", f"تم تحميل {len(soft_constraints_list)} قيد تفضيلي", {"soft_constraints_count": len(soft_constraints_list)})
+            # ── Constraints UI tab #2 — Soft Constraints (القيود التفضيلية) ──
+            # Same precedence: school-merged list (system + overrides + custom)
+            # comes from the route; engine only keeps active rows.
+            soft_payload = (ctx_payload or {}).get("soft_constraints") if ctx_payload else None
+            if isinstance(soft_payload, dict):
+                soft_constraints_list = [
+                    c for c in (soft_payload.get("system") or []) + (soft_payload.get("custom") or [])
+                    if c.get("is_active", True)
+                ]
+                soft_source = "ui_payload"
+            else:
+                soft_constraints_list = await gd_find(self.session, "timetable_soft_constraints", {"is_active": True}, limit=50)
+                soft_source = "db_fallback"
+            await self._log_run(run_id, "info", f"تم تحميل {len(soft_constraints_list)} قيد تفضيلي ({soft_source})", {"soft_constraints_count": len(soft_constraints_list), "source": soft_source})
             settings["soft_constraints"] = soft_constraints_list
 
             constraints = await self._load_school_constraints(school_id, context_payload=ctx_payload)
