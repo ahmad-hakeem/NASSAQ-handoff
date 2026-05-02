@@ -235,28 +235,28 @@ async def _run_readiness_checks_impl(school_id: str):
     else:
         p1_issues.append(ReadinessIssue(id="no-working-days", type=IssueType.CRITICAL, category="time_structure",
             message_ar="لم يتم تحديد أيام الدراسة", message_en="Working days not configured",
-            fix_link="/school/settings?tab=timings", fix_action="تحديد أيام الدراسة"))
+            fix_link="/school/schedule?tab=settings&sub=timings", fix_action="تحديد أيام الدراسة"))
 
     if periods_per_day >= 1:
         p1_score += 5
     else:
         p1_issues.append(ReadinessIssue(id="no-periods", type=IssueType.CRITICAL, category="time_structure",
             message_ar="لم يتم تحديد عدد الحصص اليومية", message_en="Periods per day not set",
-            fix_link="/school/settings?tab=time", fix_action="تحديد عدد الحصص"))
+            fix_link="/school/schedule?tab=settings&sub=timings", fix_action="تحديد عدد الحصص"))
 
     if period_duration >= 30:
         p1_score += 4
     else:
         p1_issues.append(ReadinessIssue(id="no-duration", type=IssueType.CRITICAL, category="time_structure",
             message_ar="لم يتم تحديد مدة الحصة", message_en="Period duration not set",
-            fix_link="/school/settings?tab=time", fix_action="تحديد مدة الحصة"))
+            fix_link="/school/schedule?tab=settings&sub=timings", fix_action="تحديد مدة الحصة"))
 
     if day_start:
         p1_score += 3
     else:
         p1_issues.append(ReadinessIssue(id="no-day-start", type=IssueType.WARNING, category="time_structure",
             message_ar="لم يتم تحديد وقت بداية اليوم الدراسي", message_en="Day start time not set",
-            fix_link="/school/settings?tab=time", fix_action="تحديد وقت البداية"))
+            fix_link="/school/schedule?tab=settings&sub=timings", fix_action="تحديد وقت البداية"))
 
     if academic_year:
         p1_score += 3
@@ -299,7 +299,7 @@ async def _run_readiness_checks_impl(school_id: str):
     else:
         p2_issues.append(ReadinessIssue(id="no-grade-subject-links", type=IssueType.CRITICAL, category="academic_entities",
             message_ar="لم يتم ربط المواد بالصفوف أو الفصول", message_en="No grade/class subject links",
-            fix_link="/school/settings?tab=curriculum", fix_action="ربط المواد بالصفوف"))
+            fix_link="/school/settings?section=academic", fix_action="ربط المواد بالصفوف"))
 
     add_phase("academic_entities", 2, "الكيانات الأكاديمية", "Academic Entities", p2_score, 25, p2_issues, blocked_by=["time_structure"])
 
@@ -332,7 +332,7 @@ async def _run_readiness_checks_impl(school_id: str):
     else:
         p4_issues.append(ReadinessIssue(id="no-class-subjects", type=IssueType.WARNING, category="teaching_relationships",
             message_ar="لم يتم ربط المواد بالفصول", message_en="No class-subject assignments",
-            fix_link="/school/settings?tab=curriculum", fix_action="ربط المواد بالفصول"))
+            fix_link="/school/schedule?tab=settings&sub=teacher-assignments", fix_action="ربط المواد بالفصول"))
 
     if teacher_subject_count >= classes_count and classes_count > 0:
         p4_score += 5
@@ -366,21 +366,21 @@ async def _run_readiness_checks_impl(school_id: str):
     else:
         p5_issues.append(ReadinessIssue(id="no-hard-constraints", type=IssueType.WARNING, category="constraints",
             message_ar="لا توجد قيود إلزامية مفعّلة", message_en="No active hard constraints",
-            fix_link="/school/settings?tab=constraints", fix_action="مراجعة القيود الإلزامية"))
+            fix_link="/school/schedule?tab=settings&sub=constraints", fix_action="مراجعة القيود الإلزامية"))
 
     if soft_count > 0:
         p5_score += 3
     else:
         p5_issues.append(ReadinessIssue(id="no-soft-constraints", type=IssueType.INFO, category="constraints",
             message_ar="لا توجد قيود تفضيلية مفعّلة", message_en="No active soft constraints",
-            fix_link="/school/settings?tab=constraints", fix_action="مراجعة القيود التفضيلية"))
+            fix_link="/school/schedule?tab=settings&sub=constraints", fix_action="مراجعة القيود التفضيلية"))
 
     if ts_count >= (periods_per_day or 1):
         p5_score += 3
     else:
         p5_issues.append(ReadinessIssue(id="incomplete-time-slots", type=IssueType.INFO, category="constraints",
             message_ar="سيتم توليد الفترات الزمنية تلقائياً عند الإنشاء", message_en="Time slots will be auto-generated",
-            fix_link="/school/settings?tab=time", fix_action="تحديد الفترات الزمنية"))
+            fix_link="/school/schedule?tab=settings&sub=timings", fix_action="تحديد الفترات الزمنية"))
 
     add_phase("constraints", 5, "القيود والتحقق", "Constraints & Validation", p5_score, 10, p5_issues, blocked_by=["teaching_relationships"])
 
@@ -417,7 +417,7 @@ async def _run_readiness_checks_impl(school_id: str):
                 id="capacity-overflow", type=IssueType.WARNING, category="generation_ready",
                 message_ar=f"الحصص المطلوبة ({total_required}) أكثر من المتاحة ({total_available_slots})\n{suggestion}",
                 message_en=f"Required periods ({total_required}) exceed available slots ({total_available_slots}). Reduce required periods by {deficit} or increase daily periods/working days.",
-                fix_link="/school/settings?tab=curriculum", fix_action="مراجعة توزيع المواد"))
+                fix_link="/school/schedule?tab=settings&sub=teacher-assignments", fix_action="مراجعة توزيع المواد"))
 
     ta_agg_results = await _gd_aggregate(db.session, "teacher_assignments", [
         {"$match": {"school_id": school_id}},
@@ -442,7 +442,7 @@ async def _run_readiness_checks_impl(school_id: str):
                 id=f"teacher-overload-{idx+1}", type=IssueType.WARNING, category="generation_ready",
                 message_ar=f"المعلم ({t['name']}) حمله ({t['load']}) حصة يتجاوز الحد الأقصى ({t['max']})\nيرجى تقليل {excess} حصة من نصاب هذا المعلم أو توزيعها على معلمين آخرين",
                 message_en=f"Teacher ({t['name']}) load ({t['load']}) exceeds max ({t['max']}). Reduce {excess} sessions or redistribute.",
-                fix_link="/school/settings?section=dynamic&tab=assignments", fix_action="مراجعة نصاب المعلم"))
+                fix_link="/school/schedule?tab=settings&sub=teacher-assignments", fix_action="مراجعة نصاب المعلم"))
 
     if teachers_count > 0 and classes_count > 0:
         total_teacher_capacity = teachers_count * max_load

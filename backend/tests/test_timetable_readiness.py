@@ -130,9 +130,21 @@ class TestTimetableReadinessCheck:
             assert "type" in issue, "Issue missing type"
             assert "message_ar" in issue, "Issue missing message_ar"
             assert "message_en" in issue, "Issue missing message_en"
-            # fix_link is optional but should be present for most issues
+            # fix_link is optional but, when present, must be an in-app
+            # path. After Task #115 the schedule settings sub-tabs live
+            # under `/school/schedule?tab=settings&sub=...`; other
+            # categories still link to standalone pages such as
+            # `/school/teachers` or `/academic-structure`.
             if issue.get("fix_link"):
-                assert issue["fix_link"].startswith("/principal/settings"), \
+                allowed_prefixes = (
+                    "/school/schedule?tab=settings",
+                    "/school/settings",
+                    "/school/classes",
+                    "/school/teachers",
+                    "/school/subjects",
+                    "/academic-structure",
+                )
+                assert issue["fix_link"].startswith(allowed_prefixes), \
                     f"Invalid fix_link format: {issue['fix_link']}"
         
         print(f"✓ Critical issues ({len(critical_issues)}) have proper structure")
@@ -448,6 +460,108 @@ class TestTimetableReadinessCategories:
         assert cat["max_score"] == 10
         
         print(f"✓ Official curriculum: {cat['score']}/{cat['max_score']} - {cat['status']}")
+
+
+class TestFixLinkRegressions:
+    """Static regression tests guarding the readiness `fix_link` URLs.
+
+    These tests inspect the readiness route source so they do not need
+    the backend to be running. They guarantee that:
+      1. No legacy `/school/settings?tab=...` fix_link slips back in
+         for the schedule-related categories that moved under
+         `/school/schedule?tab=settings&sub=...` in Task #114/#115.
+      2. A handful of representative issue IDs continue to point at
+         the exact, currently-correct destinations.
+    """
+
+    ROUTE_FILE = os.path.join(
+        os.path.dirname(__file__), "..", "routes", "timetable_readiness_routes.py"
+    )
+
+    @classmethod
+    def _source(cls):
+        with open(os.path.normpath(cls.ROUTE_FILE), encoding="utf-8") as f:
+            return f.read()
+
+    def test_no_legacy_settings_tab_fix_links(self):
+        """The pre-Task-#114 `/school/settings?tab=...` deep links must
+        not reappear in any `fix_link` value."""
+        import re
+        source = self._source()
+        offenders = re.findall(
+            r'fix_link\s*=\s*"(/school/settings\?tab=[^"]+)"', source
+        )
+        assert not offenders, (
+            "Legacy /school/settings?tab=... fix_link(s) found — these "
+            "tabs moved to /school/schedule?tab=settings&sub=...:\n  "
+            + "\n  ".join(offenders)
+        )
+
+    def test_representative_issue_fix_links(self):
+        """Spot-check that key issue IDs land on the expected sub-tab.
+
+        Walks every `ReadinessIssue(...)` call in the source and pulls
+        out its `id` and `fix_link` fields. We can't use a single greedy
+        regex because some `message_ar`/`message_en` f-strings contain
+        unbalanced `)` that confuse character-class scans.
+        """
+        import re
+        source = self._source()
+        expected = {
+            "no-working-days":   "/school/schedule?tab=settings&sub=timings",
+            "no-periods":        "/school/schedule?tab=settings&sub=timings",
+            "no-duration":       "/school/schedule?tab=settings&sub=timings",
+            "no-day-start":      "/school/schedule?tab=settings&sub=timings",
+            "incomplete-time-slots":
+                                 "/school/schedule?tab=settings&sub=timings",
+            "no-hard-constraints":
+                                 "/school/schedule?tab=settings&sub=constraints",
+            "no-soft-constraints":
+                                 "/school/schedule?tab=settings&sub=constraints",
+            "no-class-subjects":
+                                 "/school/schedule?tab=settings&sub=teacher-assignments",
+            "capacity-overflow":
+                                 "/school/schedule?tab=settings&sub=teacher-assignments",
+            "no-grade-subject-links":
+                                 "/school/settings?section=academic",
+        }
+
+        # Build a {issue_id -> fix_link} index by scanning each
+        # ReadinessIssue(...) call. We look at the chunk of text from
+        # one call's opening `(` up to (but not including) the next
+        # call's opening — which always contains both id= and fix_link=.
+        starts = [m.start() for m in re.finditer(r'ReadinessIssue\(', source)]
+        starts.append(len(source))
+        fix_links = {}
+        overload_links = []
+        for i in range(len(starts) - 1):
+            chunk = source[starts[i]:starts[i + 1]]
+            id_m = re.search(r'\bid\s*=\s*"([^"]+)"', chunk)
+            fid_m = re.search(r'\bid\s*=\s*f"([^"]+)"', chunk)
+            link_m = re.search(r'\bfix_link\s*=\s*"([^"]+)"', chunk)
+            if not link_m:
+                continue
+            if id_m:
+                fix_links[id_m.group(1)] = link_m.group(1)
+            elif fid_m and fid_m.group(1).startswith("teacher-overload-"):
+                overload_links.append(link_m.group(1))
+
+        for issue_id, want_link in expected.items():
+            assert issue_id in fix_links, (
+                f"Could not locate fix_link for issue id={issue_id!r}"
+            )
+            got = fix_links[issue_id]
+            assert got == want_link, (
+                f"fix_link for {issue_id!r} regressed: "
+                f"expected {want_link!r}, got {got!r}"
+            )
+
+        # Spot-check the dynamic teacher-overload-N family too.
+        assert overload_links, "Could not locate teacher-overload-N fix_link"
+        for got in overload_links:
+            assert got == (
+                "/school/schedule?tab=settings&sub=teacher-assignments"
+            ), f"teacher-overload-N fix_link regressed: {got!r}"
 
 
 if __name__ == "__main__":
