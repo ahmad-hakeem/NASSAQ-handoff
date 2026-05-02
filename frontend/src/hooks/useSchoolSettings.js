@@ -629,6 +629,18 @@ export function useSchoolSettings() {
       const notifCount = res.data?.notifications_sent || 0;
       if (notifCount > 0) {
         toast.success(`تم إضافة فترة عدم التوفر وإرسال ${notifCount} إشعار للمعلمين`);
+      } else if (
+        unavailabilityType === 'class' &&
+        data.alternative_location &&
+        data.alternative_location.trim()
+      ) {
+        // الحفظ نجح لكن لم يصل أي إشعار للمعلمين — غالباً لأن سجلات
+        // المعلمين المتأثرين غير مرتبطة بحسابات مستخدمين فعّالة. ننبّه
+        // المسؤول صراحةً ليتحقق من حسابات المعلمين بدلاً من إخفاء الأمر.
+        toast('تم حفظ النقل، لكن لم يتم إخطار أي معلم — تحقّق من حسابات المعلمين المرتبطين بهذا الفصل.', {
+          icon: '⚠️',
+          duration: 6000,
+        });
       } else {
         toast.success('تم إضافة فترة عدم التوفر بنجاح');
       }
