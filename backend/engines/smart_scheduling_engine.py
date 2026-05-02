@@ -621,7 +621,12 @@ class SmartSchedulingEngine:
                     "يجب ضبط إعدادات التوقيت قبل تشغيل المحرك."
                 )
         
-        db_time_slots = await gd_find(self.session, "time_slots", {"school_id": school_id}, limit=500)
+        # Prefer time_slots from payload when supplied — keeps the engine
+        # reading from the same row set the route validated.
+        if ctx_time_slots is not None:
+            db_time_slots = list(ctx_time_slots)
+        else:
+            db_time_slots = await gd_find(self.session, "time_slots", {"school_id": school_id}, limit=500)
         db_time_slots.sort(key=lambda x: x.get("period_number") if x.get("period_number") is not None else (x.get("slot_number") if x.get("slot_number") is not None else 99))
 
         if db_time_slots:
@@ -797,6 +802,7 @@ class SmartSchedulingEngine:
         school_id: str,
         settings: Optional[Dict[str, Any]] = None,
         class_ids: Optional[List[str]] = None,
+        context_payload: Optional[Dict[str, Any]] = None,
     ) -> List[AcademicDemand]:
         """
         المرحلة 3: بناء مصفوفة الطلب الأكاديمي
@@ -825,7 +831,15 @@ class SmartSchedulingEngine:
             if wd and ppd_int > 0:
                 max_slots = len(wd) * ppd_int
 
-        classes = await gd_find(self.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
+        # Prefer classes/assignments from validated payload when present.
+        ctx = context_payload if isinstance(context_payload, dict) else {}
+        ctx_classes = ctx.get("classes")
+        ctx_assignments = ctx.get("assignments")
+
+        if ctx_classes is not None:
+            classes = list(ctx_classes)
+        else:
+            classes = await gd_find(self.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
 
         # When the caller targets specific classes (per-class generation),
         # restrict demand-building to those classes only.
@@ -837,7 +851,10 @@ class SmartSchedulingEngine:
                     if str(c.get("id") or c.get("class_id") or "") in wanted
                 ]
         
-        all_assignments_cache = await gd_find(self.session, "teacher_assignments", {"school_id": school_id, "is_active": True}, limit=5000)
+        if ctx_assignments is not None:
+            all_assignments_cache = list(ctx_assignments)
+        else:
+            all_assignments_cache = await gd_find(self.session, "teacher_assignments", {"school_id": school_id, "is_active": True}, limit=5000)
         all_teachers_cache = await gd_find(self.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
 
         # Load school-wide subjects + teacher_class_assignments so we can synthesize
@@ -1038,11 +1055,27 @@ class SmartSchedulingEngine:
     
     # ============== PHASE 4: BUILD RESOURCE AVAILABILITY MATRIX ==============
     
-    async def build_resource_availability(self, school_id: str, settings: Dict[str, Any]) -> List[ResourceAvailability]:
+    async def build_resource_availability(
+        self,
+        school_id: str,
+        settings: Dict[str, Any],
+        context_payload: Optional[Dict[str, Any]] = None,
+    ) -> List[ResourceAvailability]:
         """
         المرحلة 4: بناء مصفوفة الموارد المتاحة
         Phase 4: Build Resource Availability Matrix
         """
+        # حمولة سياق حكيم — نستخدم الإسنادات من الحمولة المُمرَّرة بدلاً من
+        # استعلام جديد على القاعدة، حتى يبقى المصدر واحداً عبر مراحل التوليد.
+        ctx = context_payload if isinstance(context_payload, dict) else {}
+        ctx_assignments = ctx.get("assignments")
+        assignments_by_teacher: Dict[str, List[Dict[str, Any]]] = {}
+        if isinstance(ctx_assignments, list):
+            for a in ctx_assignments:
+                tid = a.get("teacher_id")
+                if not tid:
+                    continue
+                assignments_by_teacher.setdefault(tid, []).append(a)
         resources = []
         
         # Get all teachers
@@ -1083,7 +1116,10 @@ class SmartSchedulingEngine:
             if not subject_ids and teacher.get("primary_subject_id"):
                 subject_ids = [teacher.get("primary_subject_id")]
             
-            assignment_subjects = await gd_find(self.session, "teacher_assignments", {"school_id": school_id, "teacher_id": teacher_id, "is_active": True}, limit=20)
+            if context_payload and assignments_by_teacher:
+                assignment_subjects = assignments_by_teacher.get(teacher_id, [])
+            else:
+                assignment_subjects = await gd_find(self.session, "teacher_assignments", {"school_id": school_id, "teacher_id": teacher_id, "is_active": True}, limit=20)
             for asn in assignment_subjects:
                 sid = asn.get("subject_id")
                 if sid and sid not in subject_ids:
@@ -2651,12 +2687,12 @@ class SmartSchedulingEngine:
             # Phase 2: Load settings
             await self._log_run(run_id, "info", "تحميل إعدادات المدرسة", {"phase": 2})
             await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"status": TimetableRunStatus.LOADING.value, "completion_percentage": 15})
-            settings = await self.load_school_settings(school_id)
+            settings = await self.load_school_settings(school_id, context_payload=ctx_payload)
             
             # Phase 3: Build demand
             await self._log_run(run_id, "info", "بناء مصفوفة الطلب الأكاديمي", {"phase": 3})
             await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"completion_percentage": 25})
-            demands = await self.build_academic_demand(school_id, settings=settings, class_ids=target_class_ids or None)
+            demands = await self.build_academic_demand(school_id, settings=settings, class_ids=target_class_ids or None, context_payload=ctx_payload)
             if is_per_class and not demands:
                 await self._log_run(run_id, "error", "لم يتم العثور على الفصول المطلوبة", {"target_class_ids": target_class_ids})
                 await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"status": TimetableRunStatus.FAILED.value, "finished_at": datetime.now(timezone.utc).isoformat()})
@@ -2671,7 +2707,7 @@ class SmartSchedulingEngine:
             # Phase 4: Build resources
             await self._log_run(run_id, "info", "بناء مصفوفة الموارد المتاحة", {"phase": 4})
             await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"completion_percentage": 35})
-            resources = await self.build_resource_availability(school_id, settings)
+            resources = await self.build_resource_availability(school_id, settings, context_payload=ctx_payload)
             
             # Phase 5: Pre-check
             await self._log_run(run_id, "info", "التحقق المسبق من التعارضات", {"phase": 5})
@@ -2689,7 +2725,7 @@ class SmartSchedulingEngine:
             await self._log_run(run_id, "info", f"تم تحميل {len(soft_constraints_list)} قيد تفضيلي", {"soft_constraints_count": len(soft_constraints_list)})
             settings["soft_constraints"] = soft_constraints_list
 
-            constraints = await self._load_school_constraints(school_id)
+            constraints = await self._load_school_constraints(school_id, context_payload=ctx_payload)
 
             all_constraints = hard_constraints + constraints
             
@@ -2945,14 +2981,32 @@ class SmartSchedulingEngine:
                 message_en=f"Timetable generation failed: {str(e)}"
             )
     
-    async def _load_school_constraints(self, school_id: str) -> List[Dict[str, Any]]:
+    async def _load_school_constraints(
+        self,
+        school_id: str,
+        context_payload: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
         """Load active constraints scoped to a single school.
 
         Looks up `school_constraints` first; if none exist for this school,
         falls back to `administrative_constraints` *scoped to the same
         school_id*. The fallback MUST NOT return rows from other tenants —
         cross-tenant leakage here would let school A inherit school B's rules.
+
+        When `context_payload` is supplied, prefers the constraints rows
+        already validated by the route over a fresh DB query.
         """
+        ctx = context_payload if isinstance(context_payload, dict) else {}
+        ctx_constraints = ctx.get("constraints") or {}
+        ctx_school = ctx_constraints.get("school") if isinstance(ctx_constraints, dict) else None
+        ctx_admin = ctx_constraints.get("administrative") if isinstance(ctx_constraints, dict) else None
+
+        if ctx_school is not None or ctx_admin is not None:
+            constraints = list(ctx_school or [])
+            if not constraints:
+                constraints = list(ctx_admin or [])
+            return constraints
+
         constraints = await gd_find(
             self.session,
             "school_constraints",

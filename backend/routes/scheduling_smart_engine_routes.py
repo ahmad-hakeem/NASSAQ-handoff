@@ -188,32 +188,49 @@ async def _assemble_hakim_context_payload(school_id: str) -> Dict[str, Any]:
     school_constraints = await gd_find(db.session, "school_constraints", {"school_id": school_id, "is_active": True}, limit=500)
     admin_constraints = await gd_find(db.session, "administrative_constraints", {"school_id": school_id, "is_active": True}, limit=500)
 
+    # Strict contract — sections mirror the five Schedule Settings tabs
+    # the user fills in (timing / classes / assignments / unavailability /
+    # constraints). The engine reads from these named sections only.
     payload: Dict[str, Any] = {
         "school_id": school_id,
-        "school_settings": school_settings or None,
-        "time_slots": time_slots or [],
+        "timing": {
+            "school_settings": school_settings or None,
+            "time_slots": time_slots or [],
+        },
         "classes": classes or [],
-        "teacher_assignments": assignments or [],
-        "teacher_unavailability": teacher_unavail or [],
-        "class_unavailability": class_unavail or [],
-        "school_constraints": school_constraints or [],
-        "administrative_constraints": admin_constraints or [],
+        "assignments": assignments or [],
+        "unavailability": {
+            "teacher": teacher_unavail or [],
+            "class": class_unavail or [],
+        },
+        "constraints": {
+            "school": school_constraints or [],
+            "administrative": admin_constraints or [],
+        },
     }
 
-    # Structural validation: timing data is the bare minimum the engine
-    # needs to even start. The infeasibility report (INF-05) will catch
-    # this too, but we surface it here so the wiring contract is explicit.
-    has_timing = bool(payload["time_slots"]) or bool((payload["school_settings"] or {}).get("periods_per_day"))
-    payload["_validated"] = has_timing
+    has_timing = bool(payload["timing"]["time_slots"]) or bool(
+        (payload["timing"]["school_settings"] or {}).get("periods_per_day")
+    )
+    if not has_timing:
+        # The infeasibility report (INF-05) will block generation, but
+        # we surface the structural contract explicitly here so any
+        # caller knows the payload is incomplete.
+        logger.warning("hakim_context_payload school_id=%s missing timing — generation will be blocked by INF-05", school_id)
 
     logger.info(
-        "hakim_context_payload school_id=%s timing=%d classes=%d assignments=%d "
-        "teacher_unavailability=%d class_unavailability=%d school_constraints=%d "
-        "administrative_constraints=%d validated=%s",
-        school_id, len(payload["time_slots"]), len(payload["classes"]),
-        len(payload["teacher_assignments"]), len(payload["teacher_unavailability"]),
-        len(payload["class_unavailability"]), len(payload["school_constraints"]),
-        len(payload["administrative_constraints"]), has_timing,
+        "hakim_context_payload school_id=%s timing.time_slots=%d classes=%d assignments=%d "
+        "unavailability.teacher=%d unavailability.class=%d constraints.school=%d "
+        "constraints.administrative=%d validated=%s",
+        school_id,
+        len(payload["timing"]["time_slots"]),
+        len(payload["classes"]),
+        len(payload["assignments"]),
+        len(payload["unavailability"]["teacher"]),
+        len(payload["unavailability"]["class"]),
+        len(payload["constraints"]["school"]),
+        len(payload["constraints"]["administrative"]),
+        has_timing,
     )
     return payload
 
