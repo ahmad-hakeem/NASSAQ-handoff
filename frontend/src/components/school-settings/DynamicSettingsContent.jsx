@@ -30,7 +30,7 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
     schoolInfo, teachers, classes, assignments,
     subjects, draggingSubject, setDraggingSubject,
     assignmentSubTab, setAssignmentSubTab,
-    classAssignments, classAssignmentsLoading, classAssignmentsLoaded, draggingClass, setDraggingClass,
+    classAssignments, classAssignmentsLoading, classAssignmentsLoaded, classAssignmentsError, loadClassAssignments, draggingClass, setDraggingClass,
     editedSchoolInfo, setEditedSchoolInfo,
     workDays, timingSettings, timeSlotsCount, generatingSlots,
     breakTimes, teacherUnavailability, classUnavailability,
@@ -477,7 +477,9 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${assignmentSubTab === 'classes' ? 'bg-brand-turquoise text-white' : 'bg-slate-100 text-slate-500'}`}><GraduationCap className="h-5 w-5" /></div>
                 <div className="text-right">
                   <h4 className={`font-bold ${assignmentSubTab === 'classes' ? 'text-brand-turquoise-dark' : 'text-slate-700'}`}>إسناد الفصول</h4>
-                  {!classAssignmentsLoaded ? (
+                  {classAssignmentsError && !classAssignmentsLoaded ? (
+                    <p className="text-xs text-red-500">تعذّر التحميل — أعد المحاولة</p>
+                  ) : !classAssignmentsLoaded ? (
                     <p className="text-xs text-slate-500 flex items-center gap-1.5">
                       <span className="inline-block w-3 h-3 rounded-full border-2 border-slate-300 border-t-brand-turquoise animate-spin" />
                       جارٍ التحميل…
@@ -626,7 +628,18 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                       <div className="w-10 h-10 rounded-xl bg-brand-turquoise flex items-center justify-center"><GraduationCap className="h-5 w-5 text-white" /></div>
                       <div>
                         <h3 className="text-lg font-bold text-brand-turquoise-dark">ربط المعلمين بالفصول</h3>
-                        {!classAssignmentsLoaded ? (
+                        {classAssignmentsError && !classAssignmentsLoaded ? (
+                          <p className="text-xs text-red-600 flex items-center gap-2">
+                            <span>{teachers.length} معلم • {classes.length} فصل • تعذّر تحميل الإسنادات</span>
+                            <button
+                              type="button"
+                              onClick={() => loadClassAssignments()}
+                              className="underline text-red-700 hover:text-red-800"
+                            >
+                              إعادة المحاولة
+                            </button>
+                          </p>
+                        ) : !classAssignmentsLoaded ? (
                           <p className="text-xs text-slate-600 flex items-center gap-1.5">
                             <span>{teachers.length} معلم • {classes.length} فصل •</span>
                             <span className="inline-block w-3 h-3 rounded-full border-2 border-slate-300 border-t-brand-turquoise animate-spin" />

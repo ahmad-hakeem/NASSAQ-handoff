@@ -76,6 +76,8 @@ export function useSchoolSettings() {
   // الـ loading وحده لا يكفي لأنه يبدأ false ولا يصبح true إلا بعد تشغيل
   // الـ effect المسؤول، فبين الرسم الأوّل وتشغيل الـ effect سيظهر "0".
   const [classAssignmentsLoaded, setClassAssignmentsLoaded] = useState(false);
+  // نتمييز فشل الشبكة عن "صفر فعلي" حتى لا يظهر "0 إسناد" بعد فشل الجلب.
+  const [classAssignmentsError, setClassAssignmentsError] = useState(false);
   const [draggingClass, setDraggingClass] = useState(null);
 
   const [showEditSchool, setShowEditSchool] = useState(false);
@@ -661,14 +663,16 @@ export function useSchoolSettings() {
 
   const loadClassAssignments = async () => {
     setClassAssignmentsLoading(true);
+    setClassAssignmentsError(false);
     try {
       const res = await api.get('/teacher-class-assignments?page_size=20000');
       setClassAssignments(res.data?.data || res.data || []);
+      setClassAssignmentsLoaded(true);
     } catch (error) {
       console.error('Error loading class assignments:', error);
+      setClassAssignmentsError(true);
     } finally {
       setClassAssignmentsLoading(false);
-      setClassAssignmentsLoaded(true);
     }
   };
 
@@ -946,7 +950,7 @@ export function useSchoolSettings() {
     stageCurriculums, loadingCurriculum, expandedStages, expandedTracks, expandedGrades,
     subjects, draggingSubject, setDraggingSubject, selectedSubject, setSelectedSubject,
     assignmentSaving, assignmentSubTab, setAssignmentSubTab,
-    classAssignments, classAssignmentsLoading, classAssignmentsLoaded, draggingClass, setDraggingClass,
+    classAssignments, classAssignmentsLoading, classAssignmentsLoaded, classAssignmentsError, draggingClass, setDraggingClass,
     showEditSchool, setShowEditSchool, showBreakModal, setShowBreakModal,
     showUnavailabilityModal, setShowUnavailabilityModal,
     editingBreak, setEditingBreak, unavailabilityType, setUnavailabilityType,
