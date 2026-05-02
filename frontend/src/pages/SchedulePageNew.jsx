@@ -566,7 +566,11 @@ export default function SchedulePageNew() {
   const [undoingAbsence, setUndoingAbsence] = useState(false);
 
   const loadGrid = useCallback(async () => {
-    if (!schoolId) return false;
+    // ملاحظة على القيمة المُعادة: نُعيد الـ payload نفسه عند النجاح (لا
+    // مجرد boolean) كي يستطيع المستدعي مقارنته بمعرّف الجدول المتوقَّع
+    // بعد التوليد دون الاعتماد على state React الذي لا يتحدّث داخل
+    // closure نفس الدالة. عند الفشل نُعيد null.
+    if (!schoolId) return null;
     try {
       // إضافة بصمة زمنية (`_t`) لإجبار المتصفح/أي وسيط على تجاوز أي
       // نسخة مخزَّنة من الاستجابة. الباك إند يضع Cache-Control: no-store،
@@ -583,11 +587,11 @@ export default function SchedulePageNew() {
       });
       setGrid(response.data);
       setError('');
-      return true;
+      return response.data;
     } catch (e) {
       const msg = e?.response?.data?.error?.message || e?.message || 'تعذّر تحميل الجدول';
       setError(msg);
-      return false;
+      return null;
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -635,28 +639,67 @@ export default function SchedulePageNew() {
       const insights = Array.isArray(data.unresolved_conflicts) ? data.unresolved_conflicts : [];
       setUnresolvedConflicts(insights);
 
+      // ──────────────────────────────────────────────────────────────────
+      // ترتيب مهمّ: نُعيد تحميل المصفوفة *قبل* عرض إشعار النجاح، حتى لا
+      // يرى المدير "تم توليد الجدول بنجاح" بينما الشاشة لا تزال تعرض
+      // البيانات القديمة. هذا يحقّق متطلب "اللحظة التي يظهر فيها الإشعار
+      // يكون الجدول قد تحدّث فعلاً".
+      //
+      // إعادة محاولة واحدة احترازية: لو رجع الـ GET الأول بمعرّف جدول
+      // غير المعرّف الذي قال محرك التوليد إنه أنشأه (سباق نادر بين الـ
+      // commit وقراءة المصفوفة)، ننتظر 400 ميلي ثانية ونُعيد المحاولة.
+      // نعتمد على القيمة المُعادة من loadGrid مباشرةً لا على state React
+      // (الذي لا يتحدّث داخل نفس الـ closure).
+      // ──────────────────────────────────────────────────────────────────
+      setRefreshing(true);
+      const expectedId = data.timetable_id || null;
+      let fetched = await loadGrid();
+      // الجلب يُعتبر "بائتاً" لو وُجد expectedId ولم يطابق ما رجع من
+      // الخادم — بما في ذلك حالة فشل المحاولة الثانية بعد عدم التطابق
+      // الأول (نحتفظ بإشارة "بائت" بدلاً من الخلط بينها وبين فشل الشبكة).
+      let staleAfterRetry = false;
+      if (fetched && expectedId && fetched.timetable_id !== expectedId) {
+        await new Promise((r) => setTimeout(r, 400));
+        const retry = await loadGrid();
+        if (retry && retry.timetable_id === expectedId) {
+          fetched = retry;
+        } else {
+          // المحاولة الثانية إمّا فشلت شبكياً وإمّا رجعت بنفس الجدول
+          // القديم. نعتبر العرض بائتاً لتشغيل تنبيه التحديث اليدوي.
+          staleAfterRetry = true;
+          if (retry) fetched = retry;
+        }
+      }
+
+      // ننتظر إعادة الرسم (frame) قبل توقيت الإشعار، فيُرى الإشعار والشاشة
+      // المُحدَّثة في نفس اللحظة بصرياً.
+      await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+
+      // نتعامل مع نتيجة المحرك (نجاح كامل/جزئي) ونتيجة الجلب (نجح/فشل) بشكل
+      // مستقل، حتى لا تُغطّي رسالة الجلب الفاشل ملاحظات حكيم على التوليد
+      // الجزئي. الترتيب: أولاً إشعار حالة التوليد (نجاح/جزئي)، ثم — إن
+      // فشل الجلب — إشعار خطأ صريح إضافي حول العرض القديم.
       if (data.success) {
         toast.success(data.message_ar || 'تم توليد الجدول بنجاح', {
           description: summary,
         });
       } else {
         // اكتمل التشغيل مع ملاحظات — نرفعها كحوار رؤى حكيم بدلاً من تنبيه toast
-        // عابر، حتى لا تضيع المعلومة المهمّة على المدير.
+        // عابر، حتى لا تضيع المعلومة المهمّة على المدير. هذه المعلومات
+        // مستقلّة عن نجاح/فشل إعادة الجلب.
         nassaqWarning(
           (data.message_ar || 'اكتمل التوليد مع ملاحظات') + '\n\n' + summary,
           { title: 'رؤى حكيم — اكتمل التوليد جزئياً' },
         );
       }
-
-      // إعادة تحميل المصفوفة بعد نجاح التوليد. إن فشل الجلب لأي سبب
-      // (شبكة/خادم) فلا نترك المدير أمام شاشة "ناجحة لكن قديمة" —
-      // نُظهر تنبيهاً واضحاً يقترح التحديث اليدوي. النجاح الفعلي للتوليد
-      // محفوظ في قاعدة البيانات؛ المشكلة الوحيدة هي أن العرض لم يلتقطها.
-      setRefreshing(true);
-      const refetched = await loadGrid();
-      if (!refetched) {
-        nassaqWarning(
-          'تم توليد الجدول بنجاح، لكن تعذّر تحميل العرض المحدَّث. اضغط "تحديث" لعرض الجدول الجديد.',
+      if (!fetched || staleAfterRetry) {
+        // توليد (كامل أو جزئي) نجح في الكتابة لقاعدة البيانات لكن العرض
+        // قديم — إمّا لأن جلب المصفوفة فشل شبكياً، وإمّا لأن المحاولة
+        // الثانية بعد عدم تطابق المعرّف لم تُرجع الجدول الجديد. في كلتا
+        // الحالتين نعرض خطأ صريح بالعبارة المحدَّدة في خطّة المهمة كي لا
+        // يُترك المدير أمام شاشة قديمة دون تنبيه.
+        nassaqError(
+          'تعذّر تحميل الجدول المُحدَّث — اضغط "تحديث" لعرض الجدول الجديد.',
           { title: 'تعذّر تحديث المصفوفة' },
         );
       }
