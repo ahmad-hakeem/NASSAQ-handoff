@@ -1065,10 +1065,15 @@ class SmartSchedulingEngine:
         المرحلة 4: بناء مصفوفة الموارد المتاحة
         Phase 4: Build Resource Availability Matrix
         """
-        # حمولة سياق حكيم — نستخدم الإسنادات من الحمولة المُمرَّرة بدلاً من
-        # استعلام جديد على القاعدة، حتى يبقى المصدر واحداً عبر مراحل التوليد.
+        # حمولة سياق حكيم — نستخدم الإسنادات وفترات عدم التوفر من الحمولة
+        # المُمرَّرة بدلاً من استعلام جديد على القاعدة، حتى يبقى المصدر
+        # واحداً عبر مراحل التوليد ويُحترم ما أدخله المستخدم في تبويب
+        # "أوقات عدم التوفر" بصرامة.
         ctx = context_payload if isinstance(context_payload, dict) else {}
         ctx_assignments = ctx.get("assignments")
+        ctx_unavailability = ctx.get("unavailability") or {}
+        ctx_teacher_unavail = ctx_unavailability.get("teacher") if isinstance(ctx_unavailability, dict) else None
+
         assignments_by_teacher: Dict[str, List[Dict[str, Any]]] = {}
         if isinstance(ctx_assignments, list):
             for a in ctx_assignments:
@@ -1076,6 +1081,25 @@ class SmartSchedulingEngine:
                 if not tid:
                     continue
                 assignments_by_teacher.setdefault(tid, []).append(a)
+
+        # فهرس عدم التوفر للمعلم: teacher_id -> list of (day_lower, period_int)
+        # نتعامل فقط مع الصفوف المرتبطة بيوم/حصة محدّدَين (أي طلبات
+        # غير long_term)؛ الطويلة الأمد هي لإدارة الغياب لا للجدولة.
+        unavail_by_teacher: Dict[str, set] = {}
+        if isinstance(ctx_teacher_unavail, list):
+            for u in ctx_teacher_unavail:
+                tid = u.get("entity_id") or u.get("teacher_id")
+                if not tid:
+                    continue
+                day = u.get("day")
+                period = u.get("period")
+                if not day or period is None:
+                    continue
+                try:
+                    period_int = int(period)
+                except (TypeError, ValueError):
+                    continue
+                unavail_by_teacher.setdefault(tid, set()).add((str(day).lower().strip(), period_int))
         resources = []
         
         # Get all teachers
@@ -1157,6 +1181,14 @@ class SmartSchedulingEngine:
                 if day in availability and period and not is_available:
                     if period in availability[day]:
                         availability[day].remove(period)
+
+            # Apply Schedule Settings → "أوقات عدم التوفر" (per-period blocks)
+            # from the validated context payload. Each (day, period) pair the
+            # principal marked is hard-removed from this teacher's available
+            # slots so Hakeem cannot schedule them there.
+            for (blk_day, blk_period) in unavail_by_teacher.get(teacher_id, set()):
+                if blk_day in availability and blk_period in availability[blk_day]:
+                    availability[blk_day].remove(blk_period)
 
             # Task #95: Apply per-teacher hard constraints stored on the
             # teacher record. `blocked_days` removes the day entirely;

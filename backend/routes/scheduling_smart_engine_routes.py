@@ -183,8 +183,15 @@ async def _assemble_hakim_context_payload(school_id: str) -> Dict[str, Any]:
     time_slots = await gd_find(db.session, "time_slots", {"school_id": school_id}, limit=500)
     classes = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": True}, limit=2000)
     assignments = await gd_find(db.session, "teacher_assignments", {"school_id": school_id, "is_active": True}, limit=5000)
-    teacher_unavail = await gd_find(db.session, "teacher_unavailability", {"school_id": school_id}, limit=5000)
-    class_unavail = await gd_find(db.session, "class_unavailability", {"school_id": school_id}, limit=5000)
+
+    # Schedule Settings UI writes both teacher- and class-level rows into a
+    # single `unavailability` collection with an `entity_type` discriminator
+    # (teacher / class). We split here so each engine phase consumes only
+    # the rows it cares about.
+    unavailability_rows = await gd_find(db.session, "unavailability", {"school_id": school_id}, limit=10000)
+    teacher_unavail = [u for u in unavailability_rows if u.get("entity_type") == "teacher"]
+    class_unavail = [u for u in unavailability_rows if u.get("entity_type") == "class"]
+
     school_constraints = await gd_find(db.session, "school_constraints", {"school_id": school_id, "is_active": True}, limit=500)
     admin_constraints = await gd_find(db.session, "administrative_constraints", {"school_id": school_id, "is_active": True}, limit=500)
 
