@@ -591,16 +591,19 @@ class SmartSchedulingEngine:
     
     # ============== PHASE 2: LOAD SCHOOL SETTINGS ==============
     
-    async def load_school_settings(self, school_id: str) -> Dict[str, Any]:
+    async def load_school_settings(self, school_id: str, context_payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         المرحلة 2: تحميل إعدادات المدرسة المعتمدة
         Phase 2: Load approved school settings
         """
-        # حمولة سياق حكيم — مصدر أوّل (إن مُرّر من الـ Route) قبل أيّ
+        # حمولة سياق حكيم — مصدر أوّل (إن مُرّرت من الـ Route) قبل أيّ
         # استعلام DB، حتى يقرأ المحرك من نفس البيانات التي تحقّقت منها
-        # طبقة الـ Route. عند غيابه نعود للقراءة من قاعدة البيانات كالسابق.
-        ctx = getattr(self, "_hakim_context_payload", None) or {}
-        ctx_settings = ctx.get("school_settings") if isinstance(ctx, dict) else None
+        # طبقة الـ Route. تأتي عبر وسيط `context_payload` وليس عبر self
+        # حتى لا تتداخل بيانات مدرسةٍ مع أخرى عند التشغيل المتوازي.
+        ctx = context_payload if isinstance(context_payload, dict) else {}
+        timing_section = ctx.get("timing") or {}
+        ctx_settings = timing_section.get("school_settings") if isinstance(timing_section, dict) else None
+        ctx_time_slots = timing_section.get("time_slots") if isinstance(timing_section, dict) else None
 
         settings = ctx_settings or await gd_find_one(self.session, "school_settings", {"school_id": school_id})
         
@@ -2585,15 +2588,16 @@ class SmartSchedulingEngine:
             generate more classes into it).
         """
         self._assert_tenant(school_id, calling_user)
-        # عقد "حمولة سياق حكيم": تأتي مسبَّقة من الـ Route عبر
-        # `_assemble_hakim_context_payload`. عند توفّرها نخزّنها على
-        # self لتقرأها مراحل التحميل (settings/timing) كمصدر أوّل، ونمنع
-        # نسخ هذه المعلومات من الذاكرة حتى لا تتغيَّر بين المراحل.
-        self._hakim_context_payload: Optional[Dict[str, Any]] = context_payload or None
-        if context_payload:
+        # عقد "حمولة سياق حكيم" — تأتي مسبَّقة من الـ Route عبر
+        # `_assemble_hakim_context_payload` وتُمرَّر كوسيط محلّي لكل مرحلة.
+        # نتجنّب تخزينها على self لأن `smart_scheduling_engine` كائن مفرد
+        # (singleton) داخل `dependencies.py`؛ تخزين الحمولة على المثيل
+        # يؤدّي إلى تسرّب بيانات بين المدارس عند تشغيل توليدَين متوازيَين.
+        ctx_payload: Optional[Dict[str, Any]] = context_payload or None
+        if ctx_payload:
             try:
                 summary = {k: (len(v) if isinstance(v, (list, dict)) else (1 if v is not None else 0))
-                           for k, v in context_payload.items()}
+                           for k, v in ctx_payload.items()}
                 logger.info("hakim_context_payload_received school_id=%s summary=%s", school_id, summary)
             except Exception:
                 pass
