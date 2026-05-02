@@ -297,6 +297,13 @@ class UnscheduledDemand(BaseModel):
     remaining_periods: int
     reason_ar: str
     reason_en: str
+    # سبب الفشل المُصنَّف — يُستخدم لربط كل صف في درج «رؤى حكيم» بالتبويب
+    # الفرعي الصحيح في إعدادات الجدول (no_working_days → timings،
+    # no_suitable_teacher/teacher_busy/teacher_load_exceeded
+    # → teacher-assignments، teacher_unavailable → unavailability،
+    # class_busy → classes، max_consecutive_reached/constraint_rejected
+    # → constraints). القيمة الافتراضية fallback عام إذا لم يُصنَّف السبب.
+    reason_code: str = "unscheduled_unknown"
 
 
 class TimetableRunLog(BaseModel):
@@ -1551,7 +1558,21 @@ class SmartSchedulingEngine:
             suitable_teachers = demand["suitable_teachers"]
             
             scheduled_count = 0
-            
+
+            # عدّاد أسباب الرفض داخل حلقة هذا الطلب — يُمكِّننا في النهاية
+            # من تصنيف سبب الفشل الغالب وإرفاقه برسالة عربية واضحة
+            # و`reason_code` يربط الصف في درج رؤى حكيم بالتبويب الفرعي
+            # الصحيح. كل مفتاح يحصي عدد المرات التي رُفضت فيها مرشَّحات
+            # (اليوم × الحصة × المعلم) لهذا السبب أثناء بحث المحرك.
+            rejection_counts: Dict[str, int] = {
+                "class_busy": 0,
+                "teacher_unavailable": 0,
+                "teacher_busy": 0,
+                "teacher_load_exceeded": 0,
+                "max_consecutive_reached": 0,
+                "constraint_rejected": 0,
+            }
+
             # Distribute periods across days
             if not working_days:
                 unscheduled.append(UnscheduledDemand(
@@ -1564,10 +1585,31 @@ class SmartSchedulingEngine:
                     required_periods=weekly_periods,
                     scheduled_periods=0,
                     remaining_periods=weekly_periods,
-                    reason_ar="لا توجد أيام عمل محددة",
-                    reason_en="No working days defined"
+                    reason_ar="لا توجد أيام عمل محددة في إعدادات التوقيت",
+                    reason_en="No working days defined",
+                    reason_code="no_working_days",
                 ))
                 continue
+
+            # سبب فشل مبكر شائع: لا يوجد أي معلم مؤهَّل مُسنَد لهذا الطلب.
+            # نُصنِّفه بدقّة كي يأخذ المدير مباشرةً إلى تبويب «إسناد المعلمين».
+            if not suitable_teachers:
+                unscheduled.append(UnscheduledDemand(
+                    id=str(uuid.uuid4()),
+                    run_id=run_id,
+                    school_id=school_id,
+                    class_id=class_id,
+                    grade_id=demand["grade_id"],
+                    subject_id=subject_id,
+                    required_periods=weekly_periods,
+                    scheduled_periods=0,
+                    remaining_periods=weekly_periods,
+                    reason_ar="لا يوجد معلم مؤهَّل مُسنَد لهذه المادة في هذا الفصل",
+                    reason_en="No qualified teacher assigned for this subject",
+                    reason_code="no_suitable_teacher",
+                ))
+                continue
+
             periods_per_working_day = max(1, weekly_periods // len(working_days))
             remaining = weekly_periods
 
@@ -1596,6 +1638,9 @@ class SmartSchedulingEngine:
                         # HARD CONSTRAINT: class_id + day + period must be unique
                         # A class cannot have two sessions in the same time slot
                         if class_id in grid[day][period]:
+                            # نحصي مرة واحدة لكل (يوم × حصة) لأن سبب الرفض
+                            # هنا لا يعتمد على المعلم المرشَّح.
+                            rejection_counts["class_busy"] += 1
                             continue
                         
                         for teacher_id in suitable_teachers:
@@ -1605,15 +1650,18 @@ class SmartSchedulingEngine:
                             
                             # Check teacher availability
                             if period not in resource.availability.get(day, []):
+                                rejection_counts["teacher_unavailable"] += 1
                                 continue
                             
                             # HARD CONSTRAINT: teacher_id + day + period must be unique
                             # Teacher cannot be in two places at the same time
                             if teacher_id in teacher_grid[day][period]:
+                                rejection_counts["teacher_busy"] += 1
                                 continue
                             
                             # Check teacher load
                             if resource_usage.get(teacher_id, 0) >= resource.weekly_load:
+                                rejection_counts["teacher_load_exceeded"] += 1
                                 continue
 
                             # Task #95 hard constraint: per-teacher
@@ -1623,6 +1671,7 @@ class SmartSchedulingEngine:
                             if self._would_exceed_max_consecutive(
                                 resource, teacher_grid, day, period, teaching_period_numbers
                             ):
+                                rejection_counts["max_consecutive_reached"] += 1
                                 continue
 
                             score = 100
@@ -1657,6 +1706,7 @@ class SmartSchedulingEngine:
                                 "day_of_week": day,
                                 "period_number": period,
                             }):
+                                rejection_counts["constraint_rejected"] += 1
                                 continue
 
                             score = self._apply_soft_constraint_scoring(
@@ -1720,6 +1770,37 @@ class SmartSchedulingEngine:
                         remaining -= 1
             
             if scheduled_count < weekly_periods:
+                # نختار سبب الرفض الغالب (الأكثر تكراراً أثناء البحث) لإفادة
+                # المدير برسالة عربية محدّدة وتوجيهه إلى التبويب الفرعي
+                # المناسب في إعدادات الجدول. عند تساوي العدّادات نأخذ أول
+                # سبب لغير صفر بحسب ترتيب الأولوية المُعلَن في القاموس.
+                REASON_AR_MAP = {
+                    "class_busy": "كل الفترات الزمنية لهذا الفصل ممتلئة بمواد أخرى",
+                    "teacher_unavailable": "المعلم المؤهَّل غير متوفّر في أي حصة مناسبة (راجع أوقات عدم التوفر)",
+                    "teacher_busy": "المعلم المؤهَّل مرتبط بفصل آخر في كل الحصص الممكنة",
+                    "teacher_load_exceeded": "المعلم المؤهَّل بلغ نصابه الأسبوعي ولا يمكن إضافة حصص جديدة",
+                    "max_consecutive_reached": "إضافة حصة جديدة تتجاوز الحد الأقصى للحصص المتتالية للمعلم",
+                    "constraint_rejected": "أحد قيود الجدول المُفعَّلة منع كل المرشَّحات لهذا الطلب",
+                }
+                REASON_EN_MAP = {
+                    "class_busy": "All class slots already booked for other subjects",
+                    "teacher_unavailable": "No qualified teacher is available in any suitable period",
+                    "teacher_busy": "Qualified teacher already booked elsewhere in every candidate slot",
+                    "teacher_load_exceeded": "Qualified teacher reached the weekly load limit",
+                    "max_consecutive_reached": "Placement would exceed teacher max consecutive periods",
+                    "constraint_rejected": "An active hard constraint rejected every candidate",
+                }
+                if any(rejection_counts.values()):
+                    dominant = max(rejection_counts.items(), key=lambda kv: kv[1])[0]
+                else:
+                    dominant = "unscheduled_unknown"
+
+                reason_ar = REASON_AR_MAP.get(
+                    dominant, "لم يتوفر وقت أو معلم مناسب"
+                )
+                reason_en = REASON_EN_MAP.get(
+                    dominant, "No suitable time or teacher available"
+                )
                 unscheduled.append(UnscheduledDemand(
                     id=str(uuid.uuid4()),
                     run_id=run_id,
@@ -1730,8 +1811,9 @@ class SmartSchedulingEngine:
                     required_periods=weekly_periods,
                     scheduled_periods=scheduled_count,
                     remaining_periods=weekly_periods - scheduled_count,
-                    reason_ar="لم يتوفر وقت أو معلم مناسب",
-                    reason_en="No suitable time or teacher available"
+                    reason_ar=reason_ar,
+                    reason_en=reason_en,
+                    reason_code=dominant,
                 ))
         
         all_classes = set()
@@ -2897,6 +2979,41 @@ class SmartSchedulingEngine:
             # Build رؤى حكيم unresolved_conflicts payload — names resolved
             # once via batched lookups so the frontend renders the insights
             # banner + cell tooltips without an extra round-trip.
+            #
+            # نُرفق أيضاً `settings_tab` لكل عنصر كي يستطيع زر «فتح الإعدادات»
+            # في درج رؤى حكيم نقل المدير مباشرةً إلى التبويب الفرعي الذي
+            # يُتوقَّع أن يحلّ سبب التعارض. التبويبات الخمسة المسموح بها هي
+            # نفسها المستخدمة في صفحة إعدادات الجدول:
+            #   timings / classes / teacher-assignments / unavailability / constraints
+            REASON_TO_SETTINGS_TAB = {
+                # Conflicts emitted by the constraint detector.
+                "teacher_overlap": "teacher-assignments",
+                "class_overlap": "classes",
+                "room_overlap": "timings",
+                "subject_consecutive": "constraints",
+                "teacher_overload": "teacher-assignments",
+                "subject_quota_violation": "teacher-assignments",
+                "daily_period_limit_exceeded": "constraints",
+                "availability": "unavailability",
+                "constraint_violation": "constraints",
+                # Classified unscheduled-demand codes (engine baseline loop).
+                "no_working_days": "timings",
+                "no_suitable_teacher": "teacher-assignments",
+                "class_busy": "classes",
+                "teacher_unavailable": "unavailability",
+                "teacher_busy": "teacher-assignments",
+                "teacher_load_exceeded": "teacher-assignments",
+                "max_consecutive_reached": "constraints",
+                "constraint_rejected": "constraints",
+                # Generic fallbacks.
+                "unscheduled_unknown": "teacher-assignments",
+                "UNSCHEDULED": "teacher-assignments",
+            }
+            DEFAULT_SETTINGS_TAB = "teacher-assignments"
+
+            def _settings_tab_for(code: str) -> str:
+                return REASON_TO_SETTINGS_TAB.get(code or "", DEFAULT_SETTINGS_TAB)
+
             unresolved_conflicts: List[Dict[str, Any]] = []
             try:
                 referenced_class_ids = {c.class_id for c in conflicts if c.class_id} | {u.class_id for u in unscheduled if u.class_id}
@@ -2923,9 +3040,15 @@ class SmartSchedulingEngine:
                         "subject_name": subj_name_map.get(c.subject_id, "") if c.subject_id else "",
                         "reason_code": c.conflict_type,
                         "reason_ar": c.message_ar,
+                        "settings_tab": _settings_tab_for(c.conflict_type),
                         "kind": "conflict",
                     })
                 for u in unscheduled:
+                    # نُفضّل reason_code المُصنَّف من المحرك (مثل
+                    # no_suitable_teacher/teacher_unavailable/class_busy…)
+                    # كي يربط الفرونت كل صف بالتبويب الفرعي الصحيح؛ إذا
+                    # كان فارغاً نعود إلى الكود العام "UNSCHEDULED".
+                    u_code = (u.reason_code or "UNSCHEDULED")
                     unresolved_conflicts.append({
                         "day_of_week": None,
                         "period_number": None,
@@ -2934,9 +3057,10 @@ class SmartSchedulingEngine:
                         "class_name": cls_name_map.get(u.class_id, "") if u.class_id else "",
                         "subject_id": u.subject_id,
                         "subject_name": subj_name_map.get(u.subject_id, "") if u.subject_id else "",
-                        "reason_code": "UNSCHEDULED",
+                        "reason_code": u_code,
                         "reason_ar": u.reason_ar,
                         "remaining_periods": u.remaining_periods,
+                        "settings_tab": _settings_tab_for(u_code),
                         "kind": "unscheduled",
                     })
             except Exception as _enrich_err:  # never fail generation for insights enrichment

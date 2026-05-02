@@ -29,10 +29,14 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '../components/ui/tooltip';
 import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
+} from '../components/ui/sheet';
+import { Badge } from '../components/ui/badge';
+import {
   Wand2, UserX, Sparkles, Loader2, RefreshCw,
   Scale, Hourglass, UserMinus, AlertOctagon, AlertTriangle, Repeat,
   ShieldAlert, Settings, ArrowLeft,
-  Undo2, Layers, Lightbulb, X, ChevronDown, ChevronUp,
+  Undo2, Layers, Lightbulb, X, ExternalLink,
 } from 'lucide-react';
 import CandidatesSidePanel from '../components/schedule/CandidatesSidePanel';
 import BulkSubstitutionPanel from '../components/schedule/BulkSubstitutionPanel';
@@ -258,86 +262,249 @@ function HakimGeneratingOverlay() {
   );
 }
 
-// ─── رؤى حكيم — شريط مطوي افتراضياً، يُفتح لعرض القائمة الكاملة ─────────────
-// يلخّص للمستخدم الخانات التي لم يستطع المحرك جدولتها (تعارض أو طلب متبقٍ).
-// تصميم مطوي/مفتوح: العنوان الافتراضي «تعذّر جدولة N حصة — اضغط لعرض
-// التفاصيل»، وعند الفتح يعرض القائمة مجمَّعة حسب الفصل ثم المادة كي يستطيع
-// المستخدم تتبّع المشكلة بدقة. يبقى زر إخفاء جانبي لجلسة العمل.
-function HakimInsightsBanner({ conflicts, dismissed, onDismiss }) {
-  const [expanded, setExpanded] = useState(false);
+// ─── رؤى حكيم — شريط ملخّص + درج تفصيلي ──────────────────────────────────
+// الشريط يلخّص العدد فقط، ويفتح زر «عرض التفاصيل» درجاً جانبياً (Sheet)
+// يسرد كلّ العناصر بدون اقتطاع، مجمَّعة حسب الفصل ثم المادة. كلّ صف يحمل
+// زر «فتح الإعدادات» يأخذ المدير مباشرةً إلى التبويب الفرعي المناسب
+// (timings / classes / teacher-assignments / unavailability / constraints)
+// بناءً على `settings_tab` القادم من الباك‑إند (مع fallback عبر reason_code
+// لو شغّل الواجهةَ خادمٌ قديمٌ لا يُرسل هذا الحقل). يحتوي رأس الدرج زرَّ
+// «إعادة المحاولة» الذي يُعيد تشغيل التوليد بعد إصلاح القيد.
+//
+// التبويبات الخمسة في صفحة إعدادات الجدول مسجَّلة في
+// `ScheduleSettingsTabContent.jsx`، ونوجِّه الزر إلى الرابط
+// `/school/schedule?tab=settings&sub=<tab>` الذي تُحسن الصفحة قراءته.
+
+const SETTINGS_TAB_LABEL = {
+  'timings': 'التوقيت والحصص',
+  'classes': 'الفصول والشعب',
+  'teacher-assignments': 'إسناد المعلمين',
+  'unavailability': 'أوقات عدم التوفر',
+  'constraints': 'قيود الجدول',
+};
+const VALID_SETTINGS_TABS = Object.keys(SETTINGS_TAB_LABEL);
+const REASON_TO_SETTINGS_TAB = {
+  // Conflicts emitted by the constraint detector.
+  teacher_overlap: 'teacher-assignments',
+  class_overlap: 'classes',
+  room_overlap: 'timings',
+  subject_consecutive: 'constraints',
+  teacher_overload: 'teacher-assignments',
+  subject_quota_violation: 'teacher-assignments',
+  daily_period_limit_exceeded: 'constraints',
+  availability: 'unavailability',
+  constraint_violation: 'constraints',
+  // Classified unscheduled-demand codes (engine baseline loop).
+  no_working_days: 'timings',
+  no_suitable_teacher: 'teacher-assignments',
+  class_busy: 'classes',
+  teacher_unavailable: 'unavailability',
+  teacher_busy: 'teacher-assignments',
+  teacher_load_exceeded: 'teacher-assignments',
+  max_consecutive_reached: 'constraints',
+  constraint_rejected: 'constraints',
+  // Generic fallbacks.
+  unscheduled_unknown: 'teacher-assignments',
+  UNSCHEDULED: 'teacher-assignments',
+};
+const DEFAULT_SETTINGS_TAB = 'teacher-assignments';
+
+function resolveSettingsTab(item) {
+  const fromBackend = item?.settings_tab;
+  if (fromBackend && VALID_SETTINGS_TABS.includes(fromBackend)) return fromBackend;
+  return REASON_TO_SETTINGS_TAB[item?.reason_code] || DEFAULT_SETTINGS_TAB;
+}
+
+const DAY_LABEL_AR = {
+  sunday: 'الأحد',
+  monday: 'الإثنين',
+  tuesday: 'الثلاثاء',
+  wednesday: 'الأربعاء',
+  thursday: 'الخميس',
+};
+
+function HakimInsightsBanner({ conflicts, dismissed, onDismiss, onOpenDrawer }) {
   if (!conflicts || conflicts.length === 0 || dismissed) return null;
   const total = conflicts.length;
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-lg border border-orange-200 bg-orange-50 text-orange-900 shrink-0">
+      <Lightbulb className="h-5 w-5 shrink-0 text-orange-500" />
+      <p className="flex-1 min-w-0 text-sm font-bold truncate text-right">
+        رؤى حكيم • تعذّر جدولة {total} حصة
+      </p>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={onOpenDrawer}
+        className="shrink-0 border-orange-300 text-orange-800 hover:bg-orange-100 bg-white/70"
+        data-testid="open-hakim-insights-drawer"
+      >
+        <Lightbulb className="h-3.5 w-3.5 ml-1" />
+        عرض التفاصيل
+      </Button>
+      <button
+        type="button"
+        onClick={onDismiss}
+        title="إخفاء الشريط"
+        aria-label="إخفاء شريط رؤى حكيم"
+        className="shrink-0 rounded p-1 text-orange-700 hover:bg-orange-100 transition-colors"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
 
-  // تجميع: class_name → subject_name → [conflicts]
-  const grouped = new Map();
-  for (const c of conflicts) {
-    const cls = c.class_name || '—';
-    const subj = c.subject_name || '—';
-    if (!grouped.has(cls)) grouped.set(cls, new Map());
-    const subMap = grouped.get(cls);
-    if (!subMap.has(subj)) subMap.set(subj, []);
-    subMap.get(subj).push(c);
-  }
+// درج «رؤى حكيم» — يعرض كل العناصر بلا اقتطاع، مع زر إعادة المحاولة
+// وروابط مباشرة إلى التبويبات الفرعية الخمس لإعدادات الجدول.
+function HakimInsightsDrawer({
+  open,
+  onOpenChange,
+  conflicts,
+  onNavigate,
+  onRetry,
+  retrying,
+}) {
+  const items = conflicts || [];
+  const total = items.length;
+
+  // تجميع: class_name → subject_name → [items]
+  const grouped = useMemo(() => {
+    const m = new Map();
+    for (const c of items) {
+      const cls = c.class_name || '—';
+      const subj = c.subject_name || '—';
+      if (!m.has(cls)) m.set(cls, new Map());
+      const subMap = m.get(cls);
+      if (!subMap.has(subj)) subMap.set(subj, []);
+      subMap.get(subj).push(c);
+    }
+    return m;
+  }, [items]);
+
+  // تفصيل سريع لتوقيت الحصة عند توفُّره (للتعارضات بخلاف الطلبات
+  // المتبقية بدون موعد).
+  const slotLabel = (item) => {
+    if (!item.day_of_week || !item.period_number) return '';
+    const day = DAY_LABEL_AR[item.day_of_week] || item.day_of_week;
+    return `${day} • الحصة ${item.period_number}`;
+  };
 
   return (
-    <div className="rounded-lg border border-orange-200 bg-orange-50 text-orange-900 shrink-0">
-      <div className="flex items-center gap-3 p-3">
-        <Lightbulb className="h-5 w-5 shrink-0 text-orange-500" />
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          aria-expanded={expanded}
-          aria-controls="hakim-insights-details"
-          className="flex-1 min-w-0 text-right flex items-center justify-between gap-2 hover:bg-orange-100/40 rounded px-2 py-1 -mx-2 transition-colors"
-        >
-          <span className="text-sm font-bold truncate">
-            رؤى حكيم • تعذّر جدولة {total} حصة — اضغط لعرض التفاصيل
-          </span>
-          {expanded
-            ? <ChevronUp className="h-4 w-4 shrink-0 text-orange-700" />
-            : <ChevronDown className="h-4 w-4 shrink-0 text-orange-700" />}
-        </button>
-        <button
-          type="button"
-          onClick={onDismiss}
-          title="إخفاء الشريط"
-          aria-label="إخفاء شريط رؤى حكيم"
-          className="shrink-0 rounded p-1 text-orange-700 hover:bg-orange-100 transition-colors"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-      {expanded && (
-        <div
-          id="hakim-insights-details"
-          className="border-t border-orange-200 max-h-72 overflow-y-auto px-3 py-2 space-y-2 text-[12px] leading-relaxed"
-        >
-          {Array.from(grouped.entries()).map(([cls, subMap]) => (
-            <div key={cls} className="rounded border border-orange-200 bg-white/60 p-2">
-              <div className="font-bold text-orange-900 mb-1">{cls}</div>
-              <ul className="space-y-1">
-                {Array.from(subMap.entries()).map(([subj, items]) => (
-                  <li key={subj} className="text-orange-800">
-                    <span className="font-semibold">{subj}</span>
-                    <span className="text-orange-600"> • {items.length} عنصر</span>
-                    <ul className="mt-0.5 mr-3 space-y-0.5 text-orange-700">
-                      {items.slice(0, 5).map((c, i) => (
-                        <li key={i} className="truncate">
-                          {c.reason_ar || 'تعذّر الجدولة'}
-                        </li>
-                      ))}
-                      {items.length > 5 && (
-                        <li className="text-[11px] text-orange-600">…و{items.length - 5} عنصر إضافي</li>
-                      )}
-                    </ul>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="left"
+        dir="rtl"
+        className="w-full sm:max-w-lg p-0 flex flex-col gap-0"
+        data-testid="hakim-insights-drawer"
+      >
+        <SheetHeader className="p-5 bg-gradient-to-l from-orange-100 to-amber-50 border-b border-orange-200 text-right">
+          <SheetTitle className="flex items-center gap-2 text-orange-900">
+            <Lightbulb className="h-5 w-5 text-orange-500" />
+            رؤى حكيم — تفاصيل الحصص غير المُجدولة
+          </SheetTitle>
+          <SheetDescription className="text-orange-800/90 text-xs leading-relaxed">
+            {total > 0
+              ? `تعذّرت جدولة ${total} عنصر. لكل صف زر يفتح التبويب الذي يساعدك على إصلاح السبب.`
+              : 'لا توجد عناصر غير مُجدولة حالياً.'}
+          </SheetDescription>
+          <div className="pt-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={onRetry}
+              disabled={retrying}
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+              data-testid="hakim-insights-retry"
+            >
+              {retrying
+                ? <Loader2 className="h-3.5 w-3.5 ml-1 animate-spin" />
+                : <RefreshCw className="h-3.5 w-3.5 ml-1" />}
+              {retrying ? 'جارٍ إعادة التوليد…' : 'إعادة المحاولة'}
+            </Button>
+          </div>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
+          {total === 0 ? (
+            <p className="text-sm text-slate-500 text-center py-10">
+              لا توجد بيانات لعرضها.
+            </p>
+          ) : (
+            Array.from(grouped.entries()).map(([cls, subMap]) => (
+              <div
+                key={cls}
+                className="rounded-lg border border-orange-200 bg-white shadow-sm overflow-hidden"
+              >
+                <div className="px-3 py-2 bg-orange-50 border-b border-orange-200 font-bold text-orange-900 text-sm">
+                  {cls}
+                </div>
+                <ul className="divide-y divide-slate-100">
+                  {Array.from(subMap.entries()).map(([subj, rows]) => (
+                    <li key={subj} className="p-3">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="font-semibold text-slate-800 text-sm truncate">
+                          {subj}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className="border-orange-300 text-orange-700 bg-orange-50 text-[10px] shrink-0"
+                        >
+                          {rows.length} عنصر
+                        </Badge>
+                      </div>
+                      <ul className="space-y-2">
+                        {rows.map((c, i) => {
+                          const tab = resolveSettingsTab(c);
+                          const tabLabel = SETTINGS_TAB_LABEL[tab] || 'الإعدادات';
+                          const slot = slotLabel(c);
+                          return (
+                            <li
+                              key={i}
+                              className="rounded border border-slate-200 bg-slate-50/60 p-2 text-[12px] leading-relaxed"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  {slot && (
+                                    <p className="text-[11px] font-semibold text-slate-500 mb-0.5">
+                                      {slot}
+                                    </p>
+                                  )}
+                                  <p className="text-slate-800">
+                                    {c.reason_ar || 'تعذّر الجدولة'}
+                                  </p>
+                                  {c.reason_code && (
+                                    <p className="mt-0.5 text-[10px] font-mono text-slate-400">
+                                      {c.reason_code}
+                                    </p>
+                                  )}
+                                </div>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => onNavigate(tab)}
+                                  className="shrink-0 border-[#1C3D74]/30 text-[#1C3D74] hover:bg-[#1C3D74]/5 text-[11px] h-7"
+                                  data-testid={`hakim-insights-open-${tab}`}
+                                >
+                                  <ExternalLink className="h-3 w-3 ml-1" />
+                                  {tabLabel}
+                                </Button>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          )}
         </div>
-      )}
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -381,6 +548,8 @@ export default function SchedulePageNew() {
   // مع خانة قابلة للإغلاق تخزن تفضيل المستخدم لإخفاء الشريط لجلسة العمل.
   const [unresolvedConflicts, setUnresolvedConflicts] = useState([]);
   const [insightsDismissed, setInsightsDismissed] = useState(false);
+  // درج «رؤى حكيم» التفصيلي — يفتحه المدير عبر زر «عرض التفاصيل».
+  const [insightsDrawerOpen, setInsightsDrawerOpen] = useState(false);
 
   // حوار "تعذّر التوليد" مع تفاصيل الـ infeasibility report
   const [blockedOpen, setBlockedOpen] = useState(false);
@@ -882,11 +1051,33 @@ export default function SchedulePageNew() {
         )}
 
         {/* ── رؤى حكيم — شريط ديناميكي يظهر بعد التوليد عندما توجد
-            تعارضات/خانات لم تُجدول. قابل للإغلاق لجلسة العمل الحالية. ─────── */}
+            تعارضات/خانات لم تُجدول. قابل للإغلاق لجلسة العمل الحالية،
+            وزر «عرض التفاصيل» يفتح درجاً يسرد كلّ العناصر مع روابط مباشرة
+            إلى تبويبات إعدادات الجدول. ─────── */}
         <HakimInsightsBanner
           conflicts={unresolvedConflicts}
           dismissed={insightsDismissed}
           onDismiss={() => setInsightsDismissed(true)}
+          onOpenDrawer={() => setInsightsDrawerOpen(true)}
+        />
+
+        <HakimInsightsDrawer
+          open={insightsDrawerOpen}
+          onOpenChange={setInsightsDrawerOpen}
+          conflicts={unresolvedConflicts}
+          retrying={generating}
+          onNavigate={(tab) => {
+            // فتح تبويب الإعدادات الفرعي المناسب في تبويب رئيسي جديد كي
+            // تبقى نتائج التوليد ظاهرة. عند الفشل (مانع نوافذ منبثقة
+            // مثلاً) نستخدم navigate كحلّ احتياطي داخل التبويب نفسه.
+            const url = `/school/schedule?tab=settings&sub=${encodeURIComponent(tab)}`;
+            const win = window.open(url, '_blank', 'noopener');
+            if (!win) navigate(url);
+          }}
+          onRetry={() => {
+            setInsightsDrawerOpen(false);
+            handleAutoGenerate();
+          }}
         />
 
         {/* ── Substitution drawer (single slot) ─────────────────────── */}
