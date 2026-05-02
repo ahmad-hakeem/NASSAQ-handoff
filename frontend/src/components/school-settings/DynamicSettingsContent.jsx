@@ -55,19 +55,24 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
   return (
     <div className="space-y-6">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="w-full h-auto bg-white rounded-2xl p-1.5 shadow-sm border border-slate-200 mb-6 flex flex-row gap-0.5">
-          {dynamicTabs.map((tab) => (
-            <TabsTrigger
-              key={tab.id}
-              value={tab.id}
-              className="flex-1 min-w-0 rounded-xl text-[9px] sm:text-[10px] py-2.5 px-0.5 data-[state=active]:bg-[#1C3D74] data-[state=active]:text-white data-[state=active]:shadow-md transition-all flex flex-col items-center gap-1 text-slate-500 hover:text-slate-700"
-              data-testid={`tab-${tab.id}`}
-            >
-              <tab.icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
-              <span className="truncate w-full text-center leading-tight">{tab.label}</span>
-            </TabsTrigger>
-          ))}
-        </TabsList>
+        {/* لا نُظهر شريط التبويبات الفرعي إذا كان هناك تبويب واحد فقط
+            (مثل صفحة "بيانات المدرسة")؛ يبقى الـ TabsList كما هو في
+            صفحات إعدادات الجدول التي تستخدم نفس المكوّن مع تبويبات متعدّدة. */}
+        {dynamicTabs.length > 1 && (
+          <TabsList className="w-full h-auto bg-white rounded-2xl p-1.5 shadow-sm border border-slate-200 mb-6 flex flex-row gap-0.5">
+            {dynamicTabs.map((tab) => (
+              <TabsTrigger
+                key={tab.id}
+                value={tab.id}
+                className="flex-1 min-w-0 rounded-xl text-[9px] sm:text-[10px] py-2.5 px-0.5 data-[state=active]:bg-[#1C3D74] data-[state=active]:text-white data-[state=active]:shadow-md transition-all flex flex-col items-center gap-1 text-slate-500 hover:text-slate-700"
+                data-testid={`tab-${tab.id}`}
+              >
+                <tab.icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
+                <span className="truncate w-full text-center leading-tight">{tab.label}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        )}
 
         <TabsContent value="school-info" className="space-y-6">
           <Card className="bg-white shadow-sm border-[#1C3D74]/20">
