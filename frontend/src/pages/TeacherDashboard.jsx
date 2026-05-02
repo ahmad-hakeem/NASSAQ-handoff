@@ -96,7 +96,8 @@ export default function TeacherDashboard() {
 
   const quickActions = [
     { icon: ClipboardCheck, label: isRTL ? 'تسجيل الحضور' : 'Take Attendance', path: '/admin/attendance', color: 'bg-green-500' },
-    { icon: FileText, label: t('addAssessment'), path: '/admin/assessments', color: 'bg-blue-500' },
+    // TEMPORARILY HIDDEN — Exams & Assessments module under maintenance.
+    // { icon: FileText, label: t('addAssessment'), path: '/admin/assessments', color: 'bg-blue-500' },
     { icon: Calendar, label: t('mySchedule'), path: '/admin/schedule', color: 'bg-purple-500' },
     { icon: Bell, label: t('notifications'), path: '/notifications', color: 'bg-orange-500' },
   ];
@@ -337,6 +338,7 @@ export default function TeacherDashboard() {
                     {t('recordNow')}
                   </Button>
                 </div>
+                {/* TEMPORARILY HIDDEN — Exams & Assessments module under maintenance.
                 <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-medium text-blue-800">{t('pendingAssessments')}</span>
@@ -346,6 +348,7 @@ export default function TeacherDashboard() {
                     {t('completeAssessment')}
                   </Button>
                 </div>
+                */}
                 <div className="p-4 rounded-lg bg-green-50 border border-green-200">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-medium text-green-800">{t('reportsToReview')}</span>

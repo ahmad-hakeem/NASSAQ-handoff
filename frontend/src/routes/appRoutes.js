@@ -359,9 +359,13 @@ export default function AppRoutes() {
         <Route path="/principal/users-management" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><UsersClassesManagement /></ProtectedRoute>
         } />
+        {/* TEMPORARILY HIDDEN — Exams & Assessments module under maintenance.
+            Restore by uncommenting the route below and removing the redirect.
         <Route path="/admin/assessments" element={
           <ProtectedRoute allowedRoles={SCHOOL_TEACHING_ROLES}><AssessmentPage /></ProtectedRoute>
         } />
+        */}
+        <Route path="/admin/assessments" element={<Navigate to="/dashboard" replace />} />
         <Route path="/admin/users-management" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><UsersClassesManagement /></ProtectedRoute>
         } />

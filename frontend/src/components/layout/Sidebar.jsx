@@ -325,12 +325,13 @@ export const Sidebar = ({ children }) => {
         roles: SCHOOL_ROLES,
       },
       // 5. Assessments & Grades Management
-      {
-        icon: ClipboardList,
-        label: t('examsAssessments'),
-        href: '/admin/assessments',
-        roles: SCHOOL_ROLES,
-      },
+      // TEMPORARILY HIDDEN — module under maintenance. Restore by uncommenting.
+      // {
+      //   icon: ClipboardList,
+      //   label: t('examsAssessments'),
+      //   href: '/admin/assessments',
+      //   roles: SCHOOL_ROLES,
+      // },
       // 6. School Settings
       {
         icon: Settings,
