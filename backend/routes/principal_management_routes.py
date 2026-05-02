@@ -83,6 +83,85 @@ async def _write_audit(tenant_id, action, entity_type, entity_id, changes, perfo
     })
 
 
+# ==================== USER ACCOUNT RESOLVER ====================
+# Map a profile entity (parents / teachers / students row) to the matching
+# `users` row. The `users` table is the single source of truth for whether a
+# login account exists, so we MUST check it by every reasonable identifier
+# before concluding "no account exists" — otherwise the UI shows a stale
+# "create account" button that then trips the global users.email UNIQUE
+# constraint when admin clicks it.
+#
+# Lookup order (first match wins):
+#   1) users.<role>_id == entity_id          (the real FK column)
+#   2) users.linked_entity_id == entity_id   (legacy column on some DBs)
+#   3) users.id == entity_id                 (when the profile row IS a user)
+#   4) users.id == entity.user_id            (when the profile carries user_id)
+#   5) users.email == entity.email           (last-resort email fallback —
+#                                             this is what catches the bug
+#                                             where prior link columns were
+#                                             never populated)
+#
+# Auto-heal: if a user is found via fallbacks (4) or (5) and the canonical
+# users.<role>_id link is missing/wrong, we silently update users.<role>_id
+# to point at entity_id. This restores DB integrity so subsequent loads find
+# the account on the first try, without requiring a migration.
+ROLE_FK_COLUMN = {
+    "parent": "parent_id",
+    "teacher": "teacher_id",
+    "student": "student_id",
+}
+
+
+async def _resolve_user_account_with_heal(role: str, entity: dict, entity_id: str, tenant_id: str) -> Optional[dict]:
+    """Find the users row that backs a profile entity, healing the FK link
+    when the lookup falls back to email matching. See module-level docstring
+    above for rationale."""
+    fk_col = ROLE_FK_COLUMN.get(role)
+    base_filter = {"role": role, "tenant_id": tenant_id}
+
+    # Build OR conditions — only include columns we know the schema supports.
+    or_conditions = []
+    if fk_col:
+        or_conditions.append({fk_col: entity_id})
+    or_conditions.append({"linked_entity_id": entity_id})
+    or_conditions.append({"id": entity_id})
+    if entity.get("user_id"):
+        or_conditions.append({"id": entity.get("user_id")})
+
+    user = None
+    try:
+        user = await gd_find_one(db.session, "users", {"$or": or_conditions, **base_filter})
+    except Exception as e:  # pragma: no cover - defensive: e.g. column missing
+        logger.warning(f"_resolve_user_account_with_heal initial lookup failed for {role}/{entity_id}: {e}")
+
+    # Email fallback — by far the most common reason the FK lookup misses
+    # is that older flows inserted users without populating <role>_id.
+    if not user and entity.get("email"):
+        try:
+            user = await gd_find_one(db.session, "users", {
+                "email": entity["email"],
+                **base_filter,
+            })
+        except Exception as e:  # pragma: no cover
+            logger.warning(f"_resolve_user_account_with_heal email fallback failed for {role}/{entity_id}: {e}")
+
+    # Auto-heal: ensure the canonical FK column points at this entity so
+    # subsequent loads don't have to fall through to the email path.
+    if user and fk_col and user.get(fk_col) != entity_id:
+        try:
+            await gd_update_one(
+                db.session, "users",
+                {"id": user["id"]},
+                {fk_col: entity_id, "updated_at": datetime.now(timezone.utc).isoformat()},
+            )
+            user[fk_col] = entity_id
+            logger.info(f"Healed users.{fk_col}={entity_id} for user {user['id']} ({role})")
+        except Exception as e:  # pragma: no cover
+            logger.warning(f"_resolve_user_account_with_heal heal failed for {role}/{entity_id}: {e}")
+
+    return user
+
+
 # ==================== TEACHER MANAGEMENT ====================
 
 @router.get("/teacher/{teacher_id}/full-profile")
@@ -95,10 +174,7 @@ async def get_teacher_full_profile(
     if not teacher:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
 
-    user_or_conditions = [{"linked_entity_id": teacher_id}, {"id": teacher_id}]
-    if teacher.get("user_id"):
-        user_or_conditions.append({"id": teacher.get("user_id")})
-    user_account = await gd_find_one(db.session, "users", {"$or": user_or_conditions, "role": "teacher", "tenant_id": tenant_id})
+    user_account = await _resolve_user_account_with_heal("teacher", teacher, teacher_id, tenant_id)
 
     assignments = await gd_find(db.session, "teacher_assignments", {**_entity_tenant_filter(tenant_id), "teacher_id": teacher_id, "is_active": True}, limit=30)
 
@@ -155,9 +231,10 @@ async def get_teacher_full_profile(
             "assignments": assignments,
             "user_account": {
                 "id": user_account.get("id") if user_account else None,
-                "email": user_account.get("email") if user_account else None,
+                "email": user_account.get("email") if user_account else teacher.get("email"),
                 "status": user_account.get("status", "active") if user_account else None,
-                "created_at": user_account.get("created_at") if user_account else None
+                "created_at": user_account.get("created_at") if user_account else None,
+                "has_login_account": user_account is not None,
             },
             "attendance_stats": attendance_stats,
             "recent_activity": recent_activity
@@ -189,16 +266,23 @@ async def update_teacher_basic_info(
     if not updates:
         return {"success": True, "message": "لا توجد تغييرات"}
 
+    user_row = await _resolve_user_account_with_heal("teacher", teacher, teacher_id, tenant_id)
+
     if "email" in updates:
         dup = await gd_find_one(db.session, "teachers", {
             "email": updates["email"], **_entity_tenant_filter(tenant_id), "id": {"$ne": teacher_id}
         })
         if dup:
             raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم بالفعل")
-        await gd_update_one(db.session, "users", {"$or": [{"linked_entity_id": teacher_id}, {"id": teacher_id}], "role": "teacher", "tenant_id": tenant_id}, {"email": updates["email"], "updated_at": datetime.now(timezone.utc).isoformat()})
+        if user_row:
+            user_dup = await gd_find_one(db.session, "users", {"email": updates["email"], "id": {"$ne": user_row["id"]}})
+            if user_dup:
+                raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم بالفعل")
+            await gd_update_one(db.session, "users", {"id": user_row["id"]}, {"email": updates["email"], "updated_at": datetime.now(timezone.utc).isoformat()})
 
     if "full_name" in updates:
-        await gd_update_one(db.session, "users", {"$or": [{"linked_entity_id": teacher_id}, {"id": teacher_id}], "role": "teacher", "tenant_id": tenant_id}, {"full_name": updates["full_name"], "updated_at": datetime.now(timezone.utc).isoformat()})
+        if user_row:
+            await gd_update_one(db.session, "users", {"id": user_row["id"]}, {"full_name": updates["full_name"], "updated_at": datetime.now(timezone.utc).isoformat()})
         await gd_update_many(db.session, "teacher_assignments", {**_entity_tenant_filter(tenant_id), "teacher_id": teacher_id}, {"teacher_name": updates["full_name"]})
         await gd_update_many(db.session, "schedule_sessions", {**_entity_tenant_filter(tenant_id), "teacher_id": teacher_id}, {"teacher_name": updates["full_name"]})
 
@@ -251,10 +335,7 @@ async def update_teacher_credentials(
     if not teacher:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
 
-    user_or = [{"linked_entity_id": teacher_id}, {"id": teacher_id}]
-    if teacher.get("user_id"):
-        user_or.append({"id": teacher.get("user_id")})
-    user = await gd_find_one(db.session, "users", {"$or": user_or, "role": "teacher", "tenant_id": tenant_id})
+    user = await _resolve_user_account_with_heal("teacher", teacher, teacher_id, tenant_id)
     if data.new_email:
         dup = await gd_find_one(db.session, "users", {"email": data.new_email, "id": {"$ne": (user or {}).get("id", "")}})
         if dup:
@@ -270,7 +351,7 @@ async def update_teacher_credentials(
         user = {
             "id": new_user_id, "email": email, "password_hash": hash_password(pwd),
             "full_name": teacher.get("full_name", ""), "full_name_en": teacher.get("full_name_en", ""),
-            "role": "teacher", "tenant_id": tenant_id, "linked_entity_id": teacher_id,
+            "role": "teacher", "tenant_id": tenant_id, "teacher_id": teacher_id,
             "is_active": True, "must_change_password": True, "created_at": now, "updated_at": now
         }
         await gd_insert(db.session, "users", {**user, "_id": None})
@@ -321,10 +402,11 @@ async def update_teacher_account_status(
     now = datetime.now(timezone.utc).isoformat()
 
     await gd_update_one(db.session, "teachers", {"id": teacher_id, **_entity_tenant_filter(tenant_id)}, {"status": data.status, "is_active": data.status == "active", "status_reason": data.reason, "status_updated_at": now, "updated_at": now})
-    user_or = [{"linked_entity_id": teacher_id}, {"id": teacher_id}]
-    if teacher.get("user_id"):
-        user_or.append({"id": teacher.get("user_id")})
-    await gd_update_one(db.session, "users", {"$or": user_or, "role": "teacher", "tenant_id": tenant_id}, {"status": data.status, "is_active": data.status == "active", "updated_at": now})
+    user_row = await _resolve_user_account_with_heal("teacher", teacher, teacher_id, tenant_id)
+    if user_row:
+        await gd_update_one(db.session, "users", {"id": user_row["id"]}, {"status": data.status, "is_active": data.status == "active", "updated_at": now})
+    else:
+        logger.warning(f"teacher_status_change: no users row for teacher_id={teacher_id} (tenant={tenant_id}); auth row not updated")
 
     await _write_audit(tenant_id, f"teacher_status_{data.status}", "teacher", teacher_id,
                        {"old_status": old_status, "new_status": data.status, "reason": data.reason},
@@ -343,7 +425,8 @@ async def get_teacher_activity_log(
     tenant_id = current_user.get("tenant_id")
     logs = await gd_find(db.session, "audit_logs", {"tenant_id": tenant_id, "$or": [{"entity_id": teacher_id}, {"performed_by": teacher_id}]}, order_by="performed_at", desc_order=True, limit=limit)
 
-    login_history = await gd_find_one(db.session, "users", {"$or": [{"linked_entity_id": teacher_id}, {"id": teacher_id}], "tenant_id": tenant_id})
+    teacher_row = await gd_find_one(db.session, "teachers", {"id": teacher_id, **_entity_tenant_filter(tenant_id)})
+    login_history = await _resolve_user_account_with_heal("teacher", teacher_row or {}, teacher_id, tenant_id) if teacher_row else None
 
     return {
         "success": True,
@@ -365,10 +448,7 @@ async def get_student_full_profile(
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
-    student_user_or = [{"linked_entity_id": student_id}, {"id": student_id}]
-    if student.get("user_id"):
-        student_user_or.append({"id": student.get("user_id")})
-    user_account = await gd_find_one(db.session, "users", {"$or": student_user_or, "role": "student", "tenant_id": tenant_id})
+    user_account = await _resolve_user_account_with_heal("student", student, student_id, tenant_id)
 
     guardians = await gd_find(db.session, "guardian_links", {**_entity_tenant_filter(tenant_id), "student_id": student_id, "is_active": True}, limit=10)
 
@@ -473,10 +553,11 @@ async def get_student_full_profile(
             "siblings": siblings,
             "user_account": {
                 "id": user_account.get("id") if user_account else None,
-                "email": user_account.get("email") if user_account else None,
+                "email": user_account.get("email") if user_account else student.get("email"),
                 "status": user_account.get("status", "active") if user_account else None,
                 "last_login": user_account.get("last_login") if user_account else None,
-                "created_at": user_account.get("created_at") if user_account else None
+                "created_at": user_account.get("created_at") if user_account else None,
+                "has_login_account": user_account is not None,
             },
             "behaviour": behaviour_records,
             "attendance_stats": attendance_stats,
@@ -510,16 +591,22 @@ async def update_student_basic_info(
     if not updates:
         return {"success": True, "message": "لا توجد تغييرات"}
 
+    user_row = await _resolve_user_account_with_heal("student", student, student_id, tenant_id)
+
     if "email" in updates:
         dup = await gd_find_one(db.session, "students", {
             "email": updates["email"], **_entity_tenant_filter(tenant_id), "id": {"$ne": student_id}
         })
         if dup:
             raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم بالفعل")
-        await gd_update_one(db.session, "users", {"$or": [{"linked_entity_id": student_id}, {"id": student_id}], "role": "student", "tenant_id": tenant_id}, {"email": updates["email"], "updated_at": datetime.now(timezone.utc).isoformat()})
+        if user_row:
+            user_dup = await gd_find_one(db.session, "users", {"email": updates["email"], "id": {"$ne": user_row["id"]}})
+            if user_dup:
+                raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم بالفعل")
+            await gd_update_one(db.session, "users", {"id": user_row["id"]}, {"email": updates["email"], "updated_at": datetime.now(timezone.utc).isoformat()})
 
-    if "full_name" in updates:
-        await gd_update_one(db.session, "users", {"$or": [{"linked_entity_id": student_id}, {"id": student_id}], "role": "student", "tenant_id": tenant_id}, {"full_name": updates["full_name"], "updated_at": datetime.now(timezone.utc).isoformat()})
+    if "full_name" in updates and user_row:
+        await gd_update_one(db.session, "users", {"id": user_row["id"]}, {"full_name": updates["full_name"], "updated_at": datetime.now(timezone.utc).isoformat()})
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     await gd_update_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)}, updates)
@@ -540,10 +627,7 @@ async def update_student_credentials(
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
-    user_or = [{"linked_entity_id": student_id}, {"id": student_id}]
-    if student.get("user_id"):
-        user_or.append({"id": student.get("user_id")})
-    user = await gd_find_one(db.session, "users", {"$or": user_or, "role": "student", "tenant_id": tenant_id})
+    user = await _resolve_user_account_with_heal("student", student, student_id, tenant_id)
     if data.new_email:
         dup = await gd_find_one(db.session, "users", {"email": data.new_email, "id": {"$ne": (user or {}).get("id", "")}})
         if dup:
@@ -559,7 +643,7 @@ async def update_student_credentials(
         user = {
             "id": new_user_id, "email": email, "password_hash": hash_password(pwd),
             "full_name": student.get("full_name", ""), "full_name_en": student.get("full_name_en", ""),
-            "role": "student", "tenant_id": tenant_id, "linked_entity_id": student_id,
+            "role": "student", "tenant_id": tenant_id, "student_id": student_id,
             "is_active": True, "must_change_password": True, "created_at": now, "updated_at": now
         }
         await gd_insert(db.session, "users", {**user, "_id": None})
@@ -609,10 +693,11 @@ async def update_student_account_status(
     now = datetime.now(timezone.utc).isoformat()
 
     await gd_update_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)}, {"status": data.status, "is_active": data.status == "active", "status_reason": data.reason, "status_updated_at": now, "updated_at": now})
-    user_or = [{"linked_entity_id": student_id}, {"id": student_id}]
-    if student.get("user_id"):
-        user_or.append({"id": student.get("user_id")})
-    await gd_update_one(db.session, "users", {"$or": user_or, "role": "student", "tenant_id": tenant_id}, {"status": data.status, "is_active": data.status == "active", "updated_at": now})
+    user_row = await _resolve_user_account_with_heal("student", student, student_id, tenant_id)
+    if user_row:
+        await gd_update_one(db.session, "users", {"id": user_row["id"]}, {"status": data.status, "is_active": data.status == "active", "updated_at": now})
+    else:
+        logger.warning(f"student_status_change: no users row for student_id={student_id} (tenant={tenant_id}); auth row not updated")
 
     await _write_audit(tenant_id, f"student_status_{data.status}", "student", student_id,
                        {"old_status": old_status, "new_status": data.status, "reason": data.reason},
@@ -729,10 +814,7 @@ async def get_parent_full_profile(
     if not parent:
         raise HTTPException(status_code=404, detail="ولي الأمر غير موجود")
 
-    parent_user_or = [{"linked_entity_id": parent_id}, {"id": parent_id}]
-    if parent.get("user_id"):
-        parent_user_or.append({"id": parent.get("user_id")})
-    user_account = await gd_find_one(db.session, "users", {"$or": parent_user_or, "role": "parent", "tenant_id": tenant_id})
+    user_account = await _resolve_user_account_with_heal("parent", parent, parent_id, tenant_id)
 
     children_links = await gd_find(db.session, "guardian_links", {**_entity_tenant_filter(tenant_id), "parent_ref": parent_id, "is_active": True}, limit=20)
 
@@ -826,11 +908,17 @@ async def update_parent_basic_info(
     if not updates:
         return {"success": True, "message": "لا توجد تغييرات"}
 
+    user_row = await _resolve_user_account_with_heal("parent", parent, parent_id, tenant_id)
+
     if "email" in updates:
         dup = await gd_find_one(db.session, "parents", {"email": updates["email"], "id": {"$ne": parent_id}, **_entity_tenant_filter(tenant_id)})
         if dup:
             raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم بالفعل")
-        await gd_update_one(db.session, "users", {"$or": [{"linked_entity_id": parent_id}, {"id": parent_id}], "role": "parent", "tenant_id": tenant_id}, {"email": updates["email"], "updated_at": datetime.now(timezone.utc).isoformat()})
+        if user_row:
+            user_dup = await gd_find_one(db.session, "users", {"email": updates["email"], "id": {"$ne": user_row["id"]}})
+            if user_dup:
+                raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم بالفعل")
+            await gd_update_one(db.session, "users", {"id": user_row["id"]}, {"email": updates["email"], "updated_at": datetime.now(timezone.utc).isoformat()})
 
     if "phone" in updates:
         dup = await gd_find_one(db.session, "parents", {"phone": updates["phone"], "id": {"$ne": parent_id}, **_entity_tenant_filter(tenant_id)})
@@ -838,7 +926,8 @@ async def update_parent_basic_info(
             raise HTTPException(status_code=400, detail="رقم الجوال مستخدم بالفعل")
 
     if "full_name" in updates:
-        await gd_update_one(db.session, "users", {"$or": [{"linked_entity_id": parent_id}, {"id": parent_id}], "role": "parent", "tenant_id": tenant_id}, {"full_name": updates["full_name"], "updated_at": datetime.now(timezone.utc).isoformat()})
+        if user_row:
+            await gd_update_one(db.session, "users", {"id": user_row["id"]}, {"full_name": updates["full_name"], "updated_at": datetime.now(timezone.utc).isoformat()})
         await gd_update_many(db.session, "guardian_links", {"parent_ref": parent_id, **_entity_tenant_filter(tenant_id)}, {"parent_name": updates["full_name"]})
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -860,10 +949,7 @@ async def update_parent_credentials(
     if not parent:
         raise HTTPException(status_code=404, detail="ولي الأمر غير موجود")
 
-    user_or = [{"linked_entity_id": parent_id}, {"id": parent_id}]
-    if parent.get("user_id"):
-        user_or.append({"id": parent.get("user_id")})
-    user = await gd_find_one(db.session, "users", {"$or": user_or, "role": "parent", "tenant_id": tenant_id})
+    user = await _resolve_user_account_with_heal("parent", parent, parent_id, tenant_id)
     if data.new_email:
         dup = await gd_find_one(db.session, "users", {"email": data.new_email, "id": {"$ne": (user or {}).get("id", "")}})
         if dup:
@@ -879,7 +965,7 @@ async def update_parent_credentials(
         user = {
             "id": new_user_id, "email": email, "password_hash": hash_password(pwd),
             "full_name": parent.get("full_name", ""), "full_name_en": parent.get("full_name_en", ""),
-            "role": "parent", "tenant_id": tenant_id, "linked_entity_id": parent_id,
+            "role": "parent", "tenant_id": tenant_id, "parent_id": parent_id,
             "is_active": True, "must_change_password": True, "created_at": now, "updated_at": now
         }
         await gd_insert(db.session, "users", {**user, "_id": None})
@@ -929,10 +1015,11 @@ async def update_parent_account_status(
     now = datetime.now(timezone.utc).isoformat()
 
     await gd_update_one(db.session, "parents", {"id": parent_id, **_entity_tenant_filter(tenant_id)}, {"status": data.status, "is_active": data.status == "active", "status_reason": data.reason, "status_updated_at": now, "updated_at": now})
-    user_or = [{"linked_entity_id": parent_id}, {"id": parent_id}]
-    if parent.get("user_id"):
-        user_or.append({"id": parent.get("user_id")})
-    await gd_update_one(db.session, "users", {"$or": user_or, "role": "parent", "tenant_id": tenant_id}, {"status": data.status, "is_active": data.status == "active", "updated_at": now})
+    user_row = await _resolve_user_account_with_heal("parent", parent, parent_id, tenant_id)
+    if user_row:
+        await gd_update_one(db.session, "users", {"id": user_row["id"]}, {"status": data.status, "is_active": data.status == "active", "updated_at": now})
+    else:
+        logger.warning(f"parent_status_change: no users row for parent_id={parent_id} (tenant={tenant_id}); auth row not updated")
 
     await _write_audit(tenant_id, f"parent_status_{data.status}", "parent", parent_id,
                        {"old_status": old_status, "new_status": data.status, "reason": data.reason},
