@@ -818,18 +818,18 @@ class SmartSchedulingEngine:
         demands = []
 
         # Compute capacity per class (None disables auto-trim).
+        # Periods-per-day is sourced via the strict resolver — INF-05
+        # in the infeasibility report is responsible for blocking
+        # generation when it isn't configured, so reaching here without
+        # a valid value should fail loudly rather than silently disable
+        # auto-trim.
         max_slots: Optional[int] = None
         if settings:
             wd = settings.get("working_days") or []
             if isinstance(wd, dict):
                 wd = [d for d, active in wd.items() if active]
-            ppd = settings.get("periods_per_day") or 0
-            try:
-                ppd_int = int(ppd)
-            except (TypeError, ValueError):
-                ppd_int = 0
-            if wd and ppd_int > 0:
-                max_slots = len(wd) * ppd_int
+            if wd:
+                max_slots = len(wd) * _required_periods_per_day(settings)
 
         # Prefer classes/assignments from validated payload when present.
         ctx = context_payload if isinstance(context_payload, dict) else {}
