@@ -51,6 +51,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
+import { Checkbox } from '../components/ui/checkbox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -101,13 +102,48 @@ export const CommunicationCenterPage = () => {
   const [expandedInboxMsg, setExpandedInboxMsg] = useState(null);
   const [inboxFilter, setInboxFilter] = useState('all');
   
-  // New message form
+  // New message form (mirrors SendNotificationWizard fields + scheduling)
   const [newMessage, setNewMessage] = useState({
-    title: '',
-    content: '',
-    audience: '',
-    scheduled_at: ''
+    title_ar: '',
+    title_en: '',
+    message_ar: '',
+    message_en: '',
+    recipient_type: 'all_students',
+    recipient_filter: null,
+    notification_type: 'announcement',
+    priority: 'normal',
+    send_push: true,
+    send_sms: false,
+    send_email: false,
+    send_whatsapp: false,
+    scheduled_at: '',
   });
+
+  const [notifOptions, setNotifOptions] = useState({
+    recipientTypes: [],
+    notificationTypes: [],
+    priorities: [],
+    grades: [],
+    classes: [],
+  });
+
+  const resetNewMessage = () => setNewMessage({
+    title_ar: '',
+    title_en: '',
+    message_ar: '',
+    message_en: '',
+    recipient_type: 'all_students',
+    recipient_filter: null,
+    notification_type: 'announcement',
+    priority: 'normal',
+    send_push: true,
+    send_sms: false,
+    send_email: false,
+    send_whatsapp: false,
+    scheduled_at: '',
+  });
+
+  const needsRecipientFilter = ['grade_students', 'grade_parents', 'class_students', 'class_parents'].includes(newMessage.recipient_type);
 
   // Fetch all data
   const fetchData = useCallback(async () => {
@@ -143,6 +179,41 @@ export const CommunicationCenterPage = () => {
       
       const audienceRes = await api.get('/communication/audience');
       setAudienceGroups(audienceRes.data || []);
+
+      // Notification form options (same as SendNotificationWizard)
+      const [recipientRes, notifTypeRes, priorityRes, gradesRes, classesRes] = await Promise.all([
+        api.get('/notifications/options/recipient-types').catch(() => ({ data: { types: [] } })),
+        api.get('/notifications/options/notification-types').catch(() => ({ data: { types: [] } })),
+        api.get('/notifications/options/priorities').catch(() => ({ data: { priorities: [] } })),
+        api.get('/classes/options/grades').catch(() => ({ data: { grades: [] } })),
+        api.get('/classes/').catch(() => ({ data: { classes: [] } })),
+      ]);
+      setNotifOptions({
+        recipientTypes: recipientRes.data.types || [
+          { code: 'all_students', name_ar: 'جميع الطلاب', name_en: 'All Students' },
+          { code: 'all_teachers', name_ar: 'جميع المعلمين', name_en: 'All Teachers' },
+          { code: 'all_parents', name_ar: 'جميع أولياء الأمور', name_en: 'All Parents' },
+          { code: 'grade_students', name_ar: 'طلاب صف معين', name_en: 'Grade Students' },
+          { code: 'class_students', name_ar: 'طلاب فصل معين', name_en: 'Class Students' },
+        ],
+        notificationTypes: notifTypeRes.data.types || [
+          { code: 'announcement', name_ar: 'إعلان', name_en: 'Announcement' },
+          { code: 'reminder', name_ar: 'تذكير', name_en: 'Reminder' },
+          { code: 'alert', name_ar: 'تنبيه', name_en: 'Alert' },
+          { code: 'event', name_ar: 'حدث', name_en: 'Event' },
+          { code: 'emergency', name_ar: 'طوارئ', name_en: 'Emergency' },
+          { code: 'circular', name_ar: 'تعميم', name_en: 'Circular' },
+          { code: 'other', name_ar: 'أخرى', name_en: 'Other' },
+        ],
+        priorities: priorityRes.data.priorities || [
+          { code: 'low', name_ar: 'منخفضة', name_en: 'Low' },
+          { code: 'normal', name_ar: 'عادية', name_en: 'Normal' },
+          { code: 'high', name_ar: 'عالية', name_en: 'High' },
+          { code: 'urgent', name_ar: 'عاجلة', name_en: 'Urgent' },
+        ],
+        grades: gradesRes.data.grades || [],
+        classes: classesRes.data.classes || [],
+      });
       
       setStats({
         sent: sent.length,
@@ -163,41 +234,67 @@ export const CommunicationCenterPage = () => {
     fetchData();
   }, [fetchData]);
 
-  // Send or schedule message
+  // Map the wizard recipient_type onto the legacy /communication audience codes
+  // so Sent/Scheduled/Inbox tabs keep working without regressions.
+  const mapRecipientToAudience = (recipientType) => {
+    if (!recipientType) return 'all';
+    if (recipientType.startsWith('all_')) {
+      const seg = recipientType.replace('all_', '');
+      if (seg === 'students') return 'students';
+      if (seg === 'teachers') return 'teachers';
+      if (seg === 'parents') return 'parents';
+      return 'all';
+    }
+    if (recipientType.includes('student')) return 'students';
+    if (recipientType.includes('teacher')) return 'teachers';
+    if (recipientType.includes('parent')) return 'parents';
+    return 'all';
+  };
+
+  // Send or schedule message — uses the same form fields as SendNotificationWizard,
+  // mapped onto the existing /communication payload (so Sent/Scheduled tabs keep working),
+  // combined with the optional scheduled_at from this page.
   const handleSendMessage = async (schedule = false) => {
-    if (!newMessage.title || !newMessage.content || !newMessage.audience) {
-      nassaqWarning(t('pleaseFillAllRequiredFields2'));
+    if (!newMessage.title_ar?.trim() || !newMessage.message_ar?.trim()) {
+      nassaqWarning(t('titleAndMessageRequired'));
       return;
     }
-    
+
     try {
       setSending(true);
-      
+
+      const channels = ['in_app'];
+      if (newMessage.send_push) channels.push('push');
+      if (newMessage.send_whatsapp) channels.push('whatsapp');
+      if (newMessage.send_sms) channels.push('sms');
+      if (newMessage.send_email) channels.push('email');
+
       const payload = {
-        title: newMessage.title,
-        content: newMessage.content,
-        audience: newMessage.audience,
-        channels: ['in_app'],
-        scheduled_at: schedule && newMessage.scheduled_at ? newMessage.scheduled_at : null
+        title: newMessage.title_ar,
+        content: newMessage.message_ar,
+        audience: mapRecipientToAudience(newMessage.recipient_type),
+        channels,
+        scheduled_at: schedule && newMessage.scheduled_at ? newMessage.scheduled_at : null,
+        // Extra wizard metadata — backend may ignore unknown keys
+        notification_type: newMessage.notification_type,
+        priority: newMessage.priority,
+        recipient_type: newMessage.recipient_type,
+        recipient_filter: needsRecipientFilter ? newMessage.recipient_filter : null,
       };
-      
+
       const response = await api.post('/communication', payload);
-      
-      if (response.data.status === 'sent' || !schedule) {
+
+      if (response.data?.status === 'sent' || !schedule) {
         toast.success(t('messageSentSuccessfully'));
       } else {
         toast.success(t('messageScheduledSuccessfully'));
       }
-      
-      // Reset form
-      setNewMessage({ title: '', content: '', audience: '', scheduled_at: '' });
-      
-      // Refresh data
+
+      resetNewMessage();
       await fetchData();
-      
     } catch (error) {
       console.error('Failed to send message:', error);
-      nassaqError(t('failedToSendMessage'));
+      nassaqError(error.response?.data?.detail || t('failedToSendMessage'));
     } finally {
       setSending(false);
     }
@@ -274,8 +371,8 @@ export const CommunicationCenterPage = () => {
   const handleTemplateSelect = (template) => {
     setNewMessage(prev => ({
       ...prev,
-      title: template.name || template.name_en,
-      content: template.content_template || ''
+      title_ar: template.name || template.name_en || prev.title_ar,
+      message_ar: template.content_template || prev.message_ar,
     }));
     setTemplatesOpen(false);
     toast.success(t('templateApplied'));
@@ -548,145 +645,192 @@ export const CommunicationCenterPage = () => {
                 </Card>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <Card className="card-nassaq lg:col-span-2">
-                  <CardHeader>
-                    <CardTitle className="font-cairo flex items-center gap-2">
-                      <MessageSquare className="h-5 w-5 text-brand-turquoise" />
-                      {t('composeNewMessage')}
-                    </CardTitle>
-                    <CardDescription>
-                      {t('sendAMessageToUsersInYourSchool')}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">
-                        {t('targetAudience')} *
-                      </Label>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        {audienceGroups.map((group) => {
-                          const Icon = getAudienceIcon(group.icon);
-                          const isSelected = newMessage.audience === group.id;
-                          return (
-                            <Button key={group.id} variant={isSelected ? 'default' : 'outline'}
-                              className={`justify-start rounded-xl h-auto py-3 ${isSelected ? 'bg-brand-navy' : ''}`}
-                              onClick={() => setNewMessage(prev => ({ ...prev, audience: group.id }))}
-                              data-testid={`audience-btn-${group.id}`}>
-                              <Icon className="h-4 w-4 me-2" />
-                              <div className="text-start">
-                                <p className="text-sm">{isRTL ? group.name : group.name_en}</p>
-                                <p className="text-xs text-muted-foreground">{group.count.toLocaleString()}</p>
-                              </div>
-                            </Button>
-                          );
-                        })}
+              <Card className="card-nassaq">
+                <CardHeader>
+                  <CardTitle className="font-cairo flex items-center gap-2">
+                    <MessageSquare className="h-5 w-5 text-brand-turquoise" />
+                    {t('composeNewMessage')}
+                  </CardTitle>
+                  <CardDescription>
+                    {t('sendAMessageToUsersInYourSchool')}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Recipient Type + optional grade/class filter */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>{t('recipients')} <span className="text-red-500">*</span></Label>
+                      <Select
+                        value={newMessage.recipient_type}
+                        onValueChange={(val) => setNewMessage(prev => ({ ...prev, recipient_type: val, recipient_filter: null }))}
+                      >
+                        <SelectTrigger data-testid="notif-recipient" className="rounded-xl">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {notifOptions.recipientTypes.map((rt) => (
+                            <SelectItem key={rt.code} value={rt.code}>{isRTL ? rt.name_ar : rt.name_en}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {needsRecipientFilter && (
+                      <div className="space-y-2">
+                        <Label>{newMessage.recipient_type.includes('grade') ? t('grade') : t('class')}</Label>
+                        <Select
+                          value={newMessage.recipient_filter?.grade_id || newMessage.recipient_filter?.class_id || ''}
+                          onValueChange={(val) => setNewMessage(prev => ({
+                            ...prev,
+                            recipient_filter: prev.recipient_type.includes('grade') ? { grade_id: val } : { class_id: val },
+                          }))}
+                        >
+                          <SelectTrigger className="rounded-xl">
+                            <SelectValue placeholder={t('select2')} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {newMessage.recipient_type.includes('grade')
+                              ? notifOptions.grades.map((g) => <SelectItem key={g.id} value={g.id}>{isRTL ? g.name_ar : g.name_en}</SelectItem>)
+                              : notifOptions.classes.map((c) => <SelectItem key={c.class_id} value={c.class_id}>{c.name_ar}</SelectItem>)
+                            }
+                          </SelectContent>
+                        </Select>
                       </div>
-                    </div>
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">
-                        {t('messageTitle')} *
-                      </Label>
-                      <Input value={newMessage.title}
-                        onChange={(e) => setNewMessage(prev => ({ ...prev, title: e.target.value }))}
-                        placeholder={t('enterMessageTitle')}
-                        className="rounded-xl" data-testid="message-title-input" />
-                    </div>
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">
-                        {t('messageContent')} *
-                      </Label>
-                      <Textarea value={newMessage.content}
-                        onChange={(e) => setNewMessage(prev => ({ ...prev, content: e.target.value }))}
-                        placeholder={t('writeYourMessageHere')}
-                        className="rounded-xl min-h-[150px]" data-testid="message-content-input" />
-                    </div>
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">
-                        {t('scheduleSendOptional')}
-                      </Label>
-                      <Input type="datetime-local" value={newMessage.scheduled_at}
-                        onChange={(e) => setNewMessage(prev => ({ ...prev, scheduled_at: e.target.value }))}
-                        className="rounded-xl" data-testid="schedule-input" />
-                    </div>
-                    <div className="flex justify-end gap-3 pt-4">
-                      <Button variant="outline" className="rounded-xl"
-                        onClick={() => setNewMessage({ title: '', content: '', audience: '', scheduled_at: '' })}>
-                        {t('clear3')}
-                      </Button>
-                      {newMessage.scheduled_at && (
-                        <Button variant="secondary" className="rounded-xl"
-                          onClick={() => handleSendMessage(true)}
-                          disabled={sending || !newMessage.title || !newMessage.content || !newMessage.audience}
-                          data-testid="schedule-btn">
-                          {sending ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : <Clock className="h-4 w-4 me-2" />}
-                          {t('schedule2')}
-                        </Button>
-                      )}
-                      <Button className="rounded-xl bg-brand-navy hover:bg-brand-navy/90"
-                        onClick={() => handleSendMessage(false)}
-                        disabled={sending || !newMessage.title || !newMessage.content || !newMessage.audience}
-                        data-testid="send-now-btn">
-                        {sending ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : <Send className="h-4 w-4 me-2" />}
-                        {t('sendNow')}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+                    )}
+                  </div>
 
-                <div className="space-y-6">
-                  <Card className="card-nassaq">
-                    <CardHeader>
-                      <CardTitle className="font-cairo text-lg flex items-center gap-2">
-                        <FileText className="h-5 w-5 text-brand-purple" />
-                        {t('quickTemplates')}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {templates.length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-4">
-                          {t('noTemplates')}
-                        </p>
-                      ) : (
-                        templates.slice(0, 5).map((template) => {
-                          const Icon = iconMap[template.icon] || Bell;
-                          return (
-                            <Button key={template.id} variant="ghost" className="w-full justify-start rounded-xl"
-                              onClick={() => handleTemplateSelect(template)} data-testid={`template-btn-${template.id}`}>
-                              <Icon className="h-4 w-4 me-2" />
-                              {isRTL ? template.name : template.name_en}
-                            </Button>
-                          );
-                        })
-                      )}
+                  {/* Type & Priority */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>{t('type3')}</Label>
+                      <Select
+                        value={newMessage.notification_type}
+                        onValueChange={(val) => setNewMessage(prev => ({ ...prev, notification_type: val }))}
+                      >
+                        <SelectTrigger data-testid="notif-type" className="rounded-xl">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {notifOptions.notificationTypes.map((nt) => (
+                            <SelectItem key={nt.code} value={nt.code}>{isRTL ? nt.name_ar : nt.name_en}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>{t('priority')}</Label>
+                      <Select
+                        value={newMessage.priority}
+                        onValueChange={(val) => setNewMessage(prev => ({ ...prev, priority: val }))}
+                      >
+                        <SelectTrigger data-testid="notif-priority" className="rounded-xl">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {notifOptions.priorities.map((p) => (
+                            <SelectItem key={p.code} value={p.code}>{isRTL ? p.name_ar : p.name_en}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Title (Arabic) */}
+                  <div className="space-y-2">
+                    <Label>{t('titleArabic')} <span className="text-red-500">*</span></Label>
+                    <Input
+                      value={newMessage.title_ar}
+                      onChange={(e) => setNewMessage(prev => ({ ...prev, title_ar: e.target.value }))}
+                      placeholder={t('notificationTitle')}
+                      className="rounded-xl"
+                      data-testid="notif-title-ar"
+                    />
+                  </div>
+
+                  {/* Message (Arabic) */}
+                  <div className="space-y-2">
+                    <Label>{t('messageArabic')} <span className="text-red-500">*</span></Label>
+                    <Textarea
+                      value={newMessage.message_ar}
+                      onChange={(e) => setNewMessage(prev => ({ ...prev, message_ar: e.target.value }))}
+                      placeholder={t('notificationContent')}
+                      className="rounded-xl min-h-[150px]"
+                      rows={4}
+                      data-testid="notif-message-ar"
+                    />
+                  </div>
+
+                  {/* Delivery Methods */}
+                  <Card className="bg-muted/30 border-none shadow-none">
+                    <CardContent className="p-4">
+                      <Label className="mb-3 block">{t('deliveryMethod')}</Label>
+                      <div className="flex flex-wrap gap-4">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="cc_send_push"
+                            checked={newMessage.send_push}
+                            onCheckedChange={(checked) => setNewMessage(prev => ({ ...prev, send_push: !!checked }))}
+                          />
+                          <Label htmlFor="cc_send_push" className="cursor-pointer">{t('push')}</Label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="cc_send_whatsapp"
+                            checked={newMessage.send_whatsapp}
+                            onCheckedChange={(checked) => setNewMessage(prev => ({ ...prev, send_whatsapp: !!checked }))}
+                          />
+                          <Label htmlFor="cc_send_whatsapp" className="cursor-pointer">
+                            {isRTL ? 'إرسال عبر الواتساب' : 'WhatsApp'}
+                          </Label>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
 
-                  <Card className="card-nassaq">
-                    <CardHeader>
-                      <CardTitle className="font-cairo text-lg">{t('recentMessages')}</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {sentMessages.length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-4">
-                          {t('noSentMessages')}
-                        </p>
-                      ) : (
-                        sentMessages.slice(0, 3).map((msg) => (
-                          <div key={msg.id} className="p-3 bg-muted/30 rounded-xl cursor-pointer hover:bg-muted/50 transition-colors"
-                            onClick={() => { setSelectedMessage(msg); setViewMessageOpen(true); }}>
-                            <p className="text-sm font-medium line-clamp-1">{msg.title}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Badge variant="secondary" className="text-xs">{getAudienceLabel(msg.audience)}</Badge>
-                              <span className="text-xs text-muted-foreground">{formatDate(msg.sent_at || msg.created_at)}</span>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
+                  {/* Schedule (kept from original) */}
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">
+                      {t('scheduleSendOptional')}
+                    </Label>
+                    <Input
+                      type="datetime-local"
+                      value={newMessage.scheduled_at}
+                      onChange={(e) => setNewMessage(prev => ({ ...prev, scheduled_at: e.target.value }))}
+                      className="rounded-xl"
+                      data-testid="schedule-input"
+                    />
+                  </div>
+
+                  {/* Actions (kept from original) */}
+                  <div className="flex justify-end gap-3 pt-4">
+                    <Button variant="outline" className="rounded-xl" onClick={resetNewMessage}>
+                      {t('clear3')}
+                    </Button>
+                    {newMessage.scheduled_at && (
+                      <Button
+                        variant="secondary"
+                        className="rounded-xl"
+                        onClick={() => handleSendMessage(true)}
+                        disabled={sending || !newMessage.title_ar || !newMessage.message_ar}
+                        data-testid="schedule-btn"
+                      >
+                        {sending ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : <Clock className="h-4 w-4 me-2" />}
+                        {t('schedule2')}
+                      </Button>
+                    )}
+                    <Button
+                      className="rounded-xl bg-brand-navy hover:bg-brand-navy/90"
+                      onClick={() => handleSendMessage(false)}
+                      disabled={sending || !newMessage.title_ar || !newMessage.message_ar}
+                      data-testid="send-now-btn"
+                    >
+                      {sending ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : <Send className="h-4 w-4 me-2" />}
+                      {t('sendNow')}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </>
           )}
 
