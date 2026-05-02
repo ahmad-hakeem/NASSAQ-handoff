@@ -11,11 +11,15 @@
  *   - أوقات عدم التوفر
  *   - قيود الجدول
  *
+ * مزامنة ثنائية الاتجاه بين معطى الرابط `?sub=` وحالة التبويب الفرعي
+ * النشط، حتى تكون كل تبويبة قابلة للحفظ والمشاركة عبر الـ URL.
+ *
  * لا تعديلات داخلية على المكوّنات أو الخطّاف — مجرد تمرير قائمة
  * تبويبات مُصفّاة عبر prop.
  */
 
 import React, { useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Loader2, Clock, School, Link2, UserX, Shield } from 'lucide-react';
 import { useSchoolSettings } from '../../hooks/useSchoolSettings';
 import { DynamicSettingsContent } from '../school-settings/DynamicSettingsContent';
@@ -30,19 +34,43 @@ const scheduleSubTabs = [
 ];
 
 const SCHEDULE_TAB_IDS = scheduleSubTabs.map(t => t.id);
+const DEFAULT_SUB_TAB = 'timings';
 
 export default function ScheduleSettingsTabContent() {
   const hook = useSchoolSettings();
   const { loading, activeTab, setActiveTab } = hook;
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  // التبويب الافتراضي للجدول هو "التوقيت والحصص" — إذا فتح المستخدم
-  // التبويب وكان النشط هو "بيانات المدرسة" (وهو غير معروض هنا) أو أي
-  // قيمة غير معروفة، نعيد ضبطه على أول تبويب صحيح.
+  // ── 1) URL → state ─────────────────────────────────────────────
+  // إذا تغيَّر معطى ?sub= في الرابط (مثلاً عبر زر "إصلاح" في بطاقة
+  // الجاهزية أو رابط INF) نُزامن التبويب النشط ليطابقه. وإذا لم يكن
+  // التبويب النشط ضمن تبويبات الجدول (مثلاً عند الانتقال من صفحة
+  // إعدادات المدرسة حيث الافتراضي school-info) نضبطه على ?sub=
+  // الموجود أو الافتراضي.
   useEffect(() => {
-    if (!SCHEDULE_TAB_IDS.includes(activeTab)) {
-      setActiveTab('timings');
+    const sub = new URLSearchParams(location.search).get('sub');
+    if (sub && SCHEDULE_TAB_IDS.includes(sub)) {
+      if (sub !== activeTab) setActiveTab(sub);
+      return;
     }
-  }, [activeTab, setActiveTab]);
+    if (!SCHEDULE_TAB_IDS.includes(activeTab)) {
+      setActiveTab(DEFAULT_SUB_TAB);
+    }
+  }, [location.search, activeTab, setActiveTab]);
+
+  // ── 2) state → URL ─────────────────────────────────────────────
+  // عندما يضغط المستخدم على تبويب فرعي داخل DynamicSettingsContent
+  // (الذي يستدعي setActiveTab مباشرة) نكتب القيمة الجديدة في معطى
+  // ?sub= حتى يكون الرابط دائماً معبِّراً عن الحالة المعروضة.
+  useEffect(() => {
+    if (!SCHEDULE_TAB_IDS.includes(activeTab)) return;
+    const params = new URLSearchParams(location.search);
+    if (params.get('sub') === activeTab) return;
+    params.set('tab', 'settings');
+    params.set('sub', activeTab);
+    navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+  }, [activeTab, navigate, location.pathname, location.search]);
 
   if (loading) {
     return (

@@ -14,24 +14,27 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarDays, Hourglass, Settings as SettingsIcon } from 'lucide-react';
 
+// كل التبويبات تبقى ضمن `/school/schedule` ويُعبَّر عنها بمعطى
+// `?tab=master|standby|settings` ليكون التبويب النشط قابلاً للحفظ والمشاركة
+// عبر الـ URL، ويُسهِّل التنقل البرمجي إليه (مثل بطاقة الجاهزية).
 const TABS = [
   {
     id: 'master',
     label: 'الجدول الرئيسي',
     icon: CalendarDays,
-    path: '/school/schedule',
+    path: '/school/schedule?tab=master',
   },
   {
     id: 'standby',
     label: 'جدول حصص الانتظار',
     icon: Hourglass,
-    path: '/school/standby',
+    path: '/school/schedule?tab=standby',
   },
   {
     id: 'settings',
     label: 'إعدادات الجدول المدرسي',
     icon: SettingsIcon,
-    path: '/school/schedule?view=settings',
+    path: '/school/schedule?tab=settings',
   },
 ];
 

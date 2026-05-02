@@ -200,7 +200,7 @@ function SchoolSettingsPagePro() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className={`font-bold text-sm truncate ${activeSection === 'dynamic' ? 'text-white' : 'text-slate-800'}`}>إعدادات المدرسة</p>
-                <p className={`text-xs truncate ${activeSection === 'dynamic' ? 'text-white/70' : 'text-slate-400'}`}>بيانات المدرسة والفصول والإسناد</p>
+                <p className={`text-xs truncate ${activeSection === 'dynamic' ? 'text-white/70' : 'text-slate-400'}`}>بيانات المدرسة الأساسية</p>
               </div>
               {activeSection === 'dynamic' && <div className="absolute -bottom-1.5 right-1/2 translate-x-1/2 w-8 h-1.5 rounded-full bg-white/40" />}
             </button>

@@ -1,11 +1,15 @@
 /**
  * جدول الانتظار — Standby Roster (manual override surface)
- * نَسَّق | NASSAQ — Task #102
+ * نَسَّق | NASSAQ — Task #102 / #114
  *
  * مصفوفة (معلمين × أيام × حصص) تعرض الجدول التلقائي مع إمكانية تعديل يدوي
  * لكل خانة. الضغط على خانة فارغة يُضيف المعلم إلى الانتظار في تلك الخانة،
  * والضغط على خانة انتظار يُزيلها، والضغط مرة ثالثة يُعيد القرار للمحرك
  * التلقائي. الخانات المشغولة بحصة فعلية أو في يوم محظور لا يمكن تعديلها.
+ *
+ * يُعرض المحتوى الآن داخل صفحة الجدول الذكي تحت تبويب "جدول حصص الانتظار"
+ * (`/school/schedule?tab=standby`)، ولا تزال الصفحة المستقلة
+ * (`/school/standby`) تعمل كنقطة دخول مباشرة لمن يصلها عبر روابط محفوظة.
  *
  * Endpoints:
  *   GET /api/standby/roster
@@ -131,8 +135,12 @@ function LegendChip({ color, label }) {
   );
 }
 
-// ─── Main page ────────────────────────────────────────────────────────────
-export default function StandbyRosterPage() {
+// ─── Standby content (header + KPIs + legend + matrix) ──────────────────
+// مكوّن قابل للتضمين داخل صفحة الجدول الذكي (تبويب "جدول حصص الانتظار")
+// أو داخل الصفحة المستقلة `/school/standby`. لا يحتوي على Sidebar ولا
+// شريط التبويبات الرئيسي — هذه يضيفها كل غلاف بنفسه ليُحافظ على هيكل
+// الصفحة الموحَّد.
+export function StandbyRosterContent() {
   const { user, api } = useAuth();
   const navigate = useNavigate();
   const schoolId = user?.tenant_id;
@@ -220,15 +228,8 @@ export default function StandbyRosterPage() {
   const dayLabelMap = useMemo(() => Object.fromEntries(DAYS.map(d => [d.key, d.ar])), []);
 
   return (
-    <Sidebar>
-      <div
-        dir="rtl"
-        className="flex flex-col h-[calc(100dvh-3.5rem)] lg:h-[100dvh] p-4 md:p-6 gap-5 bg-slate-50 text-slate-900 overflow-hidden"
-      >
-        {/* ── Primary tab nav (Master / Standby / Settings) ─────────── */}
-        <ScheduleTabNav active="standby" />
-
-        {/* ── Header ───────────────────────────────────────────────── */}
+    <>
+      {/* ── Header ───────────────────────────────────────────────── */}
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 shrink-0">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-[#1C3D74] flex items-center gap-2">
@@ -331,6 +332,22 @@ export default function StandbyRosterPage() {
             />
           )}
         </div>
+    </>
+  );
+}
+
+// Thin wrapper for the standalone `/school/standby` route — preserves the
+// historical entry point and reuses the same primary tab nav + content as
+// the embedded version inside SchedulePageNew (tab=standby).
+export default function StandbyRosterPage() {
+  return (
+    <Sidebar>
+      <div
+        dir="rtl"
+        className="flex flex-col h-[calc(100dvh-3.5rem)] lg:h-[100dvh] p-4 md:p-6 gap-5 bg-slate-50 text-slate-900 overflow-hidden"
+      >
+        <ScheduleTabNav active="standby" />
+        <StandbyRosterContent />
       </div>
     </Sidebar>
   );

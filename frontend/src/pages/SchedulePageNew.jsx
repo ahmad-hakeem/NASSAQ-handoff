@@ -38,6 +38,7 @@ import CandidatesSidePanel from '../components/schedule/CandidatesSidePanel';
 import BulkSubstitutionPanel from '../components/schedule/BulkSubstitutionPanel';
 import ScheduleTabNav from '../components/schedule/ScheduleTabNav';
 import ScheduleSettingsTabContent from '../components/schedule/ScheduleSettingsTabContent';
+import { StandbyRosterContent } from './StandbyRosterPage';
 
 // ─── Infeasibility issue → contextual next step ────────────────────────────
 // كل كود INF يحدد الصفحة الأنسب التي تحل المشكلة. عند غياب الكود نوجِّه إلى
@@ -46,10 +47,10 @@ const ISSUE_NEXT_STEP = {
   'INF-01': { label: 'فتح إعدادات الهيكل الأكاديمي', path: '/school/settings?section=academic' },
   'INF-02': { label: 'فتح إعدادات الهيكل الأكاديمي', path: '/school/settings?section=academic' },
   'INF-03': { label: 'فتح صفحة المعلمين والإسنادات',  path: '/school/teachers' },
-  'INF-04': { label: 'فتح إعدادات القاعات',           path: '/school/schedule?view=settings&tab=timings' },
-  'INF-05': { label: 'فتح إعدادات اليوم الدراسي',     path: '/school/schedule?view=settings&tab=timings' },
+  'INF-04': { label: 'فتح إعدادات القاعات',           path: '/school/schedule?tab=settings&sub=timings' },
+  'INF-05': { label: 'فتح إعدادات اليوم الدراسي',     path: '/school/schedule?tab=settings&sub=timings' },
 };
-const DEFAULT_NEXT_STEP = { label: 'فتح إعدادات الجدول المدرسي', path: '/school/schedule?view=settings' };
+const DEFAULT_NEXT_STEP = { label: 'فتح إعدادات الجدول المدرسي', path: '/school/schedule?tab=settings' };
 
 const DAYS = [
   { key: 'sunday',    ar: 'الأحد' },
@@ -223,20 +224,22 @@ function EmptyCell() {
 
 // ─── Main page ─────────────────────────────────────────────────────────────
 // ─── Active primary tab from URL ────────────────────────────────────────────
-// نقرأ مَعلَم البحث `view` لتحديد التبويب الفعّال؛ القيمة الافتراضية هي
-// "master" (شاشة المصفوفة)، و"settings" تعرض إعدادات الجدول داخل نفس الصفحة.
-function useScheduleView() {
+// التبويب الرئيسي للصفحة يُقرأ من معطى ?tab= في الرابط. تُقبل ثلاث قيم
+// فقط: master (افتراضي) و standby و settings، وأي قيمة أخرى تُعامَل
+// كـ master لتفادي صفحة فارغة.
+const VALID_TABS = ['master', 'standby', 'settings'];
+function useScheduleTab() {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
-  const raw = params.get('view');
-  return raw === 'settings' ? 'settings' : 'master';
+  const raw = params.get('tab');
+  return VALID_TABS.includes(raw) ? raw : 'master';
 }
 
 export default function SchedulePageNew() {
   const { user, api } = useAuth();
   const navigate = useNavigate();
   const schoolId = user?.tenant_id;
-  const view = useScheduleView();
+  const tab = useScheduleTab();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -287,10 +290,12 @@ export default function SchedulePageNew() {
   }, [api, schoolId]);
 
   useEffect(() => {
-    // نتفادى تحميل المصفوفة عند فتح تبويب الإعدادات لتجنّب طلبات شبكية لا داعي لها.
-    if (view !== 'master') return;
+    // نُحمِّل مصفوفة الجدول الرئيسي فقط عندما يكون التبويب النشط هو
+    // "الجدول الرئيسي" — تبويبا الانتظار والإعدادات لهما تحميل بياناتهما
+    // الخاص داخل مكوّناتهما.
+    if (tab !== 'master') return;
     loadGrid();
-  }, [loadGrid, view]);
+  }, [loadGrid, tab]);
 
   const handleAutoGenerate = useCallback(async () => {
     if (!schoolId) {
@@ -593,7 +598,23 @@ export default function SchedulePageNew() {
 
   const dayLabelMap = useMemo(() => Object.fromEntries(DAYS.map(d => [d.key, d.ar])), []);
 
-  if (view === 'settings') {
+  if (tab === 'standby') {
+    // تبويب جدول حصص الانتظار — يُضمَّن المحتوى نفسه المستخدم في الصفحة
+    // المستقلة `/school/standby` بدون لمس مصدر بياناته.
+    return (
+      <Sidebar>
+        <div
+          dir="rtl"
+          className="flex flex-col h-[calc(100dvh-3.5rem)] lg:h-[100dvh] p-4 md:p-6 gap-5 bg-slate-50 text-slate-900 overflow-hidden"
+        >
+          <ScheduleTabNav active="standby" />
+          <StandbyRosterContent />
+        </div>
+      </Sidebar>
+    );
+  }
+
+  if (tab === 'settings') {
     return (
       <Sidebar>
         <div

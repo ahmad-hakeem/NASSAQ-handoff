@@ -42,17 +42,6 @@ export function useSchoolSettings() {
     }
   }, [location.search]);
 
-  // مزامنة التبويب الفرعي من ?tab= عند تغيّر الـ URL أثناء بقاء الصفحة
-  // مركّبة (مثلاً عند الانتقال بين تبويبات الإعدادات عبر روابط داخلية
-  // كزر "إصلاح" في بطاقة الجاهزية).
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const urlTab = params.get('tab');
-    if (urlTab && validDynamicTabs.includes(urlTab) && urlTab !== activeTab) {
-      setActiveTab(urlTab);
-    }
-  }, [location.search]);
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -893,21 +882,43 @@ export function useSchoolSettings() {
   };
 
   const navigateToFix = (category) => {
-    // بعد المهمة #114 جميع تبويبات إعدادات الجدول انتقلت إلى صفحة
-    // "الجدول المدرسي الذكي" تحت تبويب "إعدادات الجدول المدرسي". نوجِّه
-    // المستخدم مباشرةً إلى التبويب الفرعي الصحيح هناك بدلاً من تبديل
-    // الأقسام داخل صفحة إعدادات المدرسة.
-    const tabMapping = {
-      'academic_context': 'timings',
-      'school_days': 'timings',
-      'day_structure': 'timings',
-      'classes': 'classes',
-      'teachers': 'teacher-assignments',
-      'teacher_assignments': 'teacher-assignments',
-      'constraints': 'constraints',
+    // بعد المهمة #114 انتقلت تبويبات إعدادات الجدول الخمس إلى صفحة
+    // "الجدول المدرسي الذكي" تحت تبويب "إعدادات الجدول المدرسي"
+    // (`/school/schedule?tab=settings&sub=...`). أما الفئات المتعلقة
+    // بالهيكل الأكاديمي فتبقى داخل صفحة إعدادات المدرسة، والفئات غير
+    // المعروفة تُعيد المستخدم إلى لوحة الإعدادات بدون اختيار تبويب
+    // فرعي حتى لا نوجِّهه عشوائياً إلى مكان غير ملائم.
+    const scheduleSubTabByCategory = {
+      // أسماء فئات الإصدار السابق (لم تَعُد ترسلها واجهة الجاهزية لكن
+      // قد تأتي من روابط محفوظة).
+      academic_context: 'timings',
+      school_days: 'timings',
+      day_structure: 'timings',
+      classes: 'classes',
+      teachers: 'teacher-assignments',
+      teacher_assignments: 'teacher-assignments',
+      // أسماء الفئات الحالية القادمة من /api/timetable-readiness/check.
+      time_structure: 'timings',
+      teaching_staff: 'teacher-assignments',
+      teaching_relationships: 'teacher-assignments',
+      constraints: 'constraints',
+      generation_ready: 'teacher-assignments',
     };
-    const tab = tabMapping[category] || 'timings';
-    navigate(`/school/schedule?view=settings&tab=${tab}`);
+    const academicSectionCategories = new Set([
+      'academic_structure',
+      'academic_entities',
+    ]);
+
+    const sub = scheduleSubTabByCategory[category];
+    if (sub) {
+      navigate(`/school/schedule?tab=settings&sub=${sub}`);
+    } else if (academicSectionCategories.has(category)) {
+      navigate('/school/settings?section=academic');
+    } else {
+      // فئة غير معروفة — نرجع المستخدم إلى صفحة الإعدادات العامة دون
+      // اختيار تبويب فرعي حتى لا نُحوِّله إلى تبويب لا علاقة له بالمشكلة.
+      navigate('/school/settings');
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
