@@ -245,8 +245,6 @@ export default function ClassDetailPage() {
   const [classes, setClasses] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('grid');
-  const [studentSubTab, setStudentSubTab] = useState('all');
-
   const [showStudentWizard, setShowStudentWizard] = useState(false);
   const [grades, setGrades] = useState([]);
 
@@ -291,13 +289,9 @@ export default function ClassDetailPage() {
     );
   }, [students, searchQuery]);
 
-  const giftedStudents = useMemo(() => filteredStudents.filter(s => s.is_gifted), [filteredStudents]);
-  const otherStudents = useMemo(() => filteredStudents.filter(s => !s.is_gifted), [filteredStudents]);
-  const displayedStudents = useMemo(() => {
-    if (studentSubTab === 'gifted') return giftedStudents;
-    if (studentSubTab === 'other') return otherStudents;
-    return filteredStudents;
-  }, [studentSubTab, filteredStudents, giftedStudents, otherStudents]);
+  // Student category filter tabs were removed from the UI; the list now
+  // always shows all students (subject only to the search query).
+  const displayedStudents = filteredStudents;
 
   const rolePrefix = user?.role === 'school_principal' ? '/principal' : '/admin';
 
@@ -380,11 +374,6 @@ export default function ClassDetailPage() {
 
   const BackArrow = isRTL ? ArrowRight : ArrowLeft;
 
-  const subTabs = [
-    { key: 'all', label: t('allStudents'), icon: Users, count: filteredStudents.length },
-    { key: 'gifted', label: t('giftedStudents'), icon: Star, count: giftedStudents.length },
-    { key: 'other', label: t('otherStudents'), icon: GraduationCap, count: otherStudents.length },
-  ];
 
   if (loading) {
     return (
@@ -506,32 +495,7 @@ export default function ClassDetailPage() {
             </CardContent>
           </Card>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5 p-1 bg-muted/50 rounded-xl w-fit overflow-x-auto">
-              {subTabs.map(tab => {
-                const Icon = tab.icon;
-                const isActive = studentSubTab === tab.key;
-                return (
-                  <button
-                    key={tab.key}
-                    onClick={() => setStudentSubTab(tab.key)}
-                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium transition-all duration-200 whitespace-nowrap
-                      ${isActive
-                        ? tab.key === 'gifted'
-                          ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-md shadow-amber-500/20'
-                          : 'bg-white dark:bg-gray-800 text-foreground shadow-md'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-white/50 dark:hover:bg-gray-800/50'}`}
-                  >
-                    <Icon className={`h-3.5 w-3.5 ${isActive && tab.key === 'gifted' ? 'fill-white' : tab.key === 'gifted' && !isActive ? 'text-amber-500 fill-amber-500' : ''}`} />
-                    {tab.label}
-                    <Badge variant="secondary" className={`ms-1 h-4.5 text-[10px] px-1.5 rounded-full
-                      ${isActive && tab.key === 'gifted' ? 'bg-white/20 text-white border-0' : isActive ? 'bg-muted' : 'bg-transparent'}`}>
-                      {tab.count}
-                    </Badge>
-                  </button>
-                );
-              })}
-            </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3">
             <div className="flex items-center gap-2">
               <div className="relative flex-1 sm:w-64">
                 <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -554,15 +518,6 @@ export default function ClassDetailPage() {
               </Button>
             </div>
           </div>
-
-          {studentSubTab === 'gifted' && giftedStudents.length > 0 && (
-            <div className="flex items-center gap-2 p-2.5 px-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40">
-              <Star className="h-4 w-4 text-amber-500 fill-amber-500 shrink-0" />
-              <span className="text-xs text-amber-700 dark:text-amber-300">
-                {isRTL ? `${giftedStudents.length} طالب موهوب في هذا الفصل` : `${giftedStudents.length} gifted student${giftedStudents.length !== 1 ? 's' : ''} in this class`}
-              </span>
-            </div>
-          )}
 
           {displayedStudents.length === 0 ? (
             <Card className="p-12 text-center border-dashed">
