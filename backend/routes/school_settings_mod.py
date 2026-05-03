@@ -510,9 +510,41 @@ async def get_school_day_status(
     settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     nested = (settings or {}).get("settings", {}) if settings else {}
 
-    day_start_str = nested.get("school_day_start") or (settings or {}).get("school_day_start") or "07:00"
-    day_end_str = nested.get("school_day_end") or (settings or {}).get("school_day_end") or "13:15"
-    periods_per_day = nested.get("periods_per_day") or (settings or {}).get("periods_per_day") or 7
+    cs = (settings or {}).get("custom_settings") or {}
+
+    def _first(*candidates, default=None):
+        for c in candidates:
+            if c is not None and c != "":
+                return c
+        return default
+
+    day_start_str = _first(
+        cs.get("school_day_start"),
+        nested.get("school_day_start"),
+        (settings or {}).get("school_day_start"),
+        (settings or {}).get("start_time"),
+        default="07:00",
+    )
+    periods_per_day = int(_first(
+        cs.get("periods_per_day"),
+        nested.get("periods_per_day"),
+        (settings or {}).get("periods_per_day"),
+        default=7,
+    ) or 7)
+    period_duration = int(_first(
+        cs.get("period_duration_minutes"),
+        nested.get("period_duration_minutes"),
+        (settings or {}).get("period_duration_minutes"),
+        (settings or {}).get("period_duration"),
+        default=45,
+    ) or 45)
+    break_duration = int(_first(
+        cs.get("break_duration_minutes"),
+        nested.get("break_duration_minutes"),
+        (settings or {}).get("break_duration_minutes"),
+        (settings or {}).get("break_duration"),
+        default=20,
+    ) or 20)
 
     time_slots_raw = await gd_find(db.session, "time_slots", {"school_id": school_id}, order_by="start_time", desc_order=False, limit=30)
 
@@ -534,6 +566,26 @@ async def get_school_day_status(
 
     period_slots = [s for s in valid_slots if not s.get("is_break", False)]
     total_periods = len(period_slots) if period_slots else int(periods_per_day)
+
+    # Derive ``day_end`` from the live timing settings instead of trusting
+    # a possibly-stale ``school_day_end`` row. When the principal edits
+    # period count or duration without re-running slot generation, the
+    # banner used to keep showing the old end time (e.g. "13:15" forever).
+    # We now recompute it on the fly: end = start + periods*period_dur +
+    # total break minutes. If real ``time_slots`` exist they win — they're
+    # the most accurate source because they include passing time and the
+    # actual prayer-break placement.
+    start_minutes = parse_time(day_start_str) or 420
+    if period_slots:
+        computed_end_minutes = parse_time(period_slots[-1].get("end_time")) or (start_minutes + total_periods * period_duration + break_duration)
+    else:
+        # Approximate: total class time + a single block of break time.
+        # Matches what the timing settings UI implies (one main break +
+        # an optional prayer break), and is good enough for the banner
+        # until the principal regenerates real slots.
+        computed_end_minutes = start_minutes + (total_periods * period_duration) + break_duration
+    end_h, end_m = divmod(computed_end_minutes, 60)
+    day_end_str = f"{end_h % 24:02d}:{end_m:02d}"
 
     working_days = (settings or {}).get("working_days", nested.get("working_days", {}))
     day_names_map = {6: "sunday", 0: "monday", 1: "tuesday", 2: "wednesday", 3: "thursday", 4: "friday", 5: "saturday"}
