@@ -27,6 +27,9 @@ import {
   MapPin,
   FileText,
   AlertTriangle,
+  Lock,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 const LOGO_WHITE = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/q04svb5j_Nassaq%20LinkedIn%20Logo%20White.png';
@@ -57,7 +60,11 @@ export const RegisterPage = () => {
     school_code: '',
     specialization: '',
     years_of_experience: '',
+    password: '',
+    confirm_password: '',
   });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
@@ -142,6 +149,16 @@ export const RegisterPage = () => {
       if (!formData.school_city.trim()) {
         newErrors.school_city = t('cityIsRequired');
       }
+      if (!formData.password) {
+        newErrors.password = isRTL ? 'كلمة المرور مطلوبة' : 'Password is required';
+      } else if (formData.password.length < 8) {
+        newErrors.password = isRTL ? 'يجب أن تتكون كلمة المرور من 8 أحرف على الأقل' : 'Password must be at least 8 characters';
+      }
+      if (!formData.confirm_password) {
+        newErrors.confirm_password = isRTL ? 'يرجى تأكيد كلمة المرور' : 'Please confirm password';
+      } else if (formData.password !== formData.confirm_password) {
+        newErrors.confirm_password = isRTL ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match';
+      }
     } else if (formData.accountType === 'teacher') {
       if (!formData.teacher_email.trim()) {
         newErrors.teacher_email = t('emailIsRequired');
@@ -223,6 +240,7 @@ export const RegisterPage = () => {
           school_city: formData.school_city,
           school_address: formData.school_address,
           student_capacity: formData.student_capacity,
+          password: formData.password,
         } : {
           email: formData.teacher_email,
           school_code: formData.school_code,
@@ -241,7 +259,11 @@ export const RegisterPage = () => {
           user: data.user,
         });
 
-        toast.success(t('accountCreatedSuccessfully'));
+        if (formData.accountType === 'school') {
+          toast.success(isRTL ? 'تم تسجيل المدرسة بنجاح' : 'School registered successfully');
+        } else {
+          toast.success(t('accountCreatedSuccessfully'));
+        }
 
         const role = data.user.role;
         let target = '/dashboard';
@@ -685,6 +707,68 @@ export const RegisterPage = () => {
                             data-testid="student-capacity-input"
                           />
                         </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="password" className="font-tajawal">
+                          {isRTL ? 'كلمة المرور' : 'Password'} *
+                        </Label>
+                        <div className="relative">
+                          <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                          <Input
+                            id="password"
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder={isRTL ? '٨ أحرف على الأقل' : 'At least 8 characters'}
+                            value={formData.password}
+                            onChange={(e) => updateFormData('password', e.target.value)}
+                            className={`ps-10 pe-10 h-12 rounded-xl font-tajawal ${errors.password ? 'border-destructive' : ''}`}
+                            autoComplete="new-password"
+                            data-testid="password-input"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            aria-label="toggle password visibility"
+                            data-testid="toggle-password-btn"
+                          >
+                            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          </button>
+                        </div>
+                        {errors.password && (
+                          <p className="text-destructive text-xs font-tajawal">{errors.password}</p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="confirm_password" className="font-tajawal">
+                          {isRTL ? 'تأكيد كلمة المرور' : 'Confirm Password'} *
+                        </Label>
+                        <div className="relative">
+                          <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                          <Input
+                            id="confirm_password"
+                            type={showConfirmPassword ? 'text' : 'password'}
+                            placeholder={isRTL ? 'أعد إدخال كلمة المرور' : 'Re-enter password'}
+                            value={formData.confirm_password}
+                            onChange={(e) => updateFormData('confirm_password', e.target.value)}
+                            className={`ps-10 pe-10 h-12 rounded-xl font-tajawal ${errors.confirm_password ? 'border-destructive' : ''}`}
+                            autoComplete="new-password"
+                            data-testid="confirm-password-input"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            aria-label="toggle confirm password visibility"
+                            data-testid="toggle-confirm-password-btn"
+                          >
+                            {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          </button>
+                        </div>
+                        {errors.confirm_password && (
+                          <p className="text-destructive text-xs font-tajawal">{errors.confirm_password}</p>
+                        )}
                       </div>
 
                       <div className="space-y-2">

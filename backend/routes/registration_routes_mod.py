@@ -138,7 +138,6 @@ async def _create_school_instant(
     and returns an auth token so the user is immediately logged in.
     """
     from sqlalchemy import select
-    import secrets, string
 
     session = db.session
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -147,6 +146,7 @@ async def _create_school_instant(
     school_phone = (request_data.school_phone or "").strip() or (phone_clean or raw_phone)
     school_name = (request_data.school_name or "").strip()
     school_city = (request_data.school_city or "").strip()
+    user_password = (request_data.password or "")
 
     if not school_name:
         raise HTTPException(status_code=400, detail="يرجى إدخال اسم المدرسة")
@@ -154,6 +154,8 @@ async def _create_school_instant(
         raise HTTPException(status_code=400, detail="يرجى إدخال البريد الإلكتروني للمدرسة")
     if not school_city:
         raise HTTPException(status_code=400, detail="يرجى إدخال مدينة المدرسة")
+    if not user_password or len(user_password) < 8:
+        raise HTTPException(status_code=400, detail="يجب أن تتكون كلمة المرور من 8 أحرف على الأقل")
 
     stmt = select(UserModel).where(UserModel.email == school_email).limit(1)
     result = await session.execute(stmt)
@@ -171,9 +173,7 @@ async def _create_school_instant(
     principal_id = str(uuid.uuid4())
     request_id = str(uuid.uuid4())
 
-    temp_password = ''.join(
-        secrets.choice(string.ascii_letters + string.digits + "!@#$%") for _ in range(12)
-    )
+    password_hash_value = hash_password(user_password)
 
     school_obj = dict_to_model(School, {
         "id": school_id,
@@ -205,14 +205,14 @@ async def _create_school_instant(
     principal_obj = dict_to_model(UserModel, {
         "id": principal_id,
         "email": school_email,
-        "password_hash": hash_password(temp_password),
+        "password_hash": password_hash_value,
         "full_name": full_name,
         "role": "school_principal",
         "school_id": school_id,
         "tenant_id": school_id,
         "phone": school_phone,
         "is_active": True,
-        "must_change_password": True,
+        "must_change_password": False,
         "preferred_language": "ar",
         "preferred_theme": "light",
         "permissions": ["manage_school", "manage_teachers", "manage_students", "view_reports", "manage_settings"],
@@ -252,10 +252,11 @@ async def _create_school_instant(
         logger.warning(f"[InstantSignup] Skipped default school settings seed for {school_id}: {e}")
 
     submission_data = request_data.model_dump()
+    submission_data.pop("password", None)
     submission_data["account_type"] = "school"
     submission_data["full_name"] = full_name
 
-    extra_fields = {k: v for k, v in submission_data.items() if k not in ("id", "type", "name", "email", "phone", "school_name", "status", "source")}
+    extra_fields = {k: v for k, v in submission_data.items() if k not in ("id", "type", "name", "email", "phone", "school_name", "status", "source", "password")}
     extra_fields["account_type"] = "school"
     extra_fields["full_name"] = full_name
     extra_fields["auto_approved"] = True
@@ -327,20 +328,13 @@ async def _create_school_instant(
         phone=school_phone,
         avatar_url=None,
         is_active=True,
-        must_change_password=True,
+        must_change_password=False,
         preferred_language="ar",
         preferred_theme="light",
         created_at=now_iso,
     )
 
     logger.info(f"[InstantSignup] School created and auto-logged-in: {school_name} (code={school_code}, principal={principal_id[:8]}…)")
-
-    # NOTE: temp_password is intentionally NOT returned. The principal is
-    # auto-logged-in via the issued access_token and `must_change_password=True`
-    # forces a password reset on first dashboard load. Echoing the generated
-    # password back to the client would expose credentials in browser logs,
-    # screenshots, and proxy/telemetry surfaces.
-    _ = temp_password
 
     return {
         "id": request_id,
@@ -419,10 +413,11 @@ async def create_registration_request(request_data: RegistrationRequest):
     request_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     submission_data = request_data.model_dump()
+    submission_data.pop("password", None)
     submission_data["account_type"] = account_type
     submission_data["full_name"] = full_name
 
-    extra_fields = {k: v for k, v in submission_data.items() if k not in ("id", "type", "name", "email", "phone", "school_name", "status", "source")}
+    extra_fields = {k: v for k, v in submission_data.items() if k not in ("id", "type", "name", "email", "phone", "school_name", "status", "source", "password")}
     extra_fields["account_type"] = account_type
     extra_fields["full_name"] = full_name
 

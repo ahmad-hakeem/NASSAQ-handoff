@@ -301,6 +301,7 @@ class RegistrationRequest(BaseModel):
     school_mentioned: Optional[str] = None
     country: Optional[str] = "السعودية"
     years_of_experience: Optional[str] = None
+    password: Optional[str] = None
 
 class RegistrationRequestResponse(BaseModel):
     model_config = ConfigDict(extra="ignore", from_attributes=True)
