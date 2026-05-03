@@ -104,7 +104,8 @@ export function useSchoolSettings() {
     periodDuration: 45,
     breakDuration: 20,
     breakAfterPeriod: 3,
-    attendancePattern: 'winter'
+    attendancePattern: 'winter',
+    maxStandbyPerWeek: 5,
   });
   const [timeSlotsCount, setTimeSlotsCount] = useState(null);
   const [generatingSlots, setGeneratingSlots] = useState(false);
@@ -199,7 +200,12 @@ export function useSchoolSettings() {
         periodDuration: s.periodDuration || 45,
         breakDuration: s.breakDuration || 20,
         breakAfterPeriod: s.breakAfterPeriod || 3,
-        attendancePattern: s.attendancePattern || s.attendance_pattern || 'winter'
+        attendancePattern: s.attendancePattern || s.attendance_pattern || 'winter',
+        maxStandbyPerWeek: (() => {
+          const n = parseInt(s.maxStandbyPerWeek, 10);
+          if (!Number.isFinite(n)) return 5;
+          return Math.max(1, Math.min(20, n));
+        })(),
       });
 
       if (Array.isArray(s.breaks) && s.breaks.length > 0) {
@@ -306,6 +312,7 @@ export function useSchoolSettings() {
         workingDays,
         weekendDays,
         attendancePattern: timingSettings.attendancePattern,
+        maxStandbyPerWeek: timingSettings.maxStandbyPerWeek,
         breaks: breakTimes.map(b => ({
           id: b.id,
           name: b.name,

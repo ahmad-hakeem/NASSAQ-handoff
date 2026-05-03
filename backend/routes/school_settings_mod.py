@@ -737,6 +737,7 @@ async def get_school_settings(
         "workingDays": _resolve_working_days_ar(nested_settings, settings),
         "weekendDays": _resolve_weekend_days_ar(nested_settings, settings),
         "breaks": settings.get("breaks", []),
+        "maxStandbyPerWeek": _pick(cs.get("max_standby_per_teacher_per_week"), nested_settings.get("max_standby_per_teacher_per_week"), default=5),
         "attendancePattern": _pick(cs.get("attendance_pattern"), nested_settings.get("attendance_pattern"), settings.get("attendance_pattern"), default="winter"),
         # Original field names for backward compatibility
         "working_days": settings.get("working_days", {}),
@@ -983,7 +984,22 @@ async def update_school_settings_full(
         "prayer_duration_minutes": (None, "prayer_duration_minutes"),
         "attendancePattern":       (None, "attendance_pattern"),
         "attendance_pattern":      (None, "attendance_pattern"),
+        "maxStandbyPerWeek":             (None, "max_standby_per_teacher_per_week"),
+        "max_standby_per_teacher_per_week": (None, "max_standby_per_teacher_per_week"),
     }
+
+    # Validate new standby cap (1..20). Reject early with Arabic message.
+    if "maxStandbyPerWeek" in settings_data or "max_standby_per_teacher_per_week" in settings_data:
+        raw = settings_data.get("maxStandbyPerWeek",
+                                settings_data.get("max_standby_per_teacher_per_week"))
+        try:
+            n = int(raw)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400,
+                detail="قيمة الحد الأقصى لحصص الانتظار يجب أن تكون رقماً صحيحاً")
+        if n < 1 or n > 20:
+            raise HTTPException(status_code=400,
+                detail="الحد الأقصى لحصص الانتظار يجب أن يكون بين 1 و 20")
 
     # Load existing settings so we can merge custom_settings (JSONB) properly
     existing = await gd_find_one(db.session, "school_settings", {"school_id": school_id}) or {}

@@ -326,6 +326,18 @@ async def get_standby_roster(
         raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
     assert_school_access(current_user, str(sid))
 
+    # Guardrail: standby generation requires that the master schedule has
+    # produced at least one session. See
+    # docs/superpowers/specs/2026-05-03-standby-engine-refactor-design.md.
+    has_session = await gd_find_one(
+        db.session, "timetable_sessions", {"school_id": str(sid)},
+    )
+    if not has_session:
+        raise HTTPException(
+            status_code=409,
+            detail="يجب توليد الجدول الرئيسي أولاً قبل توليد جدول الانتظار",
+        )
+
     teachers = await gd_find(
         db.session, "teachers",
         {"school_id": str(sid), "is_active": True},

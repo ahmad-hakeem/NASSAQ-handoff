@@ -267,6 +267,28 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                       <SelectContent>{[10, 15, 20, 25, 30].map(n => <SelectItem key={n} value={String(n)}>{n} دقيقة</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
+                  <div>
+                    <Label className="text-sm text-slate-600 mb-2 block">الحد الأقصى لحصص الانتظار للمعلم أسبوعياً</Label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={20}
+                      step={1}
+                      value={timingSettings.maxStandbyPerWeek ?? 5}
+                      onChange={(e) => {
+                        const raw = parseInt(e.target.value, 10);
+                        const clamped = Number.isFinite(raw)
+                          ? Math.max(1, Math.min(20, raw))
+                          : 5;
+                        handleSettingChange('maxStandbyPerWeek', clamped);
+                      }}
+                      className="h-12 w-full rounded-md border border-slate-200 px-3 text-base focus:border-[#1C3D74] focus:outline-none"
+                      data-testid="max-standby-per-week-input"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">
+                      الافتراضي: 5 — يطبّق كحد أعلى مع السعة المتبقية لكل معلم
+                    </p>
+                  </div>
                 </div>
               </div>
               <div className="mt-6 p-4 bg-slate-50 rounded-xl">

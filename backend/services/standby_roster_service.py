@@ -26,12 +26,32 @@ from __future__ import annotations
 from math import ceil
 from typing import Dict, List, Set, Tuple
 
-from engines.sql_utils import gd_find
+from engines.sql_utils import gd_find, gd_find_one
 
 
 DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday"]
 PERIODS = list(range(1, 13))  # 1..12 — يغطّي مدارس الفترتين والمدارس متعدّدة الحصص
 DEFAULT_WEEKLY_QUOTA = 24
+DEFAULT_MAX_STANDBY_PER_WEEK = 5
+MAX_STANDBY_CAP_HARD_LIMIT = 20  # absolute upper bound regardless of setting
+
+
+async def _fetch_school_standby_cap(session, school_id: str) -> int:
+    """Returns the school's `max_standby_per_teacher_per_week` setting.
+
+    Reads from `school_settings.custom_settings.max_standby_per_teacher_per_week`.
+    Falls back to DEFAULT_MAX_STANDBY_PER_WEEK (5) when missing or invalid.
+    Clamped to the range [1, MAX_STANDBY_CAP_HARD_LIMIT].
+    """
+    row = await gd_find_one(session, "school_settings", {"school_id": school_id})
+    if not row:
+        return DEFAULT_MAX_STANDBY_PER_WEEK
+    cs = row.get("custom_settings") or {}
+    raw = cs.get("max_standby_per_teacher_per_week")
+    val = _safe_int(raw, DEFAULT_MAX_STANDBY_PER_WEEK)
+    if val < 1:
+        return DEFAULT_MAX_STANDBY_PER_WEEK
+    return min(val, MAX_STANDBY_CAP_HARD_LIMIT)
 
 
 async def _fetch_active_timetable(session, school_id: str) -> dict | None:
@@ -119,28 +139,49 @@ async def compute_standby_roster(
         busy[tid].add((day, period))
         teacher_load[tid] += 1
 
+    # 1b) Map: teacher_id -> set of (day, period) where they're explicitly
+    # UNAVAILABLE (per-slot lockout from the `unavailability` collection,
+    # entity_type="teacher"). Treated as locked, equivalent to busy for the
+    # purpose of standby eligibility, but does not consume teaching quota.
+    unavailable: Dict[str, Set[Tuple[str, int]]] = {tid: set() for tid in busy}
+    unavail_rows = await gd_find(
+        session, "unavailability",
+        {"school_id": school_id, "entity_type": "teacher"},
+        limit=10000,
+    )
+    for row in unavail_rows or []:
+        tid = row.get("entity_id") or row.get("teacher_id")
+        if not tid or tid not in unavailable:
+            continue
+        day = _normalize_day_key(row.get("day"))
+        period = _safe_int(row.get("period"), 0)
+        if not day or day not in DAYS or period not in PERIODS:
+            continue
+        unavailable[tid].add((day, period))
+
+    # School-wide cap: hard upper bound on standby slots per teacher per week.
+    # See spec docs/superpowers/specs/2026-05-03-standby-engine-refactor-design.md.
+    school_cap = await _fetch_school_standby_cap(session, school_id)
+
     # 2) For each teacher, compute their free slots and distribute capacity.
     roster: Dict[str, Set[Tuple[str, int]]] = {}
     for t in teachers:
         tid = t.get("id")
         if not tid:
             continue
-        weekly_quota = _safe_int(t.get("weekly_periods"), DEFAULT_WEEKLY_QUOTA)
-        if weekly_quota <= 0:
-            weekly_quota = DEFAULT_WEEKLY_QUOTA
-        configured_standby = _safe_int(t.get("standby_periods"), 0)
+        weekly_quota = _safe_int(t.get("weekly_periods"), 0)
         load = teacher_load.get(tid, 0)
-        # Derived headroom from the main timetable: how many periods of the
-        # weekly quota the teacher hasn't been assigned to teach.
-        derived_capacity = max(weekly_quota - load, 0)
-        # The explicit `standby_periods` setting (when present and > 0) is an
-        # UPPER BOUND on how often this teacher can be tagged for standby
-        # duty in a week — it expresses a school-policy cap, not a floor. We
-        # therefore take the smaller of the two when the cap is configured.
-        if configured_standby > 0:
-            capacity = min(configured_standby, derived_capacity)
-        else:
-            capacity = derived_capacity
+        # Inverse Gap Analysis: remaining headroom from the master schedule.
+        if weekly_quota <= 0:
+            # No quota configured → teacher is excluded from auto-standby.
+            # Manual `add` overrides still work via apply_overrides_to_roster.
+            continue
+        remaining_capacity = max(weekly_quota - load, 0)
+        # Per-teacher explicit override (legacy `standby_periods` field) still
+        # acts as a tighter ceiling when set; otherwise fall back to school cap.
+        configured_standby = _safe_int(t.get("standby_periods"), 0)
+        per_teacher_ceiling = configured_standby if configured_standby > 0 else school_cap
+        capacity = min(remaining_capacity, per_teacher_ceiling)
         if capacity <= 0:
             continue
 
@@ -153,32 +194,36 @@ async def compute_standby_roster(
         if not eligible_days:
             continue
 
-        # Identify free slots on eligible days, deterministic order:
-        # by day index then period.
-        free_slots: List[Tuple[str, int]] = []
+        # Identify eligible periods per day in deterministic order. A slot
+        # is ELIGIBLE iff it is neither BUSY (master schedule) nor
+        # UNAVAILABLE (per-slot teacher unavailability).
+        locked = busy[tid] | unavailable.get(tid, set())
+        eligible_by_day: Dict[str, List[int]] = {}
         for day in eligible_days:
-            for period in PERIODS:
-                if (day, period) not in busy[tid]:
-                    free_slots.append((day, period))
-        if not free_slots:
+            day_periods = [p for p in PERIODS if (day, p) not in locked]
+            if day_periods:
+                eligible_by_day[day] = day_periods
+        if not eligible_by_day:
             continue
 
-        # Daily cap: spread evenly so no day exceeds
-        # ⌈capacity / eligible_working_days⌉.
-        per_day_cap = max(1, ceil(capacity / len(eligible_days)))
-        per_day_count: Dict[str, int] = {d: 0 for d in eligible_days}
+        # Even split per spec: per_day = N // D, extras = N % D.
+        # First `extras` working days (in DAYS order) get +1 slot.
+        D = len(eligible_days)
+        per_day = capacity // D
+        extras = capacity % D
         chosen: Set[Tuple[str, int]] = set()
-
-        # Round-robin pass: prefer earliest available slot per day to spread
-        # standby duty across the week instead of stacking at week start.
-        for slot in free_slots:
-            if len(chosen) >= capacity:
+        remaining = capacity
+        for idx, day in enumerate(eligible_days):
+            if remaining <= 0:
                 break
-            day, period = slot
-            if per_day_count.get(day, 0) >= per_day_cap:
+            target = per_day + (1 if idx < extras else 0)
+            if target <= 0:
                 continue
-            chosen.add(slot)
-            per_day_count[day] = per_day_count.get(day, 0) + 1
+            day_periods = eligible_by_day.get(day, [])
+            take = min(target, len(day_periods), remaining)
+            for p in day_periods[:take]:
+                chosen.add((day, p))
+            remaining -= take
 
         if chosen:
             roster[tid] = chosen
