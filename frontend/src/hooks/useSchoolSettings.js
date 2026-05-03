@@ -22,6 +22,14 @@ export function useSchoolSettings() {
   const initialTab = validDynamicTabs.includes(rawTab) ? rawTab : 'school-info';
   const [activeTab, setActiveTab] = useState(initialTab);
 
+  // تنبيه داخل الصفحة (Inline alert) — بديل عن الـ toast العائم في
+  // تدفّقات الحفظ التي يجب أن يقرأها المسؤول قبل المتابعة (مثل تنبيه
+  // النقل الذي لم يُرسَل لأي معلم بسبب حسابات غير مرتبطة).
+  const [inlineAlert, setInlineAlert] = useState({ show: false, type: 'success', message: '' });
+  const dismissInlineAlert = useCallback(() => {
+    setInlineAlert(prev => ({ ...prev, show: false }));
+  }, []);
+
   const setActiveSection = useCallback((section) => {
     setActiveSectionState(section);
     const params = new URLSearchParams(location.search);
@@ -635,7 +643,11 @@ export function useSchoolSettings() {
 
       const notifCount = res.data?.notifications_sent || 0;
       if (notifCount > 0) {
-        toast.success(`تم إضافة فترة عدم التوفر وإرسال ${notifCount} إشعار للمعلمين`);
+        setInlineAlert({
+          show: true,
+          type: 'success',
+          message: `تم إضافة فترة عدم التوفر وإرسال ${notifCount} إشعار للمعلمين`,
+        });
       } else if (
         unavailabilityType === 'class' &&
         data.alternative_location &&
@@ -644,12 +656,17 @@ export function useSchoolSettings() {
         // الحفظ نجح لكن لم يصل أي إشعار للمعلمين — غالباً لأن سجلات
         // المعلمين المتأثرين غير مرتبطة بحسابات مستخدمين فعّالة. ننبّه
         // المسؤول صراحةً ليتحقق من حسابات المعلمين بدلاً من إخفاء الأمر.
-        toast('تم حفظ النقل، لكن لم يتم إخطار أي معلم — تحقّق من حسابات المعلمين المرتبطين بهذا الفصل.', {
-          icon: '⚠️',
-          duration: 6000,
+        setInlineAlert({
+          show: true,
+          type: 'warning',
+          message: 'تم حفظ النقل، لكن لم يتم إخطار أي معلم — تحقّق من حسابات المعلمين المرتبطين بهذا الفصل.',
         });
       } else {
-        toast.success('تم إضافة فترة عدم التوفر بنجاح');
+        setInlineAlert({
+          show: true,
+          type: 'success',
+          message: 'تم إضافة فترة عدم التوفر بنجاح',
+        });
       }
     } catch (err) {
       console.error('Error saving unavailability:', err);
@@ -658,7 +675,11 @@ export function useSchoolSettings() {
       } else {
         setClassUnavailability(prev => prev.filter(u => u.id !== localId));
       }
-      toast.error('حدث خطأ أثناء حفظ فترة عدم التوفر');
+      setInlineAlert({
+        show: true,
+        type: 'error',
+        message: 'حدث خطأ أثناء حفظ فترة عدم التوفر',
+      });
     }
   };
 
@@ -967,6 +988,7 @@ export function useSchoolSettings() {
   return {
     navigate, api, user, nassaqWarning, nassaqConfirm, nassaqError,
     activeSection, setActiveSection, activeTab, setActiveTab,
+    inlineAlert, setInlineAlert, dismissInlineAlert,
     loading, saving, hasChanges, setHasChanges, sensors,
     schoolInfo, settings, teachers, classes, assignments, constraints,
     readinessData,

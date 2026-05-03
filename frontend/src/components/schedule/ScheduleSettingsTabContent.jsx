@@ -30,7 +30,7 @@
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Loader2, Clock, School, Link2, UserX, Shield } from 'lucide-react';
+import { Loader2, Clock, School, Link2, UserX, Shield, CheckCircle2, AlertTriangle, X } from 'lucide-react';
 import { useSchoolSettings } from '../../hooks/useSchoolSettings';
 import { DynamicSettingsContent } from '../school-settings/DynamicSettingsContent';
 import { SettingsModals } from '../school-settings/SettingsModals';
@@ -115,10 +115,63 @@ export default function ScheduleSettingsTabContent() {
     );
   }
 
+  const { inlineAlert, dismissInlineAlert } = hook;
+
   return (
     <div data-testid="schedule-settings-tab-content">
+      <InlineAlert alert={inlineAlert} onDismiss={dismissInlineAlert} />
       <DynamicSettingsContent hook={hook} dynamicTabs={scheduleSubTabs} />
       <SettingsModals hook={hook} />
+    </div>
+  );
+}
+
+/**
+ * تنبيه ثابت داخل الصفحة (Inline Alert) — يُعرض أسفل التبويبات وأعلى
+ * المحتوى. يحمل ألواناً دلالية ناعمة وحدوداً RTL، ويتطلّب من المسؤول
+ * إغلاقاً صريحاً حتى لا يفوته الأمر.
+ */
+function InlineAlert({ alert, onDismiss }) {
+  if (!alert?.show) return null;
+
+  const variants = {
+    success: {
+      container: 'bg-emerald-50 border-emerald-500 text-emerald-800',
+      Icon: CheckCircle2,
+      iconClass: 'text-emerald-600',
+    },
+    warning: {
+      container: 'bg-amber-50 border-amber-500 text-amber-800',
+      Icon: AlertTriangle,
+      iconClass: 'text-amber-600',
+    },
+    error: {
+      container: 'bg-red-50 border-red-500 text-red-800',
+      Icon: AlertTriangle,
+      iconClass: 'text-red-600',
+    },
+  };
+  const { container, Icon, iconClass } = variants[alert.type] || variants.success;
+
+  return (
+    <div
+      role="alert"
+      data-testid={`schedule-inline-alert-${alert.type}`}
+      className={`flex justify-between items-start p-4 mb-6 rounded-lg border-r-4 shadow-sm transition-all duration-300 ${container}`}
+    >
+      <div className="flex items-start gap-3 flex-1 min-w-0">
+        <Icon className={`h-5 w-5 mt-0.5 shrink-0 ${iconClass}`} />
+        <p className="font-tajawal text-sm leading-6 break-words">{alert.message}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="إغلاق التنبيه"
+        className="hover:bg-black/5 rounded-md p-1 transition-colors shrink-0 ms-3"
+        data-testid="schedule-inline-alert-dismiss"
+      >
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
 }
