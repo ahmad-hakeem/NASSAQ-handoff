@@ -446,7 +446,8 @@ async def acknowledge_circular(
 
     # Idempotent: if already acknowledged we still return success and reuse
     # the prior timestamp instead of overwriting it.
-    if not original.get('is_acknowledged'):
+    newly_acked = not original.get('is_acknowledged')
+    if newly_acked:
         await gd_update_one(
             db.session,
             "notifications",
@@ -460,10 +461,11 @@ async def acknowledge_circular(
         )
 
     # Notify the original sender for circulars only (avoids spamming senders
-    # of routine in-app notifications). Skip self-acks.
+    # of routine in-app notifications). Skip self-acks. Only fire on the
+    # first ack transition so repeated clicks don't spam the admin.
     is_circular = original.get('type') == 'circular'
     sender_id = original.get('sender_id')
-    if is_circular and sender_id and sender_id != current_user['id']:
+    if newly_acked and is_circular and sender_id and sender_id != current_user['id']:
         teacher_name = current_user.get('full_name') or current_user.get('name') or ''
         original_title_ar = original.get('title') or ''
         original_title_en = original.get('title_en') or original_title_ar
