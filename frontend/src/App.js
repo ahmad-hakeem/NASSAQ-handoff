@@ -22,7 +22,7 @@ function App() {
                 <GenericNameGuard>
                   <AppRoutes />
                 </GenericNameGuard>
-                <Toaster position="top-center" richColors />
+                <Toaster />
               </BrowserRouter>
             </NassaqAlertProvider>
           </WebSocketProvider>
