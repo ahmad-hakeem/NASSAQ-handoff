@@ -406,63 +406,219 @@ async def delete_notification(
     return {"success": True, "message": "Notification deleted"}
 
 class CircularAckRequest(BaseModel):
-    circularId: str
-    userId: str
+    circularId: Optional[str] = None
+    userId: Optional[str] = None
 
 @router.post("/notifications/{notification_id}/acknowledge")
 async def acknowledge_circular(
     notification_id: str,
-    payload: CircularAckRequest,
+    payload: Optional[CircularAckRequest] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Acknowledge receipt of a Ministry Circular (تعميم).
-    Triggers a circular_ack notification back to the original sender (Manager/Admin)."""
-    if payload.circularId != notification_id or payload.userId != current_user['id']:
-        raise HTTPException(status_code=400, detail="Mismatched circular or user identifier")
+    """Acknowledge receipt of a notification (تأكيد الاستلام والقراءة).
+
+    Used primarily for Circulars (تعميم) but works for any notification the
+    user owns. Sets ``is_acknowledged=True`` and ``acknowledged_at`` on the
+    recipient's notification row, also marks it as read, and (for circulars)
+    fires a ``circular_ack`` back to the original sender so the admin sees
+    real-time receipt confirmation.
+    """
+    # Optional payload kept for backwards-compat with older clients that send
+    # {circularId, userId}; if present, validate it lines up with the request.
+    if payload and payload.circularId and payload.circularId != notification_id:
+        raise HTTPException(status_code=400, detail="Mismatched circular identifier")
+    if payload and payload.userId and payload.userId != current_user['id']:
+        raise HTTPException(status_code=400, detail="Mismatched user identifier")
 
     original = await gd_find_one(db.session, "notifications", {"id": notification_id})
     if not original:
-        raise HTTPException(status_code=404, detail="Circular not found")
-
-    if original.get('type') != 'circular':
-        raise HTTPException(status_code=400, detail="Notification is not a circular")
+        raise HTTPException(status_code=404, detail="Notification not found")
 
     if original.get('user_id') != current_user['id']:
-        raise HTTPException(status_code=403, detail="Not authorized to acknowledge this circular")
+        raise HTTPException(status_code=403, detail="Not authorized to acknowledge this notification")
 
     original_tenant = original.get('tenant_id')
     user_tenant = current_user.get('tenant_id')
     if original_tenant and user_tenant and original_tenant != user_tenant:
         raise HTTPException(status_code=403, detail="Cross-tenant acknowledgment not allowed")
 
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Idempotent: if already acknowledged we still return success and reuse
+    # the prior timestamp instead of overwriting it.
+    if not original.get('is_acknowledged'):
+        await gd_update_one(
+            db.session,
+            "notifications",
+            {"id": notification_id},
+            {
+                "is_acknowledged": True,
+                "acknowledged_at": now_iso,
+                "is_read": True,
+                "read_at": original.get('read_at') or now_iso,
+            },
+        )
+
+    # Notify the original sender for circulars only (avoids spamming senders
+    # of routine in-app notifications). Skip self-acks.
+    is_circular = original.get('type') == 'circular'
     sender_id = original.get('sender_id')
-    if not sender_id:
-        raise HTTPException(status_code=400, detail="Original sender not found")
+    if is_circular and sender_id and sender_id != current_user['id']:
+        teacher_name = current_user.get('full_name') or current_user.get('name') or ''
+        original_title_ar = original.get('title') or ''
+        original_title_en = original.get('title_en') or original_title_ar
+        try:
+            await create_notification_internal(
+                title="تأكيد استلام تعميم",
+                message=f"المعلم {teacher_name} أكد استلام التعميم: {original_title_ar}",
+                recipient_id=sender_id,
+                notification_type="circular_ack",
+                priority="medium",
+                sender_id=current_user['id'],
+                related_entity="notification",
+                related_entity_id=notification_id,
+                title_en="Circular Acknowledgement",
+                message_en=f"Teacher {teacher_name} acknowledged the circular: {original_title_en}",
+                school_id=current_user.get('tenant_id'),
+            )
+        except Exception as ack_err:
+            # Don't fail the user's ack just because the back-channel notice
+            # to the admin failed; log and continue.
+            logger.warning("circular_ack notify-back failed: %s", ack_err)
 
-    teacher_name = current_user.get('full_name') or current_user.get('name') or ''
-    original_title_ar = original.get('title') or ''
-    original_title_en = original.get('title_en') or original_title_ar
+    return {
+        "success": True,
+        "message": "Notification acknowledged",
+        "acknowledged_at": original.get('acknowledged_at') or now_iso,
+    }
 
-    ack_title_ar = "تأكيد استلام تعميم"
-    ack_title_en = "Circular Acknowledgement"
-    ack_message_ar = f"المعلم {teacher_name} أكد استلام التعميم: {original_title_ar}"
-    ack_message_en = f"Teacher {teacher_name} acknowledged the circular: {original_title_en}"
+@router.get("/notifications/sent-circulars")
+async def list_sent_circulars(
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user),
+):
+    """Admin view of circulars (تعميمات) the current user has sent.
 
-    await create_notification_internal(
-        title=ack_title_ar,
-        message=ack_message_ar,
-        recipient_id=sender_id,
-        notification_type="circular_ack",
-        priority="medium",
-        sender_id=current_user['id'],
-        related_entity="notification",
-        related_entity_id=notification_id,
-        title_en=ack_title_en,
-        message_en=ack_message_en,
-        school_id=current_user.get('tenant_id'),
+    Groups the per-recipient fan-out rows by ``broadcast_id`` and returns
+    one summary per circular with acknowledgment counts so the Communication
+    Center can render the "حالة الاستلام" metric on each sent card.
+    """
+    if current_user['role'] not in ['platform_admin', 'school_principal', 'school_sub_admin', 'school_admin']:
+        raise HTTPException(status_code=403, detail="غير مصرح")
+
+    tenant_id = current_user.get('tenant_id')
+    query = {"type": "circular", "sender_id": current_user['id']}
+    if tenant_id:
+        query["tenant_id"] = tenant_id
+
+    rows = await gd_find(
+        db.session, "notifications", query,
+        order_by="created_at", desc_order=True, limit=max(limit * 50, 500),
     )
 
-    return {"success": True, "message": "Circular acknowledged"}
+    # Group by broadcast_id (falls back to row id for legacy single-recipient
+    # circulars that predate the engine fan-out).
+    groups: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        bid = r.get('broadcast_id') or r.get('id')
+        g = groups.setdefault(bid, {
+            "broadcast_id": bid,
+            "title": r.get('title') or '',
+            "title_en": r.get('title_en') or r.get('title') or '',
+            "message": r.get('message') or '',
+            "message_en": r.get('message_en') or r.get('message') or '',
+            "priority": r.get('priority') or 'normal',
+            "recipient_type": r.get('recipient_type'),
+            "created_at": r.get('created_at'),
+            "sent_at": r.get('sent_at') or r.get('created_at'),
+            "recipient_count": 0,
+            "acknowledged_count": 0,
+            "read_count": 0,
+        })
+        g["recipient_count"] += 1
+        if r.get('is_acknowledged'):
+            g["acknowledged_count"] += 1
+        if r.get('is_read'):
+            g["read_count"] += 1
+        # Keep the earliest sent_at across the broadcast
+        if r.get('created_at') and (not g.get('created_at') or r['created_at'] < g['created_at']):
+            g['created_at'] = r['created_at']
+            g['sent_at'] = r.get('sent_at') or r['created_at']
+
+    summaries = sorted(groups.values(), key=lambda g: g.get('sent_at') or '', reverse=True)[:limit]
+    for g in summaries:
+        rc = g["recipient_count"] or 1
+        g["acknowledged_rate"] = round((g["acknowledged_count"] / rc) * 100, 1)
+    return {"circulars": summaries, "total": len(summaries)}
+
+
+@router.get("/notifications/circular/{broadcast_id}/acknowledgements")
+async def get_circular_acknowledgements(
+    broadcast_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Per-recipient acknowledgment list for a given circular broadcast.
+
+    Returns each targeted teacher / user with their ``acknowledged`` flag and
+    timestamp so the admin can see at a glance who has read the circular.
+    """
+    if current_user['role'] not in ['platform_admin', 'school_principal', 'school_sub_admin', 'school_admin']:
+        raise HTTPException(status_code=403, detail="غير مصرح")
+
+    tenant_id = current_user.get('tenant_id')
+    query = {"$or": [{"broadcast_id": broadcast_id}, {"id": broadcast_id}]}
+    if tenant_id:
+        query["tenant_id"] = tenant_id
+
+    rows = await gd_find(db.session, "notifications", query, order_by="created_at", desc_order=False, limit=2000)
+
+    # Authorisation: caller must own the circular (be the sender) or be a
+    # platform admin. Drop rows from other senders accidentally caught by id
+    # collision (extremely unlikely but defensive).
+    sender_ids = {r.get('sender_id') for r in rows if r.get('sender_id')}
+    if current_user['role'] != 'platform_admin' and sender_ids and current_user['id'] not in sender_ids:
+        raise HTTPException(status_code=403, detail="Not authorized to view this circular")
+
+    user_ids = list({r.get('user_id') for r in rows if r.get('user_id')})
+    name_map: Dict[str, Dict[str, Any]] = {}
+    if user_ids:
+        users = await gd_find(db.session, "users", {"id": {"$in": user_ids}}, limit=len(user_ids))
+        for u in users:
+            name_map[u['id']] = {
+                "name": u.get('full_name') or u.get('name') or u.get('email') or '',
+                "email": u.get('email'),
+                "role": u.get('role'),
+            }
+
+    recipients = []
+    ack_count = 0
+    for r in rows:
+        uid = r.get('user_id')
+        info = name_map.get(uid, {})
+        acked = bool(r.get('is_acknowledged'))
+        if acked:
+            ack_count += 1
+        recipients.append({
+            "user_id": uid,
+            "name": info.get('name') or r.get('recipient_name') or '',
+            "email": info.get('email'),
+            "role": info.get('role') or r.get('recipient_role'),
+            "acknowledged": acked,
+            "acknowledged_at": r.get('acknowledged_at'),
+            "is_read": bool(r.get('is_read')),
+            "read_at": r.get('read_at'),
+        })
+
+    total = len(recipients)
+    return {
+        "broadcast_id": broadcast_id,
+        "title": rows[0].get('title') if rows else '',
+        "recipients": recipients,
+        "acknowledged_count": ack_count,
+        "total": total,
+        "acknowledged_rate": round((ack_count / total) * 100, 1) if total else 0,
+    }
+
 
 @router.get("/notifications/analytics")
 async def get_notification_analytics(

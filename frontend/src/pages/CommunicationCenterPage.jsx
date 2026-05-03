@@ -35,6 +35,10 @@ import {
   MailOpen,
   ChevronDown,
   ChevronUp,
+  AlertOctagon,
+  CheckCircle2,
+  XCircle,
+  Users2,
 } from 'lucide-react';
 import {
   Dialog,
@@ -102,6 +106,12 @@ export const CommunicationCenterPage = () => {
   const [messageToDelete, setMessageToDelete] = useState(null);
   const [expandedInboxMsg, setExpandedInboxMsg] = useState(null);
   const [inboxFilter, setInboxFilter] = useState('all');
+
+  // Sent circulars + acknowledgment tracking
+  const [sentCirculars, setSentCirculars] = useState([]);
+  const [ackModalOpen, setAckModalOpen] = useState(false);
+  const [ackModalLoading, setAckModalLoading] = useState(false);
+  const [ackModalData, setAckModalData] = useState(null);
   
   // New message form (mirrors SendNotificationWizard fields + scheduling)
   const [newMessage, setNewMessage] = useState({
@@ -147,6 +157,21 @@ export const CommunicationCenterPage = () => {
   const needsRecipientFilter = ['grade_students', 'grade_parents', 'class_students', 'class_parents'].includes(newMessage.recipient_type);
   const isSpecificUsers = newMessage.recipient_type === 'specific_users';
 
+  const openAckModal = async (circular) => {
+    setAckModalData({ circular, recipients: [], acknowledged_count: 0, total: 0, acknowledged_rate: 0 });
+    setAckModalOpen(true);
+    setAckModalLoading(true);
+    try {
+      const res = await api.get(`/notifications/circular/${circular.broadcast_id}/acknowledgements`);
+      setAckModalData({ ...res.data, circular });
+    } catch (e) {
+      console.error('Failed to load acknowledgements:', e);
+      nassaqError(isRTL ? 'تعذر تحميل حالة الاستلام' : 'Failed to load acknowledgment status');
+    } finally {
+      setAckModalLoading(false);
+    }
+  };
+
   // Fetch all data
   const fetchData = useCallback(async () => {
     try {
@@ -166,6 +191,13 @@ export const CommunicationCenterPage = () => {
       setSentMessages(sent);
       setScheduledMessages(scheduled);
       
+      try {
+        const circRes = await api.get('/notifications/sent-circulars?limit=50');
+        setSentCirculars(circRes.data?.circulars || []);
+      } catch (_e) {
+        setSentCirculars([]);
+      }
+
       let received = [];
       try {
         const receivedRes = await api.get('/communication/received');
@@ -864,7 +896,100 @@ export const CommunicationCenterPage = () => {
           )}
 
           {activeTab === 'sent' && (
-            <div className="space-y-4">
+            <div className="space-y-6">
+              {/* Sent Circulars (تعميمات) — high-priority, with ack tracking */}
+              {sentCirculars.length > 0 && (
+                <div className="space-y-3">
+                  <h2 className="font-cairo text-lg font-semibold flex items-center gap-2">
+                    <AlertOctagon className="h-5 w-5 text-red-600" />
+                    {isRTL ? 'التعميمات المرسلة' : 'Sent Circulars'}
+                    <Badge variant="secondary" className="font-cairo">{sentCirculars.length}</Badge>
+                  </h2>
+                  <div className="space-y-3">
+                    {sentCirculars.map((c) => {
+                      const ackPct = c.acknowledged_rate || 0;
+                      const allAcked = c.recipient_count > 0 && c.acknowledged_count >= c.recipient_count;
+                      return (
+                        <Card
+                          key={c.broadcast_id}
+                          className="card-nassaq border-s-4 border-red-500"
+                        >
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between mb-2 gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <AlertOctagon className="h-4 w-4 text-red-600 shrink-0" />
+                                <p className="font-medium font-cairo truncate">
+                                  {isRTL ? c.title : (c.title_en || c.title)}
+                                </p>
+                              </div>
+                              <Badge
+                                variant="outline"
+                                className={`font-cairo shrink-0 ${
+                                  allAcked
+                                    ? 'border-green-500 text-green-700 bg-green-50 dark:bg-green-950/30'
+                                    : 'border-red-500 text-red-700 bg-red-50 dark:bg-red-950/30'
+                                }`}
+                              >
+                                {isRTL ? 'تعميم' : 'Circular'}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground line-clamp-2">
+                              {isRTL ? c.message : (c.message_en || c.message)}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-3 mt-3 text-xs text-muted-foreground font-tajawal">
+                              <span className="inline-flex items-center gap-1">
+                                <Users2 className="h-3.5 w-3.5" />
+                                {isRTL ? `${c.recipient_count} مستلم` : `${c.recipient_count} recipients`}
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-500">
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                {isRTL ? 'تم الاستلام:' : 'Acknowledged:'} {c.acknowledged_count}
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-red-700 dark:text-red-500">
+                                <XCircle className="h-3.5 w-3.5" />
+                                {isRTL ? 'لم يتم:' : 'Pending:'} {Math.max(0, (c.recipient_count || 0) - (c.acknowledged_count || 0))}
+                              </span>
+                              <span>{formatDate(c.sent_at || c.created_at)}</span>
+                            </div>
+
+                            {/* Progress bar */}
+                            <div className="mt-3">
+                              <div className="flex items-center justify-between text-xs font-cairo mb-1">
+                                <span className={allAcked ? 'text-green-700 dark:text-green-500' : 'text-muted-foreground'}>
+                                  {isRTL ? 'حالة الاستلام' : 'Acknowledgment Status'}
+                                </span>
+                                <span className={allAcked ? 'text-green-700 dark:text-green-500 font-semibold' : 'text-muted-foreground'}>
+                                  {ackPct}%
+                                </span>
+                              </div>
+                              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full transition-all ${allAcked ? 'bg-green-500' : 'bg-red-500'}`}
+                                  style={{ width: `${Math.min(100, ackPct)}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="mt-3 flex justify-end">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="font-cairo"
+                                onClick={() => openAckModal(c)}
+                                data-testid={`view-acks-${c.broadcast_id}`}
+                              >
+                                <Eye className="h-3.5 w-3.5 me-1" />
+                                {isRTL ? 'عرض حالة الاستلام' : 'View Acknowledgment Status'}
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <h2 className="font-cairo text-lg font-semibold flex items-center gap-2">
                 <Send className="h-5 w-5 text-brand-navy" />
                 {t('sentMessages2')}
@@ -1099,6 +1224,118 @@ export const CommunicationCenterPage = () => {
                 </p>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Circular Acknowledgment Status Dialog */}
+        <Dialog open={ackModalOpen} onOpenChange={setAckModalOpen}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="font-cairo flex items-center gap-2">
+                <AlertOctagon className="h-5 w-5 text-red-600" />
+                {isRTL ? 'حالة الاستلام' : 'Acknowledgment Status'}
+              </DialogTitle>
+              {ackModalData?.circular && (
+                <DialogDescription className="font-tajawal">
+                  {isRTL ? ackModalData.circular.title : (ackModalData.circular.title_en || ackModalData.circular.title)}
+                </DialogDescription>
+              )}
+            </DialogHeader>
+
+            {ackModalLoading ? (
+              <div className="py-12 text-center">
+                <Loader2 className="h-8 w-8 mx-auto animate-spin text-muted-foreground" />
+              </div>
+            ) : ackModalData ? (
+              <div className="space-y-4 overflow-y-auto">
+                {/* Summary metrics */}
+                <div className="grid grid-cols-3 gap-3">
+                  <Card className="bg-muted/30">
+                    <CardContent className="p-3 text-center">
+                      <p className="text-2xl font-bold font-cairo">{ackModalData.total || 0}</p>
+                      <p className="text-xs text-muted-foreground font-cairo">
+                        {isRTL ? 'الإجمالي' : 'Total'}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-green-50 dark:bg-green-950/20">
+                    <CardContent className="p-3 text-center">
+                      <p className="text-2xl font-bold font-cairo text-green-700 dark:text-green-400">
+                        {ackModalData.acknowledged_count || 0}
+                      </p>
+                      <p className="text-xs text-green-700 dark:text-green-400 font-cairo">
+                        {isRTL ? 'تم الاستلام' : 'Acknowledged'}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-red-50 dark:bg-red-950/20">
+                    <CardContent className="p-3 text-center">
+                      <p className="text-2xl font-bold font-cairo text-red-700 dark:text-red-400">
+                        {Math.max(0, (ackModalData.total || 0) - (ackModalData.acknowledged_count || 0))}
+                      </p>
+                      <p className="text-xs text-red-700 dark:text-red-400 font-cairo">
+                        {isRTL ? 'لم يتم الاستلام' : 'Pending'}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between text-xs font-cairo mb-1">
+                    <span className="text-muted-foreground">{isRTL ? 'نسبة الاستلام' : 'Acknowledgment rate'}</span>
+                    <span className="font-semibold">{ackModalData.acknowledged_rate || 0}%</span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-green-500 transition-all"
+                      style={{ width: `${Math.min(100, ackModalData.acknowledged_rate || 0)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Recipients list */}
+                <div className="border rounded-lg divide-y max-h-[40vh] overflow-y-auto">
+                  {(ackModalData.recipients || []).length === 0 ? (
+                    <div className="p-6 text-center text-sm text-muted-foreground font-cairo">
+                      {isRTL ? 'لا يوجد مستلمون' : 'No recipients'}
+                    </div>
+                  ) : (
+                    ackModalData.recipients.map((r) => (
+                      <div
+                        key={r.user_id}
+                        className="flex items-center justify-between p-3 gap-3"
+                        data-testid={`ack-row-${r.user_id}`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium font-cairo truncate">{r.name || '—'}</p>
+                          {r.email && (
+                            <p className="text-xs text-muted-foreground truncate font-tajawal">{r.email}</p>
+                          )}
+                        </div>
+                        {r.acknowledged ? (
+                          <div className="text-right shrink-0">
+                            <Badge className="bg-green-500 hover:bg-green-600 font-cairo">
+                              <CheckCircle2 className="h-3 w-3 me-1" />
+                              {isRTL ? 'تم الاستلام' : 'Acknowledged'}
+                            </Badge>
+                            {r.acknowledged_at && (
+                              <p className="text-[10px] text-muted-foreground mt-1 font-tajawal">
+                                {formatDate(r.acknowledged_at)}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <Badge variant="outline" className="border-red-500 text-red-700 dark:text-red-400 font-cairo shrink-0">
+                            <XCircle className="h-3 w-3 me-1" />
+                            {isRTL ? 'لم يتم الاستلام' : 'Pending'}
+                          </Badge>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : null}
           </DialogContent>
         </Dialog>
 

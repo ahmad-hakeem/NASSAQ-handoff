@@ -12,13 +12,17 @@ import {
   CalendarCheck,
   ClipboardList,
   AlertTriangle,
+  AlertOctagon,
   Info,
   MessageSquare,
   Megaphone,
   Check,
+  CheckCircle2,
   Clock,
   ChevronRight,
+  Loader2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   Popover,
   PopoverContent,
@@ -33,6 +37,9 @@ const notificationTypeConfig = {
   behaviour: { icon: AlertTriangle, color: 'text-yellow-500' },
   communication: { icon: MessageSquare, color: 'text-teal-500' },
   announcement: { icon: Megaphone, color: 'text-orange-500' },
+  circular: { icon: AlertOctagon, color: 'text-red-600' },
+  circular_ack: { icon: CheckCircle2, color: 'text-green-600' },
+  emergency: { icon: AlertOctagon, color: 'text-red-600' },
 };
 
 export const NotificationBell = () => {
@@ -45,6 +52,7 @@ export const NotificationBell = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [ackingId, setAckingId] = useState(null);
 
   const fetchUnreadCount = useCallback(async () => {
     if (!user) return;
@@ -93,6 +101,34 @@ export const NotificationBell = () => {
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (error) {
       console.error('Failed to mark as read:', error);
+    }
+  };
+
+  const handleAcknowledge = async (notification, e) => {
+    e.stopPropagation();
+    if (notification.is_acknowledged || ackingId === notification.id) return;
+    try {
+      setAckingId(notification.id);
+      await api.post(`/notifications/${notification.id}/acknowledge`, {
+        circularId: notification.id,
+        userId: user?.id,
+      });
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === notification.id
+            ? { ...n, is_acknowledged: true, acknowledged_at: new Date().toISOString(), read_status: true }
+            : n,
+        ),
+      );
+      if (!notification.read_status) {
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+      }
+      toast.success(isRTL ? 'تم تأكيد استلام التعميم' : 'Circular acknowledged');
+    } catch (error) {
+      console.error('Failed to acknowledge circular:', error);
+      toast.error(isRTL ? 'تعذر تأكيد الاستلام' : 'Failed to acknowledge');
+    } finally {
+      setAckingId(null);
     }
   };
 
@@ -184,12 +220,18 @@ export const NotificationBell = () => {
               {notifications.map((notification) => {
                 const typeConfig = notificationTypeConfig[notification.notification_type] || notificationTypeConfig.system;
                 const IconComponent = typeConfig.icon;
-                
+                const isCircular = notification.notification_type === 'circular';
+                const needsAck = isCircular && !notification.is_acknowledged;
+
                 return (
                   <div
                     key={notification.id}
                     className={`p-3 cursor-pointer hover:bg-muted/50 transition-colors ${
-                      !notification.read_status ? 'bg-brand-turquoise/5' : ''
+                      needsAck
+                        ? 'bg-red-50 dark:bg-red-950/20 border-s-4 border-red-500'
+                        : !notification.read_status
+                        ? 'bg-brand-turquoise/5'
+                        : ''
                     }`}
                     onClick={() => handleNotificationClick(notification)}
                   >
@@ -197,8 +239,17 @@ export const NotificationBell = () => {
                       <div className={`mt-0.5 ${typeConfig.color}`}>
                         <IconComponent className="h-4 w-4" />
                       </div>
-                      
+
                       <div className="flex-1 min-w-0">
+                        {isCircular && (
+                          <Badge
+                            variant="outline"
+                            className="mb-1 text-[10px] font-cairo border-red-500 text-red-600 bg-red-50 dark:bg-red-950/30"
+                          >
+                            <AlertOctagon className="h-3 w-3 me-1" />
+                            {isRTL ? 'تعميم — يتطلب التأكيد' : 'Circular — Acknowledgment Required'}
+                          </Badge>
+                        )}
                         <p className={`text-sm line-clamp-2 ${!notification.read_status ? 'font-medium' : ''}`}>
                           {isRTL ? notification.title : (notification.title_en || notification.title)}
                         </p>
@@ -207,10 +258,33 @@ export const NotificationBell = () => {
                           <span className="text-xs text-muted-foreground">
                             {formatTimeAgo(notification.created_at)}
                           </span>
+                          {isCircular && notification.is_acknowledged && (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-green-600 font-cairo">
+                              <CheckCircle2 className="h-3 w-3" />
+                              {isRTL ? 'تم الاستلام' : 'Acknowledged'}
+                            </span>
+                          )}
                         </div>
+
+                        {needsAck && (
+                          <Button
+                            size="sm"
+                            className="mt-2 w-full h-8 bg-red-600 hover:bg-red-700 text-white font-cairo"
+                            disabled={ackingId === notification.id}
+                            onClick={(e) => handleAcknowledge(notification, e)}
+                            data-testid={`ack-circular-${notification.id}`}
+                          >
+                            {ackingId === notification.id ? (
+                              <Loader2 className="h-3 w-3 me-1 animate-spin" />
+                            ) : (
+                              <CheckCircle2 className="h-3 w-3 me-1" />
+                            )}
+                            {isRTL ? 'تأكيد الاستلام والقراءة' : 'Acknowledge Receipt'}
+                          </Button>
+                        )}
                       </div>
-                      
-                      {!notification.read_status && (
+
+                      {!notification.read_status && !needsAck && (
                         <Button
                           size="sm"
                           variant="ghost"
