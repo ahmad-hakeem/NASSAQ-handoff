@@ -81,11 +81,17 @@ const SchoolDayProgress = ({ isRTL }) => {
   const currentPeriod = dayStatus?.current_period ?? 0;
   const totalPeriods = dayStatus?.total_periods ?? 7;
   const isBreak = dayStatus?.is_break ?? false;
-  const dayStart = dayStatus?.day_start ?? '07:00';
-  const dayEnd = dayStatus?.day_end ?? '13:15';
+  const dayStart = dayStatus?.day_start;
+  const dayEnd = dayStatus?.day_end;
 
   const formatTimeLabel = (timeStr) => {
+    if (!timeStr || typeof timeStr !== 'string' || !timeStr.includes(':')) {
+      return isRTL ? 'جاري التحميل...' : 'Loading...';
+    }
     const [h, m] = timeStr.split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) {
+      return isRTL ? 'جاري التحميل...' : 'Loading...';
+    }
     if (isRTL) {
       return `${h}:${m.toString().padStart(2, '0')} ${h < 12 ? 'صباحاً' : 'مساءً'}`;
     }
