@@ -385,9 +385,14 @@ class TeacherClassAssignmentResponse(BaseModel):
 
 
 async def get_school_id_from_context(current_user: dict, x_school_context: str = None) -> str:
-    if x_school_context:
-        return x_school_context
-    return current_user.get("tenant_id")
+    """Resolve school_id from header, with strict tenant isolation.
+
+    Delegates to `utils.tenant_scope.resolve_school_id` so that non-platform
+    callers can never address another school's data via the X-School-Context
+    header (mismatched override → 403). Platform admins retain free override.
+    """
+    from utils.tenant_scope import resolve_school_id
+    return resolve_school_id(current_user, x_school_context)
 
 @router.get("/school/info")
 async def get_school_info(
