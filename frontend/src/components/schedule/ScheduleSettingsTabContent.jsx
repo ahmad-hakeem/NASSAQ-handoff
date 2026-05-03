@@ -30,7 +30,7 @@
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Loader2, Clock, School, Link2, UserX, Shield, CheckCircle2, AlertTriangle, X } from 'lucide-react';
+import { Loader2, Clock, School, Link2, UserX, Shield, CheckCircle2, AlertTriangle, X, Check } from 'lucide-react';
 import { useSchoolSettings } from '../../hooks/useSchoolSettings';
 import { DynamicSettingsContent } from '../school-settings/DynamicSettingsContent';
 import { SettingsModals } from '../school-settings/SettingsModals';
@@ -115,13 +115,53 @@ export default function ScheduleSettingsTabContent() {
     );
   }
 
-  const { inlineAlert, dismissInlineAlert } = hook;
+  const { inlineAlert, dismissInlineAlert, successModal, dismissSuccessModal } = hook;
 
   return (
     <div data-testid="schedule-settings-tab-content">
       <InlineAlert alert={inlineAlert} onDismiss={dismissInlineAlert} />
       <DynamicSettingsContent hook={hook} dynamicTabs={scheduleSubTabs} />
       <SettingsModals hook={hook} />
+      <SuccessModal modal={successModal} onClose={dismissSuccessModal} />
+    </div>
+  );
+}
+
+/**
+ * مودال نجاح مركزي للحركات الحسّاسة (مثل إرسال إشعارات فعلية للمعلمين
+ * بعد إضافة عدم توفر فصل). يوقف التفاعل مع الخلفية حتى يضغط المسؤول
+ * "حسناً" — تأكيد صريح يضمن قراءة الرسالة قبل المتابعة.
+ */
+function SuccessModal({ modal, onClose }) {
+  if (!modal?.show) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+      role="dialog"
+      aria-modal="true"
+      data-testid="schedule-success-modal"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md transform transition-all text-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 mb-4">
+          <Check className="h-10 w-10 text-emerald-600" strokeWidth={3} />
+        </div>
+        <h3 className="text-xl font-bold text-slate-800 mb-2 font-cairo">
+          {modal.title || 'تمت الإضافة بنجاح'}
+        </h3>
+        <p className="text-slate-600 mb-6 font-tajawal leading-7">{modal.message}</p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full bg-emerald-600 text-white rounded-lg py-3 font-semibold hover:bg-emerald-700 transition-colors font-cairo"
+          data-testid="schedule-success-modal-confirm"
+        >
+          حسناً
+        </button>
+      </div>
     </div>
   );
 }

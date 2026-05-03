@@ -30,6 +30,13 @@ export function useSchoolSettings() {
     setInlineAlert(prev => ({ ...prev, show: false }));
   }, []);
 
+  // مودال نجاح للحركات الحساسة (مثل إضافة عدم توفر فصل أرسلت إشعارات
+  // فعلية للمعلمين). نوقف الشاشة ليُقرّ المسؤول صراحةً قبل المتابعة.
+  const [successModal, setSuccessModal] = useState({ show: false, title: '', message: '' });
+  const dismissSuccessModal = useCallback(() => {
+    setSuccessModal(prev => ({ ...prev, show: false }));
+  }, []);
+
   const setActiveSection = useCallback((section) => {
     setActiveSectionState(section);
     const params = new URLSearchParams(location.search);
@@ -643,10 +650,14 @@ export function useSchoolSettings() {
 
       const notifCount = res.data?.notifications_sent || 0;
       if (notifCount > 0) {
-        setInlineAlert({
+        // حركة حسّاسة: أُرسلت إشعارات فعلية للمعلمين — نوقف الشاشة
+        // بمودال نجاح يُقرّه المسؤول صراحةً بدل بانر سريع.
+        setSuccessModal({
           show: true,
-          type: 'success',
-          message: `تم إضافة فترة عدم التوفر وإرسال ${notifCount} إشعار للمعلمين`,
+          title: 'تمت الإضافة بنجاح',
+          message: unavailabilityType === 'class'
+            ? `تم إضافة فترة عدم التوفر وإرسال ${notifCount} إشعار للمعلمين المرتبطين بهذا الفصل.`
+            : `تم إضافة فترة عدم التوفر وإرسال ${notifCount} إشعار للمعلمين.`,
         });
       } else if (
         unavailabilityType === 'class' &&
@@ -989,6 +1000,7 @@ export function useSchoolSettings() {
     navigate, api, user, nassaqWarning, nassaqConfirm, nassaqError,
     activeSection, setActiveSection, activeTab, setActiveTab,
     inlineAlert, setInlineAlert, dismissInlineAlert,
+    successModal, setSuccessModal, dismissSuccessModal,
     loading, saving, hasChanges, setHasChanges, sensors,
     schoolInfo, settings, teachers, classes, assignments, constraints,
     readinessData,
