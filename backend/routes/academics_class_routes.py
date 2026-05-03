@@ -210,7 +210,42 @@ async def get_classes(
     teacher_ids = list(set([c.get("homeroom_teacher_id") for c in classes if c.get("homeroom_teacher_id")]))
     teachers = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=100)
     teacher_map = {t.get("id"): t.get("full_name") or t.get("full_name_ar") for t in teachers}
-    
+
+    # Aggregate live student counts per class so the UI cards can render
+    # "{student_count} / {capacity} طلاب" and the fill progress instead of
+    # always showing 0. Counts only active students assigned to a class,
+    # scoped by (school_id, class_id) so tenants never see another school's
+    # totals even if class IDs ever collide across tenants.
+    from sqlalchemy import select as _sa_select, func as _sa_func, and_ as _sa_and, tuple_ as _sa_tuple
+    from pg_models import Student as _PgStudent
+    pairs = [(c.get("school_id"), c.get("id")) for c in classes if c.get("id") and c.get("school_id")]
+    counts_map: Dict[tuple, int] = {}
+    if pairs:
+        try:
+            count_stmt = (
+                _sa_select(
+                    _PgStudent.school_id,
+                    _PgStudent.class_id,
+                    _sa_func.count(_PgStudent.id),
+                )
+                .where(
+                    _sa_and(
+                        _PgStudent.is_active == True,
+                        _sa_tuple(_PgStudent.school_id, _PgStudent.class_id).in_(pairs),
+                    )
+                )
+                .group_by(_PgStudent.school_id, _PgStudent.class_id)
+            )
+            count_rows = await db.session.execute(count_stmt)
+            counts_map = {
+                (sid, cid): int(cnt or 0)
+                for sid, cid, cnt in count_rows.all()
+                if cid and sid
+            }
+        except Exception as _agg_err:
+            logger.warning(f"Failed to aggregate student counts for classes: {_agg_err}")
+            counts_map = {}
+
     result = []
     for c in classes:
         c["homeroom_teacher_name"] = teacher_map.get(c.get("homeroom_teacher_id"))
@@ -220,6 +255,10 @@ async def get_classes(
         # Map grade_id to grade_level_id if needed
         if not c.get("grade_level_id") and c.get("grade_id"):
             c["grade_level_id"] = c["grade_id"]
+        # Bind aggregated student count to both fields the frontend reads
+        live_count = counts_map.get((c.get("school_id"), c.get("id")), 0)
+        c["student_count"] = live_count
+        c["current_students"] = live_count
         result.append(ClassResponse(**c))
     
     return result
@@ -255,6 +294,27 @@ async def get_class(class_id: str, current_user: dict = Depends(get_current_user
                     class_doc["homeroom_teacher_id"] = teacher.get("id")
 
     class_doc["homeroom_teacher_name"] = teacher_name
+
+    # Aggregate live student count for this class so detail views stay in
+    # sync with the cards on the listing page. Scope by the class's
+    # school_id to prevent cross-tenant leakage if class IDs ever collide.
+    try:
+        from sqlalchemy import select as _sa_select, func as _sa_func, and_ as _sa_and
+        from pg_models import Student as _PgStudent
+        _scope_school_id = class_doc.get("school_id")
+        _conds = [_PgStudent.is_active == True, _PgStudent.class_id == class_id]
+        if _scope_school_id:
+            _conds.append(_PgStudent.school_id == _scope_school_id)
+        single_count = await db.session.execute(
+            _sa_select(_sa_func.count(_PgStudent.id)).where(_sa_and(*_conds))
+        )
+        live_count = int(single_count.scalar() or 0)
+    except Exception as _agg_err:
+        logger.warning(f"Failed to aggregate student count for class {class_id}: {_agg_err}")
+        live_count = int(class_doc.get("student_count") or class_doc.get("current_students") or 0)
+    class_doc["student_count"] = live_count
+    class_doc["current_students"] = live_count
+
     return ClassResponse(**class_doc)
 
 @router.put("/classes/{class_id}")
