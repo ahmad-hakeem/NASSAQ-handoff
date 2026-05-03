@@ -6,15 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../../components/ui/dropdown-menu';
-import {
   Sparkles,
   Plus,
-  ChevronDown,
   Pencil,
   Trash2,
   Check,
@@ -309,36 +302,15 @@ export const HakeemPlan = () => {
       </CardHeader>
 
       <CardContent className="space-y-3">
-        {/* Split-action button */}
-        <div className="flex items-stretch gap-px rounded-xl overflow-hidden shadow-sm shadow-brand-purple/10">
-          <Button
-            type="button"
-            onClick={() => setAdding((v) => !v)}
-            className="flex-1 rounded-none rounded-s-xl bg-gradient-to-r from-brand-purple to-brand-turquoise hover:opacity-95 text-white font-cairo h-9"
-            data-testid="hakeem-quick-add-btn"
-          >
-            <Plus className="h-3.5 w-3.5 me-1.5" />
-            {isRTL ? 'إضافة مهمة' : 'Add Task'}
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                className="rounded-none rounded-e-xl bg-brand-purple hover:bg-brand-purple/90 text-white px-2.5 h-9"
-                aria-label={isRTL ? 'خيارات الإضافة' : 'Add options'}
-                data-testid="hakeem-add-options"
-              >
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="font-tajawal">
-              <DropdownMenuItem onClick={() => { setAdding(true); }} className="gap-2">
-                <Plus className="h-3.5 w-3.5 text-brand-turquoise" />
-                {isRTL ? 'إضافة يدوية' : 'Manual Add'}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <Button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="w-full rounded-xl bg-gradient-to-r from-brand-purple to-brand-turquoise hover:opacity-95 text-white font-cairo h-9 shadow-sm shadow-brand-purple/10"
+          data-testid="hakeem-quick-add-btn"
+        >
+          <Plus className="h-3.5 w-3.5 me-1.5" />
+          {isRTL ? 'إضافة مهمة' : 'Add Task'}
+        </Button>
 
         {adding && (
           <div className="flex items-center gap-2 p-2 rounded-xl border border-brand-turquoise/30 bg-brand-turquoise/5">
