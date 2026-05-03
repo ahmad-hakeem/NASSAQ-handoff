@@ -30,7 +30,6 @@ import {
   Eye,
   Calendar,
   Megaphone,
-  FileText,
   Trash2,
   AlertTriangle,
   X,
@@ -128,15 +127,13 @@ export const CommunicationCenterPage = () => {
 
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [stats, setStats] = useState({ sent: 0, received: 0, scheduled: 0, templates: 0 });
+  const [stats, setStats] = useState({ sent: 0, received: 0, scheduled: 0 });
   const [sentMessages, setSentMessages] = useState([]);
   const [receivedMessages, setReceivedMessages] = useState([]);
   const [scheduledMessages, setScheduledMessages] = useState([]);
-  const [templates, setTemplates] = useState([]);
   const [audienceGroups, setAudienceGroups] = useState([]);
-  
+
   const [editScheduledOpen, setEditScheduledOpen] = useState(false);
-  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [viewMessageOpen, setViewMessageOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   
@@ -245,10 +242,6 @@ export const CommunicationCenterPage = () => {
       }
       setReceivedMessages(received);
       
-      const templatesRes = await api.get('/communication/templates');
-      const fetchedTemplates = templatesRes.data || [];
-      setTemplates(fetchedTemplates);
-      
       const audienceRes = await api.get('/communication/audience');
       setAudienceGroups(audienceRes.data || []);
 
@@ -291,7 +284,6 @@ export const CommunicationCenterPage = () => {
         sent: sent.length,
         received: received.length || statsRes.data?.received || 0,
         scheduled: scheduled.length,
-        templates: fetchedTemplates.length || statsRes.data?.templates || 0
       });
       
     } catch (error) {
@@ -450,17 +442,6 @@ export const CommunicationCenterPage = () => {
     } catch (error) {
       console.error('Failed to mark as read:', error);
     }
-  };
-
-  // Apply template
-  const handleTemplateSelect = (template) => {
-    setNewMessage(prev => ({
-      ...prev,
-      title_ar: template.name || template.name_en || prev.title_ar,
-      message_ar: template.content_template || prev.message_ar,
-    }));
-    setTemplatesOpen(false);
-    toast.success(t('templateApplied'));
   };
 
   // Get audience label
@@ -681,7 +662,7 @@ export const CommunicationCenterPage = () => {
 
           {activeTab === 'compose' && (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card className="card-nassaq cursor-pointer hover:ring-2 hover:ring-brand-navy/50 transition-all"
                   onClick={() => setActiveTab('sent')} data-testid="sent-messages-card">
                   <CardContent className="p-4 flex items-center gap-4">
@@ -715,18 +696,6 @@ export const CommunicationCenterPage = () => {
                     <div>
                       <p className="text-2xl font-bold">{scheduledMessages.length}</p>
                       <p className="text-sm text-muted-foreground">{t('scheduled2')}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="card-nassaq cursor-pointer hover:ring-2 hover:ring-brand-purple/50 transition-all"
-                  onClick={() => setTemplatesOpen(true)} data-testid="templates-card">
-                  <CardContent className="p-4 flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-brand-purple/10 flex items-center justify-center">
-                      <FileText className="h-6 w-6 text-brand-purple" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold">{templates.length}</p>
-                      <p className="text-sm text-muted-foreground">{t('templates')}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -1200,53 +1169,6 @@ export const CommunicationCenterPage = () => {
                 </DialogFooter>
               </div>
             )}
-          </DialogContent>
-        </Dialog>
-
-        {/* Templates Dialog */}
-        <Dialog open={templatesOpen} onOpenChange={setTemplatesOpen}>
-          <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="font-cairo flex items-center gap-2">
-                <FileText className="h-5 w-5 text-brand-purple" />
-                {t('messageTemplates')}
-              </DialogTitle>
-              <DialogDescription>
-                {t('chooseATemplateToAutofillTheMessageForm')}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3 mt-4">
-              {templates.length === 0 ? (
-                <div className="text-center py-12">
-                  <FileText className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-                  <p className="text-muted-foreground">{t('noTemplates')}</p>
-                </div>
-              ) : (
-                templates.map((template) => {
-                  const Icon = iconMap[template.icon] || Bell;
-                  return (
-                    <div 
-                      key={template.id}
-                      className="p-4 bg-muted/30 rounded-xl cursor-pointer hover:bg-muted/50 transition-colors border border-transparent hover:border-brand-purple/30"
-                      onClick={() => handleTemplateSelect(template)}
-                    >
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-10 h-10 rounded-lg bg-brand-purple/10 flex items-center justify-center">
-                          <Icon className="h-5 w-5 text-brand-purple" />
-                        </div>
-                        <div>
-                          <p className="font-medium">{template.name}</p>
-                          <p className="text-xs text-muted-foreground">{template.name_en}</p>
-                        </div>
-                      </div>
-                      <p className="text-sm text-muted-foreground line-clamp-2">
-                        {template.content_template?.slice(0, 100)}...
-                      </p>
-                    </div>
-                  );
-                })
-              )}
-            </div>
           </DialogContent>
         </Dialog>
 
