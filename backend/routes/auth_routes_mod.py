@@ -742,7 +742,7 @@ async def reset_password(request: ResetPasswordRequest):
         "reset_token_hash": None,
         "reset_token_created_at": None,
         "must_change_password": False,
-        "password_changed_at": datetime.now(timezone.utc).isoformat(),
+        "last_password_change": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     })
 
@@ -788,7 +788,7 @@ async def change_password(
     await gd_update_one(db.session, "users", {"id": current_user["id"]}, {
             "password_hash": hash_password(request.new_password),
             "must_change_password": False,
-            "password_changed_at": datetime.now(timezone.utc).isoformat(),
+            "last_password_change": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
         })
     

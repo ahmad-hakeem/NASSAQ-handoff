@@ -43,6 +43,8 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     must_change_password = Column(Boolean, default=True)
     last_password_change = Column(DateTime(timezone=True), nullable=True)
+    reset_token_hash = Column(String, nullable=True)
+    reset_token_created_at = Column(DateTime(timezone=True), nullable=True)
     failed_login_attempts = Column(Integer, default=0)
     locked_until = Column(DateTime(timezone=True), nullable=True)
     status = Column(String, default="active")
