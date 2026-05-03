@@ -289,9 +289,33 @@ export default function AddStudentWizard({
         parentIdToLink = existingParent.id;
       }
 
-      const requestData = {
+      // Normalize optional identifier fields so blank inputs are sent as
+      // null instead of empty strings. Empty strings collide on the
+      // (national_id, school_id) UNIQUE constraint on the second blank
+      // submission, producing a false-positive "ID already registered"
+      // error. NULLs are treated as distinct by PostgreSQL.
+      const _blankToNull = (v) => {
+        if (v === undefined || v === null) return null;
+        if (typeof v === 'string' && v.trim() === '') return null;
+        return typeof v === 'string' ? v.trim() : v;
+      };
+
+      const sanitizedStudent = {
         ...studentData,
-        parent: { ...parentData, email: parentData.email || null },
+        national_id: _blankToNull(studentData.national_id),
+        email: _blankToNull(studentData.email),
+      };
+
+      const sanitizedParent = {
+        ...parentData,
+        national_id: _blankToNull(parentData.national_id),
+        email: _blankToNull(parentData.email),
+        address: _blankToNull(parentData.address),
+      };
+
+      const requestData = {
+        ...sanitizedStudent,
+        parent: sanitizedParent,
         health: healthData.health_status || healthData.allergies || healthData.medications ? {
           health_status: healthData.health_status || null,
           allergies: healthData.allergies ? healthData.allergies.split(',').map(a => a.trim()) : [],

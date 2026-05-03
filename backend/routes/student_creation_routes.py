@@ -288,7 +288,41 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         school_id = current_user.get("tenant_id")
         if not school_id:
             raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
-        
+
+        # Defense-in-depth: normalize blank/whitespace-only optional
+        # identifier fields to None so they reach the DB as NULL instead
+        # of "". Empty strings collide on the (national_id, school_id)
+        # UNIQUE constraint and surface as a misleading "ID already
+        # registered" error. PostgreSQL treats NULLs as distinct, so
+        # multiple students with no national ID are allowed.
+        def _blank_to_none(v):
+            if v is None:
+                return None
+            if isinstance(v, str):
+                s = v.strip()
+                return s or None
+            return v
+
+        request.national_id = _blank_to_none(request.national_id)
+        if request.parent is not None:
+            request.parent.national_id = _blank_to_none(request.parent.national_id)
+
+        # Backfill any previously-poisoned rows where national_id was
+        # written as "" so the unique constraint stops matching them.
+        # Scoped to this tenant to avoid touching unrelated data.
+        try:
+            from sqlalchemy import text as _sa_text
+            await db.session.execute(
+                _sa_text(
+                    "UPDATE students SET national_id = NULL "
+                    "WHERE school_id = :sid AND national_id IS NOT NULL "
+                    "AND btrim(national_id) = ''"
+                ),
+                {"sid": school_id},
+            )
+        except Exception as _bf_err:
+            logger.warning(f"Failed to backfill empty national_id rows: {_bf_err}")
+
         # Get school info for student ID generation
         school = await gd_find_one(db.session, "schools", {"id": school_id})
         school_code = school.get("code", "SCH") if school else "SCH"
