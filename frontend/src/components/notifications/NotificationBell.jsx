@@ -146,7 +146,8 @@ export const NotificationBell = () => {
     if (notification.action_url) {
       navigate(notification.action_url);
     } else {
-      navigate('/notifications');
+      const schoolRoles = ['school_principal', 'school_admin', 'school_sub_admin'];
+      navigate(schoolRoles.includes(user?.role) ? '/principal/communication/notifications' : '/notifications');
     }
   };
 
@@ -308,7 +309,8 @@ export const NotificationBell = () => {
             className="w-full justify-center text-brand-turquoise hover:text-brand-turquoise-dark text-sm"
             onClick={() => {
               setOpen(false);
-              navigate('/notifications');
+              const schoolRoles = ['school_principal', 'school_admin', 'school_sub_admin'];
+              navigate(schoolRoles.includes(user?.role) ? '/principal/communication/notifications' : '/notifications');
             }}
           >
             {t('viewAllNotifications')}

@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
+import { NotificationsPage } from './NotificationsPage';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
@@ -86,7 +88,43 @@ export const CommunicationCenterPage = () => {
   const { api } = useAuth();
   const { nassaqWarning, nassaqError } = useNassaqAlert();
   
-  const [activeTab, setActiveTab] = useState('compose');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isNotificationsRoute = location.pathname.endsWith('/notifications');
+  const [activeTab, setActiveTab] = useState(isNotificationsRoute ? 'notifications' : 'compose');
+
+  useEffect(() => {
+    if (isNotificationsRoute && activeTab !== 'notifications') {
+      setActiveTab('notifications');
+    } else if (!isNotificationsRoute && activeTab === 'notifications') {
+      setActiveTab('compose');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNotificationsRoute]);
+
+  const [notificationsUnread, setNotificationsUnread] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    const loadNotifUnread = async () => {
+      try {
+        const res = await api.get('/notifications/unread-count');
+        if (!cancelled) setNotificationsUnread(res.data?.count ?? res.data?.unread_count ?? 0);
+      } catch (_) { /* non-fatal */ }
+    };
+    loadNotifUnread();
+    const id = setInterval(loadNotifUnread, 60000);
+    return () => { cancelled = true; clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleTabChange = (tabId) => {
+    if (tabId === 'notifications' && !isNotificationsRoute) {
+      navigate('/principal/communication/notifications');
+    } else if (tabId !== 'notifications' && isNotificationsRoute) {
+      navigate('/principal/communication');
+    }
+    setActiveTab(tabId);
+  };
 
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -476,6 +514,7 @@ export const CommunicationCenterPage = () => {
     { id: 'compose', label: t('compose'), icon: MessageSquare },
     { id: 'sent', label: t('sent'), icon: Send, badge: sentMessages.length },
     { id: 'scheduled', label: t('scheduled'), icon: Clock, badge: scheduledMessages.length },
+    { id: 'notifications', label: isRTL ? 'الإشعارات' : 'Notifications', icon: Bell, badge: notificationsUnread },
   ];
 
   return (
@@ -509,7 +548,8 @@ export const CommunicationCenterPage = () => {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
+                data-testid={`tab-${tab.id}`}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-tajawal font-medium transition-all ${
                   activeTab === tab.id
                     ? 'bg-background shadow-sm text-foreground'
@@ -1023,6 +1063,12 @@ export const CommunicationCenterPage = () => {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === 'notifications' && (
+            <div data-testid="notifications-tab-content">
+              <NotificationsPage embedded />
             </div>
           )}
 

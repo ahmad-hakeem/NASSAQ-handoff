@@ -214,6 +214,9 @@ export default function AppRoutes() {
         <Route path="/admin/product-hub/issues/:issueId" element={
           <ProtectedRoute allowedRoles={PRODUCT_HUB_ROLES}><ProductHubIssuePage /></ProtectedRoute>
         } />
+        {/* /notifications remains the standalone Notifications Center for non-school roles
+            (teachers, parents, students). School roles see it consolidated inside the
+            Communication Center at /principal/communication/notifications. */}
         <Route path="/notifications" element={
           <ProtectedRoute allowedRoles={ALL_AUTHENTICATED_ROLES}><NotificationsPage /></ProtectedRoute>
         } />
@@ -349,6 +352,9 @@ export default function AppRoutes() {
           <ProtectedRoute allowedRoles={['school_principal', 'school_admin']}><PrincipalDashboard /></ProtectedRoute>
         } />
         <Route path="/principal/communication" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CommunicationCenterPage /></ProtectedRoute>
+        } />
+        <Route path="/principal/communication/notifications" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CommunicationCenterPage /></ProtectedRoute>
         } />
 

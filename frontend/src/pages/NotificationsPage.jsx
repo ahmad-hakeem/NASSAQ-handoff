@@ -72,7 +72,7 @@ const priorityConfig = {
   critical: { label: { ar: 'حرجة', en: 'Critical' }, color: 'bg-red-600' },
 };
 
-export const NotificationsPage = () => {
+export const NotificationsPage = ({ embedded = false }) => {
   const { t } = useTranslation();
   const { user, api, isPlatformAdmin, isSchoolPrincipal } = useAuth();
   const { isRTL } = useTheme();
@@ -483,9 +483,9 @@ export const NotificationsPage = () => {
     );
   };
 
-  return (
-    <Sidebar>
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800" dir={isRTL ? 'rtl' : 'ltr'}>
+  const content = (
+      <div className={embedded ? '' : 'min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800'} dir={isRTL ? 'rtl' : 'ltr'}>
+        {!embedded && (
         <div className="sticky top-0 z-20 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b p-4">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
@@ -510,8 +510,9 @@ export const NotificationsPage = () => {
             </div>
           </div>
         </div>
+        )}
 
-        <div className="p-4 max-w-[1400px] mx-auto space-y-5">
+        <div className={embedded ? 'space-y-5' : 'p-4 max-w-[1400px] mx-auto space-y-5'}>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card className="overflow-hidden"><CardContent className="p-3 text-center bg-blue-50 dark:bg-blue-950/30"><Bell className="h-5 w-5 mx-auto mb-1.5 text-blue-600" /><div className="text-xl font-bold font-cairo text-blue-600">{notifications.length}</div><div className="text-[10px] text-muted-foreground">{t('total2')}</div></CardContent></Card>
             <Card className="overflow-hidden"><CardContent className="p-3 text-center bg-red-50 dark:bg-red-950/30"><AlertCircle className="h-5 w-5 mx-auto mb-1.5 text-red-600" /><div className="text-xl font-bold font-cairo text-red-600">{unreadCount}</div><div className="text-[10px] text-muted-foreground">{t('unread')}</div></CardContent></Card>
@@ -674,6 +675,8 @@ export const NotificationsPage = () => {
           </Tabs>
         </div>
       </div>
-    </Sidebar>
   );
+
+  if (embedded) return content;
+  return <Sidebar>{content}</Sidebar>;
 };
