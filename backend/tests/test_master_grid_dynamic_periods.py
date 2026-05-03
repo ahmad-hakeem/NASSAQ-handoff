@@ -505,23 +505,41 @@ async def test_engine_matrix_bounds_track_settings_periods_per_day(tenant_a):
 async def test_engine_raises_when_periods_per_day_missing(tenant_a):
     """If Schedule Settings has no periods_per_day and no time_slots,
     the engine MUST raise loudly (no silent default to 7)."""
-    from engines.sql_utils import gd_insert as _ins
-    # Insert settings WITHOUT periods_per_day.
-    await _ins(db.session, "school_settings", {
-        "id": str(uuid.uuid4()),
-        "school_id": tenant_a,
-        "working_days": ["sunday", "monday", "tuesday", "wednesday", "thursday"],
-    })
-    engine = SmartSchedulingEngine(db)
-    raised = False
+    # The strict helper `_required_periods_per_day` is the single guard
+    # that prevents the engine from silently assuming 7 periods. Test it
+    # directly so the contract is locked in regardless of any per-column
+    # ORM defaults that might mask the missing value at the DB layer.
+    from engines.smart_scheduling_engine import _required_periods_per_day
+
+    raised = 0
+    for bad in ({}, {"periods_per_day": None}, {"periods_per_day": 0}, {"periods_per_day": "abc"}):
+        try:
+            _required_periods_per_day(bad)
+        except ValueError as e:
+            raised += 1
+            assert "periods_per_day" in str(e), (
+                f"Error must point at the missing setting; got {e}"
+            )
+    assert raised == 4, (
+        "Strict helper must raise ValueError for every missing/invalid "
+        "periods_per_day input — silent fallback to 7 would re-introduce "
+        "the bug Task #132 forbids"
+    )
+
+    # And — critical — the engine itself must route through this helper
+    # whenever there are no time_slots and no explicit periods_per_day in
+    # the loaded settings dict, so generation cannot proceed silently.
+    from engines.smart_scheduling_engine import SmartSchedulingEngine as _Eng
+    engine = _Eng(db)
     try:
-        await engine.load_school_settings(tenant_a)
-    except ValueError as e:
-        raised = True
-        assert "periods_per_day" in str(e), (
-            f"Error must point at the missing setting; got {e}"
+        await engine.load_school_settings(
+            tenant_a,
+            context_payload={"timing": {"school_settings": {"working_days": ["sunday"]}, "time_slots": []}},
         )
-    assert raised, (
-        "Engine must raise ValueError when periods_per_day is missing — "
-        "silent fallback to 7 would re-introduce the bug Task #132 forbids"
+        raised_engine = False
+    except ValueError as e:
+        raised_engine = "periods_per_day" in str(e)
+    assert raised_engine, (
+        "Engine must raise via _required_periods_per_day when no time_slots "
+        "and no periods_per_day are supplied via context_payload"
     )

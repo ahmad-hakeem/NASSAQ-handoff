@@ -50,28 +50,34 @@ async def _resolve_periods_for_school(school_id: str) -> list[int]:
     """Resolve the 1..N teaching periods for a school dynamically.
 
     Order of resolution (first non-empty wins):
-      1. Distinct ``period_number`` from ``time_slots`` (excludes breaks/prayer
-         when a slot type is provided).
+      1. Teaching ``time_slots`` ordered by ``slot_number`` and re-indexed
+         to a contiguous 1..N sequence (the master-grid columns are
+         positional period indices, not raw slot numbers; raw slot numbers
+         have gaps where breaks/prayer live and would emit columns like
+         [1,2,3,5,6,7] for a 6-period school with a mid-day break).
       2. ``school_settings.periods_per_day`` → ``range(1, N+1)``.
       3. ``DEFAULT_PERIODS`` (legacy fallback only — should never trigger
          once a school has any saved schedule settings).
     """
     try:
         slots = await gd_find(db.session, "time_slots", {"school_id": school_id}, limit=200)
-        teaching_periods: list[int] = []
+        teaching_slots: list[dict] = []
         for s in slots:
             slot_type = s.get("type") or ""
             if s.get("is_break") or s.get("is_prayer") or slot_type in ("break", "prayer"):
                 continue
-            pn = s.get("period_number") or s.get("slot_number")
-            if pn is None:
-                continue
-            try:
-                teaching_periods.append(int(pn))
-            except (TypeError, ValueError):
-                continue
-        if teaching_periods:
-            return sorted(set(teaching_periods))
+            teaching_slots.append(s)
+        if teaching_slots:
+            # Order by slot_number (then start_time as tiebreaker) and
+            # re-index 1..N so breaks never punch holes in the period list.
+            def _sort_key(s: dict) -> tuple[int, str]:
+                try:
+                    sn = int(s.get("slot_number") or 0)
+                except (TypeError, ValueError):
+                    sn = 0
+                return (sn, str(s.get("start_time") or ""))
+            teaching_slots.sort(key=_sort_key)
+            return list(range(1, len(teaching_slots) + 1))
 
         settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
         if settings:
@@ -103,22 +109,27 @@ async def _resolve_period_times(school_id: str, periods: list[int]) -> dict[str,
     out: dict[str, dict] = {}
     try:
         slots = await gd_find(db.session, "time_slots", {"school_id": school_id}, limit=200)
+        teaching: list[dict] = []
         for s in slots:
             slot_type = s.get("type") or ""
             if s.get("is_break") or s.get("is_prayer") or slot_type in ("break", "prayer"):
                 continue
-            pn = s.get("period_number") or s.get("slot_number")
-            if pn is None:
-                continue
-            try:
-                key = str(int(pn))
-            except (TypeError, ValueError):
-                continue
-            start = s.get("start_time") or s.get("start") or ""
-            end = s.get("end_time") or s.get("end") or ""
-            if start or end:
-                out[key] = {"start": start, "end": end}
-        if out:
+            teaching.append(s)
+        if teaching:
+            # Re-index by sorted slot_number → contiguous 1..N positions so
+            # the keys match what `_resolve_periods_for_school` returns
+            # (raw slot_number can have gaps where breaks live).
+            def _sort_key(s: dict) -> tuple[int, str]:
+                try:
+                    sn = int(s.get("slot_number") or 0)
+                except (TypeError, ValueError):
+                    sn = 0
+                return (sn, str(s.get("start_time") or ""))
+            teaching.sort(key=_sort_key)
+            for idx, s in enumerate(teaching, start=1):
+                start = s.get("start_time") or s.get("start") or ""
+                end = s.get("end_time") or s.get("end") or ""
+                out[str(idx)] = {"start": start, "end": end, "start_time": start, "end_time": end}
             return out
 
         # Fallback: compute from settings the same way regenerate_time_slots_from_settings does.
