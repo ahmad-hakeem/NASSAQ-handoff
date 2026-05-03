@@ -134,29 +134,59 @@ export default function ScheduleSettingsTabContent() {
  */
 function SuccessModal({ modal, onClose }) {
   if (!modal?.show) return null;
+
+  const variants = {
+    success: {
+      iconBg: 'bg-emerald-100',
+      iconColor: 'text-emerald-600',
+      Icon: Check,
+      iconStroke: 3,
+      button: 'bg-emerald-600 hover:bg-emerald-700',
+      defaultTitle: 'تمت الإضافة بنجاح',
+    },
+    warning: {
+      iconBg: 'bg-amber-100',
+      iconColor: 'text-amber-600',
+      Icon: AlertTriangle,
+      iconStroke: 2,
+      button: 'bg-amber-600 hover:bg-amber-700',
+      defaultTitle: 'تنبيه',
+    },
+    error: {
+      iconBg: 'bg-red-100',
+      iconColor: 'text-red-600',
+      Icon: AlertTriangle,
+      iconStroke: 2,
+      button: 'bg-red-600 hover:bg-red-700',
+      defaultTitle: 'تعذّر الحفظ',
+    },
+  };
+  const v = variants[modal.type] || variants.success;
+  const { Icon } = v;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
       role="dialog"
       aria-modal="true"
-      data-testid="schedule-success-modal"
+      data-testid={`schedule-success-modal-${modal.type || 'success'}`}
       onClick={onClose}
     >
       <div
         className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md transform transition-all text-center"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 mb-4">
-          <Check className="h-10 w-10 text-emerald-600" strokeWidth={3} />
+        <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${v.iconBg} mb-4`}>
+          <Icon className={`h-10 w-10 ${v.iconColor}`} strokeWidth={v.iconStroke} />
         </div>
         <h3 className="text-xl font-bold text-slate-800 mb-2 font-cairo">
-          {modal.title || 'تمت الإضافة بنجاح'}
+          {modal.title || v.defaultTitle}
         </h3>
         <p className="text-slate-600 mb-6 font-tajawal leading-7">{modal.message}</p>
         <button
           type="button"
           onClick={onClose}
-          className="w-full bg-emerald-600 text-white rounded-lg py-3 font-semibold hover:bg-emerald-700 transition-colors font-cairo"
+          className={`w-full text-white rounded-lg py-3 font-semibold transition-colors font-cairo ${v.button}`}
           data-testid="schedule-success-modal-confirm"
         >
           حسناً

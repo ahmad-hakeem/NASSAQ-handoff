@@ -30,9 +30,9 @@ export function useSchoolSettings() {
     setInlineAlert(prev => ({ ...prev, show: false }));
   }, []);
 
-  // مودال نجاح للحركات الحساسة (مثل إضافة عدم توفر فصل أرسلت إشعارات
-  // فعلية للمعلمين). نوقف الشاشة ليُقرّ المسؤول صراحةً قبل المتابعة.
-  const [successModal, setSuccessModal] = useState({ show: false, title: '', message: '' });
+  // مودال للحركات الحسّاسة (نجاح/تحذير/خطأ) — يوقف الشاشة ليُقرّ
+  // المسؤول صراحةً قبل المتابعة، بدل بانر سريع قد يُفوَّت.
+  const [successModal, setSuccessModal] = useState({ show: false, type: 'success', title: '', message: '' });
   const dismissSuccessModal = useCallback(() => {
     setSuccessModal(prev => ({ ...prev, show: false }));
   }, []);
@@ -654,6 +654,7 @@ export function useSchoolSettings() {
         // بمودال نجاح يُقرّه المسؤول صراحةً بدل بانر سريع.
         setSuccessModal({
           show: true,
+          type: 'success',
           title: 'تمت الإضافة بنجاح',
           message: unavailabilityType === 'class'
             ? `تم إضافة فترة عدم التوفر وإرسال ${notifCount} إشعار للمعلمين المرتبطين بهذا الفصل.`
@@ -667,16 +668,18 @@ export function useSchoolSettings() {
         // الحفظ نجح لكن لم يصل أي إشعار للمعلمين — غالباً لأن سجلات
         // المعلمين المتأثرين غير مرتبطة بحسابات مستخدمين فعّالة. ننبّه
         // المسؤول صراحةً ليتحقق من حسابات المعلمين بدلاً من إخفاء الأمر.
-        setInlineAlert({
+        setSuccessModal({
           show: true,
           type: 'warning',
+          title: 'تم الحفظ — لكن لم يصل أي إشعار',
           message: 'تم حفظ النقل، لكن لم يتم إخطار أي معلم — تحقّق من حسابات المعلمين المرتبطين بهذا الفصل.',
         });
       } else {
-        setInlineAlert({
+        setSuccessModal({
           show: true,
           type: 'success',
-          message: 'تم إضافة فترة عدم التوفر بنجاح',
+          title: 'تمت الإضافة بنجاح',
+          message: 'تم إضافة فترة عدم التوفر بنجاح.',
         });
       }
     } catch (err) {
@@ -686,10 +689,11 @@ export function useSchoolSettings() {
       } else {
         setClassUnavailability(prev => prev.filter(u => u.id !== localId));
       }
-      setInlineAlert({
+      setSuccessModal({
         show: true,
         type: 'error',
-        message: 'حدث خطأ أثناء حفظ فترة عدم التوفر',
+        title: 'تعذّر الحفظ',
+        message: 'حدث خطأ أثناء حفظ فترة عدم التوفر.',
       });
     }
   };
