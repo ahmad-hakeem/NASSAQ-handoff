@@ -296,26 +296,13 @@ export const Sidebar = ({ children }) => {
         href: '/school/schedule',
         roles: SCHOOL_ROLES,
       },
-      // 3. Users & Classes Management
+      // 3. Users & Classes Management — direct link (no sub-items),
+      // mirrors the structure of Command Center / School Schedule.
       {
         icon: Users,
         label: t('usersClasses'),
         href: '/admin/users-management',
         roles: SCHOOL_ROLES,
-        subItems: [
-          {
-            label: t('teachers'),
-            href: '/admin/users-management?filter=teachers',
-          },
-          {
-            label: t('students'),
-            href: '/admin/users-management?filter=students',
-          },
-          {
-            label: t('classes2'),
-            href: '/admin/users-management?filter=classes',
-          },
-        ],
       },
       // 4. Attendance Management
       {
