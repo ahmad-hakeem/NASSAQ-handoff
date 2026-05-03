@@ -58,13 +58,14 @@ const SUBJECT_COLORS = {
 
 const DEFAULT_COLOR = { bg: 'bg-gray-100 dark:bg-gray-800', border: 'border-gray-300', text: 'text-gray-700 dark:text-gray-400' };
 
-// Default days of week (should come from school settings in production)
+// Default days of week (should come from school settings in production).
+// Labels are resolved via t(day.key) at render time.
 const DEFAULT_DAYS = [
-  { key: 'sunday', ar: 'الأحد', en: 'Sunday' },
-  { key: 'monday', ar: 'الاثنين', en: 'Monday' },
-  { key: 'tuesday', ar: 'الثلاثاء', en: 'Tuesday' },
-  { key: 'wednesday', ar: 'الأربعاء', en: 'Wednesday' },
-  { key: 'thursday', ar: 'الخميس', en: 'Thursday' },
+  { key: 'sunday' },
+  { key: 'monday' },
+  { key: 'tuesday' },
+  { key: 'wednesday' },
+  { key: 'thursday' },
 ];
 
 // Session Card Component - Compact version for grid cells
@@ -294,6 +295,7 @@ export const TeacherScheduleGrid = ({
   onSessionClick,
   onSessionEdit,
 }) => {
+  const { t } = useTranslation();
   const { nassaqWarning } = useNassaqAlert();
   const [draggedSession, setDraggedSession] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
@@ -350,8 +352,7 @@ export const TeacherScheduleGrid = ({
     );
     
     if (existingSessionInSlot) {
-      nassaqWarning(t('conflictTeacherAlreadyHasASessionAtThisTime')
-      );
+      nassaqWarning(t('conflictTeacherAlreadyHasASessionAtThisTime'));
       return;
     }
     
@@ -368,7 +369,7 @@ export const TeacherScheduleGrid = ({
     
     setDraggedSession(null);
     setDropTarget(null);
-  }, [draggedSession, sessions, isRTL, onSessionMove]);
+  }, [draggedSession, sessions, onSessionMove, t, nassaqWarning]);
 
   // Get sessions for a specific teacher
   const getTeacherSessions = (teacherId) => {
@@ -391,7 +392,7 @@ export const TeacherScheduleGrid = ({
               <span>{t('teacher2')}</span>
             </div>
             <p className="text-[10px] text-muted-foreground mt-1">
-              {isRTL ? `${teachers.length} معلم` : `${teachers.length} teachers`}
+              {t('teachersWithCount', { count: teachers.length })}
             </p>
           </div>
           
@@ -406,7 +407,7 @@ export const TeacherScheduleGrid = ({
                 >
                   <div className="p-2 text-center">
                     <p className="font-bold text-sm text-brand-navy dark:text-brand-turquoise">
-                      {isRTL ? day.ar : day.en}
+                      {t(day.key)}
                     </p>
                     <p className="text-[10px] text-muted-foreground">
                       {effectiveTimeSlots.filter(s => !s.is_break).length} {t('periods2')}

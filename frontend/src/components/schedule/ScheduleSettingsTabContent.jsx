@@ -28,25 +28,27 @@
  * تبويبات مُصفّاة عبر prop وتنسيق المزامنة من الخارج.
  */
 
-import React, { useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Loader2, Clock, School, Link2, UserX, Shield } from 'lucide-react';
 import { useSchoolSettings } from '../../hooks/useSchoolSettings';
 import { DynamicSettingsContent } from '../school-settings/DynamicSettingsContent';
 import { SettingsModals } from '../school-settings/SettingsModals';
+import { useTranslation, useTheme } from '../../contexts/ThemeContext';
 
-const scheduleSubTabs = [
-  { id: 'timings', label: 'التوقيت والحصص', icon: Clock },
-  { id: 'classes', label: 'الفصول والشعب', icon: School },
-  { id: 'teacher-assignments', label: 'إسناد المعلمين', icon: Link2 },
-  { id: 'unavailability', label: 'أوقات عدم التوفر', icon: UserX },
-  { id: 'constraints', label: 'قيود الجدول', icon: Shield },
-];
-
-const SCHEDULE_TAB_IDS = scheduleSubTabs.map(t => t.id);
+const SCHEDULE_TAB_IDS = ['timings', 'classes', 'teacher-assignments', 'unavailability', 'constraints'];
 const DEFAULT_SUB_TAB = 'timings';
 
 export default function ScheduleSettingsTabContent() {
+  const { t } = useTranslation();
+  const { direction } = useTheme();
+  const scheduleSubTabs = useMemo(() => ([
+    { id: 'timings', label: t('settingsTabTimings'), icon: Clock },
+    { id: 'classes', label: t('settingsTabClasses'), icon: School },
+    { id: 'teacher-assignments', label: t('settingsTabTeacherAssignments'), icon: Link2 },
+    { id: 'unavailability', label: t('settingsTabUnavailability'), icon: UserX },
+    { id: 'constraints', label: t('settingsTabConstraints'), icon: Shield },
+  ]), [t]);
   const hook = useSchoolSettings();
   const { loading, activeTab, setActiveTab } = hook;
   const location = useLocation();
@@ -103,11 +105,12 @@ export default function ScheduleSettingsTabContent() {
   if (loading || !SCHEDULE_TAB_IDS.includes(activeTab)) {
     return (
       <div
+        dir={direction}
         className="flex items-center justify-center py-20 text-slate-500"
         data-testid="schedule-settings-loader"
       >
-        <Loader2 className="h-6 w-6 animate-spin ml-2" />
-        جارٍ تحميل إعدادات الجدول…
+        <Loader2 className="h-6 w-6 animate-spin me-2" />
+        {t('loadingScheduleSettings')}
       </div>
     );
   }

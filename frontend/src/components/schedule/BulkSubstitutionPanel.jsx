@@ -23,33 +23,36 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useBulkStandbyCandidates } from '../../hooks/useScheduleCandidates';
+import { useTranslation, useTheme } from '../../contexts/ThemeContext';
 
-const RESULT_ERROR_AR = {
-  teacher_busy: 'البديل المختار لديه حصة في هذا الوقت',
-  already_substituting: 'البديل يغطّي حصة أخرى في نفس الخانة',
-  already_assigned: 'تم إسناد بديل لهذه الحصة مسبقاً',
-  session_not_found: 'الحصة غير موجودة',
-  invalid_teacher: 'المعلم البديل غير صالح',
-  invalid_slot: 'بيانات الحصة غير سليمة',
-  cross_tenant: 'الحصة لا تنتمي لهذه المدرسة',
-  race_conflict: 'تعارض متزامن — حدّث الصفحة وحاول مجدداً',
-  missing_fields: 'بيانات ناقصة',
+const RESULT_ERROR_KEY = {
+  teacher_busy: 'subErrorTeacherBusy',
+  already_substituting: 'subErrorAlreadySubstituting',
+  already_assigned: 'subErrorAlreadyAssigned',
+  session_not_found: 'subErrorSessionNotFound',
+  invalid_teacher: 'subErrorInvalidTeacher',
+  invalid_slot: 'subErrorInvalidSlot',
+  cross_tenant: 'subErrorCrossTenant',
+  race_conflict: 'subErrorRaceConflict',
+  missing_fields: 'subErrorMissingFields',
 };
 
 export default function BulkSubstitutionPanel({
   open,
   onOpenChange,
-  target,           // { absent_teacher_id, absent_teacher_name, absence_date, school_id }
+  target,
   api,
-  onAssignedBatch,  // (result) => void  — يستدعى بعد الإسناد الجماعي الناجح
+  onAssignedBatch,
 }) {
+  const { t, language } = useTranslation();
+  const { direction } = useTheme();
   const [selections, setSelections] = useState({});  // { original_session_id: substitute_teacher_id }
   const [submitting, setSubmitting] = useState(false);
   const [perRowResults, setPerRowResults] = useState({}); // { original_session_id: 'success'|errorCode }
 
   const {
-    slots, formula, formula_legend_ar,
-    absent_teacher_name, day_label_ar,
+    slots, formula, formula_legend_ar, formula_legend_en,
+    absent_teacher_name, day_label_ar, day_of_week,
     loading, error, refetch,
   } = useBulkStandbyCandidates(api, open ? target : null, { limit_per_slot: 3 });
 
@@ -125,7 +128,7 @@ export default function BulkSubstitutionPanel({
   const handleSubmit = async () => {
     if (!target?.absent_teacher_id || totalSelected === 0) return;
     if (intraBatchConflicts.size > 0) {
-      toast.error('بعض الخانات تستخدم نفس البديل في نفس الحصة — راجع الاختيارات');
+      toast.error(t('intraBatchConflictToast'));
       return;
     }
     setSubmitting(true);
@@ -159,16 +162,15 @@ export default function BulkSubstitutionPanel({
         if (onAssignedBatch) onAssignedBatch(data);
         onOpenChange(false);
       } else if (succeeded > 0 && failed > 0) {
-        toast.warning(`تم إسناد ${succeeded} حصة وفشل ${failed}`, {
-          description: 'راجع الصفوف المعلَّمة بالأحمر وعدّل البديل ثم أعد المحاولة',
+        toast.warning(t('batchPartialResultTitle', { ok: succeeded, fail: failed }), {
+          description: t('batchPartialResultDesc'),
         });
         if (onAssignedBatch) onAssignedBatch(data);
       } else {
-        toast.error('فشلت جميع المحاولات — راجع الأسباب أمام كل صف');
+        toast.error(t('batchAllFailedDesc'));
       }
     } catch (err) {
       const detail = err.response?.data?.detail;
-      // Bulk endpoint returns 409 with the per-row breakdown when ALL rows fail.
       if (detail && typeof detail === 'object' && Array.isArray(detail.results)) {
         const rowMap = {};
         detail.results.forEach((r) => {
@@ -176,9 +178,9 @@ export default function BulkSubstitutionPanel({
           rowMap[r.original_session_id] = r.success ? 'success' : (r.error || 'failed');
         });
         setPerRowResults(rowMap);
-        toast.error('تعذّر إسناد أيٍّ من الحصص — راجع الأسباب أمام كل صف');
+        toast.error(t('batchTotalFailureToast'));
       } else {
-        const msg = (typeof detail === 'string' && detail) || err.message || 'فشل الإسناد الجماعي';
+        const msg = (typeof detail === 'string' && detail) || err.message || t('batchSubmitFailedDefault');
         toast.error(msg);
       }
     } finally {
@@ -191,26 +193,26 @@ export default function BulkSubstitutionPanel({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
-        side="left"
-        dir="rtl"
+        side={direction === 'rtl' ? 'left' : 'right'}
+        dir={direction}
         className="w-full sm:max-w-2xl p-0 flex flex-col"
       >
         {/* ── Header ───────────────────────────────────────────────── */}
         <SheetHeader className="p-5 bg-gradient-to-l from-[#1C3D74]/10 to-[#2BB5A0]/10 border-b">
           <SheetTitle className="flex items-center gap-2 text-[#1C3D74]">
             <Layers className="h-5 w-5" />
-            تغطية كل حصص المعلم الغائب
+            {t('bulkCoverTitle')}
           </SheetTitle>
           <SheetDescription className="text-slate-700 text-xs leading-relaxed">
             <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-100 text-red-800 text-[10px] border border-red-300">
-              <span>المعلم الغائب:</span>
+              <span>{t('absentTeacherColon')}</span>
               <span className="font-bold">{displayName}</span>
             </div>
-            {day_label_ar && (
-              <span className="mr-2 text-slate-600">• {day_label_ar}</span>
+            {(day_of_week || day_label_ar) && (
+              <span className="ms-2 text-slate-600">• {day_of_week ? t(day_of_week) : day_label_ar}</span>
             )}
             {target.absence_date && (
-              <span className="mr-2 text-slate-500">• {target.absence_date}</span>
+              <span className="ms-2 text-slate-500">• {target.absence_date}</span>
             )}
           </SheetDescription>
         </SheetHeader>
@@ -220,12 +222,12 @@ export default function BulkSubstitutionPanel({
           <div className="flex items-center gap-2">
             <Sparkles className="h-3.5 w-3.5 text-amber-300 shrink-0" />
             <p className="font-mono text-xs font-bold text-amber-300 tracking-wide truncate">
-              {formula || 'S = T − (C × 2) + (W × 3)'} — الأقل = الأفضل
+              {formula || 'S = T − (C × 2) + (W × 3)'} — {t('leastIsBest')}
             </p>
           </div>
-          {formula_legend_ar && (
+          {(language === 'en' ? (formula_legend_en || t('formulaLegendDefault')) : formula_legend_ar) && (
             <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-              {formula_legend_ar}
+              {language === 'en' ? (formula_legend_en || t('formulaLegendDefault')) : formula_legend_ar}
             </p>
           )}
         </div>
@@ -235,7 +237,7 @@ export default function BulkSubstitutionPanel({
           {loading && (
             <div className="flex flex-col items-center justify-center py-10 gap-2 text-slate-400">
               <Loader2 className="h-6 w-6 animate-spin" />
-              <span className="text-xs">جارٍ جلب الحصص الشاغرة وحساب المرشحين…</span>
+              <span className="text-xs">{t('loadingVacantSlotsAndCandidates')}</span>
             </div>
           )}
 
@@ -244,7 +246,7 @@ export default function BulkSubstitutionPanel({
               <AlertTriangle className="h-6 w-6" />
               <span className="text-xs text-center px-4">{error}</span>
               <Button size="sm" variant="outline" className="text-xs" onClick={refetch}>
-                إعادة المحاولة
+                {t('retry')}
               </Button>
             </div>
           )}
@@ -255,10 +257,10 @@ export default function BulkSubstitutionPanel({
                 <CheckCircle2 className="h-7 w-7 text-emerald-600" />
               </div>
               <p className="text-sm font-medium text-slate-700">
-                لا توجد حصص شاغرة لهذا المعلم اليوم
+                {t('noVacantSlotsToday')}
               </p>
               <p className="text-[11px] text-slate-400 text-center px-6">
-                إمّا أنّه ليس لديه حصص في هذا اليوم، أو أنّ كل حصصه قد تم إسناد بديل لها بالفعل.
+                {t('noSlotsForTeacherTodayHint')}
               </p>
             </div>
           )}
@@ -272,6 +274,7 @@ export default function BulkSubstitutionPanel({
               conflictWithinBatch={intraBatchConflicts.has(slot.original_session_id)}
               result={perRowResults[slot.original_session_id]}
               disabled={submitting}
+              t={t}
             />
           ))}
         </div>
@@ -283,10 +286,10 @@ export default function BulkSubstitutionPanel({
               <span className="font-bold text-slate-900">{totalSelected}</span>
               <span className="mx-1">/</span>
               <span>{slots.length}</span>
-              <span className="mr-1">حصة محدّدة</span>
+              <span className="ms-1">{t('slotsSelectedSuffix')}</span>
               {intraBatchConflicts.size > 0 && (
                 <span className="block text-red-600 mt-1">
-                  ⚠ نفس البديل لخانتين بنفس الحصة — راجع الاختيارات
+                  ⚠ {t('sameSubstituteSamePeriodWarn')}
                 </span>
               )}
             </div>
@@ -296,9 +299,9 @@ export default function BulkSubstitutionPanel({
               className="bg-gradient-to-r from-[#1C3D74] to-[#2BB5A0] hover:from-[#152d57] text-white font-bold h-10 px-5 shadow-md"
             >
               {submitting
-                ? <Loader2 className="h-4 w-4 animate-spin ml-2" />
-                : <BellRing className="h-4 w-4 ml-2" />}
-              إسناد الكل وإرسال إشعار مجمَّع
+                ? <Loader2 className="h-4 w-4 animate-spin me-2" />
+                : <BellRing className="h-4 w-4 me-2" />}
+              {t('assignAllAndNotify')}
             </Button>
           </div>
         )}
@@ -308,10 +311,11 @@ export default function BulkSubstitutionPanel({
 }
 
 // ─── Slot row ───────────────────────────────────────────────────────────────
-function SlotRow({ slot, selectedTeacherId, onSelect, conflictWithinBatch, result, disabled }) {
+function SlotRow({ slot, selectedTeacherId, onSelect, conflictWithinBatch, result, disabled, t }) {
   const candidates = slot.candidates || [];
   const noCandidates = candidates.length === 0;
-  const errorMsg = result && result !== 'success' ? (RESULT_ERROR_AR[result] || result) : null;
+  const errorKey = result && result !== 'success' ? RESULT_ERROR_KEY[result] : null;
+  const errorMsg = result && result !== 'success' ? (errorKey ? t(errorKey) : result) : null;
   const isSuccess = result === 'success';
 
   const borderClass = isSuccess
@@ -328,7 +332,7 @@ function SlotRow({ slot, selectedTeacherId, onSelect, conflictWithinBatch, resul
       <div className="flex items-start gap-3">
         {/* Period badge */}
         <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex flex-col items-center justify-center shrink-0">
-          <span className="text-[9px] text-slate-500 leading-none">حصة</span>
+          <span className="text-[9px] text-slate-500 leading-none">{t('periodAbbrev')}</span>
           <span className="text-base font-black text-slate-800 leading-none mt-0.5">
             {slot.period_number}
           </span>
@@ -352,7 +356,7 @@ function SlotRow({ slot, selectedTeacherId, onSelect, conflictWithinBatch, resul
             {noCandidates ? (
               <div className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-amber-100 text-amber-800 border border-amber-300">
                 <AlertTriangle className="h-3 w-3" />
-                لا يوجد معلم متاح في هذه الخانة
+                {t('noTeacherAvailableInSlot')}
               </div>
             ) : (
               <Select
@@ -361,7 +365,7 @@ function SlotRow({ slot, selectedTeacherId, onSelect, conflictWithinBatch, resul
                 disabled={disabled || isSuccess}
               >
                 <SelectTrigger className="w-full h-9 text-xs">
-                  <SelectValue placeholder="اختر بديلاً…" />
+                  <SelectValue placeholder={t('chooseSubstitutePlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
                   {candidates.map((c) => {
@@ -389,12 +393,12 @@ function SlotRow({ slot, selectedTeacherId, onSelect, conflictWithinBatch, resul
             <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
               {selectedIsBest && (
                 <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-300 text-[10px]">
-                  <Crown className="h-2.5 w-2.5 ml-0.5" />
-                  الأفضل ترشيحاً
+                  <Crown className="h-2.5 w-2.5 me-0.5" />
+                  {t('topRankedCandidates')}
                 </Badge>
               )}
               <span className="text-[10px] text-slate-500">
-                اليوم: {selected.today_load} حصة · مجاورة: {selected.adjacent_count} · انتظار الأسبوع: {selected.standby_used_this_week}
+                {t('candidateScoreSummary', { n: selected.today_load, m: selected.adjacent_count, w: selected.standby_used_this_week })}
               </span>
             </div>
           )}
@@ -403,7 +407,7 @@ function SlotRow({ slot, selectedTeacherId, onSelect, conflictWithinBatch, resul
           {isSuccess && (
             <div className="mt-2 inline-flex items-center gap-1 text-[11px] text-emerald-700 font-semibold">
               <UserCheck className="h-3 w-3" />
-              تم الإسناد بنجاح
+              {t('substituteAssignedSuccess')}
             </div>
           )}
           {errorMsg && (
@@ -415,7 +419,7 @@ function SlotRow({ slot, selectedTeacherId, onSelect, conflictWithinBatch, resul
           {conflictWithinBatch && !errorMsg && (
             <div className="mt-2 inline-flex items-center gap-1 text-[11px] text-red-700 font-semibold">
               <AlertTriangle className="h-3 w-3" />
-              نفس البديل مختار لخانة أخرى في نفس الحصة
+              {t('sameSubstituteAnotherSlot')}
             </div>
           )}
         </div>

@@ -14,6 +14,7 @@ import {
   ChevronDown, ChevronUp, ChevronsLeft, ChevronsRight,
   AlertTriangle, Clock, CalendarDays, Sparkles,
 } from 'lucide-react';
+import { useTranslation, useTheme } from '../../contexts/ThemeContext';
 
 const DAY_INDEX = {
   sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
@@ -36,6 +37,8 @@ export default function WaitingSessionsPanel({
   onPickEmpty,     // (dayKey, periodNumber) => void
   contextLabel,    // e.g. class name for the empty-state hint
 }) {
+  const { t } = useTranslation();
+  const { direction } = useTheme();
   // Compute empty slots for the current class.
   const emptyByDay = useMemo(() => {
     if (!periodSlots.length || !days.length) return {};
@@ -74,22 +77,22 @@ export default function WaitingSessionsPanel({
   if (collapsed) {
     return (
       <aside
-        dir="rtl"
+        dir={direction}
         className="hidden lg:flex shrink-0 w-12 flex-col items-center gap-3 py-4 border-l border-slate-200 bg-white/70 backdrop-blur"
-        aria-label="لوحة حصص الانتظار (مطوية)"
+        aria-label={t('waitingPanelCollapsedAria')}
       >
         <button
           type="button"
           onClick={onToggleCollapsed}
           className="w-9 h-9 rounded-lg bg-white border border-slate-200 hover:border-[#2BB5A0] hover:bg-[#2BB5A0]/5 flex items-center justify-center text-slate-600 transition"
-          title="فتح لوحة حصص الانتظار"
+          title={t('openWaitingPanel')}
           data-testid="waiting-panel-expand"
         >
           <ChevronsRight className="h-4 w-4" />
         </button>
         <div className="rotate-180 [writing-mode:vertical-rl] text-[11px] font-bold text-slate-600 tracking-wide flex items-center gap-2">
           <Sparkles className="h-3.5 w-3.5 text-[#2BB5A0]" />
-          حصص الانتظار
+          {t('waitingSessionsTitle')}
           {totalEmpty > 0 && (
             <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 text-[10px] font-bold">
               {totalEmpty}
@@ -103,9 +106,9 @@ export default function WaitingSessionsPanel({
   // ── Expanded ───────────────────────────────────────────────────────────
   return (
     <aside
-      dir="rtl"
+      dir={direction}
       className="hidden lg:flex shrink-0 w-[340px] xl:w-[360px] flex-col border-l border-slate-200 bg-white/80 backdrop-blur"
-      aria-label="لوحة حصص الانتظار"
+      aria-label={t('waitingPanelExpandedAria')}
       data-testid="waiting-panel"
     >
       {/* Header */}
@@ -115,9 +118,9 @@ export default function WaitingSessionsPanel({
             <Sparkles className="h-4 w-4 text-white" />
           </div>
           <div className="min-w-0">
-            <h2 className="font-bold text-sm text-slate-800 leading-tight truncate">حصص الانتظار</h2>
+            <h2 className="font-bold text-sm text-slate-800 leading-tight truncate">{t('waitingSessionsTitle')}</h2>
             <p className="text-[10px] text-slate-500 leading-tight">
-              {totalEmpty > 0 ? `${totalEmpty} خانة بحاجة لتعيين` : 'لا توجد خانات فارغة'}
+              {totalEmpty > 0 ? t('nSlotsNeedAssignment', { count: totalEmpty }) : t('noEmptySlotsLabel')}
             </p>
           </div>
         </div>
@@ -125,7 +128,7 @@ export default function WaitingSessionsPanel({
           type="button"
           onClick={onToggleCollapsed}
           className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-500 transition shrink-0"
-          title="طيّ اللوحة"
+          title={t('collapseWaitingPanel')}
           data-testid="waiting-panel-collapse"
         >
           <ChevronsLeft className="h-4 w-4" />
@@ -142,9 +145,10 @@ export default function WaitingSessionsPanel({
             {todayEmpty.length > 0 && (
               <UrgentSection
                 items={todayEmpty}
-                dayLabel={days.find(d => d.key === TODAY_KEY)?.ar || ''}
+                dayLabel={days.find(d => d.key === TODAY_KEY) ? t(TODAY_KEY) : ''}
                 canPick={canPick}
                 onPick={onPickEmpty}
+                t={t}
               />
             )}
 
@@ -162,6 +166,7 @@ export default function WaitingSessionsPanel({
                     items={items}
                     canPick={canPick}
                     onPick={onPickEmpty}
+                    t={t}
                   />
                 );
               })}
@@ -177,20 +182,21 @@ export default function WaitingSessionsPanel({
 // ── Subcomponents ─────────────────────────────────────────────────────────
 
 function EmptyState({ contextLabel }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center justify-center text-center py-12 gap-3 text-slate-500">
       <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center">
         <Sparkles className="h-7 w-7 text-emerald-400" />
       </div>
-      <p className="text-sm font-semibold text-slate-700">الجدول مكتمل</p>
+      <p className="text-sm font-semibold text-slate-700">{t('completeScheduleTitle')}</p>
       <p className="text-[11px] text-slate-400 px-4 leading-relaxed">
-        لا توجد خانات فارغة حالياً{contextLabel ? ` لـ${contextLabel}` : ''}. اختر فصلاً آخر إن أردت متابعة الانتظار.
+        {t('noEmptySlotsHint')}{contextLabel ? ` — ${contextLabel}` : ''}
       </p>
     </div>
   );
 }
 
-function UrgentSection({ items, dayLabel, canPick, onPick }) {
+function UrgentSection({ items, dayLabel, canPick, onPick, t }) {
   return (
     <div className="rounded-xl border-2 border-red-200 bg-gradient-to-b from-red-50 to-amber-50/60 p-3">
       <div className="flex items-center gap-2 mb-2">
@@ -198,8 +204,8 @@ function UrgentSection({ items, dayLabel, canPick, onPick }) {
           <AlertTriangle className="h-4 w-4 text-red-600" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-extrabold text-red-700 leading-tight">تحتاج تغطية الآن</p>
-          <p className="text-[10px] text-red-500 leading-tight">{dayLabel} · {items.length} خانة</p>
+          <p className="text-xs font-extrabold text-red-700 leading-tight">{t('needsCoverageNow')}</p>
+          <p className="text-[10px] text-red-500 leading-tight">{t('dayDotCount', { day: dayLabel, count: items.length })}</p>
         </div>
       </div>
       <ul className="space-y-1.5">
@@ -214,6 +220,7 @@ function UrgentSection({ items, dayLabel, canPick, onPick }) {
 }
 
 function DayGroup({ day, items, canPick, onPick }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(true);
   return (
     <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
@@ -225,7 +232,7 @@ function DayGroup({ day, items, canPick, onPick }) {
       >
         <div className="flex items-center gap-2 min-w-0">
           <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-lg bg-gradient-to-r ${day.color} text-white text-[11px] font-bold shadow-sm`}>
-            {day.ar}
+            {t(day.key)}
           </span>
           <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px] px-1.5 py-0 h-5">
             {items.length}
@@ -249,6 +256,7 @@ function DayGroup({ day, items, canPick, onPick }) {
 }
 
 function SlotCard({ item, canPick, onPick, urgent }) {
+  const { t } = useTranslation();
   const handleDragStart = (e) => {
     e.dataTransfer.setData(
       'application/nassaq-waiting-slot',
@@ -276,7 +284,7 @@ function SlotCard({ item, canPick, onPick, urgent }) {
         {item.period}
       </div>
       <div className="flex-1 min-w-0 text-right">
-        <p className="text-xs font-bold text-slate-800 leading-tight">الحصة {item.period}</p>
+        <p className="text-xs font-bold text-slate-800 leading-tight">{t('periodN', { n: item.period })}</p>
         {item.start_time && (
           <p className="text-[10px] text-slate-500 font-mono leading-tight flex items-center gap-1 justify-start">
             <Clock className="h-2.5 w-2.5" />

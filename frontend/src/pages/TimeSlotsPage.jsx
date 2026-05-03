@@ -179,7 +179,7 @@ export const TimeSlotsPage = () => {
     setSeeding(true);
     try {
       const res = await api.post(`/seed/time-slots/${selectedSchool}`);
-      toast.success(isRTL ? res.data.message : `Created ${res.data.count} time slots`);
+      toast.success(t('createdNTimeSlots', { count: res.data.count }));
       fetchTimeSlots();
     } catch (error) {
       nassaqError(t('failedToCreateDefaultTimeSlots'));

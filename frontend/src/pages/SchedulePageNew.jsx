@@ -52,20 +52,20 @@ import { getPose } from '../components/hakim/hakimPoses';
 // كل كود INF يحدد الصفحة الأنسب التي تحل المشكلة. عند غياب الكود نوجِّه إلى
 // إعدادات المدرسة العامة كملاذ افتراضي.
 const ISSUE_NEXT_STEP = {
-  'INF-01': { label: 'فتح إعدادات الهيكل الأكاديمي', path: '/school/settings?section=academic' },
-  'INF-02': { label: 'فتح إعدادات الهيكل الأكاديمي', path: '/school/settings?section=academic' },
-  'INF-03': { label: 'فتح صفحة المعلمين والإسنادات',  path: '/school/teachers' },
-  'INF-04': { label: 'فتح إعدادات القاعات',           path: '/school/schedule?tab=settings&sub=timings' },
-  'INF-05': { label: 'فتح إعدادات اليوم الدراسي',     path: '/school/schedule?tab=settings&sub=timings' },
+  'INF-01': { labelKey: 'openAcademicSettings', path: '/school/settings?section=academic' },
+  'INF-02': { labelKey: 'openAcademicSettings', path: '/school/settings?section=academic' },
+  'INF-03': { labelKey: 'openTeachersAssignments',  path: '/school/teachers' },
+  'INF-04': { labelKey: 'openRoomsSettings',           path: '/school/schedule?tab=settings&sub=timings' },
+  'INF-05': { labelKey: 'openSchoolDaySettings',     path: '/school/schedule?tab=settings&sub=timings' },
 };
-const DEFAULT_NEXT_STEP = { label: 'فتح إعدادات الجدول المدرسي', path: '/school/schedule?tab=settings' };
+const DEFAULT_NEXT_STEP = { labelKey: 'openScheduleSettings', path: '/school/schedule?tab=settings' };
 
 const DAYS = [
-  { key: 'sunday',    ar: 'الأحد' },
-  { key: 'monday',    ar: 'الإثنين' },
-  { key: 'tuesday',   ar: 'الثلاثاء' },
-  { key: 'wednesday', ar: 'الأربعاء' },
-  { key: 'thursday',  ar: 'الخميس' },
+  { key: 'sunday' },
+  { key: 'monday' },
+  { key: 'tuesday' },
+  { key: 'wednesday' },
+  { key: 'thursday' },
 ];
 // لا فرض لعدد الحصص في الواجهة بعد الآن — قائمة الحصص تأتي ديناميكياً من
 // الباك‑إند بناءً على إعدادات المدرسة (periods_per_day / time_slots).
@@ -79,22 +79,23 @@ const RANK_AR = {
   assistant: 'مساعد',
 };
 
-// Tiny Arabic relative-time formatter (mirrors TeacherAttendancePage).
-// Used by the absence tooltip so principals can see when a row was flipped.
-function formatAbsenceTimeAr(iso) {
+// Tiny relative-time formatter localized via the t() helper (mirrors
+// TeacherAttendancePage). Used by the absence tooltip so principals can see
+// when a row was flipped.
+function formatRelativeTime(iso, t, locale) {
   if (!iso) return '';
   const then = new Date(iso);
   if (Number.isNaN(then.getTime())) return '';
   const diffSec = Math.round((Date.now() - then.getTime()) / 1000);
-  if (diffSec < 5) return 'الآن';
-  if (diffSec < 60) return `قبل ${diffSec} ثانية`;
+  if (diffSec < 5) return t('justNow');
+  if (diffSec < 60) return t('secondsAgo', { count: diffSec });
   const mins = Math.round(diffSec / 60);
-  if (mins < 60) return `قبل ${mins} دقيقة`;
+  if (mins < 60) return t('minutesAgo', { count: mins });
   const hours = Math.round(mins / 60);
-  if (hours < 24) return `قبل ${hours} ساعة`;
+  if (hours < 24) return t('hoursAgo', { count: hours });
   const days = Math.round(hours / 24);
-  if (days < 7) return `قبل ${days} يوم`;
-  return then.toLocaleDateString('ar-EG');
+  if (days < 7) return t('daysAgo', { count: days });
+  return then.toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US');
 }
 
 // ─── Absence pill with recorder tooltip ───────────────────────────────────
@@ -102,19 +103,21 @@ function formatAbsenceTimeAr(iso) {
 // and the relative time. Falls back gracefully when the audit fields are
 // absent (older absence rows that predate the recorder feature).
 function AbsencePill({ recorderName, recordedAt }) {
+  const { t, language } = useTranslation();
+  const { direction } = useTheme();
   const pill = (
     <span
       tabIndex={0}
       className="text-[10px] font-semibold rounded border border-red-400 text-red-700 bg-red-100 px-1.5 py-0.5 cursor-help focus:outline-none focus:ring-1 focus:ring-red-400"
     >
-      غائب
+      {t('absent')}
     </span>
   );
 
   const hasAudit = Boolean(recorderName) || Boolean(recordedAt);
   if (!hasAudit) return pill;
 
-  const relTime = formatAbsenceTimeAr(recordedAt);
+  const relTime = formatRelativeTime(recordedAt, t, language);
   return (
     <TooltipProvider delayDuration={150}>
       <Tooltip>
@@ -124,9 +127,9 @@ function AbsencePill({ recorderName, recordedAt }) {
           align="start"
           className="bg-slate-900 text-white text-[11px] leading-tight max-w-[220px]"
         >
-          <div dir="rtl" className="space-y-0.5">
+          <div dir={direction} className="space-y-0.5">
             <div>
-              <span className="font-semibold">سجَّله:</span>{' '}
+              <span className="font-semibold">{t('recordedByColon')}</span>{' '}
               {recorderName || '—'}
             </div>
             {relTime && (
@@ -182,6 +185,7 @@ function EmptyCell() {
 // يُعرض فوق المصفوفة أثناء توليد الجدول التلقائي. يستخدم تعبير "ai-thinking"
 // من معرض حكيم مع ضباب أبيض شفّاف ونبضة بنفسجية لتأكيد أن المحرك يعمل.
 function HakimGeneratingOverlay() {
+  const { t } = useTranslation();
   const poseSrc = getPose('ai-thinking');
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-white/85 backdrop-blur-[2px]">
@@ -190,7 +194,7 @@ function HakimGeneratingOverlay() {
           <div className="absolute inset-0 rounded-full bg-violet-300/40 animate-ping" />
           <img
             src={poseSrc}
-            alt="حكيم يفكّر"
+            alt={t('hakimAI')}
             className="relative h-20 w-20 object-contain"
             draggable={false}
           />
@@ -198,11 +202,11 @@ function HakimGeneratingOverlay() {
         <div className="flex items-center gap-2 text-violet-700">
           <Loader2 className="h-4 w-4 animate-spin" />
           <span className="text-sm font-semibold">
-            حكيم يقوم بتحليل القيود وبناء الجدول الذكي…
+            {t('hakimAnalyzingConstraints')}
           </span>
         </div>
         <p className="text-[11px] text-slate-500 max-w-[260px] text-center">
-          قد تستغرق العملية بضع ثوانٍ بحسب عدد المعلمين والفصول وقيود الجدول.
+          {t('hakimGenerationDuration')}
         </p>
       </div>
     </div>
@@ -222,14 +226,14 @@ function HakimGeneratingOverlay() {
 // `ScheduleSettingsTabContent.jsx`، ونوجِّه الزر إلى الرابط
 // `/school/schedule?tab=settings&sub=<tab>` الذي تُحسن الصفحة قراءته.
 
-const SETTINGS_TAB_LABEL = {
-  'timings': 'التوقيت والحصص',
-  'classes': 'الفصول والشعب',
-  'teacher-assignments': 'إسناد المعلمين',
-  'unavailability': 'أوقات عدم التوفر',
-  'constraints': 'قيود الجدول',
+const SETTINGS_TAB_LABEL_KEY = {
+  'timings': 'settingsTabTimings',
+  'classes': 'settingsTabClasses',
+  'teacher-assignments': 'settingsTabTeacherAssignments',
+  'unavailability': 'settingsTabUnavailability',
+  'constraints': 'settingsTabConstraints',
 };
-const VALID_SETTINGS_TABS = Object.keys(SETTINGS_TAB_LABEL);
+const VALID_SETTINGS_TABS = Object.keys(SETTINGS_TAB_LABEL_KEY);
 const REASON_TO_SETTINGS_TAB = {
   // Conflicts emitted by the constraint detector.
   teacher_overlap: 'teacher-assignments',
@@ -262,22 +266,15 @@ function resolveSettingsTab(item) {
   return REASON_TO_SETTINGS_TAB[item?.reason_code] || DEFAULT_SETTINGS_TAB;
 }
 
-const DAY_LABEL_AR = {
-  sunday: 'الأحد',
-  monday: 'الإثنين',
-  tuesday: 'الثلاثاء',
-  wednesday: 'الأربعاء',
-  thursday: 'الخميس',
-};
-
 function HakimInsightsBanner({ conflicts, dismissed, onDismiss, onOpenDrawer }) {
+  const { t } = useTranslation();
   if (!conflicts || conflicts.length === 0 || dismissed) return null;
   const total = conflicts.length;
   return (
     <div className="flex items-center gap-3 p-3 rounded-lg border border-orange-200 bg-orange-50 text-orange-900 shrink-0">
       <Lightbulb className="h-5 w-5 shrink-0 text-orange-500" />
-      <p className="flex-1 min-w-0 text-sm font-bold truncate text-right">
-        رؤى حكيم • تعذّر جدولة {total} حصة
+      <p className="flex-1 min-w-0 text-sm font-bold truncate text-start">
+        {t('hakimInsightsBannerTitle', { count: total })}
       </p>
       <Button
         type="button"
@@ -287,14 +284,14 @@ function HakimInsightsBanner({ conflicts, dismissed, onDismiss, onOpenDrawer }) 
         className="shrink-0 border-orange-300 text-orange-800 hover:bg-orange-100 bg-white/70"
         data-testid="open-hakim-insights-drawer"
       >
-        <Lightbulb className="h-3.5 w-3.5 ml-1" />
-        عرض التفاصيل
+        <Lightbulb className="h-3.5 w-3.5 me-1" />
+        {t('viewDetails')}
       </Button>
       <button
         type="button"
         onClick={onDismiss}
-        title="إخفاء الشريط"
-        aria-label="إخفاء شريط رؤى حكيم"
+        title={t('hideBanner')}
+        aria-label={t('hideHakimInsightsBanner')}
         className="shrink-0 rounded p-1 text-orange-700 hover:bg-orange-100 transition-colors"
       >
         <X className="h-4 w-4" />
@@ -313,6 +310,8 @@ function HakimInsightsDrawer({
   onRetry,
   retrying,
 }) {
+  const { t, language } = useTranslation();
+  const { direction } = useTheme();
   const items = conflicts || [];
   const total = items.length;
 
@@ -334,27 +333,27 @@ function HakimInsightsDrawer({
   // المتبقية بدون موعد).
   const slotLabel = (item) => {
     if (!item.day_of_week || !item.period_number) return '';
-    const day = DAY_LABEL_AR[item.day_of_week] || item.day_of_week;
-    return `${day} • الحصة ${item.period_number}`;
+    const day = t(item.day_of_week);
+    return `${day} • ${t('periodN', { n: item.period_number })}`;
   };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
-        side="left"
-        dir="rtl"
+        side={direction === 'rtl' ? 'left' : 'right'}
+        dir={direction}
         className="w-full sm:max-w-lg p-0 flex flex-col gap-0"
         data-testid="hakim-insights-drawer"
       >
-        <SheetHeader className="p-5 bg-gradient-to-l from-orange-100 to-amber-50 border-b border-orange-200 text-right">
+        <SheetHeader className="p-5 bg-gradient-to-l from-orange-100 to-amber-50 border-b border-orange-200 text-start">
           <SheetTitle className="flex items-center gap-2 text-orange-900">
             <Lightbulb className="h-5 w-5 text-orange-500" />
-            رؤى حكيم — تفاصيل الحصص غير المُجدولة
+            {t('hakimInsightsDrawerTitle')}
           </SheetTitle>
           <SheetDescription className="text-orange-800/90 text-xs leading-relaxed">
             {total > 0
-              ? `تعذّرت جدولة ${total} عنصر. لكل صف زر يفتح التبويب الذي يساعدك على إصلاح السبب.`
-              : 'لا توجد عناصر غير مُجدولة حالياً.'}
+              ? t('hakimInsightsDrawerDesc', { count: total })
+              : t('noUnscheduledItems')}
           </SheetDescription>
           <div className="pt-2">
             <Button
@@ -366,9 +365,9 @@ function HakimInsightsDrawer({
               data-testid="hakim-insights-retry"
             >
               {retrying
-                ? <Loader2 className="h-3.5 w-3.5 ml-1 animate-spin" />
-                : <RefreshCw className="h-3.5 w-3.5 ml-1" />}
-              {retrying ? 'جارٍ إعادة التوليد…' : 'إعادة المحاولة'}
+                ? <Loader2 className="h-3.5 w-3.5 me-1 animate-spin" />
+                : <RefreshCw className="h-3.5 w-3.5 me-1" />}
+              {retrying ? t('regenerating') : t('retry')}
             </Button>
           </div>
         </SheetHeader>
@@ -376,7 +375,7 @@ function HakimInsightsDrawer({
         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
           {total === 0 ? (
             <p className="text-sm text-slate-500 text-center py-10">
-              لا توجد بيانات لعرضها.
+              {t('noDataToShow')}
             </p>
           ) : (
             Array.from(grouped.entries()).map(([cls, subMap]) => (
@@ -398,13 +397,13 @@ function HakimInsightsDrawer({
                           variant="outline"
                           className="border-orange-300 text-orange-700 bg-orange-50 text-[10px] shrink-0"
                         >
-                          {rows.length} عنصر
+                          {t('countItems', { count: rows.length })}
                         </Badge>
                       </div>
                       <ul className="space-y-2">
                         {rows.map((c, i) => {
                           const tab = resolveSettingsTab(c);
-                          const tabLabel = SETTINGS_TAB_LABEL[tab] || 'الإعدادات';
+                          const tabLabel = t(SETTINGS_TAB_LABEL_KEY[tab] || 'settings');
                           const slot = slotLabel(c);
                           return (
                             <li
@@ -419,7 +418,7 @@ function HakimInsightsDrawer({
                                     </p>
                                   )}
                                   <p className="text-slate-800">
-                                    {c.reason_ar || 'تعذّر الجدولة'}
+                                    {(language === 'en' ? (c.reason_en || c.reason_ar) : c.reason_ar) || t('failedToScheduleDefault')}
                                   </p>
                                   {c.reason_code && (
                                     <p className="mt-0.5 text-[10px] font-mono text-slate-400">
@@ -435,7 +434,7 @@ function HakimInsightsDrawer({
                                   className="shrink-0 border-[#1C3D74]/30 text-[#1C3D74] hover:bg-[#1C3D74]/5 text-[11px] h-7"
                                   data-testid={`hakim-insights-open-${tab}`}
                                 >
-                                  <ExternalLink className="h-3 w-3 ml-1" />
+                                  <ExternalLink className="h-3 w-3 me-1" />
                                   {tabLabel}
                                 </Button>
                               </div>
@@ -538,14 +537,14 @@ export default function SchedulePageNew() {
       setError('');
       return response.data;
     } catch (e) {
-      const msg = e?.response?.data?.error?.message || e?.message || 'تعذّر تحميل الجدول';
+      const msg = e?.response?.data?.error?.message || e?.message || t('failedToLoadGrid');
       setError(msg);
       return null;
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [api, schoolId]);
+  }, [api, schoolId, t]);
 
   useEffect(() => {
     // نُحمِّل مصفوفة الجدول الرئيسي فقط عندما يكون التبويب النشط هو
@@ -557,7 +556,7 @@ export default function SchedulePageNew() {
 
   const handleAutoGenerate = useCallback(async () => {
     if (!schoolId) {
-      nassaqError('تعذّر تحديد المدرسة الحالية');
+      nassaqError(t('cannotDetermineSchool'));
       return;
     }
     if (generating) return;
@@ -579,9 +578,9 @@ export default function SchedulePageNew() {
       const unscheduled = data.unscheduled_count ?? 0;
       const pct = Math.round(data.completion_percentage ?? 0);
       const summary =
-        `تم جدولة ${scheduled} من ${total} حصة (${pct}%)` +
-        (conflicts ? ` • ${conflicts} تعارض` : '') +
-        (unscheduled ? ` • ${unscheduled} حصة لم تُجدول` : '');
+        t('generationSummaryToast', { scheduled, total, pct }) +
+        (conflicts ? t('generationConflictsSuffix', { n: conflicts }) : '') +
+        (unscheduled ? t('generationUnscheduledSuffix', { n: unscheduled }) : '');
 
       // رؤى حكيم: نلتقط قائمة التعارضات/الخانات غير المجدولة لتغذية شريط
       // الرؤى وتلوين الخلايا. عند الفشل التام تظل القائمة فارغة.
@@ -629,7 +628,7 @@ export default function SchedulePageNew() {
       // الجزئي. الترتيب: أولاً إشعار حالة التوليد (نجاح/جزئي)، ثم — إن
       // فشل الجلب — إشعار خطأ صريح إضافي حول العرض القديم.
       if (data.success) {
-        toast.success(data.message_ar || 'تم توليد الجدول بنجاح', {
+        toast.success(data.message_ar || t('generatedSuccess'), {
           description: summary,
         });
       } else {
@@ -637,8 +636,8 @@ export default function SchedulePageNew() {
         // عابر، حتى لا تضيع المعلومة المهمّة على المدير. هذه المعلومات
         // مستقلّة عن نجاح/فشل إعادة الجلب.
         nassaqWarning(
-          (data.message_ar || 'اكتمل التوليد مع ملاحظات') + '\n\n' + summary,
-          { title: 'رؤى حكيم — اكتمل التوليد جزئياً' },
+          (data.message_ar || t('generatedPartialNotice')) + '\n\n' + summary,
+          { title: t('hakimPartialTitle') },
         );
       }
       if (!fetched || staleAfterRetry) {
@@ -648,8 +647,8 @@ export default function SchedulePageNew() {
         // الحالتين نعرض خطأ صريح بالعبارة المحدَّدة في خطّة المهمة كي لا
         // يُترك المدير أمام شاشة قديمة دون تنبيه.
         nassaqError(
-          'تعذّر تحميل الجدول المُحدَّث — اضغط "تحديث" لعرض الجدول الجديد.',
-          { title: 'تعذّر تحديث المصفوفة' },
+          t('failedToLoadUpdatedGrid'),
+          { title: t('failedToRefreshMatrix') },
         );
       }
     } catch (e) {
@@ -664,26 +663,26 @@ export default function SchedulePageNew() {
         return;
       }
 
-      let msg = 'فشل توليد الجدول، يرجى المحاولة مرة أخرى';
+      let msg = t('generationFailedDefault');
       if (typeof detail === 'string' && /[\u0600-\u06FF]/.test(detail)) {
         msg = detail;
       } else if (detail?.code === 'GENERATION_BLOCKED') {
         // Fallback: server returned the code but no report payload.
-        msg = 'تعذّر التوليد: البيانات غير جاهزة بعد لتشغيل المحرك';
+        msg = t('dataNotReadyForEngine');
       } else if (e?.response?.data?.message_ar) {
         msg = e.response.data.message_ar;
       } else if (status === 401 || status === 403) {
-        msg = 'لا تملك صلاحية تشغيل التوليد التلقائي';
+        msg = t('noPermissionAutoGenerate');
       } else if (status === 404) {
-        msg = 'لم يتم العثور على بيانات المدرسة المطلوبة';
+        msg = t('schoolDataNotFound');
       } else if (e?.code === 'ERR_NETWORK' || !e?.response) {
-        msg = 'تعذّر الاتصال بالخادم، تحقق من الشبكة وحاول مجدداً';
+        msg = t('networkErrorRetry');
       }
-      nassaqError(msg, { title: 'تعذّر توليد الجدول' });
+      nassaqError(msg, { title: t('failedToGenerateScheduleTitle') });
     } finally {
       setGenerating(false);
     }
-  }, [api, schoolId, generating, loadGrid, nassaqError, nassaqWarning]);
+  }, [api, schoolId, generating, loadGrid, nassaqError, nassaqWarning, t]);
 
   const handleLogAbsence = useCallback(() => {
     setAbsenceTeacherId('');
@@ -693,11 +692,11 @@ export default function SchedulePageNew() {
 
   const handleSubmitAbsence = useCallback(async () => {
     if (!absenceTeacherId) {
-      toast.error('يرجى اختيار معلم');
+      toast.error(t('pleaseSelectTeacher'));
       return;
     }
     if (!schoolId) {
-      toast.error('تعذّر تحديد المدرسة الحالية');
+      toast.error(t('cannotDetermineSchool'));
       return;
     }
 
@@ -719,7 +718,7 @@ export default function SchedulePageNew() {
         },
         { headers: { 'X-School-Context': schoolId } },
       );
-      toast.success('تم تسجيل الغياب');
+      toast.success(t('absenceLogged'));
       setAbsenceOpen(false);
       setAbsenceTeacherId('');
       setAbsenceNotes('');
@@ -728,21 +727,21 @@ export default function SchedulePageNew() {
     } catch (e) {
       const detail = e?.response?.data?.detail;
       const status = e?.response?.status;
-      let msg = 'فشل تسجيل الغياب، يرجى المحاولة مرة أخرى';
+      let msg = t('absenceLogFailed');
       if (typeof detail === 'string' && /[\u0600-\u06FF]/.test(detail)) {
         msg = detail;
       } else if (e?.response?.data?.message_ar) {
         msg = e.response.data.message_ar;
       } else if (status === 401 || status === 403) {
-        msg = 'لا تملك صلاحية تسجيل الغياب';
+        msg = t('noPermissionLogAbsence');
       } else if (e?.code === 'ERR_NETWORK' || !e?.response) {
-        msg = 'تعذّر الاتصال بالخادم، تحقق من الشبكة وحاول مجدداً';
+        msg = t('networkErrorRetry');
       }
       toast.error(msg);
     } finally {
       setSavingAbsence(false);
     }
-  }, [api, schoolId, absenceTeacherId, absenceNotes, loadGrid]);
+  }, [api, schoolId, absenceTeacherId, absenceNotes, loadGrid, t]);
 
   const handleRequestUndoAbsence = useCallback((teacher) => {
     if (!teacher?.id) return;
@@ -757,7 +756,7 @@ export default function SchedulePageNew() {
   const handleAcknowledgeRelocation = useCallback(async (cell) => {
     if (!cell?.unavailability_id) return;
     if (!schoolId) {
-      toast.error('تعذّر تحديد المدرسة الحالية');
+      toast.error(t('cannotDetermineSchool'));
       return;
     }
     try {
@@ -766,7 +765,7 @@ export default function SchedulePageNew() {
         {},
         { headers: { 'X-School-Context': schoolId } },
       );
-      toast.success('تم تسجيل اطلاعك على نقل الفصل');
+      toast.success(t('relocationAckSuccess'));
       // Bump the bell so its unread badge re-syncs.
       window.dispatchEvent(new CustomEvent('notifications:refresh'));
       await loadGrid();
@@ -774,17 +773,17 @@ export default function SchedulePageNew() {
       const status = e?.response?.status;
       const detail = e?.response?.data?.detail;
       if (status === 403) {
-        nassaqError(detail || 'هذا الإشعار ليس موجَّهاً إليك.');
+        nassaqError(detail || t('notForYouNote'));
       } else {
-        nassaqError(detail || 'تعذّر تسجيل الاطلاع، حاول مرة أخرى');
+        nassaqError(detail || t('relocationAckFailed'));
       }
     }
-  }, [api, schoolId, loadGrid, nassaqError]);
+  }, [api, schoolId, loadGrid, nassaqError, t]);
 
   const handleConfirmUndoAbsence = useCallback(async () => {
     if (!undoTeacher?.id) return;
     if (!schoolId) {
-      toast.error('تعذّر تحديد المدرسة الحالية');
+      toast.error(t('cannotDetermineSchool'));
       return;
     }
 
@@ -806,32 +805,32 @@ export default function SchedulePageNew() {
         },
         { headers: { 'X-School-Context': schoolId } },
       );
-      toast.success('تم إلغاء الغياب');
+      toast.success(t('absenceUndone'));
       setUndoTeacher(null);
       setRefreshing(true);
       await loadGrid();
     } catch (e) {
       const detail = e?.response?.data?.detail;
       const status = e?.response?.status;
-      let msg = 'فشل إلغاء الغياب، يرجى المحاولة مرة أخرى';
+      let msg = t('undoAbsenceFailed');
       if (typeof detail === 'string' && /[\u0600-\u06FF]/.test(detail)) {
         msg = detail;
       } else if (e?.response?.data?.message_ar) {
         msg = e.response.data.message_ar;
       } else if (status === 401 || status === 403) {
-        msg = 'لا تملك صلاحية تعديل سجل الحضور';
+        msg = t('noPermissionUndoAbsence');
       } else if (e?.code === 'ERR_NETWORK' || !e?.response) {
-        msg = 'تعذّر الاتصال بالخادم، تحقق من الشبكة وحاول مجدداً';
+        msg = t('networkErrorRetry');
       }
       toast.error(msg);
     } finally {
       setUndoingAbsence(false);
     }
-  }, [api, schoolId, undoTeacher, loadGrid]);
+  }, [api, schoolId, undoTeacher, loadGrid, t]);
 
   const handleVacantClick = useCallback((cellData) => {
     if (!cellData?.session?.session_id) {
-      toast.error('لا يمكن فتح المرشحين — الخانة لا ترتبط بحصة معروفة');
+      toast.error(t('vacantSlotNotLinked'));
       return;
     }
     const today = grid?.today || cellData.day_of_week;
@@ -852,7 +851,7 @@ export default function SchedulePageNew() {
       school_id: schoolId,
     });
     setDrawerOpen(true);
-  }, [grid?.today, schoolId]);
+  }, [grid?.today, schoolId, t]);
 
   const handleUndoSubstitution = useCallback(async (substitutionId) => {
     try {
@@ -861,25 +860,25 @@ export default function SchedulePageNew() {
         headers: { 'X-School-Context': schoolId },
       });
       await loadGrid();
-      toast.success('تم التراجع عن الإسناد');
+      toast.success(t('substitutionUndone'));
     } catch (err) {
-      const msg = err.response?.data?.detail || err.message || 'فشل التراجع';
+      const msg = err.response?.data?.detail || err.message || t('undoFailed');
       toast.error(msg);
     }
-  }, [api, schoolId, loadGrid]);
+  }, [api, schoolId, loadGrid, t]);
 
   const handleAssigned = useCallback((substitution, cand) => {
     // Optimistic refresh + undo toast
     loadGrid();
     const subId = substitution?.id;
-    toast.success('تم إسناد الحصة وإرسال إشعار', {
-      description: `البديل: ${cand?.teacher_name || '—'}`,
+    toast.success(t('substitutionAssignedNotified'), {
+      description: t('substituteWithName', { name: cand?.teacher_name || '—' }),
       duration: 10000,
       action: subId
-        ? { label: 'تراجع', onClick: () => handleUndoSubstitution(subId) }
+        ? { label: t('undoBtn'), onClick: () => handleUndoSubstitution(subId) }
         : undefined,
     });
-  }, [loadGrid, handleUndoSubstitution]);
+  }, [loadGrid, handleUndoSubstitution, t]);
 
   // ── Bulk substitution handlers ─────────────────────────────────────
   const handleOpenBulkPanel = useCallback((teacher) => {
@@ -902,12 +901,12 @@ export default function SchedulePageNew() {
         headers: { 'X-School-Context': schoolId },
       });
       await loadGrid();
-      toast.success('تم التراجع عن الدفعة بالكامل');
+      toast.success(t('batchUndone'));
     } catch (err) {
-      const msg = err.response?.data?.detail || err.message || 'فشل التراجع عن الدفعة';
+      const msg = err.response?.data?.detail || err.message || t('batchUndoFailed');
       toast.error(msg);
     }
-  }, [api, schoolId, loadGrid]);
+  }, [api, schoolId, loadGrid, t]);
 
   const handleAssignedBatch = useCallback((batchResult) => {
     loadGrid();
@@ -917,17 +916,17 @@ export default function SchedulePageNew() {
     if (succeeded === 0) return;
 
     const description = failed > 0
-      ? `نجح ${succeeded} وفشل ${failed} — تم إرسال إشعار مجمَّع لكل بديل`
-      : `تم إرسال إشعار مجمَّع لكل بديل — ${succeeded} حصة`;
+      ? t('batchPartialDescription', { ok: succeeded, fail: failed })
+      : t('batchAllSuccessDescription', { n: succeeded });
 
-    toast.success(`تم إسناد ${succeeded} حصة دفعة واحدة`, {
+    toast.success(t('batchAssignedNTitle', { n: succeeded }), {
       description,
       duration: 12000,
       action: batchId
-        ? { label: 'تراجع عن الدفعة', onClick: () => handleUndoBulkBatch(batchId) }
+        ? { label: t('undoBatchAction'), onClick: () => handleUndoBulkBatch(batchId) }
         : undefined,
     });
-  }, [loadGrid, handleUndoBulkBatch]);
+  }, [loadGrid, handleUndoBulkBatch, t]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -977,7 +976,7 @@ export default function SchedulePageNew() {
     return (
       <Sidebar>
         <div
-          dir="rtl"
+          dir={direction}
           className="flex flex-col h-[calc(100dvh-3.5rem)] lg:h-[100dvh] p-4 md:p-6 gap-5 bg-slate-50 text-slate-900 overflow-hidden"
         >
           <ScheduleTabNav active="standby" />
@@ -991,7 +990,7 @@ export default function SchedulePageNew() {
     return (
       <Sidebar>
         <div
-          dir="rtl"
+          dir={direction}
           className="min-h-[calc(100dvh-3.5rem)] lg:min-h-[100dvh] bg-slate-50 text-slate-900"
         >
           <div className="p-4 md:p-6 flex flex-col gap-5">
@@ -1003,10 +1002,10 @@ export default function SchedulePageNew() {
               <div>
                 <h1 className="text-2xl md:text-3xl font-bold text-[#1C3D74] flex items-center gap-2">
                   <Settings className="h-7 w-7 text-[#1C3D74]" />
-                  إعدادات الجدول المدرسي
+                  {t('settingsScheduleTitle')}
                 </h1>
                 <p className="text-sm text-slate-500 mt-1">
-                  أَعِدّ التوقيت والحصص والفصول والإسناد وأوقات عدم التوفر وقيود الجدول من مكان واحد.
+                  {t('settingsScheduleSubtitle')}
                 </p>
               </div>
             </div>
@@ -1180,14 +1179,14 @@ export default function SchedulePageNew() {
         <div className="relative flex-1 min-h-0 overflow-auto bg-white border border-slate-200 rounded-lg">
           {loading ? (
             <div className="flex h-full items-center justify-center py-20 text-slate-500">
-              <Loader2 className="h-6 w-6 animate-spin ml-2" />
-              جارٍ تحميل المصفوفة…
+              <Loader2 className="h-6 w-6 animate-spin me-2" />
+              {t('loadingMatrix')}
             </div>
           ) : error ? (
             <div className="p-6 text-center text-red-600">{error}</div>
           ) : teacherRows.length === 0 ? (
             <div className="p-6 text-center text-slate-500">
-              لا يوجد معلمون مسجَّلون في هذه المدرسة بعد.
+              {t('noTeachersRegistered')}
             </div>
           ) : (
             <MasterMatrix
@@ -1304,23 +1303,23 @@ export default function SchedulePageNew() {
             if (!open && !undoingAbsence) setUndoTeacher(null);
           }}
         >
-          <DialogContent dir="rtl" className="max-w-md">
+          <DialogContent dir={direction} className="max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-[#1C3D74]">
                 <Undo2 className="h-5 w-5 text-emerald-600" />
-                إلغاء الغياب
+                {t('undoAbsenceTitle')}
               </DialogTitle>
               <DialogDescription>
-                سيُعاد تسجيل المعلم كحاضر اليوم وتُحدَّث الخلايا والمؤشرات فوراً.
+                {t('undoAbsenceDesc')}
               </DialogDescription>
             </DialogHeader>
 
             <div className="py-2 text-sm text-slate-700">
-              هل تريد فعلاً إلغاء غياب{' '}
+              {t('undoAbsenceConfirmQuestion')}{' '}
               <span className="font-semibold text-slate-900">
                 {undoTeacher?.full_name || '—'}
               </span>{' '}
-              لهذا اليوم؟
+              {t('forThisDayQuestion')}
             </div>
 
             <DialogFooter className="gap-2 sm:gap-2">
@@ -1329,7 +1328,7 @@ export default function SchedulePageNew() {
                 onClick={() => setUndoTeacher(null)}
                 disabled={undoingAbsence}
               >
-                تراجع
+                {t('cancel')}
               </Button>
               <Button
                 onClick={handleConfirmUndoAbsence}
@@ -1337,11 +1336,11 @@ export default function SchedulePageNew() {
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
               >
                 {undoingAbsence ? (
-                  <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                  <Loader2 className="h-4 w-4 me-2 animate-spin" />
                 ) : (
-                  <Undo2 className="h-4 w-4 ml-2" />
+                  <Undo2 className="h-4 w-4 me-2" />
                 )}
-                {undoingAbsence ? 'جارٍ الإلغاء…' : 'تأكيد إلغاء الغياب'}
+                {undoingAbsence ? t('undoingAbsence') : t('confirmUndoAbsence')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1355,31 +1354,33 @@ export default function SchedulePageNew() {
 // عند رفض المحرك للتوليد (HTTP 422 / GENERATION_BLOCKED) نعرض هنا قائمة
 // المشاكل بالعربية مع زر يفتح الصفحة الأنسب لمعالجة كل مشكلة.
 function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
+  const { t, language } = useTranslation();
+  const { direction } = useTheme();
   const issues = Array.isArray(report?.issues) ? report.issues : [];
   const blockers  = issues.filter((i) => i.severity === 'blocker');
   const advisories = issues.filter((i) => i.severity === 'advisory');
 
   // اختر الإجراء الأساسي بناءً على أول blocker (أكثر إلحاحاً) أو الافتراضي.
   const primaryStep = (blockers[0] && ISSUE_NEXT_STEP[blockers[0].code]) || DEFAULT_NEXT_STEP;
+  const messageOf = (iss) => (language === 'ar' ? (iss.message_ar || iss.message_en) : (iss.message_en || iss.message_ar));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent dir="rtl" className="max-w-2xl">
+      <DialogContent dir={direction} className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-red-700">
             <ShieldAlert className="h-5 w-5" />
-            تعذّر تشغيل التوليد التلقائي
+            {t('generationBlockedTitle')}
           </DialogTitle>
           <DialogDescription>
-            رفض المحرك بدء التوليد لأن البيانات الأساسية غير مكتملة. عالج
-            النقاط التالية ثم أعد المحاولة:
+            {t('generationBlockedDesc')}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3 py-2 max-h-[55vh] overflow-y-auto pr-1">
+        <div className="space-y-3 py-2 max-h-[55vh] overflow-y-auto pe-1">
           {issues.length === 0 ? (
             <p className="text-sm text-slate-500 text-center py-6">
-              لا توجد تفاصيل إضافية متاحة من المحرك.
+              {t('noEngineDetailsAvailable')}
             </p>
           ) : (
             <>
@@ -1396,14 +1397,14 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 mb-1">
                               <Badge className="bg-red-600 hover:bg-red-600 text-white text-[10px]">
-                                مانع
+                                {t('blockerBadge')}
                               </Badge>
                               <span className="text-[11px] font-mono text-slate-500">
                                 {iss.code}
                               </span>
                             </div>
                             <p className="text-sm text-red-900 leading-relaxed">
-                              {iss.message_ar || iss.message_en}
+                              {messageOf(iss)}
                             </p>
                           </div>
                           <Button
@@ -1413,8 +1414,8 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
                             className="border-red-300 text-red-700 hover:bg-red-100 shrink-0"
                             onClick={() => onNavigate(step.path)}
                           >
-                            <Settings className="h-3.5 w-3.5 ml-1" />
-                            <span className="text-xs">{step.label}</span>
+                            <Settings className="h-3.5 w-3.5 me-1" />
+                            <span className="text-xs">{t(step.labelKey)}</span>
                           </Button>
                         </div>
                       </li>
@@ -1426,7 +1427,7 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
               {advisories.length > 0 && (
                 <div className="pt-2">
                   <p className="text-xs font-semibold text-slate-600 mb-2">
-                    ملاحظات إضافية (لا تمنع التوليد):
+                    {t('additionalNotesNonBlocking')}
                   </p>
                   <ul className="space-y-2">
                     {advisories.map((iss, idx) => (
@@ -1436,14 +1437,14 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
                       >
                         <div className="flex items-center gap-2 mb-1">
                           <Badge variant="outline" className="border-amber-400 text-amber-800 bg-amber-100 text-[10px]">
-                            إرشاد
+                            {t('advisoryBadge')}
                           </Badge>
                           <span className="text-[11px] font-mono text-slate-500">
                             {iss.code}
                           </span>
                         </div>
                         <p className="text-sm text-amber-900 leading-relaxed">
-                          {iss.message_ar || iss.message_en}
+                          {messageOf(iss)}
                         </p>
                       </li>
                     ))}
@@ -1456,14 +1457,14 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
 
         <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            إغلاق
+            {t('close')}
           </Button>
           <Button
             onClick={() => onNavigate(primaryStep.path)}
             className="bg-[#1C3D74] hover:bg-[#162f5a] text-white"
           >
-            <ArrowLeft className="h-4 w-4 ml-2" />
-            {primaryStep.label}
+            <ArrowLeft className="h-4 w-4 me-2" />
+            {t(primaryStep.labelKey)}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1479,7 +1480,7 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
 // (slate-100)، وعمود المعلم على يمين الشاشة (RTL) مع ظل خفيف يفصل المنطقة
 // المثبَّتة عن منطقة التمرير.
 function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, onAcknowledgeRelocation, today, periodTimes = {}, unresolvedConflicts = [] }) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   // فهرس "رؤى حكيم" بمفتاح teacher_id|day|period → reason_ar. التحديد
   // بالمعلم ضروري لئلا يلوّن صفّ معلم تنبيه يخصّ معلماً آخر في نفس
   // الفترة. العناصر التي لا تحمل teacher_id (مثل طلبات لم تُسنَد لأحد)
@@ -1491,12 +1492,13 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
       const k = `${c.teacher_id}|${c.day_of_week}|${c.period_number}`;
       const prev = m.get(k);
       const reason = [c.subject_name, c.class_name].filter(Boolean).join(' / ');
-      const tip = reason ? `${reason}: ${c.reason_ar || ''}` : (c.reason_ar || '');
+      const localizedReason = language === 'en' ? (c.reason_en || c.reason_ar) : c.reason_ar;
+      const tip = reason ? `${reason}: ${localizedReason || ''}` : (localizedReason || '');
       if (prev) m.set(k, prev + '\n' + tip);
       else m.set(k, tip);
     }
     return m;
-  }, [unresolvedConflicts]);
+  }, [unresolvedConflicts, language]);
 
   // ترتيب الأعمدة: لكل يوم تُضاف أعمدة الحصص (1..7) متتالية.
   const totalDataCols = days.length * periods.length;
@@ -1624,12 +1626,12 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                   <button
                     type="button"
                     onClick={() => onUndoAbsence?.(teacher)}
-                    title="إعادة المعلم إلى حالة الحضور لهذا اليوم"
-                    aria-label={`إلغاء غياب ${teacher.full_name}`}
+                    title={t('restorePresenceTooltip')}
+                    aria-label={t('cancelAbsenceForName', { name: teacher.full_name })}
                     className="inline-flex items-center gap-1 text-[10px] font-semibold rounded border border-emerald-400 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors px-1.5 py-0.5 cursor-pointer self-start"
                   >
                     <Undo2 className="h-3 w-3" aria-hidden="true" />
-                    <span>إلغاء الغياب</span>
+                    <span>{t('cancelAbsenceShortLabel')}</span>
                   </button>
                   {vacantTodayCount > 0 && onBulkCoverClick && (
                     <Button
@@ -1637,10 +1639,10 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                       size="sm"
                       onClick={() => onBulkCoverClick(teacher)}
                       className="w-full h-6 text-[10px] font-bold bg-gradient-to-r from-[#1C3D74] to-[#2BB5A0] hover:from-[#152d57] text-white shadow-sm px-2"
-                      title="فتح لوحة تغطية كل الحصص الشاغرة لهذا المعلم اليوم"
+                      title={t('openBulkCoverPanelTooltip')}
                     >
-                      <Layers className="h-3 w-3 ml-1" />
-                      تغطية ({vacantTodayCount})
+                      <Layers className="h-3 w-3 me-1" />
+                      {t('coverWithCount', { count: vacantTodayCount })}
                     </Button>
                   )}
                 </div>
