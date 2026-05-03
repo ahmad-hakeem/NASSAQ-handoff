@@ -291,6 +291,7 @@ export const TeacherScheduleGrid = ({
   lockedSessions = [],
   isRTL = true,
   displayedDays = null, // Days to display (from school settings or filter)
+  isLoading = false, // True while school settings / time slots are still being fetched
   onSessionMove,
   onSessionClick,
   onSessionEdit,
@@ -371,6 +372,44 @@ export const TeacherScheduleGrid = ({
 
   // Calculate total columns width
   const gridWidth = daysToShow.length * effectiveTimeSlots.length * 60;
+
+  // أثناء جلب إعدادات المدرسة (periods_per_day / period_duration ...) نعرض
+  // هيكل تحميل (skeleton) لطيف بدلاً من شبكة بأعمدة صفرية، لتفادي وميض
+  // الواجهة عند وصول البيانات لاحقاً.
+  if (isLoading && (!effectiveTimeSlots || effectiveTimeSlots.length === 0)) {
+    return (
+      <div
+        className="relative overflow-hidden rounded-xl border border-border bg-background"
+        data-testid="teacher-schedule-grid-loading"
+        role="status"
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <div className="flex items-center gap-2 p-3 border-b border-border bg-muted/30">
+          <Clock className="h-4 w-4 text-muted-foreground/60 animate-pulse" />
+          <span className="text-xs font-tajawal text-muted-foreground">
+            {t('loadingScheduleSettings') || 'جارٍ تحميل إعدادات الجدول…'}
+          </span>
+        </div>
+        <div className="p-4 space-y-3">
+          {[0, 1, 2, 3].map((row) => (
+            <div key={row} className="flex items-center gap-3">
+              <div className="h-8 w-44 rounded bg-muted animate-pulse" />
+              <div className="flex-1 grid grid-cols-6 gap-2">
+                {[0, 1, 2, 3, 4, 5].map((col) => (
+                  <div
+                    key={col}
+                    className="h-8 rounded bg-muted/70 animate-pulse"
+                    style={{ animationDelay: `${(row + col) * 60}ms` }}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   // عند غياب أي حصص بعد التحميل (لا توجد إعدادات / لم يصل الرد بعد)
   // نعرض حالة فارغة واضحة بدلاً من شبكة بدون أعمدة قد تربك المستخدم.
