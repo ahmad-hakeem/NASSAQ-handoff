@@ -122,6 +122,16 @@ class ClassManagementEngine:
         d["class_id"] = d["id"]
         d["tenant_id"] = d.get("school_id", "")
         d["name_ar"] = d.get("name", "")
+        # Include live student count so the detail view stays consistent with
+        # the cards in the list.
+        count_stmt = select(func.count(Student.id)).where(
+            and_(
+                Student.school_id == tenant_id,
+                Student.is_active == True,
+                Student.class_id == class_id,
+            )
+        )
+        d["student_count"] = int((await self.session.execute(count_stmt)).scalar() or 0)
         return d
 
     async def list_classes(
@@ -160,13 +170,37 @@ class ClassManagementEngine:
             .limit(limit)
         )
         result = await self.session.execute(stmt)
+        rows = result.scalars().all()
+
+        # Aggregate live student counts per class for the current page so the
+        # UI cards display "{student_count} / {capacity} طلاب" and the fill
+        # progress instead of always rendering 0. Counts only active students
+        # actually assigned to a class within this tenant.
+        class_ids = [r.id for r in rows]
+        counts_map: Dict[str, int] = {}
+        if class_ids:
+            count_stmt = (
+                select(Student.class_id, func.count(Student.id))
+                .where(
+                    and_(
+                        Student.school_id == tenant_id,
+                        Student.is_active == True,
+                        Student.class_id.in_(class_ids),
+                    )
+                )
+                .group_by(Student.class_id)
+            )
+            count_rows = await self.session.execute(count_stmt)
+            counts_map = {cid: int(c or 0) for cid, c in count_rows.all() if cid}
+
         classes = []
-        for row in result.scalars().all():
+        for row in rows:
             d = model_to_dict(row)
             d.pop("_id", None)
             d["class_id"] = d["id"]
             d["tenant_id"] = d.get("school_id", "")
             d["name_ar"] = d.get("name", "")
+            d["student_count"] = counts_map.get(row.id, 0)
             classes.append(d)
 
         return {"classes": classes, "total": total}

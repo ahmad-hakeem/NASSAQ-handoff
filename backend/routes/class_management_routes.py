@@ -147,7 +147,13 @@ def create_class_management_routes(db, get_current_user):
         tenant_id = await _resolve_tenant_id(db, current_user)
         if not tenant_id:
             raise HTTPException(status_code=400, detail="Tenant ID required")
-        return await engine.list_classes(tenant_id, grade_id, search, skip, limit)
+        return await engine.list_classes(
+            tenant_id,
+            grade_id=grade_id,
+            search=search,
+            skip=skip,
+            limit=limit,
+        )
     
     @router.get("/{class_id}")
     async def get_class(class_id: str, current_user: dict = Depends(get_current_user)):
