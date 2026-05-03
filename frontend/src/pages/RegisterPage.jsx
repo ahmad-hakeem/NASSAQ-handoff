@@ -735,6 +735,48 @@ export const RegisterPage = () => {
                             {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                           </button>
                         </div>
+                        {formData.password && (() => {
+                          const pwd = formData.password;
+                          let score = 0;
+                          if (pwd.length >= 8) score++;
+                          if (pwd.length >= 12) score++;
+                          if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score++;
+                          if (/\d/.test(pwd)) score++;
+                          if (/[^A-Za-z0-9]/.test(pwd)) score++;
+                          const level = score <= 1 ? 'weak' : score <= 3 ? 'medium' : 'strong';
+                          const labels = {
+                            weak: isRTL ? 'ضعيفة' : 'Weak',
+                            medium: isRTL ? 'متوسطة' : 'Medium',
+                            strong: isRTL ? 'قوية' : 'Strong',
+                          };
+                          const colors = {
+                            weak: 'bg-destructive',
+                            medium: 'bg-amber-500',
+                            strong: 'bg-emerald-500',
+                          };
+                          const widths = { weak: 'w-1/3', medium: 'w-2/3', strong: 'w-full' };
+                          const textColors = {
+                            weak: 'text-destructive',
+                            medium: 'text-amber-600',
+                            strong: 'text-emerald-600',
+                          };
+                          return (
+                            <div className="space-y-1" data-testid="password-strength">
+                              <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full ${colors[level]} ${widths[level]} transition-all duration-300`}
+                                  data-testid="password-strength-bar"
+                                />
+                              </div>
+                              <p
+                                className={`text-xs font-tajawal ${textColors[level]}`}
+                                data-testid="password-strength-label"
+                              >
+                                {isRTL ? `قوة كلمة المرور: ${labels[level]}` : `Password strength: ${labels[level]}`}
+                              </p>
+                            </div>
+                          );
+                        })()}
                         {errors.password && (
                           <p className="text-destructive text-xs font-tajawal">{errors.password}</p>
                         )}
