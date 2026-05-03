@@ -6,7 +6,7 @@ import { useNassaqAlert } from '../ui/NassaqAlertDialog';
  * This component displays the schedule in a grid format where:
  * - Rows = Teachers (الصفوف = المعلمون)
  * - Columns = Days of the week (الأعمدة الرئيسية = أيام الدراسة)
- * - Sub-columns = 7 periods per day (الأعمدة الفرعية = 7 حصص)
+ * - Sub-columns = N periods per day (تأتي ديناميكياً من إعدادات المدرسة، بلا قيمة مكوّدة)
  * 
  * Features:
  * - Multi-level header (Days → Periods)
