@@ -162,6 +162,37 @@ async def create_notification_internal(
         for k, v in extra_data.items():
             notification_doc[k] = v
     await gd_insert(db.session, "notifications", notification_doc)
+
+    # Real-time push so the recipient's red badge updates immediately
+    # without a page refresh. Wrapped in try/except: a transient WS issue
+    # must NOT roll back the persisted notification — the row is the
+    # source of truth, the socket is just a nudge. Any connected tab(s)
+    # for this user receive a ``new_notification`` event carrying enough
+    # of the payload to render an inline preview before the next poll.
+    try:
+        from routes.websocket_routes import get_connection_manager
+        ws_manager = get_connection_manager()
+        if ws_manager.is_user_online(recipient_id):
+            await ws_manager.send_personal_message({
+                "type": "new_notification",
+                "notification_id": notification_id,
+                "title": title,
+                "title_en": title_en,
+                "message": message,
+                "message_en": message_en,
+                "notification_type": notification_type,
+                "priority": priority,
+                "action_url": action_url,
+                "related_entity": related_entity,
+                "related_entity_id": related_entity_id,
+                "created_at": notification_doc["created_at"].isoformat(),
+            }, recipient_id)
+    except Exception as ws_err:  # noqa: BLE001 — never fail the write on a push glitch
+        logger.warning(
+            "WS push failed for notification %s → user %s: %s",
+            notification_id, recipient_id, ws_err,
+        )
+
     return notification_id
 
 # Notification APIs
