@@ -48,6 +48,9 @@ const statusConfig = {
     color: 'bg-green-500',
     bgColor: 'bg-green-100 dark:bg-green-900/30',
     textColor: 'text-green-700 dark:text-green-400',
+    hoverClass:
+      'hover:bg-green-100 hover:text-green-600 hover:border-green-600 focus-visible:ring-green-500',
+    selectedHoverClass: 'hover:bg-green-500',
   },
   absent: {
     label: { ar: 'غائب', en: 'Absent' },
@@ -55,6 +58,9 @@ const statusConfig = {
     color: 'bg-red-500',
     bgColor: 'bg-red-100 dark:bg-red-900/30',
     textColor: 'text-red-700 dark:text-red-400',
+    hoverClass:
+      'hover:bg-red-100 hover:text-red-600 hover:border-red-600 focus-visible:ring-red-500',
+    selectedHoverClass: 'hover:bg-red-500',
   },
   late: {
     label: { ar: 'متأخر', en: 'Late' },
@@ -62,6 +68,9 @@ const statusConfig = {
     color: 'bg-yellow-500',
     bgColor: 'bg-yellow-100 dark:bg-yellow-900/30',
     textColor: 'text-yellow-700 dark:text-yellow-400',
+    hoverClass:
+      'hover:bg-yellow-100 hover:text-yellow-600 hover:border-yellow-600 focus-visible:ring-yellow-500',
+    selectedHoverClass: 'hover:bg-yellow-500',
     hidden: true,
   },
   excused: {
@@ -70,6 +79,9 @@ const statusConfig = {
     color: 'bg-blue-500',
     bgColor: 'bg-blue-100 dark:bg-blue-900/30',
     textColor: 'text-blue-700 dark:text-blue-400',
+    hoverClass:
+      'hover:bg-amber-100 hover:text-amber-600 hover:border-amber-600 focus-visible:ring-amber-500',
+    selectedHoverClass: 'hover:bg-blue-500',
   },
 };
 
@@ -393,7 +405,11 @@ export const TeacherAttendancePage = () => {
                     key={status}
                     variant={isSelected ? 'default' : 'outline'}
                     size="sm"
-                    className={`rounded-xl ${isSelected ? config.color : ''}`}
+                    className={`rounded-xl border border-transparent transition-colors ${
+                      isSelected
+                        ? `${config.color} text-white shadow-sm ${config.selectedHoverClass} hover:opacity-90`
+                        : `bg-transparent text-muted-foreground ${config.hoverClass} hover:shadow-sm`
+                    }`}
                     onClick={() => handleStatusChange(member.id, status)}
                     data-testid={`status-btn-${status}-${member.id}`}
                   >
@@ -486,7 +502,7 @@ export const TeacherAttendancePage = () => {
           <Button
             variant="ghost"
             size="sm"
-            className="w-full mt-2 text-xs"
+            className="w-full mt-2 text-xs border border-transparent transition-colors hover:bg-blue-100 hover:text-blue-600 hover:border-blue-600 hover:shadow-sm focus-visible:ring-blue-500"
             onClick={() => {
               setNoteText(attendanceRecords[member.id]?.notes || '');
               setNotesDialog({ open: true, subjectId: member.id });
