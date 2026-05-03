@@ -62,17 +62,27 @@ export const TimeSlotsPage = () => {
   const [selectedSchool, setSelectedSchool] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [seeding, setSeeding] = useState(false);
-  
+  const [slotDefaults, setSlotDefaults] = useState(null);
+  const [defaultsLoading, setDefaultsLoading] = useState(false);
+
   const { nassaqError, nassaqWarning, nassaqConfirm } = useNassaqAlert();
   const [newSlot, setNewSlot] = useState({
     name: '',
     name_en: '',
-    start_time: '07:00',
-    end_time: '07:45',
+    start_time: '',
+    end_time: '',
     slot_number: 1,
-    duration_minutes: 45,
+    duration_minutes: null,
     is_break: false,
   });
+
+  const addMinutesToTime = (time, minutes) => {
+    const [h, m] = (time || '07:00').split(':').map(Number);
+    const total = (h * 60 + m + minutes) % (24 * 60);
+    const hh = String(Math.floor(total / 60)).padStart(2, '0');
+    const mm = String(total % 60).padStart(2, '0');
+    return `${hh}:${mm}`;
+  };
 
   const isSchoolLevel = user?.role && !user.role.startsWith('platform_');
   const userSchoolId = user?.tenant_id;
@@ -118,9 +128,45 @@ export const TimeSlotsPage = () => {
     fetchSchools();
   }, []);
 
+  const fetchSlotDefaults = async (schoolId) => {
+    if (!schoolId) return;
+    setDefaultsLoading(true);
+    try {
+      const res = await api.get('/school/settings', {
+        headers: { 'X-School-Context': schoolId },
+      });
+      const s = res.data || {};
+      const start = s.school_day_start || s.dayStart || s.start_time || '07:00';
+      const duration = parseInt(
+        s.period_duration_minutes ?? s.periodDuration ?? s.period_duration ?? 45,
+        10,
+      ) || 45;
+      const defaults = {
+        start_time: start,
+        end_time: addMinutesToTime(start, duration),
+        duration_minutes: duration,
+      };
+      setSlotDefaults(defaults);
+      setNewSlot(prev => ({ ...prev, ...defaults }));
+    } catch (error) {
+      console.error('Failed to fetch school settings for slot defaults:', error);
+      const fallback = {
+        start_time: '07:00',
+        end_time: addMinutesToTime('07:00', 45),
+        duration_minutes: 45,
+      };
+      setSlotDefaults(fallback);
+      setNewSlot(prev => ({ ...prev, ...fallback }));
+      toast.warning(t('failedToLoadSlotDefaults') || 'Could not load default slot times from school settings. Using fallback values.');
+    } finally {
+      setDefaultsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (selectedSchool) {
       fetchTimeSlots();
+      fetchSlotDefaults(selectedSchool);
     }
   }, [selectedSchool]);
 
@@ -141,10 +187,10 @@ export const TimeSlotsPage = () => {
       setNewSlot({
         name: '',
         name_en: '',
-        start_time: '07:00',
-        end_time: '07:45',
+        start_time: slotDefaults?.start_time ?? '',
+        end_time: slotDefaults?.end_time ?? '',
         slot_number: timeSlots.length + 1,
-        duration_minutes: 45,
+        duration_minutes: slotDefaults?.duration_minutes ?? null,
         is_break: false,
       });
       fetchTimeSlots();
@@ -271,8 +317,16 @@ export const TimeSlotsPage = () => {
               
               <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-xl" data-testid="add-slot-btn">
-                    <Plus className="h-5 w-5 me-2" />
+                  <Button
+                    className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-xl"
+                    data-testid="add-slot-btn"
+                    disabled={!slotDefaults || defaultsLoading}
+                  >
+                    {defaultsLoading ? (
+                      <Loader2 className="h-5 w-5 animate-spin me-2" />
+                    ) : (
+                      <Plus className="h-5 w-5 me-2" />
+                    )}
                     {t('addTimeSlot')}
                   </Button>
                 </DialogTrigger>
