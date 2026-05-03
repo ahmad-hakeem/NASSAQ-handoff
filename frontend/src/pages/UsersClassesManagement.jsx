@@ -609,7 +609,7 @@ const PermanentHakimWidget = ({ insights, isRTL, onAction, stats }) => {
     const msgs = [];
     if (hasInsights) {
       const highCount = insights.filter(i => i.severity === 'high').length;
-      if (highCount > 0) msgs.push(isRTL ? `لدي ${highCount} تنبيهات مهمة تحتاج انتباهك!` : `I have ${highCount} critical alerts for you!`);
+      if (highCount > 0) msgs.push(t('criticalAlertsMsg', { count: highCount }));
       insights.forEach(i => {
         if (i.severity === 'high' || i.severity === 'medium') msgs.push(i.message);
       });
@@ -618,7 +618,7 @@ const PermanentHakimWidget = ({ insights, isRTL, onAction, stats }) => {
       msgs.push(t('everythingLooksGreatWellDone'));
     }
     if (stats) {
-      msgs.push(isRTL ? `لديك ${stats.totalStudents} طالب و ${stats.totalTeachers} معلم` : `You have ${stats.totalStudents} students and ${stats.totalTeachers} teachers`);
+      msgs.push(t('studentsTeachersStatusMsg', { students: stats.totalStudents, teachers: stats.totalTeachers }));
     }
     return msgs;
   }, [insights, hasInsights, isRTL, stats]);
@@ -648,7 +648,7 @@ const PermanentHakimWidget = ({ insights, isRTL, onAction, stats }) => {
               </div>
               <div>
                 <h4 className="font-bold text-sm">{t('hakimAnalysis')}</h4>
-                <p className="text-[10px] text-white/70">{isRTL ? `${insights.length} ملاحظة تحتاج مراجعة` : `${insights.length} items need review`}</p>
+                <p className="text-[10px] text-white/70">{t('insightsNeedReview', { count: insights.length })}</p>
               </div>
             </div>
             <Button variant="ghost" size="icon" className="h-6 w-6 text-white/70 hover:text-white hover:bg-white/10" onClick={() => setPanelOpen(false)}>
@@ -697,7 +697,7 @@ const PermanentHakimWidget = ({ insights, isRTL, onAction, stats }) => {
             </p>
             {hasInsights && (
               <button onClick={() => setPanelOpen(true)} className="text-[10px] text-violet-600 dark:text-violet-400 font-semibold mt-1 hover:underline block">
-                {isRTL ? `عرض ${insights.length} ملاحظات ←` : `View ${insights.length} insights →`}
+                {t('viewInsightsArrow', { count: insights.length })}
               </button>
             )}
           </div>
@@ -856,42 +856,42 @@ export default function UsersClassesManagement() {
     const ins = [];
     if (studentsNoParent.length > 0) {
       ins.push({
-        message: isRTL ? `${studentsNoParent.length} طالب بدون ولي أمر مسجّل` : `${studentsNoParent.length} students have no registered parent`,
+        message: t('studentsNoParentMsg', { count: studentsNoParent.length }),
         suggestion: t('addParentInfoToEnableFamilyCommunication'),
         severity: 'high', action: 'show_students_no_parent', data: studentsNoParent
       });
     }
     if (studentsNoClass.length > 0) {
       ins.push({
-        message: isRTL ? `${studentsNoClass.length} طالب لم يتم إسنادهم إلى أي فصل` : `${studentsNoClass.length} students not assigned to any class`,
+        message: t('studentsNoClassMsg', { count: studentsNoClass.length }),
         suggestion: t('assignClassesToEnsureScheduleWorksProperly'),
         severity: 'high', action: 'show_students_no_class', data: studentsNoClass
       });
     }
     if (teachersNoSubject.length > 0) {
       ins.push({
-        message: isRTL ? `${teachersNoSubject.length} معلم بدون مادة مُسندة` : `${teachersNoSubject.length} teachers have no subject assigned`,
+        message: t('teachersNoSubjectMsg', { count: teachersNoSubject.length }),
         suggestion: t('assignSubjectsToEnableTimetableGeneration'),
         severity: 'medium', action: 'show_teachers_no_subject', data: teachersNoSubject
       });
     }
     if (accountsNoEmail.length > 0) {
       ins.push({
-        message: isRTL ? `${accountsNoEmail.length} حساب بدون بريد إلكتروني` : `${accountsNoEmail.length} accounts missing email`,
+        message: t('accountsNoEmailMsg', { count: accountsNoEmail.length }),
         suggestion: t('emailIsNeededForLoginAndNotifications'),
         severity: 'low', action: 'show_no_email', data: accountsNoEmail
       });
     }
     if (suspendedStudents.length > 0) {
       ins.push({
-        message: isRTL ? `${suspendedStudents.length} حساب طالب معلّق حالياً` : `${suspendedStudents.length} student accounts suspended`,
+        message: t('suspendedStudentsMsg', { count: suspendedStudents.length }),
         suggestion: t('reviewSuspendedAccountsAndReactivateOrRemove'),
         severity: 'medium', action: 'show_suspended', data: suspendedStudents
       });
     }
     if (overCapClasses.length > 0) {
       ins.push({
-        message: isRTL ? `${overCapClasses.length} فصل تجاوز السعة` : `${overCapClasses.length} classes over capacity`,
+        message: t('overCapClassesMsg', { count: overCapClasses.length }),
         suggestion: t('redistributeStudentsOrIncreaseClassCapacity'),
         severity: 'high', action: 'show_over_capacity', data: overCapClasses
       });
@@ -1048,9 +1048,7 @@ export default function UsersClassesManagement() {
 
   const handleDelete = (item, type) => {
     const typeLabels = { student: t('studentLower'), teacher: t('teacherLower'), parent: t('parentLower'), class: t('classLower') };
-    const msg = isRTL
-      ? `هل أنت متأكد من حذف ${typeLabels[type]}؟ سيتم حذف جميع البيانات المرتبطة نهائياً.`
-      : `Are you sure you want to delete this ${type}? All related data will be permanently removed.`;
+    const msg = t('confirmDeleteEntity', { label: typeLabels[type] });
     nassaqConfirm(msg, async () => {
       try {
         const endpoints = { student: `/students/${item.id}`, teacher: `/teachers/${item.id}`, parent: `/parents/${item.id}`, class: `/classes/${item.id}` };
@@ -1105,7 +1103,7 @@ export default function UsersClassesManagement() {
           const genRes = await api.post('/principal/generate-password');
           const tempPass = genRes.data.password;
           await api.put(`/principal/${entityType}/${entityId}/credentials`, { new_password: tempPass });
-          toast.success(isRTL ? `تم إعادة تعيين كلمة المرور إلى: ${tempPass}` : `Password reset to: ${tempPass}`);
+          toast.success(t('passwordResetTo', { pass: tempPass }));
           break;
         }
         case 'suspend':
@@ -1134,7 +1132,7 @@ export default function UsersClassesManagement() {
       if (isImpersonating && schoolContext?.school_id) headers['X-School-Context'] = schoolContext.school_id;
       const res = await api.post('/students/transfer-class', { student_id: studentId, target_class_id: targetClassId }, { headers });
       if (res.data?.success) {
-        toast.success(isRTL ? `تم نقل ${studentName} إلى ${className}` : `${studentName} transferred to ${className}`);
+        toast.success(t('transferredTo', { student: studentName, className }));
         setStudents(prev => prev.map(s => s.id === studentId ? { ...s, class_id: targetClassId, class_name: className } : s));
         setClasses(prev => prev.map(c => {
           if (c.id === targetClassId) {
@@ -1161,27 +1159,27 @@ export default function UsersClassesManagement() {
     switch (action) {
       case 'show_students_no_parent':
         setActiveTab('students'); setSearchQuery(''); setActiveFilter('noParent');
-        toast.info(isRTL ? `عرض ${data.length} طالب بدون ولي أمر — يحتاجون لتعديل بياناتهم` : `Showing ${data.length} students without parent — need data update`);
+        toast.info(t('showingNoParent', { count: data.length }));
         break;
       case 'show_students_no_class':
         setActiveTab('students'); setSearchQuery(''); setActiveFilter('noClass');
-        toast.info(isRTL ? `عرض ${data.length} طالب بدون فصل` : `Showing ${data.length} students without class`);
+        toast.info(t('showingNoClass', { count: data.length }));
         break;
       case 'show_teachers_no_subject':
         setActiveTab('teachers'); setSearchQuery(''); setActiveFilter('noSubject');
-        toast.info(isRTL ? `عرض ${data.length} معلم بدون مادة` : `Showing ${data.length} teachers without subject`);
+        toast.info(t('showingNoSubject', { count: data.length }));
         break;
       case 'show_no_email':
         setActiveTab('students'); setSearchQuery(''); setActiveFilter('noEmail');
-        toast.info(isRTL ? `${data.length} حساب بدون بريد إلكتروني` : `${data.length} accounts without email`);
+        toast.info(t('showingNoEmail', { count: data.length }));
         break;
       case 'show_suspended':
         setActiveTab('students'); setSearchQuery(''); setActiveFilter('suspended');
-        toast.info(isRTL ? `عرض ${data.length} حساب معلق` : `Showing ${data.length} suspended accounts`);
+        toast.info(t('showingSuspended', { count: data.length }));
         break;
       case 'show_over_capacity':
         setActiveTab('classes'); setSearchQuery(''); setActiveFilter('overCapacity');
-        toast.info(isRTL ? `عرض ${data.length} فصل تجاوز السعة` : `Showing ${data.length} over-capacity classes`);
+        toast.info(t('showingOverCap', { count: data.length }));
         break;
       default: break;
     }
@@ -1225,7 +1223,7 @@ export default function UsersClassesManagement() {
       }
       await api.put(ep, updateData);
       const entityLabel = selectedItemType === 'student' ? (t('studentLower')) : selectedItemType === 'teacher' ? (t('teacherLower')) : (t('classLower'));
-      toast.success(isRTL ? `تم حفظ بيانات ${entityLabel} في قاعدة البيانات بنجاح` : `${entityLabel} data saved to database successfully`);
+      toast.success(t('entitySaved', { entity: entityLabel }));
       setEditDialogOpen(false);
       setSelectedItem(null);
       fetchAllData();
@@ -1257,7 +1255,7 @@ export default function UsersClassesManagement() {
       const link = document.createElement('a');
       link.href = url;
       const disposition = response.headers['content-disposition'];
-      let filename = type === 'students' ? 'قالب_استيراد_الطلاب.xlsx' : 'قالب_استيراد_المعلمين.xlsx';
+      let filename = type === 'students' ? t('studentsTemplateName') : t('teachersTemplateName');
       if (disposition) {
         try {
           const starMatch = disposition.match(/filename\*=(?:UTF-8''|utf-8'')([^\s;]+)/i);
@@ -1300,8 +1298,8 @@ export default function UsersClassesManagement() {
       formData.append('file', selectedFile);
       const response = await api.post(`/bulk/import/${importType}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       setImportResult(response.data);
-      if (response.data.success) { toast.success(isRTL ? `تم استيراد ${response.data.imported} سجل` : `Imported ${response.data.imported} records`); fetchAllData(); }
-      else nassaqWarning(isRTL ? `تم استيراد ${response.data.imported} من ${response.data.total_rows}` : `Imported ${response.data.imported} of ${response.data.total_rows}`);
+      if (response.data.success) { toast.success(t('importedNRecords', { n: response.data.imported })); fetchAllData(); }
+      else nassaqWarning(t('importedOfTotal', { imported: response.data.imported, total: response.data.total_rows }));
     } catch (error) { nassaqError(error.response?.data?.detail || (t('importFailed'))); }
     finally { setImporting(false); }
   };

@@ -28,6 +28,7 @@ import QuickAIOperationsPanel from '../components/ai/QuickAIOperationsPanel';
 const HAKIM_AVATAR = '/hakim-poses/analyzing-data.png';
 
 const AdminAnalyticsSummary = ({ isRTL, navigate }) => {
+  const { t } = useTranslation();
   const { api } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -73,10 +74,10 @@ const AdminAnalyticsSummary = ({ isRTL, navigate }) => {
   if (!data) return null;
 
   const items = [
-    { label: isRTL ? 'الحضور' : 'Attendance', value: `${data.attendanceRate}%`, icon: UserCheck, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30' },
-    { label: isRTL ? 'المعدل' : 'Avg Grade', value: data.avgGrade || '-', icon: Target, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
-    { label: isRTL ? 'سلوك إيجابي' : 'Positive', value: data.positiveBehavior, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
-    { label: isRTL ? 'سلوك سلبي' : 'Negative', value: data.negativeBehavior, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30' },
+    { label: t('attendanceShort'), value: `${data.attendanceRate}%`, icon: UserCheck, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30' },
+    { label: t('avgGradeShort'), value: data.avgGrade || '-', icon: Target, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
+    { label: t('positiveShort'), value: data.positiveBehavior, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+    { label: t('negativeShort'), value: data.negativeBehavior, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30' },
   ];
 
   return (
@@ -87,11 +88,11 @@ const AdminAnalyticsSummary = ({ isRTL, navigate }) => {
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-turquoise to-teal-600 flex items-center justify-center">
               <BarChart3 className="h-4.5 w-4.5 text-white" />
             </div>
-            {isRTL ? 'ملخص تحليلات الرصد' : 'Monitoring Analytics Summary'}
+            {t('monitoringAnalyticsSummary')}
           </CardTitle>
           <button onClick={() => navigate('/principal/ai-insights')}
             className="flex items-center gap-1 text-xs font-cairo font-bold text-brand-turquoise hover:text-brand-purple transition-colors">
-            {isRTL ? 'رؤى الذكاء' : 'AI Insights'}
+            {t('aiInsightsShort')}
             {isRTL ? <ChevronLeft className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           </button>
         </div>
@@ -217,20 +218,20 @@ export const AdminDashboard = () => {
   const generateHakimInsights = (cc, schools) => {
     const insights = [];
     if (cc?.pending_requests > 0) {
-      insights.push({ type: 'warning', text: isRTL ? `يوجد ${cc.pending_requests} طلب تسجيل معلق يحتاج مراجعة` : `${cc.pending_requests} pending registration requests need review` });
+      insights.push({ type: 'warning', text: t('pendingRequestsInsight', { count: cc.pending_requests }) });
     }
     const incompleteSchools = (schools || []).filter(s => s.setup_score < 100);
     if (incompleteSchools.length > 0) {
-      insights.push({ type: 'info', text: isRTL ? `${incompleteSchools.length} مدارس لم تكمل إعداداتها بعد` : `${incompleteSchools.length} schools haven't completed setup` });
+      insights.push({ type: 'info', text: t('incompleteSchoolsInsight', { count: incompleteSchools.length }) });
     }
     if (cc?.student_attendance_rate > 0 && cc.student_attendance_rate < 85) {
-      insights.push({ type: 'alert', text: isRTL ? `نسبة حضور الطلاب ${cc.student_attendance_rate}% أقل من المتوسط المطلوب` : `Student attendance ${cc.student_attendance_rate}% below target` });
+      insights.push({ type: 'alert', text: t('lowAttendanceInsight', { rate: cc.student_attendance_rate }) });
     }
     if (cc?.active_sessions_now > 0) {
-      insights.push({ type: 'success', text: isRTL ? `${cc.active_sessions_now} حصة جارية الآن على مستوى المنصة` : `${cc.active_sessions_now} sessions active now across platform` });
+      insights.push({ type: 'success', text: t('activeSessionsInsight', { count: cc.active_sessions_now }) });
     }
     if (cc?.active_users_today > 0) {
-      insights.push({ type: 'info', text: isRTL ? `${cc.active_users_today} مستخدم نشط اليوم` : `${cc.active_users_today} active users today` });
+      insights.push({ type: 'info', text: t('activeUsersInsight', { count: cc.active_users_today }) });
     }
     if (insights.length === 0) {
       insights.push({ type: 'success', text: t('systemRunningNormallyNoAlerts') });
@@ -258,16 +259,16 @@ export const AdminDashboard = () => {
   const s = stats || {};
 
   const primaryKPIs = [
-    { icon: School, iconColor: 'bg-brand-navy', title: t('schools'), value: s.registered_schools || 0, subtitle: isRTL ? `${s.active_schools || 0} نشطة` : `${s.active_schools || 0} active`, onClick: () => navigate('/admin/schools') },
-    { icon: GraduationCap, iconColor: 'bg-blue-600', title: isRTL ? 'إجمالي الطلاب' : 'Students', value: (s.registered_students || 0).toLocaleString(), subtitle: isRTL ? `${s.students_present_today || 0} حاضر اليوم` : `${s.students_present_today || 0} present today`, onClick: () => navigate('/admin/schools') },
-    { icon: UserCheck, iconColor: 'bg-brand-purple', title: isRTL ? 'إجمالي المعلمين' : 'Teachers', value: s.teachers_in_schools || 0, subtitle: isRTL ? `${s.teachers_present_today || 0} حاضر اليوم` : `${s.teachers_present_today || 0} present today`, onClick: () => navigate('/admin/users') },
+    { icon: School, iconColor: 'bg-brand-navy', title: t('schools'), value: s.registered_schools || 0, subtitle: `${s.active_schools || 0} ${t('activeSuffix')}`, onClick: () => navigate('/admin/schools') },
+    { icon: GraduationCap, iconColor: 'bg-blue-600', title: t('totalStudentsLabel'), value: (s.registered_students || 0).toLocaleString(), subtitle: `${s.students_present_today || 0} ${t('presentToday')}`, onClick: () => navigate('/admin/schools') },
+    { icon: UserCheck, iconColor: 'bg-brand-purple', title: t('totalTeachersLabel'), value: s.teachers_in_schools || 0, subtitle: `${s.teachers_present_today || 0} ${t('presentToday')}`, onClick: () => navigate('/admin/users') },
     { icon: Users, iconColor: 'bg-emerald-600', title: t('parents'), value: s.total_parents || 0, onClick: () => navigate('/admin/users') },
     { icon: Layers, iconColor: 'bg-indigo-600', title: t('classes'), value: s.total_classes || 0, onClick: () => navigate('/admin/schools') },
     { icon: BookOpen, iconColor: 'bg-cyan-600', title: t('subjects3'), value: s.total_subjects || 0, onClick: () => navigate('/admin/schools') },
   ];
 
   const operationalKPIs = [
-    { icon: Play, iconColor: 'bg-emerald-600', title: t('sessionsToday'), value: s.sessions_today || 0, subtitle: isRTL ? `${s.active_sessions_now || 0} جارية الآن` : `${s.active_sessions_now || 0} active now` },
+    { icon: Play, iconColor: 'bg-emerald-600', title: t('sessionsToday'), value: s.sessions_today || 0, subtitle: `${s.active_sessions_now || 0} ${t('activeNowSuffix')}` },
     { icon: Activity, iconColor: 'bg-green-600', title: t('studentAttendance'), value: `${s.student_attendance_rate || 0}%`, trend: s.student_attendance_rate > 85 ? 'up' : 'down', trendValue: s.student_attendance_rate > 85 ? (t('good')) : (t('low')) },
     { icon: Activity, iconColor: 'bg-blue-600', title: t('teacherAttendance'), value: `${s.teacher_attendance_rate || 0}%`, trend: s.teacher_attendance_rate > 90 ? 'up' : 'down', trendValue: s.teacher_attendance_rate > 90 ? (t('excellent')) : (t('low')) },
     { icon: Bell, iconColor: 'bg-amber-600', title: t('notificationsToday'), value: s.notifications_sent_today || 0 },
@@ -303,14 +304,14 @@ export const AdminDashboard = () => {
 
   const quickActions = [
     { icon: Building2, label: t('addSchool'), action: () => setShowAddSchoolWizard(true), color: 'bg-brand-navy hover:bg-brand-navy/90' },
-    { icon: Users, label: isRTL ? 'إدارة المستخدمين' : 'Manage Users', action: () => navigate('/admin/users'), color: 'bg-brand-purple hover:bg-brand-purple/90' },
+    { icon: Users, label: t('manageUsers'), action: () => navigate('/admin/users'), color: 'bg-brand-purple hover:bg-brand-purple/90' },
     { icon: BarChart3, label: t('aiInsights') || 'AI Insights', action: () => navigate('/principal/ai-insights'), color: 'bg-brand-turquoise hover:bg-brand-turquoise/90' },
     { icon: Settings, label: t('settings'), action: () => navigate('/settings'), color: 'bg-slate-700 hover:bg-slate-600' },
   ];
 
   return (
     <Sidebar>
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50/50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50/50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950" dir={isRTL ? 'rtl' : 'ltr'} data-i18n-wave1>
         <div className="max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
 
           {/* Hero Section */}
@@ -324,7 +325,7 @@ export const AdminDashboard = () => {
                   </div>
                   <div>
                     <h1 className="text-2xl sm:text-3xl font-bold font-cairo">
-                      {isRTL ? 'مركز القيادة' : 'Command Center'}
+                      {t('commandCenter')}
                     </h1>
                     <p className="text-white/70 text-sm font-tajawal">
                       {t('platformOverview')}
@@ -366,7 +367,7 @@ export const AdminDashboard = () => {
                 { label: t('schools2'), value: s.registered_schools || 0, icon: School },
                 { label: t('students'), value: (s.registered_students || 0).toLocaleString(), icon: GraduationCap },
                 { label: t('teachers2'), value: s.teachers_in_schools || 0, icon: UserCheck },
-                { label: isRTL ? 'الحصص اليوم' : 'Sessions', value: s.sessions_today || 0, icon: Play },
+                { label: t('sessionsTodayShort'), value: s.sessions_today || 0, icon: Play },
               ].map((item, i) => (
                 <div key={i} className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
                   <item.icon className="h-5 w-5 mx-auto mb-1 text-brand-turquoise" />
@@ -510,7 +511,7 @@ export const AdminDashboard = () => {
                   </div>
                 ) : (
                   <div className="h-[180px] flex items-center justify-center text-slate-400">
-                    {isRTL ? 'لا توجد بيانات' : 'No data'}
+                    {t('noData')}
                   </div>
                 )}
               </CardContent>
@@ -558,7 +559,7 @@ export const AdminDashboard = () => {
                   </ResponsiveContainer>
                 ) : (
                   <div className="h-[180px] flex items-center justify-center text-slate-400">
-                    {isRTL ? 'لا توجد بيانات' : 'No data'}
+                    {t('noData')}
                   </div>
                 )}
               </CardContent>
@@ -667,7 +668,7 @@ export const AdminDashboard = () => {
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
                   <p className="text-xs text-slate-400 flex items-center gap-1.5">
                     <Clock className="h-3 w-3" />
-                    {isRTL ? 'آخر تحديث:' : 'Last updated:'} {new Date(s.last_updated || Date.now()).toLocaleTimeString(isRTL ? 'ar-SA' : 'en-US')}
+                    {t('lastUpdatedColon')} {new Date(s.last_updated || Date.now()).toLocaleTimeString(isRTL ? 'ar-SA' : 'en-US')}
                   </p>
                 </div>
               </CardContent>

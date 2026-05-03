@@ -5,8 +5,11 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Coffee, UserX, DoorClosed, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, X, Loader2, Download, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 
 function BreakModal({ hook }) {
+  const { t } = useTranslation();
+  const { direction } = useTheme();
   const {
     showBreakModal, setShowBreakModal, editingBreak, handleSaveBreak,
   } = hook;
@@ -43,12 +46,12 @@ function BreakModal({ hook }) {
   if (!showBreakModal) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" dir="rtl">
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" dir={direction}>
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
         <div className="p-6 border-b">
           <h3 className="text-lg font-bold flex items-center gap-2">
             <Coffee className="h-5 w-5 text-[#1C3D74]" />
-            {editingBreak ? 'تعديل الفترة' : 'إضافة فترة جديدة'}
+            {editingBreak ? t('editPeriod') : t('addNewPeriod')}
           </h3>
         </div>
         <form onSubmit={(e) => {
@@ -65,46 +68,46 @@ function BreakModal({ hook }) {
           });
         }} className="p-6 space-y-4">
           <div>
-            <Label>اسم الفترة</Label>
-            <Input name="name" defaultValue={editingBreak?.name || ''} placeholder="مثال: الاستراحة الأولى" required className="mt-1" />
+            <Label>{t('periodNameLabel')}</Label>
+            <Input name="name" defaultValue={editingBreak?.name || ''} placeholder={t('periodNameExample')} required className="mt-1" />
           </div>
           <div>
-            <Label>نوع الفترة</Label>
+            <Label>{t('periodTypeLabel')}</Label>
             <Select value={breakType} onValueChange={setBreakType}>
               <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="break">استراحة</SelectItem>
-                <SelectItem value="prayer">صلاة</SelectItem>
-                <SelectItem value="other">أخرى</SelectItem>
+                <SelectItem value="break">{t('breakType')}</SelectItem>
+                <SelectItem value="prayer">{t('prayerType')}</SelectItem>
+                <SelectItem value="other">{t('otherType')}</SelectItem>
               </SelectContent>
             </Select>
             {breakType === 'other' && (
               <Input
                 value={customType}
                 onChange={(e) => setCustomType(e.target.value)}
-                placeholder="اكتب نوع الفترة..."
+                placeholder={t('writePeriodType')}
                 required
                 className="mt-2"
               />
             )}
           </div>
           <div>
-            <Label>اليوم الدراسي</Label>
+            <Label>{t('schoolDayLabel')}</Label>
             <Select value={selectedDay} onValueChange={setSelectedDay}>
               <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">جميع الأيام</SelectItem>
-                <SelectItem value="الأحد">الأحد</SelectItem>
-                <SelectItem value="الإثنين">الإثنين</SelectItem>
-                <SelectItem value="الثلاثاء">الثلاثاء</SelectItem>
-                <SelectItem value="الأربعاء">الأربعاء</SelectItem>
-                <SelectItem value="الخميس">الخميس</SelectItem>
+                <SelectItem value="all">{t('allDays')}</SelectItem>
+                <SelectItem value="الأحد">{t('sunday')}</SelectItem>
+                <SelectItem value="الإثنين">{t('monday')}</SelectItem>
+                <SelectItem value="الثلاثاء">{t('tuesday')}</SelectItem>
+                <SelectItem value="الأربعاء">{t('wednesday')}</SelectItem>
+                <SelectItem value="الخميس">{t('thursday')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label>بعد الحصة رقم</Label>
+              <Label>{t('afterPeriodNumber')}</Label>
               <Select name="afterPeriod" defaultValue={String(editingBreak?.afterPeriod || 2)}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -113,7 +116,7 @@ function BreakModal({ hook }) {
               </Select>
             </div>
             <div>
-              <Label>المدة (دقيقة)</Label>
+              <Label>{t('durationMinutes')}</Label>
               <Select value={durationMode === 'custom' ? 'custom' : presetDuration} onValueChange={(v) => {
                 if (v === 'custom') {
                   setDurationMode('custom');
@@ -124,8 +127,8 @@ function BreakModal({ hook }) {
               }}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {[5, 10, 15, 20, 25, 30].map(n => <SelectItem key={n} value={String(n)}>{n} دقيقة</SelectItem>)}
-                  <SelectItem value="custom">تخصيص</SelectItem>
+                  {[5, 10, 15, 20, 25, 30].map(n => <SelectItem key={n} value={String(n)}>{n} {t('minuteUnit')}</SelectItem>)}
+                  <SelectItem value="custom">{t('customizeDuration')}</SelectItem>
                 </SelectContent>
               </Select>
               {durationMode === 'custom' && (
@@ -135,7 +138,7 @@ function BreakModal({ hook }) {
                   max="120"
                   value={customDuration}
                   onChange={(e) => setCustomDuration(e.target.value)}
-                  placeholder="أدخل المدة بالدقائق"
+                  placeholder={t('enterDurationMinutes')}
                   required
                   className="mt-2"
                 />
@@ -143,8 +146,8 @@ function BreakModal({ hook }) {
             </div>
           </div>
           <div className="flex justify-end gap-3 pt-4">
-            <Button type="button" variant="outline" onClick={() => setShowBreakModal(false)}>إلغاء</Button>
-            <Button type="submit" className="bg-[#1C3D74]">{editingBreak ? 'تحديث' : 'إضافة'}</Button>
+            <Button type="button" variant="outline" onClick={() => setShowBreakModal(false)}>{t('cancel')}</Button>
+            <Button type="submit" className="bg-[#1C3D74]">{editingBreak ? t('updateBtn') : t('addBtn')}</Button>
           </div>
         </form>
       </div>
@@ -153,14 +156,16 @@ function BreakModal({ hook }) {
 }
 
 function NoorImportModal({ show, onClose, importType, api, onSuccess }) {
+  const { t } = useTranslation();
+  const { direction } = useTheme();
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState(null);
   const fileInputRef = useRef(null);
 
   const importTypeMap = {
-    noor_classes: { label: 'الفصول والشعب', endpoint: 'noor_classes', color: 'brand-navy' },
-    noor_assignments: { label: 'إسناد المعلمين والمواد', endpoint: 'noor_assignments', color: 'brand-purple' },
+    noor_classes: { label: t('noorClassesLabel'), endpoint: 'noor_classes', color: 'brand-navy' },
+    noor_assignments: { label: t('noorAssignmentsLabel'), endpoint: 'noor_assignments', color: 'brand-purple' },
   };
 
   const config = importTypeMap[importType] || importTypeMap.noor_classes;
@@ -179,7 +184,7 @@ function NoorImportModal({ show, onClose, importType, api, onSuccess }) {
       const validTypes = ['.xlsx', '.xls', '.csv'];
       const ext = selected.name.substring(selected.name.lastIndexOf('.')).toLowerCase();
       if (!validTypes.includes(ext)) {
-        toast.error('يرجى اختيار ملف Excel أو CSV');
+        toast.error(t('selectExcelOrCsv'));
         return;
       }
       setFile(selected);
@@ -198,11 +203,11 @@ function NoorImportModal({ show, onClose, importType, api, onSuccess }) {
       });
       setResult(res.data);
       if (res.data.imported > 0) {
-        toast.success(`تم استيراد ${res.data.imported} عنصر بنجاح`);
+        toast.success(t('imported_n_items', { n: res.data.imported }));
         if (onSuccess) onSuccess();
       }
     } catch (err) {
-      const detail = err.response?.data?.detail || 'حدث خطأ أثناء الاستيراد';
+      const detail = err.response?.data?.detail || t('errorDuringImport');
       toast.error(detail);
       setResult({ success: false, total_rows: 0, imported: 0, failed: 0, errors: [{ message: detail }], warnings: [] });
     } finally {
@@ -217,25 +222,25 @@ function NoorImportModal({ show, onClose, importType, api, onSuccess }) {
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `قالب_استيراد_نور_${config.label}.xlsx`);
+      link.setAttribute('download', `${t('noorTemplateFilePrefix')}_${config.label}.xlsx`);
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      toast.error('حدث خطأ في تحميل القالب');
+      toast.error(t('templateDownloadError'));
     }
   };
 
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" dir="rtl">
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" dir={direction}>
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
         <div className="p-6 border-b flex items-center justify-between">
           <h3 className="text-lg font-bold flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5 text-green-600" />
-            استيراد من نظام نور — {config.label}
+            {t('noorImportTitle')} — {config.label}
           </h3>
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onClose}>
             <X className="h-4 w-4" />
@@ -245,14 +250,13 @@ function NoorImportModal({ show, onClose, importType, api, onSuccess }) {
         <div className="p-6 space-y-4">
           <div className="p-3 bg-blue-50 rounded-xl border border-blue-200">
             <p className="text-xs text-blue-700">
-              قم بتصدير بيانات {config.label} من نظام نور بصيغة Excel أو CSV، ثم ارفع الملف هنا للاستيراد.
-              يمكنك تحميل قالب جاهز لمعرفة التنسيق المطلوب.
+              {t('noorImportInstructions', { label: config.label })}
             </p>
           </div>
 
           <Button variant="outline" size="sm" className="gap-2" onClick={handleDownloadTemplate}>
             <Download className="h-4 w-4" />
-            تحميل قالب الاستيراد
+            {t('downloadImportTemplate')}
           </Button>
 
           <div
@@ -277,8 +281,8 @@ function NoorImportModal({ show, onClose, importType, api, onSuccess }) {
             ) : (
               <div className="flex flex-col items-center gap-2">
                 <Upload className="h-10 w-10 text-slate-400" />
-                <p className="text-sm text-slate-600">اضغط لاختيار ملف أو اسحبه هنا</p>
-                <p className="text-xs text-slate-400">Excel (.xlsx, .xls) أو CSV</p>
+                <p className="text-sm text-slate-600">{t('clickOrDragFile')}</p>
+                <p className="text-xs text-slate-400">{t('excelOrCsvFormats')}</p>
               </div>
             )}
           </div>
@@ -291,27 +295,27 @@ function NoorImportModal({ show, onClose, importType, api, onSuccess }) {
                 ) : (
                   <AlertCircle className="h-5 w-5 text-red-600" />
                 )}
-                <span className="font-bold text-sm">{result.imported > 0 ? 'تم الاستيراد' : 'فشل الاستيراد'}</span>
+                <span className="font-bold text-sm">{result.imported > 0 ? t('importSuccessLabel') : t('importFailedLabel')}</span>
               </div>
               <div className="grid grid-cols-3 gap-2 text-center text-xs">
                 <div className="p-2 bg-white rounded-lg">
                   <p className="font-bold text-slate-700">{result.total_rows || 0}</p>
-                  <p className="text-slate-500">إجمالي الصفوف</p>
+                  <p className="text-slate-500">{t('totalRows')}</p>
                 </div>
                 <div className="p-2 bg-white rounded-lg">
                   <p className="font-bold text-green-700">{result.imported || 0}</p>
-                  <p className="text-green-600">تم الاستيراد</p>
+                  <p className="text-green-600">{t('importedRows')}</p>
                 </div>
                 <div className="p-2 bg-white rounded-lg">
                   <p className="font-bold text-red-700">{result.failed || 0}</p>
-                  <p className="text-red-600">فشل</p>
+                  <p className="text-red-600">{t('failedRows')}</p>
                 </div>
               </div>
               {result.errors?.length > 0 && (
                 <div className="mt-2 max-h-32 overflow-y-auto">
                   {result.errors.slice(0, 5).map((err, i) => (
                     <p key={i} className="text-xs text-red-600 mt-1">
-                      {err.row ? `صف ${err.row}: ` : ''}{err.field ? `${err.field} - ` : ''}{err.message}
+                      {err.row ? `${t('rowPrefix')} ${err.row}: ` : ''}{err.field ? `${err.field} - ` : ''}{err.message}
                     </p>
                   ))}
                 </div>
@@ -321,14 +325,14 @@ function NoorImportModal({ show, onClose, importType, api, onSuccess }) {
         </div>
 
         <div className="p-6 border-t flex justify-end gap-3">
-          <Button variant="outline" onClick={onClose}>إغلاق</Button>
+          <Button variant="outline" onClick={onClose}>{t('close')}</Button>
           <Button
             onClick={handleUpload}
             disabled={!file || uploading}
             className="bg-green-600 hover:bg-green-700 text-white gap-2"
           >
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {uploading ? 'جاري الاستيراد...' : 'بدء الاستيراد'}
+            {uploading ? t('importingNow') : t('startImport')}
           </Button>
         </div>
       </div>
@@ -337,6 +341,8 @@ function NoorImportModal({ show, onClose, importType, api, onSuccess }) {
 }
 
 export function SettingsModals({ hook }) {
+  const { t } = useTranslation();
+  const { direction } = useTheme();
   const {
     showUnavailabilityModal, setShowUnavailabilityModal, unavailabilityType,
     handleSaveUnavailability, teachers, classes,
@@ -357,10 +363,10 @@ export function SettingsModals({ hook }) {
   const getEntityName = () => {
     if (!selectedEntityId) return '';
     if (unavailabilityType === 'teacher') {
-      const t = teachers.find(t => t.id === selectedEntityId);
-      return t?.full_name || '';
+      const teach = teachers.find(t2 => t2.id === selectedEntityId);
+      return teach?.full_name || '';
     } else {
-      const c = classes.find(c => c.id === selectedEntityId);
+      const c = classes.find(c2 => c2.id === selectedEntityId);
       return c ? `${c.name} - ${c.section || ''}` : '';
     }
   };
@@ -378,12 +384,12 @@ export function SettingsModals({ hook }) {
       />
 
       {showUnavailabilityModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" dir="rtl">
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" dir={direction}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
             <div className="p-6 border-b">
               <h3 className="text-lg font-bold flex items-center gap-2">
                 {unavailabilityType === 'teacher' ? <UserX className="h-5 w-5 text-amber-600" /> : <DoorClosed className="h-5 w-5 text-red-600" />}
-                إضافة فترة عدم توفر {unavailabilityType === 'teacher' ? 'معلم' : 'فصل'}
+                {t('addUnavailabilityFor', { target: unavailabilityType === 'teacher' ? t('teacherWord') : t('classWord') })}
               </h3>
             </div>
             <form onSubmit={(e) => {
@@ -415,12 +421,12 @@ export function SettingsModals({ hook }) {
               }
             }} className="p-6 space-y-4">
               <div>
-                <Label>{unavailabilityType === 'teacher' ? 'اختر المعلم' : 'اختر الفصل'}</Label>
+                <Label>{unavailabilityType === 'teacher' ? t('selectTeacher') : t('selectClass')}</Label>
                 <Select value={selectedEntityId} onValueChange={setSelectedEntityId} required>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder={unavailabilityType === 'teacher' ? 'اختر معلم' : 'اختر فصل'} /></SelectTrigger>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder={unavailabilityType === 'teacher' ? t('selectTeacherPlaceholder') : t('selectClassPlaceholder')} /></SelectTrigger>
                   <SelectContent>
                     {unavailabilityType === 'teacher'
-                      ? teachers.map(t => <SelectItem key={t.id} value={t.id}>{t.full_name}</SelectItem>)
+                      ? teachers.map(tt => <SelectItem key={tt.id} value={tt.id}>{tt.full_name}</SelectItem>)
                       : classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.section}</SelectItem>)
                     }
                   </SelectContent>
@@ -428,7 +434,7 @@ export function SettingsModals({ hook }) {
               </div>
 
               <div>
-                <Label className="mb-2 block">نوع عدم التوفر</Label>
+                <Label className="mb-2 block">{t('unavailabilityType')}</Label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -440,8 +446,8 @@ export function SettingsModals({ hook }) {
                     }`}
                   >
                     <Calendar className="h-5 w-5 mx-auto mb-1" />
-                    <p className="text-xs font-bold">متكرر</p>
-                    <p className="text-[10px]">يوم + حصة</p>
+                    <p className="text-xs font-bold">{t('recurring')}</p>
+                    <p className="text-[10px]">{t('recurringHint')}</p>
                   </button>
                   <button
                     type="button"
@@ -453,8 +459,8 @@ export function SettingsModals({ hook }) {
                     }`}
                   >
                     <Calendar className="h-5 w-5 mx-auto mb-1" />
-                    <p className="text-xs font-bold">فترة طويلة</p>
-                    <p className="text-[10px]">من تاريخ - إلى تاريخ</p>
+                    <p className="text-xs font-bold">{t('longTerm')}</p>
+                    <p className="text-[10px]">{t('longTermHint')}</p>
                   </button>
                 </div>
               </div>
@@ -462,24 +468,24 @@ export function SettingsModals({ hook }) {
               {unavailMode === 'recurring' ? (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>اليوم</Label>
+                    <Label>{t('dayLabel')}</Label>
                     <Select name="day" required>
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="اختر اليوم" /></SelectTrigger>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder={t('selectDayPlaceholder')} /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="الأحد">الأحد</SelectItem>
-                        <SelectItem value="الإثنين">الإثنين</SelectItem>
-                        <SelectItem value="الثلاثاء">الثلاثاء</SelectItem>
-                        <SelectItem value="الأربعاء">الأربعاء</SelectItem>
-                        <SelectItem value="الخميس">الخميس</SelectItem>
+                        <SelectItem value="الأحد">{t('sunday')}</SelectItem>
+                        <SelectItem value="الإثنين">{t('monday')}</SelectItem>
+                        <SelectItem value="الثلاثاء">{t('tuesday')}</SelectItem>
+                        <SelectItem value="الأربعاء">{t('wednesday')}</SelectItem>
+                        <SelectItem value="الخميس">{t('thursday')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
-                    <Label>الحصة</Label>
+                    <Label>{t('periodLabel')}</Label>
                     <Select name="period" required>
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="اختر الحصة" /></SelectTrigger>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder={t('selectPeriodPlaceholder')} /></SelectTrigger>
                       <SelectContent>
-                        {[1,2,3,4,5,6,7].map(n => <SelectItem key={n} value={String(n)}>الحصة {n}</SelectItem>)}
+                        {[1,2,3,4,5,6,7].map(n => <SelectItem key={n} value={String(n)}>{t('periodPrefix')} {n}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -488,39 +494,39 @@ export function SettingsModals({ hook }) {
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label>تاريخ البداية</Label>
+                      <Label>{t('startDateLabel')}</Label>
                       <Input type="date" name="start_date" required className="mt-1" />
                     </div>
                     <div>
-                      <Label>تاريخ النهاية</Label>
+                      <Label>{t('endDateLabel')}</Label>
                       <Input type="date" name="end_date" required className="mt-1" />
                     </div>
                   </div>
                   <div>
-                    <Label>السبب (اختياري)</Label>
-                    <Input name="reason" placeholder="مثال: صيانة الفصل، إجازة..." className="mt-1" />
+                    <Label>{t('reasonOptional')}</Label>
+                    <Input name="reason" placeholder={t('reasonPlaceholder')} className="mt-1" />
                   </div>
                 </div>
               )}
 
               {unavailabilityType === 'class' && (
                 <div>
-                  <Label>الموقع البديل (اختياري)</Label>
+                  <Label>{t('alternativeLocationOptional')}</Label>
                   <Input
                     name="alternative_location"
-                    placeholder="نقل الطلاب إلى: المعمل / الساحة"
+                    placeholder={t('alternativeLocationPlaceholder')}
                     className="mt-1"
                     data-testid="input-alternative-location"
                   />
                   <p className="text-[11px] text-slate-500 mt-1">
-                    سيتم إشعار المعلم المسؤول عن الحصة وعرض الموقع البديل على الجدول الرئيسي.
+                    {t('alternativeLocationHelp')}
                   </p>
                 </div>
               )}
 
               <div className="flex justify-end gap-3 pt-4">
-                <Button type="button" variant="outline" onClick={() => setShowUnavailabilityModal(false)}>إلغاء</Button>
-                <Button type="submit" disabled={!selectedEntityId} className={unavailabilityType === 'teacher' ? 'bg-amber-600' : 'bg-red-600'}>إضافة</Button>
+                <Button type="button" variant="outline" onClick={() => setShowUnavailabilityModal(false)}>{t('cancel')}</Button>
+                <Button type="submit" disabled={!selectedEntityId} className={unavailabilityType === 'teacher' ? 'bg-amber-600' : 'bg-red-600'}>{t('addBtn')}</Button>
               </div>
             </form>
           </div>

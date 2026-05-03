@@ -24,8 +24,11 @@ import {
   DraggableSubjectItem,
   DroppableTeacherSubjectBox,
 } from './DndComponents';
+import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 
 export function DynamicSettingsContent({ hook, dynamicTabs }) {
+  const { t } = useTranslation();
+  const { isRTL, direction } = useTheme();
   const {
     activeTab, setActiveTab, saving, sensors,
     schoolInfo, teachers, classes, assignments,
@@ -84,14 +87,14 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                     <Building2 className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <CardTitle className="text-lg text-[#1C3D74]">البيانات الأساسية للمدرسة</CardTitle>
-                    <CardDescription>المعلومات الرسمية المعتمدة — تُحفظ في قاعدة البيانات فور الحفظ</CardDescription>
+                    <CardTitle className="text-lg text-[#1C3D74]">{t('schoolBasicData')}</CardTitle>
+                    <CardDescription>{t('schoolBasicDataDesc')}</CardDescription>
                   </div>
                 </div>
                 {schoolInfo.license_number && (
                   <Badge className="bg-slate-100 text-slate-600 border border-slate-300 gap-1 text-sm px-3 py-1">
                     <Shield className="h-3 w-3" />
-                    رمز المدرسة: {schoolInfo.license_number}
+                    {t('schoolCode')}: {schoolInfo.license_number}
                   </Badge>
                 )}
               </div>
@@ -101,14 +104,14 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                 <div className="space-y-2">
                   <Label className="font-semibold text-slate-700 flex items-center gap-1">
                     <Building2 className="h-3.5 w-3.5 text-[#1C3D74]" />
-                    اسم المدرسة بالعربية <span className="text-red-500">*</span>
+                    {t('schoolNameAr')} <span className="text-red-500">*</span>
                   </Label>
                   <Input
-                    dir="rtl"
+                    dir={direction}
                     className="h-11 border-slate-200 focus:border-[#1C3D74] text-right"
                     value={editedSchoolInfo.name_ar || ''}
                     onChange={e => setEditedSchoolInfo(p => ({ ...p, name_ar: e.target.value }))}
-                    placeholder="اسم المدرسة بالعربية"
+                    placeholder={t('schoolNameArPlaceholder')}
                     data-testid="school-name-ar-input"
                   />
                 </div>
@@ -116,27 +119,27 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="font-semibold text-slate-700">نوع المدرسة</Label>
+                  <Label className="font-semibold text-slate-700">{t('schoolTypeLabel')}</Label>
                   <Select value={editedSchoolInfo.type || ''} onValueChange={v => setEditedSchoolInfo(p => ({ ...p, type: v }))}>
-                    <SelectTrigger className="h-11 border-slate-200" data-testid="school-type-select"><SelectValue placeholder="اختر نوع المدرسة" /></SelectTrigger>
+                    <SelectTrigger className="h-11 border-slate-200" data-testid="school-type-select"><SelectValue placeholder={t('schoolTypePlaceholder')} /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="government">حكومية</SelectItem>
-                      <SelectItem value="private">أهلية</SelectItem>
-                      <SelectItem value="international">دولية</SelectItem>
-                      <SelectItem value="special">خاصة</SelectItem>
+                      <SelectItem value="government">{t('schoolTypeGovernment')}</SelectItem>
+                      <SelectItem value="private">{t('schoolTypePrivate')}</SelectItem>
+                      <SelectItem value="international">{t('schoolTypeInternational')}</SelectItem>
+                      <SelectItem value="special">{t('schoolTypeSpecial')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="font-semibold text-slate-700">المرحلة الدراسية</Label>
+                  <Label className="font-semibold text-slate-700">{t('schoolStageLabel')}</Label>
                   <Select value={editedSchoolInfo.stage || ''} onValueChange={v => setEditedSchoolInfo(p => ({ ...p, stage: v, educational_pathway: v === 'secondary_pathways' ? p.educational_pathway : '' }))}>
-                    <SelectTrigger className="h-11 border-slate-200" data-testid="school-stage-select"><SelectValue placeholder="اختر المرحلة" /></SelectTrigger>
+                    <SelectTrigger className="h-11 border-slate-200" data-testid="school-stage-select"><SelectValue placeholder={t('schoolStagePlaceholder')} /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="primary">ابتدائية</SelectItem>
-                      <SelectItem value="intermediate">متوسطة</SelectItem>
-                      <SelectItem value="secondary_general">ثانوية عامة</SelectItem>
-                      <SelectItem value="secondary_pathways">ثانوية مسارات</SelectItem>
-                      <SelectItem value="school_complex">مجمع مدارس</SelectItem>
+                      <SelectItem value="primary">{t('stagePrimary')}</SelectItem>
+                      <SelectItem value="intermediate">{t('stageIntermediate')}</SelectItem>
+                      <SelectItem value="secondary_general">{t('stageSecondaryGeneral')}</SelectItem>
+                      <SelectItem value="secondary_pathways">{t('stageSecondaryPathways')}</SelectItem>
+                      <SelectItem value="school_complex">{t('stageSchoolComplex')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -144,15 +147,15 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
 
               {editedSchoolInfo.stage === 'secondary_pathways' && (
                 <div className="space-y-2">
-                  <Label className="font-semibold text-slate-700 flex items-center gap-1"><GraduationCap className="h-3.5 w-3.5 text-[#1C3D74]" />المسار التعليمي</Label>
+                  <Label className="font-semibold text-slate-700 flex items-center gap-1"><GraduationCap className="h-3.5 w-3.5 text-[#1C3D74]" />{t('educationalPathway')}</Label>
                   <Select value={editedSchoolInfo.educational_pathway || ''} onValueChange={v => setEditedSchoolInfo(p => ({ ...p, educational_pathway: v }))}>
-                    <SelectTrigger className="h-11 border-slate-200" data-testid="school-pathway-select"><SelectValue placeholder="اختر المسار التعليمي" /></SelectTrigger>
+                    <SelectTrigger className="h-11 border-slate-200" data-testid="school-pathway-select"><SelectValue placeholder={t('educationalPathwayPlaceholder')} /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="general">المسار العام</SelectItem>
-                      <SelectItem value="cs_engineering">مسار علوم الحاسب والهندسة</SelectItem>
-                      <SelectItem value="health_life">مسار الصحة والحياة</SelectItem>
-                      <SelectItem value="business">مسار إدارة الأعمال</SelectItem>
-                      <SelectItem value="sharia">المسار الشرعي</SelectItem>
+                      <SelectItem value="general">{t('pathwayGeneral')}</SelectItem>
+                      <SelectItem value="cs_engineering">{t('pathwayCsEngineering')}</SelectItem>
+                      <SelectItem value="health_life">{t('pathwayHealthLife')}</SelectItem>
+                      <SelectItem value="business">{t('pathwayBusiness')}</SelectItem>
+                      <SelectItem value="sharia">{t('pathwaySharia')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -160,57 +163,57 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="font-semibold text-slate-700 flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-[#1C3D74]" />المدينة</Label>
-                  <Input dir="rtl" className="h-11 border-slate-200 focus:border-[#1C3D74] text-right" value={editedSchoolInfo.city || ''} onChange={e => setEditedSchoolInfo(p => ({ ...p, city: e.target.value }))} placeholder="المدينة" data-testid="school-city-input" />
+                  <Label className="font-semibold text-slate-700 flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-[#1C3D74]" />{t('cityLabel')}</Label>
+                  <Input dir={direction} className="h-11 border-slate-200 focus:border-[#1C3D74] text-right" value={editedSchoolInfo.city || ''} onChange={e => setEditedSchoolInfo(p => ({ ...p, city: e.target.value }))} placeholder={t('cityLabel')} data-testid="school-city-input" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="font-semibold text-slate-700 flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-[#1C3D74]" />المنطقة / المحافظة</Label>
-                  <Input dir="rtl" className="h-11 border-slate-200 focus:border-[#1C3D74] text-right" value={editedSchoolInfo.region || ''} onChange={e => setEditedSchoolInfo(p => ({ ...p, region: e.target.value }))} placeholder="المنطقة الإدارية" data-testid="school-region-input" />
+                  <Label className="font-semibold text-slate-700 flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-[#1C3D74]" />{t('regionGovernorate')}</Label>
+                  <Input dir={direction} className="h-11 border-slate-200 focus:border-[#1C3D74] text-right" value={editedSchoolInfo.region || ''} onChange={e => setEditedSchoolInfo(p => ({ ...p, region: e.target.value }))} placeholder={t('regionPlaceholder')} data-testid="school-region-input" />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="font-semibold text-slate-700 flex items-center gap-1"><Phone className="h-3.5 w-3.5 text-[#1C3D74]" />رقم جوال المدير <span className="text-red-500">*</span></Label>
+                  <Label className="font-semibold text-slate-700 flex items-center gap-1"><Phone className="h-3.5 w-3.5 text-[#1C3D74]" />{t('principalMobileLabel')} <span className="text-red-500">*</span></Label>
                   <Input dir="ltr" type="tel" className="h-11 border-slate-200 focus:border-[#1C3D74]" value={editedSchoolInfo.principal_mobile || ''} onChange={e => setEditedSchoolInfo(p => ({ ...p, principal_mobile: e.target.value }))} placeholder="05XXXXXXXX" data-testid="school-principal-mobile-input" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="font-semibold text-slate-700 flex items-center gap-1"><Mail className="h-3.5 w-3.5 text-[#1C3D74]" />البريد الإلكتروني</Label>
+                  <Label className="font-semibold text-slate-700 flex items-center gap-1"><Mail className="h-3.5 w-3.5 text-[#1C3D74]" />{t('emailLabel')}</Label>
                   <Input dir="ltr" type="email" className="h-11 border-slate-200 focus:border-[#1C3D74]" value={editedSchoolInfo.email || ''} onChange={e => setEditedSchoolInfo(p => ({ ...p, email: e.target.value }))} placeholder="school@example.edu.sa" data-testid="school-email-input" />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label className="font-semibold text-slate-700 flex items-center gap-1"><Users className="h-3.5 w-3.5 text-[#1C3D74]" />اسم مدير/مديرة المدرسة</Label>
-                <Input dir="rtl" className="h-11 border-slate-200 focus:border-[#1C3D74] text-right" value={editedSchoolInfo.principal_name || ''} onChange={e => setEditedSchoolInfo(p => ({ ...p, principal_name: e.target.value }))} placeholder="الاسم الكامل" data-testid="school-principal-input" />
+                <Label className="font-semibold text-slate-700 flex items-center gap-1"><Users className="h-3.5 w-3.5 text-[#1C3D74]" />{t('principalNameLabel')}</Label>
+                <Input dir={direction} className="h-11 border-slate-200 focus:border-[#1C3D74] text-right" value={editedSchoolInfo.principal_name || ''} onChange={e => setEditedSchoolInfo(p => ({ ...p, principal_name: e.target.value }))} placeholder={t('fullNamePlaceholder')} data-testid="school-principal-input" />
               </div>
 
               <div className="flex flex-wrap gap-3 pt-2 border-t border-slate-100">
                 <div className="flex items-center gap-2 text-sm text-slate-500">
                   <Shield className="h-3.5 w-3.5" />
-                  <span>رمز الترخيص:</span>
+                  <span>{t('licenseCode')}</span>
                   <span className="font-mono font-semibold text-slate-700">{schoolInfo.license_number || '—'}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-slate-500">
                   <CheckCircle2 className={`h-3.5 w-3.5 ${schoolInfo.is_active ? 'text-emerald-500' : 'text-red-400'}`} />
-                  <span>الحالة:</span>
+                  <span>{t('statusColon')}</span>
                   <span className={`font-semibold ${schoolInfo.is_active ? 'text-emerald-600' : 'text-red-500'}`}>
-                    {schoolInfo.is_active ? 'نشطة' : 'غير نشطة'}
+                    {schoolInfo.is_active ? t('activeFem') : t('inactiveFem')}
                   </span>
                 </div>
                 {schoolInfo.updated_at && (
                   <div className="flex items-center gap-2 text-sm text-slate-500">
                     <RefreshCw className="h-3.5 w-3.5" />
-                    <span>آخر تحديث:</span>
-                    <span className="text-slate-600">{new Date(schoolInfo.updated_at).toLocaleDateString('ar-SA')}</span>
+                    <span>{t('lastUpdate')}</span>
+                    <span className="text-slate-600">{new Date(schoolInfo.updated_at).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US')}</span>
                   </div>
                 )}
               </div>
 
               <div className="flex justify-end pt-2">
                 <Button onClick={saveSchoolInfo} disabled={saving} className="bg-[#1C3D74] hover:bg-[#152d57] text-white px-8 h-11" data-testid="save-school-info-btn">
-                  {saving ? <RefreshCw className="h-4 w-4 animate-spin ml-2" /> : <Save className="h-4 w-4 ml-2" />}
-                  حفظ بيانات المدرسة
+                  {saving ? <RefreshCw className="h-4 w-4 animate-spin me-2" /> : <Save className="h-4 w-4 me-2" />}
+                  {t('saveSchoolInfoBtn')}
                 </Button>
               </div>
             </CardContent>
@@ -1407,6 +1410,7 @@ function WorkloadRow({ w, handleWorkloadOverride }) {
 }
 
 function AddConstraintModal({ subjects, constraintPatterns, handleAddConstraintPattern, onSave, onClose, initialData = null }) {
+  const { direction } = useTheme();
   const isEdit = !!initialData;
   const [nameAr, setNameAr] = React.useState(initialData?.name_ar || '');
   const [descAr, setDescAr] = React.useState(initialData?.description_ar || '');
@@ -1444,7 +1448,7 @@ function AddConstraintModal({ subjects, constraintPatterns, handleAddConstraintP
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" dir="rtl">
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" dir={direction}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
         <div className="p-5 border-b flex items-center justify-between">
           <h3 className="text-lg font-bold flex items-center gap-2"><Plus className="h-5 w-5 text-violet-600" />{isEdit ? 'تعديل القيد التفضيلي' : 'إضافة قيد تفضيلي مخصص'}</h3>
@@ -1531,6 +1535,7 @@ function AddConstraintModal({ subjects, constraintPatterns, handleAddConstraintP
 }
 
 function AddDutyModal({ teachers, onSave, onClose, initialData = null }) {
+  const { direction } = useTheme();
   const isEdit = !!initialData;
   const [teacherId, setTeacherId] = React.useState(initialData?.teacher_id || '');
   const [dutyName, setDutyName] = React.useState(initialData?.duty_name || '');
@@ -1558,7 +1563,7 @@ function AddDutyModal({ teachers, onSave, onClose, initialData = null }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" dir="rtl">
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" dir={direction}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
         <div className="p-5 border-b flex items-center justify-between">
           <h3 className="text-lg font-bold flex items-center gap-2"><Zap className="h-5 w-5 text-teal-600" />{isEdit ? 'تعديل التكليف' : 'إضافة تكليف آخر'}</h3>
