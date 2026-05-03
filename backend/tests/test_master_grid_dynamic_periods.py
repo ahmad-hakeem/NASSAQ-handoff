@@ -382,3 +382,67 @@ def test_schedule_page_new_renders_dynamic_period_columns():
         f"Hardcoded 7-period assumption resurfaced near `period` lines: "
         f"{offenders[:3]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 6. End-to-end timing change → time_slots regen → master-grid headers.
+#    Task #132 — strict E2E binding for Schedule Settings.
+# ---------------------------------------------------------------------------
+
+async def test_timing_change_via_put_settings_drives_master_grid_headers(
+    client, school_principal_headers, tenant_a,
+):
+    """Saving a new dayStart/periodDuration/breakDuration via PUT
+    /school/settings must regenerate time_slots and surface new headers
+    through GET /api/schedule/master-grid — no hardcoded fallback."""
+    # Seed minimal settings
+    await _mk_settings(tenant_a, periods_per_day=6)
+    await db.session.commit()
+
+    payload = {
+        "dayStart": "08:00",
+        "periodsPerDay": 6,
+        "periodDuration": 50,
+        "breakDuration": 10,
+    }
+    r = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json=payload,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body.get("time_slots_regenerated", {}).get("regenerated") is True, (
+        f"PUT /school/settings must regenerate time_slots when timing "
+        f"fields change; got {body.get('time_slots_regenerated')}"
+    )
+
+    # Master Grid must expose 6 columns and the first teaching slot must
+    # start at the new dayStart (08:00) — proving the value flows from
+    # Schedule Settings → DB → Master Grid headers with no fallbacks.
+    r2 = await client.get(
+        f"/schedule/master-grid?school_id={tenant_a}",
+        headers=school_principal_headers,
+    )
+    assert r2.status_code == 200, r2.text
+    grid = r2.json()
+    assert grid["periods"] == list(range(1, 7)), (
+        f"Master Grid must expose 6 columns after settings change; "
+        f"got {grid['periods']}"
+    )
+
+    period_times = grid.get("period_times") or {}
+    first_slot = period_times.get("1") or period_times.get(1)
+    assert first_slot, (
+        f"Master Grid response must expose period_times for period 1; "
+        f"got period_times={period_times}"
+    )
+    assert first_slot.get("start_time") == "08:00", (
+        f"Period 1 must start at the configured dayStart (08:00); "
+        f"got {first_slot.get('start_time')}"
+    )
+    # Period duration honoured (50min).
+    assert first_slot.get("end_time") == "08:50", (
+        f"Period 1 must end at start+periodDuration (08:50); "
+        f"got {first_slot.get('end_time')}"
+    )

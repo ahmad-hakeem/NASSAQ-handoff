@@ -303,20 +303,13 @@ export const TeacherScheduleGrid = ({
   // Use provided displayedDays or default to DEFAULT_DAYS
   const daysToShow = displayedDays || DEFAULT_DAYS;
 
-  // Generate default time slots if not provided
+  // قائمة الحصص تأتي ديناميكياً من إعدادات المدرسة عبر الباك‑إند
+  // (periods_per_day / period_duration / break_duration). لا تُحقن أي
+  // قيم زمنية مكوّدة هنا — إن تأخر التحميل نُعيد مصفوفة فارغة لتفادي
+  // إخفاء بيانات حقيقية قد تتعارض مع إعدادات المدرسة الفعلية.
   const effectiveTimeSlots = useMemo(() => {
     if (timeSlots && timeSlots.length > 0) return timeSlots;
-    
-    // Default 7 periods
-    return [
-      { id: 1, name: 'الحصة 1', name_en: 'Period 1', start_time: '07:30', end_time: '08:15', is_break: false },
-      { id: 2, name: 'الحصة 2', name_en: 'Period 2', start_time: '08:20', end_time: '09:05', is_break: false },
-      { id: 3, name: 'الحصة 3', name_en: 'Period 3', start_time: '09:10', end_time: '09:55', is_break: false },
-      { id: 4, name: 'الفسحة', name_en: 'Break', start_time: '09:55', end_time: '10:15', is_break: true },
-      { id: 5, name: 'الحصة 4', name_en: 'Period 4', start_time: '10:15', end_time: '11:00', is_break: false },
-      { id: 6, name: 'الحصة 5', name_en: 'Period 5', start_time: '11:05', end_time: '11:50', is_break: false },
-      { id: 7, name: 'الحصة 6', name_en: 'Period 6', start_time: '11:55', end_time: '12:40', is_break: false },
-    ];
+    return [];
   }, [timeSlots]);
 
   // Handle drag start
