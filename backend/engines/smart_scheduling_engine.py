@@ -34,6 +34,12 @@ import random
 
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, gd_delete_many
 from engines.infeasibility import InfeasibilityIssue, InfeasibilityReport
+from engines.scheduling_summary import (
+    RejectionCounters,
+    TeacherPlacementRecord,
+    build_generation_summary,
+)
+import time as _time
 
 logger = logging.getLogger(__name__)
 
@@ -332,6 +338,7 @@ class GenerationResult(BaseModel):
     message_en: str
     capacity_issues: Optional[List[Dict[str, Any]]] = None
     unresolved_conflicts: List[Dict[str, Any]] = Field(default_factory=list)
+    generation_summary: Optional[Dict[str, Any]] = None
 
 
 def _required_periods_per_day(settings: Dict[str, Any]) -> int:
@@ -1494,6 +1501,20 @@ class SmartSchedulingEngine:
         sessions = []
         conflicts = []
         unscheduled = []
+
+        # Aggregate rejection counters across every demand processed below.
+        # Per-demand counters live inside the loop and feed the dominant-reason
+        # picker for unscheduled-demand classification; this aggregate is what
+        # the post-run `generation_summary` reports to consumers.
+        aggregate_rejection_counts: Dict[str, int] = {
+            "class_busy": 0,
+            "teacher_unavailable": 0,
+            "teacher_busy": 0,
+            "teacher_load_exceeded": 0,
+            "max_consecutive_reached": 0,
+            "constraint_rejected": 0,
+        }
+        self._last_rejection_counts = aggregate_rejection_counts
         
         working_days = settings.get("working_days", ["sunday", "monday", "tuesday", "wednesday", "thursday"])
         periods_per_day = _required_periods_per_day(settings)
@@ -1668,6 +1689,7 @@ class SmartSchedulingEngine:
                             # نحصي مرة واحدة لكل (يوم × حصة) لأن سبب الرفض
                             # هنا لا يعتمد على المعلم المرشَّح.
                             rejection_counts["class_busy"] += 1
+                            aggregate_rejection_counts["class_busy"] += 1
                             continue
                         
                         for teacher_id in suitable_teachers:
@@ -1678,17 +1700,20 @@ class SmartSchedulingEngine:
                             # Check teacher availability
                             if period not in resource.availability.get(day, []):
                                 rejection_counts["teacher_unavailable"] += 1
+                                aggregate_rejection_counts["teacher_unavailable"] += 1
                                 continue
                             
                             # HARD CONSTRAINT: teacher_id + day + period must be unique
                             # Teacher cannot be in two places at the same time
                             if teacher_id in teacher_grid[day][period]:
                                 rejection_counts["teacher_busy"] += 1
+                                aggregate_rejection_counts["teacher_busy"] += 1
                                 continue
                             
                             # Check teacher load
                             if resource_usage.get(teacher_id, 0) >= resource.weekly_load:
                                 rejection_counts["teacher_load_exceeded"] += 1
+                                aggregate_rejection_counts["teacher_load_exceeded"] += 1
                                 continue
 
                             # Task #95 hard constraint: per-teacher
@@ -1699,6 +1724,7 @@ class SmartSchedulingEngine:
                                 resource, teacher_grid, day, period, teaching_period_numbers
                             ):
                                 rejection_counts["max_consecutive_reached"] += 1
+                                aggregate_rejection_counts["max_consecutive_reached"] += 1
                                 continue
 
                             score = 100
@@ -1734,6 +1760,7 @@ class SmartSchedulingEngine:
                                 "period_number": period,
                             }):
                                 rejection_counts["constraint_rejected"] += 1
+                                aggregate_rejection_counts["constraint_rejected"] += 1
                                 continue
 
                             # Capture pre/post soft-scoring scores so we can
@@ -1852,6 +1879,10 @@ class SmartSchedulingEngine:
                     dominant = max(rejection_counts.items(), key=lambda kv: kv[1])[0]
                 else:
                     dominant = "unscheduled_unknown"
+                # Note: aggregate_rejection_counts is incremented inline at
+                # every reject site above so it reflects ALL demands processed
+                # (not just the unscheduled ones), matching the contract of
+                # generation_summary.rejections_by_reason.
 
                 reason_ar = REASON_AR_MAP.get(
                     dominant, "لم يتوفر وقت أو معلم مناسب"
@@ -2815,6 +2846,18 @@ class SmartSchedulingEngine:
         """
         self._assert_tenant(school_id, calling_user)
 
+        # generation_summary timer — captured here so elapsed_ms reflects the
+        # full run (validation, hydration, generation, optimization, persist).
+        _summary_start_ms = int(_time.monotonic() * 1000)
+        self._last_rejection_counts = {
+            "class_busy": 0,
+            "teacher_unavailable": 0,
+            "teacher_busy": 0,
+            "teacher_load_exceeded": 0,
+            "max_consecutive_reached": 0,
+            "constraint_rejected": 0,
+        }
+
         # ──────────────────────────────────────────────────────────────────
         # ضمان مصدر الحقيقة لقاعدة "كل المعلمين مرتبطون بكل الفصول افتراضياً"
         # قبل أيّ قراءة لـ teacher_class_assignments. الواجهة تكتفي بـ "lazy
@@ -3243,6 +3286,79 @@ class SmartSchedulingEngine:
                 })
                 await gd_update_one(self.session, "timetables", {"id": timetable_id}, {"underutilized_teachers": underutilized_teachers})
             
+            # ── Build generation_summary ──────────────────────────────────
+            # Aggregate rejection counters from the placement loop, walk the
+            # final session list to derive per-teacher day distribution, and
+            # collapse unscheduled demands into one row per (class, subject).
+            # Schema is defined in
+            # docs/superpowers/specs/2026-05-03-hakeem-engine-audit-design.md §6.
+            agg = getattr(self, "_last_rejection_counts", {}) or {}
+            rejection_counters = RejectionCounters(
+                teacher_busy=int(agg.get("teacher_busy", 0)),
+                class_busy=int(agg.get("class_busy", 0)),
+                teacher_unavailable=int(agg.get("teacher_unavailable", 0)),
+                max_consecutive_exceeded=int(agg.get("max_consecutive_reached", 0)),
+                weekly_quota_exceeded=int(agg.get("teacher_load_exceeded", 0)),
+                constraint_registry_rejected=int(agg.get("constraint_rejected", 0)),
+                no_eligible_teacher=sum(
+                    1 for u in unscheduled if (u.reason_code or "") == "no_suitable_teacher"
+                ),
+                # max_per_day_exceeded is enforced via the registry validator
+                # (daily_period_limit) — its rejections are counted in
+                # constraint_registry_rejected. Splitting it out requires
+                # threading the validator id through _registry_rejects, which
+                # is tracked in the audit report appendix as a follow-up.
+                max_per_day_exceeded=0,
+            )
+
+            teacher_buckets: Dict[str, Dict[str, Any]] = {}
+            for s in optimized_sessions:
+                tid = getattr(s, "teacher_id", None)
+                day = getattr(s, "day_of_week", None)
+                if not tid or not day:
+                    continue
+                bucket = teacher_buckets.setdefault(tid, {"by_day": {}})
+                bucket["by_day"][day] = bucket["by_day"].get(day, 0) + 1
+            teacher_records = [
+                TeacherPlacementRecord(
+                    teacher_id=tid,
+                    name="",
+                    by_day=info["by_day"],
+                )
+                for tid, info in teacher_buckets.items()
+            ]
+
+            unplaced_buckets: Dict[Tuple[str, str], Dict[str, Any]] = {}
+            for u in unscheduled:
+                key = (u.class_id or "", u.subject_id or "")
+                bucket = unplaced_buckets.setdefault(key, {
+                    "class_id": u.class_id or "",
+                    "subject_id": u.subject_id or "",
+                    "remaining": 0,
+                    "primary_reason": u.reason_code or "unknown",
+                })
+                bucket["remaining"] += int(getattr(u, "remaining_periods", 0) or 0)
+
+            elapsed_ms = int(_time.monotonic() * 1000) - _summary_start_ms
+            generation_summary = build_generation_summary(
+                required=int(total_demand or 0),
+                placed=len(optimized_sessions),
+                elapsed_ms=elapsed_ms,
+                fairness_score=int(round(optimization_score or 0)),
+                constraints_evaluated=[
+                    "double_booking_teacher",
+                    "double_booking_class",
+                    "unavailability",
+                    "boundary",
+                    "weekly_quota",
+                    "max_consecutive_per_day",
+                    "max_periods_per_day",
+                ],
+                rejection_counters=rejection_counters,
+                teacher_records=teacher_records,
+                unplaced_demands=list(unplaced_buckets.values()),
+            )
+
             # Update run
             status = TimetableRunStatus.COMPLETED.value if len(unscheduled) == 0 else TimetableRunStatus.PARTIAL.value
             await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {
@@ -3257,6 +3373,7 @@ class SmartSchedulingEngine:
                 "total_demand": total_demand,
                 "completion_rate": (len(optimized_sessions) / total_demand * 100) if total_demand > 0 else 0,
                 "capacity_issues": capacity_issues,
+                "generation_summary": generation_summary,
             })
             
             await self._log_run(run_id, "info", "اكتمل توليد الجدول", {
@@ -3281,6 +3398,7 @@ class SmartSchedulingEngine:
                 message_en=f"Timetable generated successfully ({len(optimized_sessions)} sessions)",
                 capacity_issues=capacity_issues if capacity_issues else None,
                 unresolved_conflicts=unresolved_conflicts,
+                generation_summary=generation_summary,
             )
             
         except Exception as e:

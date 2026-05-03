@@ -358,6 +358,7 @@ class TimetableRun(Base):
     sessions_created = Column(Integer, default=0)
     conflicts = Column(JSONB, default=list)
     warnings = Column(JSONB, default=list)
+    generation_summary = Column(JSONB, nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     completed_at = Column(DateTime(timezone=True), nullable=True)

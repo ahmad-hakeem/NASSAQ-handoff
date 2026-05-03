@@ -29,6 +29,12 @@ NASSAQ is a comprehensive, full-stack school management platform designed for mu
 ## System Architecture
 The platform utilizes a modern full-stack architecture.
 
+### Hakeem Auto-Generation Engine — Constraint Audit & Generation Summary (2026-05-03)
+- Audited the placement loop in `backend/engines/smart_scheduling_engine.py` against all hard constraints (A double-booking, B unavailability, C boundary, D weekly quota, E max consecutive, F max periods/day) and best-effort fairness (G). Audit report: `docs/superpowers/specs/2026-05-03-hakeem-engine-audit-report.md` — no gaps found, all constraints A–F enforced.
+- Added a persisted `generation_summary` JSONB column on `timetable_runs` (Alembic revision `u1v2w3x4y5z6`) and a matching `Optional[Dict[str, Any]]` field on the SQLAlchemy `TimetableRun` model.
+- New helper module `backend/engines/scheduling_summary.py` (`RejectionCounters`, `TeacherPlacementRecord`, `build_generation_summary`) builds the rich summary; covered by `backend/tests/test_scheduling_summary.py`.
+- The placement loop now aggregates per-demand rejection counters into a run-wide `_last_rejection_counts` dict; `generate_timetable` builds the summary, persists it on the run row, and returns it on `GenerationResult.generation_summary` so the route response includes it automatically.
+
 **Frontend**:
 - Built with React (Create React App + CRACO), styled with Tailwind CSS and Radix UI.
 - `App.js` serves as a thin composition layer for providers and routing.
