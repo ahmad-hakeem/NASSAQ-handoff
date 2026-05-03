@@ -1513,6 +1513,10 @@ class SmartSchedulingEngine:
             "teacher_load_exceeded": 0,
             "max_consecutive_reached": 0,
             "constraint_rejected": 0,
+            # Subset of constraint_rejected — counted separately so the
+            # generation_summary can populate max_per_day_exceeded directly
+            # from the daily_period_limit (HC-06) validator.
+            "max_per_day_exceeded": 0,
         }
         self._last_rejection_counts = aggregate_rejection_counts
         
@@ -1589,13 +1593,19 @@ class SmartSchedulingEngine:
         )
         from engines.hard_constraints import validate_placement as _validate_placement
 
-        def _registry_rejects(candidate: Dict[str, Any]) -> bool:
+        def _registry_rejects(candidate: Dict[str, Any]) -> List[str]:
             # Hard constraints are absolute blockers per the spec — any
             # violation emitted by an *active* hard validator rejects the
             # placement, regardless of severity. Severity is preserved on
             # the resulting ConstraintViolation for downstream
             # conflict-tier reporting, but it does NOT gate placement.
-            return bool(_validate_placement(ctx, candidate))
+            #
+            # Returns the list of validation_keys that rejected the
+            # candidate (empty list = accepted). Callers use the keys to
+            # split rejection telemetry by validator (e.g. surface
+            # daily_period_limit hits as max_per_day_exceeded in the
+            # generation summary).
+            return [v.validation_key for v in _validate_placement(ctx, candidate)]
         # ---------------------------------------------------------------------
 
         # Schedule each demand
@@ -1752,15 +1762,22 @@ class SmartSchedulingEngine:
                             # inline rule_key chain). Reject the candidate if
                             # any active validator emits a CRITICAL/HIGH
                             # violation; otherwise fall through to scoring.
-                            if _registry_rejects({
+                            _reject_keys = _registry_rejects({
                                 "teacher_id": teacher_id,
                                 "class_id": class_id,
                                 "subject_id": subject_id,
                                 "day_of_week": day,
                                 "period_number": period,
-                            }):
+                            })
+                            if _reject_keys:
                                 rejection_counts["constraint_rejected"] += 1
                                 aggregate_rejection_counts["constraint_rejected"] += 1
+                                # Split out daily_period_limit (HC-06) hits so
+                                # the generation_summary can surface them via
+                                # the dedicated max_per_day_exceeded counter
+                                # rather than burying them in the aggregate.
+                                if "daily_period_limit" in _reject_keys:
+                                    aggregate_rejection_counts["max_per_day_exceeded"] += 1
                                 continue
 
                             # Capture pre/post soft-scoring scores so we can
@@ -2856,6 +2873,7 @@ class SmartSchedulingEngine:
             "teacher_load_exceeded": 0,
             "max_consecutive_reached": 0,
             "constraint_rejected": 0,
+            "max_per_day_exceeded": 0,
         }
 
         # ──────────────────────────────────────────────────────────────────
@@ -3303,12 +3321,13 @@ class SmartSchedulingEngine:
                 no_eligible_teacher=sum(
                     1 for u in unscheduled if (u.reason_code or "") == "no_suitable_teacher"
                 ),
-                # max_per_day_exceeded is enforced via the registry validator
-                # (daily_period_limit) — its rejections are counted in
-                # constraint_registry_rejected. Splitting it out requires
-                # threading the validator id through _registry_rejects, which
-                # is tracked in the audit report appendix as a follow-up.
-                max_per_day_exceeded=0,
+                # daily_period_limit (HC-06) hits are counted at the reject
+                # site via the validation_key list returned from
+                # _registry_rejects, so this is now an exact count rather
+                # than always zero. Note: it is a subset of
+                # constraint_registry_rejected (every daily_period_limit
+                # reject also increments that aggregate).
+                max_per_day_exceeded=int(agg.get("max_per_day_exceeded", 0)),
             )
 
             teacher_buckets: Dict[str, Dict[str, Any]] = {}
