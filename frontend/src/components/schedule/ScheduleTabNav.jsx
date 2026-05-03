@@ -13,6 +13,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarDays, Hourglass, Settings as SettingsIcon } from 'lucide-react';
+import { useTranslation } from '../../contexts/ThemeContext';
 
 // كل التبويبات تبقى ضمن `/school/schedule` ويُعبَّر عنها بمعطى
 // `?tab=master|standby|settings` ليكون التبويب النشط قابلاً للحفظ والمشاركة
@@ -20,19 +21,19 @@ import { CalendarDays, Hourglass, Settings as SettingsIcon } from 'lucide-react'
 const TABS = [
   {
     id: 'master',
-    label: 'الجدول الرئيسي',
+    labelKey: 'masterScheduleTab',
     icon: CalendarDays,
     path: '/school/schedule?tab=master',
   },
   {
     id: 'standby',
-    label: 'جدول حصص الانتظار',
+    labelKey: 'standbyScheduleTab',
     icon: Hourglass,
     path: '/school/schedule?tab=standby',
   },
   {
     id: 'settings',
-    label: 'إعدادات الجدول المدرسي',
+    labelKey: 'scheduleSettingsTab',
     icon: SettingsIcon,
     path: '/school/schedule?tab=settings',
   },
@@ -40,6 +41,7 @@ const TABS = [
 
 export default function ScheduleTabNav({ active }) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   return (
     <div
@@ -65,7 +67,7 @@ export default function ScheduleTabNav({ active }) {
             }`}
           >
             <Icon className="h-4 w-4 shrink-0" />
-            <span className="truncate">{tab.label}</span>
+            <span className="truncate">{t(tab.labelKey)}</span>
           </button>
         );
       })}

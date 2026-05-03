@@ -13,6 +13,7 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme, useTranslation } from '../contexts/ThemeContext';
 import { toast } from 'sonner';
 
 import { Card, CardContent } from '../components/ui/card';
@@ -473,6 +474,8 @@ export default function SchedulePageNew() {
   const schoolId = user?.tenant_id;
   const tab = useScheduleTab();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
+  const { t } = useTranslation();
+  const { direction } = useTheme();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -962,7 +965,11 @@ export default function SchedulePageNew() {
     return n;
   }, [teacherRows, cellsByTeacher, todayKey, kpis.vacant_sessions_today]);
 
-  const dayLabelMap = useMemo(() => Object.fromEntries(DAYS.map(d => [d.key, d.ar])), []);
+  const dayLabelMap = useMemo(
+    () => Object.fromEntries(DAYS.map((d) => [d.key, t(d.key)])),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t],
+  );
 
   if (tab === 'standby') {
     // تبويب جدول حصص الانتظار — يُضمَّن المحتوى نفسه المستخدم في الصفحة
@@ -1014,7 +1021,7 @@ export default function SchedulePageNew() {
   return (
     <Sidebar>
       <div
-        dir="rtl"
+        dir={direction}
         className="flex flex-col h-[calc(100dvh-3.5rem)] lg:h-[100dvh] p-4 md:p-6 gap-5 bg-slate-50 text-slate-900 overflow-hidden"
       >
         {/* ── Primary tab nav (Master / Standby / Settings) ─────────── */}
@@ -1025,10 +1032,10 @@ export default function SchedulePageNew() {
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-[#1C3D74] flex items-center gap-2">
               <Sparkles className="h-7 w-7 text-violet-600" />
-              إدارة الجداول الذكية
+              {t('smartSchedulesTitle')}
             </h1>
             <p className="text-sm text-slate-500 mt-1">
-              مصفوفة موحَّدة لكل المعلمين × أيام الأسبوع × الحصص — مع متابعة لحظية للحصص الشاغرة.
+              {t('smartSchedulesSubtitle')}
             </p>
           </div>
 
@@ -1039,26 +1046,26 @@ export default function SchedulePageNew() {
               className="bg-violet-600 hover:bg-violet-700 text-white shadow-md"
             >
               {generating ? (
-                <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                <Loader2 className="h-4 w-4 me-2 animate-spin" />
               ) : (
-                <Wand2 className="h-4 w-4 ml-2" />
+                <Wand2 className="h-4 w-4 me-2" />
               )}
-              {generating ? 'جارٍ التوليد…' : 'إنشاء الجدول تلقائياً'}
+              {generating ? t('generatingSchedule') : t('autoGenerateSchedule')}
             </Button>
             <Button
               onClick={handleLogAbsence}
               variant="outline"
               className="border-slate-300 text-slate-700 hover:bg-slate-100"
             >
-              <UserX className="h-4 w-4 ml-2" />
-              تسجيل غياب
+              <UserX className="h-4 w-4 me-2" />
+              {t('recordAbsence')}
             </Button>
             <Button
               onClick={handleRefresh}
               variant="ghost"
               size="icon"
               disabled={refreshing}
-              title="تحديث"
+              title={t('refreshTooltip')}
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             </Button>
@@ -1069,7 +1076,7 @@ export default function SchedulePageNew() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
           <KpiCard
             icon={Scale}
-            label="عدالة التوزيع"
+            label={t('distributionFairness')}
             value={kpis.fairness_pct}
             suffix="%"
             accent={{
@@ -1080,7 +1087,7 @@ export default function SchedulePageNew() {
           />
           <KpiCard
             icon={Hourglass}
-            label="انتظار مُسند"
+            label={t('assignedStandby')}
             value={kpis.assigned_waiting}
             accent={{
               topBorder: 'border-t-blue-400',
@@ -1090,7 +1097,7 @@ export default function SchedulePageNew() {
           />
           <KpiCard
             icon={UserMinus}
-            label="معلم غائب"
+            label={t('absentTeacherLabel')}
             value={kpis.absent_teachers_today}
             accent={{
               topBorder: 'border-t-yellow-400',
@@ -1100,7 +1107,7 @@ export default function SchedulePageNew() {
           />
           <KpiCard
             icon={AlertOctagon}
-            label="حصة شاغرة"
+            label={t('vacantPeriodLabel')}
             value={vacantSessionsToday}
             accent={{
               topBorder: 'border-t-red-500',
@@ -1208,34 +1215,34 @@ export default function SchedulePageNew() {
 
         {/* ── Absence dialog ─────────────────────────────────────── */}
         <Dialog open={absenceOpen} onOpenChange={setAbsenceOpen}>
-          <DialogContent dir="rtl" className="max-w-md">
+          <DialogContent dir={direction} className="max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-[#1C3D74]">
                 <UserX className="h-5 w-5 text-red-600" />
-                تسجيل غياب معلم
+                {t('recordTeacherAbsence')}
               </DialogTitle>
               <DialogDescription>
-                سيُسجَّل المعلم المختار كغائب اليوم وتُحدَّث الخلايا والمؤشرات فوراً.
+                {t('recordTeacherAbsenceDescription')}
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 py-2">
               <div className="space-y-2">
-                <Label htmlFor="absence-teacher">المعلم</Label>
+                <Label htmlFor="absence-teacher">{t('teacher')}</Label>
                 <Select value={absenceTeacherId} onValueChange={setAbsenceTeacherId}>
                   <SelectTrigger id="absence-teacher" className="w-full">
-                    <SelectValue placeholder="اختر معلماً…" />
+                    <SelectValue placeholder={t('selectTeacherPlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
                     {teacherRows.length === 0 ? (
                       <div className="px-3 py-2 text-sm text-slate-500">
-                        لا يوجد معلمون متاحون
+                        {t('noTeachersAvailable')}
                       </div>
                     ) : (
-                      teacherRows.map((t) => (
-                        <SelectItem key={t.id} value={t.id} disabled={t.is_absent_today}>
-                          {t.full_name}
-                          {t.is_absent_today ? ' (غائب اليوم)' : ''}
+                      teacherRows.map((row) => (
+                        <SelectItem key={row.id} value={row.id} disabled={row.is_absent_today}>
+                          {row.full_name}
+                          {row.is_absent_today ? ` ${t('absentTodayTag')}` : ''}
                         </SelectItem>
                       ))
                     )}
@@ -1244,12 +1251,12 @@ export default function SchedulePageNew() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="absence-notes">ملاحظات (اختياري)</Label>
+                <Label htmlFor="absence-notes">{t('notesOptional')}</Label>
                 <Textarea
                   id="absence-notes"
                   value={absenceNotes}
                   onChange={(e) => setAbsenceNotes(e.target.value)}
-                  placeholder="سبب الغياب أو أي ملاحظات…"
+                  placeholder={t('absenceNotesPlaceholder')}
                   rows={3}
                 />
               </div>
@@ -1261,7 +1268,7 @@ export default function SchedulePageNew() {
                 onClick={() => setAbsenceOpen(false)}
                 disabled={savingAbsence}
               >
-                إلغاء
+                {t('cancel')}
               </Button>
               <Button
                 onClick={handleSubmitAbsence}
@@ -1269,11 +1276,11 @@ export default function SchedulePageNew() {
                 className="bg-red-600 hover:bg-red-700 text-white"
               >
                 {savingAbsence ? (
-                  <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                  <Loader2 className="h-4 w-4 me-2 animate-spin" />
                 ) : (
-                  <UserX className="h-4 w-4 ml-2" />
+                  <UserX className="h-4 w-4 me-2" />
                 )}
-                {savingAbsence ? 'جارٍ الحفظ…' : 'تسجيل الغياب'}
+                {savingAbsence ? t('savingAbsenceLabel') : t('recordAbsenceConfirm')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1472,6 +1479,7 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
 // (slate-100)، وعمود المعلم على يمين الشاشة (RTL) مع ظل خفيف يفصل المنطقة
 // المثبَّتة عن منطقة التمرير.
 function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, onAcknowledgeRelocation, today, periodTimes = {}, unresolvedConflicts = [] }) {
+  const { t } = useTranslation();
   // فهرس "رؤى حكيم" بمفتاح teacher_id|day|period → reason_ar. التحديد
   // بالمعلم ضروري لئلا يلوّن صفّ معلم تنبيه يخصّ معلماً آخر في نفس
   // الفترة. العناصر التي لا تحمل teacher_id (مثل طلبات لم تُسنَد لأحد)
@@ -1521,7 +1529,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
         className={`sticky top-0 bg-slate-50 text-slate-700 text-xs font-semibold flex items-center justify-center border-b border-l border-slate-200 ${teacherStickyShadow}`}
         style={{ insetInlineStart: 0, zIndex: 30, height: DAY_HEADER_HEIGHT }}
       >
-        المعلم
+        {t('teacherColHeader')}
       </div>
       {days.map((dayKey) => (
         <div
@@ -1531,8 +1539,8 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
         >
           {dayLabelMap[dayKey] || dayKey}
           {dayKey === today && (
-            <span className="mr-2 inline-block px-1.5 py-0 text-[10px] rounded bg-slate-200 text-slate-700">
-              اليوم
+            <span className="ms-2 inline-block px-1.5 py-0 text-[10px] rounded bg-slate-200 text-slate-700">
+              {t('todayBadge')}
             </span>
           )}
         </div>
@@ -1543,7 +1551,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
         className={`sticky bg-slate-50 text-slate-500 text-[10px] font-medium px-2 flex items-center justify-end border-b border-l border-slate-200 ${teacherStickyShadow}`}
         style={{ top: DAY_HEADER_HEIGHT, insetInlineStart: 0, zIndex: 30, height: PERIOD_HEADER_HEIGHT }}
       >
-        {teachers.length} معلم • {periods.length}×{days.length}
+        {t('teachersCountSummary', { count: teachers.length, periods: periods.length, days: days.length })}
       </div>
       {days.map((dayKey) => (
         periods.map((p) => {
@@ -1551,16 +1559,16 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
           // (time_slots أو احتسابه من start_time + period_duration). يظهر
           // تحت رقم الحصة بخط أصغر، ويُخفى بصمت إن لم يصل من الـbackend
           // حتى لا يُكسر عرض المدارس قبل ضبط الإعدادات.
-          const t = periodTimes?.[String(p)];
-          const timeLabel = t && (t.start || t.end)
-            ? `${t.start || ''}${t.start && t.end ? ' – ' : ''}${t.end || ''}`
+          const slot = periodTimes?.[String(p)];
+          const timeLabel = slot && (slot.start || slot.end)
+            ? `${slot.start || ''}${slot.start && slot.end ? ' – ' : ''}${slot.end || ''}`
             : '';
           return (
             <div
               key={`ph-${dayKey}-${p}`}
               className="sticky z-20 bg-slate-50 text-slate-700 text-center flex flex-col items-center justify-center leading-tight border-b border-l border-slate-200"
               style={{ top: DAY_HEADER_HEIGHT, height: PERIOD_HEADER_HEIGHT }}
-              title={timeLabel ? `الحصة ${p} • ${timeLabel}` : `الحصة ${p}`}
+              title={timeLabel ? t('periodLabelWithTime', { num: p, time: timeLabel }) : t('periodLabelShort', { num: p })}
             >
               <span className="text-[11px] font-semibold">{p}</span>
               {timeLabel && (
