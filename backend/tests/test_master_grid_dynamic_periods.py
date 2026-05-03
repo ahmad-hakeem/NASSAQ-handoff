@@ -446,3 +446,82 @@ async def test_timing_change_via_put_settings_drives_master_grid_headers(
         f"Period 1 must end at start+periodDuration (08:50); "
         f"got {first_slot.get('end_time')}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 7. AI engine matrix bounds — load_school_settings reflects whatever
+#    periods_per_day is configured (no silent caps, no global default).
+# ---------------------------------------------------------------------------
+
+async def test_engine_matrix_bounds_track_settings_periods_per_day(tenant_a):
+    """Two consecutive runs against the same school but with different
+    periods_per_day must produce different teaching-period bounds in the
+    engine's loaded settings — proving the AI matrix size is sourced
+    strictly from Schedule Settings, never a hardcoded constant."""
+    from engines.sql_utils import gd_delete_many, gd_update_one
+
+    # Run A — 6 periods.
+    await _mk_settings(tenant_a, periods_per_day=6)
+    for n in range(1, 7):
+        await _mk_time_slot(tenant_a, n)
+    engine = SmartSchedulingEngine(db)
+    loaded_a = await engine.load_school_settings(tenant_a)
+
+    assert loaded_a["periods_per_day"] == 6, (
+        f"Engine must reflect periods_per_day=6 from settings; "
+        f"got {loaded_a['periods_per_day']}"
+    )
+    assert loaded_a["teaching_period_numbers"] == list(range(1, 7)), (
+        f"Engine teaching periods must span 1..6 for a 6-period school; "
+        f"got {loaded_a['teaching_period_numbers']}"
+    )
+
+    # Reconfigure school for 10 periods and re-load — the engine must
+    # surface the new bound without restart and without leaking the prior
+    # 6-period state.
+    await gd_delete_many(db.session, "time_slots", {"school_id": tenant_a})
+    await gd_update_one(db.session, "school_settings", {"school_id": tenant_a},
+                       {"periods_per_day": 10})
+    for n in range(1, 11):
+        await _mk_time_slot(tenant_a, n)
+
+    loaded_b = await engine.load_school_settings(tenant_a)
+    assert loaded_b["periods_per_day"] == 10, (
+        f"Engine must reflect updated periods_per_day=10; "
+        f"got {loaded_b['periods_per_day']}"
+    )
+    assert loaded_b["teaching_period_numbers"] == list(range(1, 11)), (
+        f"Engine teaching periods must span 1..10 after settings change; "
+        f"got {loaded_b['teaching_period_numbers']}"
+    )
+
+    # Sanity: the two runs must differ — proving the engine does not cache
+    # a hardcoded matrix dimension across calls.
+    assert loaded_a["periods_per_day"] != loaded_b["periods_per_day"], (
+        "Engine matrix bounds did not change when periods_per_day changed"
+    )
+
+
+async def test_engine_raises_when_periods_per_day_missing(tenant_a):
+    """If Schedule Settings has no periods_per_day and no time_slots,
+    the engine MUST raise loudly (no silent default to 7)."""
+    from engines.sql_utils import gd_insert as _ins
+    # Insert settings WITHOUT periods_per_day.
+    await _ins(db.session, "school_settings", {
+        "id": str(uuid.uuid4()),
+        "school_id": tenant_a,
+        "working_days": ["sunday", "monday", "tuesday", "wednesday", "thursday"],
+    })
+    engine = SmartSchedulingEngine(db)
+    raised = False
+    try:
+        await engine.load_school_settings(tenant_a)
+    except ValueError as e:
+        raised = True
+        assert "periods_per_day" in str(e), (
+            f"Error must point at the missing setting; got {e}"
+        )
+    assert raised, (
+        "Engine must raise ValueError when periods_per_day is missing — "
+        "silent fallback to 7 would re-introduce the bug Task #132 forbids"
+    )

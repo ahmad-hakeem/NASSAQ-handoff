@@ -372,6 +372,25 @@ export const TeacherScheduleGrid = ({
   // Calculate total columns width
   const gridWidth = daysToShow.length * effectiveTimeSlots.length * 60;
 
+  // عند غياب أي حصص بعد التحميل (لا توجد إعدادات / لم يصل الرد بعد)
+  // نعرض حالة فارغة واضحة بدلاً من شبكة بدون أعمدة قد تربك المستخدم.
+  if (!effectiveTimeSlots || effectiveTimeSlots.length === 0) {
+    return (
+      <div
+        className="relative overflow-hidden rounded-xl border border-dashed border-border bg-background p-10 text-center"
+        data-testid="teacher-schedule-grid-empty"
+      >
+        <Clock className="h-10 w-10 mx-auto mb-3 text-muted-foreground/40 animate-pulse" />
+        <p className="text-sm font-tajawal text-muted-foreground">
+          {t('loadingScheduleSettings') || 'جارِ تحميل إعدادات الجدول...'}
+        </p>
+        <p className="text-[11px] text-muted-foreground/70 mt-1 font-tajawal">
+          {t('configurePeriodsHint') || 'يرجى ضبط عدد الحصص ومدتها من إعدادات الجدول.'}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="relative overflow-hidden rounded-xl border border-border bg-background" data-testid="teacher-schedule-grid">
       {/* Multi-level Header */}
