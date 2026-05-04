@@ -167,7 +167,7 @@ function PeriodCell({ cell, dayKey }: { cell: Cell | null; dayKey: DayKey }) {
 
   return (
     <div
-      className="sg-cell h-[52px] px-1.5 flex flex-col items-center justify-center cursor-pointer relative"
+      className="sg-cell h-[52px] min-w-0 px-0.5 flex flex-col items-center justify-center cursor-pointer relative overflow-hidden"
       style={{
         background: tint,
         borderInline: '1px solid rgba(255,255,255,0.85)',
@@ -181,8 +181,8 @@ function PeriodCell({ cell, dayKey }: { cell: Cell | null; dayKey: DayKey }) {
           style={{ background: isSub ? '#46C1BE' : isSubstituted ? '#E4572E' : '#3B82F6' }}
         />
       )}
-      <div className="font-extrabold text-[12px] leading-tight" style={{ color: ink }}>{cell.subject}</div>
-      <div className="font-mono text-[11px] leading-tight font-bold" style={{ color: ink, opacity: 0.7 }}>{cell.klass}</div>
+      <div className="font-extrabold text-[11px] leading-tight truncate max-w-full" style={{ color: ink }}>{cell.subject}</div>
+      <div className="font-mono text-[10px] leading-tight font-bold truncate max-w-full" style={{ color: ink, opacity: 0.7 }}>{cell.klass}</div>
     </div>
   );
 }
@@ -229,15 +229,15 @@ function TeacherCell({ row, isFirst, isLast }: { row: Row; isFirst: boolean; isL
       }}
     >
       <div
-        className="w-9 h-9 rounded-full flex items-center justify-center text-white font-extrabold text-[12px] shrink-0"
+        className="w-8 h-8 rounded-full flex items-center justify-center text-white font-extrabold text-[11px] shrink-0"
         style={{ background: row.color, boxShadow: `0 0 0 2px white, 0 0 0 3px ${row.color}33` }}
       >
         {row.initials}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="font-extrabold text-[13px] leading-tight text-slate-800 truncate">{row.name}</div>
+        <div className="font-extrabold text-[12px] leading-tight text-slate-800 truncate">{row.name}</div>
         <div className="flex items-center gap-1.5 mt-0.5">
-          <span className="text-[10.5px] text-slate-500 truncate">{row.specialty}</span>
+          <span className="text-[10px] text-slate-500 truncate">{row.specialty}</span>
           {row.badge && (
             <span
               className="text-[9.5px] px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap"
@@ -253,12 +253,10 @@ function TeacherCell({ row, isFirst, isLast }: { row: Row; isFirst: boolean; isL
 }
 
 export function MasterGrid() {
-  // 5 days × 7 periods + 1 teacher column = 36 columns. Fixed widths so teacher names are readable.
-  const PERIOD_W = 56;
-  const TEACHER_W = 240;
-  const totalW = 5 * 7 * PERIOD_W + TEACHER_W;
+  // No internal horizontal scroll: teacher column gets a clamped width and
+  // the 35 period columns share the remaining container width via 1fr.
   // Teacher first (rightmost under RTL), then days Sun→Thu (right-to-left under RTL)
-  const gridCols = `${TEACHER_W}px repeat(${5 * 7}, ${PERIOD_W}px)`;
+  const gridCols = `clamp(140px, 14vw, 200px) repeat(${5 * 7}, minmax(0, 1fr))`;
 
   return (
     <div className="sg-root p-5">
@@ -283,11 +281,10 @@ export function MasterGrid() {
         </div>
       </div>
 
-      {/* Grid (horizontally scrollable on narrow viewports) */}
-      <div className="rounded-2xl overflow-x-auto shadow-sm border border-slate-200 bg-white">
-       <div style={{ minWidth: `${totalW}px` }}>
+      {/* Grid: fits the container width, no internal horizontal scroll */}
+      <div className="rounded-2xl overflow-hidden shadow-sm border border-slate-200 bg-white w-full">
         {/* Header row 1: teacher header (right) + day bands */}
-        <div className="grid" style={{ gridTemplateColumns: gridCols }}>
+        <div className="grid w-full" style={{ gridTemplateColumns: gridCols }}>
           <div
             className="px-3 py-3 text-center font-extrabold text-[13px] text-white flex items-center justify-center"
             style={{ background: 'var(--brand-navy)' }}
@@ -300,7 +297,7 @@ export function MasterGrid() {
         </div>
 
         {/* Header row 2: period numbers under each day band */}
-        <div className="grid" style={{ gridTemplateColumns: gridCols }}>
+        <div className="grid w-full" style={{ gridTemplateColumns: gridCols }}>
           <div className="bg-slate-50 border-t border-slate-100" />
           {DAYS.map((d) =>
             PERIODS.map((p) => <PeriodNumberCell key={`${d.key}-${p}`} dayKey={d.key} n={p} />)
@@ -313,7 +310,7 @@ export function MasterGrid() {
           const isLast = rIdx === TEACHERS.length - 1;
 
           return (
-            <div key={row.id} className="grid" style={{ gridTemplateColumns: gridCols, borderTop: rIdx === 0 ? 'none' : '1px solid #EEF2F8' }}>
+            <div key={row.id} className="grid w-full" style={{ gridTemplateColumns: gridCols, borderTop: rIdx === 0 ? 'none' : '1px solid #EEF2F8' }}>
               <TeacherCell row={row} isFirst={isFirst} isLast={isLast} />
               {DAYS.map((d) =>
                 row.cells[d.key].length === 0
@@ -325,7 +322,6 @@ export function MasterGrid() {
             </div>
           );
         })}
-       </div>
       </div>
 
       {/* Legend */}

@@ -23,8 +23,8 @@ This is a **view-layer** change. Data shapes, API endpoints, drag-and-drop wirin
 ## 2.1. Master Grid Integration Target
 
 The active master grid lives as an inline component named `MasterMatrix` inside `frontend/src/pages/SchedulePageNew.jsx` (defined at line 1482, rendered at line 1192). It already has the correct structural layout:
-- Sticky teacher column on the right (RTL) carrying name + specialty + assigned/quota counter
-- Two sticky header rows: day spans on top, period numbers + times underneath
+- Teacher column pinned to the right (RTL) carrying name + specialty + assigned/quota counter; sticky only with respect to vertical page scroll, not horizontal (the grid never scrolls horizontally — see §4 last bullet).
+- Two header rows that stay pinned to the top of the grid wrapper as the user scrolls the page vertically: day spans on top, period numbers + times underneath. No horizontal stickiness — the grid fits its container width.
 - Body rows: one per teacher, each row has `days × periods` cells using `<FilledCell>` for filled sessions and `<EmptyCell>` for blanks
 
 The redesign re-themes this existing markup — it does **not** introduce a new wrapper, does **not** swap in `TeacherScheduleGrid`, and does **not** change the data props (`teachers`, `cells`, `days`, `periods`, `dayLabelMap`, `onVacantClick`, `onUndoAbsence`, `onBulkCoverClick`, `onAcknowledgeRelocation`, `today`, `periodTimes`, `unresolvedConflicts`). All existing flows (vacancy click, undo absence, bulk cover, conflict tooltips, drag-and-drop) keep working unchanged.
@@ -47,7 +47,7 @@ Saturday is treated as a non-school day and is not rendered as a day group.
 
 ## 4. Grid Layout
 
-- **Teacher column** pinned to the right (RTL): circular avatar (40 px), full name in Cairo 600, subject specialty subtitle in Tajawal 400 muted-navy. Sticky during horizontal scroll.
+- **Teacher column** pinned to the right (RTL): circular avatar (40 px), full name in Cairo 600, subject specialty subtitle in Tajawal 400 muted-navy. The column is the first grid track in source order so it appears rightmost under RTL; it is *not* horizontally sticky because the grid itself never scrolls horizontally (see last bullet of this section).
 - **Day groups** — each day is a contiguous block with:
   - A colored **band header** (day name, white text, Cairo 700) above
   - A row of small period-number cells (`١`–`٧`) carrying the same day's tint at lower opacity, matching the reference image's banded structure.
@@ -55,7 +55,7 @@ Saturday is treated as a non-school day and is not rendered as a day group.
 - **Empty / break / admin-zone rows** keep their existing semantics with refined treatment:
   - Empty row: striped pastel background with the existing "no scheduled classes" message.
   - Admin block: soft red wash with the existing "admin block" label.
-- Horizontal scroll preserved on small screens; teacher column stays sticky.
+- **No internal horizontal scrollbar.** The grid fits the width of its container at any viewport. The teacher column uses a clamped width (`clamp(140px, 14vw, 200px)`) and the 35 period columns share the remaining width equally via `repeat(35, minmax(0, 1fr))`. Cells use `min-w-0` + `truncate` so subject/class text shortens gracefully when the container narrows. The wrapper uses `overflow-hidden` (not `overflow-x-auto`); no `min-width` is set on the grid. Teacher column stays first in source order so it appears rightmost under RTL.
 
 ## 5. Cell Pop-up Modal (Glass)
 

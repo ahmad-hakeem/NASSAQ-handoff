@@ -936,6 +936,35 @@ Locate the second header block at lines ~1558–1582 (`days.map((dayKey) => peri
 
 The teacher-column corner cell (lines ~1530–1535 and ~1552–1557) stays neutral slate-50 — it sits above the teacher avatars, not above any day group.
 
+- [ ] **Step 4b: Switch the grid wrapper to fluid (no internal horizontal scroll)**
+
+Locate the outer `<div className="grid text-[11px]" style={{ gridTemplateColumns: gridTemplate, minWidth: TEACHER_COL_WIDTH + DAY_COLS_TOTAL_PX }}>` at lines ~1523–1527 and the constants block above it (lines ~1507–1517). Replace the fixed-pixel layout with a fluid one so the table fills its container at any viewport without a horizontal scrollbar:
+
+Replace the constants:
+
+```jsx
+const TEACHER_COL_WIDTH_CSS = 'clamp(140px, 14vw, 200px)';
+const DAY_HEADER_HEIGHT = 28;
+const PERIOD_HEADER_HEIGHT = 38;
+const ROW_HEIGHT = 56;
+```
+
+(Delete `TEACHER_COL_WIDTH`, `PERIOD_COL_WIDTH`, `DAY_COLS_TOTAL_PX`, and `gridTemplate`. They are no longer needed.)
+
+Build the template inline:
+
+```jsx
+const gridTemplate = `${TEACHER_COL_WIDTH_CSS} repeat(${totalDataCols}, minmax(0, 1fr))`;
+```
+
+Drop `minWidth` from the wrapper:
+
+```jsx
+<div className="grid text-[11px] w-full" style={{ gridTemplateColumns: gridTemplate }}>
+```
+
+Also remove `min-w-[48px]` from the body cell wrapper in step 5 below — it would force a minimum width and re-introduce horizontal scroll on narrow viewports. The wrapping page chrome already handles overflow at the page level via its own scroll container, so the grid itself does not need `overflow-x-auto`. Confirm that the `MasterMatrix`'s parent (in `SchedulePageNew.jsx`) does not impose `overflow-x-auto` on the grid wrapper — if it does, leave it; the fluid grid will simply not need it.
+
 - [ ] **Step 5: Tint each cell's outer wrapper with the day color**
 
 Locate the body cell loop (lines ~1686–1701). Update the outer wrapper `<div className={`min-w-[48px] h-14 …`}>` so day tint shows behind the cell content:
@@ -944,7 +973,7 @@ Locate the body cell loop (lines ~1686–1701). Update the outer wrapper `<div c
 return (
   <div
     key={`${teacher.id}-${dayKey}-${p}`}
-    className={`min-w-[48px] h-14 border-b border-l border-white/50 ${conflictTip ? 'bg-orange-50 ring-1 ring-inset ring-orange-200' : (rowAbsentTint ? 'bg-red-50/40' : getDayTintClass(dayKey))}`}
+    className={`min-w-0 h-14 overflow-hidden border-b border-l border-white/50 ${conflictTip ? 'bg-orange-50 ring-1 ring-inset ring-orange-200' : (rowAbsentTint ? 'bg-red-50/40' : getDayTintClass(dayKey))}`}
     title={conflictTip || undefined}
   >
     {cell ? (
@@ -980,8 +1009,8 @@ Then change the outermost wrapper from a `<div>` to a `<>` fragment so the modal
 return (
   <>
     <div
-      className="grid text-[11px]"
-      style={{ gridTemplateColumns: gridTemplate, minWidth: TEACHER_COL_WIDTH + DAY_COLS_TOTAL_PX }}
+      className="grid text-[11px] w-full"
+      style={{ gridTemplateColumns: gridTemplate }}
     >
       {/* … existing header rows + body … */}
     </div>
@@ -1024,6 +1053,10 @@ Then in the running `Frontend Dev` workflow, open `الجدول الرئيسي` 
 - Vacant cells still open the existing vacancy candidate drawer (unchanged).
 - Today badge still shows on the current day's band.
 - Drag-and-drop still works (handled by `FilledCell` internals).
+
+**Layout sanity (no internal horizontal scroll):**
+- The grid fills the width of its parent container at any viewport ≥ 1024px without a horizontal scrollbar inside the grid.
+- Resize the browser between 1024px and 1920px and confirm: no horizontal scrollbar appears inside the grid wrapper, subject/class text truncates with ellipsis instead of overflowing, and the teacher column stays between ~140px and ~200px wide.
 
 - [ ] **Step 8: Commit**
 
