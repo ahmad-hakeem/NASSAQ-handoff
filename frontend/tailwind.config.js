@@ -38,6 +38,11 @@ module.exports = {
                     // Neutral Colors
                     black: '#312E2F',
                     gray: '#EAECED',
+                    // Schedule grid day extensions
+                    sand: '#D4A23C',
+                    'sand-light': '#FBF1DC',
+                    sage: '#7AA169',
+                    'sage-light': '#E8F1E4',
                 },
                 card: {
                     DEFAULT: 'hsl(var(--card))',

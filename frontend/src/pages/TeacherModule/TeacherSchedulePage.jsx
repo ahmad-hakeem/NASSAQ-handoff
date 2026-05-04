@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
+import { getDayBandClass, getDayTextOnBand, getDayTintClass } from '../../components/schedule/grid-theme';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import {
@@ -616,13 +617,11 @@ export default function TeacherSchedulePage() {
                       {(view === 'weekly' ? DAYS : [DAYS.find(d => d.key === selectedDay)]).map(day => (
                         <th
                           key={day.key}
-                          className={`p-3 text-center border-b border-s min-w-[100px] sm:min-w-[150px] ${day.key === todayKey ? 'bg-brand-turquoise/10' : ''}`}
+                          className={`p-2 text-center border-b border-s min-w-[100px] sm:min-w-[150px] ${getDayBandClass(day.key)} ${getDayTextOnBand(day.key)} font-cairo font-bold`}
                         >
-                          <span className={day.key === todayKey ? 'font-bold text-brand-turquoise' : ''}>
-                            {isRTL ? day.ar : day.en}
-                          </span>
+                          <span>{isRTL ? day.ar : day.en}</span>
                           {day.key === todayKey && (
-                            <Badge variant="outline" className="ms-2 text-xs bg-brand-turquoise text-white">{t('today2')}</Badge>
+                            <Badge variant="outline" className="ms-2 text-[10px] bg-white/30 text-white border-white/40">{t('today2')}</Badge>
                           )}
                         </th>
                       ))}
@@ -638,7 +637,7 @@ export default function TeacherSchedulePage() {
                         {(view === 'weekly' ? DAYS : [DAYS.find(d => d.key === selectedDay)]).map(day => {
                           const sessions = getSessionsForCell(day.key, slot.id, slot.slot_number || slot.period_number, slot.start_time);
                           return (
-                            <td key={`${day.key}-${slot.id}`} className={`p-2 border-b border-s min-h-[80px] ${day.key === todayKey ? 'bg-brand-turquoise/5' : ''}`}>
+                            <td key={`${day.key}-${slot.id}`} className={`p-2 border-b border-s min-h-[80px] ${getDayTintClass(day.key)} ${day.key === todayKey ? 'ring-1 ring-inset ring-brand-turquoise/30' : ''}`}>
                               {sessions.length > 0 ? (
                                 <div className="space-y-1">
                                   {sessions.map(session => {

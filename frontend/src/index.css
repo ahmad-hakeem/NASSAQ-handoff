@@ -10,6 +10,18 @@
         --brand-navy: 217 61% 28%;
         --brand-turquoise: 179 49% 51%;
         --brand-purple: 255 29% 44%;
+
+        /* Day color system — schedule grids (tints + bands) */
+        --day-sun-tint: 217 56% 95%;
+        --day-sun-band: 217 61% 28%;
+        --day-mon-tint: 178 49% 93%;
+        --day-mon-band: 179 49% 51%;
+        --day-tue-tint: 41 81% 92%;
+        --day-tue-band: 38 64% 53%;
+        --day-wed-tint: 99 35% 92%;
+        --day-wed-band: 95 24% 52%;
+        --day-thu-tint: 251 31% 93%;
+        --day-thu-band: 255 29% 44%;
         
         /* Light Mode */
         --background: 210 20% 98%;

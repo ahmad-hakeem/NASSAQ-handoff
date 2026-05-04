@@ -116,3 +116,15 @@ The platform utilizes a modern full-stack architecture.
 - **react-markdown, remark-gfm**: Markdown rendering in React.
 - **framer-motion**: Animation library for React.
 - **openpyxl**: Excel file parsing library for Python.
+## Schedule Grid Redesign (2026-05-04)
+- New day color system (`--day-{sun,mon,tue,wed,thu}-{tint,band}` HSL vars in `frontend/src/index.css`).
+- Reusable grid primitives under `frontend/src/components/schedule/grid-theme/`:
+  - `dayPalette.js` — single source of truth for day → tint/band Tailwind classes.
+  - `DayHeaderBand.jsx` — banded day header + per-period sub-row (available for future grids).
+  - `SessionCell.jsx` — day-tinted, click-to-open cell used by FilledCell's default branch.
+  - `SessionDetailModal.jsx` — glass-morphism session pop-up; `hideActions` prop renders read-only mode (used by master grid).
+- `MasterMatrix` (in `SchedulePageNew.jsx`) re-themed: `clamp(140px,14vw,200px) repeat(N, minmax(0,1fr))` columns (no internal horizontal scrollbar), day-banded headers, day-tinted period sub-headers, modal-on-click for normal cells. SchedulePageNew chrome (tabs, header, KPI cards, action buttons) preserved.
+- `FilledCell` default branch now delegates to `SessionCell` (vacant/substituted/relocated/substitute branches unchanged).
+- `TeacherSchedulePage` day headers + day cell columns recolored with the same day palette.
+- New tests: `dayPalette.test.js`, `SessionCell.test.jsx`, `SessionDetailModal.test.jsx` (19 passing).
+- New i18n keys (`ar.json` / `en.json`): editAction, moveAction, lockAction, unlockAction, closeAction, lockedBadge, relocatedBadge, periodNumberLabel, sessionDetailsTitle.

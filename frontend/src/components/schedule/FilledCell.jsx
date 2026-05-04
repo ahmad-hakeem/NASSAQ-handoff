@@ -6,8 +6,9 @@ import { AlertTriangle, Repeat, CheckCheck, MapPin, Check } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Button } from '../ui/button';
 import { useTranslation, useTheme } from '../../contexts/ThemeContext';
+import SessionCell from './grid-theme/SessionCell';
 
-export default function FilledCell({ cell, onClick, onAcknowledgeRelocation }) {
+export default function FilledCell({ cell, onClick, onAcknowledgeRelocation, dayKey }) {
   const { t } = useTranslation();
   const { direction } = useTheme();
   const relocated = !!cell?.is_relocated && !!cell?.alternative_location;
@@ -156,14 +157,11 @@ export default function FilledCell({ cell, onClick, onAcknowledgeRelocation }) {
     );
   }
   return (
-    <div
-      className="w-full h-full flex flex-col items-center justify-center text-[10px] leading-tight px-1 text-blue-600/80"
-      title={cell?.subject_name || ''}
-    >
-      <span className="font-semibold">{cell?.class_name || '—'}</span>
-      {cell?.subject_name && (
-        <span className="text-[9px] text-slate-400 truncate max-w-full">{cell.subject_name}</span>
-      )}
-    </div>
+    <SessionCell
+      session={cell}
+      dayKey={dayKey}
+      onClick={onClick}
+      isLocked={!!cell?.is_locked}
+    />
   );
 }

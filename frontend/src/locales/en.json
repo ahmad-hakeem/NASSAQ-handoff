@@ -4152,5 +4152,14 @@
   "formulaLegendDefault": "T = today · C = adjacent · W = standby — least = best",
   "evaluation": "Evaluation",
   "saveSession": "Save session",
-  "selectStudentFirst": "Select a student first"
+  "selectStudentFirst": "Select a student first",
+  "editAction": "Edit",
+  "moveAction": "Move",
+  "lockAction": "Lock",
+  "unlockAction": "Unlock",
+  "closeAction": "Close",
+  "lockedBadge": "Locked",
+  "relocatedBadge": "Relocated",
+  "periodNumberLabel": "Period {n}",
+  "sessionDetailsTitle": "Session details"
 }

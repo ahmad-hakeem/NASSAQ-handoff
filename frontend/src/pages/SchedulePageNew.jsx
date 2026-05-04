@@ -44,6 +44,7 @@ import BulkSubstitutionPanel from '../components/schedule/BulkSubstitutionPanel'
 import ScheduleTabNav from '../components/schedule/ScheduleTabNav';
 import ScheduleSettingsTabContent from '../components/schedule/ScheduleSettingsTabContent';
 import FilledCell from '../components/schedule/FilledCell';
+import { SessionDetailModal, getDayBandClass, getDayTintClass, getDayTextOnBand } from '../components/schedule/grid-theme';
 import { StandbyRosterContent } from './StandbyRosterPage';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { getPose } from '../components/hakim/hakimPoses';
@@ -1481,6 +1482,7 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
 // المثبَّتة عن منطقة التمرير.
 function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, onAcknowledgeRelocation, today, periodTimes = {}, unresolvedConflicts = [] }) {
   const { t, language } = useTranslation();
+  const [selectedSession, setSelectedSession] = useState(null);
   // فهرس "رؤى حكيم" بمفتاح teacher_id|day|period → reason_ar. التحديد
   // بالمعلم ضروري لئلا يلوّن صفّ معلم تنبيه يخصّ معلماً آخر في نفس
   // الفترة. العناصر التي لا تحمل teacher_id (مثل طلبات لم تُسنَد لأحد)
@@ -1502,19 +1504,14 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
 
   // ترتيب الأعمدة: لكل يوم تُضاف أعمدة الحصص (1..7) متتالية.
   const totalDataCols = days.length * periods.length;
-  // أبعاد مدمجة لإحساس "data-dense": أعمدة الحصص ضيقة، عمود المعلم
-  // أوسع لاحتواء الاسم + المادة + الحصة المسندة/الحصة الكلية.
-  const TEACHER_COL_WIDTH = 220;
-  const PERIOD_COL_WIDTH = 56;     // ≥ 48px كما يطلبه التصميم
+  // عمود المعلم مرن مع حدّ أدنى/أقصى، وأعمدة الحصص تتوزع بالتساوي على
+  // العرض المتاح (minmax(0,1fr)) لكي تنطبق الشبكة بأكملها داخل الحاوية
+  // دون شريط تمرير أفقي داخلي.
   const DAY_HEADER_HEIGHT = 28;    // صف رأس الأيام
-  // ارتفاع رأس الحصص: نزيده قليلاً لاستيعاب سطر التوقيت تحت رقم الحصة
-  // (مثل "07:00 – 07:45") المحسوب من إعدادات التوقيت في "إعدادات الجدول".
-  const PERIOD_HEADER_HEIGHT = 38;
+  const PERIOD_HEADER_HEIGHT = 38; // رأس الحصص (يحوي رقم + توقيت)
   const ROW_HEIGHT = 56;           // h-14 لكل صف بيانات
-  const DAY_COLS_TOTAL_PX = totalDataCols * PERIOD_COL_WIDTH;
 
-  // gridTemplateColumns: عمود المعلم + (يوم × حصص).
-  const gridTemplate = `${TEACHER_COL_WIDTH}px repeat(${totalDataCols}, ${PERIOD_COL_WIDTH}px)`;
+  const gridTemplate = `clamp(140px, 14vw, 200px) repeat(${totalDataCols}, minmax(0, 1fr))`;
 
   // ظل أيسر خفيف لعمود المعلم المثبَّت (في RTL يقع على اليمين، فالظل يمتدّ
   // نحو اليسار داخل منطقة التمرير).
@@ -1522,8 +1519,8 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
 
   return (
     <div
-      className="grid text-[11px]"
-      style={{ gridTemplateColumns: gridTemplate, minWidth: TEACHER_COL_WIDTH + DAY_COLS_TOTAL_PX }}
+      className="grid text-[11px] w-full"
+      style={{ gridTemplateColumns: gridTemplate }}
     >
       {/* ── Sticky header row 1: day spans ─────────────────────── */}
       {/* الزاوية العلوية الجانبية (تقاطع رأس + عمود المعلم) — أعلى z-index */}
@@ -1536,12 +1533,12 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
       {days.map((dayKey) => (
         <div
           key={`day-h-${dayKey}`}
-          className="sticky top-0 z-20 bg-slate-50 text-slate-700 text-xs font-semibold text-center flex items-center justify-center border-b border-l border-slate-200"
+          className={`sticky top-0 z-20 ${getDayBandClass(dayKey)} ${getDayTextOnBand(dayKey)} text-xs font-cairo font-bold text-center flex items-center justify-center border-b border-white/30`}
           style={{ gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
         >
           {dayLabelMap[dayKey] || dayKey}
           {dayKey === today && (
-            <span className="ms-2 inline-block px-1.5 py-0 text-[10px] rounded bg-slate-200 text-slate-700">
+            <span className="ms-2 inline-block px-1.5 py-0 text-[10px] rounded bg-white/30 text-white">
               {t('todayBadge')}
             </span>
           )}
@@ -1557,10 +1554,6 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
       </div>
       {days.map((dayKey) => (
         periods.map((p) => {
-          // توقيت بداية/نهاية الحصة كما هو محفوظ في إعدادات المدرسة
-          // (time_slots أو احتسابه من start_time + period_duration). يظهر
-          // تحت رقم الحصة بخط أصغر، ويُخفى بصمت إن لم يصل من الـbackend
-          // حتى لا يُكسر عرض المدارس قبل ضبط الإعدادات.
           const slot = periodTimes?.[String(p)];
           const timeLabel = slot && (slot.start || slot.end)
             ? `${slot.start || ''}${slot.start && slot.end ? ' – ' : ''}${slot.end || ''}`
@@ -1568,13 +1561,13 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
           return (
             <div
               key={`ph-${dayKey}-${p}`}
-              className="sticky z-20 bg-slate-50 text-slate-700 text-center flex flex-col items-center justify-center leading-tight border-b border-l border-slate-200"
+              className={`sticky z-20 ${getDayTintClass(dayKey)} text-brand-navy/85 text-center flex flex-col items-center justify-center leading-tight border-b border-white/40 border-l border-l-white/40`}
               style={{ top: DAY_HEADER_HEIGHT, height: PERIOD_HEADER_HEIGHT }}
               title={timeLabel ? t('periodLabelWithTime', { num: p, time: timeLabel }) : t('periodLabelShort', { num: p })}
             >
               <span className="text-[11px] font-semibold">{p}</span>
               {timeLabel && (
-                <span className="text-[8px] text-slate-500 tabular-nums">{timeLabel}</span>
+                <span className="text-[8px] text-brand-navy/55 tabular-nums">{timeLabel}</span>
               )}
             </div>
           );
@@ -1683,16 +1676,29 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                 const conflictKey = `${teacher.id}|${dayKey}|${p}`;
                 const conflictTip = !cell ? conflictsByCell.get(conflictKey) : null;
                 const conflictBg = conflictTip ? 'bg-orange-50 ring-1 ring-inset ring-orange-200' : rowBg;
+                const handleNormalClick = (sessionData) => {
+                  setSelectedSession({
+                    ...sessionData,
+                    day_of_week: dayKey,
+                    slot_number: p,
+                    teacher_name: teacher.full_name,
+                    teacher_specialty: teacher.subject || '',
+                    teacher_avatar_url: teacher.avatar_url,
+                    start_time: periodTimes?.[String(p)]?.start,
+                    end_time: periodTimes?.[String(p)]?.end,
+                  });
+                };
                 return (
                   <div
                     key={`${teacher.id}-${dayKey}-${p}`}
-                    className={`min-w-[48px] h-14 border-b border-l border-slate-100 ${conflictBg}`}
+                    className={`min-w-0 h-14 border-b border-l border-slate-100 p-0.5 ${conflictBg}`}
                     title={conflictTip || undefined}
                   >
                     {cell ? (
                       <FilledCell
                         cell={cell}
-                        onClick={cell.is_vacant ? () => onVacantClick(cellData) : undefined}
+                        dayKey={dayKey}
+                        onClick={cell.is_vacant ? () => onVacantClick(cellData) : handleNormalClick}
                         onAcknowledgeRelocation={onAcknowledgeRelocation}
                       />
                     ) : (
@@ -1705,6 +1711,12 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
           </React.Fragment>
         );
       })}
+      <SessionDetailModal
+        open={!!selectedSession}
+        session={selectedSession}
+        onClose={() => setSelectedSession(null)}
+        hideActions
+      />
     </div>
   );
 }
