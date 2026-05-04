@@ -1,5 +1,5 @@
 import './_group.css';
-import { Lock, RefreshCw, AlertTriangle, Filter, Pencil } from 'lucide-react';
+import { Lock, RefreshCw, Filter, Pencil } from 'lucide-react';
 
 const DAYS = [
   { key: 'sun', label: 'الأحد' },
@@ -53,7 +53,13 @@ const TEACHERS: Row[] = [
   },
   {
     id: 't3', name: 'أ. فهد القحطاني', specialty: 'لغة دولية', badge: 'دولية', initials: 'فق', color: '#615090',
-    cells: { sun: [], mon: [], tue: [], wed: [], thu: [] }, empty: true,
+    cells: {
+      sun: [C('لغة','١أ'), C('لغة','٢ب'), L(),         C('لغة','٣ج'), C('لغة','٤أ'), C('لغة','١ب'), N()],
+      mon: [C('لغة','٤ب'), C('لغة','١أ'), C('لغة','٣أ'), L(),         C('لغة','٢ب'), C('لغة','٤أ'), N()],
+      tue: [L(),         C('لغة','٢أ'), C('لغة','٤ج'), C('لغة','٣ب'), C('لغة','١أ'), C('لغة','٢ب'), N()],
+      wed: [C('لغة','٣أ'), C('لغة','١ب'), L(),         C('لغة','٤أ'), C('لغة','٢ج'), C('لغة','١أ'), N()],
+      thu: [C('لغة','٢ب'), C('لغة','٤أ'), C('لغة','١ج'), L(),         N(),         N(),         N()],
+    },
   },
   {
     id: 't4', name: 'أ. خالد الحرب', specialty: 'احتساب', badge: '١ نشاط', initials: 'خح', color: '#D4A23C',
@@ -305,21 +311,6 @@ export function MasterGrid() {
         {TEACHERS.map((row, rIdx) => {
           const isFirst = rIdx === 0;
           const isLast = rIdx === TEACHERS.length - 1;
-
-          if (row.empty) {
-            return (
-              <div key={row.id} className="grid" style={{ gridTemplateColumns: gridCols, borderTop: '1px solid #EEF2F8' }}>
-                <TeacherCell row={row} isFirst={isFirst} isLast={isLast} />
-                <div
-                  className="flex items-center justify-center gap-2 text-[12.5px] font-bold text-amber-800 py-3"
-                  style={{ gridColumn: 'span 35', background: 'linear-gradient(180deg,#FFF7E2 0%,#FFEFCB 100%)', borderTop: '1px solid #F5E2B0', borderBottom: '1px solid #F5E2B0' }}
-                >
-                  <AlertTriangle className="w-4 h-4" />
-                  منطقة الإدارة المختصة ‏· لا توجد حصص مجدولة
-                </div>
-              </div>
-            );
-          }
 
           return (
             <div key={row.id} className="grid" style={{ gridTemplateColumns: gridCols, borderTop: rIdx === 0 ? 'none' : '1px solid #EEF2F8' }}>
