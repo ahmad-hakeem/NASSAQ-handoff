@@ -4,7 +4,27 @@
 
 **Goal:** Redesign the schedule grids (master grid + teacher's own schedule view + class detail schedule view) with a Nassaq-branded pastel day-color system, banded day headers, refined cells, and a glass-morphism cell-click modal that surfaces session detail and quick actions.
 
-**Architecture:** Introduce a shared `frontend/src/components/schedule/grid-theme/` module containing a single source of truth for day colors (`dayPalette.js`), a banded `DayHeaderBand`, a re-themed `SessionCell`, and a glass `SessionDetailModal`. The existing `TeacherScheduleGrid` is refactored to use these primitives. The teacher's own schedule view (`TeacherModule/TeacherSchedulePage.jsx`) and class detail schedule view (`ClassDetailPage.jsx`) adopt the same primitives. No backend, API, or schema changes.
+**Architecture:** Introduce a shared `frontend/src/components/schedule/grid-theme/` module containing a single source of truth for day colors (`dayPalette.js`), a banded `DayHeaderBand`, a re-themed `SessionCell`, and a glass `SessionDetailModal`. The active master grid is the inline `MasterMatrix` function inside `frontend/src/pages/SchedulePageNew.jsx` (line 1482) — only that function's body is re-themed using the new primitives. The teacher's own schedule view (`TeacherModule/TeacherSchedulePage.jsx`) and class detail schedule view (`ClassDetailPage.jsx`) adopt the same primitives. The standalone `TeacherScheduleGrid` component is also retrofitted so any future consumer matches the look. No backend, API, or schema changes.
+
+---
+
+## Preservation Guarantees (Do Not Touch)
+
+`SchedulePageNew.jsx` is 1710 lines. Lines **1–1481** render the surrounding page chrome. The redesign touches **only** the body of `MasterMatrix` (lines **1482–1710**). The following items are explicitly preserved and **must not be modified**:
+
+| Element | Arabic label | Where |
+|---|---|---|
+| Top tab bar | `الجدول الرئيسي` / `جدول حصص الانتظار` / `إعدادات الجدول المدرسي` | SchedulePageNew tabs section |
+| Page title | `إدارة الجداول الذكية` | SchedulePageNew header |
+| Page subtitle | `مصفوفة موحَّدة لكل المعلمين × أيام الأسبوع × الحصص — مع متابعة لحظية للحصص الشاغرة` | SchedulePageNew header |
+| Primary actions | `إنشاء الجدول تلقائياً` (Wand2) / `تسجيل غياب` (UserX) | SchedulePageNew actions row |
+| KPI cards | `حصة شاغرة` / `معلم غائب` / `انتظار مُسند` / `عدالة التوزيع` | SchedulePageNew, lines ~1076–1107 (`KpiCard` component) |
+| Loading / empty / error states above the grid | `loadingMatrix`, `noTeachersRegistered`, error fallback | Lines 1180–1191 |
+| Standby roster + schedule settings tab content | `StandbyRosterContent`, `ScheduleSettingsTabContent` | Imported, not re-rendered |
+| Hakeem AI loading overlay | `ai-thinking` | Lines 1208+ |
+| All page-level callbacks | `handleVacantClick`, `handleRequestUndoAbsence`, `handleOpenBulkPanel`, `handleAcknowledgeRelocation`, `handleGenerate`, `handleAbsence` | SchedulePageNew, untouched |
+
+**Verification gate before merging Task 7:** open the running app, switch between all three tabs, confirm KPI values still update, click `إنشاء الجدول تلقائياً` and `تسجيل غياب` and confirm both flows still launch their existing dialogs. Any regression in the chrome blocks the task.
 
 **Tech Stack:** React 18, Vite, Tailwind CSS, shadcn/ui (Radix), framer-motion (`^11.18.2`), lucide-react. Arabic-first RTL with Cairo (display) + Tajawal (body). Tests use Jest + React Testing Library (existing setup under `frontend/src/components/schedule/__tests__/`).
 
@@ -25,8 +45,9 @@
 **Existing files to modify:**
 - `frontend/tailwind.config.js` — add `brand.sand` and `brand.sage` color extensions
 - `frontend/src/index.css` — add `--day-*` HSL CSS variables for day tints/bands
-- `frontend/src/components/schedule/TeacherScheduleGrid.jsx` — adopt `DayHeaderBand`, `SessionCell`, render `SessionDetailModal` at root
-- `frontend/src/components/schedule/FilledCell.jsx` — delegate visuals to `SessionCell` for the default branch (keep relocated/substituted special branches as-is to limit blast radius)
+- `frontend/src/pages/SchedulePageNew.jsx` — re-theme **only** the inline `MasterMatrix` function body (lines 1482–1710): banded day headers, day-tinted cells, mount `SessionDetailModal`. Lines 1–1481 (chrome) untouched.
+- `frontend/src/components/schedule/FilledCell.jsx` — delegate visuals to `SessionCell` for the default branch (keep relocated/substituted special branches as-is to limit blast radius). This is what `MasterMatrix` renders for filled cells, so the day tint flows through automatically.
+- `frontend/src/components/schedule/TeacherScheduleGrid.jsx` — retrofit standalone consumer with new primitives (kept for parity; not used by the master grid)
 - `frontend/src/pages/TeacherModule/TeacherSchedulePage.jsx` — adopt the new primitives (verify exact rendering structure during Task 8)
 - `frontend/src/pages/ClassDetailPage.jsx` — adopt the new primitives (verify exact rendering structure during Task 9)
 - `frontend/src/locales/ar.json`, `frontend/src/locales/en.json` — add modal labels (`sessionDetailsTitle`, `editAction`, `moveAction`, `lockAction`, `unlockAction`, `closeAction`)
@@ -826,10 +847,12 @@ git commit -m "i18n(schedule): add session detail modal labels"
 
 ---
 
-## Task 7: Refactor `TeacherScheduleGrid` to use new primitives + render modal
+## Task 7: Re-theme `MasterMatrix` inside `SchedulePageNew.jsx` (master grid)
+
+> **CRITICAL — preservation contract.** This task edits **only** (a) the body of the inline `MasterMatrix` function (lines 1482–1710 of `frontend/src/pages/SchedulePageNew.jsx`), (b) the import block at the very top of the same file — additive imports only, no removal of existing imports, no changes to any other top-level declaration, and (c) creates the new file `frontend/src/components/schedule/grid-theme/index.js` (a barrel re-export under the `grid-theme/` module created by Tasks 2–5). Everything else in `SchedulePageNew.jsx` between the import block and line 1482 (KpiCards, page header, tabs, action buttons, callbacks, layout shell) is off-limits. Read the "Preservation Guarantees (Do Not Touch)" section at the top of this plan before starting. After every change, manually verify in the running app that the three top tabs, the page title `إدارة الجداول الذكية` + subtitle, the two action buttons (`إنشاء الجدول تلقائياً`, `تسجيل غياب`), and the four KPI cards (`حصة شاغرة`, `معلم غائب`, `انتظار مُسند`, `عدالة التوزيع`) still render and behave identically.
 
 **Files:**
-- Modify: `frontend/src/components/schedule/TeacherScheduleGrid.jsx`
+- Modify: `frontend/src/pages/SchedulePageNew.jsx` (only the `MasterMatrix` function, lines 1482–1710)
 - Create: `frontend/src/components/schedule/grid-theme/index.js`
 
 - [ ] **Step 1: Create barrel export**
@@ -843,7 +866,182 @@ export { default as SessionDetailModal } from './SessionDetailModal';
 export * from './dayPalette';
 ```
 
-- [ ] **Step 2: Replace the inline `SessionCard` and the two-row header with the new primitives**
+- [ ] **Step 2: Add the imports at the top of `SchedulePageNew.jsx` (allowed exception to the line-range restriction)**
+
+This is the **only** allowed edit outside the 1482–1710 range. Find the existing schedule-component imports near the top of the file and append (do not remove or reorder anything else):
+
+```jsx
+import {
+  DayHeaderBand,
+  SessionCell,
+  SessionDetailModal,
+  getDayTintClass,
+  getDayBandClass,
+  getDayTextOnBand,
+} from '../components/schedule/grid-theme';
+```
+
+(Do **not** remove `FilledCell` / `EmptyCell` / `AbsencePill` imports — they are still used by `MasterMatrix` for special-state cells.)
+
+- [ ] **Step 3: Re-theme the day-name header row inside `MasterMatrix`**
+
+Locate the block at lines ~1536–1549 that renders `days.map((dayKey) => …)` for the day-name row. Replace its inner `<div … className="sticky top-0 z-20 bg-slate-50 …">` with a day-tinted band:
+
+```jsx
+{days.map((dayKey) => (
+  <div
+    key={`day-h-${dayKey}`}
+    className={`sticky top-0 z-20 ${getDayBandClass(dayKey)} ${getDayTextOnBand(dayKey)} text-xs font-cairo font-bold text-center flex items-center justify-center border-b border-l border-white/30`}
+    style={{ gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
+    data-testid={`day-band-${dayKey}`}
+  >
+    {dayLabelMap[dayKey] || dayKey}
+    {dayKey === today && (
+      <span className="ms-2 inline-block px-1.5 py-0 text-[10px] rounded bg-white/25 text-current">
+        {t('todayBadge')}
+      </span>
+    )}
+  </div>
+))}
+```
+
+- [ ] **Step 4: Tint the period-number sub-row per day**
+
+Locate the second header block at lines ~1558–1582 (`days.map((dayKey) => periods.map((p) => …))`). Replace each per-period `<div className="sticky z-20 bg-slate-50 …">` with a tinted version that uses the day's lighter tint:
+
+```jsx
+{days.map((dayKey) => (
+  periods.map((p) => {
+    const slot = periodTimes?.[String(p)];
+    const timeLabel = slot && (slot.start || slot.end)
+      ? `${slot.start || ''}${slot.start && slot.end ? ' – ' : ''}${slot.end || ''}`
+      : '';
+    return (
+      <div
+        key={`ph-${dayKey}-${p}`}
+        className={`sticky z-20 ${getDayTintClass(dayKey)} text-slate-700 text-center flex flex-col items-center justify-center leading-tight border-b border-l border-white/40`}
+        style={{ top: DAY_HEADER_HEIGHT, height: PERIOD_HEADER_HEIGHT }}
+        title={timeLabel ? t('periodLabelWithTime', { num: p, time: timeLabel }) : t('periodLabelShort', { num: p })}
+        data-testid={`day-period-${dayKey}-${p}`}
+      >
+        <span className="text-[11px] font-semibold">{p}</span>
+        {timeLabel && (
+          <span className="text-[8px] text-slate-600 tabular-nums">{timeLabel}</span>
+        )}
+      </div>
+    );
+  })
+))}
+```
+
+The teacher-column corner cell (lines ~1530–1535 and ~1552–1557) stays neutral slate-50 — it sits above the teacher avatars, not above any day group.
+
+- [ ] **Step 5: Tint each cell's outer wrapper with the day color**
+
+Locate the body cell loop (lines ~1686–1701). Update the outer wrapper `<div className={`min-w-[48px] h-14 …`}>` so day tint shows behind the cell content:
+
+```jsx
+return (
+  <div
+    key={`${teacher.id}-${dayKey}-${p}`}
+    className={`min-w-[48px] h-14 border-b border-l border-white/50 ${conflictTip ? 'bg-orange-50 ring-1 ring-inset ring-orange-200' : (rowAbsentTint ? 'bg-red-50/40' : getDayTintClass(dayKey))}`}
+    title={conflictTip || undefined}
+  >
+    {cell ? (
+      <FilledCell
+        cell={{ ...cell, day_of_week: cell.day_of_week || dayKey, slot_number: cell.slot_number || p }}
+        onClick={cell.is_vacant ? () => onVacantClick(cellData) : () => setSelectedSession({ ...cell, day_of_week: cell.day_of_week || dayKey, slot_number: cell.slot_number || p, teacher_name: teacher.full_name, teacher_specialty: teacher.subject })}
+        onAcknowledgeRelocation={onAcknowledgeRelocation}
+      />
+    ) : (
+      <EmptyCell />
+    )}
+  </div>
+);
+```
+
+Notes:
+- `rowAbsentTint` (red-50/40) and the orange conflict ring keep priority over the day tint — these are status signals and must stay loud.
+- The `onClick` for non-vacant cells now opens the detail modal instead of being `undefined`. Vacant cells keep their existing `onVacantClick` flow untouched. `FilledCell`'s default branch (which Task 10 will rewrite to use `SessionCell`) renders subject + class with the day tint inherited from the wrapper.
+
+- [ ] **Step 6: Add modal state + render the modal at the root of `MasterMatrix`**
+
+At the top of the `MasterMatrix` function, alongside the existing `useMemo`, add:
+
+```jsx
+const [selectedSession, setSelectedSession] = useState(null);
+```
+
+(Make sure `useState` is imported at the top of the file — it already is.)
+
+Then change the outermost wrapper from a `<div>` to a `<>` fragment so the modal can mount as a sibling, and render the modal:
+
+```jsx
+return (
+  <>
+    <div
+      className="grid text-[11px]"
+      style={{ gridTemplateColumns: gridTemplate, minWidth: TEACHER_COL_WIDTH + DAY_COLS_TOTAL_PX }}
+    >
+      {/* … existing header rows + body … */}
+    </div>
+    <SessionDetailModal
+      open={!!selectedSession}
+      session={selectedSession}
+      onClose={() => setSelectedSession(null)}
+      /* Hide quick-action buttons in the master grid for this task — see scope note below. */
+      hideActions
+    />
+  </>
+);
+```
+
+**Scope note for modal quick actions in the master grid (acceptance scope downgrade).** The master grid page (`SchedulePageNew.jsx`) does not currently expose Edit / Move / Lock handlers down into `MasterMatrix` cells; wiring them would require lifting state into the page chrome (off-limits per the preservation contract). For this task, the master grid renders the modal in **visual-only / read-only mode** — the buttons are hidden via the `hideActions` prop on `SessionDetailModal`. The full Edit / Move / Lock acceptance criterion (spec §5 footer + §10 third bullet) is still met by **Task 7b** (standalone `TeacherScheduleGrid`) and **Tasks 8 / 9** (teacher's own view + class detail), where the surrounding pages already own the relevant handlers. A follow-up plan will lift the master grid's edit/lock handlers and remove the `hideActions` flag.
+
+To support this, add a `hideActions` prop to `SessionDetailModal` (Task 5 component): when `true`, the footer button row is not rendered. This is a small additive change — wrap the modal's footer in `{!hideActions && (<footer>…three buttons…</footer>)}`. Re-run `pnpm test -- SessionDetailModal --watchAll=false` to confirm existing tests still pass (they don't pass `hideActions`, so default behavior is unchanged).
+
+- [ ] **Step 7: Build + smoke test**
+
+```
+cd frontend && pnpm run build 2>&1 | tail -15
+```
+Expected: build succeeds.
+
+Then in the running `Frontend Dev` workflow, open `الجدول الرئيسي` and verify:
+
+**Chrome unchanged (preservation contract):**
+- Top tabs `الجدول الرئيسي / جدول حصص الانتظار / إعدادات الجدول المدرسي` switch correctly.
+- Page title `إدارة الجداول الذكية` + subtitle render unchanged.
+- Buttons `إنشاء الجدول تلقائياً` and `تسجيل غياب` open their existing dialogs.
+- All four KPI cards (`حصة شاغرة`, `معلم غائب`, `انتظار مُسند`, `عدالة التوزيع`) display values and update.
+
+**Grid re-themed:**
+- Each day header band shows in its color (Sun navy, Mon turquoise, Tue sand, Wed sage, Thu purple).
+- Period numbers carry the day's lighter tint.
+- Cells inherit the day tint behind their content.
+- Clicking a filled non-vacant cell opens the glass modal.
+- Esc / X / backdrop dismiss the modal.
+- Vacant cells still open the existing vacancy candidate drawer (unchanged).
+- Today badge still shows on the current day's band.
+- Drag-and-drop still works (handled by `FilledCell` internals).
+
+- [ ] **Step 8: Commit**
+
+```
+git add frontend/src/pages/SchedulePageNew.jsx frontend/src/components/schedule/grid-theme/index.js
+git commit -m "feat(schedule): re-theme MasterMatrix with day color bands + glass modal"
+```
+
+---
+
+## Task 7b: Retrofit standalone `TeacherScheduleGrid` for parity
+
+> Optional but recommended. The master grid does not use `TeacherScheduleGrid` (it has its own inline `MasterMatrix`), but the standalone component is referenced in docs and may be picked up by future consumers. Bring it to parity so it does not drift from the new design system.
+
+**Files:**
+- Modify: `frontend/src/components/schedule/TeacherScheduleGrid.jsx`
+
+- [ ] **Step 1: Replace the inline `SessionCard` and the two-row header with the new primitives**
 
 In `frontend/src/components/schedule/TeacherScheduleGrid.jsx`:
 
@@ -968,20 +1166,22 @@ cd frontend && pnpm test -- TeacherScheduleGrid --watchAll=false
 ```
 Expected: existing `TeacherScheduleGrid.loading.test.jsx` continues to PASS.
 
-- [ ] **Step 4: Visual smoke test**
+- [ ] **Step 4: Visual smoke test of the standalone component**
 
-Open the master grid in the running Frontend Dev workflow and verify:
+Mount the standalone `TeacherScheduleGrid` in any consumer that exercises it (or a Storybook/sandbox story) and verify:
 - Day bands appear in the five colors
 - Cells are tinted per day
 - Clicking a cell opens the glass modal
 - Esc / X / backdrop dismiss the modal
 - Edit button still triggers the existing edit flow
 
+> Note: this step does **not** apply to `SchedulePageNew.jsx` / `MasterMatrix` — that page does not consume `TeacherScheduleGrid`. Master-grid verification is owned by Task 7 Step 7.
+
 - [ ] **Step 5: Commit**
 
 ```
-git add frontend/src/components/schedule/TeacherScheduleGrid.jsx frontend/src/components/schedule/grid-theme/index.js
-git commit -m "refactor(schedule): adopt grid-theme primitives + glass modal in master grid"
+git add frontend/src/components/schedule/TeacherScheduleGrid.jsx
+git commit -m "refactor(schedule): adopt grid-theme primitives + glass modal in standalone TeacherScheduleGrid"
 ```
 
 ---
@@ -1181,12 +1381,14 @@ git commit -m "docs: note new schedule grid-theme module in replit.md"
 
 **1. Spec coverage:**
 - Day color system (spec §3) → Task 1 (tokens) + Task 2 (palette module).
-- Grid layout: bands + numbered sub-row + tinted cells (spec §4) → Task 3 (DayHeaderBand) + Task 4 (SessionCell) + Task 7 (master grid wiring).
-- Glass cell-click modal (spec §5) → Task 5 (modal) + Task 7 (mount in master grid).
+- Master grid integration target (spec §2.1) → Task 7 retargeted to `MasterMatrix` inside `SchedulePageNew.jsx`.
+- Page chrome preservation (spec §2 last bullet + plan "Preservation Guarantees") → enforced by Task 7's preservation-contract callout, line-range scoping (1482–1710 + additive imports + new `grid-theme/index.js` barrel), and Step 7 manual verification of tabs / title / KPI cards / action buttons. Enforcement is process-only (manual smoke test); a scripted CI guard for protected-chrome presence is a recommended follow-up.
+- Grid layout: bands + numbered sub-row + tinted cells (spec §4) → Task 3 (DayHeaderBand) + Task 4 (SessionCell) + Task 7 steps 3–5 (master grid wiring inside MasterMatrix).
+- Glass cell-click modal (spec §5) → Task 5 (modal) + Task 7 step 6 (mount in MasterMatrix).
 - Modal content fields (subject, class, teacher, room, time, status badges, quick actions) → Task 5.
-- Quick actions wired to existing handlers → Task 7 step 2g (Edit/Move/Lock dispatch through `onSessionEdit` / `onSessionClick`).
+- Quick actions wired to existing handlers → Task 7b step 2g for the standalone `TeacherScheduleGrid` (Edit/Move/Lock dispatch through `onSessionEdit` / `onSessionClick`); Tasks 8 + 9 for the teacher's own view + class detail. The master grid (Task 7) intentionally hides quick-action buttons via the `hideActions` prop because `SchedulePageNew.jsx` does not yet expose those handlers to cells and wiring them is out of scope per the preservation contract — see the explicit acceptance scope downgrade in Task 7 step 6 and spec §10.
 - Component architecture (`grid-theme/` module) → Tasks 2, 3, 4, 5, 7 step 1 (barrel).
-- Reuse across all three grids → Tasks 7 (master), 8 (teacher view), 9 (class detail).
+- Reuse across all three grids → Tasks 7 (master via MasterMatrix), 7b (standalone TeacherScheduleGrid), 8 (teacher view), 9 (class detail).
 - Polish & a11y (hover scale, keyboard, aria-label, focus return, reduced-motion) → Task 4 (cell), Task 5 (modal), Task 11 (verification).
 - No backend/API changes → preserved by construction; no task touches `backend/`.
 

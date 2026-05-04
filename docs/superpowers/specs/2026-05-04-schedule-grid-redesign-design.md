@@ -18,6 +18,16 @@ This is a **view-layer** change. Data shapes, API endpoints, drag-and-drop wirin
 - No changes to substitution, absence, or generation flows.
 - No replacement of `@dnd-kit` / native HTML5 drag handlers — the new modal calls the same handlers the grid already exposes.
 - No changes to authentication, permissions, or role logic.
+- **No changes to the page chrome around the grid.** The following elements rendered by `frontend/src/pages/SchedulePageNew.jsx` are explicitly preserved as-is: the three top tabs (`الجدول الرئيسي`, `جدول حصص الانتظار`, `إعدادات الجدول المدرسي`), the page title `إدارة الجداول الذكية` and its subtitle `مصفوفة موحَّدة لكل المعلمين × أيام الأسبوع × الحصص — مع متابعة لحظية للحصص الشاغرة`, the two action buttons `إنشاء الجدول تلقائياً` and `تسجيل غياب`, and the four KPI cards `حصة شاغرة`, `معلم غائب`, `انتظار مُسند`, `عدالة التوزيع`. Only the grid body itself (the inline `MasterMatrix` function) is re-themed.
+
+## 2.1. Master Grid Integration Target
+
+The active master grid lives as an inline component named `MasterMatrix` inside `frontend/src/pages/SchedulePageNew.jsx` (defined at line 1482, rendered at line 1192). It already has the correct structural layout:
+- Sticky teacher column on the right (RTL) carrying name + specialty + assigned/quota counter
+- Two sticky header rows: day spans on top, period numbers + times underneath
+- Body rows: one per teacher, each row has `days × periods` cells using `<FilledCell>` for filled sessions and `<EmptyCell>` for blanks
+
+The redesign re-themes this existing markup — it does **not** introduce a new wrapper, does **not** swap in `TeacherScheduleGrid`, and does **not** change the data props (`teachers`, `cells`, `days`, `periods`, `dayLabelMap`, `onVacantClick`, `onUndoAbsence`, `onBulkCoverClick`, `onAcknowledgeRelocation`, `today`, `periodTimes`, `unresolvedConflicts`). All existing flows (vacancy click, undo absence, bulk cover, conflict tooltips, drag-and-drop) keep working unchanged.
 
 ## 3. Day Color System (Brand-extended)
 
@@ -114,8 +124,9 @@ No prop or data-shape changes flow upward; the parent pages keep passing the sam
 ## 10. Acceptance Criteria
 
 - All three schedule grids render with the five day-color groups, banded headers, and tinted cells.
-- Clicking any filled cell opens the glass modal with the seven listed content fields and three quick actions.
-- Edit / Move / Lock from the modal trigger the same flows that the existing grid already supports — verified by manual QA in the master grid.
+- Clicking any filled cell opens the glass modal with the listed content fields.
+- The modal renders three quick actions (Edit / Move / Lock) in the **teacher's own schedule view** and **class detail view**, wired to the existing handlers those pages already own. In the **master grid** (`MasterMatrix` inside `SchedulePageNew.jsx`), the modal is rendered in visual-only mode (`hideActions`) for this redesign because the surrounding page does not yet expose those handlers to cells; wiring them is deferred to a follow-up plan and is **not** required for this redesign to be accepted.
 - Esc, X, and backdrop click all dismiss the modal; focus returns to the originating cell.
+- The master-grid page chrome (top tabs, page header `إدارة الجداول الذكية` + subtitle, action buttons `إنشاء الجدول تلقائياً` + `تسجيل غياب`, four KPI cards `حصة شاغرة`/`معلم غائب`/`انتظار مُسند`/`عدالة التوزيع`) is byte-for-byte unchanged outside the additive import block at the top of `SchedulePageNew.jsx`.
 - No backend code changed; no API contract changed; no schema migration produced.
 - Lighthouse and a quick a11y pass show no new contrast or focus regressions.
