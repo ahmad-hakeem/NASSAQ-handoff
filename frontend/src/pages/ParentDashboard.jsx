@@ -106,33 +106,35 @@ export default function ParentDashboard() {
     <div className="min-h-screen bg-gray-50 pb-24" dir="rtl" data-testid="parent-dashboard">
       {/* Header */}
       <div className="bg-gradient-to-br from-indigo-600 to-purple-500 text-white">
-        <div className="px-4 py-6 space-y-4">
-          {/* Date */}
-          <p className="text-indigo-100 text-sm text-center">{formatHijriDate()}</p>
-          
-          {/* Parent Info */}
-          <div className="flex items-center gap-4">
-            <Avatar className="h-16 w-16 border-2 border-white/30 shadow-lg">
-              <AvatarImage src={user?.avatar_url} alt={parentData?.name} />
-              <AvatarFallback className="bg-white/20 text-white text-xl font-bold">
-                {parentData?.name?.charAt(0) || 'و'}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <h1 className="font-cairo text-xl font-bold">
-                مرحباً {parentData?.name || 'ولي الأمر'}
-              </h1>
-              <p className="text-indigo-100 text-sm flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                {children.length} {children.length === 1 ? 'ابن' : 'أبناء'} مسجلين
-              </p>
+        <div className="max-w-[1400px] mx-auto px-4 md:px-6 py-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            {/* Parent Info */}
+            <div className="flex items-center gap-4">
+              <Avatar className="h-16 w-16 border-2 border-white/30 shadow-lg">
+                <AvatarImage src={user?.avatar_url} alt={parentData?.name} />
+                <AvatarFallback className="bg-white/20 text-white text-xl font-bold">
+                  {parentData?.name?.charAt(0) || 'و'}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <h1 className="font-cairo text-xl font-bold">
+                  مرحباً {parentData?.name || 'ولي الأمر'}
+                </h1>
+                <p className="text-indigo-100 text-sm flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  {children.length} {children.length === 1 ? 'ابن' : 'أبناء'} مسجلين
+                </p>
+              </div>
             </div>
+
+            {/* Date */}
+            <p className="text-indigo-100 text-sm text-center md:text-end">{formatHijriDate()}</p>
           </div>
         </div>
       </div>
 
       {/* Content */}
-      <div className="px-4 py-4 space-y-4 -mt-4">
+      <div className="max-w-[1400px] mx-auto px-4 md:px-6 py-4 space-y-4 -mt-4">
         
         {/* Children Selector */}
         {children.length > 1 && (
