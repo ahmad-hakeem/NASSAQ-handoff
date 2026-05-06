@@ -23,7 +23,7 @@ The task is **structural**, not cosmetic. Cell typography, hierarchy, and densit
 Lifted from the user brief, codified here so the implementation has a hard checklist:
 
 1. At first paint on a 1280×800 laptop, the matrix region occupies **≥ 60 %** of the viewport height.
-2. There is **no nested `overflow-y`** on the matrix region. Vertical scroll happens at the page (document) level.
+2. There is **no nested `overflow-y`** anywhere in the master schedule content chain — from the sticky band through the matrix region up to the document scroll context. Vertical scroll happens at the page (document) level. (Unrelated parts of the application layout outside this chain are not in scope for this rule.)
 3. Horizontal scroll is permitted **only inside the matrix region in weekly mode**. The page chrome (sticky band, KPI bar) stays exactly viewport-wide.
 4. The sticky teacher column (`inset-inline-start: 0`) stays glued in RTL throughout horizontal and vertical scroll.
 5. The sticky day-band + period header stay glued to the bottom edge of the sticky action band (no 1 px float, no double-stick bug).
@@ -32,8 +32,11 @@ Lifted from the user brief, codified here so the implementation has a hard check
 8. The control area (sticky band) is **visibly secondary** to the matrix.
 9. RTL correctness: day order Sunday→Thursday right-to-left, sticky positioning uses `inset-inline-start`, never `left`/`right` literals.
 10. Realistic scale assumption: ~100 teachers. The design must hold at that density without perf jank or layout drift.
-11. **Hard visual rejection rule**: if the final result still reads as a *table embedded inside dashboard chrome* — i.e. a card-framed grid sitting under a stack of KPI cards — the implementation is rejected regardless of whether scroll, sticky, and RTL behavior are technically correct. The matrix must read as the page's primary surface.
+11. **Hard visual rejection rule (first-glance perception)**: if, **at first glance**, the matrix still reads as a *table embedded inside dashboard chrome* rather than the page's primary workspace, the implementation is rejected — regardless of whether scroll, sticky, and RTL behavior are technically correct. The judgment is made on the first screen impression, not on technical compliance.
 12. **Hard space-allocation rule**: any solution that leaves excessive low-value vertical chrome above the matrix is a failure, even if scroll behavior is technically correct. Chrome above the matrix on first paint must stay within the budget defined in §4 (KPI pill bar ≤ 48 px + sticky band ≤ 88 px daily / ≤ 52 px weekly + tab strip if present). KPI cards, hero blocks, decorative spacers, or any per-page banner that pushes the matrix below the 60 % viewport floor are not acceptable.
+13. **Hard no-silent-truncation rule**: if total teacher count exceeds `MASTER_GRID_TEACHER_WINDOW`, the UI must not silently omit teachers. The implementation plan must define an explicit fallback path before ship — for example: a larger configurable window value, temporary pager restoration scoped to overflow cases, or a follow-up virtualization flag with an interim user-facing notice. Silent truncation is not acceptable under any circumstances.
+14. **Hard horizontal-discoverability rule (weekly mode)**: if weekly mode overflows horizontally, the matrix must provide a clear visual affordance that more content exists horizontally — for example a sticky inline-end shadow, an edge fade, or an intentional initial visible cut-off of the next day group. Hidden horizontal overflow with no discoverability cue is not acceptable.
+15. **Hard no-wrap rule (sticky band)**: at supported desktop widths (≥ 1024 px band-width), the sticky band must never wrap onto unintended extra lines. It must degrade by density level (per §4.2) instead. The "never wrap" floor is absolute — a wrap at any supported width is a failure.
 
 ## 3. Architecture decisions (from brainstorming Q&A)
 
@@ -104,6 +107,16 @@ Implementation: a single `ResizeObserver` on the sticky band toggles `data-densi
 - Daily mode wrapper: no horizontal scroll (`overflow: visible`).
 - Weekly mode wrapper: `overflow-x: auto; overflow-y: visible;` — horizontal scroll is constrained to the matrix; vertical still bubbles up to the page.
 
+**Horizontal-overflow discoverability affordance** (mandatory in weekly mode, per criterion #14):
+
+When the weekly matrix overflows horizontally, the matrix must visibly signal that more content exists. The implementation uses a combination — not a single technique — chosen for RTL correctness:
+
+1. **Inline-end edge fade** (primary): a fixed ~24 px gradient `mask-image` or absolutely-positioned overlay on the matrix wrapper's inline-end edge, fading to the page background. Hidden when scrolled to the inline-end-most position via a scroll listener that toggles a `data-can-scroll-end="true|false"` attribute on the wrapper.
+2. **Intentional initial cut-off** (secondary): the first paint deliberately leaves the next day group's first ~12 px visible inside the viewport, so the eye registers "there is more here" before any scroll. The `clamp()` on the teacher column width and the cell `min-w` are tuned together so this holds at 1280 px.
+3. **Inline-start mirror** (symmetric): the same edge-fade overlay on the inline-start edge, hidden until horizontal scroll has moved off zero — confirms that scroll-back is possible.
+
+Both edge overlays must respect RTL (`inset-inline-start` / `inset-inline-end`, never `left`/`right` literals) and must not bleed over the sticky teacher column (z-index < 10).
+
 ### 4.4 Sticky tier layering
 
 | Element | Position | Offset | z-index |
@@ -129,6 +142,18 @@ export const MASTER_GRID_TEACHER_WINDOW = 200;
 Naming rationale: the constant represents **"a large realistic single-school teacher window"**, not a pagination page size. Its semantic meaning is "request enough rows to display every teacher in any realistic single school in one paint." All call sites in the master-grid request path import this constant; no other file may inline the literal.
 
 The underlying `teacher_page` / `teacher_page_size` paginated contract on the backend stays intact — only the UI affordance is removed (per Q4). If a deployment ever exceeds this value, the constant is bumped, or virtualization is introduced as a follow-up; no contract change required. The implementation plan must add a self-check that asserts `rg "teacher_page_size" frontend/src` returns no numeric literals other than this constant's definition.
+
+**No-silent-truncation fallback** (mandatory, per criterion #13):
+
+If `total_teachers > MASTER_GRID_TEACHER_WINDOW`, the UI must not silently render a partial set. The implementation plan must define **before ship** which of these explicit fallback paths is shipped:
+
+1. **Bumped window** — raise `MASTER_GRID_TEACHER_WINDOW` to a value that demonstrably covers the deployment, with a perf re-check at the new size.
+2. **Pager restoration scoped to overflow** — only when overflow is detected (server returns `total_teachers > window`), re-mount a minimal pager affordance inside the sticky band, and surface a NassaqAlertDialog notice on first overflow detection ("عرض أول N معلم من إجمالي M؛ استخدم التنقل لعرض الباقي").
+3. **Virtualization flag** — gate behind a feature flag, with an interim user-facing notice as in (2) until virtualization ships.
+
+The detection is purely client-side: read `pagination.total` from the master-grid response (already part of the #142 contract) and compare against `MASTER_GRID_TEACHER_WINDOW`. If `total > window`, the chosen fallback path activates. **Under no circumstances may the page render `pagination.total > window` without surfacing this state to the user.**
+
+A self-check gate verifies that the overflow code path exists and is exercised by a manual test (set `MASTER_GRID_TEACHER_WINDOW` artificially low and confirm the fallback triggers).
 
 ## 5. Cell visual treatment
 
@@ -194,17 +219,19 @@ Any backend change must be called out **explicitly in the implementation plan** 
 
 ## 9. Self-check gates (run before marking complete)
 
-1. `rg -n "overflow-y" frontend/src/pages/SchedulePageNew.jsx` returns no matrix-region matches.
+1. `rg -n "overflow-y" frontend/src/pages/SchedulePageNew.jsx` returns no matches in the master schedule content chain (sticky band → matrix region → ancestors up to the document scroll context).
 2. `rg -n "teacher_page_size" frontend/src` returns only the `MASTER_GRID_TEACHER_WINDOW` definition site and call sites that import the constant — no inline numeric literals.
 3. Frontend production build succeeds with `DISABLE_ESLINT_PLUGIN=true npm run build` (matches existing project build path).
-4. **Hard visual rejection check** (criterion #11): subjective review of the rendered page must not read as a card-framed table under dashboard chrome. If it does, iterate; do not mark complete.
-5. **Hard space-allocation check** (criterion #12): on a 1280×800 laptop, measure the chrome stack above the matrix on first paint. Total must be ≤ KPI pill bar (≤ 48 px) + sticky band (≤ 88 px daily / ≤ 52 px weekly) + tab strip. If exceeded, iterate; do not mark complete.
-6. Manual visual smoke: 100-teacher fixture (or production-like), daily mode at 1280×800 — matrix region ≥ 60 % of viewport on first paint, sticky band ≤ 88 px, page-level scroll smooth.
-7. Manual visual smoke: weekly mode at 1280×800 — horizontal scroll inside matrix; sticky teacher column stays glued; sticky day-band stays glued; no chrome bleed outside the viewport.
-8. Compact-fallback smoke at 1280, 1366, 1440, and 1024 px band-widths — sticky band never wraps; density attribute correctly toggles `default` / `compact` / `dense`.
-9. Round-trip test for each preserved behavior: generate → draft view appears, publish → published view appears with notification toast, PUBLISH_BLOCKED → NassaqAlertDialog with violations, day switch → skeleton + chrome stays mounted.
-10. If any backend change was applied under §7 license: it has an Alembic migration if schema-touching, an explicit rationale paragraph in the implementation plan, and obeys all `replit.md` deployment-safety rules.
-11. Code review (architect) APPROVED.
+4. **Hard visual rejection check (first-glance perception, criterion #11)**: take an `app_preview` screenshot at 1280×800; on first glance it must read as a workspace, not a card-framed table under dashboard chrome. If ambiguous, iterate; do not mark complete.
+5. **Hard space-allocation check (criterion #12)**: on a 1280×800 laptop, measure the chrome stack above the matrix on first paint. Total must be ≤ KPI pill bar (≤ 48 px) + sticky band (≤ 88 px daily / ≤ 52 px weekly) + tab strip. If exceeded, iterate; do not mark complete.
+6. **Hard no-silent-truncation check (criterion #13)**: temporarily set `MASTER_GRID_TEACHER_WINDOW` to a low value (e.g. 5) against a fixture with more teachers and confirm the chosen fallback path triggers visibly (notice + pager / bumped window prompt / virtualization flag indicator). Restore the constant before completion.
+7. **Hard horizontal-discoverability check (criterion #14)**: in weekly mode at 1280×800, the inline-end edge fade is visible at scroll position 0; after scrolling fully to the inline-end-most position, the inline-end fade disappears and the inline-start fade appears.
+8. **Hard no-wrap check (criterion #15)**: at band-widths 1024, 1280, 1366, and 1440 px the sticky band never wraps; density attribute correctly toggles `default` / `compact` / `dense`.
+9. Manual visual smoke: 100-teacher fixture (or production-like), daily mode at 1280×800 — matrix region ≥ 60 % of viewport on first paint, sticky band ≤ 88 px, page-level scroll smooth.
+10. Manual visual smoke: weekly mode at 1280×800 — horizontal scroll inside matrix only; sticky teacher column stays glued; sticky day-band stays glued; no chrome bleed outside the viewport.
+11. Round-trip test for each preserved behavior: generate → draft view appears, publish → published view appears with notification toast, PUBLISH_BLOCKED → NassaqAlertDialog with violations, day switch → skeleton + chrome stays mounted.
+12. If any backend change was applied under §7 license: it has an Alembic migration if schema-touching, an explicit rationale paragraph in the implementation plan, and obeys all `replit.md` deployment-safety rules.
+13. Code review (architect) APPROVED.
 
 ## 10. Out of scope
 
@@ -226,7 +253,9 @@ Any backend change must be called out **explicitly in the implementation plan** 
 | Drop of card framing makes the matrix bleed into adjacent UI. | A single `border-t` separates the matrix from the sticky band; the matrix's own header borders provide internal containment. |
 | Larger window-size request reveals a previously latent N+1 / missing index on the master-grid endpoint. | Covered by the §7 narrowly-scoped backend license; fix at source via `selectinload` or Alembic-managed index, with an explicit rationale paragraph in the implementation plan. |
 | Sticky band wraps or crowds on common laptop widths (1280–1440 px), especially with a sidebar open. | Mandatory compact-fallback breakpoints in §4.2, driven by `ResizeObserver` on the band (not the viewport), with an explicit "never wrap" floor that drops density level instead of wrapping. Self-check #8 verifies at 1024 / 1280 / 1366 / 1440 px. |
-| Hard visual rejection rule (criterion #11) is subjective and could be argued. | Implementation plan must include an explicit screenshot or app-preview check at the self-check stage, compared side-by-side against the rejection criteria; if ambiguous, iterate before marking complete. |
+| Hard visual rejection rule (criterion #11) is subjective and could be argued. | Implementation plan must include an explicit screenshot or app-preview check at the self-check stage, judged on **first-glance perception**; if ambiguous, iterate before marking complete. |
+| Real-world deployment exceeds `MASTER_GRID_TEACHER_WINDOW` and silently truncates the teacher list (criterion #13). | Mandatory client-side detection via `pagination.total > window` and a chosen fallback path (bumped window / scoped pager restoration / virtualization flag) declared in the implementation plan before ship. Self-check #6 verifies the fallback is exercised. |
+| Weekly horizontal overflow is invisible to the user (criterion #14). | Mandatory three-part discoverability affordance in §4.3 (inline-end edge fade + intentional initial cut-off + inline-start mirror), all RTL-aware and toggled via scroll-position attributes. Self-check #7 verifies. |
 
 ## 12. Out-of-band changes to `replit.md`
 
