@@ -4186,5 +4186,11 @@
   "noPublishedScheduleYet": "No published schedule yet.",
   "noPublishedScheduleHint": "Click \"Auto-generate schedule\" then \"Publish schedule\" to make it visible to teachers and students.",
   "noDraftScheduleYet": "No draft schedule.",
-  "noDraftScheduleHint": "Click \"Auto-generate schedule\" to generate a new draft you can review before publishing."
+  "noDraftScheduleHint": "Click \"Auto-generate schedule\" to generate a new draft you can review before publishing.",
+  "publishScheduleNoDraftTooltip": "No draft to publish — auto-generate a schedule first.",
+  "publishScheduleSuccessWithCount": "Schedule published and {n} teachers notified.",
+  "publishBlockedTitle": "Schedule cannot be published",
+  "publishBlockedDefault": "The schedule cannot be published because of active hard-constraint violations. Please address the items below and try again:",
+  "switchToDraftView": "View draft",
+  "switchToPublishedView": "View published"
 }

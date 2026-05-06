@@ -707,7 +707,8 @@ async def publish_schedule(
     timetable_id = (payload.timetable_id or "").strip() or None
     if not timetable_id:
         # Resolve the most-recently updated DRAFT for this school. The
-        # generation endpoint guarantees there is at most one DRAFT row.
+        # generation endpoint guarantees there is at most one DRAFT row
+        # per (school, academic_year, semester) tuple.
         drafts = await gd_find(
             db.session, "timetables",
             {"school_id": school_id, "status": TimetableStatus.DRAFT.value},
@@ -717,7 +718,7 @@ async def publish_schedule(
             raise HTTPException(
                 status_code=404,
                 detail={
-                    "code": "NO_DRAFT_FOUND",
+                    "code": "NO_DRAFT_TO_PUBLISH",
                     "message_ar": "لا توجد مسودة جدول قابلة للنشر.",
                     "message_en": "No draft timetable available to publish.",
                 },
@@ -750,6 +751,18 @@ async def publish_schedule(
         timetable_id=timetable_id,
     )
 
+    # Capture the id of the currently published timetable (if any)
+    # *before* we promote, so we can return it to the caller as
+    # ``archived_timetable_id``. ``publish_timetable`` archives prior
+    # published rows in-place via UPDATE only (no DELETE), per the
+    # replit.md production-data policy.
+    prior_published = await gd_find(
+        db.session, "timetables",
+        {"school_id": school_id, "status": TimetableStatus.PUBLISHED.value},
+        order_by="updated_at", desc_order=True, limit=1,
+    )
+    archived_timetable_id = prior_published[0].get("id") if prior_published else None
+
     success = await smart_scheduling_engine.publish_timetable(
         timetable_id=timetable_id,
         published_by=current_user.get("id", "system"),
@@ -758,38 +771,69 @@ async def publish_schedule(
         raise HTTPException(
             status_code=409,
             detail={
-                "code": "PUBLISH_FAILED",
+                "code": "PUBLISH_BLOCKED",
                 "message_ar": "تعذّر نشر الجدول بسبب تعارضات حرجة غير محلولة.",
                 "message_en": "Publish failed due to unresolved critical conflicts.",
             },
         )
 
+    # Fetch the freshly published row so we can echo its
+    # ``published_at`` back to the client.
+    published_row = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+    published_at = (published_row or {}).get("published_at")
+
     # Fan-out: notify all teachers of the new published timetable. We
     # swallow notification failures so a delivery hiccup never rolls
     # back the publish itself — the audit trail on the timetable row
-    # is the source of truth.
+    # is the source of truth. We track the recipient count so the
+    # caller can show "تم إبلاغ N معلماً" toast text.
+    notified_count = 0
     try:
         _notif = SchoolNotificationEngine(db)
-        await _notif.send_notification(
+        _result = await _notif.send_notification(
             request=SendNotificationRequest(
                 title_ar="تم نشر جدول جديد",
                 title_en="New schedule published",
-                message_ar="تم نشر جدول الحصص الجديد. يُرجى مراجعته من شاشة الجدول الخاصة بك.",
-                message_en="A new class schedule has been published. Please review it from your schedule screen.",
+                message_ar=(
+                    "تم نشر جدول الحصص الجديد. "
+                    "افتح شاشة جدولي لمراجعة الحصص المسندة إليك."
+                ),
+                message_en=(
+                    "A new class schedule has been published. "
+                    "Open your schedule screen to review your assigned periods."
+                ),
                 recipient_type=RecipientType.all_teachers,
                 notification_type=NotificationType.announcement,
                 priority=NotificationPriority.high,
+                # The frontend reads ``recipient_filter`` from
+                # ``extra_data`` to surface the deep-link in the
+                # notification card.
+                recipient_filter={
+                    "kind": "schedule_published",
+                    "timetable_id": timetable_id,
+                    "link": "/teacher/schedule",
+                },
             ),
             tenant_id=school_id,
             sent_by=current_user.get("id", "system"),
         )
+        if isinstance(_result, dict):
+            notified_count = int(
+                _result.get("delivered_count")
+                or _result.get("recipient_count")
+                or 0
+            )
     except Exception as _e:  # noqa: BLE001
         logger.warning("publish notification fan-out failed: %s", _e)
 
     return {
+        "ok": True,
         "success": True,
         "timetable_id": timetable_id,
         "school_id": school_id,
+        "published_at": published_at,
+        "archived_timetable_id": archived_timetable_id,
+        "notified_count": notified_count,
         "message_ar": "تم نشر الجدول بنجاح.",
         "message_en": "Timetable published successfully.",
     }

@@ -533,12 +533,15 @@ export default function SchedulePageNew() {
   }, [scheduleView]);
   const [publishing, setPublishing] = useState(false);
 
-  const loadGrid = useCallback(async () => {
+  const loadGrid = useCallback(async (viewOverride) => {
     // ملاحظة على القيمة المُعادة: نُعيد الـ payload نفسه عند النجاح (لا
     // مجرد boolean) كي يستطيع المستدعي مقارنته بمعرّف الجدول المتوقَّع
     // بعد التوليد دون الاعتماد على state React الذي لا يتحدّث داخل
-    // closure نفس الدالة. عند الفشل نُعيد null.
+    // closure نفس الدالة. عند الفشل نُعيد null. ``viewOverride`` يسمح
+    // للمستدعي (handleAutoGenerate) بفرض جلب «المسودة» فوراً دون
+    // انتظار إعادة الرسم لـ scheduleView (سباق React state).
     if (!schoolId) return null;
+    const effectiveView = viewOverride || scheduleView;
     try {
       // إضافة بصمة زمنية (`_t`) لإجبار المتصفح/أي وسيط على تجاوز أي
       // نسخة مخزَّنة من الاستجابة. الباك إند يضع Cache-Control: no-store،
@@ -546,7 +549,7 @@ export default function SchedulePageNew() {
       // تتجاهل ترويسات منع التخزين. مهم بشكل خاص بعد التوليد التلقائي
       // كي تُعرض المسودة الجديدة بدلاً من البيانات القديمة.
       const response = await api.get('/schedule/master-grid', {
-        params: { school_id: schoolId, view: scheduleView, _t: Date.now() },
+        params: { school_id: schoolId, view: effectiveView, _t: Date.now() },
         headers: {
           'X-School-Context': schoolId,
           'Cache-Control': 'no-cache',
@@ -565,6 +568,9 @@ export default function SchedulePageNew() {
       setRefreshing(false);
     }
   }, [api, schoolId, scheduleView, t]);
+  // ``loadGrid`` deliberately depends on ``scheduleView`` so that
+  // toggling the view via the header tabs triggers an automatic
+  // refetch through the existing useEffect → loadGrid wiring.
 
   useEffect(() => {
     // نُحمِّل مصفوفة الجدول الرئيسي فقط عندما يكون التبويب النشط هو
@@ -623,19 +629,20 @@ export default function SchedulePageNew() {
       // Task #141 — generation only writes DRAFT. Force-switch the
       // view to 'draft' so the new variant is visible immediately for
       // review/publish, regardless of what the admin had selected
-      // before. This also keeps the expected-id round-trip below
-      // honest (master-grid would otherwise filter to PUBLISHED and
-      // never match).
+      // before. We pass the explicit view to ``loadGrid`` because
+      // ``setScheduleView`` is async and the very next render hasn't
+      // happened yet — relying on the closure here would refetch the
+      // stale (published) view and then race the eventual draft load.
       setScheduleView('draft');
       const expectedId = data.timetable_id || null;
-      let fetched = await loadGrid();
+      let fetched = await loadGrid('draft');
       // الجلب يُعتبر "بائتاً" لو وُجد expectedId ولم يطابق ما رجع من
       // الخادم — بما في ذلك حالة فشل المحاولة الثانية بعد عدم التطابق
       // الأول (نحتفظ بإشارة "بائت" بدلاً من الخلط بينها وبين فشل الشبكة).
       let staleAfterRetry = false;
       if (fetched && expectedId && fetched.timetable_id !== expectedId) {
         await new Promise((r) => setTimeout(r, 400));
-        const retry = await loadGrid();
+        const retry = await loadGrid('draft');
         if (retry && retry.timetable_id === expectedId) {
           fetched = retry;
         } else {
@@ -976,17 +983,38 @@ export default function SchedulePageNew() {
       async () => {
         setPublishing(true);
         try {
-          await api.post(
+          const resp = await api.post(
             '/schedule/publish',
             { school_id: schoolId, timetable_id: grid?.timetable_id || null },
             { headers: { 'X-School-Context': schoolId } },
           );
+          const data = resp?.data || {};
           setScheduleView('published');
           setRefreshing(true);
-          await loadGrid();
-          toast.success(t('publishScheduleSuccess'));
+          await loadGrid('published');
+          const notified = Number(data.notified_count || 0);
+          toast.success(
+            notified > 0
+              ? t('publishScheduleSuccessWithCount', { n: notified })
+              : t('publishScheduleSuccess'),
+          );
         } catch (e) {
           const detail = e?.response?.data?.detail;
+          // Task #141 — surface PUBLISH_BLOCKED violations in a
+          // dedicated NassaqAlertDialog so the admin can see *why*
+          // the publish was rejected (HC violation list) instead of
+          // the generic toast.
+          if (detail?.code === 'PUBLISH_BLOCKED') {
+            const violations = Array.isArray(detail.violations) ? detail.violations : [];
+            const lines = violations.slice(0, 8).map((v) => {
+              if (typeof v === 'string') return `• ${v}`;
+              return `• ${v.message_ar || v.message || v.code || ''}`.trim();
+            }).filter(Boolean);
+            const body = (detail.message_ar || t('publishBlockedDefault'))
+              + (lines.length ? '\n\n' + lines.join('\n') : '');
+            nassaqError(body, { title: t('publishBlockedTitle') });
+            return;
+          }
           let msg = t('publishScheduleFailed');
           if (typeof detail === 'string' && /[\u0600-\u06FF]/.test(detail)) {
             msg = detail;
@@ -1215,25 +1243,35 @@ export default function SchedulePageNew() {
               )}
               {generating ? t('generatingSchedule') : t('autoGenerateSchedule')}
             </Button>
-            {/* ── Task #141 — Publish button (admin only path; the
-                backend gate require_roles enforces the actual auth).
-                Only meaningful when looking at a draft, so we hide it
-                in the published view to avoid confusion. ─────────── */}
-            {scheduleView === 'draft' && grid?.timetable_status === 'draft' && (
-              <Button
-                onClick={handlePublish}
-                disabled={publishing}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md"
-                data-testid="publish-schedule-btn"
-              >
-                {publishing ? (
-                  <Loader2 className="h-4 w-4 me-2 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="h-4 w-4 me-2" />
-                )}
-                {publishing ? t('publishingSchedule') : t('publishScheduleAction')}
-              </Button>
-            )}
+            {/* ── Task #141 — Publish button. Always rendered (so the
+                affordance is discoverable) and disabled with a
+                tooltip when there is no draft to publish. The
+                backend gate (require_roles + assert_publishable)
+                remains the source of truth for authorization. ──── */}
+            {(() => {
+              const noDraft = !(grid?.timetable_status === 'draft');
+              const disabled = publishing || noDraft;
+              const tooltip = noDraft
+                ? t('publishScheduleNoDraftTooltip')
+                : t('publishScheduleAction');
+              return (
+                <Button
+                  onClick={handlePublish}
+                  disabled={disabled}
+                  title={tooltip}
+                  aria-label={tooltip}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                  data-testid="publish-schedule-btn"
+                >
+                  {publishing ? (
+                    <Loader2 className="h-4 w-4 me-2 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 me-2" />
+                  )}
+                  {publishing ? t('publishingSchedule') : t('publishScheduleAction')}
+                </Button>
+              );
+            })()}
             <Button
               onClick={handleLogAbsence}
               variant="outline"
@@ -1472,18 +1510,56 @@ export default function SchedulePageNew() {
             // view (draft/published) has no matching timetable. The
             // legacy fallback only checked ``teacherRows.length``
             // which masks "no published yet" vs "no teachers" — two
-            // very different problems.
-            <div className="p-10 text-center text-slate-500" data-testid="schedule-empty-state">
-              <p className="text-base font-semibold mb-2">
-                {scheduleView === 'published'
-                  ? t('noPublishedScheduleYet')
-                  : t('noDraftScheduleYet')}
-              </p>
-              <p className="text-sm">
-                {scheduleView === 'published'
-                  ? t('noPublishedScheduleHint')
-                  : t('noDraftScheduleHint')}
-              </p>
+            // very different problems. Includes action buttons so
+            // the admin can move forward without hunting for them.
+            <div className="p-10 text-center text-slate-600 flex flex-col items-center gap-4" data-testid="schedule-empty-state">
+              <div>
+                <p className="text-base font-semibold mb-2 text-slate-800">
+                  {scheduleView === 'published'
+                    ? t('noPublishedScheduleYet')
+                    : t('noDraftScheduleYet')}
+                </p>
+                <p className="text-sm text-slate-500 max-w-md mx-auto">
+                  {scheduleView === 'published'
+                    ? t('noPublishedScheduleHint')
+                    : t('noDraftScheduleHint')}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  onClick={handleAutoGenerate}
+                  disabled={generating}
+                  className="bg-violet-600 hover:bg-violet-700 text-white"
+                  data-testid="empty-state-generate-btn"
+                >
+                  {generating ? (
+                    <Loader2 className="h-4 w-4 me-2 animate-spin" />
+                  ) : (
+                    <Wand2 className="h-4 w-4 me-2" />
+                  )}
+                  {generating ? t('generatingSchedule') : t('autoGenerateSchedule')}
+                </Button>
+                {scheduleView === 'published' && (
+                  <Button
+                    onClick={() => setScheduleView('draft')}
+                    variant="outline"
+                    className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                    data-testid="empty-state-switch-draft-btn"
+                  >
+                    {t('switchToDraftView')}
+                  </Button>
+                )}
+                {scheduleView === 'draft' && (
+                  <Button
+                    onClick={() => setScheduleView('published')}
+                    variant="outline"
+                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                    data-testid="empty-state-switch-published-btn"
+                  >
+                    {t('switchToPublishedView')}
+                  </Button>
+                )}
+              </div>
             </div>
           ) : (
             <MasterMatrix

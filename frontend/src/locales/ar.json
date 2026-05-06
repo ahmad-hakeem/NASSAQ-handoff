@@ -4186,5 +4186,11 @@
   "noPublishedScheduleYet": "لا يوجد جدول منشور حالياً.",
   "noPublishedScheduleHint": "اضغط «إنشاء الجدول تلقائياً» ثم «نشر الجدول» لجعله مرئياً للمعلمين والطلاب.",
   "noDraftScheduleYet": "لا توجد مسودة جدول.",
-  "noDraftScheduleHint": "اضغط «إنشاء الجدول تلقائياً» لتوليد مسودة جديدة قابلة للمراجعة قبل النشر."
+  "noDraftScheduleHint": "اضغط «إنشاء الجدول تلقائياً» لتوليد مسودة جديدة قابلة للمراجعة قبل النشر.",
+  "publishScheduleNoDraftTooltip": "لا توجد مسودة قابلة للنشر — قم بإنشاء جدول تلقائياً أولاً.",
+  "publishScheduleSuccessWithCount": "تم نشر الجدول وإبلاغ {n} معلماً.",
+  "publishBlockedTitle": "تعذّر نشر الجدول",
+  "publishBlockedDefault": "لا يمكن نشر الجدول بسبب وجود انتهاكات نشطة لقيود ثابتة. يُرجى معالجة العناصر التالية ثم إعادة المحاولة:",
+  "switchToDraftView": "عرض المسودة",
+  "switchToPublishedView": "عرض المنشور"
 }

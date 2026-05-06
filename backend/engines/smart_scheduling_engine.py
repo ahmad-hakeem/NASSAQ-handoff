@@ -1579,20 +1579,15 @@ class SmartSchedulingEngine:
         # the *order of harder buckets relative to easier buckets is
         # preserved* (HC-friendly), but the placement of demands inside a
         # tier varies between runs.
-        try:
-            from itertools import groupby as _groupby
-            _shuffled: List[Dict[str, Any]] = []
-            for _key, _grp in _groupby(
-                sorted_demands, key=lambda x: (-x["difficulty"], -x["priority"])
-            ):
-                _bucket = list(_grp)
-                rng.shuffle(_bucket)
-                _shuffled.extend(_bucket)
-            sorted_demands = _shuffled
-        except Exception:
-            # Defensive: never fail generation if shuffling errors out;
-            # fall back to the deterministic order.
-            pass
+        from itertools import groupby as _groupby
+        _shuffled: List[Dict[str, Any]] = []
+        for _key, _grp in _groupby(
+            sorted_demands, key=lambda x: (-x["difficulty"], -x["priority"])
+        ):
+            _bucket = list(_grp)
+            rng.shuffle(_bucket)
+            _shuffled.extend(_bucket)
+        sorted_demands = _shuffled
 
         # Sub-optimal placement counter — every time the *winning* candidate
         # for a slot ends up with a lower score after soft-constraint
@@ -1714,10 +1709,7 @@ class SmartSchedulingEngine:
             offset = demand_index % len(working_days)
             rotated_days = working_days[offset:] + working_days[:offset]
             rotated_days = list(rotated_days)
-            try:
-                rng.shuffle(rotated_days)
-            except Exception:
-                pass
+            rng.shuffle(rotated_days)
 
             for rot_idx, day in enumerate(rotated_days):
                 if remaining <= 0:
@@ -1740,10 +1732,7 @@ class SmartSchedulingEngine:
                     # this (demand × day × slot) and does not affect the
                     # canonical ``teaching_period_numbers`` list.
                     _periods_iter = list(teaching_period_numbers)
-                    try:
-                        rng.shuffle(_periods_iter)
-                    except Exception:
-                        pass
+                    rng.shuffle(_periods_iter)
                     for period in _periods_iter:
                         # HARD CONSTRAINT: class_id + day + period must be unique
                         # A class cannot have two sessions in the same time slot
@@ -1761,10 +1750,7 @@ class SmartSchedulingEngine:
                         # fairly without weakening any hard constraint
                         # (each candidate is still gated by HC validators).
                         _teachers_iter = list(suitable_teachers)
-                        try:
-                            rng.shuffle(_teachers_iter)
-                        except Exception:
-                            pass
+                        rng.shuffle(_teachers_iter)
                         for teacher_id in _teachers_iter:
                             resource = resource_lookup.get(teacher_id)
                             if not resource:
@@ -3252,19 +3238,31 @@ class SmartSchedulingEngine:
                 # Task #141 — Draft/Publish lifecycle. The generation
                 # endpoint writes ONLY to DRAFT. Before inserting the
                 # fresh draft we delete any prior DRAFT rows (and their
-                # child sessions/conflicts/unscheduled rows) for this
-                # school so the master grid does not accumulate orphan
-                # drafts. PUBLISHED and ARCHIVED rows are NEVER touched
-                # — that lifecycle transition is handled exclusively by
-                # the dedicated POST /api/schedule/publish endpoint.
+                # child sessions/conflicts/unscheduled rows) **scoped to
+                # the same (school, academic_year, semester) tuple** so
+                # we never wipe out unrelated draft work the principal
+                # may have generated for a different term/year. We also
+                # explicitly assert each candidate row carries
+                # status="draft" before deleting — defensive guard so a
+                # PUBLISHED or ARCHIVED row can never be removed by the
+                # generation flow.
                 prior_drafts = await gd_find(
                     self.session, "timetables",
-                    {"school_id": school_id, "status": TimetableStatus.DRAFT.value},
+                    {
+                        "school_id": school_id,
+                        "academic_year": academic_year_id or "",
+                        "semester": semester_val,
+                        "status": TimetableStatus.DRAFT.value,
+                    },
                     limit=50,
                 )
                 for _pd in prior_drafts:
                     _pd_id = _pd.get("id")
                     if not _pd_id:
+                        continue
+                    if _pd.get("status") != TimetableStatus.DRAFT.value:
+                        # Belt-and-braces guard — never mutate a row
+                        # that is not currently a draft.
                         continue
                     await gd_delete_many(self.session, "timetable_sessions", {"timetable_id": _pd_id})
                     await gd_delete_many(self.session, "timetable_conflicts", {"timetable_id": _pd_id})
