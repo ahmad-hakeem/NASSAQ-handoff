@@ -32,18 +32,32 @@ export default function SessionCell({
   };
   const subject = session?.subject_name || '';
   const klass = session?.class_name || '—';
-  const ariaLabel = `${subject} · ${klass} · ${dayKey} · ${session?.slot_number ?? ''}`;
+  // Tertiary meta line — slot/period number gives the operator a third
+  // anchor (subject → class → meta) so they can locate the lesson on the
+  // timetable without hovering for the tooltip. We prefer the explicit
+  // start_time when the backend ships it; otherwise we fall back to the
+  // human "الحصة N" label using slot_number.
+  const slot = session?.slot_number ?? session?.period_number;
+  const meta = session?.start_time
+    ? session.start_time
+    : (slot != null ? `#${slot}` : '');
+  const ariaLabel = `${subject} · ${klass} · ${dayKey} · ${slot ?? ''}`;
 
-  // Daily view (compact = false) gives the cell more vertical room and lets
-  // the subject / class wrap onto a second line. Weekly view keeps the dense
-  // single-line look so the whole week still fits on screen.
-  const containerSize = compact ? 'min-h-[50px] p-1' : 'min-h-[68px] p-2';
+  // Task #142 — readable typography in BOTH modes:
+  // weekly (compact = true) uses 11px primary + 11px secondary + 10px
+  // meta, daily (compact = false) opens up to text-sm + text-xs.
+  // Operators must be able to read every cell at a glance without
+  // hovering; the previous 9–10px sizes failed the at-a-glance test.
+  const containerSize = compact ? 'min-h-[60px] p-1.5' : 'min-h-[76px] p-2.5';
   const subjectClass = compact
-    ? 'text-[10px] font-cairo font-semibold line-clamp-1 max-w-full truncate'
-    : 'text-xs font-cairo font-semibold line-clamp-2 max-w-full leading-snug';
+    ? 'text-[11px] font-cairo font-bold leading-tight line-clamp-1 max-w-full truncate'
+    : 'text-sm font-cairo font-bold line-clamp-2 max-w-full leading-snug';
   const classClass = compact
-    ? 'text-[9px] font-tajawal opacity-80 line-clamp-1 max-w-full truncate'
-    : 'text-[11px] font-tajawal opacity-85 line-clamp-2 max-w-full leading-snug';
+    ? 'text-[11px] font-tajawal font-medium opacity-85 leading-tight line-clamp-1 max-w-full truncate'
+    : 'text-xs font-tajawal font-medium opacity-90 line-clamp-2 max-w-full leading-snug';
+  const metaClass = compact
+    ? 'text-[10px] font-tajawal opacity-60 leading-none line-clamp-1 max-w-full truncate'
+    : 'text-[11px] font-tajawal opacity-70 leading-tight line-clamp-1 max-w-full truncate';
 
   return (
     <div
@@ -67,12 +81,17 @@ export default function SessionCell({
         />
       )}
       <div className="flex flex-col h-full justify-center items-center gap-0.5 text-center">
-        <span className={subjectClass}>
+        <span className={subjectClass} data-testid="session-cell-subject">
           {subject}
         </span>
-        <span className={classClass}>
+        <span className={classClass} data-testid="session-cell-class">
           {klass}
         </span>
+        {meta && (
+          <span className={metaClass} data-testid="session-cell-meta">
+            {meta}
+          </span>
+        )}
       </div>
     </div>
   );

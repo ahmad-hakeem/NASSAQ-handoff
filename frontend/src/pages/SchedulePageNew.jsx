@@ -9,7 +9,7 @@
  * تستهلك endpoint وحيد: GET /api/schedule/master-grid
  */
 
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { useAuth } from '../contexts/AuthContext';
@@ -45,7 +45,7 @@ import ScheduleTabNav from '../components/schedule/ScheduleTabNav';
 import ScheduleSettingsTabContent from '../components/schedule/ScheduleSettingsTabContent';
 import FilledCell from '../components/schedule/FilledCell';
 import { SessionDetailModal, getDayBandClass, getDayTintClass, getDayTextOnBand } from '../components/schedule/grid-theme';
-import { computeDisplayDays, clampPage, paginateRows } from '../components/schedule/grid-helpers';
+import { computeDisplayDays, clampPage } from '../components/schedule/grid-helpers';
 import { StandbyRosterContent } from './StandbyRosterPage';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { getPose } from '../components/hakim/hakimPoses';
@@ -149,22 +149,107 @@ function AbsencePill({ recorderName, recordedAt }) {
 // corners, and a thick colored top border that signals the metric's category
 // (operational, attention, critical, etc.).
 function KpiCard({ icon: Icon, label, value, suffix, accent }) {
-  // accent: { topBorder, iconBg, iconText, valueText }
+  // Condensed "pill" KPI (Task #142). The matrix is the dominant surface
+  // of this page; KPIs sit in a thin horizontal strip rather than tall
+  // dashboard cards. Keeps the colored accent so the operator can still
+  // spot critical metrics at a glance, but reclaims ~60px of vertical
+  // space for the grid below.
   return (
-    <Card className={`bg-white shadow-sm rounded-lg border border-slate-200 border-t-4 ${accent.topBorder}`}>
-      <CardContent className="p-4 flex items-center gap-4">
-        <div className={`h-11 w-11 rounded-lg flex items-center justify-center ${accent.iconBg}`}>
-          <Icon className={`h-5 w-5 ${accent.iconText}`} />
+    <div className={`bg-white shadow-sm rounded-lg border border-slate-200 border-s-4 ${accent.topBorder.replace('border-t-', 'border-s-')} flex items-center gap-2.5 px-3 py-2 min-w-0`}>
+      <div className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0 ${accent.iconBg}`}>
+        <Icon className={`h-4 w-4 ${accent.iconText}`} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-medium text-slate-500 leading-tight truncate">{label}</p>
+        <div className="flex items-baseline gap-1 leading-tight">
+          <span className={`text-lg font-bold ${accent.valueText}`}>{value}</span>
+          {suffix && <span className="text-[10px] text-slate-400">{suffix}</span>}
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[11px] font-medium text-slate-500 mb-0.5 truncate">{label}</p>
-          <div className="flex items-baseline gap-1">
-            <span className={`text-2xl font-bold ${accent.valueText}`}>{value}</span>
-            {suffix && <span className="text-xs text-slate-400">{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Master matrix structural skeleton (Task #142) ─────────────────────────
+// يحلّ محل المنبثق المركزي القديم (Loader2) داخل حاوية المصفوفة. يرسم
+// شبكة هيكلية بنفس عدد صفوف الصفحة (`pageSize`) وعدد الأعمدة المطابق
+// لوضع العرض الحالي، فيبقى المستخدم على نفس الخريطة البصرية أثناء
+// التحميل بدلاً من أن يرى دوّاراً وسط منطقة فارغة.
+function MasterMatrixSkeleton({ rows = 10, days = 5, periods = 7, isDaily = false }) {
+  const { t } = useTranslation();
+  const totalDataCols = Math.max(1, days * periods);
+  const teacherCol = isDaily
+    ? 'clamp(220px, 22vw, 280px)'
+    : 'clamp(160px, 14vw, 200px)';
+  const dataCol = isDaily ? 'minmax(0, 1fr)' : 'minmax(76px, 1fr)';
+  const gridTemplate = `${teacherCol} repeat(${totalDataCols}, ${dataCol})`;
+  const rowH = isDaily ? 92 : 64;
+  const dayBandH = 36;
+  const periodHeadH = isDaily ? 44 : 38;
+
+  return (
+    <div
+      data-testid="master-matrix-skeleton"
+      role="status"
+      aria-label={t('preparingMatrixAria')}
+      className="grid w-full text-[11px] animate-in fade-in-0 duration-200"
+      style={{ gridTemplateColumns: gridTemplate }}
+    >
+      {/* Day-band header row */}
+      <div
+        className="bg-slate-100 border-b border-slate-200"
+        style={{ height: dayBandH }}
+      />
+      {Array.from({ length: days }).map((_, d) => (
+        <div
+          key={`sk-day-${d}`}
+          className={`bg-slate-200/70 border-b border-white/40 animate-pulse ${d > 0 ? 'border-s-2 border-s-slate-300/70' : ''}`}
+          style={{ gridColumn: `span ${periods}`, height: dayBandH }}
+        />
+      ))}
+      {/* Period sub-header row */}
+      <div
+        className="bg-slate-50 border-b border-slate-200"
+        style={{ height: periodHeadH }}
+      />
+      {Array.from({ length: totalDataCols }).map((_, i) => {
+        const isDayStart = !isDaily && i % periods === 0 && i > 0;
+        return (
+          <div
+            key={`sk-ph-${i}`}
+            className={`bg-slate-100/80 border-b border-l border-slate-100 animate-pulse ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
+            style={{ height: periodHeadH }}
+          />
+        );
+      })}
+      {/* Body rows */}
+      {Array.from({ length: rows }).map((_, r) => (
+        <React.Fragment key={`sk-row-${r}`}>
+          <div
+            className="px-3 py-2 border-b border-l border-slate-200 bg-white flex flex-col justify-center gap-1.5"
+            style={{ minHeight: rowH }}
+          >
+            <div className="h-3 w-28 bg-slate-200 rounded animate-pulse" />
+            <div className="h-2 w-20 bg-slate-100 rounded animate-pulse" />
           </div>
-        </div>
-      </CardContent>
-    </Card>
+          {Array.from({ length: totalDataCols }).map((_, c) => {
+            const isDayStart = !isDaily && c % periods === 0 && c > 0;
+            return (
+              <div
+                key={`sk-cell-${r}-${c}`}
+                className={`border-b border-l border-slate-100 p-1 ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
+                style={{ height: rowH }}
+              >
+                <div
+                  className="h-full w-full rounded-md bg-slate-100/80 animate-pulse"
+                  style={{ animationDelay: `${(r * 31 + c * 17) % 600}ms` }}
+                />
+              </div>
+            );
+          })}
+        </React.Fragment>
+      ))}
+    </div>
   );
 }
 
@@ -469,6 +554,11 @@ function useScheduleTab() {
   return VALID_TABS.includes(raw) ? raw : 'master';
 }
 
+// Named exports for test harnesses (Task #142). Keeps the page's default
+// export untouched while letting the new MasterMatrix/skeleton tests
+// exercise the components in isolation without rendering the whole page.
+export { MasterMatrix, MasterMatrixSkeleton };
+
 export default function SchedulePageNew() {
   const { user, api } = useAuth();
   const navigate = useNavigate();
@@ -533,23 +623,43 @@ export default function SchedulePageNew() {
   }, [scheduleView]);
   const [publishing, setPublishing] = useState(false);
 
-  const loadGrid = useCallback(async (viewOverride) => {
-    // ملاحظة على القيمة المُعادة: نُعيد الـ payload نفسه عند النجاح (لا
-    // مجرد boolean) كي يستطيع المستدعي مقارنته بمعرّف الجدول المتوقَّع
-    // بعد التوليد دون الاعتماد على state React الذي لا يتحدّث داخل
-    // closure نفس الدالة. عند الفشل نُعيد null. ``viewOverride`` يسمح
-    // للمستدعي (handleAutoGenerate) بفرض جلب «المسودة» فوراً دون
-    // انتظار إعادة الرسم لـ scheduleView (سباق React state).
+  const loadGrid = useCallback(async (viewOverride, paginationOverride) => {
+    // Returns the payload itself on success (not just a boolean) so callers
+    // can compare against an expected timetable id after generation without
+    // depending on React state inside the same closure. ``viewOverride``
+    // lets handleAutoGenerate force-fetch the draft right after generation.
+    // ``paginationOverride`` lets callers bypass the closure's stale
+    // state and request the right window in a single round-trip — Task
+    // #142 backend payload scoping (teacher window + day in daily mode).
     if (!schoolId) return null;
     const effectiveView = viewOverride || scheduleView;
+    const effectivePage = paginationOverride?.page ?? (paginationStateRef.current.pageIndex + 1);
+    const effectivePageSize = paginationOverride?.pageSize ?? paginationStateRef.current.pageSize;
+    // Task #142 — every refetch swaps the matrix region to the
+    // structural skeleton while keeping page chrome (header, KPI strip,
+    // view-mode toggle, day-tabs row) mounted. The skeleton matches
+    // the current view-mode/day-count via grid?.days?.length and the
+    // active pageSize, so the operator never sees the chrome flash or
+    // the matrix collapse to a centered spinner.
+    setLoading(true);
     try {
-      // إضافة بصمة زمنية (`_t`) لإجبار المتصفح/أي وسيط على تجاوز أي
-      // نسخة مخزَّنة من الاستجابة. الباك إند يضع Cache-Control: no-store،
-      // ولكن نُضيف هذه الحماية الإضافية لأن بعض الإضافات/البروكسيات
-      // تتجاهل ترويسات منع التخزين. مهم بشكل خاص بعد التوليد التلقائي
-      // كي تُعرض المسودة الجديدة بدلاً من البيانات القديمة.
+      // ``_t`` busts any stale browser/proxy cache (the backend already
+      // sets Cache-Control: no-store but some intermediaries ignore it).
+      // teacher_page / teacher_page_size + day opt into the visible-
+      // window contract — the backend slices teachers, sessions, and
+      // (in daily mode) day so the wire payload scales with what's
+      // actually rendered.
+      const params = {
+        school_id: schoolId,
+        view: effectiveView,
+        teacher_page: effectivePage,
+        teacher_page_size: effectivePageSize,
+        _t: Date.now(),
+      };
+      const dayParam = paginationOverride?.day ?? paginationStateRef.current.day;
+      if (dayParam) params.day = dayParam;
       const response = await api.get('/schedule/master-grid', {
-        params: { school_id: schoolId, view: effectiveView, _t: Date.now() },
+        params,
         headers: {
           'X-School-Context': schoolId,
           'Cache-Control': 'no-cache',
@@ -1089,6 +1199,19 @@ export default function SchedulePageNew() {
     } catch { return 10; }
   });
   const [pageIndex, setPageIndex] = useState(0);
+  // Mirror page state into a ref so loadGrid's stable callback can read
+  // the current window without re-creating its identity (which would
+  // re-trigger the master useEffect and cause a double fetch). The
+  // ref also carries ``day`` so daily-mode refetches scope sessions
+  // to the selected day on the backend.
+  const paginationStateRef = useRef({ pageIndex: 0, pageSize: 10, day: null });
+  useEffect(() => {
+    paginationStateRef.current = {
+      ...paginationStateRef.current,
+      pageIndex,
+      pageSize,
+    };
+  }, [pageIndex, pageSize]);
   const [selectedDay, setSelectedDay] = useState(() => {
     try { return localStorage.getItem('nassaq_master_grid_selected_day') || null; }
     catch { return null; }
@@ -1116,16 +1239,52 @@ export default function SchedulePageNew() {
     if (!selectedDay) return;
     try { localStorage.setItem('nassaq_master_grid_selected_day', selectedDay); } catch {}
   }, [selectedDay]);
-  useEffect(() => { setPageIndex(0); }, [pageSize, teacherRows.length]);
+  // Reset to first page when page size changes (legacy UX: page-size
+  // controls "rewind" the pager). The fetch effect below picks up the
+  // change and refetches the new window from the backend.
+  useEffect(() => { setPageIndex(0); }, [pageSize]);
 
-  const totalPages = Math.max(1, Math.ceil(teacherRows.length / pageSize));
+  // Task #142 — totals come from the backend pagination block (the
+  // wire payload is already scoped to the current window so we cannot
+  // derive the total from teacherRows.length anymore). Fall back to
+  // the slice length when the backend omits the block (e.g. an older
+  // server during a rolling deploy) so the pager still renders.
+  const totalTeachersAll = grid?.pagination?.total ?? teacherRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalTeachersAll / pageSize));
   const safePage = clampPage(pageIndex, totalPages);
-  const pagedTeachers = useMemo(
-    () => paginateRows(teacherRows, pageSize, safePage),
-    [teacherRows, safePage, pageSize],
-  );
-  const pageStartIdx = teacherRows.length === 0 ? 0 : safePage * pageSize + 1;
-  const pageEndIdx = Math.min(teacherRows.length, (safePage + 1) * pageSize);
+  // The backend already returns just the visible window — render it
+  // as-is. Client-side slicing (paginateRows) would be a no-op now.
+  const pagedTeachers = teacherRows;
+  const pageStartIdx = totalTeachersAll === 0 ? 0 : safePage * pageSize + 1;
+  const pageEndIdx = Math.min(totalTeachersAll, (safePage + 1) * pageSize);
+
+  // Refetch the visible window whenever the user changes page, page
+  // size, or (in daily mode) the selected day. We bypass the loadGrid
+  // closure's captured ref by passing the explicit override so the
+  // request matches the user's latest intent even if React hasn't
+  // flushed the state update yet. The active day is sent only in
+  // daily mode — weekly mode wants the full week.
+  const dayParam = viewMode === 'daily' ? selectedDay : null;
+  useEffect(() => {
+    paginationStateRef.current = {
+      ...paginationStateRef.current,
+      day: dayParam,
+    };
+  }, [dayParam]);
+  const lastFetchedPaginationRef = useRef({ page: 1, pageSize: 10, day: null });
+  useEffect(() => {
+    if (tab !== 'master') return;
+    const requestedPage = safePage + 1;
+    const last = lastFetchedPaginationRef.current;
+    if (
+      last.page === requestedPage
+      && last.pageSize === pageSize
+      && last.day === dayParam
+    ) return;
+    lastFetchedPaginationRef.current = { page: requestedPage, pageSize, day: dayParam };
+    setRefreshing(true);
+    loadGrid(undefined, { page: requestedPage, pageSize, day: dayParam });
+  }, [safePage, pageSize, dayParam, tab, loadGrid]);
 
   if (tab === 'standby') {
     // تبويب جدول حصص الانتظار — يُضمَّن المحتوى نفسه المستخدم في الصفحة
@@ -1280,6 +1439,44 @@ export default function SchedulePageNew() {
               <UserX className="h-4 w-4 me-2" />
               {t('recordAbsence')}
             </Button>
+            {/* ── View-mode toggle (Task #142) — hoisted into the page
+                action bar so the matrix no longer needs its own
+                control row in weekly mode. The day-tabs row below
+                still appears, but only in daily mode. ───────────── */}
+            <div
+              role="tablist"
+              aria-label={t('masterGridViewModeLabel')}
+              className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewMode === 'daily'}
+                onClick={() => setViewMode('daily')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                  viewMode === 'daily'
+                    ? 'bg-[#1C3D74] text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+                data-testid="view-mode-daily"
+              >
+                {t('dailyViewLabel')}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewMode === 'weekly'}
+                onClick={() => setViewMode('weekly')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                  viewMode === 'weekly'
+                    ? 'bg-[#1C3D74] text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+                data-testid="view-mode-weekly"
+              >
+                {t('weeklyViewLabel')}
+              </button>
+            </div>
             <Button
               onClick={handleRefresh}
               variant="ghost"
@@ -1292,8 +1489,13 @@ export default function SchedulePageNew() {
           </div>
         </div>
 
-        {/* ── KPI cards ────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
+        {/* ── KPI strip (Task #142) ────────────────────────────────────
+            Compact horizontal pill row instead of tall dashboard cards.
+            On wider screens the four KPIs sit side-by-side on a single
+            line, reclaiming vertical space for the timetable below. On
+            mobile they fall back to a 2×2 grid so the operator can
+            still scan them without horizontal scroll. */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
           <KpiCard
             icon={Scale}
             label={t('distributionFairness')}
@@ -1407,98 +1609,69 @@ export default function SchedulePageNew() {
           onAssignedBatch={handleAssignedBatch}
         />
 
-        {/* ── View mode + day tabs (Task #138) ─────────────────────────
-            شريط تحكّم فوق الشبكة: تبديل بين «يومي» و«أسبوعي»، وعند اختيار
-            «يومي» تظهر تبويبات الأيام (الأحد–الخميس) لاختيار اليوم
-            المعروض. هذا الشريط واجهةٌ بحتة، لا يستهلك أي endpoint جديد. */}
-        {!loading && !error && teacherRows.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
+        {/* ── Day tabs (Task #142) ────────────────────────────────────
+            View-mode toggle now lives in the page action bar (above);
+            this row only renders in daily mode. We keep it visible
+            during loading (with disabled buttons) so the page chrome
+            stays continuous above the structural skeleton — operators
+            never see controls flash in/out as the matrix refreshes. */}
+        {viewMode === 'daily' && days.length > 0 && (
+          <div data-testid="day-tabs-row" className="flex flex-wrap items-center gap-3 shrink-0">
             <div
               role="tablist"
-              aria-label={t('masterGridViewModeLabel')}
-              className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm"
+              aria-label={t('selectDayLabel')}
+              className={`inline-flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm ${loading ? 'opacity-70' : ''}`}
             >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={viewMode === 'daily'}
-                onClick={() => setViewMode('daily')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                  viewMode === 'daily'
-                    ? 'bg-[#1C3D74] text-white shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-                data-testid="view-mode-daily"
-              >
-                {t('dailyViewLabel')}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={viewMode === 'weekly'}
-                onClick={() => setViewMode('weekly')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                  viewMode === 'weekly'
-                    ? 'bg-[#1C3D74] text-white shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-                data-testid="view-mode-weekly"
-              >
-                {t('weeklyViewLabel')}
-              </button>
+              {days.map((dayKey) => {
+                const isActive = selectedDay === dayKey;
+                const isToday = todayKey === dayKey;
+                return (
+                  <button
+                    key={`day-tab-${dayKey}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    disabled={loading}
+                    onClick={() => setSelectedDay(dayKey)}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 disabled:cursor-wait ${
+                      isActive
+                        ? 'bg-[#2BB5A0] text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                    data-testid={`day-tab-${dayKey}`}
+                  >
+                    {dayLabelMap[dayKey] || dayKey}
+                    {isToday && (
+                      <span className={`text-[9px] px-1 rounded ${isActive ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
+                        {t('todayBadge')}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-
-            {viewMode === 'daily' && days.length > 0 && (
-              <div
-                role="tablist"
-                aria-label={t('selectDayLabel')}
-                className="inline-flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm"
-              >
-                {days.map((dayKey) => {
-                  const isActive = selectedDay === dayKey;
-                  const isToday = todayKey === dayKey;
-                  return (
-                    <button
-                      key={`day-tab-${dayKey}`}
-                      type="button"
-                      role="tab"
-                      aria-selected={isActive}
-                      onClick={() => setSelectedDay(dayKey)}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 ${
-                        isActive
-                          ? 'bg-[#2BB5A0] text-white shadow-sm'
-                          : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                      data-testid={`day-tab-${dayKey}`}
-                    >
-                      {dayLabelMap[dayKey] || dayKey}
-                      {isToday && (
-                        <span className={`text-[9px] px-1 rounded ${isActive ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
-                          {t('todayBadge')}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
           </div>
         )}
 
-        {/* ── Master matrix grid ─────────────────────────────────────
-            Light, breathable container: white surface, single subtle
-            border, rounded corners, and a single scroll context that
-            owns both axes (no nested boxy scrollbars). */}
+        {/* ── Master matrix grid (Task #142) ─────────────────────────
+            The matrix is the dominant workspace surface of the page.
+            Thin rounded border + soft shadow integrate it into the
+            page surface; daily mode never scrolls horizontally,
+            weekly mode scrolls horizontally inside the container
+            while the teacher column and headers stay sticky. */}
         <div
-          className={`relative flex-1 min-h-0 bg-white border border-slate-200 rounded-lg ${
+          data-testid="master-matrix-container"
+          className={`relative flex-1 min-h-0 bg-white border border-slate-200/80 rounded-xl shadow-sm ${
             viewMode === 'daily' ? 'overflow-x-hidden overflow-y-auto' : 'overflow-auto'
           }`}
         >
           {loading ? (
-            <div className="flex h-full items-center justify-center py-20 text-slate-500">
-              <Loader2 className="h-6 w-6 animate-spin me-2" />
-              {t('loadingMatrix')}
-            </div>
+            <MasterMatrixSkeleton
+              rows={pageSize}
+              days={viewMode === 'daily' ? 1 : ((grid?.days?.length) || days.length || 5)}
+              periods={(grid?.periods?.length) || 7}
+              isDaily={viewMode === 'daily'}
+            />
           ) : error ? (
             <div className="p-6 text-center text-red-600">{error}</div>
           ) : teacherRows.length === 0 ? (
@@ -1564,7 +1737,7 @@ export default function SchedulePageNew() {
           ) : (
             <MasterMatrix
               teachers={pagedTeachers}
-              totalTeachers={teacherRows.length}
+              totalTeachers={totalTeachersAll}
               cells={cellsByTeacher}
               days={days}
               periods={periods}
@@ -1610,7 +1783,7 @@ export default function SchedulePageNew() {
                 </SelectContent>
               </Select>
               <span className="text-slate-500">
-                {t('paginationRangeLabel', { from: pageStartIdx, to: pageEndIdx, total: teacherRows.length })}
+                {t('paginationRangeLabel', { from: pageStartIdx, to: pageEndIdx, total: totalTeachersAll })}
               </span>
             </div>
 
@@ -1939,22 +2112,25 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
 
   // ترتيب الأعمدة: لكل يوم تُضاف أعمدة الحصص (1..7) متتالية.
   const totalDataCols = displayDays.length * periods.length;
-  // عمود المعلم مرن مع حدّ أدنى/أقصى، وأعمدة الحصص تتوزع بالتساوي على
-  // العرض المتاح (minmax(0,1fr)) لكي تنطبق الشبكة بأكملها داخل الحاوية
-  // دون شريط تمرير أفقي داخلي.
-  const DAY_HEADER_HEIGHT = 28;    // صف رأس الأيام
-  const PERIOD_HEADER_HEIGHT = 38; // رأس الحصص (يحوي رقم + توقيت)
-  const ROW_HEIGHT = isDaily ? 76 : 56; // أطول في الوضع اليومي ليتنفّس النص
+  // Task #142 — daily mode is intentionally roomy: tall rows, wider
+  // teacher column, prominent period sub-headers. Weekly mode keeps a
+  // calmer rhythm with a real per-period minimum width so the grid
+  // overflows horizontally (sticky teacher column + headers) instead of
+  // squeezing every cell into illegible micro-text.
+  const DAY_HEADER_HEIGHT = isDaily ? 40 : 36;
+  const PERIOD_HEADER_HEIGHT = isDaily ? 44 : 38;
+  const ROW_HEIGHT = isDaily ? 92 : 64;
 
-  // الوضع اليومي يضمن حدّاً أدنى أوسع لكل عمود (≥140px) ليكون النص قابلاً
-  // للقراءة على شاشات سطح المكتب، ويظلّ عمود المعلم كذلك أعرض قليلاً.
-  // Daily mode shows only one day (≤7 columns), so `minmax(0, 1fr)` is enough
-  // to keep each cell readable while guaranteeing the whole grid fits inside
-  // the container — i.e. **no internal horizontal scroll in daily mode**.
-  // Weekly keeps the same compact behavior as before.
+  // Daily: ≤7 columns, `minmax(0, 1fr)` keeps the whole grid inside the
+  //        container (no internal horizontal scroll) with a generously
+  //        wide teacher column on the inline-start.
+  // Weekly: 5 days × N periods often overflows on common laptop widths;
+  //         we anchor each period at ≥76px so cells stay legible (≥11px
+  //         text never collapses) and the grid scrolls horizontally
+  //         inside its container.
   const gridTemplate = isDaily
-    ? `clamp(180px, 18vw, 240px) repeat(${totalDataCols}, minmax(0, 1fr))`
-    : `clamp(140px, 14vw, 200px) repeat(${totalDataCols}, minmax(0, 1fr))`;
+    ? `clamp(220px, 22vw, 280px) repeat(${totalDataCols}, minmax(0, 1fr))`
+    : `clamp(170px, 14vw, 210px) repeat(${totalDataCols}, minmax(76px, 1fr))`;
   const summaryCount = totalTeachers ?? teachers.length;
 
   // ظل أيسر خفيف لعمود المعلم المثبَّت (في RTL يقع على اليمين، فالظل يمتدّ
@@ -1963,21 +2139,24 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
 
   return (
     <div
+      data-testid={`master-matrix-${isDaily ? 'daily' : 'weekly'}`}
       className="grid text-[11px] w-full"
       style={{ gridTemplateColumns: gridTemplate }}
     >
       {/* ── Sticky header row 1: day spans ─────────────────────── */}
       {/* الزاوية العلوية الجانبية (تقاطع رأس + عمود المعلم) — أعلى z-index */}
       <div
+        data-testid="master-matrix-corner"
         className={`sticky top-0 bg-slate-50 text-slate-700 text-xs font-semibold flex items-center justify-center border-b border-l border-slate-200 ${teacherStickyShadow}`}
         style={{ insetInlineStart: 0, zIndex: 30, height: DAY_HEADER_HEIGHT }}
       >
         {t('teacherColHeader')}
       </div>
-      {displayDays.map((dayKey) => (
+      {displayDays.map((dayKey, dayIdx) => (
         <div
           key={`day-h-${dayKey}`}
-          className={`sticky top-0 z-20 ${getDayBandClass(dayKey)} ${getDayTextOnBand(dayKey)} text-xs font-cairo font-bold text-center flex items-center justify-center border-b border-white/30`}
+          data-testid={`master-matrix-day-band-${dayKey}`}
+          className={`sticky top-0 z-20 ${getDayBandClass(dayKey)} ${getDayTextOnBand(dayKey)} text-sm font-cairo font-bold text-center flex items-center justify-center tracking-wide ${dayIdx > 0 ? 'border-s-2 border-s-white/70' : ''} shadow-[inset_0_-1px_0_rgba(255,255,255,0.25)]`}
           style={{ gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
         >
           {dayLabelMap[dayKey] || dayKey}
@@ -1996,22 +2175,23 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
       >
         {t('teachersCountSummary', { count: summaryCount, periods: periods.length, days: days.length })}
       </div>
-      {displayDays.map((dayKey) => (
-        periods.map((p) => {
+      {displayDays.map((dayKey, dayIdx) => (
+        periods.map((p, pIdx) => {
           const slot = periodTimes?.[String(p)];
           const timeLabel = slot && (slot.start || slot.end)
             ? `${slot.start || ''}${slot.start && slot.end ? ' – ' : ''}${slot.end || ''}`
             : '';
+          const isDayStart = !isDaily && dayIdx > 0 && pIdx === 0;
           return (
             <div
               key={`ph-${dayKey}-${p}`}
-              className={`sticky z-20 ${getDayTintClass(dayKey)} text-brand-navy/85 text-center flex flex-col items-center justify-center leading-tight border-b border-white/40 border-l border-l-white/40`}
+              className={`sticky z-20 ${getDayTintClass(dayKey)} text-brand-navy/85 text-center flex flex-col items-center justify-center leading-tight border-b border-white/40 border-l border-l-white/40 ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
               style={{ top: DAY_HEADER_HEIGHT, height: PERIOD_HEADER_HEIGHT }}
               title={timeLabel ? t('periodLabelWithTime', { num: p, time: timeLabel }) : t('periodLabelShort', { num: p })}
             >
-              <span className="text-[11px] font-semibold">{p}</span>
+              <span className={`${isDaily ? 'text-sm' : 'text-[12px]'} font-bold tabular-nums`}>{p}</span>
               {timeLabel && (
-                <span className="text-[8px] text-brand-navy/55 tabular-nums">{timeLabel}</span>
+                <span className={`${isDaily ? 'text-[10px]' : 'text-[9px]'} text-brand-navy/60 tabular-nums`}>{timeLabel}</span>
               )}
             </div>
           );
@@ -2032,7 +2212,8 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
           <React.Fragment key={teacher.id}>
             {/* Sticky teacher column (الجانب الأيمن في RTL) */}
             <div
-              className={`sticky z-10 px-3 py-2 border-b border-l border-slate-200 ${rowBg} ${teacherStickyShadow}`}
+              data-testid={`master-matrix-teacher-${teacher.id}`}
+              className={`sticky z-10 ${isDaily ? 'px-4 py-3' : 'px-3 py-2'} border-b border-l border-slate-200 ${rowBg} ${teacherStickyShadow}`}
               style={{ insetInlineStart: 0, minHeight: ROW_HEIGHT }}
             >
               <div className="flex items-start justify-between gap-2">
@@ -2087,8 +2268,8 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
             </div>
 
             {/* Cells: per day, per period */}
-            {displayDays.map((dayKey) => (
-              periods.map((p) => {
+            {displayDays.map((dayKey, dayIdx) => (
+              periods.map((p, pIdx) => {
                 const rawCell = teacherCells[dayKey]?.[String(p)] || null;
                 // ── Cascade الغياب → شاغرة ───────────────────────────────
                 // الـbackend عادةً يرفع is_vacant عند تسجيل الغياب، لكن
@@ -2132,10 +2313,11 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                     end_time: periodTimes?.[String(p)]?.end,
                   });
                 };
+                const isDayStart = !isDaily && dayIdx > 0 && pIdx === 0;
                 return (
                   <div
                     key={`${teacher.id}-${dayKey}-${p}`}
-                    className={`min-w-0 border-b border-l border-slate-100 p-0.5 ${conflictBg}`}
+                    className={`min-w-0 border-b border-l border-slate-100 p-0.5 ${conflictBg} ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
                     style={{ height: ROW_HEIGHT }}
                     title={conflictTip || undefined}
                   >

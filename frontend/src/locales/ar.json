@@ -4031,6 +4031,7 @@
   "undoBatchAction": "تراجع عن الدفعة",
   "failedToLoadGrid": "تعذّر تحميل الجدول",
   "loadingMatrix": "جارٍ تحميل المصفوفة…",
+  "preparingMatrixAria": "جارٍ تجهيز مصفوفة الجدول",
   "noTeachersRegistered": "لا يوجد معلمون مسجَّلون في هذه المدرسة بعد.",
   "undoAbsenceTitle": "إلغاء الغياب",
   "undoAbsenceDesc": "سيُعاد تسجيل المعلم كحاضر اليوم وتُحدَّث الخلايا والمؤشرات فوراً.",

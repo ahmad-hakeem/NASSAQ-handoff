@@ -4027,6 +4027,7 @@
   "undoBatchAction": "Undo batch",
   "failedToLoadGrid": "Could not load the grid",
   "loadingMatrix": "Loading the matrix…",
+  "preparingMatrixAria": "Preparing the schedule matrix",
   "noTeachersRegistered": "No teachers registered in this school yet.",
   "undoAbsenceTitle": "Undo absence",
   "undoAbsenceDesc": "The teacher will be marked present today and cells/indicators will refresh immediately.",

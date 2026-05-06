@@ -59,7 +59,10 @@ describe('SessionCell', () => {
     render(<SessionCell session={baseSession} dayKey="monday" onClick={() => {}} />);
     const subject = screen.getByText('رياضيات');
     expect(subject.className).toMatch(/line-clamp-1/);
-    expect(subject.className).toMatch(/text-\[10px\]/);
+    // Task #142 — weekly mode primary text must be >= 11px so operators
+    // can read it at a glance without hovering.
+    expect(subject.className).toMatch(/text-\[11px\]/);
+    expect(subject.className).toMatch(/font-bold/);
   });
 
   it('uses roomier typography when compact is false (daily view)', () => {
@@ -68,8 +71,43 @@ describe('SessionCell', () => {
     );
     const subject = screen.getByText('رياضيات');
     expect(subject.className).toMatch(/line-clamp-2/);
-    expect(subject.className).toMatch(/text-xs/);
+    expect(subject.className).toMatch(/text-sm/);
     const klass = screen.getByText('٣ علوم');
     expect(klass.className).toMatch(/line-clamp-2/);
+  });
+
+  // ── Task #142 — visual hierarchy contract ────────────────────────────
+  // Filled cells must surface three anchors in priority order:
+  //   1. subject (boldest, biggest)
+  //   2. class   (regular weight, ≥11px in weekly)
+  //   3. meta    (period time / slot, smallest, dimmed)
+  // These tests freeze that contract so future tweaks can't silently
+  // collapse the hierarchy.
+  it('renders the three-tier hierarchy: subject → class → meta', () => {
+    render(<SessionCell session={baseSession} dayKey="monday" onClick={() => {}} />);
+    const subject = screen.getByTestId('session-cell-subject');
+    const klass = screen.getByTestId('session-cell-class');
+    const meta = screen.getByTestId('session-cell-meta');
+    expect(subject).toHaveTextContent('رياضيات');
+    expect(klass).toHaveTextContent('٣ علوم');
+    expect(meta).toHaveTextContent('11:35'); // start_time fallback
+  });
+
+  it('weekly typography is >= 11px for both subject and class lines', () => {
+    render(<SessionCell session={baseSession} dayKey="monday" onClick={() => {}} />);
+    const subject = screen.getByTestId('session-cell-subject');
+    const klass = screen.getByTestId('session-cell-class');
+    // Both primary anchors must be >= 11px in the dense weekly view.
+    expect(subject.className).toMatch(/text-\[11px\]/);
+    expect(klass.className).toMatch(/text-\[11px\]/);
+    // Subject is heavier than class to enforce visual hierarchy.
+    expect(subject.className).toMatch(/font-bold/);
+    expect(klass.className).toMatch(/font-medium/);
+  });
+
+  it('falls back to slot number when start_time is missing', () => {
+    const noTime = { ...baseSession, start_time: undefined };
+    render(<SessionCell session={noTime} dayKey="monday" onClick={() => {}} />);
+    expect(screen.getByTestId('session-cell-meta')).toHaveTextContent('#3');
   });
 });

@@ -1,10 +1,63 @@
 # NASSAQ - نَسَّق
-## Smart Multi-Tenant School Management System
+A comprehensive, multi-tenant school management platform with AI-powered features for administration, academics, and student performance.
 
-## Overview
-NASSAQ is a comprehensive, full-stack school management platform designed for multi-tenant environments. It features a React frontend and a FastAPI backend. The system aims to provide a smart, AI-powered solution for educational institutions, covering various aspects of school administration from academic management to student performance analytics. Key capabilities include smart timetable scheduling, attendance tracking, exam and assessment management, real-time notifications, and extensive reporting features. The project's vision is to enhance educational workflows, improve student outcomes through data-driven insights, and provide a secure, scalable platform for schools in the MENA region.
+## Run & Operate
+- **Run**: `uvicorn backend.server:app --reload` (backend), `npm start` (frontend)
+- **Build**: `npm run build` (frontend)
+- **Typecheck**: `mypy backend/` (backend), `npm run typecheck` (frontend)
+- **Codegen**: `alembic revision --autogenerate -m "description"` (DB migrations), `python -m src.shared_models` (Pydantic models)
+- **DB Push**: `alembic upgrade head`
+- **Required Env Vars**: `DATABASE_URL`, `SECRET_KEY`, `ALGORITHM`
 
-## User Preferences
+## Stack
+- **Frontend**: React (CRACO), Tailwind CSS, Radix UI, `@dnd-kit`, `react-router-dom`, `recharts`, `framer-motion`
+- **Backend**: FastAPI (Python), PostgreSQL, SQLAlchemy (asyncpg), Pydantic, PyJWT, bcrypt, pandas
+- **AI/ML**: Google Generative AI (OpenAI API)
+- **Runtime**: Node.js (latest LTS), Python 3.11+
+- **ORM**: SQLAlchemy 2.0 with AsyncSession
+- **Validation**: Pydantic
+- **Build Tool**: CRACO, Alembic
+
+## Where things live
+- `/backend`: FastAPI application, business logic, database models, API routes.
+  - `backend/server.py`: Main FastAPI app instantiation.
+  - `backend/shared_models.py`: Pydantic models (source of truth for API schemas).
+  - `backend/alembic/versions/`: Database migration scripts.
+  - `backend/engines/smart_scheduling_engine.py`: Core scheduling logic.
+  - `backend/name_validation.py`: Real personal name enforcement.
+- `/frontend`: React application, UI components, pages, API clients.
+  - `frontend/src/App.js`: Main React app and routing.
+  - `frontend/src/appRoutes.js`: Frontend route definitions with RBAC.
+  - `frontend/src/services/apiClient.js`: Centralized API service layer.
+  - `frontend/src/components/`: Reusable UI components.
+  - `frontend/src/context/AuthContext.js`: Authentication context.
+  - `frontend/src/i18n/`: Internationalization locale files (`ar.json`, `en.json`).
+  - `frontend/src/utils/hijriDate.js`: Hijri/Gregorian date conversion utility.
+  - `frontend/src/pages/SchedulePageNew.jsx`: Master schedule grid.
+  - `frontend/src/components/schedule/grid-theme/dayPalette.js`: Day color palette for schedules.
+- `/docs`: Project documentation and specifications.
+
+## Architecture decisions
+- **Multi-tenancy Enforcement**: `tenant_id` (aliased as `school_id`) is enforced at the database query level for all sensitive data access, ensuring strict data isolation.
+- **Unified Approval Engine**: A generic engine manages various request types with a defined status lifecycle, transition validation, and audit logging for consistency and traceability.
+- **Standardized Alerting**: All critical user-facing warnings, errors, and confirmations must use `NassaqAlertDialog` to ensure a consistent and branded user experience.
+- **API Schema as Source of Truth**: Pydantic models in `shared_models.py` define API request/response schemas, ensuring strict data contracts between frontend and backend.
+- **Robust Deployment Safety**: Destructive database operations are strictly blocked in non-development environments, and schema changes are exclusively managed via Alembic to prevent data loss.
+
+## Product
+- Smart timetable scheduling with drag-and-drop.
+- Comprehensive attendance tracking and management.
+- Exam and assessment management.
+- Real-time notifications via WebSockets.
+- Extensive reporting (PDF, CSV, XLSX) with filtering.
+- Multi-tenant support for multiple schools.
+- AI-powered insights and an interactive Hakim AI assistant.
+- Student & Parent portals with personalized information.
+- Teacher portfolio management.
+- Role switching for administrators.
+- Administrative calendar with event management.
+
+## User preferences
 - **Communication Style**: I prefer simple and direct language.
 - **Workflow**: I want iterative development with clear milestones.
 - **Interaction**: Ask for confirmation before making major changes or architectural decisions.
@@ -26,105 +79,21 @@ NASSAQ is a comprehensive, full-stack school management platform designed for mu
     - No `console.log` statements in frontend pages/contexts.
     - Do not use hardcoded passwords or sensitive information in source code; use environment variables or Replit secrets.
 
-## System Architecture
-The platform utilizes a modern full-stack architecture.
+## Gotchas
+- Hijri date conversion requires `hijri-converter` libraries; `Intl.DateTimeFormat('ar-SA-u-ca-islamic')` is forbidden.
+- Ensure `NassaqAlertDialog` is used for all user-facing warnings/errors/confirms; native browser alerts or `toast.error()` are prohibited for critical interactions.
+- All database schema changes must be managed via Alembic; direct ORM schema creation/deletion is blocked in non-development environments.
+- Production and staging environments explicitly block seed scripts and destructive database operations.
+- Remember to use Replit secrets or environment variables for sensitive information instead of hardcoding.
+- All API errors must return safe Arabic messages, avoiding raw exception strings.
+- Be mindful of N+1 query issues; use bulk `gd_find` with `$in` for related data fetching.
 
-### Hakeem Auto-Generation Engine — Constraint Audit & Generation Summary (2026-05-03)
-- Audited the placement loop in `backend/engines/smart_scheduling_engine.py` against all hard constraints (A double-booking, B unavailability, C boundary, D weekly quota, E max consecutive, F max periods/day) and best-effort fairness (G). Audit report: `docs/superpowers/specs/2026-05-03-hakeem-engine-audit-report.md` — no gaps found, all constraints A–F enforced.
-- Added a persisted `generation_summary` JSONB column on `timetable_runs` (Alembic revision `u1v2w3x4y5z6`) and a matching `Optional[Dict[str, Any]]` field on the SQLAlchemy `TimetableRun` model.
-- New helper module `backend/engines/scheduling_summary.py` (`RejectionCounters`, `TeacherPlacementRecord`, `build_generation_summary`) builds the rich summary; covered by `backend/tests/test_scheduling_summary.py`.
-- The placement loop now aggregates per-demand rejection counters into a run-wide `_last_rejection_counts` dict; `generate_timetable` builds the summary, persists it on the run row, and returns it on `GenerationResult.generation_summary` so the route response includes it automatically.
-
-**Frontend**:
-- Built with React (Create React App + CRACO), styled with Tailwind CSS and Radix UI.
-- `App.js` serves as a thin composition layer for providers and routing.
-- Routes are managed in `appRoutes.js` with role-based access control.
-- API service layer is centralized in `services/apiClient.js` with domain-specific modules.
-- Reusable UI components are organized within `components/`.
-- Custom hooks (e.g., `useStudentProfile`) encapsulate complex state and logic.
-- Authentication context (`AuthContext.js`) handles JWT, refresh tokens, and session management, including an `AbortController` with a 10s timeout for `fetchUser`.
-- `NassaqAlertDialog` is the standardized component for all system alerts, warnings, and confirmations.
-- Internationalization (i18n) uses JSON locale files (`ar.json`, `en.json`) and a `useTranslation()` hook for both static UI text and dynamic data localization.
-- Hijri/Gregorian date conversion is handled by a centralized utility (`hijriDate.js`) using `hijri-converter` libraries and Eastern Arabic numerals.
-- Hakim AI character is a dynamic, context-aware interactive system with various poses and animations, integrated system-wide.
-
-**Backend**:
-- Developed with FastAPI (Python), utilizing JWT for authentication.
-- `server.py` acts as a thin orchestrator for app creation and router registration.
-- Middleware stack (`app/middleware.py`) handles PostgreSQL sessions, security headers, audit logging, CORS, rate limiting, and global error handling.
-- Lifecycle hooks (`app/lifecycle.py`) manage DB initialization, seeding, and approval engine setup.
-- Pydantic models (`shared_models.py`) serve as the single source of truth for API request/response schemas.
-- API responses adhere to a global error envelope for consistency.
-- Routes are modularized into `*_mod.py` files, each under ~1000 lines, for better organization.
-- Core business logic is encapsulated in `engines/` (e.g., `smart_scheduling_engine.py`, `hakeem_plan_service.py`).
-- Security hardening includes sensitive field filtering, SQL injection blocking, ReDoS protection, and robust error logging.
-- Content Security Policy (CSP) headers are set in `middleware.py`.
-- WebSocket security ensures tokens are sent via message after connection, not in the URL.
-- Production readiness includes structured logging, request tracing, slow query detection, session rollback safety, and tenant isolation enforcement.
-- Real Personal Name Enforcement: `name_validation.py` validates user names against generic terms and patterns, rejecting non-personal names.
-
-**Database**:
-- PostgreSQL is used as the primary database, co-located with Replit via `DATABASE_URL`.
-- Asynchronous SQLAlchemy with `asyncpg` provides the ORM layer.
-- `GenericDocument` JSONB storage is used for flexible schema data.
-- Alembic manages database migrations.
-- A repository layer (`backend/repositories/`) provides simplified data access using `gd_*` helpers from `engines/sql_utils.py`, which handle session management and tenant isolation.
-- `db_indexes.py` defines compound indexes to optimize query performance, applied on startup.
-- Deployment safety policies include blocking destructive operations, seed scripts in production, and requiring Alembic for schema management.
-
-**Key Features and Design Patterns**:
-- **Multi-tenancy**: Implemented with `tenant_id` (aliased as `school_id`) filters enforced at the database query level for all sensitive data access.
-- **Smart Scheduling System**: Uses `smart_scheduling_engine.py` to generate timetables, incorporating teacher preferences, constraints, and capacity diagnostics. Supports drag-and-drop session rearrangement.
-- **Unified Approval Engine**: Manages various request types (e.g., school/teacher registration) with a defined status lifecycle, transition validation, and audit logging.
-- **Form System Architecture**: Standardized components for multi-step forms with responsive layouts, auto-validation, and data persistence.
-- **Hakim AI Character**: A dynamic, interactive AI assistant integrated system-wide, offering contextual messages, insights, and guiding users.
-- **Product Intelligence Hub**: A robust system for tracking, managing, and analyzing product issues, featuring granular RBAC, audit logging, and an event flow engine.
-- **Administrative Calendar**: Manages school events with CRUD operations and CSV import functionality.
-- **Teacher Portfolio**: A comprehensive system for teachers to document professional achievements and evidence, with auto-generated and manual entry options.
-- **Reporting & Export Engine**: Centralized generation of 9 report types (PDF, CSV, XLSX) with extensive filtering and role-based authorization.
-- **Role Switching System**: Allows platform administrators to impersonate other roles for testing and support, with audit logging.
-- **WebSocket Real-time Notifications**: Securely delivers notifications using a token-based authentication mechanism.
-- **Student & Parent Portals**: Dedicated interfaces providing personalized information, schedules, grades, attendance, and communication features.
-- **Relationship Graph Engine**: Maps and manages complex relationships between users (students, parents, teachers) and entities (schools, classes, subjects).
-- **Session Engine**: Manages live class sessions, including attendance, participation tracking, behavior logging, and post-session analytics with AI insights and notifications.
-- **Academic Structure & School Settings**: Comprehensive configuration of school academic parameters and timetable settings, with auto-regeneration of time slots.
-- **Class Detail Page**: Provides a dedicated view for managing class details, student records, and curriculum plans.
-- **Real Personal Name Enforcement**: Backend validation and frontend guards prevent generic names for user accounts.
-- **Comprehensive Test Data Seeding**: An idempotent script creates two isolated school tenants with full academic and operational data for thorough testing.
-
-## External Dependencies
-
-- **PostgreSQL**: Primary database.
-- **FastAPI**: Backend web framework.
-- **React**: Frontend library.
-- **Radix UI**: Frontend component library.
-- **Tailwind CSS**: CSS framework.
-- **Axios**: HTTP client for API requests.
-- **Recharts**: Charting library for data visualization.
-- **PyJWT**: JSON Web Token implementation for Python.
-- **bcrypt**: Password hashing library.
-- **qrcode**: QR code generation library.
-- **pandas**: Data manipulation and analysis library for Python.
-- **Google Generative AI (OpenAI API)**: For Hakim AI engine, translation service, and AI-powered operations.
-- **reportlab**: PDF generation library for Python.
-- **xlsxwriter**: Excel file generation library for Python.
-- **psutil**: System monitoring (process and system utilities).
-- **python-docx**: Library for creating and updating Microsoft Word files.
-- **hijri-converter (Python & npm)**: For Hijri/Gregorian date conversions.
-- **@dnd-kit**: Drag-and-drop library for React.
-- **react-router-dom**: Routing for React applications.
-- **react-markdown, remark-gfm**: Markdown rendering in React.
-- **framer-motion**: Animation library for React.
-- **openpyxl**: Excel file parsing library for Python.
-## Schedule Grid Redesign (2026-05-04)
-- New day color system (`--day-{sun,mon,tue,wed,thu}-{tint,band}` HSL vars in `frontend/src/index.css`).
-- Reusable grid primitives under `frontend/src/components/schedule/grid-theme/`:
-  - `dayPalette.js` — single source of truth for day → tint/band Tailwind classes.
-  - `DayHeaderBand.jsx` — banded day header + per-period sub-row (available for future grids).
-  - `SessionCell.jsx` — day-tinted, click-to-open cell used by FilledCell's default branch.
-  - `SessionDetailModal.jsx` — glass-morphism session pop-up; `hideActions` prop renders read-only mode (used by master grid).
-- `MasterMatrix` (in `SchedulePageNew.jsx`) re-themed: `clamp(140px,14vw,200px) repeat(N, minmax(0,1fr))` columns (no internal horizontal scrollbar), day-banded headers, day-tinted period sub-headers, modal-on-click for normal cells. SchedulePageNew chrome (tabs, header, KPI cards, action buttons) preserved.
-- `FilledCell` default branch now delegates to `SessionCell` (vacant/substituted/relocated/substitute branches unchanged).
-- `TeacherSchedulePage` day headers + day cell columns recolored with the same day palette.
-- New tests: `dayPalette.test.js`, `SessionCell.test.jsx`, `SessionDetailModal.test.jsx` (19 passing).
-- New i18n keys (`ar.json` / `en.json`): editAction, moveAction, lockAction, unlockAction, closeAction, lockedBadge, relocatedBadge, periodNumberLabel, sessionDetailsTitle.
+## Pointers
+- **FastAPI Docs**: `https://fastapi.tiangolo.com/`
+- **React Docs**: `https://react.dev/`
+- **Tailwind CSS Docs**: `https://tailwindcss.com/docs`
+- **Radix UI Docs**: `https://www.radix-ui.com/docs`
+- **SQLAlchemy Docs**: `https://docs.sqlalchemy.org/`
+- **Alembic Docs**: `https://alembic.sqlalchemy.org/en/latest/`
+- **Replit Secrets**: `https://docs.replit.com/misc/secrets`
+- **Hakeem Engine Audit Report**: `docs/superpowers/specs/2026-05-03-hakeem-engine-audit-report.md`

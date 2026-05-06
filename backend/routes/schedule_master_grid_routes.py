@@ -399,6 +399,9 @@ async def get_master_grid(
     response: Response,
     school_id: Optional[str] = Query(None, description="معرف المدرسة (اختياري — يُشتق من المستخدم)"),
     view: Optional[str] = Query(None, description="draft | published — يحدد الجدول المعروض"),
+    teacher_page: int = Query(1, ge=1, description="صفحة المعلمين (1-indexed) عند تفعيل التقسيم"),
+    teacher_page_size: int = Query(0, ge=0, le=500, description="حجم صفحة المعلمين؛ 0 = عرض الكل (السلوك الافتراضي للتوافق)"),
+    day: Optional[str] = Query(None, description="sunday..thursday — يُقيّد الجلسات بيوم واحد (وضع يومي)"),
     x_school_context: Optional[str] = Header(None),
     current_user: dict = Depends(get_current_user),
 ):
@@ -421,13 +424,30 @@ async def get_master_grid(
     periods = await _resolve_periods_for_school(sid)
     period_times = await _resolve_period_times(sid, periods)
 
-    teachers = await gd_find(
+    teachers_all = await gd_find(
         db.session,
         "teachers",
         {"school_id": sid, "is_active": True},
         order_by="full_name",
         limit=2000,
     )
+
+    # Task #142 — payload window scoping. When the client supplies
+    # ``teacher_page_size > 0`` we slice the teacher list to a single
+    # visible page and *also* scope the session fetch to those teachers
+    # via ``teacher_id $in [...]``. This keeps the wire payload bounded
+    # to "what's actually rendered" instead of shipping the full school
+    # in a single response. ``teacher_page_size = 0`` preserves the
+    # legacy "send everything" behaviour for callers that haven't opted
+    # in (e.g. exports, the substitution drawer's bulk lookups).
+    teachers_total = len(teachers_all)
+    if teacher_page_size and teacher_page_size > 0:
+        start_idx = (teacher_page - 1) * teacher_page_size
+        end_idx = start_idx + teacher_page_size
+        teachers = teachers_all[start_idx:end_idx]
+    else:
+        teachers = teachers_all
+    visible_teacher_ids = [t.get("id") for t in teachers if t.get("id")]
 
     # Task #141 — accept ``view=draft|published`` and surface the
     # resolved timetable status + ``is_empty`` flag so the frontend can
@@ -437,13 +457,34 @@ async def get_master_grid(
         requested_view = None
     timetable = await _resolve_active_timetable(sid, view=requested_view)
     sessions: list[dict] = []
+    # Task #142 — daily-mode payload scoping: when the client requests a
+    # single day (daily view), filter sessions on that day so the wire
+    # payload is roughly 1/5 of the weekly size. Weekly view leaves
+    # ``day`` unset and gets the full week.
+    requested_day = (day or "").strip().lower() or None
+    if requested_day not in {None, *DAYS}:
+        requested_day = None
     if timetable:
-        sessions = await gd_find(
-            db.session,
-            "timetable_sessions",
-            {"timetable_id": timetable.get("id")},
-            limit=10000,
-        )
+        # Scope the session fetch to the visible teacher window when
+        # pagination is active; otherwise pull all sessions for the
+        # timetable (legacy contract). Optionally narrow to a single
+        # day when the client asks for daily-view scoping.
+        sess_filter: dict = {"timetable_id": timetable.get("id")}
+        if teacher_page_size and visible_teacher_ids:
+            sess_filter["teacher_id"] = {"$in": visible_teacher_ids}
+        elif teacher_page_size and not visible_teacher_ids:
+            # Page is past the end of the teacher list — short-circuit
+            # to an empty session set instead of issuing a wide query.
+            sess_filter = None  # type: ignore[assignment]
+        if sess_filter is not None and requested_day:
+            sess_filter["day_of_week"] = requested_day
+        if sess_filter is not None:
+            sessions = await gd_find(
+                db.session,
+                "timetable_sessions",
+                sess_filter,
+                limit=10000,
+            )
 
     class_ids = list({s.get("class_id") for s in sessions if s.get("class_id")})
     classes = (
@@ -622,9 +663,21 @@ async def get_master_grid(
     )
     teacher_name_map = {t.get("id"): (t.get("full_name") or "") for t in teachers}
     substituted_today = 0
+    # Task #142 — keep the substitution overlay inside the same visible
+    # window as the rest of the payload. When the client requested a
+    # paginated teacher slice, we must NOT inject synthetic cells for
+    # off-page teachers (absent or substitute). When the client scoped
+    # to a single day (daily view), the overlay must skip rows for any
+    # other day. Substitutions are inherently "today" rows, so a daily
+    # request for a non-today day yields no overlay at all.
+    visible_teacher_set: set | None = (
+        set(visible_teacher_ids) if teacher_page_size else None
+    )
     for sub in sub_rows:
         sub_day = (sub.get("day_of_week") or "").lower()
         if sub_day != today_key:
+            continue
+        if requested_day and sub_day != requested_day:
             continue
         try:
             sub_period_int = int(sub.get("period_number"))
@@ -645,7 +698,7 @@ async def get_master_grid(
             sub_alt_meta = relocation_today.get(sub_cls_id)
 
         # Flip the absent teacher's vacant cell to substituted.
-        if absent_tid:
+        if absent_tid and (visible_teacher_set is None or absent_tid in visible_teacher_set):
             absent_day_cells = cells.setdefault(absent_tid, {}).setdefault(sub_day, {})
             existing = absent_day_cells.get(sub_period_key)
             if existing is not None:
@@ -663,7 +716,7 @@ async def get_master_grid(
                 substituted_today += 1
 
         # Add synthetic cell to substitute teacher's row.
-        if sub_tid:
+        if sub_tid and (visible_teacher_set is None or sub_tid in visible_teacher_set):
             sub_day_cells = cells.setdefault(sub_tid, {}).setdefault(sub_day, {})
             if sub_period_key not in sub_day_cells:
                 synth: dict[str, object] = {
@@ -762,6 +815,18 @@ async def get_master_grid(
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
 
+    # Task #142 — surface a pagination block so the client knows whether
+    # it's looking at a window or the full school. ``page_size=0`` means
+    # "no pagination — full school payload" (legacy behaviour); any
+    # positive value reflects the visible-window slice.
+    pagination = {
+        "page": teacher_page if teacher_page_size else 1,
+        "page_size": teacher_page_size or teachers_total,
+        "total": teachers_total,
+        "windowed": bool(teacher_page_size),
+        "day": requested_day,
+    }
+
     return {
         "school_id": sid,
         "timetable_id": timetable.get("id") if timetable else None,
@@ -780,4 +845,5 @@ async def get_master_grid(
         "cells": cells,
         "kpis": kpis,
         "alert": alert,
+        "pagination": pagination,
     }
