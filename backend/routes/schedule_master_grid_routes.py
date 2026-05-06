@@ -273,7 +273,7 @@ def _normalize_rank(raw) -> str:
     return _RANK_ALIASES.get(val, _RANK_ALIASES.get(str(raw).strip(), ""))
 
 
-async def _resolve_active_timetable(school_id: str) -> Optional[dict]:
+async def _resolve_active_timetable(school_id: str, view: Optional[str] = None) -> Optional[dict]:
     """يختار آخر جدول للمدرسة (مسودة كان أو منشوراً) حسب تاريخ التحديث/الإنشاء.
 
     السلوك السابق كان يُفضِّل دائماً أحدث جدول منشور حتى لو وُجدت مسودة
@@ -288,10 +288,22 @@ async def _resolve_active_timetable(school_id: str) -> Optional[dict]:
     في بايثون، لأن SQL وحده لا يتعامل بسهولة مع NULL coalescing عبر
     طبقة gd_find.
     """
+    # Task #141 — explicit view filter. ``view="draft"`` returns the
+    # latest DRAFT (or None), ``view="published"`` returns the active
+    # PUBLISHED (or None). When ``view`` is omitted we keep the legacy
+    # "newest of either" behaviour for backwards-compatibility with
+    # callers that have not been updated yet.
+    if view == "draft":
+        status_filter: Any = "draft"
+    elif view == "published":
+        status_filter = "published"
+    else:
+        status_filter = {"$in": ["published", "draft"]}
+
     rows = await gd_find(
         db.session,
         "timetables",
-        {"school_id": school_id, "status": {"$in": ["published", "draft"]}},
+        {"school_id": school_id, "status": status_filter},
         order_by="updated_at",
         desc_order=True,
         limit=5,
@@ -386,6 +398,7 @@ async def _absent_teacher_ids_today(
 async def get_master_grid(
     response: Response,
     school_id: Optional[str] = Query(None, description="معرف المدرسة (اختياري — يُشتق من المستخدم)"),
+    view: Optional[str] = Query(None, description="draft | published — يحدد الجدول المعروض"),
     x_school_context: Optional[str] = Header(None),
     current_user: dict = Depends(get_current_user),
 ):
@@ -416,7 +429,13 @@ async def get_master_grid(
         limit=2000,
     )
 
-    timetable = await _resolve_active_timetable(sid)
+    # Task #141 — accept ``view=draft|published`` and surface the
+    # resolved timetable status + ``is_empty`` flag so the frontend can
+    # render the right banner / empty-state without a second round-trip.
+    requested_view = (view or "").strip().lower() or None
+    if requested_view not in {None, "draft", "published"}:
+        requested_view = None
+    timetable = await _resolve_active_timetable(sid, view=requested_view)
     sessions: list[dict] = []
     if timetable:
         sessions = await gd_find(
@@ -747,6 +766,12 @@ async def get_master_grid(
         "school_id": sid,
         "timetable_id": timetable.get("id") if timetable else None,
         "timetable_status": timetable.get("status") if timetable else None,
+        # Task #141 — surface ``is_empty`` so the frontend can render
+        # the explicit empty-state ("لا يوجد جدول منشور حالياً") when
+        # the requested view has no matching timetable, instead of
+        # falling back to the legacy "no teachers" placeholder.
+        "is_empty": timetable is None,
+        "view": requested_view,
         "days": DAYS,
         "periods": periods,
         "period_times": period_times,

@@ -37,7 +37,7 @@ import {
   Wand2, UserX, Sparkles, Loader2, RefreshCw,
   Scale, Hourglass, UserMinus, AlertOctagon, AlertTriangle,
   ShieldAlert, Settings, ArrowLeft,
-  Undo2, Layers, Lightbulb, X, ExternalLink,
+  Undo2, Layers, Lightbulb, X, ExternalLink, CheckCircle2,
 } from 'lucide-react';
 import CandidatesSidePanel from '../components/schedule/CandidatesSidePanel';
 import BulkSubstitutionPanel from '../components/schedule/BulkSubstitutionPanel';
@@ -474,7 +474,7 @@ export default function SchedulePageNew() {
   const navigate = useNavigate();
   const schoolId = user?.tenant_id;
   const tab = useScheduleTab();
-  const { nassaqError, nassaqWarning } = useNassaqAlert();
+  const { nassaqError, nassaqWarning, nassaqConfirm } = useNassaqAlert();
   const { t } = useTranslation();
   const { direction } = useTheme();
 
@@ -515,6 +515,24 @@ export default function SchedulePageNew() {
   const [undoTeacher, setUndoTeacher] = useState(null);
   const [undoingAbsence, setUndoingAbsence] = useState(false);
 
+  // Task #141 — draft/published view toggle. Persisted to
+  // localStorage so the school admin lands on the same view between
+  // visits. Default is 'published' so non-admins (and admins on a
+  // freshly-loaded page) see what teachers/students are actually
+  // looking at right now. After a successful auto-generate we flip
+  // automatically to 'draft' so the freshly-generated variant is
+  // visible immediately for review.
+  const [scheduleView, setScheduleView] = useState(() => {
+    try {
+      const v = localStorage.getItem('nassaq.schedule.view');
+      return v === 'draft' ? 'draft' : 'published';
+    } catch { return 'published'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('nassaq.schedule.view', scheduleView); } catch {}
+  }, [scheduleView]);
+  const [publishing, setPublishing] = useState(false);
+
   const loadGrid = useCallback(async () => {
     // ملاحظة على القيمة المُعادة: نُعيد الـ payload نفسه عند النجاح (لا
     // مجرد boolean) كي يستطيع المستدعي مقارنته بمعرّف الجدول المتوقَّع
@@ -528,7 +546,7 @@ export default function SchedulePageNew() {
       // تتجاهل ترويسات منع التخزين. مهم بشكل خاص بعد التوليد التلقائي
       // كي تُعرض المسودة الجديدة بدلاً من البيانات القديمة.
       const response = await api.get('/schedule/master-grid', {
-        params: { school_id: schoolId, _t: Date.now() },
+        params: { school_id: schoolId, view: scheduleView, _t: Date.now() },
         headers: {
           'X-School-Context': schoolId,
           'Cache-Control': 'no-cache',
@@ -546,7 +564,7 @@ export default function SchedulePageNew() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [api, schoolId, t]);
+  }, [api, schoolId, scheduleView, t]);
 
   useEffect(() => {
     // نُحمِّل مصفوفة الجدول الرئيسي فقط عندما يكون التبويب النشط هو
@@ -602,6 +620,13 @@ export default function SchedulePageNew() {
       // (الذي لا يتحدّث داخل نفس الـ closure).
       // ──────────────────────────────────────────────────────────────────
       setRefreshing(true);
+      // Task #141 — generation only writes DRAFT. Force-switch the
+      // view to 'draft' so the new variant is visible immediately for
+      // review/publish, regardless of what the admin had selected
+      // before. This also keeps the expected-id round-trip below
+      // honest (master-grid would otherwise filter to PUBLISHED and
+      // never match).
+      setScheduleView('draft');
       const expectedId = data.timetable_id || null;
       let fetched = await loadGrid();
       // الجلب يُعتبر "بائتاً" لو وُجد expectedId ولم يطابق ما رجع من
@@ -935,6 +960,50 @@ export default function SchedulePageNew() {
     loadGrid();
   }, [loadGrid]);
 
+  // Task #141 — Publish flow. Confirms via NassaqAlertDialog (per
+  // replit.md: never use native confirm/toast.error for important
+  // warnings), POSTs /api/schedule/publish, switches the view to
+  // 'published', and refreshes the grid so the admin instantly sees
+  // the published version that teachers will see.
+  const handlePublish = useCallback(() => {
+    if (!schoolId) {
+      nassaqError(t('cannotDetermineSchool'));
+      return;
+    }
+    if (publishing) return;
+    nassaqConfirm(
+      t('publishScheduleConfirmMessage'),
+      async () => {
+        setPublishing(true);
+        try {
+          await api.post(
+            '/schedule/publish',
+            { school_id: schoolId, timetable_id: grid?.timetable_id || null },
+            { headers: { 'X-School-Context': schoolId } },
+          );
+          setScheduleView('published');
+          setRefreshing(true);
+          await loadGrid();
+          toast.success(t('publishScheduleSuccess'));
+        } catch (e) {
+          const detail = e?.response?.data?.detail;
+          let msg = t('publishScheduleFailed');
+          if (typeof detail === 'string' && /[\u0600-\u06FF]/.test(detail)) {
+            msg = detail;
+          } else if (detail?.message_ar) {
+            msg = detail.message_ar;
+          } else if (e?.response?.data?.message_ar) {
+            msg = e.response.data.message_ar;
+          }
+          nassaqError(msg, { title: t('publishScheduleFailedTitle') });
+        } finally {
+          setPublishing(false);
+        }
+      },
+      { title: t('publishScheduleConfirmTitle'), confirmText: t('publishScheduleConfirmAction') },
+    );
+  }, [api, schoolId, grid?.timetable_id, publishing, loadGrid, nassaqConfirm, nassaqError, t]);
+
   // ── Derived grid view model ───────────────────────────────────────────
   const teacherRows = grid?.teachers || [];
   const cellsByTeacher = grid?.cells || {};
@@ -1099,6 +1168,41 @@ export default function SchedulePageNew() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* ── Task #141 — draft/published view toggle ──────────── */}
+            <div
+              role="tablist"
+              aria-label={t('scheduleViewToggleLabel')}
+              className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={scheduleView === 'published'}
+                onClick={() => setScheduleView('published')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                  scheduleView === 'published'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+                data-testid="schedule-view-published"
+              >
+                {t('scheduleViewPublished')}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={scheduleView === 'draft'}
+                onClick={() => setScheduleView('draft')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                  scheduleView === 'draft'
+                    ? 'bg-amber-500 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+                data-testid="schedule-view-draft"
+              >
+                {t('scheduleViewDraft')}
+              </button>
+            </div>
             <Button
               onClick={handleAutoGenerate}
               disabled={generating}
@@ -1111,6 +1215,25 @@ export default function SchedulePageNew() {
               )}
               {generating ? t('generatingSchedule') : t('autoGenerateSchedule')}
             </Button>
+            {/* ── Task #141 — Publish button (admin only path; the
+                backend gate require_roles enforces the actual auth).
+                Only meaningful when looking at a draft, so we hide it
+                in the published view to avoid confusion. ─────────── */}
+            {scheduleView === 'draft' && grid?.timetable_status === 'draft' && (
+              <Button
+                onClick={handlePublish}
+                disabled={publishing}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md"
+                data-testid="publish-schedule-btn"
+              >
+                {publishing ? (
+                  <Loader2 className="h-4 w-4 me-2 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4 me-2" />
+                )}
+                {publishing ? t('publishingSchedule') : t('publishScheduleAction')}
+              </Button>
+            )}
             <Button
               onClick={handleLogAbsence}
               variant="outline"
@@ -1175,6 +1298,20 @@ export default function SchedulePageNew() {
             }}
           />
         </div>
+
+        {/* ── Task #141 — Draft banner ─────────────────────────────
+            Shown whenever the currently-displayed timetable is a
+            DRAFT, to make it visually obvious that what the admin is
+            looking at is NOT yet visible to teachers/students. */}
+        {grid?.timetable_status === 'draft' && (
+          <div
+            className="flex items-center gap-3 p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 shrink-0"
+            data-testid="draft-banner"
+          >
+            <AlertTriangle className="h-5 w-5 shrink-0" />
+            <p className="text-sm font-medium">{t('draftScheduleBanner')}</p>
+          </div>
+        )}
 
         {/* ── Smart alert banner ───────────────────────────────────── */}
         {alertText && (
@@ -1329,6 +1466,24 @@ export default function SchedulePageNew() {
           ) : teacherRows.length === 0 ? (
             <div className="p-6 text-center text-slate-500">
               {t('noTeachersRegistered')}
+            </div>
+          ) : grid?.is_empty ? (
+            // Task #141 — explicit empty-state when the requested
+            // view (draft/published) has no matching timetable. The
+            // legacy fallback only checked ``teacherRows.length``
+            // which masks "no published yet" vs "no teachers" — two
+            // very different problems.
+            <div className="p-10 text-center text-slate-500" data-testid="schedule-empty-state">
+              <p className="text-base font-semibold mb-2">
+                {scheduleView === 'published'
+                  ? t('noPublishedScheduleYet')
+                  : t('noDraftScheduleYet')}
+              </p>
+              <p className="text-sm">
+                {scheduleView === 'published'
+                  ? t('noPublishedScheduleHint')
+                  : t('noDraftScheduleHint')}
+              </p>
             </div>
           ) : (
             <MasterMatrix

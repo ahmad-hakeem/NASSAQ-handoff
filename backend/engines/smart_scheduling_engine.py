@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 import uuid
 import logging
 import random
+import secrets
 
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, gd_delete_many
 from engines.infeasibility import InfeasibilityIssue, InfeasibilityReport
@@ -339,6 +340,7 @@ class GenerationResult(BaseModel):
     capacity_issues: Optional[List[Dict[str, Any]]] = None
     unresolved_conflicts: List[Dict[str, Any]] = Field(default_factory=list)
     generation_summary: Optional[Dict[str, Any]] = None
+    seed: Optional[int] = None
 
 
 def _required_periods_per_day(settings: Dict[str, Any]) -> int:
@@ -1491,12 +1493,23 @@ class SmartSchedulingEngine:
         demands: List[AcademicDemand],
         resources: List[ResourceAvailability],
         settings: Dict[str, Any],
-        constraints: List[Dict[str, Any]]
+        constraints: List[Dict[str, Any]],
+        seed: Optional[int] = None,
     ) -> Tuple[str, List[TimetableSession], List[TimetableConflict], List[UnscheduledDemand]]:
         """
         المرحلة 6: إنشاء مسودة الجدول
         Phase 6: Generate Draft Timetable
+
+        Task #141 — Entropy: a deterministic ``Random(seed)`` (or
+        non-deterministic when ``seed is None``) shuffles the *equal-tier*
+        demands, the day rotation, the candidate periods, and the suitable
+        teachers. This means re-clicking "إنشاء الجدول تلقائياً" produces a
+        different valid variant each time without weakening any hard
+        constraint (A double-booking, B unavailability, C boundary,
+        D weekly quota, E max consecutive, F max periods/day).
         """
+        rng = random.Random(seed)
+        self._last_seed = seed
         timetable_id = str(uuid.uuid4())
         sessions = []
         conflicts = []
@@ -1558,6 +1571,28 @@ class SmartSchedulingEngine:
         
         # Sort by difficulty (hardest first)
         sorted_demands.sort(key=lambda x: (-x["difficulty"], -x["priority"]))
+
+        # Task #141 — entropy within equal tiers. Demands sharing the same
+        # (difficulty, priority) tuple were previously processed in their
+        # original list order, so re-clicking the generate button always
+        # produced the same draft. We shuffle each tier independently so
+        # the *order of harder buckets relative to easier buckets is
+        # preserved* (HC-friendly), but the placement of demands inside a
+        # tier varies between runs.
+        try:
+            from itertools import groupby as _groupby
+            _shuffled: List[Dict[str, Any]] = []
+            for _key, _grp in _groupby(
+                sorted_demands, key=lambda x: (-x["difficulty"], -x["priority"])
+            ):
+                _bucket = list(_grp)
+                rng.shuffle(_bucket)
+                _shuffled.extend(_bucket)
+            sorted_demands = _shuffled
+        except Exception:
+            # Defensive: never fail generation if shuffling errors out;
+            # fall back to the deterministic order.
+            pass
 
         # Sub-optimal placement counter — every time the *winning* candidate
         # for a slot ends up with a lower score after soft-constraint
@@ -1673,9 +1708,16 @@ class SmartSchedulingEngine:
 
             # Rotate day order per demand to avoid Sun/Mon bias for short
             # subjects: each successive demand starts on a different day, so the
-            # weekly load spreads evenly across all working days.
+            # weekly load spreads evenly across all working days. Task #141
+            # adds a per-demand RNG shuffle on top of the deterministic
+            # rotation so successive runs explore a different day order.
             offset = demand_index % len(working_days)
             rotated_days = working_days[offset:] + working_days[:offset]
+            rotated_days = list(rotated_days)
+            try:
+                rng.shuffle(rotated_days)
+            except Exception:
+                pass
 
             for rot_idx, day in enumerate(rotated_days):
                 if remaining <= 0:
@@ -1692,7 +1734,17 @@ class SmartSchedulingEngine:
                     best_candidate = None
                     best_score = -1
                     
-                    for period in teaching_period_numbers:
+                    # Task #141 — shuffle the candidate periods per inner
+                    # iteration so two runs with the same data explore the
+                    # day in a different order. The shuffle is local to
+                    # this (demand × day × slot) and does not affect the
+                    # canonical ``teaching_period_numbers`` list.
+                    _periods_iter = list(teaching_period_numbers)
+                    try:
+                        rng.shuffle(_periods_iter)
+                    except Exception:
+                        pass
+                    for period in _periods_iter:
                         # HARD CONSTRAINT: class_id + day + period must be unique
                         # A class cannot have two sessions in the same time slot
                         if class_id in grid[day][period]:
@@ -1702,7 +1754,18 @@ class SmartSchedulingEngine:
                             aggregate_rejection_counts["class_busy"] += 1
                             continue
                         
-                        for teacher_id in suitable_teachers:
+                        # Task #141 — shuffle the suitable_teachers list per
+                        # (demand × day × period) so successive runs do not
+                        # always award the same slot to the first teacher
+                        # in the assignment list. This redistributes load
+                        # fairly without weakening any hard constraint
+                        # (each candidate is still gated by HC validators).
+                        _teachers_iter = list(suitable_teachers)
+                        try:
+                            rng.shuffle(_teachers_iter)
+                        except Exception:
+                            pass
+                        for teacher_id in _teachers_iter:
                             resource = resource_lookup.get(teacher_id)
                             if not resource:
                                 continue
@@ -3078,8 +3141,15 @@ class SmartSchedulingEngine:
             await self._log_run(run_id, "info", "بدء توليد الجدول", {"phase": 6})
             await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"status": TimetableRunStatus.GENERATING.value, "completion_percentage": 55})
             
+            # Task #141 — non-deterministic seed per run so re-clicks
+            # produce a different valid variant. We surface the seed on
+            # both the run row (audit) and the GenerationResult so QA can
+            # reproduce a specific run by re-passing the same value via
+            # an internal tool if needed.
+            run_seed = secrets.randbits(32)
             timetable_id, sessions, gen_conflicts, unscheduled, underutilized_teachers = await self.generate_draft_timetable(
-                school_id, run_id, demands, resources, settings, all_constraints
+                school_id, run_id, demands, resources, settings, all_constraints,
+                seed=run_seed,
             )
             
             # Phase 7: Detect conflicts
@@ -3179,6 +3249,28 @@ class SmartSchedulingEngine:
                     "updated_at": now,
                 })
             else:
+                # Task #141 — Draft/Publish lifecycle. The generation
+                # endpoint writes ONLY to DRAFT. Before inserting the
+                # fresh draft we delete any prior DRAFT rows (and their
+                # child sessions/conflicts/unscheduled rows) for this
+                # school so the master grid does not accumulate orphan
+                # drafts. PUBLISHED and ARCHIVED rows are NEVER touched
+                # — that lifecycle transition is handled exclusively by
+                # the dedicated POST /api/schedule/publish endpoint.
+                prior_drafts = await gd_find(
+                    self.session, "timetables",
+                    {"school_id": school_id, "status": TimetableStatus.DRAFT.value},
+                    limit=50,
+                )
+                for _pd in prior_drafts:
+                    _pd_id = _pd.get("id")
+                    if not _pd_id:
+                        continue
+                    await gd_delete_many(self.session, "timetable_sessions", {"timetable_id": _pd_id})
+                    await gd_delete_many(self.session, "timetable_conflicts", {"timetable_id": _pd_id})
+                    await gd_delete_many(self.session, "timetable_unscheduled_demands", {"timetable_id": _pd_id})
+                    await gd_delete_one(self.session, "timetables", {"id": _pd_id})
+
                 timetable_doc = {
                     "id": timetable_id,
                     "school_id": school_id,
@@ -3393,6 +3485,7 @@ class SmartSchedulingEngine:
                 "completion_rate": (len(optimized_sessions) / total_demand * 100) if total_demand > 0 else 0,
                 "capacity_issues": capacity_issues,
                 "generation_summary": generation_summary,
+                "seed": run_seed,
             })
             
             await self._log_run(run_id, "info", "اكتمل توليد الجدول", {
@@ -3418,6 +3511,7 @@ class SmartSchedulingEngine:
                 capacity_issues=capacity_issues if capacity_issues else None,
                 unresolved_conflicts=unresolved_conflicts,
                 generation_summary=generation_summary,
+                seed=run_seed,
             )
             
         except Exception as e:

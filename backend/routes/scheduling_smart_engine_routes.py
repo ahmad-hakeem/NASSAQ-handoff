@@ -20,7 +20,11 @@ from dependencies import (
     smart_scheduling_engine, TimetableRunStatus, TimetableStatus,
     ConflictType, ConflictSeverity, PreValidationResult, GenerationResult,
     hakim_engine, reporting_engine, export_engine, session_engine,
-    REPORT_TYPES, generate_student_qr_code
+    REPORT_TYPES, generate_student_qr_code,
+)
+from engines.school_notification_engine import (
+    SchoolNotificationEngine,
+    SendNotificationRequest, RecipientType, NotificationPriority, NotificationType,
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
 from utils.tenant_scope import assert_school_access, resolve_school_id
@@ -672,6 +676,122 @@ async def smart_publish_timetable(
         "timetable_id": timetable_id,
         "message_ar": "تم نشر الجدول بنجاح",
         "message_en": "Timetable published successfully"
+    }
+
+
+# --- Task #141 — Lifecycle promote DRAFT → PUBLISHED ─────────────────
+# Thin wrapper over ``smart_scheduling_engine.publish_timetable`` that:
+#   1. Resolves the latest DRAFT for ``school_id`` if no ``timetable_id``
+#      is supplied (the new master-schedule UI always calls with just
+#      the school context).
+#   2. Runs ``assert_publishable`` so HIGH/CRITICAL constraint
+#      violations short-circuit with a structured 409 envelope.
+#   3. Delegates the actual UPDATE to ``publish_timetable`` (which
+#      archives any prior published row via UPDATE only — no DELETE in
+#      production data per replit.md policy).
+#   4. Fans out an Arabic announcement to all teachers via the school
+#      notification engine.
+class PublishScheduleRequest(BaseModel):
+    school_id: str = Field(..., min_length=1)
+    timetable_id: Optional[str] = None
+
+
+@router.post("/schedule/publish")
+async def publish_schedule(
+    payload: PublishScheduleRequest,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN])),
+):
+    school_id = payload.school_id.strip()
+    assert_school_access(current_user, school_id)
+
+    timetable_id = (payload.timetable_id or "").strip() or None
+    if not timetable_id:
+        # Resolve the most-recently updated DRAFT for this school. The
+        # generation endpoint guarantees there is at most one DRAFT row.
+        drafts = await gd_find(
+            db.session, "timetables",
+            {"school_id": school_id, "status": TimetableStatus.DRAFT.value},
+            order_by="updated_at", desc_order=True, limit=1,
+        )
+        if not drafts:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "NO_DRAFT_FOUND",
+                    "message_ar": "لا توجد مسودة جدول قابلة للنشر.",
+                    "message_en": "No draft timetable available to publish.",
+                },
+            )
+        timetable_id = drafts[0].get("id")
+
+    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+    if not timetable or timetable.get("school_id") != school_id:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "TIMETABLE_NOT_FOUND",
+                "message_ar": "الجدول المطلوب غير موجود.",
+                "message_en": "Requested timetable not found.",
+            },
+        )
+    if timetable.get("status") != TimetableStatus.DRAFT.value:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "NOT_A_DRAFT",
+                "message_ar": "لا يمكن نشر هذا الجدول لأنه ليس مسودة.",
+                "message_en": "Only draft timetables can be published.",
+            },
+        )
+
+    await assert_publishable(
+        smart_scheduling_engine,
+        school_id=school_id,
+        timetable_id=timetable_id,
+    )
+
+    success = await smart_scheduling_engine.publish_timetable(
+        timetable_id=timetable_id,
+        published_by=current_user.get("id", "system"),
+    )
+    if not success:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "PUBLISH_FAILED",
+                "message_ar": "تعذّر نشر الجدول بسبب تعارضات حرجة غير محلولة.",
+                "message_en": "Publish failed due to unresolved critical conflicts.",
+            },
+        )
+
+    # Fan-out: notify all teachers of the new published timetable. We
+    # swallow notification failures so a delivery hiccup never rolls
+    # back the publish itself — the audit trail on the timetable row
+    # is the source of truth.
+    try:
+        _notif = SchoolNotificationEngine(db)
+        await _notif.send_notification(
+            request=SendNotificationRequest(
+                title_ar="تم نشر جدول جديد",
+                title_en="New schedule published",
+                message_ar="تم نشر جدول الحصص الجديد. يُرجى مراجعته من شاشة الجدول الخاصة بك.",
+                message_en="A new class schedule has been published. Please review it from your schedule screen.",
+                recipient_type=RecipientType.all_teachers,
+                notification_type=NotificationType.announcement,
+                priority=NotificationPriority.high,
+            ),
+            tenant_id=school_id,
+            sent_by=current_user.get("id", "system"),
+        )
+    except Exception as _e:  # noqa: BLE001
+        logger.warning("publish notification fan-out failed: %s", _e)
+
+    return {
+        "success": True,
+        "timetable_id": timetable_id,
+        "school_id": school_id,
+        "message_ar": "تم نشر الجدول بنجاح.",
+        "message_en": "Timetable published successfully.",
     }
 
 

@@ -4170,5 +4170,21 @@
   "paginationNext": "Next",
   "paginationPageOf": "Page {current} of {total}",
   "paginationPageSize": "Teachers per page",
-  "paginationRangeLabel": "{from}–{to} of {total}"
+  "paginationRangeLabel": "{from}–{to} of {total}",
+  "scheduleViewToggleLabel": "Schedule view",
+  "scheduleViewPublished": "Published",
+  "scheduleViewDraft": "Draft",
+  "draftScheduleBanner": "You are viewing a draft that has not been published yet — teachers and students will not see it until you click \"Publish schedule\".",
+  "publishScheduleAction": "Publish schedule",
+  "publishingSchedule": "Publishing…",
+  "publishScheduleConfirmTitle": "Confirm publish",
+  "publishScheduleConfirmMessage": "The current published schedule will be replaced by this draft and all teachers will be notified immediately. Continue?",
+  "publishScheduleConfirmAction": "Yes, publish now",
+  "publishScheduleSuccess": "Schedule published and teachers notified.",
+  "publishScheduleFailed": "Could not publish the schedule.",
+  "publishScheduleFailedTitle": "Publish failed",
+  "noPublishedScheduleYet": "No published schedule yet.",
+  "noPublishedScheduleHint": "Click \"Auto-generate schedule\" then \"Publish schedule\" to make it visible to teachers and students.",
+  "noDraftScheduleYet": "No draft schedule.",
+  "noDraftScheduleHint": "Click \"Auto-generate schedule\" to generate a new draft you can review before publishing."
 }

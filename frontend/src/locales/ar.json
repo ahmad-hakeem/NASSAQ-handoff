@@ -4170,5 +4170,21 @@
   "paginationNext": "التالي",
   "paginationPageOf": "صفحة {current} من {total}",
   "paginationPageSize": "عدد المعلمين بالصفحة",
-  "paginationRangeLabel": "{from}–{to} من {total}"
+  "paginationRangeLabel": "{from}–{to} من {total}",
+  "scheduleViewToggleLabel": "عرض الجدول",
+  "scheduleViewPublished": "المنشور",
+  "scheduleViewDraft": "المسودة",
+  "draftScheduleBanner": "أنت تعرض مسودة جدول لم تُنشر بعد — لن يراها المعلمون والطلاب حتى تضغط «نشر الجدول».",
+  "publishScheduleAction": "نشر الجدول",
+  "publishingSchedule": "جارٍ النشر…",
+  "publishScheduleConfirmTitle": "تأكيد نشر الجدول",
+  "publishScheduleConfirmMessage": "سيتم استبدال الجدول المنشور الحالي بهذه المسودة، وسيُبلَّغ جميع المعلمين فوراً. هل تريد المتابعة؟",
+  "publishScheduleConfirmAction": "نعم، انشر الآن",
+  "publishScheduleSuccess": "تم نشر الجدول وإبلاغ المعلمين.",
+  "publishScheduleFailed": "تعذّر نشر الجدول.",
+  "publishScheduleFailedTitle": "فشل النشر",
+  "noPublishedScheduleYet": "لا يوجد جدول منشور حالياً.",
+  "noPublishedScheduleHint": "اضغط «إنشاء الجدول تلقائياً» ثم «نشر الجدول» لجعله مرئياً للمعلمين والطلاب.",
+  "noDraftScheduleYet": "لا توجد مسودة جدول.",
+  "noDraftScheduleHint": "اضغط «إنشاء الجدول تلقائياً» لتوليد مسودة جديدة قابلة للمراجعة قبل النشر."
 }
