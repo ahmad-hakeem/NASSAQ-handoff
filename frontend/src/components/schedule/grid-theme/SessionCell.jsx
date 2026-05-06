@@ -22,6 +22,7 @@ export default function SessionCell({
   onClick,
   isLocked = false,
   hasConflict = false,
+  compact = true,
 }) {
   const tint = getDayTintClass(dayKey);
   const handleActivate = (e) => {
@@ -33,6 +34,17 @@ export default function SessionCell({
   const klass = session?.class_name || '—';
   const ariaLabel = `${subject} · ${klass} · ${dayKey} · ${session?.slot_number ?? ''}`;
 
+  // Daily view (compact = false) gives the cell more vertical room and lets
+  // the subject / class wrap onto a second line. Weekly view keeps the dense
+  // single-line look so the whole week still fits on screen.
+  const containerSize = compact ? 'min-h-[50px] p-1' : 'min-h-[68px] p-2';
+  const subjectClass = compact
+    ? 'text-[10px] font-cairo font-semibold line-clamp-1 max-w-full truncate'
+    : 'text-xs font-cairo font-semibold line-clamp-2 max-w-full leading-snug';
+  const classClass = compact
+    ? 'text-[9px] font-tajawal opacity-80 line-clamp-1 max-w-full truncate'
+    : 'text-[11px] font-tajawal opacity-85 line-clamp-2 max-w-full leading-snug';
+
   return (
     <div
       role="button"
@@ -41,7 +53,7 @@ export default function SessionCell({
       onKeyDown={handleActivate}
       aria-label={ariaLabel}
       data-testid={`session-cell-${session?.id}`}
-      className={`relative h-full min-h-[50px] min-w-0 overflow-hidden rounded-md p-1 cursor-pointer ${tint} border border-white/60 text-brand-navy transition-all duration-200 ease-out hover:scale-[1.02] hover:shadow-md hover:z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-1 motion-reduce:hover:scale-100 ${isLocked ? 'opacity-80' : ''}`}
+      className={`relative h-full ${containerSize} min-w-0 overflow-hidden rounded-md cursor-pointer ${tint} border border-white/60 text-brand-navy transition-all duration-200 ease-out hover:scale-[1.02] hover:shadow-md hover:z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-1 motion-reduce:hover:scale-100 ${isLocked ? 'opacity-80' : ''}`}
     >
       {isLocked && (
         <Lock
@@ -55,10 +67,10 @@ export default function SessionCell({
         />
       )}
       <div className="flex flex-col h-full justify-center items-center gap-0.5 text-center">
-        <span className="text-[10px] font-cairo font-semibold line-clamp-1 max-w-full truncate">
+        <span className={subjectClass}>
           {subject}
         </span>
-        <span className="text-[9px] font-tajawal opacity-80 line-clamp-1 max-w-full truncate">
+        <span className={classClass}>
           {klass}
         </span>
       </div>

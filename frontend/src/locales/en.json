@@ -4161,5 +4161,14 @@
   "lockedBadge": "Locked",
   "relocatedBadge": "Relocated",
   "periodNumberLabel": "Period {n}",
-  "sessionDetailsTitle": "Session details"
+  "sessionDetailsTitle": "Session details",
+  "dailyViewLabel": "Daily",
+  "weeklyViewLabel": "Weekly",
+  "masterGridViewModeLabel": "Schedule view mode",
+  "selectDayLabel": "Select day",
+  "paginationPrev": "Previous",
+  "paginationNext": "Next",
+  "paginationPageOf": "Page {current} of {total}",
+  "paginationPageSize": "Teachers per page",
+  "paginationRangeLabel": "{from}–{to} of {total}"
 }

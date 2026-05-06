@@ -50,4 +50,26 @@ describe('SessionCell', () => {
     render(<SessionCell session={baseSession} dayKey="monday" onClick={() => {}} isLocked />);
     expect(screen.getByTestId('session-cell-lock-icon')).toBeInTheDocument();
   });
+
+  // ── Compact prop (Task #138) ─────────────────────────────────────────
+  // الوضع الأسبوعي يبقى على السلوك السابق (compact = true): سطر واحد فقط
+  // وحجم خط صغير. الوضع اليومي (compact = false) يستخدم سطرين بحجم أكبر
+  // ليتنفّس النص في الأعمدة العريضة.
+  it('uses compact (single-line) typography by default', () => {
+    render(<SessionCell session={baseSession} dayKey="monday" onClick={() => {}} />);
+    const subject = screen.getByText('رياضيات');
+    expect(subject.className).toMatch(/line-clamp-1/);
+    expect(subject.className).toMatch(/text-\[10px\]/);
+  });
+
+  it('uses roomier typography when compact is false (daily view)', () => {
+    render(
+      <SessionCell session={baseSession} dayKey="monday" onClick={() => {}} compact={false} />,
+    );
+    const subject = screen.getByText('رياضيات');
+    expect(subject.className).toMatch(/line-clamp-2/);
+    expect(subject.className).toMatch(/text-xs/);
+    const klass = screen.getByText('٣ علوم');
+    expect(klass.className).toMatch(/line-clamp-2/);
+  });
 });

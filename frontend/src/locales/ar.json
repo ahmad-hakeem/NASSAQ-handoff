@@ -4161,5 +4161,14 @@
   "lockedBadge": "مثبتة",
   "relocatedBadge": "مُنقولة",
   "periodNumberLabel": "الحصة {n}",
-  "sessionDetailsTitle": "تفاصيل الحصة"
+  "sessionDetailsTitle": "تفاصيل الحصة",
+  "dailyViewLabel": "يومي",
+  "weeklyViewLabel": "أسبوعي",
+  "masterGridViewModeLabel": "وضع عرض الجدول",
+  "selectDayLabel": "اختر اليوم",
+  "paginationPrev": "السابق",
+  "paginationNext": "التالي",
+  "paginationPageOf": "صفحة {current} من {total}",
+  "paginationPageSize": "عدد المعلمين بالصفحة",
+  "paginationRangeLabel": "{from}–{to} من {total}"
 }

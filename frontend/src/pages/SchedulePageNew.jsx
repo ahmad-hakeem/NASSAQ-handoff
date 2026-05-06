@@ -971,6 +971,64 @@ export default function SchedulePageNew() {
     [t],
   );
 
+  // ── View mode + pagination state (Task #138) ─────────────────────────
+  // الجدول الرئيسي يدعم وضعين: «يومي» (افتراضي) يعرض يوماً واحداً فقط
+  // بأعمدة عريضة قابلة للقراءة، و«أسبوعي» يعرض الأسبوع كاملاً مع رؤوس
+  // مثبَّتة. كذلك نُقسِّم صفوف المعلمين على صفحات لئلا نُحقن مئاتٍ من
+  // الـDOM nodes دفعة واحدة. الإعدادات تُحفظ في localStorage فيبقى
+  // المدير على نفس الإعداد بين الزيارات.
+  const PAGE_SIZE_OPTIONS = useMemo(() => [10, 15, 25], []);
+  const [viewMode, setViewMode] = useState(() => {
+    try {
+      const v = localStorage.getItem('nassaq_master_grid_view_mode');
+      return v === 'weekly' ? 'weekly' : 'daily';
+    } catch { return 'daily'; }
+  });
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      const v = parseInt(localStorage.getItem('nassaq_master_grid_page_size') || '10', 10);
+      return [10, 15, 25].includes(v) ? v : 10;
+    } catch { return 10; }
+  });
+  const [pageIndex, setPageIndex] = useState(0);
+  const [selectedDay, setSelectedDay] = useState(() => {
+    try { return localStorage.getItem('nassaq_master_grid_selected_day') || null; }
+    catch { return null; }
+  });
+
+  // Sync selectedDay with available days when grid loads / changes. Restored
+  // value from localStorage is honored when valid; otherwise falls back to
+  // today, then to the first available day.
+  useEffect(() => {
+    if (!days?.length) return;
+    setSelectedDay((cur) => {
+      if (cur && days.includes(cur)) return cur;
+      if (todayKey && days.includes(todayKey)) return todayKey;
+      return days[0];
+    });
+  }, [days, todayKey]);
+
+  useEffect(() => {
+    try { localStorage.setItem('nassaq_master_grid_view_mode', viewMode); } catch {}
+  }, [viewMode]);
+  useEffect(() => {
+    try { localStorage.setItem('nassaq_master_grid_page_size', String(pageSize)); } catch {}
+  }, [pageSize]);
+  useEffect(() => {
+    if (!selectedDay) return;
+    try { localStorage.setItem('nassaq_master_grid_selected_day', selectedDay); } catch {}
+  }, [selectedDay]);
+  useEffect(() => { setPageIndex(0); }, [pageSize, teacherRows.length]);
+
+  const totalPages = Math.max(1, Math.ceil(teacherRows.length / pageSize));
+  const safePage = Math.min(Math.max(0, pageIndex), totalPages - 1);
+  const pagedTeachers = useMemo(() => {
+    const start = safePage * pageSize;
+    return teacherRows.slice(start, start + pageSize);
+  }, [teacherRows, safePage, pageSize]);
+  const pageStartIdx = teacherRows.length === 0 ? 0 : safePage * pageSize + 1;
+  const pageEndIdx = Math.min(teacherRows.length, (safePage + 1) * pageSize);
+
   if (tab === 'standby') {
     // تبويب جدول حصص الانتظار — يُضمَّن المحتوى نفسه المستخدم في الصفحة
     // المستقلة `/school/standby` بدون لمس مصدر بياناته.
@@ -1173,6 +1231,84 @@ export default function SchedulePageNew() {
           onAssignedBatch={handleAssignedBatch}
         />
 
+        {/* ── View mode + day tabs (Task #138) ─────────────────────────
+            شريط تحكّم فوق الشبكة: تبديل بين «يومي» و«أسبوعي»، وعند اختيار
+            «يومي» تظهر تبويبات الأيام (الأحد–الخميس) لاختيار اليوم
+            المعروض. هذا الشريط واجهةٌ بحتة، لا يستهلك أي endpoint جديد. */}
+        {!loading && !error && teacherRows.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <div
+              role="tablist"
+              aria-label={t('masterGridViewModeLabel')}
+              className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewMode === 'daily'}
+                onClick={() => setViewMode('daily')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                  viewMode === 'daily'
+                    ? 'bg-[#1C3D74] text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+                data-testid="view-mode-daily"
+              >
+                {t('dailyViewLabel')}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewMode === 'weekly'}
+                onClick={() => setViewMode('weekly')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                  viewMode === 'weekly'
+                    ? 'bg-[#1C3D74] text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+                data-testid="view-mode-weekly"
+              >
+                {t('weeklyViewLabel')}
+              </button>
+            </div>
+
+            {viewMode === 'daily' && days.length > 0 && (
+              <div
+                role="tablist"
+                aria-label={t('selectDayLabel')}
+                className="inline-flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm"
+              >
+                {days.map((dayKey) => {
+                  const isActive = selectedDay === dayKey;
+                  const isToday = todayKey === dayKey;
+                  return (
+                    <button
+                      key={`day-tab-${dayKey}`}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => setSelectedDay(dayKey)}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 ${
+                        isActive
+                          ? 'bg-[#2BB5A0] text-white shadow-sm'
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                      data-testid={`day-tab-${dayKey}`}
+                    >
+                      {dayLabelMap[dayKey] || dayKey}
+                      {isToday && (
+                        <span className={`text-[9px] px-1 rounded ${isActive ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
+                          {t('todayBadge')}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Master matrix grid ─────────────────────────────────────
             Light, breathable container: white surface, single subtle
             border, rounded corners, and a single scroll context that
@@ -1191,11 +1327,14 @@ export default function SchedulePageNew() {
             </div>
           ) : (
             <MasterMatrix
-              teachers={teacherRows}
+              teachers={pagedTeachers}
+              totalTeachers={teacherRows.length}
               cells={cellsByTeacher}
               days={days}
               periods={periods}
               dayLabelMap={dayLabelMap}
+              viewMode={viewMode}
+              selectedDay={selectedDay}
               onVacantClick={handleVacantClick}
               onUndoAbsence={handleRequestUndoAbsence}
               onBulkCoverClick={handleOpenBulkPanel}
@@ -1212,6 +1351,60 @@ export default function SchedulePageNew() {
               القيود ويبني الجدول الذكي. */}
           {generating && <HakimGeneratingOverlay />}
         </div>
+
+        {/* ── Pagination footer (Task #138) ─────────────────────────
+            تقسيم صفوف المعلمين على صفحات لتقليل عدد الـDOM nodes وتسريع
+            التمرير في المدارس الكبيرة. خيارات الحجم 10/15/25 وتُحفظ في
+            localStorage. الترقيم بحت على الواجهة دون أي طلبات للـAPI. */}
+        {!loading && !error && teacherRows.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 shrink-0 text-xs text-slate-600">
+            <div className="flex items-center gap-2">
+              <span>{t('paginationPageSize')}</span>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(v) => setPageSize(parseInt(v, 10))}
+              >
+                <SelectTrigger className="h-8 w-[72px]" data-testid="page-size-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZE_OPTIONS.map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-slate-500">
+                {t('paginationRangeLabel', { from: pageStartIdx, to: pageEndIdx, total: teacherRows.length })}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={safePage <= 0}
+                onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
+                data-testid="page-prev"
+              >
+                {t('paginationPrev')}
+              </Button>
+              <span className="px-2 font-semibold text-slate-700" data-testid="page-indicator">
+                {t('paginationPageOf', { current: safePage + 1, total: totalPages })}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={safePage >= totalPages - 1}
+                onClick={() => setPageIndex((p) => Math.min(totalPages - 1, p + 1))}
+                data-testid="page-next"
+              >
+                {t('paginationNext')}
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* ── Absence dialog ─────────────────────────────────────── */}
         <Dialog open={absenceOpen} onOpenChange={setAbsenceOpen}>
@@ -1480,7 +1673,7 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
 // التصميم البصري الجديد: خلفية بيضاء، رؤوس فاتحة (slate-50)، حدود رفيعة
 // (slate-100)، وعمود المعلم على يمين الشاشة (RTL) مع ظل خفيف يفصل المنطقة
 // المثبَّتة عن منطقة التمرير.
-function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, onAcknowledgeRelocation, today, periodTimes = {}, unresolvedConflicts = [] }) {
+function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, onAcknowledgeRelocation, today, periodTimes = {}, unresolvedConflicts = [], viewMode = 'weekly', selectedDay = null, totalTeachers = null }) {
   const { t, language } = useTranslation();
   const [selectedSession, setSelectedSession] = useState(null);
   // فهرس "رؤى حكيم" بمفتاح teacher_id|day|period → reason_ar. التحديد
@@ -1502,16 +1695,29 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
     return m;
   }, [unresolvedConflicts, language]);
 
+  // وضع العرض: «يومي» يُقصر الأعمدة على اليوم المحدَّد فقط (أعمدة عريضة
+  // قابلة للقراءة)، و«أسبوعي» يعرض كامل الأيام بأعمدة كثيفة وفقاً للسلوك
+  // السابق. عند Daily بدون يوم محدَّد نسقط على أول يوم متاح ضماناً.
+  const isDaily = viewMode === 'daily';
+  const displayDays = isDaily
+    ? (selectedDay && days.includes(selectedDay) ? [selectedDay] : days.slice(0, 1))
+    : days;
+
   // ترتيب الأعمدة: لكل يوم تُضاف أعمدة الحصص (1..7) متتالية.
-  const totalDataCols = days.length * periods.length;
+  const totalDataCols = displayDays.length * periods.length;
   // عمود المعلم مرن مع حدّ أدنى/أقصى، وأعمدة الحصص تتوزع بالتساوي على
   // العرض المتاح (minmax(0,1fr)) لكي تنطبق الشبكة بأكملها داخل الحاوية
   // دون شريط تمرير أفقي داخلي.
   const DAY_HEADER_HEIGHT = 28;    // صف رأس الأيام
   const PERIOD_HEADER_HEIGHT = 38; // رأس الحصص (يحوي رقم + توقيت)
-  const ROW_HEIGHT = 56;           // h-14 لكل صف بيانات
+  const ROW_HEIGHT = isDaily ? 76 : 56; // أطول في الوضع اليومي ليتنفّس النص
 
-  const gridTemplate = `clamp(140px, 14vw, 200px) repeat(${totalDataCols}, minmax(0, 1fr))`;
+  // الوضع اليومي يضمن حدّاً أدنى أوسع لكل عمود (≥140px) ليكون النص قابلاً
+  // للقراءة على شاشات سطح المكتب، ويظلّ عمود المعلم كذلك أعرض قليلاً.
+  const gridTemplate = isDaily
+    ? `clamp(180px, 18vw, 240px) repeat(${totalDataCols}, minmax(140px, 1fr))`
+    : `clamp(140px, 14vw, 200px) repeat(${totalDataCols}, minmax(0, 1fr))`;
+  const summaryCount = totalTeachers ?? teachers.length;
 
   // ظل أيسر خفيف لعمود المعلم المثبَّت (في RTL يقع على اليمين، فالظل يمتدّ
   // نحو اليسار داخل منطقة التمرير).
@@ -1530,7 +1736,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
       >
         {t('teacherColHeader')}
       </div>
-      {days.map((dayKey) => (
+      {displayDays.map((dayKey) => (
         <div
           key={`day-h-${dayKey}`}
           className={`sticky top-0 z-20 ${getDayBandClass(dayKey)} ${getDayTextOnBand(dayKey)} text-xs font-cairo font-bold text-center flex items-center justify-center border-b border-white/30`}
@@ -1550,9 +1756,9 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
         className={`sticky bg-slate-50 text-slate-500 text-[10px] font-medium px-2 flex items-center justify-end border-b border-l border-slate-200 ${teacherStickyShadow}`}
         style={{ top: DAY_HEADER_HEIGHT, insetInlineStart: 0, zIndex: 30, height: PERIOD_HEADER_HEIGHT }}
       >
-        {t('teachersCountSummary', { count: teachers.length, periods: periods.length, days: days.length })}
+        {t('teachersCountSummary', { count: summaryCount, periods: periods.length, days: days.length })}
       </div>
-      {days.map((dayKey) => (
+      {displayDays.map((dayKey) => (
         periods.map((p) => {
           const slot = periodTimes?.[String(p)];
           const timeLabel = slot && (slot.start || slot.end)
@@ -1643,7 +1849,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
             </div>
 
             {/* Cells: per day, per period */}
-            {days.map((dayKey) => (
+            {displayDays.map((dayKey) => (
               periods.map((p) => {
                 const rawCell = teacherCells[dayKey]?.[String(p)] || null;
                 // ── Cascade الغياب → شاغرة ───────────────────────────────
@@ -1691,13 +1897,15 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                 return (
                   <div
                     key={`${teacher.id}-${dayKey}-${p}`}
-                    className={`min-w-0 h-14 border-b border-l border-slate-100 p-0.5 ${conflictBg}`}
+                    className={`min-w-0 border-b border-l border-slate-100 p-0.5 ${conflictBg}`}
+                    style={{ height: ROW_HEIGHT }}
                     title={conflictTip || undefined}
                   >
                     {cell ? (
                       <FilledCell
                         cell={cell}
                         dayKey={dayKey}
+                        compact={!isDaily}
                         onClick={cell.is_vacant ? () => onVacantClick(cellData) : handleNormalClick}
                         onAcknowledgeRelocation={onAcknowledgeRelocation}
                       />

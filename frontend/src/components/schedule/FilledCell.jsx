@@ -8,7 +8,7 @@ import { Button } from '../ui/button';
 import { useTranslation, useTheme } from '../../contexts/ThemeContext';
 import SessionCell from './grid-theme/SessionCell';
 
-export default function FilledCell({ cell, onClick, onAcknowledgeRelocation, dayKey }) {
+export default function FilledCell({ cell, onClick, onAcknowledgeRelocation, dayKey, compact = true }) {
   const { t } = useTranslation();
   const { direction } = useTheme();
   const relocated = !!cell?.is_relocated && !!cell?.alternative_location;
@@ -162,6 +162,7 @@ export default function FilledCell({ cell, onClick, onAcknowledgeRelocation, day
       dayKey={dayKey}
       onClick={onClick}
       isLocked={!!cell?.is_locked}
+      compact={compact}
     />
   );
 }
