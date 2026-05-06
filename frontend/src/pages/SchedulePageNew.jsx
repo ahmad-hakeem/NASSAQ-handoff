@@ -45,10 +45,11 @@ import ScheduleTabNav from '../components/schedule/ScheduleTabNav';
 import ScheduleSettingsTabContent from '../components/schedule/ScheduleSettingsTabContent';
 import FilledCell from '../components/schedule/FilledCell';
 import { SessionDetailModal, getDayBandClass, getDayTintClass, getDayTextOnBand } from '../components/schedule/grid-theme';
-import { computeDisplayDays, clampPage } from '../components/schedule/grid-helpers';
+import { computeDisplayDays } from '../components/schedule/grid-helpers';
 import { StandbyRosterContent } from './StandbyRosterPage';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { getPose } from '../components/hakim/hakimPoses';
+import { MASTER_GRID_TEACHER_WINDOW } from '../config/scheduleConfig';
 
 // ─── Infeasibility issue → contextual next step ────────────────────────────
 // كل كود INF يحدد الصفحة الأنسب التي تحل المشكلة. عند غياب الكود نوجِّه إلى
@@ -183,7 +184,7 @@ function MasterMatrixSkeleton({ rows = 10, days = 5, periods = 7, isDaily = fals
     : 'clamp(160px, 14vw, 200px)';
   const dataCol = isDaily ? 'minmax(0, 1fr)' : 'minmax(76px, 1fr)';
   const gridTemplate = `${teacherCol} repeat(${totalDataCols}, ${dataCol})`;
-  const rowH = isDaily ? 92 : 64;
+  const rowH = isDaily ? 96 : 88;
   const dayBandH = 36;
   const periodHeadH = isDaily ? 44 : 38;
 
@@ -197,8 +198,8 @@ function MasterMatrixSkeleton({ rows = 10, days = 5, periods = 7, isDaily = fals
     >
       {/* Day-band header row */}
       <div
-        className="bg-slate-100 border-b border-slate-200"
-        style={{ height: dayBandH }}
+        className="sticky bg-slate-100 border-b border-slate-200 z-30"
+        style={{ top: 'var(--sticky-band-h, 88px)', insetInlineStart: 0, height: dayBandH }}
       />
       {Array.from({ length: days }).map((_, d) => (
         <div
@@ -265,7 +266,12 @@ function EmptyCell() {
   // فراغ في صف المعلم — لا تنبيه. حتى لو كان المعلم غائباً، الخلية الفارغة
   // تبقى فارغة وتكتفي بصبغة الصف الحمراء الخفيفة. الخانات التي يجب وسمها
   // "شاغرة" تُرَنْدَر عبر FilledCell.is_vacant = true.
-  return <div className="w-full h-full" />;
+  // Workspace-redesign visual: faint background tint + dotted hairline
+  // at the bottom edge so the surface reads as structured, not as a
+  // dead spreadsheet box. Stays quiet at 100-teacher density.
+  return (
+    <div className="w-full h-full bg-slate-50/40 border-b border-dashed border-slate-200/60" />
+  );
 }
 
 // ─── Hakeem-branded loading overlay ─────────────────────────────────────────
@@ -622,6 +628,80 @@ export default function SchedulePageNew() {
     try { localStorage.setItem('nassaq.schedule.view', scheduleView); } catch {}
   }, [scheduleView]);
   const [publishing, setPublishing] = useState(false);
+
+  // ── Sticky band density + height tracking (workspace redesign) ────
+  // The sticky action band exposes its measured height to the matrix
+  // header offsets via the `--sticky-band-h` CSS custom property on
+  // the page root. A second ResizeObserver on the band's own width
+  // toggles `data-density` to prevent wrapping at 1024–1279 px.
+  const stickyBandRef = useRef(null);
+  useEffect(() => {
+    const band = stickyBandRef.current;
+    if (!band) return;
+    const root = band.closest('[data-master-schedule-root]');
+    if (!root) return;
+    const updateHeight = () => {
+      const h = band.getBoundingClientRect().height || 72;
+      root.style.setProperty('--sticky-band-h', `${Math.round(h)}px`);
+    };
+    const updateDensity = () => {
+      const w = band.getBoundingClientRect().width || 1280;
+      let density = 'default';
+      if (w < 1024) density = 'dense';
+      else if (w < 1280) density = 'compact';
+      band.setAttribute('data-density', density);
+    };
+    const ro = new ResizeObserver(() => {
+      updateHeight();
+      updateDensity();
+    });
+    ro.observe(band);
+    updateHeight();
+    updateDensity();
+    return () => ro.disconnect();
+    // ``tab`` is in deps so when the user lands on a non-master tab
+    // first (e.g. `?tab=standby`) and switches to master, the effect
+    // re-runs and finds the freshly-mounted band element. Without
+    // this, the band stays unmeasured and sticky offsets fall back
+    // to the 88px hint, which can overlap the matrix headers when
+    // the band wraps at narrower widths.
+  }, [tab]);
+
+  // ── Weekly matrix horizontal-overflow discoverability ──────────────
+  // Toggles `data-can-scroll-end` and `data-can-scroll-start` on the
+  // matrix container so the inline-end / inline-start edge fades
+  // (defined in the JSX below) appear only when overflow exists in
+  // that direction. RTL-correct: in RTL, scrollLeft is negative or
+  // mirrored depending on browser; using Math.abs(scrollLeft) and
+  // comparing against scrollWidth - clientWidth covers both.
+  const matrixContainerRef = useRef(null);
+  useEffect(() => {
+    const el = matrixContainerRef.current;
+    if (!el) return;
+    const update = () => {
+      const max = el.scrollWidth - el.clientWidth;
+      const pos = Math.abs(el.scrollLeft);
+      const region = el.parentElement;
+      if (!region) return;
+      const canStart = pos > 1;
+      const canEnd = pos < max - 1;
+      el.setAttribute('data-can-scroll-start', canStart ? 'true' : 'false');
+      el.setAttribute('data-can-scroll-end', canEnd ? 'true' : 'false');
+      region.style.setProperty('--scroll-fade-start-opacity', canStart ? '1' : '0');
+      region.style.setProperty('--scroll-fade-end-opacity', canEnd ? '1' : '0');
+      const dir = document.documentElement.dir === 'rtl' ? 'rtl' : 'ltr';
+      region.style.setProperty('--scroll-fade-end-dir', dir === 'rtl' ? 'right' : 'left');
+      region.style.setProperty('--scroll-fade-start-dir', dir === 'rtl' ? 'left' : 'right');
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', update);
+      ro.disconnect();
+    };
+  }, [viewMode, grid]);
 
   const loadGrid = useCallback(async (viewOverride, paginationOverride) => {
     // Returns the payload itself on success (not just a boolean) so callers
@@ -1179,47 +1259,29 @@ export default function SchedulePageNew() {
     [t],
   );
 
-  // ── View mode + pagination state (Task #138) ─────────────────────────
-  // الجدول الرئيسي يدعم وضعين: «يومي» (افتراضي) يعرض يوماً واحداً فقط
-  // بأعمدة عريضة قابلة للقراءة، و«أسبوعي» يعرض الأسبوع كاملاً مع رؤوس
-  // مثبَّتة. كذلك نُقسِّم صفوف المعلمين على صفحات لئلا نُحقن مئاتٍ من
-  // الـDOM nodes دفعة واحدة. الإعدادات تُحفظ في localStorage فيبقى
-  // المدير على نفس الإعداد بين الزيارات.
-  const PAGE_SIZE_OPTIONS = useMemo(() => [10, 15, 25], []);
+  // ── View mode (Task #142) — pager removed (workspace redesign) ────
+  // The master grid no longer exposes a pager UI. Instead it requests
+  // a single large window sized by MASTER_GRID_TEACHER_WINDOW (see
+  // config/scheduleConfig.js). The backend `teacher_page` /
+  // `teacher_page_size` contract from Task #142 is preserved verbatim;
+  // only the UI affordance is removed. If the server reports
+  // `pagination.total > MASTER_GRID_TEACHER_WINDOW`, the
+  // no-silent-truncation handler in Task 9 surfaces a NassaqAlertDialog.
+
   const [viewMode, setViewMode] = useState(() => {
     try {
       const v = localStorage.getItem('nassaq_master_grid_view_mode');
-      return v === 'weekly' ? 'weekly' : 'daily';
-    } catch { return 'daily'; }
+      return v === 'daily' ? 'daily' : 'weekly';
+    } catch { return 'weekly'; }
   });
-  const [pageSize, setPageSize] = useState(() => {
-    try {
-      const v = parseInt(localStorage.getItem('nassaq_master_grid_page_size') || '10', 10);
-      return [10, 15, 25].includes(v) ? v : 10;
-    } catch { return 10; }
-  });
-  const [pageIndex, setPageIndex] = useState(0);
-  // Mirror page state into a ref so loadGrid's stable callback can read
-  // the current window without re-creating its identity (which would
-  // re-trigger the master useEffect and cause a double fetch). The
-  // ref also carries ``day`` so daily-mode refetches scope sessions
-  // to the selected day on the backend.
-  const paginationStateRef = useRef({ pageIndex: 0, pageSize: 10, day: null });
   useEffect(() => {
-    paginationStateRef.current = {
-      ...paginationStateRef.current,
-      pageIndex,
-      pageSize,
-    };
-  }, [pageIndex, pageSize]);
-  const [selectedDay, setSelectedDay] = useState(() => {
-    try { return localStorage.getItem('nassaq_master_grid_selected_day') || null; }
-    catch { return null; }
-  });
+    try { localStorage.setItem('nassaq_master_grid_view_mode', viewMode); } catch {}
+  }, [viewMode]);
 
-  // Sync selectedDay with available days when grid loads / changes. Restored
-  // value from localStorage is honored when valid; otherwise falls back to
-  // today, then to the first available day.
+  const [selectedDay, setSelectedDay] = useState(null);
+
+  // Sync selectedDay with available days when grid loads / changes.
+  // Falls back to today, then to the first available day.
   useEffect(() => {
     if (!days?.length) return;
     setSelectedDay((cur) => {
@@ -1229,62 +1291,65 @@ export default function SchedulePageNew() {
     });
   }, [days, todayKey]);
 
-  useEffect(() => {
-    try { localStorage.setItem('nassaq_master_grid_view_mode', viewMode); } catch {}
-  }, [viewMode]);
-  useEffect(() => {
-    try { localStorage.setItem('nassaq_master_grid_page_size', String(pageSize)); } catch {}
-  }, [pageSize]);
-  useEffect(() => {
-    if (!selectedDay) return;
-    try { localStorage.setItem('nassaq_master_grid_selected_day', selectedDay); } catch {}
-  }, [selectedDay]);
-  // Reset to first page when page size changes (legacy UX: page-size
-  // controls "rewind" the pager). The fetch effect below picks up the
-  // change and refetches the new window from the backend.
-  useEffect(() => { setPageIndex(0); }, [pageSize]);
+  // Mirror current view/day into a ref so loadGrid's stable callback
+  // can read it without re-creating on every render. The single window
+  // size is constant across the session.
+  const paginationStateRef = useRef({
+    pageIndex: 0,
+    pageSize: MASTER_GRID_TEACHER_WINDOW,
+    day: null,
+  });
 
-  // Task #142 — totals come from the backend pagination block (the
-  // wire payload is already scoped to the current window so we cannot
-  // derive the total from teacherRows.length anymore). Fall back to
-  // the slice length when the backend omits the block (e.g. an older
-  // server during a rolling deploy) so the pager still renders.
+  // Task #142 — totals come from the backend pagination block.
   const totalTeachersAll = grid?.pagination?.total ?? teacherRows.length;
-  const totalPages = Math.max(1, Math.ceil(totalTeachersAll / pageSize));
-  const safePage = clampPage(pageIndex, totalPages);
-  // The backend already returns just the visible window — render it
-  // as-is. Client-side slicing (paginateRows) would be a no-op now.
   const pagedTeachers = teacherRows;
-  const pageStartIdx = totalTeachersAll === 0 ? 0 : safePage * pageSize + 1;
-  const pageEndIdx = Math.min(totalTeachersAll, (safePage + 1) * pageSize);
 
-  // Refetch the visible window whenever the user changes page, page
-  // size, or (in daily mode) the selected day. We bypass the loadGrid
-  // closure's captured ref by passing the explicit override so the
-  // request matches the user's latest intent even if React hasn't
-  // flushed the state update yet. The active day is sent only in
-  // daily mode — weekly mode wants the full week.
-  const dayParam = viewMode === 'daily' ? selectedDay : null;
+  // No-silent-truncation guard: if the server reports more teachers
+  // than MASTER_GRID_TEACHER_WINDOW, surface a one-time NassaqAlertDialog
+  // notice per session. The window itself is configurable (see
+  // config/scheduleConfig.js); the long-term fix when this fires
+  // repeatedly in a deployment is to bump the constant, not to
+  // restore the pager UI. Tracked by `truncationNoticeShown` so the
+  // notice only appears once per page mount.
+  const [truncationNoticeShown, setTruncationNoticeShown] = useState(false);
   useEffect(() => {
-    paginationStateRef.current = {
-      ...paginationStateRef.current,
-      day: dayParam,
-    };
-  }, [dayParam]);
-  const lastFetchedPaginationRef = useRef({ page: 1, pageSize: 10, day: null });
+    if (truncationNoticeShown) return;
+    const total = grid?.pagination?.total;
+    if (typeof total !== 'number') return;
+    if (total <= MASTER_GRID_TEACHER_WINDOW) return;
+    setTruncationNoticeShown(true);
+    if (typeof nassaqWarning === 'function') {
+      nassaqWarning(
+        t('masterGridTruncationTitle'),
+        t('masterGridTruncationBody', {
+          shown: MASTER_GRID_TEACHER_WINDOW,
+          total,
+        }),
+      );
+    }
+  }, [grid?.pagination?.total, truncationNoticeShown, nassaqWarning, t]);
+
+  const dayParam = viewMode === 'daily' ? selectedDay : null;
+
+  // Re-fetch when the view-mode or selected day changes. The window
+  // size never changes, so we drop the old pageSize-driven effect.
+  const lastFetchedRef = useRef({ day: null, mode: null });
   useEffect(() => {
     if (tab !== 'master') return;
-    const requestedPage = safePage + 1;
-    const last = lastFetchedPaginationRef.current;
-    if (
-      last.page === requestedPage
-      && last.pageSize === pageSize
-      && last.day === dayParam
-    ) return;
-    lastFetchedPaginationRef.current = { page: requestedPage, pageSize, day: dayParam };
-    setRefreshing(true);
-    loadGrid(undefined, { page: requestedPage, pageSize, day: dayParam });
-  }, [safePage, pageSize, dayParam, tab, loadGrid]);
+    paginationStateRef.current = {
+      pageIndex: 0,
+      pageSize: MASTER_GRID_TEACHER_WINDOW,
+      day: dayParam,
+    };
+    const last = lastFetchedRef.current;
+    if (last.day === dayParam && last.mode === viewMode) return;
+    lastFetchedRef.current = { day: dayParam, mode: viewMode };
+    loadGrid(undefined, {
+      page: 1,
+      pageSize: MASTER_GRID_TEACHER_WINDOW,
+      day: dayParam,
+    });
+  }, [viewMode, dayParam, tab, loadGrid]);
 
   if (tab === 'standby') {
     // تبويب جدول حصص الانتظار — يُضمَّن المحتوى نفسه المستخدم في الصفحة
@@ -1337,157 +1402,19 @@ export default function SchedulePageNew() {
     <Sidebar>
       <div
         dir={direction}
-        className="flex flex-col h-[calc(100dvh-3.5rem)] lg:h-[100dvh] p-4 md:p-6 gap-5 bg-slate-50 text-slate-900 overflow-hidden"
+        data-master-schedule-root
+        className="flex flex-col min-h-[100dvh] bg-slate-50 text-slate-900"
+        style={{
+          // Mode-specific pre-measurement fallback per spec §4.2
+          // (daily ≤ 88 px, weekly ≤ 52 px). The ResizeObserver in
+          // Task 4 overwrites this with the real measured height on
+          // first paint; the fallback only matters for the first
+          // synchronous render before the observer fires.
+          '--sticky-band-h': viewMode === 'daily' ? '88px' : '52px',
+        }}
       >
         {/* ── Primary tab nav (Master / Standby / Settings) ─────────── */}
         <ScheduleTabNav active="master" />
-
-        {/* ── Header ───────────────────────────────────────────────── */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 shrink-0">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-[#1C3D74] flex items-center gap-2">
-              <Sparkles className="h-7 w-7 text-violet-600" />
-              {t('smartSchedulesTitle')}
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              {t('smartSchedulesSubtitle')}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {/* ── Task #141 — draft/published view toggle ──────────── */}
-            <div
-              role="tablist"
-              aria-label={t('scheduleViewToggleLabel')}
-              className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={scheduleView === 'published'}
-                onClick={() => setScheduleView('published')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                  scheduleView === 'published'
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-                data-testid="schedule-view-published"
-              >
-                {t('scheduleViewPublished')}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={scheduleView === 'draft'}
-                onClick={() => setScheduleView('draft')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                  scheduleView === 'draft'
-                    ? 'bg-amber-500 text-white shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-                data-testid="schedule-view-draft"
-              >
-                {t('scheduleViewDraft')}
-              </button>
-            </div>
-            <Button
-              onClick={handleAutoGenerate}
-              disabled={generating}
-              className="bg-violet-600 hover:bg-violet-700 text-white shadow-md"
-            >
-              {generating ? (
-                <Loader2 className="h-4 w-4 me-2 animate-spin" />
-              ) : (
-                <Wand2 className="h-4 w-4 me-2" />
-              )}
-              {generating ? t('generatingSchedule') : t('autoGenerateSchedule')}
-            </Button>
-            {/* ── Task #141 — Publish button. Always rendered (so the
-                affordance is discoverable) and disabled with a
-                tooltip when there is no draft to publish. The
-                backend gate (require_roles + assert_publishable)
-                remains the source of truth for authorization. ──── */}
-            {(() => {
-              const noDraft = !(grid?.timetable_status === 'draft');
-              const disabled = publishing || noDraft;
-              const tooltip = noDraft
-                ? t('publishScheduleNoDraftTooltip')
-                : t('publishScheduleAction');
-              return (
-                <Button
-                  onClick={handlePublish}
-                  disabled={disabled}
-                  title={tooltip}
-                  aria-label={tooltip}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                  data-testid="publish-schedule-btn"
-                >
-                  {publishing ? (
-                    <Loader2 className="h-4 w-4 me-2 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4 me-2" />
-                  )}
-                  {publishing ? t('publishingSchedule') : t('publishScheduleAction')}
-                </Button>
-              );
-            })()}
-            <Button
-              onClick={handleLogAbsence}
-              variant="outline"
-              className="border-slate-300 text-slate-700 hover:bg-slate-100"
-            >
-              <UserX className="h-4 w-4 me-2" />
-              {t('recordAbsence')}
-            </Button>
-            {/* ── View-mode toggle (Task #142) — hoisted into the page
-                action bar so the matrix no longer needs its own
-                control row in weekly mode. The day-tabs row below
-                still appears, but only in daily mode. ───────────── */}
-            <div
-              role="tablist"
-              aria-label={t('masterGridViewModeLabel')}
-              className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={viewMode === 'daily'}
-                onClick={() => setViewMode('daily')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                  viewMode === 'daily'
-                    ? 'bg-[#1C3D74] text-white shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-                data-testid="view-mode-daily"
-              >
-                {t('dailyViewLabel')}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={viewMode === 'weekly'}
-                onClick={() => setViewMode('weekly')}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                  viewMode === 'weekly'
-                    ? 'bg-[#1C3D74] text-white shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-                data-testid="view-mode-weekly"
-              >
-                {t('weeklyViewLabel')}
-              </button>
-            </div>
-            <Button
-              onClick={handleRefresh}
-              variant="ghost"
-              size="icon"
-              disabled={refreshing}
-              title={t('refreshTooltip')}
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            </Button>
-          </div>
-        </div>
 
         {/* ── KPI strip (Task #142) ────────────────────────────────────
             Compact horizontal pill row instead of tall dashboard cards.
@@ -1495,7 +1422,7 @@ export default function SchedulePageNew() {
             line, reclaiming vertical space for the timetable below. On
             mobile they fall back to a 2×2 grid so the operator can
             still scan them without horizontal scroll. */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 px-4 md:px-6 pt-3">
           <KpiCard
             icon={Scale}
             label={t('distributionFairness')}
@@ -1539,38 +1466,12 @@ export default function SchedulePageNew() {
           />
         </div>
 
-        {/* ── Task #141 — Draft banner ─────────────────────────────
-            Shown whenever the currently-displayed timetable is a
-            DRAFT, to make it visually obvious that what the admin is
-            looking at is NOT yet visible to teachers/students. */}
-        {grid?.timetable_status === 'draft' && (
-          <div
-            className="flex items-center gap-3 p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 shrink-0"
-            data-testid="draft-banner"
-          >
-            <AlertTriangle className="h-5 w-5 shrink-0" />
-            <p className="text-sm font-medium">{t('draftScheduleBanner')}</p>
-          </div>
-        )}
-
-        {/* ── Smart alert banner ───────────────────────────────────── */}
-        {alertText && (
-          <div className="flex items-center gap-3 p-3 rounded-lg border border-red-300 bg-red-50 text-red-800 shrink-0">
-            <AlertTriangle className="h-5 w-5 shrink-0" />
-            <p className="text-sm font-medium">{alertText}</p>
-          </div>
-        )}
-
-        {/* ── رؤى حكيم — شريط ديناميكي يظهر بعد التوليد عندما توجد
-            تعارضات/خانات لم تُجدول. قابل للإغلاق لجلسة العمل الحالية،
-            وزر «عرض التفاصيل» يفتح درجاً يسرد كلّ العناصر مع روابط مباشرة
-            إلى تبويبات إعدادات الجدول. ─────── */}
-        <HakimInsightsBanner
-          conflicts={unresolvedConflicts}
-          dismissed={insightsDismissed}
-          onDismiss={() => setInsightsDismissed(true)}
-          onOpenDrawer={() => setInsightsDrawerOpen(true)}
-        />
+        {/* Draft / smart-alert / Hakim-insights banners removed — all
+            three collapsed into chips inside the sticky band (Task 4)
+            to free first-paint vertical space above the matrix per
+            workspace redesign spec §4.2. The HakimInsightsDrawer
+            invocation immediately below stays — it's the drawer the
+            chip opens on click. */}
 
         <HakimInsightsDrawer
           open={insightsDrawerOpen}
@@ -1609,49 +1510,284 @@ export default function SchedulePageNew() {
           onAssignedBatch={handleAssignedBatch}
         />
 
-        {/* ── Day tabs (Task #142) ────────────────────────────────────
-            View-mode toggle now lives in the page action bar (above);
-            this row only renders in daily mode. We keep it visible
-            during loading (with disabled buttons) so the page chrome
-            stays continuous above the structural skeleton — operators
-            never see controls flash in/out as the matrix refreshes. */}
-        {viewMode === 'daily' && days.length > 0 && (
-          <div data-testid="day-tabs-row" className="flex flex-wrap items-center gap-3 shrink-0">
-            <div
-              role="tablist"
-              aria-label={t('selectDayLabel')}
-              className={`inline-flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm ${loading ? 'opacity-70' : ''}`}
-            >
-              {days.map((dayKey) => {
-                const isActive = selectedDay === dayKey;
-                const isToday = todayKey === dayKey;
+        <style>{`
+          [data-master-schedule-root] [data-testid="master-schedule-sticky-band"][data-density="compact"] [data-band-action-label] { display: none; }
+          [data-master-schedule-root] [data-testid="master-schedule-sticky-band"][data-density="compact"] [data-band-action-label-short] { display: inline; }
+          [data-master-schedule-root] [data-testid="master-schedule-sticky-band"][data-density="dense"] [data-band-action-label],
+          [data-master-schedule-root] [data-testid="master-schedule-sticky-band"][data-density="dense"] [data-band-action-label-short],
+          [data-master-schedule-root] [data-testid="master-schedule-sticky-band"][data-density="dense"] [data-band-title],
+          [data-master-schedule-root] [data-testid="master-schedule-sticky-band"][data-density="dense"] [data-band-chip-label] { display: none; }
+        `}</style>
+
+        {/* ── Sticky action band (workspace redesign) ─────────────────
+            Top: 0; height exposed to matrix header offsets via
+            --sticky-band-h. Density attribute degrades title +
+            button labels at narrow band widths to prevent wrapping. */}
+        <div
+          ref={stickyBandRef}
+          data-testid="master-schedule-sticky-band"
+          data-density="default"
+          className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200"
+        >
+          {/* Row 1: status chips (start) + actions (end). The h1 page
+              title and the decorative Sparkles icon are intentionally
+              omitted from the sticky band — the page is already
+              labeled by ScheduleTabNav above and a redundant title
+              consumes the matrix's first-glance budget. The smart-alert
+              and Hakim-insights blocks (previously rendered as full
+              banners above the matrix) collapse into the chip cluster
+              here as icon-with-tooltip indicators that open the
+              existing dialogs/drawers on click — they no longer
+              consume any first-paint vertical space above the matrix. */}
+          <div className="flex items-center justify-between gap-3 px-4 md:px-6 py-1.5 min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              {grid?.timetable_status === 'draft' && (
+                <span
+                  data-testid="draft-status-chip"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shrink-0"
+                  title={t('draftScheduleBanner')}
+                >
+                  <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                  <span data-band-chip-label>{t('scheduleViewDraft')}</span>
+                </span>
+              )}
+              {alertText && (
+                <button
+                  type="button"
+                  data-testid="smart-alert-chip"
+                  onClick={() => {
+                    // replit.md guardrail: NassaqAlertDialog only —
+                    // no native alert(). Reuse the same imperative
+                    // helper used elsewhere on the page.
+                    if (typeof nassaqError === 'function') {
+                      nassaqError(alertText);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800 border border-red-300 shrink-0 hover:bg-red-200 transition-colors"
+                  title={alertText}
+                  aria-label={alertText}
+                >
+                  <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                  <span data-band-chip-label>{t('smartAlertChipLabel')}</span>
+                </button>
+              )}
+              {!insightsDismissed && unresolvedConflicts && unresolvedConflicts.length > 0 && (
+                <button
+                  type="button"
+                  data-testid="hakim-insights-chip"
+                  onClick={() => setInsightsDrawerOpen(true)}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-800 border border-orange-300 shrink-0 hover:bg-orange-200 transition-colors"
+                  title={t('hakimInsightsBannerTitle', { count: unresolvedConflicts.length })}
+                  aria-label={t('hakimInsightsBannerTitle', { count: unresolvedConflicts.length })}
+                >
+                  <Lightbulb className="h-3 w-3" aria-hidden="true" />
+                  <span data-band-chip-label>{unresolvedConflicts.length}</span>
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* View toggle (draft/published) */}
+              <div
+                role="tablist"
+                aria-label={t('scheduleViewToggleLabel')}
+                className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={scheduleView === 'published'}
+                  onClick={() => setScheduleView('published')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                    scheduleView === 'published'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                  data-testid="schedule-view-published"
+                >
+                  {t('scheduleViewPublished')}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={scheduleView === 'draft'}
+                  onClick={() => setScheduleView('draft')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                    scheduleView === 'draft'
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                  data-testid="schedule-view-draft"
+                >
+                  {t('scheduleViewDraft')}
+                </button>
+              </div>
+
+              {/* View mode toggle (daily/weekly) */}
+              <div
+                role="tablist"
+                aria-label={t('masterGridViewModeLabel')}
+                className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={viewMode === 'daily'}
+                  onClick={() => setViewMode('daily')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                    viewMode === 'daily'
+                      ? 'bg-[#1C3D74] text-white shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                  data-testid="view-mode-daily"
+                >
+                  {t('dailyViewLabel')}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={viewMode === 'weekly'}
+                  onClick={() => setViewMode('weekly')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                    viewMode === 'weekly'
+                      ? 'bg-[#1C3D74] text-white shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                  data-testid="view-mode-weekly"
+                >
+                  {t('weeklyViewLabel')}
+                </button>
+              </div>
+
+              {/* Generate */}
+              <Button
+                onClick={handleAutoGenerate}
+                disabled={generating}
+                className="bg-violet-600 hover:bg-violet-700 text-white shadow-sm h-8 px-2.5"
+                data-band-action="generate"
+                title={t('autoGenerateSchedule')}
+                aria-label={t('autoGenerateSchedule')}
+              >
+                {generating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Wand2 className="h-4 w-4" />
+                )}
+                <span data-band-action-label className="ms-1.5">
+                  {generating ? t('generatingSchedule') : t('autoGenerateSchedule')}
+                </span>
+                <span data-band-action-label-short className="ms-1.5 hidden">
+                  {t('autoGenerateScheduleShort')}
+                </span>
+              </Button>
+
+              {/* Publish */}
+              {(() => {
+                const noDraft = !(grid?.timetable_status === 'draft');
+                const disabled = publishing || noDraft;
+                const tooltip = noDraft
+                  ? t('publishScheduleNoDraftTooltip')
+                  : t('publishScheduleAction');
                 return (
-                  <button
-                    key={`day-tab-${dayKey}`}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    disabled={loading}
-                    onClick={() => setSelectedDay(dayKey)}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 disabled:cursor-wait ${
-                      isActive
-                        ? 'bg-[#2BB5A0] text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-slate-100'
-                    }`}
-                    data-testid={`day-tab-${dayKey}`}
+                  <Button
+                    onClick={handlePublish}
+                    disabled={disabled}
+                    title={tooltip}
+                    aria-label={tooltip}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed h-8 px-2.5"
+                    data-testid="publish-schedule-btn"
+                    data-band-action="publish"
                   >
-                    {dayLabelMap[dayKey] || dayKey}
-                    {isToday && (
-                      <span className={`text-[9px] px-1 rounded ${isActive ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
-                        {t('todayBadge')}
-                      </span>
+                    {publishing ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4" />
                     )}
-                  </button>
+                    <span data-band-action-label className="ms-1.5">
+                      {publishing ? t('publishingSchedule') : t('publishScheduleAction')}
+                    </span>
+                    <span data-band-action-label-short className="ms-1.5 hidden">
+                      {t('publishScheduleActionShort')}
+                    </span>
+                  </Button>
                 );
-              })}
+              })()}
+
+              {/* Record absence */}
+              <Button
+                onClick={handleLogAbsence}
+                variant="outline"
+                className="border-slate-300 text-slate-700 hover:bg-slate-100 h-8 px-2.5"
+                data-band-action="absence"
+                title={t('recordAbsence')}
+                aria-label={t('recordAbsence')}
+              >
+                <UserX className="h-4 w-4" />
+                <span data-band-action-label className="ms-1.5">
+                  {t('recordAbsence')}
+                </span>
+                <span data-band-action-label-short className="ms-1.5 hidden">
+                  {t('recordAbsenceShort')}
+                </span>
+              </Button>
+
+              {/* Refresh */}
+              <Button
+                onClick={handleRefresh}
+                variant="ghost"
+                size="icon"
+                disabled={refreshing}
+                title={t('refreshTooltip')}
+                aria-label={t('refreshTooltip')}
+                className="h-8 w-8"
+              >
+                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              </Button>
             </div>
           </div>
-        )}
+
+          {/* Row 2: day tabs (daily mode only) */}
+          {viewMode === 'daily' && days.length > 0 && (
+            <div
+              data-testid="day-tabs-row"
+              className="flex flex-wrap items-center gap-2 px-4 md:px-6 pb-2"
+            >
+              <div
+                role="tablist"
+                aria-label={t('selectDayLabel')}
+                className={`inline-flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm ${loading ? 'opacity-70' : ''}`}
+              >
+                {days.map((dayKey) => {
+                  const isActive = selectedDay === dayKey;
+                  const isToday = todayKey === dayKey;
+                  return (
+                    <button
+                      key={`day-tab-${dayKey}`}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      disabled={loading}
+                      onClick={() => setSelectedDay(dayKey)}
+                      className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 disabled:cursor-wait ${
+                        isActive
+                          ? 'bg-[#2BB5A0] text-white shadow-sm'
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                      data-testid={`day-tab-${dayKey}`}
+                    >
+                      {dayLabelMap[dayKey] || dayKey}
+                      {isToday && (
+                        <span className={`text-[9px] px-1 rounded ${isActive ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
+                          {t('todayBadge')}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* ── Master matrix grid (Task #142) ─────────────────────────
             The matrix is the dominant workspace surface of the page.
@@ -1659,15 +1795,42 @@ export default function SchedulePageNew() {
             page surface; daily mode never scrolls horizontally,
             weekly mode scrolls horizontally inside the container
             while the teacher column and headers stay sticky. */}
+        <div className="relative" data-testid="master-matrix-region">
+          {viewMode === 'weekly' && (
+            <>
+              <div
+                aria-hidden="true"
+                data-testid="matrix-edge-fade-end"
+                className="pointer-events-none absolute top-0 bottom-0 w-6 z-[5] transition-opacity duration-150"
+                style={{
+                  insetInlineEnd: 0,
+                  background: 'linear-gradient(to var(--scroll-fade-end-dir, left), rgba(255,255,255,1), rgba(255,255,255,0))',
+                  opacity: 'var(--scroll-fade-end-opacity, 0)',
+                }}
+              />
+              <div
+                aria-hidden="true"
+                data-testid="matrix-edge-fade-start"
+                className="pointer-events-none absolute top-0 bottom-0 w-6 z-[5] transition-opacity duration-150"
+                style={{
+                  insetInlineStart: 0,
+                  background: 'linear-gradient(to var(--scroll-fade-start-dir, right), rgba(255,255,255,1), rgba(255,255,255,0))',
+                  opacity: 'var(--scroll-fade-start-opacity, 0)',
+                }}
+              />
+            </>
+          )}
         <div
+          ref={matrixContainerRef}
           data-testid="master-matrix-container"
-          className={`relative flex-1 min-h-0 bg-white border border-slate-200/80 rounded-xl shadow-sm ${
-            viewMode === 'daily' ? 'overflow-x-hidden overflow-y-auto' : 'overflow-auto'
+          data-matrix-overflow={viewMode === 'weekly' ? 'horizontal' : 'none'}
+          className={`relative bg-white border-t border-slate-200 ${
+            viewMode === 'weekly' ? 'overflow-x-auto overflow-y-visible' : 'overflow-visible'
           }`}
         >
           {loading ? (
             <MasterMatrixSkeleton
-              rows={pageSize}
+              rows={Math.min(MASTER_GRID_TEACHER_WINDOW, totalTeachersAll || 12)}
               days={viewMode === 'daily' ? 1 : ((grid?.days?.length) || days.length || 5)}
               periods={(grid?.periods?.length) || 7}
               isDaily={viewMode === 'daily'}
@@ -1760,60 +1923,7 @@ export default function SchedulePageNew() {
               القيود ويبني الجدول الذكي. */}
           {generating && <HakimGeneratingOverlay />}
         </div>
-
-        {/* ── Pagination footer (Task #138) ─────────────────────────
-            تقسيم صفوف المعلمين على صفحات لتقليل عدد الـDOM nodes وتسريع
-            التمرير في المدارس الكبيرة. خيارات الحجم 10/15/25 وتُحفظ في
-            localStorage. الترقيم بحت على الواجهة دون أي طلبات للـAPI. */}
-        {!loading && !error && teacherRows.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-3 shrink-0 text-xs text-slate-600">
-            <div className="flex items-center gap-2">
-              <span>{t('paginationPageSize')}</span>
-              <Select
-                value={String(pageSize)}
-                onValueChange={(v) => setPageSize(parseInt(v, 10))}
-              >
-                <SelectTrigger className="h-8 w-[72px]" data-testid="page-size-select">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PAGE_SIZE_OPTIONS.map((n) => (
-                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <span className="text-slate-500">
-                {t('paginationRangeLabel', { from: pageStartIdx, to: pageEndIdx, total: totalTeachersAll })}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={safePage <= 0}
-                onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
-                data-testid="page-prev"
-              >
-                {t('paginationPrev')}
-              </Button>
-              <span className="px-2 font-semibold text-slate-700" data-testid="page-indicator">
-                {t('paginationPageOf', { current: safePage + 1, total: totalPages })}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={safePage >= totalPages - 1}
-                onClick={() => setPageIndex((p) => Math.min(totalPages - 1, p + 1))}
-                data-testid="page-next"
-              >
-                {t('paginationNext')}
-              </Button>
-            </div>
-          </div>
-        )}
+        </div>
 
         {/* ── Absence dialog ─────────────────────────────────────── */}
         <Dialog open={absenceOpen} onOpenChange={setAbsenceOpen}>
@@ -2119,7 +2229,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
   // squeezing every cell into illegible micro-text.
   const DAY_HEADER_HEIGHT = isDaily ? 40 : 36;
   const PERIOD_HEADER_HEIGHT = isDaily ? 44 : 38;
-  const ROW_HEIGHT = isDaily ? 92 : 64;
+  const ROW_HEIGHT = isDaily ? 96 : 88;
 
   // Daily: ≤7 columns, `minmax(0, 1fr)` keeps the whole grid inside the
   //        container (no internal horizontal scroll) with a generously
@@ -2130,7 +2240,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
   //         inside its container.
   const gridTemplate = isDaily
     ? `clamp(220px, 22vw, 280px) repeat(${totalDataCols}, minmax(0, 1fr))`
-    : `clamp(170px, 14vw, 210px) repeat(${totalDataCols}, minmax(76px, 1fr))`;
+    : `clamp(220px, 22vw, 280px) repeat(${totalDataCols}, minmax(84px, 1fr))`;
   const summaryCount = totalTeachers ?? teachers.length;
 
   // ظل أيسر خفيف لعمود المعلم المثبَّت (في RTL يقع على اليمين، فالظل يمتدّ
@@ -2147,8 +2257,8 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
       {/* الزاوية العلوية الجانبية (تقاطع رأس + عمود المعلم) — أعلى z-index */}
       <div
         data-testid="master-matrix-corner"
-        className={`sticky top-0 bg-slate-50 text-slate-700 text-xs font-semibold flex items-center justify-center border-b border-l border-slate-200 ${teacherStickyShadow}`}
-        style={{ insetInlineStart: 0, zIndex: 30, height: DAY_HEADER_HEIGHT }}
+        className={`sticky bg-slate-50 text-slate-700 text-xs font-semibold flex items-center justify-center border-b border-l border-slate-200 ${teacherStickyShadow}`}
+        style={{ top: 'var(--sticky-band-h, 88px)', insetInlineStart: 0, zIndex: 30, height: DAY_HEADER_HEIGHT }}
       >
         {t('teacherColHeader')}
       </div>
@@ -2156,8 +2266,8 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
         <div
           key={`day-h-${dayKey}`}
           data-testid={`master-matrix-day-band-${dayKey}`}
-          className={`sticky top-0 z-20 ${getDayBandClass(dayKey)} ${getDayTextOnBand(dayKey)} text-sm font-cairo font-bold text-center flex items-center justify-center tracking-wide ${dayIdx > 0 ? 'border-s-2 border-s-white/70' : ''} shadow-[inset_0_-1px_0_rgba(255,255,255,0.25)]`}
-          style={{ gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
+          className={`sticky z-20 ${getDayBandClass(dayKey)} ${getDayTextOnBand(dayKey)} text-sm font-cairo font-bold text-center flex items-center justify-center tracking-wide ${dayIdx > 0 ? 'border-s-2 border-s-white/70' : ''} shadow-[inset_0_-1px_0_rgba(255,255,255,0.25)]`}
+          style={{ top: 'var(--sticky-band-h, 88px)', gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
         >
           {dayLabelMap[dayKey] || dayKey}
           {dayKey === today && (
@@ -2171,7 +2281,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
       {/* ── Sticky header row 2: period numbers ────────────────── */}
       <div
         className={`sticky bg-slate-50 text-slate-500 text-[10px] font-medium px-2 flex items-center justify-end border-b border-l border-slate-200 ${teacherStickyShadow}`}
-        style={{ top: DAY_HEADER_HEIGHT, insetInlineStart: 0, zIndex: 30, height: PERIOD_HEADER_HEIGHT }}
+        style={{ top: `calc(var(--sticky-band-h, 88px) + ${DAY_HEADER_HEIGHT}px)`, insetInlineStart: 0, zIndex: 30, height: PERIOD_HEADER_HEIGHT }}
       >
         {t('teachersCountSummary', { count: summaryCount, periods: periods.length, days: days.length })}
       </div>
@@ -2186,7 +2296,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
             <div
               key={`ph-${dayKey}-${p}`}
               className={`sticky z-20 ${getDayTintClass(dayKey)} text-brand-navy/85 text-center flex flex-col items-center justify-center leading-tight border-b border-white/40 border-l border-l-white/40 ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
-              style={{ top: DAY_HEADER_HEIGHT, height: PERIOD_HEADER_HEIGHT }}
+              style={{ top: `calc(var(--sticky-band-h, 88px) + ${DAY_HEADER_HEIGHT}px)`, height: PERIOD_HEADER_HEIGHT }}
               title={timeLabel ? t('periodLabelWithTime', { num: p, time: timeLabel }) : t('periodLabelShort', { num: p })}
             >
               <span className={`${isDaily ? 'text-sm' : 'text-[12px]'} font-bold tabular-nums`}>{p}</span>
@@ -2314,11 +2424,21 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                   });
                 };
                 const isDayStart = !isDaily && dayIdx > 0 && pIdx === 0;
+                const subjectBarColor = cell && !cell.is_vacant
+                  ? (cell.subject_color || '#1C3D74')
+                  : null;
                 return (
                   <div
                     key={`${teacher.id}-${dayKey}-${p}`}
                     className={`min-w-0 border-b border-l border-slate-100 p-0.5 ${conflictBg} ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
-                    style={{ height: ROW_HEIGHT }}
+                    style={{
+                      height: ROW_HEIGHT,
+                      ...(subjectBarColor ? {
+                        borderInlineStartWidth: '3px',
+                        borderInlineStartStyle: 'solid',
+                        borderInlineStartColor: subjectBarColor,
+                      } : {}),
+                    }}
                     title={conflictTip || undefined}
                   >
                     {cell ? (
