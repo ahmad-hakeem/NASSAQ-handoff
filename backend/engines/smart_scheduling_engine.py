@@ -3262,8 +3262,17 @@ class SmartSchedulingEngine:
                         continue
                     if _pd.get("status") != TimetableStatus.DRAFT.value:
                         # Belt-and-braces guard — never mutate a row
-                        # that is not currently a draft.
-                        continue
+                        # that is not currently a draft. We hard-fail
+                        # here (instead of silently skipping) so any
+                        # data corruption is surfaced immediately and
+                        # the entire generation transaction is rolled
+                        # back, matching the spec's defensive
+                        # assertion intent.
+                        raise RuntimeError(
+                            "INTERNAL_GENERATION_ERROR: draft cleanup "
+                            f"received non-draft row id={_pd_id} "
+                            f"status={_pd.get('status')!r}"
+                        )
                     await gd_delete_many(self.session, "timetable_sessions", {"timetable_id": _pd_id})
                     await gd_delete_many(self.session, "timetable_conflicts", {"timetable_id": _pd_id})
                     await gd_delete_many(self.session, "timetable_unscheduled_demands", {"timetable_id": _pd_id})
