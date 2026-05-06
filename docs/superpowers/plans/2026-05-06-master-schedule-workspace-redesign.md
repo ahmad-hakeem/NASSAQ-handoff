@@ -220,11 +220,18 @@ Replace with:
         dir={direction}
         data-master-schedule-root
         className="flex flex-col min-h-[100dvh] bg-slate-50 text-slate-900"
-        style={{ '--sticky-band-h': '72px', '--day-band-h': '0px' }}
+        style={{
+          // Mode-specific pre-measurement fallback per spec §4.2
+          // (daily ≤ 88 px, weekly ≤ 52 px). The ResizeObserver in
+          // Task 4 overwrites this with the real measured height on
+          // first paint; the fallback only matters for the first
+          // synchronous render before the observer fires.
+          '--sticky-band-h': viewMode === 'daily' ? '88px' : '52px',
+        }}
       >
 ```
 
-Rationale: the page is no longer a flex column with `overflow-hidden`; vertical scroll is the document. The two CSS custom properties default-fall-back to safe values; Task 4 wires them to a real `ResizeObserver`. The `data-master-schedule-root` attribute lets us target the scroll context unambiguously in the spec self-check (`rg -n "overflow-y" … data-master-schedule-root` chain).
+Rationale: the page is no longer a flex column with `overflow-hidden`; vertical scroll is the document. A single CSS custom property `--sticky-band-h` is defined with a mode-specific fallback (matching the spec §4.2 budget cap exactly: 88 px daily / 52 px weekly); Task 4 wires it to a real `ResizeObserver` that overwrites the fallback with the measured value on first paint. **No `--day-band-h` is introduced** — the matrix's day-band header height is a small constant (36–40 px) that lives inside `MasterMatrix` only, encoded directly in the `top: calc(...)` expressions of its sticky cells (Task 6). The `data-master-schedule-root` attribute lets us target the scroll context unambiguously in the spec self-check (`rg -n "overflow-y" … data-master-schedule-root` chain).
 
 - [ ] **Step 2: Strip the matrix container's card framing and inner overflow**
 
@@ -353,16 +360,18 @@ Step 2b: **Insert** a new sticky band block immediately above the matrix contain
           data-density="default"
           className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200"
         >
-          {/* Row 1: title + actions */}
-          <div className="flex items-center justify-between gap-3 px-4 md:px-6 py-2 min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <Sparkles className="h-5 w-5 text-violet-600 shrink-0" />
-              <h2
-                data-band-title
-                className="text-base md:text-lg font-bold text-[#1C3D74] truncate"
-              >
-                {t('smartSchedulesTitle')}
-              </h2>
+          {/* Row 1: status chips (start) + actions (end). The h1 page
+              title and the decorative Sparkles icon are intentionally
+              omitted from the sticky band — the page is already
+              labeled by ScheduleTabNav above and a redundant title
+              consumes the matrix's first-glance budget. The smart-alert
+              and Hakim-insights blocks (previously rendered as full
+              banners above the matrix) collapse into the chip cluster
+              here as icon-with-tooltip indicators that open the
+              existing dialogs/drawers on click — they no longer
+              consume any first-paint vertical space above the matrix. */}
+          <div className="flex items-center justify-between gap-3 px-4 md:px-6 py-1.5 min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
               {grid?.timetable_status === 'draft' && (
                 <span
                   data-testid="draft-status-chip"
@@ -372,6 +381,39 @@ Step 2b: **Insert** a new sticky band block immediately above the matrix contain
                   <AlertTriangle className="h-3 w-3" aria-hidden="true" />
                   <span data-band-chip-label>{t('scheduleViewDraft')}</span>
                 </span>
+              )}
+              {alertText && (
+                <button
+                  type="button"
+                  data-testid="smart-alert-chip"
+                  onClick={() => {
+                    // replit.md guardrail: NassaqAlertDialog only —
+                    // no native alert(). Reuse the same imperative
+                    // helper used elsewhere on the page.
+                    if (typeof nassaqError === 'function') {
+                      nassaqError(alertText);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800 border border-red-300 shrink-0 hover:bg-red-200 transition-colors"
+                  title={alertText}
+                  aria-label={alertText}
+                >
+                  <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                  <span data-band-chip-label>{t('smartAlertChipLabel')}</span>
+                </button>
+              )}
+              {!insightsDismissed && unresolvedConflicts && unresolvedConflicts.length > 0 && (
+                <button
+                  type="button"
+                  data-testid="hakim-insights-chip"
+                  onClick={() => setInsightsDrawerOpen(true)}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-800 border border-orange-300 shrink-0 hover:bg-orange-200 transition-colors"
+                  title={t('hakimInsightsBannerTitle', { count: unresolvedConflicts.length })}
+                  aria-label={t('hakimInsightsBannerTitle', { count: unresolvedConflicts.length })}
+                >
+                  <Lightbulb className="h-3 w-3" aria-hidden="true" />
+                  <span data-band-chip-label>{unresolvedConflicts.length}</span>
+                </button>
               )}
             </div>
 
@@ -656,31 +698,58 @@ Locate the block:
 
 **Delete** this block entirely. The chip in the sticky band (added in Task 4 with `data-testid="draft-status-chip"`) replaces it.
 
-- [ ] **Step 3: Tighten the smart-alert and Hakim banner wrappers**
+- [ ] **Step 3: Delete the smart-alert banner block (collapsed into the band chip in Task 4)**
 
-Locate the smart alert banner block (immediately following the deleted draft banner). Replace the wrapper `className` `"flex items-center gap-3 p-3 rounded-lg border border-red-300 bg-red-50 text-red-800 shrink-0"` with the same string but drop `shrink-0`:
+Locate the smart-alert banner block (immediately following the deleted draft banner):
 
 ```jsx
-            className="flex items-center gap-3 p-3 mx-4 md:mx-6 rounded-lg border border-red-300 bg-red-50 text-red-800"
+        {alertText && (
+          <div className="flex items-center gap-3 p-3 rounded-lg border border-red-300 bg-red-50 text-red-800 shrink-0">
+            <AlertTriangle className="h-5 w-5 shrink-0" />
+            <p className="text-sm font-medium">{alertText}</p>
+          </div>
+        )}
 ```
 
-Apply the same treatment (drop `shrink-0`, add `mx-4 md:mx-6`) to the `HakimInsightsBanner` wrapper inside its component if it has `shrink-0` — otherwise leave alone.
+**Delete this block entirely.** The `data-testid="smart-alert-chip"` indicator added inside the sticky band in Task 4 replaces it; full text is reachable via the chip's `title` and via the `nassaqError` dialog opened on click. This eliminates the alert's first-paint vertical footprint above the matrix.
 
-- [ ] **Step 4: Search for any orphaned references to the old draft banner testid**
+- [ ] **Step 4: Delete the `<HakimInsightsBanner>` invocation (collapsed into the band chip in Task 4)**
+
+Locate the `<HakimInsightsBanner …/>` invocation block (around lines 1568–1573):
+
+```jsx
+        <HakimInsightsBanner
+          conflicts={unresolvedConflicts}
+          dismissed={insightsDismissed}
+          onDismiss={() => setInsightsDismissed(true)}
+          onOpenDrawer={() => setInsightsDrawerOpen(true)}
+        />
+```
+
+**Delete this block entirely.** The `data-testid="hakim-insights-chip"` indicator added inside the sticky band in Task 4 replaces it (icon + count, opens the existing `HakimInsightsDrawer` on click). The `<HakimInsightsDrawer …/>` invocation immediately below it stays — it's the drawer that opens on chip click and on retry.
+
+The `HakimInsightsBanner` component definition itself (around line 356) can stay in the file for now — it's no longer referenced but removing it is not in scope for this layout-restructure task. If a follow-up cleanup is desired, dead-code-remove it then.
+
+- [ ] **Step 5: Search for any orphaned references to the old draft banner testid**
 
 Run: `rg -n "draft-banner" frontend/src`
 Expected: zero matches (or only inside test files that should be migrated to `draft-status-chip`). If a test file references it, update the testid in that test to `draft-status-chip`.
 
-- [ ] **Step 5: Build to confirm no syntax errors**
+- [ ] **Step 6: Verify no above-band banner blocks remain**
+
+Run: `rg -n "shrink-0\".*alertText|HakimInsightsBanner|draft-banner" frontend/src/pages/SchedulePageNew.jsx`
+Expected: zero matches in `SchedulePageNew.jsx` (the `HakimInsightsBanner` component **definition** still exists higher in the file but is no longer **invoked**; `rg` with the pattern `<HakimInsightsBanner` confirms zero invocations). Also visually confirm by reading lines 1540–1620 that nothing between the KPI strip and the sticky band renders any conditional banner.
+
+- [ ] **Step 7: Build to confirm no syntax errors**
 
 Run: `cd frontend && DISABLE_ESLINT_PLUGIN=true CI=false npm run build 2>&1 | tail -20`
 Expected: build succeeds.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add frontend/src/pages/SchedulePageNew.jsx frontend/src/**/*test*
-git commit -m "refactor(schedule): collapse KPI strip padding; replace draft banner with band chip"
+git commit -m "refactor(schedule): collapse KPI strip; remove draft+alert+insights above-matrix banners"
 ```
 
 ---
@@ -743,7 +812,7 @@ For the **corner cell** (around line 2148–2154), change:
 to:
 
 ```js
-        style={{ top: 'var(--sticky-band-h, 72px)', insetInlineStart: 0, zIndex: 30, height: DAY_HEADER_HEIGHT }}
+        style={{ top: 'var(--sticky-band-h, 88px)', insetInlineStart: 0, zIndex: 30, height: DAY_HEADER_HEIGHT }}
 ```
 
 Also **remove the `sticky top-0`** from the className and replace with just `sticky`:
@@ -757,7 +826,7 @@ From `\`sticky top-0 z-20 ${getDayBandClass(dayKey)} …\`` to `\`sticky z-20 ${
 And add `top` to the `style` prop:
 
 ```js
-          style={{ top: 'var(--sticky-band-h, 72px)', gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
+          style={{ top: 'var(--sticky-band-h, 88px)', gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
 ```
 
 For the **period-row corner cell** (around lines 2172–2177), change:
@@ -769,7 +838,7 @@ For the **period-row corner cell** (around lines 2172–2177), change:
 to:
 
 ```js
-        style={{ top: `calc(var(--sticky-band-h, 72px) + ${DAY_HEADER_HEIGHT}px)`, insetInlineStart: 0, zIndex: 30, height: PERIOD_HEADER_HEIGHT }}
+        style={{ top: `calc(var(--sticky-band-h, 88px) + ${DAY_HEADER_HEIGHT}px)`, insetInlineStart: 0, zIndex: 30, height: PERIOD_HEADER_HEIGHT }}
 ```
 
 For each **period header cell** (around lines 2186–2197), change:
@@ -781,7 +850,7 @@ For each **period header cell** (around lines 2186–2197), change:
 to:
 
 ```js
-              style={{ top: `calc(var(--sticky-band-h, 72px) + ${DAY_HEADER_HEIGHT}px)`, height: PERIOD_HEADER_HEIGHT }}
+              style={{ top: `calc(var(--sticky-band-h, 88px) + ${DAY_HEADER_HEIGHT}px)`, height: PERIOD_HEADER_HEIGHT }}
 ```
 
 Update the `--day-band-h` CSS var on the page root from `MasterMatrix` so the var stays in sync. Find the existing `useEffect` block in the page component (added in Task 4) that updates `--sticky-band-h`. **No change needed there** — the day-band height is constant per view-mode and is already encoded inside `MasterMatrix`'s `top: calc(...)` expression. We only need `--day-band-h` if a downstream consumer reads it; the matrix uses `DAY_HEADER_HEIGHT` directly.
@@ -830,7 +899,7 @@ Replace with:
 ```jsx
       <div
         className="sticky bg-slate-100 border-b border-slate-200 z-30"
-        style={{ top: 'var(--sticky-band-h, 72px)', insetInlineStart: 0, height: dayBandH }}
+        style={{ top: 'var(--sticky-band-h, 88px)', insetInlineStart: 0, height: dayBandH }}
       />
 ```
 
@@ -1217,6 +1286,7 @@ Open `frontend/src/locales/ar.json`. Find an alphabetically reasonable insertion
   "autoGenerateScheduleShort": "توليد",
   "publishScheduleActionShort": "نشر",
   "recordAbsenceShort": "غياب",
+  "smartAlertChipLabel": "تنبيه",
   "masterGridTruncationTitle": "عدد المعلمين يتجاوز نافذة العرض",
   "masterGridTruncationBody": "تُعرض حالياً أول {shown} معلماً من إجمالي {total}. يرجى التواصل مع الدعم لرفع حدّ النافذة.",
 ```
@@ -1231,6 +1301,7 @@ Open `frontend/src/locales/en.json` and add (at a parallel position):
   "autoGenerateScheduleShort": "Generate",
   "publishScheduleActionShort": "Publish",
   "recordAbsenceShort": "Absence",
+  "smartAlertChipLabel": "Alert",
   "masterGridTruncationTitle": "Teacher count exceeds display window",
   "masterGridTruncationBody": "Showing the first {shown} of {total} teachers. Please contact support to raise the window limit.",
 ```
@@ -1303,9 +1374,39 @@ Inspect the screenshot. The page must, **on first glance**, read as a workspace 
 
 If any of these fail, iterate the relevant Task before continuing. Do not mark complete on a "technically correct but still feels boxed" result.
 
-- [ ] **Step 6: Run spec self-check #5 — chrome budget**
+- [ ] **Step 6: Run spec self-check #5 — chrome budget (re-run after banner collapse)**
 
-In the same screenshot, measure (visually or via DOM inspection in DevTools) the total chrome stack above the matrix. Budget: `tab strip + KPI pill bar (≤ 48 px) + sticky band (≤ 88 px daily / ≤ 52 px weekly)`. If exceeded, iterate.
+In the same screenshot, measure (visually or via DOM inspection in DevTools) the total chrome stack above the matrix. Hard budget per spec §4.2:
+
+- Tab strip (existing `<ScheduleTabNav>`)
+- KPI pill bar: ≤ 48 px (after the `pt-3` padding tightening in Task 5)
+- Sticky band: ≤ 88 px daily / ≤ 52 px weekly
+
+**Hard rule (workspace redesign):** between the KPI pill bar and the sticky band, **no other persistent block** may render at first paint. Specifically: the draft banner, smart-alert banner, and Hakim insights banner are all collapsed into chips inside the sticky band (Task 4 + Task 5) and **must not** reappear above the band under any state. Verify by inspecting the DOM at first paint with a draft schedule active and at least one Hakim conflict present:
+
+```js
+// Run in DevTools console:
+const root = document.querySelector('[data-master-schedule-root]');
+const band = document.querySelector('[data-testid="master-schedule-sticky-band"]');
+const kpi = root.querySelector('.grid.grid-cols-2.sm\\:grid-cols-4');
+// Walk children between kpi and band and confirm none of them render
+// a banner. Acceptable elements between them: none (besides whitespace).
+let n = kpi.nextElementSibling, between = [];
+while (n && n !== band) { between.push(n.outerHTML.slice(0, 80)); n = n.nextElementSibling; }
+console.log('between:', between);
+```
+
+Expected: `between: []`. If any element appears, audit Task 5 step 3/4 deletions and re-fix.
+
+Also confirm the sticky band's measured height is within budget:
+
+```js
+console.log('band height:', band.getBoundingClientRect().height);
+```
+
+Expected: ≤ 52 px in weekly mode, ≤ 88 px in daily mode (the day-tabs row in daily mode is the difference). If either exceeds, the band still has too much chrome — drop additional non-essential elements (the next candidates after Sparkles + title removal would be: collapse the draft/published toggle into the chip cluster as a single state-aware pill, or move the Refresh button into a less-prominent position).
+
+If exceeded after iteration: **do not mark complete.** Instead either (a) iterate further to drop chrome, or (b) escalate to spec rev with explicit justification.
 
 - [ ] **Step 7: Run spec self-check #6 — no-silent-truncation fallback exercised**
 
