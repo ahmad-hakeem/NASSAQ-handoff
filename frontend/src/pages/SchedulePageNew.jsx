@@ -45,6 +45,7 @@ import ScheduleTabNav from '../components/schedule/ScheduleTabNav';
 import ScheduleSettingsTabContent from '../components/schedule/ScheduleSettingsTabContent';
 import FilledCell from '../components/schedule/FilledCell';
 import { SessionDetailModal, getDayBandClass, getDayTintClass, getDayTextOnBand } from '../components/schedule/grid-theme';
+import { computeDisplayDays, clampPage, paginateRows } from '../components/schedule/grid-helpers';
 import { StandbyRosterContent } from './StandbyRosterPage';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { getPose } from '../components/hakim/hakimPoses';
@@ -1021,11 +1022,11 @@ export default function SchedulePageNew() {
   useEffect(() => { setPageIndex(0); }, [pageSize, teacherRows.length]);
 
   const totalPages = Math.max(1, Math.ceil(teacherRows.length / pageSize));
-  const safePage = Math.min(Math.max(0, pageIndex), totalPages - 1);
-  const pagedTeachers = useMemo(() => {
-    const start = safePage * pageSize;
-    return teacherRows.slice(start, start + pageSize);
-  }, [teacherRows, safePage, pageSize]);
+  const safePage = clampPage(pageIndex, totalPages);
+  const pagedTeachers = useMemo(
+    () => paginateRows(teacherRows, pageSize, safePage),
+    [teacherRows, safePage, pageSize],
+  );
   const pageStartIdx = teacherRows.length === 0 ? 0 : safePage * pageSize + 1;
   const pageEndIdx = Math.min(teacherRows.length, (safePage + 1) * pageSize);
 
@@ -1313,7 +1314,11 @@ export default function SchedulePageNew() {
             Light, breathable container: white surface, single subtle
             border, rounded corners, and a single scroll context that
             owns both axes (no nested boxy scrollbars). */}
-        <div className="relative flex-1 min-h-0 overflow-auto bg-white border border-slate-200 rounded-lg">
+        <div
+          className={`relative flex-1 min-h-0 bg-white border border-slate-200 rounded-lg ${
+            viewMode === 'daily' ? 'overflow-x-hidden overflow-y-auto' : 'overflow-auto'
+          }`}
+        >
           {loading ? (
             <div className="flex h-full items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin me-2" />
@@ -1699,9 +1704,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
   // قابلة للقراءة)، و«أسبوعي» يعرض كامل الأيام بأعمدة كثيفة وفقاً للسلوك
   // السابق. عند Daily بدون يوم محدَّد نسقط على أول يوم متاح ضماناً.
   const isDaily = viewMode === 'daily';
-  const displayDays = isDaily
-    ? (selectedDay && days.includes(selectedDay) ? [selectedDay] : days.slice(0, 1))
-    : days;
+  const displayDays = computeDisplayDays(viewMode, selectedDay, days);
 
   // ترتيب الأعمدة: لكل يوم تُضاف أعمدة الحصص (1..7) متتالية.
   const totalDataCols = displayDays.length * periods.length;
@@ -1714,8 +1717,12 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
 
   // الوضع اليومي يضمن حدّاً أدنى أوسع لكل عمود (≥140px) ليكون النص قابلاً
   // للقراءة على شاشات سطح المكتب، ويظلّ عمود المعلم كذلك أعرض قليلاً.
+  // Daily mode shows only one day (≤7 columns), so `minmax(0, 1fr)` is enough
+  // to keep each cell readable while guaranteeing the whole grid fits inside
+  // the container — i.e. **no internal horizontal scroll in daily mode**.
+  // Weekly keeps the same compact behavior as before.
   const gridTemplate = isDaily
-    ? `clamp(180px, 18vw, 240px) repeat(${totalDataCols}, minmax(140px, 1fr))`
+    ? `clamp(180px, 18vw, 240px) repeat(${totalDataCols}, minmax(0, 1fr))`
     : `clamp(140px, 14vw, 200px) repeat(${totalDataCols}, minmax(0, 1fr))`;
   const summaryCount = totalTeachers ?? teachers.length;
 
