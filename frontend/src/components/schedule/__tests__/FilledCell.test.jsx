@@ -18,8 +18,15 @@
  * هو الاختبار الذي يحرس واجهة الـrelocation overlay.
  */
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render as rtlRender, screen } from '@testing-library/react';
 import FilledCell from '../FilledCell';
+import { ThemeProvider } from '../../../contexts/ThemeContext';
+
+// FilledCell يستدعي useTranslation()/useTheme()، فيلزم تغليفه بـ ThemeProvider
+// ضمن الاختبارات. نلفّ render حتى يبقى توقيع الاختبارات الأصلي كما هو
+// (`render(<FilledCell …/>)`).
+const render = (ui, options) =>
+  rtlRender(ui, { wrapper: ({ children }) => <ThemeProvider>{children}</ThemeProvider>, ...options });
 
 const ALT_LOC = 'المعمل';
 
@@ -139,8 +146,10 @@ describe('FilledCell — relocation overlay across all four cell states', () => 
       const { container } = render(<FilledCell cell={substitutedCell} />);
       const root = container.firstChild;
       expect(root).toHaveClass('bg-emerald-50/70');
-      expect(root).toHaveAttribute('title', 'بديل: أ. خالد');
+      expect(root).toHaveAttribute('title', 'البديل: أ. خالد');
       expect(screen.getByText('3C')).toBeInTheDocument();
+      // النص داخل الخلية يستخدم substituteShortLabel ("بديل")، أما tooltip
+      // فيستخدم substituteWithName ("البديل: …"). الفرق مقصود.
       expect(screen.getByText(makeTextMatcher('بديل: أ. خالد'))).toBeInTheDocument();
       expect(screen.queryByText(/نُقل إلى/)).not.toBeInTheDocument();
     });
@@ -157,7 +166,7 @@ describe('FilledCell — relocation overlay across all four cell states', () => 
       expect(root).not.toHaveClass('bg-orange-50');
       expect(root).toHaveAttribute(
         'title',
-        `بديل: أ. خالد • نُقل إلى: ${ALT_LOC}`,
+        `البديل: أ. خالد • نُقل إلى: ${ALT_LOC}`,
       );
       // نص "نُقل إلى" لا يُكتب داخل الخلية حتى لا يُخفي معلومة الاستبدال.
       expect(screen.queryByText(`نُقل إلى: ${ALT_LOC}`)).not.toBeInTheDocument();
