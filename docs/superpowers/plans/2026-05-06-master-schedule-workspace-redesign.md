@@ -801,7 +801,7 @@ Replace with:
 
 - [ ] **Step 3: Replace sticky `top: 0` and `top: DAY_HEADER_HEIGHT` with CSS-var-driven offsets**
 
-In `MasterMatrix`, locate the four sticky-positioned cells in the JSX (corner, day-band cells, period-row corner, period header cells). Update their `style` to read from `--sticky-band-h` and `--day-band-h`:
+In `MasterMatrix`, locate the four sticky-positioned cells in the JSX (corner, day-band cells, period-row corner, period header cells). Update their `style` to read from `--sticky-band-h` only — the matrix's own day-band header height stays an internal constant (`DAY_HEADER_HEIGHT`) encoded directly in the `top: calc(...)` expressions below. **Do not introduce or reference `--day-band-h`** anywhere; the chosen sticky-offset contract uses a single CSS var (`--sticky-band-h`) plus the internal constant.
 
 For the **corner cell** (around line 2148–2154), change:
 
@@ -853,7 +853,7 @@ to:
               style={{ top: `calc(var(--sticky-band-h, 88px) + ${DAY_HEADER_HEIGHT}px)`, height: PERIOD_HEADER_HEIGHT }}
 ```
 
-Update the `--day-band-h` CSS var on the page root from `MasterMatrix` so the var stays in sync. Find the existing `useEffect` block in the page component (added in Task 4) that updates `--sticky-band-h`. **No change needed there** — the day-band height is constant per view-mode and is already encoded inside `MasterMatrix`'s `top: calc(...)` expression. We only need `--day-band-h` if a downstream consumer reads it; the matrix uses `DAY_HEADER_HEIGHT` directly.
+**No `--day-band-h` CSS var is defined or read anywhere.** The sticky-offset contract is exclusively `--sticky-band-h` (set by the page root's inline style and overwritten by the ResizeObserver in Task 4) plus the internal `DAY_HEADER_HEIGHT` constant inside `MasterMatrix`, composed via `top: calc(var(--sticky-band-h, 88px) + ${DAY_HEADER_HEIGHT}px)`. Do not add a `--day-band-h` setter anywhere; do not add a `--day-band-h` reader anywhere.
 
 - [ ] **Step 4: Update the teacher-column sticky cells (no z-index change, just verify)**
 
@@ -1346,11 +1346,15 @@ Expected: matches only inside the absence dialog, bulk substitution drawer, or H
 
 - [ ] **Step 3: Run spec self-check #2 — no inline `teacher_page_size` literals**
 
+The rule is: **no inline numeric literals are allowed for `teacher_page_size`; the single derived usage that reads from `MASTER_GRID_TEACHER_WINDOW` is allowed.** It is explicitly NOT a "zero matches at all" rule — the legitimate parameter assignment in `loadGrid` (which sets `teacher_page_size: effectivePageSize`, where `effectivePageSize` ultimately resolves to `MASTER_GRID_TEACHER_WINDOW`) must remain.
+
 Run: `rg -n "teacher_page_size" frontend/src`
-Expected: zero matches in `frontend/src` outside the `teacher_page_size: effectivePageSize` line in `loadGrid` (which derives the value from `paginationStateRef.current.pageSize` which itself is `MASTER_GRID_TEACHER_WINDOW`). Run a tighter check for inline numerics:
+Expected: exactly one match in `frontend/src/pages/SchedulePageNew.jsx` — the `teacher_page_size: effectivePageSize` line inside the `loadGrid` request body. (Comment lines that mention the contract name are also acceptable; the rule applies to executable code.)
+
+Run the tighter literal-numeric check:
 
 `rg -n "teacher_page_size:\s*\d" frontend/src`
-Expected: zero matches.
+Expected: zero matches. (Any digit immediately following `teacher_page_size:` indicates a hardcoded literal and must be replaced with a derivation from `MASTER_GRID_TEACHER_WINDOW`.)
 
 - [ ] **Step 4: Run spec self-check #3 — production build**
 
@@ -1430,7 +1434,7 @@ Take a screenshot of weekly mode at 1280×800 to document.
 
 Resize the browser (or use DevTools device toolbar) to band widths 1024, 1280, 1366, and 1440 px. At each width:
 - Confirm the sticky band stays on the intended number of rows (1 row in weekly, 2 rows in daily).
-- Confirm `data-density` is `dense` at <1024 (which we don't formally support but should not crash), `compact` at 1024–1279, `default` at ≥1280.
+- Confirm `data-density` matches the resize hook's thresholds exactly: at **exactly 1024 px = `compact`**, at 1280 px = `default`, at 1366 px = `default`, at 1440 px = `default`. The `dense` value applies only at widths strictly less than 1024 (which we do not formally support but the page must not crash). The threshold is half-open: `w < 1024 → dense`, `1024 ≤ w < 1280 → compact`, `w ≥ 1280 → default`.
 - Confirm no buttons or labels wrap onto an extra line.
 
 Inspect via DevTools: `document.querySelector('[data-testid="master-schedule-sticky-band"]').getAttribute('data-density')`.
