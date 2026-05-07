@@ -1320,11 +1320,11 @@ export default function SchedulePageNew() {
     setTruncationNoticeShown(true);
     if (typeof nassaqWarning === 'function') {
       nassaqWarning(
-        t('masterGridTruncationTitle'),
         t('masterGridTruncationBody', {
           shown: MASTER_GRID_TEACHER_WINDOW,
           total,
         }),
+        { title: t('masterGridTruncationTitle') },
       );
     }
   }, [grid?.pagination?.total, truncationNoticeShown, nassaqWarning, t]);
