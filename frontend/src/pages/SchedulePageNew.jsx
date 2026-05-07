@@ -701,7 +701,13 @@ export default function SchedulePageNew() {
       el.removeEventListener('scroll', update);
       ro.disconnect();
     };
-  }, [viewMode, grid]);
+    // NOTE: viewMode/grid are intentionally excluded from deps to avoid
+    // a temporal-dead-zone ReferenceError (those identifiers are declared
+    // further down the component body). The ResizeObserver above already
+    // re-fires `update()` whenever the container's box changes due to a
+    // viewMode switch or grid reload, so we don't need explicit deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadGrid = useCallback(async (viewOverride, paginationOverride) => {
     // Returns the payload itself on success (not just a boolean) so callers
