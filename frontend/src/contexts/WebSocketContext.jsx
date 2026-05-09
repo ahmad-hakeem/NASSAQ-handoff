@@ -224,6 +224,15 @@ export const WebSocketProvider = ({ children }) => {
             setOnlineUsers(data.online_users || 0);
           } else if (data.type === 'realtime_notification') {
             handleNotification(data);
+          } else if (data.type === 'schedule_published') {
+            // Task #145 — bridge tenant-wide schedule publish events to a
+            // window CustomEvent so any open teacher screen can silently
+            // refetch without prop-drilling through context. Detail
+            // carries timetable_id / school_id / published_at; subscribers
+            // can ignore the payload and just refetch.
+            try {
+              window.dispatchEvent(new CustomEvent('nassaq:schedule_published', { detail: data }));
+            } catch (_dispatchErr) { /* no-op */ }
           } else if (data.type === 'pong') {
             // Keep-alive response
           }

@@ -31,6 +31,171 @@ from shared_models import (
 router = APIRouter()
 
 
+# ----- Task #145 — shared teacher-schedule resolver --------------------------
+# Resolves the single latest *published* schedule for a teacher's school and
+# returns enriched session rows with class/subject/slot details bulk-fetched
+# in a single query each (no per-session N+1 lookups). Used by both
+# ``GET /teacher/schedule/{teacher_id}`` and the schedule block inside
+# ``GET /teacher/dashboard/{teacher_id}`` so the two paths can never disagree
+# on which schedule is "current". Drafts and archived rows are intentionally
+# excluded — only ``status == "published"`` is considered.
+_DAY_ORDER = {"sunday": 0, "monday": 1, "tuesday": 2, "wednesday": 3, "thursday": 4, "friday": 5, "saturday": 6}
+
+
+async def _latest_published_timetable(school_id: str) -> Optional[dict]:
+    if not school_id:
+        return None
+    # Order: published_at desc, then updated_at desc as tiebreaker. We have
+    # to do the secondary sort in Python because gd_find only takes one
+    # order_by key.
+    rows = await gd_find(
+        db.session, "timetables",
+        {"school_id": school_id, "status": "published"},
+        order_by="published_at", desc_order=True, limit=10,
+    )
+    if not rows:
+        return None
+    rows.sort(key=lambda r: (r.get("published_at") or "", r.get("updated_at") or ""), reverse=True)
+    return rows[0]
+
+
+async def _latest_published_schedule(school_id: str) -> Optional[dict]:
+    """Latest legacy ``schedules``-collection row in PUBLISHED status."""
+    if not school_id:
+        return None
+    rows = await gd_find(
+        db.session, "schedules",
+        {"school_id": school_id, "status": "published"},
+        order_by="updated_at", desc_order=True, limit=10,
+    )
+    if not rows:
+        return None
+    rows.sort(key=lambda r: (r.get("published_at") or "", r.get("updated_at") or ""), reverse=True)
+    return rows[0]
+
+
+async def _resolve_teacher_sessions(school_id: str, resolved_teacher_id: str, day_of_week: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Return enriched session rows for a teacher from the latest PUBLISHED
+    schedule for their school. Drafts and archived rows are excluded. All
+    related class/subject/time-slot lookups are bulk-fetched. Pass
+    ``day_of_week`` to restrict to a single day (used by the dashboard
+    "today" path)."""
+    if not school_id or not resolved_teacher_id:
+        return []
+
+    timetable = await _latest_published_timetable(school_id)
+    legacy_schedule = await _latest_published_schedule(school_id)
+
+    # Pick the more recently published of the two (timetable wins ties since
+    # the smart-scheduling engine is the one that flips published_at).
+    def _stamp(row):
+        return (row.get("published_at") or row.get("updated_at") or "") if row else ""
+    use_timetable = bool(timetable) and (not legacy_schedule or _stamp(timetable) >= _stamp(legacy_schedule))
+
+    enriched: List[Dict[str, Any]] = []
+
+    if use_timetable and timetable:
+        tt_filter = {"timetable_id": timetable.get("id"), "teacher_id": resolved_teacher_id}
+        if day_of_week:
+            tt_filter["day_of_week"] = day_of_week
+        sessions = await gd_find(db.session, "timetable_sessions", tt_filter, limit=500)
+        # Deduplicate by (day, period) so a stale duplicate row can't double up.
+        seen = set()
+        unique = []
+        for s in sessions:
+            key = (s.get("day_of_week"), s.get("period_number"))
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(s)
+        sessions = unique
+
+        class_ids = [s.get("class_id") for s in sessions if s.get("class_id")]
+        subj_ids = [s.get("subject_id") for s in sessions if s.get("subject_id")]
+        classes = await gd_find(db.session, "classes", {"id": {"$in": list(set(class_ids))}}, limit=500) if class_ids else []
+        subjects = await gd_find(db.session, "subjects", {"id": {"$in": list(set(subj_ids))}}, limit=500) if subj_ids else []
+        cls_map = {c.get("id"): c for c in classes}
+        subj_map = {s.get("id"): s for s in subjects}
+
+        for ts in sessions:
+            cls = cls_map.get(ts.get("class_id")) or {}
+            subj = subj_map.get(ts.get("subject_id")) or {}
+            enriched.append({
+                "id": ts.get("id"),
+                "schedule_session_id": ts.get("id"),
+                "day_of_week": ts.get("day_of_week"),
+                "period_number": ts.get("period_number"),
+                "slot_number": ts.get("period_number"),
+                "start_time": ts.get("start_time"),
+                "end_time": ts.get("end_time"),
+                "time": ts.get("start_time"),
+                "period": ts.get("period_number"),
+                "class_id": ts.get("class_id"),
+                "class_name": cls.get("name") or "فصل",
+                "subject_id": ts.get("subject_id"),
+                "subject_name": subj.get("name_ar") or subj.get("name_en") or "مادة",
+                "subject": subj.get("name_ar") or subj.get("name_en") or "مادة",
+                "session_type": ts.get("session_type", "class"),
+                "room_name": ts.get("room_name", ts.get("room_number", "")),
+            })
+    elif legacy_schedule:
+        ss_filter = {
+            "schedule_id": legacy_schedule.get("id"),
+            "teacher_id": resolved_teacher_id,
+            "status": "scheduled",
+        }
+        if day_of_week:
+            ss_filter["day_of_week"] = day_of_week
+        sessions = await gd_find(db.session, "schedule_sessions", ss_filter, limit=500)
+
+        assignment_ids = list({s.get("assignment_id") for s in sessions if s.get("assignment_id")})
+        slot_ids = list({s.get("time_slot_id") for s in sessions if s.get("time_slot_id")})
+        assignments = await gd_find(db.session, "teacher_assignments", {"id": {"$in": assignment_ids}}, limit=500) if assignment_ids else []
+        slots = await gd_find(db.session, "time_slots", {"id": {"$in": slot_ids}}, limit=500) if slot_ids else []
+        a_map = {a.get("id"): a for a in assignments}
+        slot_map = {sl.get("id"): sl for sl in slots}
+
+        class_ids = list({(a_map.get(s.get("assignment_id")) or {}).get("class_id") or s.get("class_id") for s in sessions})
+        class_ids = [cid for cid in class_ids if cid]
+        subj_ids = list({(a_map.get(s.get("assignment_id")) or {}).get("subject_id") or s.get("subject_id") for s in sessions})
+        subj_ids = [sid for sid in subj_ids if sid]
+        classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=500) if class_ids else []
+        subjects = await gd_find(db.session, "subjects", {"id": {"$in": subj_ids}}, limit=500) if subj_ids else []
+        cls_map = {c.get("id"): c for c in classes}
+        subj_map = {s.get("id"): s for s in subjects}
+
+        for s in sessions:
+            assignment = a_map.get(s.get("assignment_id")) or {}
+            slot = slot_map.get(s.get("time_slot_id")) or {}
+            cid = assignment.get("class_id") or s.get("class_id")
+            sid = assignment.get("subject_id") or s.get("subject_id")
+            cls = cls_map.get(cid) or {}
+            subj = subj_map.get(sid) or {}
+            start_time = slot.get("start_time") or s.get("start_time")
+            end_time = slot.get("end_time") or s.get("end_time")
+            slot_number = slot.get("slot_number") or s.get("slot_number")
+            enriched.append({
+                "id": s.get("id"),
+                "schedule_session_id": s.get("id"),
+                "day_of_week": s.get("day_of_week"),
+                "period_number": slot_number,
+                "slot_number": slot_number,
+                "start_time": start_time,
+                "end_time": end_time,
+                "time": start_time,
+                "period": slot_number,
+                "time_slot_id": s.get("time_slot_id"),
+                "class_id": cid,
+                "class_name": cls.get("name") or s.get("class_name") or "غير محدد",
+                "subject_id": sid,
+                "subject_name": subj.get("name_ar") or subj.get("name_en") or s.get("subject_name") or "غير محدد",
+                "subject": subj.get("name_ar") or subj.get("name_en") or s.get("subject_name") or "غير محدد",
+                "room_name": s.get("room_name") or s.get("room_number", ""),
+            })
+
+    enriched.sort(key=lambda x: (_DAY_ORDER.get(x.get("day_of_week", ""), 9), x.get("period_number") or 0))
+    return enriched
+
 
 # ============== TEACHER DASHBOARD APIs ==============
 TEACHER_ADMIN_ROLES = {"admin", "super_admin", "platform_admin", "school_admin"}
@@ -129,29 +294,13 @@ async def get_teacher_dashboard(
     - الإحصائيات
     """
     _verify_teacher_access(teacher_id, current_user)
-    # First try to find in teachers collection by id
-    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
-    
-    # If not found, try to find by user_id
-    if not teacher:
-        teacher = await gd_find_one(db.session, "teachers", {"user_id": teacher_id})
-    
-    # If still not found, try to find in users and then match to teachers
-    if not teacher:
-        user = await gd_find_one(db.session, "users", {"id": teacher_id, "role": "teacher"})
-        if user:
-            tenant_id = user.get("tenant_id")
-            if not tenant_id:
-                raise HTTPException(status_code=403, detail="المعلم غير مرتبط بمدرسة / Teacher has no school assignment")
-            lookup_filter = {
-                "school_id": tenant_id,
-                "$or": [
-                    {"email": user.get("email")},
-                    {"full_name": user.get("full_name")}
-                ]
-            }
-            teacher = await gd_find_one(db.session, "teachers", lookup_filter)
-    
+    # Task #145 — use the same strict resolver as `/teacher/schedule`. The
+    # previous fallback matched on ``full_name`` which can ambiguously
+    # resolve to a different teacher in the same school and leak their
+    # data. ``_resolve_teacher_record`` requires a unique-email match for
+    # the user→teacher fallback and refuses to resolve when ambiguous.
+    teacher = await _resolve_teacher_record(teacher_id)
+
     if not teacher:
         # Return default data if teacher not found in teachers collection
         # This allows the dashboard to work even if data is only in users collection
@@ -222,86 +371,13 @@ async def get_teacher_dashboard(
     day_map = {0: "monday", 1: "tuesday", 2: "wednesday", 3: "thursday", 4: "friday", 5: "saturday", 6: "sunday"}
     today_day = day_map.get(datetime.now().weekday(), "sunday")
     
-    # Get current schedule
-    schedule = await gd_find_one(db.session, "schedules", {
-        "school_id": school_id,
-        "status": {"$in": [ScheduleStatusEnum.DRAFT.value, ScheduleStatusEnum.PUBLISHED.value]}
-    })
-    
-    today_lessons = []
-
-    # Try schedule_sessions first (manual scheduling system)
-    schedule_sessions_today = []
-    if schedule:
-        schedule_sessions_today = await gd_find(db.session, "schedule_sessions", {
-            "schedule_id": schedule.get("id"),
-            "teacher_id": actual_teacher_id,
-            "day_of_week": today_day
-        }, limit=20)
-
-    if schedule_sessions_today:
-        # Get time slots
-        slot_ids = [s.get("time_slot_id") for s in schedule_sessions_today if s.get("time_slot_id")]
-        slots = await gd_find(db.session, "time_slots", {"id": {"$in": slot_ids}}, limit=20) if slot_ids else []
-        slot_map = {s.get("id"): s for s in slots}
-
-        for session in schedule_sessions_today:
-            slot = slot_map.get(session.get("time_slot_id"), {})
-            assignment = next((a for a in assignments if a.get("id") == session.get("assignment_id")), {})
-            class_info = next((c for c in classes if c.get("id") == (assignment.get("class_id") or session.get("class_id"))), {})
-            subject_info = next((s for s in subjects if s.get("id") == (assignment.get("subject_id") or session.get("subject_id"))), {})
-            lesson_time = slot.get("start_time") or session.get("start_time", "")
-            lesson_period = slot.get("slot_number") or session.get("slot_number", 0)
-            today_lessons.append({
-                "id": session.get("id"),
-                "schedule_session_id": session.get("id"),
-                "time": lesson_time,
-                "start_time": lesson_time,
-                "end_time": slot.get("end_time") or session.get("end_time", ""),
-                "period": lesson_period,
-                "slot_number": lesson_period,
-                "subject": subject_info.get("name_ar") or session.get("subject_name") or "غير محدد",
-                "subject_name": subject_info.get("name_ar") or session.get("subject_name") or "غير محدد",
-                "class_name": class_info.get("name") or session.get("class_name") or "غير محدد",
-                "class_id": class_info.get("id") or session.get("class_id"),
-                "subject_id": subject_info.get("id") or session.get("subject_id"),
-            })
-    else:
-        timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"},
-            sort=[("updated_at", -1), ("created_at", -1)]) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
-            sort=[("created_at", -1)])
-        tt_query = {
-            "teacher_id": actual_teacher_id,
-            "day_of_week": today_day
-        }
-        if timetable:
-            tt_query["timetable_id"] = timetable.get("id")
-        timetable_sessions_today = await gd_find(db.session, "timetable_sessions", tt_query, limit=20)
-
-        seen_periods = set()
-        for session in timetable_sessions_today:
-            period_key = session.get("period_number", 0)
-            if period_key in seen_periods:
-                continue
-            seen_periods.add(period_key)
-            class_info = await gd_find_one(db.session, "classes", {"id": session.get("class_id")}) or {}
-            subject_info = await gd_find_one(db.session, "subjects", {"id": session.get("subject_id")}) or {}
-            today_lessons.append({
-                "id": session.get("id"),
-                "schedule_session_id": session.get("id"),
-                "time": session.get("start_time", ""),
-                "start_time": session.get("start_time", ""),
-                "end_time": session.get("end_time", ""),
-                "period": session.get("period_number", 0),
-                "slot_number": session.get("period_number", 0),
-                "subject": subject_info.get("name_ar") or subject_info.get("name_en") or "مادة",
-                "subject_name": subject_info.get("name_ar") or subject_info.get("name_en") or "مادة",
-                "class_name": class_info.get("name") or "فصل",
-                "class_id": session.get("class_id"),
-                "subject_id": session.get("subject_id"),
-            })
-
-    today_lessons.sort(key=lambda x: x.get("period", 0) or 0)
+    # Resolve today's lessons from the latest PUBLISHED schedule for this
+    # school via the shared helper (Task #145). This ensures the teacher
+    # dashboard always sees the same source-of-truth as the dedicated
+    # ``/teacher/schedule`` endpoint, drafts/archived rows can never leak
+    # in, and class/subject lookups are bulk-fetched (no N+1).
+    today_lessons = await _resolve_teacher_sessions(school_id, actual_teacher_id, day_of_week=today_day)
+    today_lessons.sort(key=lambda x: x.get("period") or 0)
     
     # Get pending attendance (classes where attendance not recorded today)
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -916,79 +992,13 @@ async def get_teacher_schedule(
     school_id = teacher.get("school_id")
     resolved_teacher_id = teacher.get("id") or teacher_id
 
-    schedule_sessions_list = []
-
-    schedule = await gd_find_one(db.session, "schedules", {
-        "school_id": school_id,
-        "status": {"$in": ["draft", "published"]}
-    })
-
-    if schedule:
-        schedule_sessions_list = await gd_find(db.session, "schedule_sessions", {
-            "schedule_id": schedule.get("id"),
-            "teacher_id": resolved_teacher_id,
-            "status": "scheduled"
-        }, limit=100)
-
-    if schedule_sessions_list:
-        for session in schedule_sessions_list:
-            assignment = await gd_find_one(db.session, "teacher_assignments", {"id": session.get("assignment_id")})
-            if assignment:
-                cls = await gd_find_one(db.session, "classes", {"id": assignment.get("class_id")})
-                subject = await gd_find_one(db.session, "subjects", {"id": assignment.get("subject_id")})
-                session["class_name"] = cls.get("name") if cls else "غير محدد"
-                session["class_id"] = assignment.get("class_id")
-                session["subject_name"] = (subject.get("name_ar") or subject.get("name_en")) if subject else "غير محدد"
-            slot = await gd_find_one(db.session, "time_slots", {"id": session.get("time_slot_id")})
-            if slot:
-                session["slot_number"] = slot.get("slot_number")
-                session["start_time"] = slot.get("start_time")
-                session["end_time"] = slot.get("end_time")
-            if not session.get("room_name"):
-                session["room_name"] = session.get("room_number", "")
-            if assignment and not session.get("subject_id"):
-                session["subject_id"] = assignment.get("subject_id")
-        return schedule_sessions_list
-
-    timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"},
-        sort=[("updated_at", -1), ("created_at", -1)]) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
-        sort=[("created_at", -1)])
-    timetable_query = {"teacher_id": resolved_teacher_id, "school_id": school_id}
-    if timetable:
-        timetable_query["timetable_id"] = timetable.get("id")
-    timetable_sessions = await gd_find(db.session, "timetable_sessions", timetable_query, order_by="day_of_week", desc_order=False, limit=200)
-
-    seen_slots = set()
-    unique_sessions = []
-    for ts in timetable_sessions:
-        key = (ts.get("day_of_week"), ts.get("period_number"))
-        if key not in seen_slots:
-            seen_slots.add(key)
-            unique_sessions.append(ts)
-    timetable_sessions = unique_sessions
-
-    day_order = {"sunday": 0, "monday": 1, "tuesday": 2, "wednesday": 3, "thursday": 4}
-    enriched = []
-    for ts in timetable_sessions:
-        cls = await gd_find_one(db.session, "classes", {"id": ts.get("class_id")}) or {}
-        subject = await gd_find_one(db.session, "subjects", {"id": ts.get("subject_id")}) or {}
-        enriched.append({
-            "id": ts.get("id"),
-            "schedule_session_id": ts.get("id"),
-            "day_of_week": ts.get("day_of_week"),
-            "period_number": ts.get("period_number"),
-            "slot_number": ts.get("period_number"),
-            "start_time": ts.get("start_time"),
-            "end_time": ts.get("end_time"),
-            "class_id": ts.get("class_id"),
-            "class_name": cls.get("name", "فصل"),
-            "subject_id": ts.get("subject_id"),
-            "subject_name": subject.get("name_ar") or subject.get("name_en") or "مادة",
-            "session_type": ts.get("session_type", "class"),
-            "room_name": ts.get("room_name", ts.get("room_number", "")),
-        })
-    enriched.sort(key=lambda x: (day_order.get(x.get("day_of_week", ""), 9), x.get("period_number", 0)))
-    return enriched
+    # Task #145: delegate to the shared resolver. It returns enriched rows
+    # from the latest PUBLISHED schedule for this teacher's school, with
+    # class/subject/slot details bulk-fetched. Drafts and archived
+    # timetables are intentionally excluded so a teacher can never see
+    # in-progress edits, and an old published version is never returned
+    # after a republish.
+    return await _resolve_teacher_sessions(school_id, resolved_teacher_id)
 
 
 @router.get("/teacher/assessments/{teacher_id}")

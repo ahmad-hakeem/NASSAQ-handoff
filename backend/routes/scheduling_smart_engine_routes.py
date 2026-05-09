@@ -671,6 +671,25 @@ async def smart_publish_timetable(
             detail="لا يمكن نشر الجدول - يوجد تعارضات حرجة غير محلولة"
         )
     
+    # Task #145 — push a lightweight ``schedule_published`` event over the
+    # tenant WebSocket bus so any open teacher screen silently refetches
+    # within seconds. We swallow failures so a transient WS hiccup never
+    # masks a successful publish; the polling fallback still covers it.
+    try:
+        from routes.websocket_routes import get_connection_manager
+        _published_row = await gd_find_one(db.session, "timetables", {"id": timetable_id}) or {}
+        await get_connection_manager().broadcast_to_tenant(
+            {
+                "type": "schedule_published",
+                "timetable_id": timetable_id,
+                "school_id": str(timetable.get("school_id")),
+                "published_at": _published_row.get("published_at"),
+            },
+            str(timetable.get("school_id")),
+        )
+    except Exception as _ws_err:  # noqa: BLE001
+        logger.warning("schedule_published WS broadcast failed: %s", _ws_err)
+
     return {
         "success": True,
         "timetable_id": timetable_id,
@@ -825,6 +844,25 @@ async def publish_schedule(
             )
     except Exception as _e:  # noqa: BLE001
         logger.warning("publish notification fan-out failed: %s", _e)
+
+    # Task #145 — fire ``schedule_published`` over the tenant WS bus so
+    # any teacher screens currently open refetch within seconds. The DB
+    # notification above persists the announcement; this just nudges
+    # live clients. Failures are swallowed — the 5-min polling fallback
+    # still covers offline/dropped sockets.
+    try:
+        from routes.websocket_routes import get_connection_manager
+        await get_connection_manager().broadcast_to_tenant(
+            {
+                "type": "schedule_published",
+                "timetable_id": timetable_id,
+                "school_id": school_id,
+                "published_at": published_at,
+            },
+            school_id,
+        )
+    except Exception as _ws_err:  # noqa: BLE001
+        logger.warning("schedule_published WS broadcast failed: %s", _ws_err)
 
     return {
         "ok": True,

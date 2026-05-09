@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatFullDate, formatHijriDate } from '../../utils/hijriDate';
@@ -170,9 +170,16 @@ export default function TeacherMainDashboard() {
     return () => clearInterval(interval);
   }, [fetchDayStatus]);
 
-  const fetchTeacherData = useCallback(async () => {
+  const hasDataRef = useRef(false);
+  const fetchTeacherData = useCallback(async ({ silent = false } = {}) => {
     if (!teacherId) return;
-    setLoading(true);
+    // Task #145 — when refreshing in the background (WS publish or 5-min
+    // poll), don't toggle the global loading skeleton if the dashboard
+    // already has data on screen. Keeps the update truly silent for the
+    // teacher: cards stay rendered and only the underlying numbers/lists
+    // change when the new payload arrives. We track "has data" via a ref
+    // so the callback identity doesn't change on every state update.
+    if (!silent || !hasDataRef.current) setLoading(true);
     try {
       const dashboardRes = await api.get(`/teacher/dashboard/${teacherId}`).catch(() => null);
       if (dashboardRes?.data) {
@@ -206,6 +213,7 @@ export default function TeacherMainDashboard() {
           message: a.message,
           time: a.time ? new Date(a.time).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US') : (t('recently'))
         })) || []);
+        hasDataRef.current = true;
       }
     } catch (error) {
       console.error('Error fetching teacher data:', error);
@@ -256,6 +264,17 @@ export default function TeacherMainDashboard() {
   useEffect(() => { fetchMetrics(); }, [fetchMetrics]);
   useEffect(() => { fetchNotificationCount(); }, [fetchNotificationCount]);
   useEffect(() => { fetchPortfolioProgress(); }, [fetchPortfolioProgress]);
+
+  // Task #145 — silently refresh today's lessons block when the school
+  // admin publishes a new schedule. WebSocketContext bridges the tenant
+  // ``schedule_published`` WS frame to a window CustomEvent. We pass
+  // ``silent: true`` so the dashboard cards stay on screen — only the
+  // numbers/lists update once the new payload arrives.
+  useEffect(() => {
+    const onPublished = () => { fetchTeacherData({ silent: true }); };
+    window.addEventListener('nassaq:schedule_published', onPublished);
+    return () => window.removeEventListener('nassaq:schedule_published', onPublished);
+  }, [fetchTeacherData]);
 
   useEffect(() => {
     const fetchHakimData = async () => {

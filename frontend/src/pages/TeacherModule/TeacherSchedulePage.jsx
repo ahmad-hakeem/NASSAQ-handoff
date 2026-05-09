@@ -99,9 +99,13 @@ export default function TeacherSchedulePage() {
   const teacherId = user?.teacher_id || user?.id;
   const todayKey = getTodayDayKey();
 
-  const fetchSchedule = useCallback(async () => {
+  const fetchSchedule = useCallback(async ({ silent = false } = {}) => {
     if (!teacherId) return;
-    setLoading(true);
+    // Task #145 — when refreshing in the background (WS-triggered or
+    // poll-triggered) and we already have data on screen, skip the
+    // skeleton/loading flash so the update is truly silent.
+    const hasExistingData = (prevScheduleRef.current?.length || 0) > 0;
+    if (!silent || !hasExistingData) setLoading(true);
     try {
       const [scheduleRes, slotsRes] = await Promise.all([
         api.get(`/teacher/schedule/${teacherId}`).catch(() => ({ data: [] })),
@@ -138,8 +142,21 @@ export default function TeacherSchedulePage() {
   }, []);
 
   useEffect(() => {
-    const id = setInterval(fetchSchedule, 300000);
+    const id = setInterval(() => fetchSchedule({ silent: true }), 300000);
     return () => clearInterval(id);
+  }, [fetchSchedule]);
+
+  // Task #145 — listen for the tenant-wide ``schedule_published`` WS event
+  // bridged through WebSocketContext and silently refetch. This is what
+  // makes a teacher see new periods within seconds of an admin publishing,
+  // instead of waiting up to 5 minutes for the polling fallback. We pass
+  // ``silent: true`` so the existing schedule stays on screen and we never
+  // show a skeleton flash — the diff is computed against the previous
+  // payload and surfaced via the existing "schedule changed" badge.
+  useEffect(() => {
+    const onPublished = () => { fetchSchedule({ silent: true }); };
+    window.addEventListener('nassaq:schedule_published', onPublished);
+    return () => window.removeEventListener('nassaq:schedule_published', onPublished);
   }, [fetchSchedule]);
 
   const getSessionsForCell = (day, slotId, slotNumber, slotStartTime) => {
