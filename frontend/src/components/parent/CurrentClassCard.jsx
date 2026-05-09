@@ -43,14 +43,14 @@ const CurrentClassCard = ({ currentClass, studentName }) => {
 
   if (!currentClass) {
     return (
-      <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-5 border border-gray-200">
+      <div className="bg-muted rounded-2xl p-5 border border-border">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gray-200 flex items-center justify-center">
-            <BookOpen className="w-5 h-5 text-gray-400" />
+          <div className="w-10 h-10 rounded-xl bg-muted-foreground/15 flex items-center justify-center">
+            <BookOpen className="w-5 h-5 text-muted-foreground" />
           </div>
           <div>
-            <p className="text-sm font-medium text-gray-500">{t('whereIsStudentNow', { name: studentName })}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{t('schoolDayEndedOrNotStarted')}</p>
+            <p className="text-sm font-medium text-foreground">{t('whereIsStudentNow', { name: studentName })}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{t('schoolDayEndedOrNotStarted')}</p>
           </div>
         </div>
       </div>

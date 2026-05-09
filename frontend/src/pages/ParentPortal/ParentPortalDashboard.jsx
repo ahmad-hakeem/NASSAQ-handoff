@@ -265,11 +265,11 @@ const ParentPortalDashboard = () => {
         />
 
         {childrenError && (
-          <Card className="rounded-2xl border border-red-100 shadow-sm">
+          <Card className="rounded-2xl border border-red-100 dark:border-red-900/40 shadow-sm bg-card">
             <CardContent className="py-8 text-center">
-              <AlertCircle className="h-10 w-10 mx-auto mb-3 text-red-400" />
-              <p className="text-gray-700 text-sm font-medium mb-1">{t('failedToLoadChildrenData')}</p>
-              <p className="text-gray-400 text-xs mb-3">{t('checkConnectionAndRetry')}</p>
+              <AlertCircle className="h-10 w-10 mx-auto mb-3 text-red-400 dark:text-red-300" />
+              <p className="text-foreground text-sm font-medium mb-1">{t('failedToLoadChildrenData')}</p>
+              <p className="text-muted-foreground text-xs mb-3">{t('checkConnectionAndRetry')}</p>
               <Button variant="outline" size="sm" onClick={refreshChildren}>
                 <RefreshCw className="h-3.5 w-3.5 me-1.5" />
                 {t('retry')}
@@ -279,10 +279,10 @@ const ParentPortalDashboard = () => {
         )}
 
         {!childrenError && (!children || children.length === 0) && !loading && (
-          <Card className="rounded-2xl border-0 shadow-sm">
+          <Card className="rounded-2xl border-0 shadow-sm bg-card">
             <CardContent className="py-12 text-center">
-              <Users className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="font-bold text-lg text-gray-700 mb-2 font-cairo">{t('noChildrenEnrolled')}</h3>
+              <Users className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
+              <h3 className="font-bold text-lg text-foreground mb-2 font-cairo">{t('noChildrenEnrolled')}</h3>
               <p className="text-muted-foreground text-sm mb-4">{t('contactSchoolAdministrationToLinkYourAccount')}</p>
               <Button variant="outline">
                 <MessageSquare className="h-4 w-4 me-2" />
@@ -429,11 +429,11 @@ const ParentPortalDashboard = () => {
         )}
 
         {selectedChild && !liveData && !liveLoading && liveError && (
-          <Card className="rounded-2xl border border-red-100 shadow-sm">
+          <Card className="rounded-2xl border border-red-100 dark:border-red-900/40 shadow-sm bg-card">
             <CardContent className="py-8 text-center">
-              <AlertCircle className="h-10 w-10 mx-auto mb-3 text-red-400" />
-              <p className="text-gray-700 text-sm font-medium mb-1">{t('failedToLoadSchoolDayData')}</p>
-              <p className="text-gray-400 text-xs mb-3">{t('checkConnectionAndRetry')}</p>
+              <AlertCircle className="h-10 w-10 mx-auto mb-3 text-red-400 dark:text-red-300" />
+              <p className="text-foreground text-sm font-medium mb-1">{t('failedToLoadSchoolDayData')}</p>
+              <p className="text-muted-foreground text-xs mb-3">{t('checkConnectionAndRetry')}</p>
               <Button variant="outline" size="sm" onClick={refreshLiveData}>
                 <RefreshCw className="h-3.5 w-3.5 me-1.5" />
                 {t('retry')}
@@ -443,10 +443,10 @@ const ParentPortalDashboard = () => {
         )}
 
         {selectedChild && !liveData && !liveLoading && !liveError && (
-          <Card className="rounded-2xl border-0 shadow-sm">
+          <Card className="rounded-2xl border-0 shadow-sm bg-card">
             <CardContent className="py-8 text-center">
-              <GraduationCap className="h-10 w-10 mx-auto mb-3 text-gray-300" />
-              <p className="text-gray-500 text-sm">{t('noDataAvailable')}</p>
+              <GraduationCap className="h-10 w-10 mx-auto mb-3 text-muted-foreground/50" />
+              <p className="text-muted-foreground text-sm">{t('noDataAvailable')}</p>
             </CardContent>
           </Card>
         )}

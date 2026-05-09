@@ -2,6 +2,23 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo } 
 import axios from 'axios';
 import { toast } from 'sonner';
 import { createApiService } from '../services/apiClient';
+import arLocale from '../locales/ar.json';
+import enLocale from '../locales/en.json';
+
+// Lightweight translator that does not depend on a React hook — used by the
+// axios interceptor which lives outside React's render tree. Falls back to
+// Arabic (default app language) when a key is missing.
+const translateToast = (key, params) => {
+  const lang = (typeof window !== 'undefined' && localStorage.getItem('nassaq_language')) || 'ar';
+  const dict = lang === 'en' ? enLocale : arLocale;
+  let text = dict[key] || arLocale[key] || key;
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => {
+      text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
+    });
+  }
+  return text;
+};
 
 const AuthContext = createContext(null);
 
@@ -159,7 +176,7 @@ export const AuthProvider = ({ children }) => {
         const retryAfter = error.response?.headers?.['retry-after'];
         const parsed = retryAfter ? parseInt(retryAfter, 10) : NaN;
         const secs = Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
-        toast.error(`طلبات كثيرة — يرجى الانتظار ${secs} ثانية`);
+        toast.error(translateToast('tooManyRequestsWaitSeconds', { seconds: secs }));
         return Promise.reject(error);
       }
 
@@ -169,8 +186,8 @@ export const AuthProvider = ({ children }) => {
         const isAuthMe = (config.url || '').includes('/auth/me');
         if (!(isPublicPath && isAuthMe)) {
           const msg = !error.response
-            ? 'تعذر الاتصال بالخادم — تحقق من الاتصال بالإنترنت'
-            : `خطأ في الخادم (${status}) — يرجى المحاولة لاحقاً`;
+            ? translateToast('serverConnectionFailed')
+            : translateToast('serverErrorWithCode', { code: status });
           toast.error(msg, { id: 'server-conn-error' });
         }
       }

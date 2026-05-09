@@ -4218,5 +4218,12 @@
   "publishBlockedTitle": "Schedule cannot be published",
   "publishBlockedDefault": "The schedule cannot be published because of active hard-constraint violations. Please address the items below and try again:",
   "switchToDraftView": "View draft",
-  "switchToPublishedView": "View published"
+  "switchToPublishedView": "View published",
+  "acceptable": "Acceptable",
+  "goodAndStable": "Good & stable",
+  "serverConnectionFailed": "Could not reach the server — check your internet connection",
+  "serverErrorWithCode": "Server error ({code}) — please try again later",
+  "tooManyRequestsWaitSeconds": "Too many requests — please wait {seconds} seconds",
+  "chartScoresLabel": "Scores",
+  "chartAverageLabel": "Average"
 }

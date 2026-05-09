@@ -13,8 +13,8 @@ const SchoolDayProgress = ({ schoolDay }) => {
 
   if (!schoolDay || !schoolDay.is_school_day || !schoolDay.all_sessions?.length) {
     return (
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-        <div className="flex items-center gap-2 text-sm text-gray-400">
+      <div className="bg-card rounded-2xl p-4 shadow-sm border border-border">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Clock className="w-4 h-4" />
           <span>{t('noScheduleToday')}</span>
         </div>
@@ -47,30 +47,30 @@ const SchoolDayProgress = ({ schoolDay }) => {
   const isAfterSchool = currentMinutes >= dayEnd;
 
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+    <div className="bg-card rounded-2xl p-4 shadow-sm border border-border">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-brand-navy/5 flex items-center justify-center">
-            <Clock className="w-4 h-4 text-brand-navy" />
+          <div className="w-8 h-8 rounded-lg bg-brand-navy/5 dark:bg-brand-turquoise/15 flex items-center justify-center">
+            <Clock className="w-4 h-4 text-brand-navy dark:text-brand-turquoise" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-gray-800 font-cairo">{t('schoolDay')}</p>
-            <p className="text-[10px] text-gray-400">{firstStart} — {lastEnd}</p>
+            <p className="text-sm font-semibold text-foreground font-cairo">{t('schoolDay')}</p>
+            <p className="text-[10px] text-muted-foreground">{firstStart} — {lastEnd}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {isAfterSchool ? (
-            <span className="flex items-center gap-1 text-xs font-medium text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
+            <span className="flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 rounded-full">
               <CheckCircle2 className="w-3 h-3" />
               {t('completed')}
             </span>
           ) : (
             <>
-              <span className="text-xs font-medium text-brand-navy bg-brand-navy/5 px-2.5 py-1 rounded-full">
+              <span className="text-xs font-medium text-brand-navy dark:text-brand-turquoise bg-brand-navy/5 dark:bg-brand-turquoise/15 px-2.5 py-1 rounded-full">
                 {completedCount}/{totalPeriods} {t('periods')}
               </span>
               {remainingCount > 0 && (
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-muted-foreground">
                   ({remainingCount} {t('remaining')})
                 </span>
               )}
@@ -79,7 +79,7 @@ const SchoolDayProgress = ({ schoolDay }) => {
         </div>
       </div>
 
-      <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
+      <div className="relative h-4 bg-muted rounded-full overflow-hidden">
         {sessions.map((session, i) => {
           const startPos = ((timeToMinutes(session.start_time) - dayStart) / totalDuration) * 100;
           const width = ((timeToMinutes(session.end_time) - timeToMinutes(session.start_time)) / totalDuration) * 100;
@@ -91,10 +91,10 @@ const SchoolDayProgress = ({ schoolDay }) => {
               key={i}
               className={`absolute top-0 h-full rounded-sm transition-all duration-500 ${
                 isCompleted
-                  ? 'bg-brand-navy/40'
+                  ? 'bg-brand-navy/40 dark:bg-brand-turquoise/40'
                   : isCurrent
-                    ? 'bg-brand-navy'
-                    : 'bg-gray-200'
+                    ? 'bg-brand-navy dark:bg-brand-turquoise'
+                    : 'bg-muted-foreground/15'
               }`}
               style={{ right: `${startPos}%`, width: `${Math.max(width - 0.5, 0.5)}%` }}
               title={`${session.subject} (${session.start_time} - ${session.end_time})`}
@@ -125,14 +125,18 @@ const SchoolDayProgress = ({ schoolDay }) => {
               <div
                 key={i}
                 className={`w-2 h-2 rounded-full transition-colors ${
-                  isCompleted ? 'bg-brand-navy/60' : isCurrent ? 'bg-brand-navy animate-pulse' : 'bg-gray-200'
+                  isCompleted
+                    ? 'bg-brand-navy/60 dark:bg-brand-turquoise/60'
+                    : isCurrent
+                      ? 'bg-brand-navy dark:bg-brand-turquoise animate-pulse'
+                      : 'bg-muted-foreground/20'
                 }`}
                 title={`${t('period')} ${i + 1}: ${session.subject}`}
               />
             );
           })}
         </div>
-        <div className="flex gap-3 text-[10px] text-gray-400">
+        <div className="flex gap-3 text-[10px] text-muted-foreground">
           <span>{lastEnd}</span>
           <span>{firstStart}</span>
         </div>

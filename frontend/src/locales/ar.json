@@ -4218,5 +4218,12 @@
   "publishBlockedTitle": "تعذّر نشر الجدول",
   "publishBlockedDefault": "لا يمكن نشر الجدول بسبب وجود انتهاكات نشطة لقيود ثابتة. يُرجى معالجة العناصر التالية ثم إعادة المحاولة:",
   "switchToDraftView": "عرض المسودة",
-  "switchToPublishedView": "عرض المنشور"
+  "switchToPublishedView": "عرض المنشور",
+  "acceptable": "مقبول",
+  "goodAndStable": "جيد ومستقر",
+  "serverConnectionFailed": "تعذر الاتصال بالخادم — تحقق من الاتصال بالإنترنت",
+  "serverErrorWithCode": "خطأ في الخادم ({code}) — يرجى المحاولة لاحقاً",
+  "tooManyRequestsWaitSeconds": "طلبات كثيرة — يرجى الانتظار {seconds} ثانية",
+  "chartScoresLabel": "الدرجات",
+  "chartAverageLabel": "المتوسط"
 }
