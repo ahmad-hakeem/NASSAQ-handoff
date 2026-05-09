@@ -401,14 +401,55 @@ async def _verify_parent_child_access(parent_user_id: str, child_id: str) -> boo
     return False
 
 
+async def _resolve_parent_linked_children(parent_user_id: str, school_id: str) -> List[Dict[str, Any]]:
+    """
+    Return the strict allow-list of students this parent may access.
+    Combines `guardian_links` (active) with the legacy `students.parent_id`
+    fallback. Always re-filtered by `school_id` (tenant) to prevent any
+    cross-tenant leakage even if a stale link exists.
+    """
+    children: Dict[str, Dict[str, Any]] = {}
+
+    # 1) Active guardian links — primary source of truth.
+    link_query: Dict[str, Any] = {"parent_ref": parent_user_id, "is_active": True}
+    if school_id:
+        link_query["tenant_id"] = school_id
+    links = await gd_find(db.session, "guardian_links", link_query, limit=100)
+    student_ids_from_links = [l.get("student_id") for l in links if l.get("student_id")]
+
+    if student_ids_from_links:
+        student_query: Dict[str, Any] = {"id": {"$in": student_ids_from_links}}
+        if school_id:
+            student_query["school_id"] = school_id
+        for s in await gd_find(db.session, "students", student_query, limit=100):
+            children[s["id"]] = s
+
+    # 2) Legacy fallback on the students table.
+    legacy_query: Dict[str, Any] = {
+        "$or": [{"parent_id": parent_user_id}, {"parent_user_id": parent_user_id}]
+    }
+    if school_id:
+        legacy_query["school_id"] = school_id
+    for s in await gd_find(db.session, "students", legacy_query, limit=100):
+        children.setdefault(s["id"], s)
+
+    return list(children.values())
+
+
 async def _build_parent_child_context(child_id: str, school_id: str) -> str:
-    student = await gd_find_one(db.session, "students", {"id": child_id})
+    # SECURITY: scope the lookup itself by tenant so a stale/cross-tenant
+    # student id can never be hydrated, regardless of the allow-list path.
+    query: Dict[str, Any] = {"id": child_id}
+    if school_id:
+        query["school_id"] = school_id
+    student = await gd_find_one(db.session, "students", query)
     if not student:
         return ""
 
     student_name = student.get("full_name", "الطالب")
     class_id = student.get("class_id", "")
-    sid = student.get("school_id") or school_id
+    # Hard-pin to the authenticated tenant — no fallback to record-supplied id.
+    sid = school_id or student.get("school_id", "")
 
     cls = await gd_find_one(db.session, "classes", {"id": class_id, "school_id": sid}) if class_id else None
     class_name = cls.get("name", "") if cls else ""
@@ -569,16 +610,45 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
             return JSONResponse(status_code=503, content=AI_NOT_CONFIGURED_RESPONSE)
 
         school_id = current_user.get("tenant_id") or message.tenant_id
-        user_role = current_user.get("role", message.user_role or "unknown")
+        # Trust the server-side role over anything the client claims; only fall
+        # back to the request's `user_role` when the auth payload omits it.
+        user_role = current_user.get("role") or (message.user_role or "unknown")
         is_parent = user_role == "parent" or message.context == "parent_portal"
 
         child_context = ""
-        if is_parent and message.child_id:
+        allowed_students: List[Dict[str, Any]] = []
+
+        if is_parent:
             parent_user_id = current_user.get("id", "")
-            has_access = await _verify_parent_child_access(parent_user_id, message.child_id)
-            if not has_access:
-                raise HTTPException(status_code=403, detail="ليس لديك صلاحية الوصول إلى بيانات هذا الطالب")
-            child_context = await _build_parent_child_context(message.child_id, school_id or "")
+
+            # Always resolve the parent's full allow-list — used both for
+            # validating any requested child_id AND for the AI scope guard.
+            allowed_students = await _resolve_parent_linked_children(parent_user_id, school_id or "")
+            allowed_ids = {s["id"] for s in allowed_students}
+
+            # Graceful "no linked students" path — never let the AI hallucinate.
+            if not allowed_students:
+                return HakimResponse(
+                    response=(
+                        "مرحباً! أنا **حكيم** 🌟\n\n"
+                        "لم أعثر على أي طالب مرتبط بحسابك حالياً. لذلك لا يمكنني عرض بيانات أكاديمية مخصصة. "
+                        "يرجى التواصل مع إدارة المدرسة لربط حساب ولي الأمر بأبنائك."
+                    ),
+                    suggestions=["كيف أربط ابني بحسابي؟", "ما هي ميزات بوابة ولي الأمر؟"],
+                )
+
+            # If a specific child was requested, it MUST be inside the allow-list.
+            if message.child_id:
+                if message.child_id not in allowed_ids:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="ليس لديك صلاحية الوصول إلى بيانات هذا الطالب",
+                    )
+                child_context = await _build_parent_child_context(message.child_id, school_id or "")
+            elif len(allowed_students) == 1:
+                # Exactly one linked child — auto-scope without nagging the parent.
+                only_child = allowed_students[0]
+                child_context = await _build_parent_child_context(only_child["id"], school_id or "")
 
         school_context = ""
         if school_id and not is_parent:
@@ -616,6 +686,19 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
             page_context = f"\nالمستخدم حالياً في صفحة: {page_name}"
 
         if is_parent:
+            allowed_lines = "\n".join(
+                f"- {s.get('full_name', 'طالب')} (المعرّف: {s['id']})"
+                for s in allowed_students
+            )
+            scope_block = f"""
+## نطاق الوصول الصارم (مهم جداً — قاعدة أمنية لا تُخالف):
+- يُسمح لك حصراً بمناقشة الطلاب التاليين المرتبطين رسمياً بهذا ولي الأمر:
+{allowed_lines}
+- إذا سأل ولي الأمر عن أي طالب آخر بالاسم أو بأي معرّف غير مذكور أعلاه، يجب أن تعتذر بأدب وتوضّح أنك مخوّل فقط بمناقشة أبنائه المرتبطين بحسابه.
+- لا تذكر أي بيانات تخص طلاباً آخرين، ولا تقارن بأسماء طلاب آخرين، ولا تكشف عن أي معلومة من خارج هذا النطاق.
+- استخدم فقط البيانات الفعلية المُرفقة أدناه. لا تخترع درجات أو إحصاءات أو أحداثاً.
+"""
+
             system_prompt = f"""أنت حكيم، المساعد الذكي لأولياء الأمور في منصة نَسَّق التعليمية.
 مهمتك مساعدة ولي الأمر في فهم أداء ابنه/ابنته الدراسي وتقديم نصائح تربوية مخصصة.
 
@@ -635,7 +718,10 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
 - اقتراح أساليب تربوية لتحسين أداء الطالب
 - تقديم نصائح حول المتابعة المنزلية
 - شرح السلوكيات المدرسية وكيفية التعامل معها
+
 {child_context}
+
+{scope_block}
 
 دور المستخدم: ولي أمر"""
         else:
@@ -689,8 +775,12 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
 دور المستخدم الحالي: {user_role}"""
 
         user_id = current_user.get('id', 'anon')
-        if is_parent and message.child_id:
-            session_key = message.session_id or f"hakim_{user_id}_{message.child_id}"
+        if is_parent:
+            # SECURITY: never honor a client-supplied session_id for parents.
+            # Force a server-derived key so a parent cannot hop into another
+            # parent's (or another child's) conversation history.
+            session_child = message.child_id or (allowed_students[0]["id"] if len(allowed_students) == 1 else "all")
+            session_key = f"hakim_{user_id}_{session_child}"
         else:
             session_key = message.session_id or f"hakim_{user_id}"
 
