@@ -271,6 +271,46 @@ FIELD_REGISTRY: Dict[str, Dict[str, Any]] = {
             "homework, 2-4 sentences covering objective, content and outcome."
         ),
     },
+    # --- Parent home (weekly story + tip) --------------------------------
+    "parent_weekly_story": {
+        "max_tokens": 320,
+        "temp_generate": 0.55,
+        "temp_improve": 0.45,
+        "min_chars": 60,
+        "max_chars": 600,
+        "ar_only": True,
+        "rule_ar": (
+            "اكتب قصة الأسبوع لولي أمر الطالب في فقرة واحدة من ٢ إلى ٤ جمل، "
+            "مبنية حصراً على البيانات المعطاة (المشاركة، السلوك الإيجابي، المهارات، "
+            "المواد القوية والضعيفة، الخطط العلاجية). اذكر أبرز نقاط الأسبوع بإيجابية واقعية، "
+            "ولا تخترع أرقاماً أو معلومات غير موجودة في السياق، ولا تذكر اسم الطالب الكامل."
+        ),
+        "rule_en": (
+            "Write the parent's 'Story of the Week' in 2-4 sentences grounded ONLY in the "
+            "provided weekly signals (participation, positive behaviour, skills, strong/weak "
+            "subjects, remedial plans). Highlight the week's notable patterns realistically. "
+            "Do not invent figures or facts not present in the context."
+        ),
+    },
+    "parent_weekly_tip": {
+        "max_tokens": 180,
+        "temp_generate": 0.6,
+        "temp_improve": 0.5,
+        "min_chars": 40,
+        "max_chars": 320,
+        "ar_only": True,
+        "rule_ar": (
+            "نصيحة أسبوعية عملية واحدة لولي الأمر في جملة أو جملتين قصيرتين، "
+            "مرتبطة مباشرة بأبرز إشارة في بيانات الأسبوع المعطاة (مثل تراجع مادة، "
+            "أو ضعف المشاركة، أو خطة علاجية حديثة). اجعلها قابلة للتطبيق في المنزل، "
+            "وبأسلوب محترم وداعم، ولا تخترع معلومات."
+        ),
+        "rule_en": (
+            "One practical weekly tip for the parent in 1-2 short sentences, tied directly to "
+            "the strongest signal in the provided weekly data (e.g. a dropping subject, low "
+            "participation, or a recent remedial plan). Make it actionable at home and supportive."
+        ),
+    },
     "communication_evidence": {
         "max_tokens": 350,
         "temp_generate": 0.65,
@@ -332,6 +372,16 @@ def _format_context(context: Optional[Dict[str, Any]], language: str) -> str:
         "experience_years": "سنوات الخبرة",
         "school_name": "المدرسة",
         "section": "القسم",
+        # Parent weekly insight signals
+        "week_start": "بداية الأسبوع",
+        "week_end": "نهاية الأسبوع",
+        "participation_count": "عدد مرات المشاركة الصفية",
+        "positive_behaviors": "عدد الملاحظات السلوكية الإيجابية",
+        "acquired_skills": "المهارات المكتسبة",
+        "strong_subjects": "أقوى المواد",
+        "weak_subjects": "المواد التي تحتاج تحسين",
+        "remedial_plans": "خطط علاجية حديثة",
+        "grade_level": "الصف الدراسي",
     }
     label_map_en = {
         "evidence_type": "Evidence type",
@@ -344,6 +394,15 @@ def _format_context(context: Optional[Dict[str, Any]], language: str) -> str:
         "experience_years": "Years of experience",
         "school_name": "School",
         "section": "Section",
+        "week_start": "Week start",
+        "week_end": "Week end",
+        "participation_count": "Class participation count",
+        "positive_behaviors": "Positive behaviour count",
+        "acquired_skills": "Acquired skills",
+        "strong_subjects": "Strong subjects",
+        "weak_subjects": "Subjects needing improvement",
+        "remedial_plans": "Recent remedial plans",
+        "grade_level": "Grade level",
     }
     labels = label_map_en if language == "en" else label_map_ar
     lines = []

@@ -122,9 +122,26 @@ const WeeklyStory = ({ data, loading, error, onRetry }) => {
     remedial_plans,
     daily_chart_data,
     weekly_tip,
+    weekly_insight,
     week_start,
     week_end,
   } = data;
+
+  // Hakim insight envelope (new structured payload)
+  const insightStatus = weekly_insight?.status || (weekly_tip ? 'available' : 'insufficient_data');
+  const insightStory = weekly_insight?.story || null;
+  const insightTip = weekly_insight?.tip || weekly_tip || null;
+  const insightGeneratedAt = weekly_insight?.generated_at || null;
+
+  const formatGeneratedAt = (iso) => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString('ar-SA', { dateStyle: 'medium', timeStyle: 'short' });
+    } catch {
+      return '';
+    }
+  };
 
   const formatDateShort = (dateStr) => {
     if (!dateStr) return '';
@@ -313,42 +330,102 @@ const WeeklyStory = ({ data, loading, error, onRetry }) => {
         )}
 
         {/* ============================================================== */}
-        {/* Tip of the Week — clearly attributed to Hakim                  */}
+        {/* Story of the Week — Hakim-generated narrative (real LLM output) */}
         {/* ============================================================== */}
-        <div className="rounded-2xl bg-gradient-to-br from-brand-navy via-brand-navy to-brand-purple text-white shadow-md shadow-brand-navy/20 overflow-hidden border border-brand-navy/20">
-          <div className="px-4 py-3 bg-white/[0.06] border-b border-white/10 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 rounded-lg bg-brand-turquoise/25 text-brand-turquoise flex items-center justify-center shrink-0">
-                <Brain className="w-4 h-4" />
+        {insightStatus === 'available' && insightStory && (
+          <div className="rounded-2xl bg-gradient-to-br from-brand-turquoise/10 via-white to-brand-turquoise/5 border border-brand-turquoise/25 overflow-hidden">
+            <div className="px-4 py-3 bg-brand-turquoise/8 border-b border-brand-turquoise/15 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-brand-turquoise text-white flex items-center justify-center shrink-0">
+                  <BookOpen className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-bold text-brand-navy font-cairo truncate">
+                  {t('hakimWeeklyStorySection')}
+                </span>
               </div>
-              <span className="text-xs font-bold text-white font-cairo truncate">
-                {t('hakimWeeklyTipTitle')}
-              </span>
+              <HakimChip label={t('hakimAi')} />
             </div>
-            <span className="inline-flex items-center gap-1 rounded-full bg-brand-turquoise/25 text-white px-2 py-0.5 text-[10px] font-bold border border-brand-turquoise/40 shrink-0">
-              <Sparkles className="w-2.5 h-2.5" />
-              {t('hakimAi')}
-            </span>
-          </div>
-          <div className="p-4 flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl bg-white/15 text-white flex items-center justify-center shrink-0 mt-0.5">
-              <Lightbulb className="w-4.5 h-4.5" />
-            </div>
-            <div className="min-w-0">
-              {weekly_tip ? (
-                <p className="text-sm text-white leading-relaxed font-tajawal">{weekly_tip}</p>
-              ) : (
-                <p className="text-sm text-white/80 leading-relaxed font-tajawal">
-                  {t('hakimInsightsEmpty')}
+            <div className="p-4">
+              <p className="text-sm text-brand-navy leading-relaxed font-tajawal whitespace-pre-line">
+                {insightStory}
+              </p>
+              {insightGeneratedAt && (
+                <p className="text-[10.5px] text-brand-navy/55 mt-3 font-tajawal flex items-center gap-1">
+                  <Sparkles className="w-2.5 h-2.5 text-brand-turquoise" />
+                  {t('hakimGeneratedAt')} {formatGeneratedAt(insightGeneratedAt)}
                 </p>
               )}
-              <p className="text-[10.5px] text-white/65 mt-2 font-tajawal flex items-center gap-1">
-                <Sparkles className="w-2.5 h-2.5" />
-                {t('hakimWeeklyAttribution')}
+            </div>
+          </div>
+        )}
+
+        {/* Insufficient data — no fabrication, explicit message */}
+        {insightStatus === 'insufficient_data' && (
+          <div className="rounded-2xl bg-brand-navy/[0.04] border border-brand-navy/15 p-4 flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-brand-turquoise/15 text-brand-turquoise flex items-center justify-center shrink-0 mt-0.5">
+              <Brain className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-brand-navy font-cairo">
+                {t('hakimInsufficientData')}
+              </p>
+              <p className="text-xs text-brand-navy/65 mt-1 font-tajawal leading-relaxed">
+                {t('hakimInsufficientDataHint')}
               </p>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* Unavailable — service-side issue, not fabrication */}
+        {insightStatus === 'unavailable' && (
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-amber-800 font-cairo">
+                {t('hakimInsightsUnavailable')}
+              </p>
+              <p className="text-xs text-amber-700/80 mt-1 font-tajawal leading-relaxed">
+                {t('checkConnectionAndRetry')}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* Tip of the Week — only rendered when Hakim has a real tip      */}
+        {/* ============================================================== */}
+        {insightStatus === 'available' && insightTip && (
+          <div className="rounded-2xl bg-gradient-to-br from-brand-navy via-brand-navy to-brand-purple text-white shadow-md shadow-brand-navy/20 overflow-hidden border border-brand-navy/20">
+            <div className="px-4 py-3 bg-white/[0.06] border-b border-white/10 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-brand-turquoise/25 text-brand-turquoise flex items-center justify-center shrink-0">
+                  <Brain className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-bold text-white font-cairo truncate">
+                  {t('hakimWeeklyTipTitle')}
+                </span>
+              </div>
+              <span className="inline-flex items-center gap-1 rounded-full bg-brand-turquoise/25 text-white px-2 py-0.5 text-[10px] font-bold border border-brand-turquoise/40 shrink-0">
+                <Sparkles className="w-2.5 h-2.5" />
+                {t('hakimAi')}
+              </span>
+            </div>
+            <div className="p-4 flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white/15 text-white flex items-center justify-center shrink-0 mt-0.5">
+                <Lightbulb className="w-4.5 h-4.5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm text-white leading-relaxed font-tajawal">{insightTip}</p>
+                <p className="text-[10.5px] text-white/65 mt-2 font-tajawal flex items-center gap-1">
+                  <Sparkles className="w-2.5 h-2.5" />
+                  {t('hakimWeeklyAttribution')}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </HakimShell>
   );
