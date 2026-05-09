@@ -6,7 +6,6 @@ import useParentDashboard from '../../hooks/useParentDashboard';
 import StudentSwitcher from '../../components/parent/StudentSwitcher';
 import CurrentClassCard from '../../components/parent/CurrentClassCard';
 import UpcomingClasses from '../../components/parent/UpcomingClasses';
-import PerformanceIndicator from '../../components/parent/PerformanceIndicator';
 import WeeklyStory from '../../components/parent/WeeklyStory';
 import HakimChatWidget from '../../components/parent/HakimChatWidget';
 import { Card, CardContent } from '../../components/ui/card';
@@ -15,7 +14,7 @@ import { Skeleton } from '../../components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import {
   Users, GraduationCap, Calendar, MessageSquare,
-  Building, UserCircle, RefreshCw, AlertCircle,
+  Building, RefreshCw, AlertCircle,
   Clock, CheckCircle2, Star, Sparkles, CalendarDays,
   ArrowLeft, ArrowRight, Award,
 } from 'lucide-react';
@@ -240,21 +239,20 @@ const ParentPortalDashboard = () => {
 
   if (loading) {
     return (
-      <PortalLayout portalType="parent">
+      <PortalLayout portalType="parent" hideHeaderNotifications>
         <div className="p-4 md:p-6 space-y-5 max-w-[1400px] mx-auto">
           <Skeleton className="h-12 w-full max-w-md rounded-xl" />
           <Skeleton className="h-72 w-full rounded-3xl" />
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Skeleton className="h-44 lg:col-span-2 rounded-2xl" />
-            <Skeleton className="h-44 rounded-2xl" />
-          </div>
+          <Skeleton className="h-32 w-full rounded-2xl" />
+          <Skeleton className="h-44 w-full rounded-2xl" />
+          <Skeleton className="h-64 w-full rounded-2xl" />
         </div>
       </PortalLayout>
     );
   }
 
   return (
-    <PortalLayout portalType="parent">
+    <PortalLayout portalType="parent" hideHeaderNotifications>
       <div
         className="p-4 md:p-6 space-y-5 max-w-[1400px] mx-auto"
         dir={isRTL ? 'rtl' : 'ltr'}
@@ -407,54 +405,25 @@ const ParentPortalDashboard = () => {
             </section>
 
             {/* ============================================================= */}
-            {/* Below-hero content (unchanged stack, just wider)              */}
+            {/* Below-hero — focused parent overview (single column flow)     */}
             {/* ============================================================= */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="lg:col-span-2 space-y-4">
-                <CurrentClassCard
-                  currentClass={liveData.current_class}
-                  studentName={liveData.student?.name?.split(' ')[0]}
-                />
-                <UpcomingClasses classes={liveData.upcoming_classes} />
-                <WeeklyStory
-                  data={weeklyStory}
-                  loading={weeklyLoading}
-                  error={weeklyError}
-                  onRetry={refreshWeeklyStory}
-                />
-              </div>
+            <div className="space-y-4 md:space-y-5">
+              {/* 1. Where is the student now? */}
+              <CurrentClassCard
+                currentClass={liveData.current_class}
+                studentName={liveData.student?.name?.split(' ')[0]}
+              />
 
-              <div className="space-y-4">
-                <PerformanceIndicator performance={liveData.performance} />
+              {/* 2. Next class (default) + collapsible remaining classes */}
+              <UpcomingClasses classes={liveData.upcoming_classes} collapsible />
 
-                <Link to="/parent/communication" className="block">
-                  <Card className="rounded-2xl border-0 shadow-sm hover:shadow-md transition-all cursor-pointer group">
-                    <CardContent className="p-4 flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-brand-navy/5 group-hover:bg-brand-navy/10 transition-colors flex items-center justify-center shrink-0">
-                        <MessageSquare className="h-6 w-6 text-brand-navy" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold font-cairo text-gray-800 leading-tight">{t('communicationCenter')}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-
-                {selectedChildId && (
-                  <Link to={`/parent/child/${selectedChildId}/profile`} className="block">
-                    <Card className="rounded-2xl border-0 shadow-sm hover:shadow-md transition-all cursor-pointer group">
-                      <CardContent className="p-4 flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-xl bg-brand-purple/5 group-hover:bg-brand-purple/10 transition-colors flex items-center justify-center shrink-0">
-                          <UserCircle className="h-6 w-6 text-brand-purple" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold font-cairo text-gray-800 leading-tight">{t('studentProfile')}</p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                )}
-              </div>
+              {/* 3. Story of the Week + Tip of the Week */}
+              <WeeklyStory
+                data={weeklyStory}
+                loading={weeklyLoading}
+                error={weeklyError}
+                onRetry={refreshWeeklyStory}
+              />
             </div>
           </>
         )}

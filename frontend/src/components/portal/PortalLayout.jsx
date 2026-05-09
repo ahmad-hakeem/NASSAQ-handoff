@@ -32,7 +32,7 @@ import {
 
 const LOGO_WHITE = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/q04svb5j_Nassaq%20LinkedIn%20Logo%20White.png';
 
-export const PortalLayout = ({ children, portalType = 'student' }) => {
+export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotifications = false }) => {
   const { t } = useTranslation();
   const { user, logout } = useAuth();
   const { isRTL } = useTheme();
@@ -117,18 +117,20 @@ export const PortalLayout = ({ children, portalType = 'student' }) => {
 
             {/* User Info */}
             <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-white hover:bg-white/10 relative"
-                data-testid="notifications-btn"
-              >
-                <Bell className="h-5 w-5" />
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] flex items-center justify-center">
-                  3
-                </span>
-              </Button>
-              
+              {!hideHeaderNotifications && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-white hover:bg-white/10 relative"
+                  data-testid="notifications-btn"
+                >
+                  <Bell className="h-5 w-5" />
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] flex items-center justify-center">
+                    3
+                  </span>
+                </Button>
+              )}
+
               <div className="flex items-center gap-2">
                 <Avatar className="h-8 w-8 border-2 border-white/30">
                   <AvatarImage src={user?.avatar_url} />
