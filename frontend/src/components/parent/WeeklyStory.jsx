@@ -3,19 +3,48 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import {
   Award, Star, TrendingUp, TrendingDown, BookOpen, Lightbulb,
   FileText, AlertCircle, RefreshCw, Calendar, Sparkles, GraduationCap,
-  Brain
 } from 'lucide-react';
 import { useTranslation } from '../../contexts/ThemeContext';
+import { getPose } from '../../components/hakim/hakimPoses';
 
 /* -------------------------------------------------------------------------- */
 /* Hakim attribution primitives — reused across header, tip card, empty/error */
-/* Reuses the existing Hakim visual language: Brain + Sparkles + brand-       */
-/* turquoise on a soft turquoise/white tint (see HakimInsightCard).           */
+/* Uses the official Hakim character images from /hakim-poses/ to match the   */
+/* same branded assistant identity used in the Teacher account.               */
 /* -------------------------------------------------------------------------- */
 
+// Branded avatar wrapper that frames the real Hakim character image.
+// `size` is in px; `pose` is a registered key in hakimPoses.js.
+const HakimAvatar = ({ pose = 'friendly-greeting', size = 44, ringed = true }) => (
+  <div
+    className={`relative shrink-0 rounded-2xl overflow-hidden bg-gradient-to-br from-brand-turquoise/15 to-brand-navy/10 ${
+      ringed ? 'shadow-md shadow-brand-turquoise/25 ring-1 ring-brand-turquoise/25' : ''
+    }`}
+    style={{ width: size, height: size }}
+  >
+    <img
+      src={getPose(pose)}
+      alt=""
+      aria-hidden="true"
+      loading="lazy"
+      className="w-full h-full object-cover object-top select-none pointer-events-none"
+      draggable={false}
+    />
+  </div>
+);
+
 const HakimChip = ({ label }) => (
-  <span className="inline-flex items-center gap-1 rounded-full bg-brand-turquoise/12 text-brand-turquoise px-2 py-0.5 text-[10px] font-bold border border-brand-turquoise/25 font-cairo">
-    <Brain className="w-3 h-3" />
+  <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-turquoise/12 text-brand-turquoise ps-1 pe-2 py-0.5 text-[10px] font-bold border border-brand-turquoise/25 font-cairo">
+    <span className="w-4 h-4 rounded-full overflow-hidden bg-white">
+      <img
+        src={getPose('friendly-greeting')}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        className="w-full h-full object-cover object-top"
+        draggable={false}
+      />
+    </span>
     {label}
     <Sparkles className="w-2.5 h-2.5 opacity-70" />
   </span>
@@ -39,10 +68,7 @@ const WeeklyStory = ({ data, loading, error, onRetry }) => {
         {/* Real Hakim identity row — keeps attribution visible while data streams in */}
         <div className="bg-gradient-to-r from-brand-turquoise/[0.10] via-white/40 to-brand-navy/[0.08] px-5 pt-4 pb-4 border-b border-brand-turquoise/15">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-brand-turquoise to-brand-turquoise/80 text-white flex items-center justify-center shadow-md shadow-brand-turquoise/30 shrink-0 relative">
-              <Brain className="w-5 h-5" />
-              <Sparkles className="w-3 h-3 absolute -top-1 -end-1 text-white drop-shadow" />
-            </div>
+            <HakimAvatar pose="ai-thinking" size={44} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-base font-bold text-brand-navy font-cairo leading-tight">
@@ -75,8 +101,8 @@ const WeeklyStory = ({ data, loading, error, onRetry }) => {
     return (
       <HakimShell>
         <div className="text-center py-8 px-5">
-          <div className="w-12 h-12 rounded-2xl bg-brand-turquoise/10 border border-brand-turquoise/20 flex items-center justify-center mx-auto mb-3">
-            <Brain className="w-6 h-6 text-brand-turquoise" />
+          <div className="mx-auto mb-3 w-fit">
+            <HakimAvatar pose="support" size={56} />
           </div>
           <p className="text-sm font-bold text-brand-navy mb-1 font-cairo">{t('hakimInsightsUnavailable')}</p>
           <p className="text-xs text-brand-navy/60 font-tajawal mb-4 max-w-sm mx-auto leading-relaxed">
@@ -100,9 +126,8 @@ const WeeklyStory = ({ data, loading, error, onRetry }) => {
     return (
       <HakimShell>
         <div className="text-center py-10 px-5">
-          <div className="w-14 h-14 rounded-2xl bg-brand-turquoise/10 border border-brand-turquoise/20 flex items-center justify-center mx-auto mb-3 relative">
-            <Brain className="w-7 h-7 text-brand-turquoise" />
-            <Sparkles className="w-3.5 h-3.5 text-brand-turquoise/70 absolute -top-1 -end-1" />
+          <div className="mx-auto mb-3 w-fit">
+            <HakimAvatar pose="friendly-greeting" size={64} />
           </div>
           <p className="text-sm font-bold text-brand-navy mb-1.5 font-cairo">{t('hakimWeeklyStoryTitle')}</p>
           <p className="text-xs text-brand-navy/65 font-tajawal max-w-sm mx-auto leading-relaxed">
@@ -162,10 +187,7 @@ const WeeklyStory = ({ data, loading, error, onRetry }) => {
       <div className="bg-gradient-to-r from-brand-turquoise/[0.10] via-white/40 to-brand-navy/[0.08] px-5 pt-4 pb-4 border-b border-brand-turquoise/15">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-brand-turquoise to-brand-turquoise/80 text-white flex items-center justify-center shadow-md shadow-brand-turquoise/30 shrink-0 relative">
-              <Brain className="w-5 h-5" />
-              <Sparkles className="w-3 h-3 absolute -top-1 -end-1 text-white drop-shadow" />
-            </div>
+            <HakimAvatar pose="explaining-concept" size={44} />
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-base font-bold text-brand-navy font-cairo leading-tight">
@@ -362,9 +384,7 @@ const WeeklyStory = ({ data, loading, error, onRetry }) => {
         {/* Insufficient data — no fabrication, explicit message */}
         {insightStatus === 'insufficient_data' && (
           <div className="rounded-2xl bg-brand-navy/[0.04] border border-brand-navy/15 p-4 flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl bg-brand-turquoise/15 text-brand-turquoise flex items-center justify-center shrink-0 mt-0.5">
-              <Brain className="w-5 h-5" />
-            </div>
+            <HakimAvatar pose="ai-thinking-2" size={40} />
             <div className="min-w-0">
               <p className="text-sm font-bold text-brand-navy font-cairo">
                 {t('hakimInsufficientData')}
@@ -400,8 +420,15 @@ const WeeklyStory = ({ data, loading, error, onRetry }) => {
           <div className="rounded-2xl bg-gradient-to-br from-brand-navy via-brand-navy to-brand-purple text-white shadow-md shadow-brand-navy/20 overflow-hidden border border-brand-navy/20">
             <div className="px-4 py-3 bg-white/[0.06] border-b border-white/10 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
-                <div className="w-7 h-7 rounded-lg bg-brand-turquoise/25 text-brand-turquoise flex items-center justify-center shrink-0">
-                  <Brain className="w-4 h-4" />
+                <div className="w-7 h-7 rounded-lg overflow-hidden bg-white/15 ring-1 ring-white/25 shrink-0">
+                  <img
+                    src={getPose('motivating')}
+                    alt=""
+                    aria-hidden="true"
+                    loading="lazy"
+                    className="w-full h-full object-cover object-top"
+                    draggable={false}
+                  />
                 </div>
                 <span className="text-xs font-bold text-white font-cairo truncate">
                   {t('hakimWeeklyTipTitle')}

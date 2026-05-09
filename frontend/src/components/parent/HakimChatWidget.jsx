@@ -1,6 +1,23 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { MessageCircle, X, Send, Loader2, Bot, User } from 'lucide-react';
+import { X, Send, Loader2, User } from 'lucide-react';
+import { getPose } from '../hakim/hakimPoses';
+
+const HAKIM_LAUNCHER_POSE = getPose('friendly-greeting');
+const HAKIM_HEADER_POSE = getPose('friendly-greeting');
+const HAKIM_REPLY_POSE = getPose('explaining-concept');
+const HAKIM_THINKING_POSE = getPose('ai-thinking');
+
+const HakimImg = ({ src, className }) => (
+  <img
+    src={src}
+    alt=""
+    aria-hidden="true"
+    loading="lazy"
+    draggable={false}
+    className={className}
+  />
+);
 
 const formatMarkdown = (text) => {
   if (!text) return text;
@@ -103,13 +120,20 @@ const HakimChatWidget = ({ childId, childName }) => {
     <>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-20 left-4 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-brand-turquoise to-brand-navy text-white shadow-lg shadow-brand-turquoise/30 flex items-center justify-center hover:scale-105 transition-transform"
+        className="fixed bottom-20 left-4 z-50 w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-turquoise to-brand-navy text-white shadow-lg shadow-brand-turquoise/30 ring-2 ring-white/40 flex items-center justify-center hover:scale-105 transition-transform overflow-hidden"
         aria-label="حكيم"
       >
-        {isOpen ? <X className="w-6 h-6" /> : (
-          <div className="relative">
-            <MessageCircle className="w-6 h-6" />
-            <span className="absolute -top-1 -right-1 text-[8px] font-bold">حكيم</span>
+        {isOpen ? (
+          <X className="w-6 h-6" />
+        ) : (
+          <div className="relative w-full h-full">
+            <HakimImg
+              src={HAKIM_LAUNCHER_POSE}
+              className="w-full h-full object-cover object-top"
+            />
+            <span className="absolute bottom-0 inset-x-0 text-[9px] font-bold text-white text-center bg-gradient-to-t from-brand-navy/85 to-transparent py-0.5 font-cairo">
+              حكيم
+            </span>
           </div>
         )}
       </button>
@@ -119,8 +143,11 @@ const HakimChatWidget = ({ childId, childName }) => {
           <div className="bg-gradient-to-r from-brand-turquoise to-brand-navy p-4 text-white">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                  <Bot className="w-5 h-5" />
+                <div className="w-11 h-11 rounded-xl bg-white/20 ring-2 ring-white/30 overflow-hidden shrink-0">
+                  <HakimImg
+                    src={HAKIM_HEADER_POSE}
+                    className="w-full h-full object-cover object-top"
+                  />
                 </div>
                 <div>
                   <h4 className="font-bold text-sm">حكيم</h4>
@@ -139,11 +166,18 @@ const HakimChatWidget = ({ childId, childName }) => {
           <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-gray-50">
             {messages.map((msg, i) => (
               <div key={i} className={`flex gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
-                  msg.role === 'user' ? 'bg-brand-navy/15 text-brand-navy' : 'bg-brand-turquoise/15 text-brand-turquoise'
-                }`}>
-                  {msg.role === 'user' ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
-                </div>
+                {msg.role === 'user' ? (
+                  <div className="w-8 h-8 rounded-full bg-brand-navy/15 text-brand-navy flex items-center justify-center shrink-0">
+                    <User className="w-3.5 h-3.5" />
+                  </div>
+                ) : (
+                  <div className="w-8 h-8 rounded-lg overflow-hidden bg-brand-turquoise/15 ring-1 ring-brand-turquoise/25 shrink-0">
+                    <HakimImg
+                      src={HAKIM_REPLY_POSE}
+                      className="w-full h-full object-cover object-top"
+                    />
+                  </div>
+                )}
                 {msg.role === 'user' ? (
                   <div className="max-w-[80%] px-3 py-2 rounded-2xl text-sm leading-relaxed bg-brand-navy text-white rounded-br-sm">
                     {msg.content}
@@ -158,8 +192,11 @@ const HakimChatWidget = ({ childId, childName }) => {
             ))}
             {sending && (
               <div className="flex gap-2">
-                <div className="w-7 h-7 rounded-full bg-brand-turquoise/15 text-brand-turquoise flex items-center justify-center">
-                  <Bot className="w-3.5 h-3.5" />
+                <div className="w-8 h-8 rounded-lg overflow-hidden bg-brand-turquoise/15 ring-1 ring-brand-turquoise/25 shrink-0">
+                  <HakimImg
+                    src={HAKIM_THINKING_POSE}
+                    className="w-full h-full object-cover object-top"
+                  />
                 </div>
                 <div className="bg-white border border-gray-200 px-4 py-2 rounded-2xl rounded-bl-sm flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin text-gray-400" />

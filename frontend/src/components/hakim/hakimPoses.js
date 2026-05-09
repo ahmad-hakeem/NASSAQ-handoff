@@ -17,14 +17,18 @@ const HAKIM_POSES = {
   'listening': '/hakim-poses/listening.png',
   'motivating': '/hakim-poses/motivating.png',
   'positive-feedback': '/hakim-poses/positive-feedback.png',
+  'analyzing-data': '/hakim-poses/analyzing-data.png',
+  'looking-at-charts': '/hakim-poses/looking-at-charts.png',
+  'support': '/hakim-poses/support.png',
+  'teacher-helper': '/hakim-poses/teacher-helper.png',
 };
 
 const POSE_CATEGORIES = {
   welcome: ['friendly-greeting', 'hand-wave-greeting', 'open-hands-welcoming', 'welcome', 'slight-bow-greeting'],
   onboarding: ['giving-instructions', 'explaining-concept', 'inviting-to-begin', 'pointing-to-start'],
   teaching: ['giving-instructions', 'explaining-concept', 'pointing-to-start'],
-  analysis: ['ai-thinking', 'ai-thinking-2', 'detecting-patterns'],
-  alert: ['attention-gesture', 'explaining-concept'],
+  analysis: ['ai-thinking', 'ai-thinking-2', 'detecting-patterns', 'analyzing-data', 'looking-at-charts'],
+  alert: ['attention-gesture', 'explaining-concept', 'support'],
   listening: ['listening', 'explaining-concept'],
   success: ['positive-feedback', 'motivating', 'congratulating-student', 'clapping-celebration'],
   celebration: ['clapping-celebration', 'congratulating-student', 'positive-feedback'],
