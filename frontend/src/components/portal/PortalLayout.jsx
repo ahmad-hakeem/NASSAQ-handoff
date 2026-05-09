@@ -1,15 +1,25 @@
 /**
  * Portal Layout Component
  * تخطيط مخصص لبوابة الطالب وولي الأمر
+ *
+ * Parent (`portalType="parent"`) renders inside the shared right-side
+ * `<Sidebar>` shell used by Admin and Teacher portals — no clone, no
+ * second navigation system. Only a thin top utility bar (notifications,
+ * theme/lang) is added on top of page content.
+ *
+ * Student (`portalType="student"`) keeps its existing horizontal+bottom-nav
+ * shell (out of scope for this migration).
  */
 
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme , useTranslation } from '../../contexts/ThemeContext';
+import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { Button } from '../ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
+import { Sidebar } from '../layout/Sidebar';
+import { NotificationBell } from '../notifications/NotificationBell';
 import {
   Home,
   Calendar,
@@ -18,21 +28,75 @@ import {
   Bell,
   User,
   LogOut,
-  Users,
-  MessageSquare,
   Settings,
   Menu,
   X,
-  GraduationCap,
   BarChart3,
   Trophy,
-  FileText,
-  CalendarCheck,
+  Sun,
+  Moon,
+  Globe,
 } from 'lucide-react';
 
 const LOGO_WHITE = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/q04svb5j_Nassaq%20LinkedIn%20Logo%20White.png';
 
-export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotifications = false }) => {
+/* -------------------------------------------------------------------------- */
+/*  Parent shell — shared right-side Sidebar + thin top utility bar           */
+/* -------------------------------------------------------------------------- */
+const ParentShell = ({ children, hideHeaderNotifications }) => {
+  const { t } = useTranslation();
+  const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
+  const { user } = useAuth();
+
+  return (
+    <Sidebar>
+      <div className="parent-portal-typography min-h-screen" dir={isRTL ? 'rtl' : 'ltr'}>
+        {/* Thin sticky top utility bar — no navigation links, just controls.
+            All navigation lives in the shared right-side Sidebar. */}
+        <header className="sticky top-0 z-30 bg-background/80 backdrop-blur border-b border-border/50">
+          <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-2.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <Avatar className="h-8 w-8 ring-2 ring-brand-turquoise/20">
+                <AvatarImage src={user?.avatar_url} />
+                <AvatarFallback className="bg-brand-turquoise/15 text-brand-turquoise text-sm font-semibold">
+                  {user?.full_name?.charAt(0) || 'و'}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 hidden sm:block">
+                <p className="text-sm font-semibold font-cairo truncate text-foreground">
+                  {user?.full_name}
+                </p>
+                <p className="text-[11px] text-muted-foreground font-tajawal truncate">
+                  {isRTL ? 'ولي أمر' : 'Parent'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" onClick={toggleLanguage} title={isRTL ? 'English' : 'العربية'}>
+                <Globe className="h-5 w-5" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={toggleTheme}>
+                {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              </Button>
+              {!hideHeaderNotifications && <NotificationBell />}
+            </div>
+          </div>
+        </header>
+
+        {/* Page content */}
+        <main className="pb-6">
+          {children}
+        </main>
+      </div>
+    </Sidebar>
+  );
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Student shell — preserved unchanged from prior implementation             */
+/* -------------------------------------------------------------------------- */
+const StudentShell = ({ children, hideHeaderNotifications }) => {
   const { t } = useTranslation();
   const { user, logout } = useAuth();
   const { isRTL } = useTheme();
@@ -41,10 +105,9 @@ export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotif
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const isStudent = portalType === 'student';
-  const primaryColor = isStudent ? 'emerald' : 'brand-navy';
-  const gradientFrom = isStudent ? 'from-emerald-600' : 'from-brand-navy';
-  const gradientTo = isStudent ? 'to-teal-500' : 'to-brand-purple';
+  const primaryColor = 'emerald';
+  const gradientFrom = 'from-emerald-600';
+  const gradientTo = 'to-teal-500';
 
   const handleLogout = () => {
     nassaqWarning(
@@ -62,7 +125,7 @@ export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotif
     );
   };
 
-  const studentMenuItems = [
+  const menuItems = [
     { icon: Home, label: t('home'), href: '/student' },
     { icon: Calendar, label: t('schedule'), href: '/student/schedule' },
     { icon: BookOpen, label: t('grades'), href: '/student/grades' },
@@ -73,38 +136,16 @@ export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotif
     { icon: Bell, label: t('notifications'), href: '/notifications' },
   ];
 
-  const parentMenuItems = [
-    { icon: Home, label: t('home'), href: '/parent' },
-    { icon: Users, label: t('myChildren'), href: '/parent/children' },
-    { icon: MessageSquare, label: t('communicationCenter'), href: '/parent/communication' },
-    { icon: FileText, label: t('absenceExcuse'), href: '/parent/absence-excuse' },
-    { icon: CalendarCheck, label: t('meetingRequest'), href: '/parent/meeting-request' },
-    { icon: BarChart3, label: t('reports'), href: '/parent/reports' },
-    { icon: Bell, label: t('notifications'), href: '/notifications' },
-    { icon: Settings, label: t('settings'), href: '/parent/settings' },
-  ];
-
-  const menuItems = isStudent ? studentMenuItems : parentMenuItems;
-
   const isActive = (href) => {
-    if (href === '/student' || href === '/parent') {
-      return location.pathname === href;
-    }
+    if (href === '/student') return location.pathname === href;
     return location.pathname.startsWith(href);
   };
 
   return (
-    <div
-      className={`min-h-screen bg-gray-50 ${
-        portalType === 'parent' ? 'parent-portal-typography' : ''
-      }`}
-      dir={isRTL ? 'rtl' : 'ltr'}
-    >
-      {/* Top Header */}
+    <div className="min-h-screen bg-gray-50" dir={isRTL ? 'rtl' : 'ltr'}>
       <header className={`bg-gradient-to-r ${gradientFrom} ${gradientTo} text-white sticky top-0 z-50`}>
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
-            {/* Logo & Menu Toggle */}
             <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
@@ -120,7 +161,6 @@ export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotif
               </Link>
             </div>
 
-            {/* User Info */}
             <div className="flex items-center gap-3">
               {!hideHeaderNotifications && (
                 <Button
@@ -130,9 +170,7 @@ export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotif
                   data-testid="notifications-btn"
                 >
                   <Bell className="h-5 w-5" />
-                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] flex items-center justify-center">
-                    3
-                  </span>
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] flex items-center justify-center">3</span>
                 </Button>
               )}
 
@@ -140,7 +178,7 @@ export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotif
                 <Avatar className="h-8 w-8 border-2 border-white/30">
                   <AvatarImage src={user?.avatar_url} />
                   <AvatarFallback className="bg-white/20 text-white text-sm">
-                    {user?.full_name?.charAt(0) || (isStudent ? 'ط' : 'و')}
+                    {user?.full_name?.charAt(0) || 'ط'}
                   </AvatarFallback>
                 </Avatar>
                 <span className="hidden sm:block text-sm font-medium truncate max-w-[120px]">
@@ -151,7 +189,6 @@ export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotif
           </div>
         </div>
 
-        {/* Desktop Navigation */}
         <nav className="hidden lg:block border-t border-white/10">
           <div className="px-4">
             <div className="flex items-center gap-1">
@@ -170,8 +207,6 @@ export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotif
                   {item.label}
                 </Link>
               ))}
-              
-              {/* Logout */}
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-white/70 hover:text-white transition-all ms-auto"
@@ -185,31 +220,26 @@ export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotif
         </nav>
       </header>
 
-      {/* Mobile Navigation Overlay */}
       {mobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setMobileMenuOpen(false)}>
           <div
             className={`absolute top-0 ${isRTL ? 'right-0' : 'left-0'} w-72 h-full bg-white shadow-xl`}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Mobile Menu Header */}
             <div className={`p-4 bg-gradient-to-r ${gradientFrom} ${gradientTo} text-white`}>
               <div className="flex items-center gap-3 mb-4">
                 <Avatar className="h-12 w-12 border-2 border-white/30">
                   <AvatarFallback className="bg-white/20 text-white">
-                    {user?.full_name?.charAt(0) || (isStudent ? 'ط' : 'و')}
+                    {user?.full_name?.charAt(0) || 'ط'}
                   </AvatarFallback>
                 </Avatar>
                 <div>
                   <p className="font-bold">{user?.full_name}</p>
-                  <p className="text-sm text-white/70">
-                    {isStudent ? (t('student')) : (isRTL ? 'ولي أمر' : 'Parent')}
-                  </p>
+                  <p className="text-sm text-white/70">{t('student')}</p>
                 </div>
               </div>
             </div>
 
-            {/* Mobile Menu Items */}
             <nav className="p-2">
               {menuItems.map((item) => (
                 <Link
@@ -218,7 +248,7 @@ export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotif
                   onClick={() => setMobileMenuOpen(false)}
                   className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                     isActive(item.href)
-                      ? isStudent ? 'bg-emerald-50 text-emerald-600' : 'bg-brand-navy/5 text-brand-navy'
+                      ? 'bg-emerald-50 text-emerald-600'
                       : 'text-gray-600 hover:bg-gray-50'
                   }`}
                 >
@@ -226,8 +256,6 @@ export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotif
                   {item.label}
                 </Link>
               ))}
-              
-              {/* Settings */}
               <Link
                 to="/account/settings"
                 onClick={() => setMobileMenuOpen(false)}
@@ -236,8 +264,6 @@ export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotif
                 <Settings className="h-5 w-5" />
                 {t('settings')}
               </Link>
-              
-              {/* Logout */}
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 w-full"
@@ -250,12 +276,8 @@ export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotif
         </div>
       )}
 
-      {/* Main Content */}
-      <main className="pb-24 lg:pb-6">
-        {children}
-      </main>
+      <main className="pb-24 lg:pb-6">{children}</main>
 
-      {/* Mobile Bottom Navigation */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-700 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] z-50 pb-safe">
         <div className="flex items-center justify-around py-1.5">
           {menuItems.slice(0, 5).map((item) => {
@@ -266,9 +288,7 @@ export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotif
                 to={item.href}
                 className={`flex flex-col items-center gap-0.5 py-1.5 px-2 min-w-[56px] rounded-xl transition-all duration-200 ${
                   active
-                    ? isStudent
-                      ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30'
-                      : 'text-brand-navy bg-brand-navy/5 dark:bg-brand-navy/10'
+                    ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30'
                     : 'text-gray-400 dark:text-gray-500 active:bg-gray-100 dark:active:bg-slate-800'
                 }`}
                 data-testid={`bottom-nav-${item.href.split('/').pop()}`}
@@ -282,6 +302,13 @@ export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotif
       </nav>
     </div>
   );
+};
+
+export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotifications = false }) => {
+  if (portalType === 'parent') {
+    return <ParentShell hideHeaderNotifications={hideHeaderNotifications}>{children}</ParentShell>;
+  }
+  return <StudentShell hideHeaderNotifications={hideHeaderNotifications}>{children}</StudentShell>;
 };
 
 export default PortalLayout;

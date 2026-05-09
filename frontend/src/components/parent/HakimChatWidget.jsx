@@ -206,7 +206,7 @@ const HakimChatWidget = ({ childId, childName }) => {
   return (
     <>
       {/* Floating Action Button — identical visual language to admin HakimAssistant */}
-      <div className={`fixed bottom-24 lg:bottom-6 z-50 ${isRTL ? 'left-6' : 'right-6'}`}>
+      <div className={`fixed bottom-6 z-50 ${isRTL ? 'left-6' : 'right-6'}`}>
         <button
           data-testid="hakim-toggle-btn"
           onClick={toggleOpen}
@@ -243,7 +243,7 @@ const HakimChatWidget = ({ childId, childName }) => {
         <Card
           data-testid="hakim-chat-window"
           className={`
-            fixed bottom-[11rem] lg:bottom-28 z-50 w-[440px] max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100vh-12rem)]
+            fixed bottom-28 z-50 w-[440px] max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100vh-8rem)]
             rounded-2xl shadow-2xl border-0 overflow-hidden flex flex-col
             animate-fade-up
             ${isRTL ? 'left-6' : 'right-6'}

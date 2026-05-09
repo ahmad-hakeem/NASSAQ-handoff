@@ -390,8 +390,61 @@ export const Sidebar = ({ children }) => {
       },
     ];
 
+    // Parent Menu Items — mirrors the historical Parent Portal navigation so
+    // parent users plug into the same shared sidebar registry as everyone else.
+    const parentItems = [
+      {
+        icon: Home,
+        label: t('home'),
+        href: '/parent',
+        roles: ['parent'],
+      },
+      {
+        icon: Users,
+        label: t('myChildren'),
+        href: '/parent/children',
+        roles: ['parent'],
+      },
+      {
+        icon: MessageSquare,
+        label: t('communicationCenter'),
+        href: '/parent/communication',
+        roles: ['parent'],
+      },
+      {
+        icon: FileText,
+        label: t('absenceExcuse'),
+        href: '/parent/absence-excuse',
+        roles: ['parent'],
+      },
+      {
+        icon: CalendarCheck,
+        label: t('meetingRequest'),
+        href: '/parent/meeting-request',
+        roles: ['parent'],
+      },
+      {
+        icon: BarChart3,
+        label: t('reports'),
+        href: '/parent/reports',
+        roles: ['parent'],
+      },
+      {
+        icon: Bell,
+        label: t('notifications'),
+        href: '/notifications',
+        roles: ['parent'],
+      },
+      {
+        icon: Settings,
+        label: t('settings'),
+        href: '/parent/settings',
+        roles: ['parent'],
+      },
+    ];
+
     // Combine all items
-    const allItems = [...platformAdminItems, ...schoolItems, ...teacherItems];
+    const allItems = [...platformAdminItems, ...schoolItems, ...teacherItems, ...parentItems];
     
     // Filter by effective role (supports impersonation)
     // effectiveRole is already defined at the start of this function
