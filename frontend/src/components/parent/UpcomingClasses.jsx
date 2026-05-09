@@ -19,8 +19,8 @@ const UpcomingClasses = ({ classes, collapsible = true }) => {
   const showAll = !collapsible;
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+    <div className="bg-gradient-to-br from-white via-white to-brand-navy/[0.025] rounded-2xl shadow-sm border border-brand-navy/12 overflow-hidden">
+      <div className="p-4 border-b border-brand-navy/10 flex items-center justify-between bg-brand-navy/[0.02]">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-brand-navy/10 text-brand-navy flex items-center justify-center">
             <Clock className="w-4.5 h-4.5" />
@@ -68,7 +68,7 @@ const UpcomingClasses = ({ classes, collapsible = true }) => {
             />
           </button>
           {open && (
-            <div className="px-4 pt-3 pb-4 space-y-2 bg-gray-50/40 border-t border-gray-100 animate-in slide-in-from-top-2 duration-200">
+            <div className="px-4 pt-3 pb-4 space-y-2 bg-brand-navy/[0.025] border-t border-brand-navy/10 animate-in slide-in-from-top-2 duration-200">
               {rest.map((cls, i) => (
                 <ClassRow key={i} cls={cls} t={t} />
               ))}
@@ -84,8 +84,8 @@ const ClassRow = ({ cls, highlight = false, t }) => (
   <div
     className={`flex items-center justify-between py-3 px-3.5 rounded-xl transition-colors group ${
       highlight
-        ? 'bg-gradient-to-r from-brand-navy/[0.08] to-brand-turquoise/[0.06] border border-brand-navy/15'
-        : 'bg-gray-50 hover:bg-brand-navy/5'
+        ? 'bg-gradient-to-r from-brand-navy/[0.10] to-brand-turquoise/[0.10] border border-brand-navy/20 shadow-sm shadow-brand-navy/[0.06]'
+        : 'bg-white border border-brand-navy/8 hover:border-brand-navy/20 hover:bg-brand-navy/[0.03]'
     }`}
   >
     <div className="flex items-center gap-3 min-w-0">
