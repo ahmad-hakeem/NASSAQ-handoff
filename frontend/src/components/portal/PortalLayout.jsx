@@ -94,7 +94,12 @@ export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotif
   };
 
   return (
-    <div className="min-h-screen bg-gray-50" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div
+      className={`min-h-screen bg-gray-50 ${
+        portalType === 'parent' ? 'parent-portal-typography' : ''
+      }`}
+      dir={isRTL ? 'rtl' : 'ltr'}
+    >
       {/* Top Header */}
       <header className={`bg-gradient-to-r ${gradientFrom} ${gradientTo} text-white sticky top-0 z-50`}>
         <div className="px-4 py-3">

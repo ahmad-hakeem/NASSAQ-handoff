@@ -1,5 +1,49 @@
 /* NASSAQ App Styles */
 
+/* -------------------------------------------------------------------------- */
+/* Parent Portal — Typography & Readability Scope                              */
+/* Lifts undersized text utilities and tightens reading rhythm across every    */
+/* page rendered under PortalLayout(portalType="parent"). Scoped via the       */
+/* `.parent-portal-typography` class so other accounts (student, teacher,      */
+/* school, admin) are NOT affected.                                            */
+/* -------------------------------------------------------------------------- */
+.parent-portal-typography {
+    font-feature-settings: "kern" 1, "liga" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Lift the smallest arbitrary-px utilities to a readable floor. Specificity */
+/* (.parent-portal-typography .text-...) outranks the bare Tailwind utility, */
+/* but we keep !important as a defensive backstop against utility ordering.  */
+.parent-portal-typography .text-\[8px\]    { font-size: 11px   !important; line-height: 1.45; }
+.parent-portal-typography .text-\[9px\]    { font-size: 11.5px !important; line-height: 1.45; }
+.parent-portal-typography .text-\[10px\]   { font-size: 12px   !important; line-height: 1.5;  }
+.parent-portal-typography .text-\[10\.5px\]{ font-size: 12px   !important; line-height: 1.5;  }
+.parent-portal-typography .text-\[11px\]   { font-size: 12.5px !important; line-height: 1.55; }
+
+/* Standardize text-xs across the parent portal: 13px is the minimum body     */
+/* size for comfortable reading, especially in Arabic at light weights.       */
+.parent-portal-typography .text-xs {
+    font-size: 0.8125rem;   /* 13px */
+    line-height: 1.55;
+}
+
+/* Loosen line-height on small/base body so paragraphs breathe.               */
+.parent-portal-typography .text-sm   { line-height: 1.6;  }
+.parent-portal-typography .text-base { line-height: 1.65; }
+
+/* Stronger contrast on muted greys — was washing out at small sizes.         */
+.parent-portal-typography .text-gray-400      { color: rgb(75 85 99);  }   /* gray-600 */
+.parent-portal-typography .text-muted-foreground { color: hsl(215.4 16.3% 36.9%); }
+.dark .parent-portal-typography .text-gray-400          { color: rgb(156 163 175); }
+.dark .parent-portal-typography .text-muted-foreground  { color: hsl(215 20.2% 70%); }
+
+/* Mobile bottom-nav labels: keep them legible on small screens.              */
+@media (max-width: 1023px) {
+    .parent-portal-typography nav span.text-\[10px\] { font-size: 12px !important; font-weight: 600; }
+}
+
 /* Reset */
 *, *::before, *::after {
     box-sizing: border-box;
