@@ -129,6 +129,18 @@ export const AuthProvider = ({ children }) => {
   const resInterceptor = api.interceptors.response.use(
     (response) => response,
     async (error) => {
+      // Silently ignore canceled/aborted requests (StrictMode double-mount,
+      // route changes, AbortController cleanups). These are not real failures
+      // and must NOT trigger global error toasts.
+      if (
+        axios.isCancel?.(error) ||
+        error?.name === 'CanceledError' ||
+        error?.code === 'ERR_CANCELED' ||
+        error?.message === 'canceled'
+      ) {
+        return Promise.reject(error);
+      }
+
       const config = error.config || {};
       const retryCount = config._retryCount || 0;
       const status = error.response?.status;
@@ -180,12 +192,23 @@ export const AuthProvider = ({ children }) => {
         return Promise.reject(error);
       }
 
-      if (status >= 500 || !error.response) {
+      // Only surface a global toast for catastrophic failures, and only on
+      // mutations. GET failures (single widget data, dashboards, etc.) must
+      // be handled by the calling component so a partial failure does not
+      // crash the whole page or display a misleading "offline" message.
+      const isMutation = !isGet && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(
+        (config.method || '').toUpperCase()
+      );
+      const isRealNetworkError =
+        !error.response &&
+        (error.message === 'Network Error' || error.code === 'ERR_NETWORK');
+
+      if (isMutation && (status >= 500 || isRealNetworkError)) {
         const PUBLIC_PATHS = ['/', '/login', '/register', '/about', '/contact', '/pricing', '/forgot-password'];
         const isPublicPath = PUBLIC_PATHS.includes(window.location.pathname);
         const isAuthMe = (config.url || '').includes('/auth/me');
         if (!(isPublicPath && isAuthMe)) {
-          const msg = !error.response
+          const msg = isRealNetworkError
             ? translateToast('serverConnectionFailed')
             : translateToast('serverErrorWithCode', { code: status });
           toast.error(msg, { id: 'server-conn-error' });
