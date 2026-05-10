@@ -1,6 +1,14 @@
 import { lazy, Suspense } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { ProtectedRoute, PublicRoute } from "../components/guards/RouteGuards";
+
+// Redirect helper: maps the legacy standalone parent child sub-routes
+// (/parent/child/:childId, /schedule, /homework, /behaviour) onto the unified
+// Student Profile hub at /parent/children with the matching active tab.
+const ParentStudentTabRedirect = ({ tab }) => {
+  const { childId } = useParams();
+  return <Navigate to={`/parent/children?child=${childId}&tab=${tab}`} replace />;
+};
 
 // --- Eager: small + first-paint critical (no recharts/jspdf chains) ---
 import { LandingPage } from "../pages/LandingPage";
@@ -307,20 +315,31 @@ export default function AppRoutes() {
         <Route path="/parent" element={
           <ProtectedRoute allowedRoles={['parent']}><ParentPortalDashboard /></ProtectedRoute>
         } />
-        <Route path="/parent/child/:childId" element={
-          <ProtectedRoute allowedRoles={['parent']}><ChildDetailsPage /></ProtectedRoute>
-        } />
-        <Route path="/parent/child/:childId/schedule" element={
-          <ProtectedRoute allowedRoles={['parent']}><ChildSchedulePage /></ProtectedRoute>
-        } />
+        {/* Unified Parent Student Profile hub. Old standalone child sub-routes
+            below redirect into this single page with the matching active tab so
+            existing notifications, bookmarks and deep links keep working. */}
         <Route path="/parent/children" element={
           <ProtectedRoute allowedRoles={['parent']}><ParentChildrenPage /></ProtectedRoute>
         } />
+        <Route path="/parent/child/:childId" element={
+          <ProtectedRoute allowedRoles={['parent']}>
+            <ParentStudentTabRedirect tab="details" />
+          </ProtectedRoute>
+        } />
+        <Route path="/parent/child/:childId/schedule" element={
+          <ProtectedRoute allowedRoles={['parent']}>
+            <ParentStudentTabRedirect tab="schedule" />
+          </ProtectedRoute>
+        } />
         <Route path="/parent/child/:childId/behaviour" element={
-          <ProtectedRoute allowedRoles={['parent']}><ChildBehaviorPage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['parent']}>
+            <ParentStudentTabRedirect tab="behavior" />
+          </ProtectedRoute>
         } />
         <Route path="/parent/child/:childId/homework" element={
-          <ProtectedRoute allowedRoles={['parent']}><ChildHomeworkPage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['parent']}>
+            <ParentStudentTabRedirect tab="homework" />
+          </ProtectedRoute>
         } />
         <Route path="/parent/reports" element={
           <ProtectedRoute allowedRoles={['parent']}><ParentReportsPage /></ProtectedRoute>

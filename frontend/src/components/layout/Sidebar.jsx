@@ -401,7 +401,7 @@ export const Sidebar = ({ children }) => {
       },
       {
         icon: Users,
-        label: t('myChildren'),
+        label: t('studentProfile'),
         href: '/parent/children',
         roles: ['parent'],
       },
