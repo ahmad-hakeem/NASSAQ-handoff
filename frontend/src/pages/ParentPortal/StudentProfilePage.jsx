@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
@@ -48,15 +48,23 @@ const StudentProfilePage = () => {
   // opens the Reports section to keep the initial profile load light.
   const [showReports, setShowReports] = useState(false);
 
+  // Stale-response guard: discard responses whose child id no longer
+  // matches the currently active student.
+  const activeChildRef = useRef(null);
+  activeChildRef.current = childId;
+
   const fetchProfile = useCallback(async () => {
     if (!hasLoadedChildren || !childId) return;
+    const requestedFor = childId;
     try {
-      const res = await api.get(`/parent-portal/child/${childId}/profile`);
+      const res = await api.get(`/parent-portal/child/${requestedFor}/profile`);
+      if (String(activeChildRef.current) !== String(requestedFor)) return;
       setProfile(res.data);
     } catch {
+      if (String(activeChildRef.current) !== String(requestedFor)) return;
       setProfile(null);
     } finally {
-      setLoading(false);
+      if (String(activeChildRef.current) === String(requestedFor)) setLoading(false);
     }
   }, [api, childId, hasLoadedChildren]);
 

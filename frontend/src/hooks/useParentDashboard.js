@@ -30,6 +30,12 @@ export default function useParentDashboard() {
   const [liveError, setLiveError] = useState(false);
   const [weeklyError, setWeeklyError] = useState(false);
   const timerRef = useRef(null);
+  // Stale-response guard: each per-child fetch captures the *active* child
+  // id at request time and discards its result if the active child has
+  // since changed. Prevents older responses (rapid switches / out-of-order
+  // network) from overwriting state for a different child.
+  const activeChildRef = useRef(null);
+  activeChildRef.current = selectedChildId;
 
   const fetchLiveData = useCallback(async (childId) => {
     if (!childId) return;
@@ -37,12 +43,14 @@ export default function useParentDashboard() {
     setLiveError(false);
     try {
       const res = await api.get(`/parent-portal/child/${childId}/today-live`);
+      if (String(activeChildRef.current) !== String(childId)) return;
       setLiveData(res.data);
     } catch {
+      if (String(activeChildRef.current) !== String(childId)) return;
       setLiveData(null);
       setLiveError(true);
     } finally {
-      setLiveLoading(false);
+      if (String(activeChildRef.current) === String(childId)) setLiveLoading(false);
     }
   }, [api]);
 
@@ -52,12 +60,14 @@ export default function useParentDashboard() {
     setWeeklyError(false);
     try {
       const res = await api.get(`/parent-portal/child/${childId}/weekly-story`);
+      if (String(activeChildRef.current) !== String(childId)) return;
       setWeeklyStory(res.data);
     } catch {
+      if (String(activeChildRef.current) !== String(childId)) return;
       setWeeklyStory(null);
       setWeeklyError(true);
     } finally {
-      setWeeklyLoading(false);
+      if (String(activeChildRef.current) === String(childId)) setWeeklyLoading(false);
     }
   }, [api]);
 

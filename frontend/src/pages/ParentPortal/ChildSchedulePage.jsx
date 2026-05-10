@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
@@ -42,19 +42,27 @@ const ChildSchedulePage = () => {
   const [child, setChild] = useState(null);
   const [viewMode, setViewMode] = useState('list');
 
+  // Stale-response guard: out-of-order responses for a previous child must
+  // not overwrite state for the currently active child.
+  const activeChildRef = useRef(null);
+  activeChildRef.current = childId;
+
   const fetchData = useCallback(async ({ silent = false } = {}) => {
     if (!hasLoadedChildren || !childId) return;
+    const requestedFor = childId;
     try {
       const [scheduleRes, childRes] = await Promise.all([
-        api.get(`/parent-portal/child/${childId}/schedule`),
-        api.get(`/parent-portal/child/${childId}`).catch(() => ({ data: null }))
+        api.get(`/parent-portal/child/${requestedFor}/schedule`),
+        api.get(`/parent-portal/child/${requestedFor}`).catch(() => ({ data: null }))
       ]);
+      if (String(activeChildRef.current) !== String(requestedFor)) return;
       setSchedule(scheduleRes.data);
       setChild(childRes.data);
     } catch (error) {
+      if (String(activeChildRef.current) !== String(requestedFor)) return;
       if (!silent) nassaqError(t('errorFetchingSchedule'));
     } finally {
-      if (!silent) setLoading(false);
+      if (!silent && String(activeChildRef.current) === String(requestedFor)) setLoading(false);
     }
   }, [childId, hasLoadedChildren, api, nassaqError, t]);
 
