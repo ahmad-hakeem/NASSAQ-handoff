@@ -49,8 +49,10 @@ const ChildDetailsPage = () => {
   // ids are rejected before any request fires.
   const { childId: routeChildId } = useParams();
   useSyncRouteChildToActive(routeChildId);
-  const { activeChildId } = useParentActiveStudent();
-  const childId = activeChildId || routeChildId;
+  const { activeChildId, hasLoadedChildren } = useParentActiveStudent();
+  // Context-only fetch id: never use the raw route param as a fetch input;
+  // it might be unauthorized. The hook above rejects bad ids and redirects.
+  const childId = activeChildId;
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -60,7 +62,10 @@ const ChildDetailsPage = () => {
   const [schedule, setSchedule] = useState(null);
 
   useEffect(() => {
-    if (!childId) return;
+    // Wait until the linked-children list resolves so we never fetch with an
+    // unverified id. If load completes with no valid active child, the
+    // route-sync hook will have already redirected away.
+    if (!hasLoadedChildren || !childId) return;
     let cancelled = false;
     // Reset to skeletons immediately on child switch so we never flash the
     // previous child's identity/data on the new one.
@@ -90,7 +95,7 @@ const ChildDetailsPage = () => {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [childId, token]);
+  }, [childId, hasLoadedChildren, token]);
 
   const getGradeColor = (percentage) => {
     if (percentage >= 90) return 'text-green-600 dark:text-green-400';

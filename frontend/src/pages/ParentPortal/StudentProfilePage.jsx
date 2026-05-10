@@ -36,8 +36,8 @@ const StudentProfilePage = () => {
   // Task #146 — read effective child id from the global context.
   const { childId: routeChildId } = useParams();
   useSyncRouteChildToActive(routeChildId);
-  const { activeChildId } = useParentActiveStudent();
-  const childId = activeChildId || routeChildId;
+  const { activeChildId, hasLoadedChildren } = useParentActiveStudent();
+  const childId = activeChildId;
   const { api } = useAuth();
   const { isRTL } = useTheme();
   const [profile, setProfile] = useState(null);
@@ -49,7 +49,7 @@ const StudentProfilePage = () => {
   const [showReports, setShowReports] = useState(false);
 
   const fetchProfile = useCallback(async () => {
-    if (!childId) return;
+    if (!hasLoadedChildren || !childId) return;
     try {
       const res = await api.get(`/parent-portal/child/${childId}/profile`);
       setProfile(res.data);
@@ -58,7 +58,7 @@ const StudentProfilePage = () => {
     } finally {
       setLoading(false);
     }
-  }, [api, childId]);
+  }, [api, childId, hasLoadedChildren]);
 
   useEffect(() => {
     // Reset on child switch so a previous profile never flashes for the new

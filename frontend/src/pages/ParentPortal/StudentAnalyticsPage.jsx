@@ -14,14 +14,14 @@ const StudentAnalyticsPage = () => {
   // Task #146 — read effective child id from the global context.
   const { childId: routeChildId } = useParams();
   useSyncRouteChildToActive(routeChildId);
-  const { activeChildId } = useParentActiveStudent();
-  const childId = activeChildId || routeChildId;
+  const { activeChildId, hasLoadedChildren } = useParentActiveStudent();
+  const childId = activeChildId;
   const { api } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!childId) return;
+    if (!hasLoadedChildren || !childId) return;
     let cancelled = false;
     setLoading(true);
     setData(null);
@@ -36,7 +36,7 @@ const StudentAnalyticsPage = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [childId, api]);
+  }, [childId, hasLoadedChildren, api]);
 
   if (loading) {
     return (

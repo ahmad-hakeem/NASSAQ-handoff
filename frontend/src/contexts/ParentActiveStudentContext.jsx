@@ -33,7 +33,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 
@@ -45,6 +45,7 @@ const EMPTY_VALUE = {
   activeChild: null,
   setActiveChildId: () => {},
   isLoading: false,
+  hasLoadedChildren: false,
   error: null,
   refetch: () => {},
 };
@@ -158,7 +159,9 @@ export const ParentActiveStudentProvider = ({ children }) => {
       }
       const exists = linkedChildren.some((c) => String(c.id) === sid);
       if (!exists) {
-        // Loaded list (possibly empty) does NOT contain this id — reject it.
+        // Loaded list does NOT contain this id — reject it cleanly.
+        // We never silently auto-heal to "first linked child" here, so the
+        // failed access attempt cannot masquerade as a successful switch.
         if (!warnedInvalidRef.current.has(sid)) {
           warnedInvalidRef.current.add(sid);
           try {
@@ -167,13 +170,12 @@ export const ParentActiveStudentProvider = ({ children }) => {
             /* alert provider missing — degrade silently */
           }
         }
-        // Loaded-empty: keep null so no child-scoped fetch fires.
-        // Loaded-non-empty: keep current valid selection or fall back to
-        // the first linked child.
+        // Preserve any previously-valid selection so the rest of the portal
+        // stays usable; otherwise stay null (no child-scoped fetch fires).
         if (prev && linkedChildren.some((c) => String(c.id) === String(prev))) {
           return prev;
         }
-        return linkedChildren[0]?.id != null ? String(linkedChildren[0].id) : null;
+        return null;
       }
       return prev === sid ? prev : sid;
     });
@@ -191,10 +193,11 @@ export const ParentActiveStudentProvider = ({ children }) => {
       activeChild,
       setActiveChildId,
       isLoading,
+      hasLoadedChildren,
       error,
       refetch: fetchChildren,
     }),
-    [linkedChildren, activeChildId, activeChild, setActiveChildId, isLoading, error, fetchChildren],
+    [linkedChildren, activeChildId, activeChild, setActiveChildId, isLoading, hasLoadedChildren, error, fetchChildren],
   );
 
   return (
@@ -215,12 +218,27 @@ export const useParentActiveStudent = () => {
  * client-side navigation between children. Provider ownership of the initial
  * deep link means this hook is a no-op on first paint and only matters for
  * subsequent in-app navigations. The provider itself rejects unknown ids.
+ *
+ * Additionally canonicalizes the URL on invalid deep links: once the linked
+ * children list has loaded, if the route's `:childId` is not authorized for
+ * this parent we replace the URL with `/parent/children` so the address bar
+ * never lingers on an unauthorized id (URL and rendered child stay in sync).
  */
 export const useSyncRouteChildToActive = (childIdFromRoute) => {
-  const { setActiveChildId } = useParentActiveStudent();
+  const { setActiveChildId, linkedChildren, hasLoadedChildren } = useParentActiveStudent();
+  const navigate = useNavigate();
   useEffect(() => {
     if (childIdFromRoute) setActiveChildId(childIdFromRoute);
   }, [childIdFromRoute, setActiveChildId]);
+  useEffect(() => {
+    if (!childIdFromRoute) return;
+    if (!hasLoadedChildren) return;
+    const ok = linkedChildren.some((c) => String(c.id) === String(childIdFromRoute));
+    if (!ok) {
+      // Replace (don't push) so back-button won't loop into the bad URL.
+      navigate('/parent/children', { replace: true });
+    }
+  }, [childIdFromRoute, hasLoadedChildren, linkedChildren, navigate]);
 };
 
 export default ParentActiveStudentCtx;

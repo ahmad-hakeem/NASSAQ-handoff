@@ -32,8 +32,9 @@ const ChildSchedulePage = () => {
   // Task #146 — fetch effective child id from global active-student context.
   const { childId: routeChildId } = useParams();
   useSyncRouteChildToActive(routeChildId);
-  const { activeChildId } = useParentActiveStudent();
-  const childId = activeChildId || routeChildId;
+  const { activeChildId, hasLoadedChildren } = useParentActiveStudent();
+  // Context-only fetch id; the hook above rejects unauthorized route ids.
+  const childId = activeChildId;
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -42,7 +43,7 @@ const ChildSchedulePage = () => {
   const [viewMode, setViewMode] = useState('list');
 
   const fetchData = useCallback(async ({ silent = false } = {}) => {
-    if (!childId) return;
+    if (!hasLoadedChildren || !childId) return;
     try {
       const [scheduleRes, childRes] = await Promise.all([
         api.get(`/parent-portal/child/${childId}/schedule`),
@@ -55,7 +56,7 @@ const ChildSchedulePage = () => {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [childId, api, nassaqError, t]);
+  }, [childId, hasLoadedChildren, api, nassaqError, t]);
 
   useEffect(() => {
     // Reset to skeleton on child switch to avoid stale identity flash.
