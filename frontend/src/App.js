@@ -18,15 +18,18 @@ function App() {
         <AuthProvider>
           <WebSocketProvider>
             <NassaqAlertProvider>
-              <ParentActiveStudentProvider>
-                <BrowserRouter>
+              <BrowserRouter>
+                {/* ParentActiveStudentProvider lives inside BrowserRouter
+                    so it can read the current URL on mount and resolve
+                    deep links before any page renders. */}
+                <ParentActiveStudentProvider>
                   <BetaBanner />
                   <GenericNameGuard>
                     <AppRoutes />
                   </GenericNameGuard>
                   <Toaster />
-                </BrowserRouter>
-              </ParentActiveStudentProvider>
+                </ParentActiveStudentProvider>
+              </BrowserRouter>
             </NassaqAlertProvider>
           </WebSocketProvider>
         </AuthProvider>
