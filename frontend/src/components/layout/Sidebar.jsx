@@ -416,12 +416,10 @@ export const Sidebar = ({ children }) => {
       // routes/components remain available for direct deep-links and future
       // reactivation, but they are intentionally hidden from the sidebar to
       // keep the parent IA simple.
-      {
-        icon: BarChart3,
-        label: t('reports'),
-        href: '/parent/reports',
-        roles: ['parent'],
-      },
+      // The standalone Reports page has been merged into the Student Profile
+      // (Reports & Statistics tab). The legacy ``/parent/reports`` route
+      // still exists but redirects to ``/parent/children`` so the parent
+      // can pick a child and open their unified profile.
       {
         icon: Settings,
         label: t('settings'),

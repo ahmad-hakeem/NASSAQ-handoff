@@ -110,7 +110,6 @@ const ChildSchedulePage = lazy(() => import("../pages/ParentPortal").then(m => (
 const ParentChildrenPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentChildrenPage })));
 const ChildBehaviorPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ChildBehaviorPage })));
 const ChildHomeworkPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ChildHomeworkPage })));
-const ParentReportsPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentReportsPage })));
 const ParentMessagesPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentMessagesPage })));
 const ParentMeetingRequestPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentMeetingRequestPage })));
 const ParentSettingsPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentSettingsPage })));
@@ -341,8 +340,12 @@ export default function AppRoutes() {
             <ParentStudentTabRedirect tab="homework" />
           </ProtectedRoute>
         } />
+        {/* Legacy standalone Reports page is consolidated into Student
+            Profile (Reports & Statistics tab). Redirect any old links /
+            notifications to the unified children hub so the parent can
+            pick a child and view the in-profile reports tab. */}
         <Route path="/parent/reports" element={
-          <ProtectedRoute allowedRoles={['parent']}><ParentReportsPage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['parent']}><Navigate to="/parent/children" replace /></ProtectedRoute>
         } />
         <Route path="/parent/messages" element={
           <ProtectedRoute allowedRoles={['parent']}><ParentMessagesPage /></ProtectedRoute>

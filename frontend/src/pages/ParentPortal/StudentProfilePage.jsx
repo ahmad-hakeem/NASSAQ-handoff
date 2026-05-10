@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import ProfileEditor from '../../components/parent/ProfileEditor';
 import AchievementsArchive from '../../components/parent/AchievementsArchive';
+import ReportsPanel from '../../components/parent/panels/ReportsPanel';
 import { Card, CardContent } from '../../components/ui/card';
 import { Skeleton } from '../../components/ui/skeleton';
-import { Edit3, Award, ChevronLeft, BarChart3, GraduationCap, Building, Heart, Eye, Wind, ShieldAlert } from 'lucide-react';
+import { Edit3, Award, ChevronLeft, BarChart3, FileText, GraduationCap, Building, Heart, Eye, Wind, ShieldAlert } from 'lucide-react';
 
 const HEALTH_LABELS = {
   asthma: { ar: 'الربو', en: 'Asthma', icon: Wind, color: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300' },
@@ -38,20 +39,24 @@ const StudentProfilePage = () => {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
+  // Reports content fetches its own data; mount it only when the parent
+  // opens the Reports section to keep the initial profile load light.
+  const [showReports, setShowReports] = useState(false);
+
+  const fetchProfile = useCallback(async () => {
+    try {
+      const res = await api.get(`/parent-portal/child/${childId}/profile`);
+      setProfile(res.data);
+    } catch {
+      setProfile(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [api, childId]);
 
   useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const res = await api.get(`/parent-portal/child/${childId}/profile`);
-        setProfile(res.data);
-      } catch {
-        setProfile(null);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchProfile();
-  }, [childId, api]);
+  }, [fetchProfile]);
 
   if (loading) {
     return (
@@ -112,14 +117,30 @@ const StudentProfilePage = () => {
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={() => { setShowAchievements(!showAchievements); if (!showAchievements) setEditing(false); }}
+                  onClick={() => {
+                    setShowReports((v) => !v);
+                    if (!showReports) { setEditing(false); setShowAchievements(false); }
+                  }}
+                  className={`p-2 rounded-lg transition-colors ${showReports ? 'bg-white/30' : 'bg-white/20 hover:bg-white/30'}`}
+                  title={isRTL ? 'التقارير والإحصائيات' : 'Reports & Statistics'}
+                >
+                  <FileText className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAchievements(!showAchievements);
+                    if (!showAchievements) { setEditing(false); setShowReports(false); }
+                  }}
                   className={`p-2 rounded-lg transition-colors ${showAchievements ? 'bg-white/30' : 'bg-white/20 hover:bg-white/30'}`}
                   title={isRTL ? 'إنجازاتي' : 'My Achievements'}
                 >
                   <Award className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => { setEditing(!editing); if (!editing) setShowAchievements(false); }}
+                  onClick={() => {
+                    setEditing(!editing);
+                    if (!editing) { setShowAchievements(false); setShowReports(false); }
+                  }}
                   className={`p-2 rounded-lg transition-colors ${editing ? 'bg-white/30' : 'bg-white/20 hover:bg-white/30'}`}
                   title={isRTL ? 'تعديل الملف' : 'Edit Profile'}
                 >
@@ -219,6 +240,23 @@ const StudentProfilePage = () => {
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="p-4">
               <AchievementsArchive childId={childId} />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Consolidated Reports tab — replaces the standalone /parent/reports
+            page. Data is fetched inside ReportsPanel only when this section
+            is opened, so the initial profile load stays light. */}
+        {showReports && (
+          <Card className="rounded-2xl border-0 shadow-sm">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-brand-navy dark:text-brand-turquoise" />
+                <h2 className="text-base font-bold font-cairo text-foreground">
+                  {isRTL ? 'التقارير والإحصائيات' : 'Reports & Statistics'}
+                </h2>
+              </div>
+              <ReportsPanel childId={childId} />
             </CardContent>
           </Card>
         )}
