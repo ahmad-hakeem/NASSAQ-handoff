@@ -81,6 +81,7 @@ export const ParentActiveStudentProvider = ({ children }) => {
   const [linkedChildren, setLinkedChildren] = useState([]);
   const [activeChildId, setActiveChildIdState] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasLoadedChildren, setHasLoadedChildren] = useState(false);
   const [error, setError] = useState(null);
   const fetchedForUserRef = useRef(null);
   // Snapshot the URL child id at the moment the provider mounts / a parent
@@ -113,6 +114,7 @@ export const ParentActiveStudentProvider = ({ children }) => {
       setActiveChildIdState(null);
       setError(e);
     } finally {
+      setHasLoadedChildren(true);
       setIsLoading(false);
     }
   }, [api, isParent]);
@@ -125,6 +127,7 @@ export const ParentActiveStudentProvider = ({ children }) => {
       warnedInvalidRef.current = new Set();
       setLinkedChildren([]);
       setActiveChildIdState(null);
+      setHasLoadedChildren(false);
       setError(null);
       return;
     }
@@ -147,13 +150,15 @@ export const ParentActiveStudentProvider = ({ children }) => {
     if (id == null) return;
     const sid = String(id);
     setActiveChildIdState((prev) => {
-      // Allow as-is while children are still loading; the post-fetch
-      // initializer above will re-validate against the resolved list.
-      if (linkedChildren.length === 0) {
+      // Children list not yet loaded — accept tentatively; the post-fetch
+      // initializer re-validates against the resolved list (so a deep link
+      // to an unauthorized id never survives the fetch).
+      if (!hasLoadedChildren) {
         return prev === sid ? prev : sid;
       }
       const exists = linkedChildren.some((c) => String(c.id) === sid);
       if (!exists) {
+        // Loaded list (possibly empty) does NOT contain this id — reject it.
         if (!warnedInvalidRef.current.has(sid)) {
           warnedInvalidRef.current.add(sid);
           try {
@@ -162,8 +167,9 @@ export const ParentActiveStudentProvider = ({ children }) => {
             /* alert provider missing — degrade silently */
           }
         }
-        // Fall back to the first linked child (or current selection if it's
-        // still valid) to keep the rest of the portal in a sane state.
+        // Loaded-empty: keep null so no child-scoped fetch fires.
+        // Loaded-non-empty: keep current valid selection or fall back to
+        // the first linked child.
         if (prev && linkedChildren.some((c) => String(c.id) === String(prev))) {
           return prev;
         }
@@ -171,7 +177,7 @@ export const ParentActiveStudentProvider = ({ children }) => {
       }
       return prev === sid ? prev : sid;
     });
-  }, [linkedChildren, nassaqError]);
+  }, [linkedChildren, hasLoadedChildren, nassaqError]);
 
   const activeChild = useMemo(
     () => linkedChildren.find((c) => String(c.id) === String(activeChildId)) || null,
