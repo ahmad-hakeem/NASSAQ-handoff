@@ -1,22 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Skeleton } from '../../components/ui/skeleton';
-import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
+import { NotificationsPage } from '../NotificationsPage';
+import ParentAbsenceExcusePage from './ParentAbsenceExcusePage';
 import {
-  MessageSquare, FileText, Inbox, Send, Upload, AlertCircle,
-  CheckCircle, Clock, Lock, ArrowUpRight, ArrowDownLeft, Loader2
+  MessageSquare, FileText, Inbox, Send, AlertCircle,
+  CheckCircle, Clock, Lock, ArrowUpRight, ArrowDownLeft, Loader2,
+  Bell
 } from 'lucide-react';
+
+const OUTER_TABS = ['messages', 'notifications', 'excuses'];
 
 const ParentCommunicationCenter = () => {
   const { t } = useTranslation();
   const { api } = useAuth();
   const { isRTL } = useTheme();
   const { nassaqError } = useNassaqAlert();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const outerTab = OUTER_TABS.includes(tabParam) ? tabParam : 'messages';
+  const setOuterTab = (id) => {
+    const next = new URLSearchParams(searchParams);
+    if (id === 'messages') next.delete('tab');
+    else next.set('tab', id);
+    setSearchParams(next, { replace: true });
+  };
+
   const [activeTab, setActiveTab] = useState('send');
   const [requestsCount, setRequestsCount] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -28,20 +43,16 @@ const ParentCommunicationCenter = () => {
   const [sending, setSending] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  const [excuseDesc, setExcuseDesc] = useState('');
-  const [excuseFile, setExcuseFile] = useState(null);
-  const [excuseFileName, setExcuseFileName] = useState('');
-  const [excuseDate, setExcuseDate] = useState(new Date().toISOString().split('T')[0]);
-  const [excuseChildId, setExcuseChildId] = useState('');
-  const [sendingExcuse, setSendingExcuse] = useState(false);
-  const [children, setChildren] = useState([]);
-  const fileInputRef = React.useRef(null);
-
   const TABS = [
     { id: 'send', label: t('sendMessage'), icon: Send },
-    { id: 'excuse', label: t('medicalExcuse'), icon: FileText },
     { id: 'inbox', label: t('conversationInbox'), icon: Inbox },
   ];
+
+  const OUTER_TAB_CONFIG = useMemo(() => ([
+    { id: 'messages', label: t('messages') || (isRTL ? 'الرسائل' : 'Messages'), icon: MessageSquare },
+    { id: 'notifications', label: t('notifications') || (isRTL ? 'الإشعارات' : 'Notifications'), icon: Bell },
+    { id: 'excuses', label: t('absenceExcuse') || (isRTL ? 'عذر غياب' : 'Absence Excuse'), icon: FileText },
+  ]), [t, isRTL]);
 
   const MESSAGE_TYPES = [
     { id: 'note', label: t('messageTypeNote') },
@@ -57,16 +68,12 @@ const ParentCommunicationCenter = () => {
   useEffect(() => {
     const init = async () => {
       try {
-        const [countRes, msgRes, childRes] = await Promise.all([
+        const [countRes, msgRes] = await Promise.all([
           api.get('/parent-portal/open-requests-count'),
           api.get('/parent-portal/messages'),
-          api.get('/parent-portal/children'),
         ]);
         setRequestsCount(countRes.data);
         setMessages(msgRes.data?.messages || []);
-        const childList = childRes.data?.children || [];
-        setChildren(childList);
-        if (childList.length > 0) setExcuseChildId(childList[0].id);
       } catch {
         nassaqError(t('errorFetchingData'));
       } finally {
@@ -121,65 +128,6 @@ const ParentCommunicationCenter = () => {
     }
   };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setExcuseFile(file);
-      setExcuseFileName(file.name);
-    }
-  };
-
-  const clearFile = () => {
-    setExcuseFile(null);
-    setExcuseFileName('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleSendExcuse = async () => {
-    if (!excuseDesc.trim() || !excuseChildId) return;
-    if (!canSubmit) {
-      nassaqError(t('maxOpenRequestsError'));
-      return;
-    }
-    setSendingExcuse(true);
-    try {
-      let attachmentUrl = undefined;
-      let attachmentName = undefined;
-
-      if (excuseFile) {
-        const formData = new FormData();
-        formData.append('file', excuseFile);
-        const uploadRes = await api.post('/parent-portal/upload-attachment', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        attachmentUrl = uploadRes.data?.attachment_url;
-        attachmentName = uploadRes.data?.attachment_name || excuseFileName;
-      }
-
-      await api.post('/parent-portal/absence-excuse', {
-        child_id: excuseChildId,
-        reason: excuseDesc.trim(),
-        absence_date: excuseDate || new Date().toISOString().split('T')[0],
-        attachment_url: attachmentUrl,
-        attachment_name: attachmentName,
-      });
-      toast.success(t('excuseSentSuccess'));
-      setExcuseDesc('');
-      clearFile();
-      setExcuseDate(new Date().toISOString().split('T')[0]);
-      await refreshRequestCount();
-    } catch (err) {
-      if (err.response?.status === 429) {
-        nassaqError(t('maxOpenRequestsError'));
-        await refreshRequestCount();
-      } else {
-        nassaqError(t('errorSendingMessage'));
-      }
-    } finally {
-      setSendingExcuse(false);
-    }
-  };
-
   const getStatusBadge = (msg) => {
     if (msg.status === 'replied') {
       return { label: t('replied'), className: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300' };
@@ -205,9 +153,11 @@ const ParentCommunicationCenter = () => {
     );
   }
 
+  const messagesUnread = messages.filter(m => !m.read_status && !m.is_sent).length;
+
   return (
     <PortalLayout portalType="parent">
-      <div className="p-4 space-y-4 max-w-lg mx-auto" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="p-4 space-y-4 max-w-5xl mx-auto" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="flex items-center gap-3 mb-1">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-navy to-brand-purple flex items-center justify-center">
             <MessageSquare className="w-5 h-5 text-white" />
@@ -222,6 +172,42 @@ const ParentCommunicationCenter = () => {
           </div>
         </div>
 
+        <div
+          role="tablist"
+          aria-label={t('communicationCenter')}
+          className="flex gap-2 overflow-x-auto pb-1 border-b border-border dark:border-gray-700"
+        >
+          {OUTER_TAB_CONFIG.map(tab => {
+            const Icon = tab.icon;
+            const isActive = outerTab === tab.id;
+            const badge = tab.id === 'messages' && messagesUnread > 0 ? messagesUnread : 0;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setOuterTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-medium whitespace-nowrap transition-all border-b-2 ${
+                  isActive
+                    ? 'border-brand-navy text-brand-navy dark:text-brand-turquoise bg-brand-navy/5 dark:bg-brand-navy/20'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {tab.label}
+                {badge > 0 && (
+                  <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold bg-red-500 text-white flex items-center justify-center">
+                    {badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {outerTab === 'messages' && (
+        <div className="space-y-4 max-w-lg mx-auto">
         {!canSubmit && (
           <div className="flex items-start gap-3 p-3.5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm">
             <Lock className="w-5 h-5 shrink-0 mt-0.5" />
@@ -348,108 +334,6 @@ const ParentCommunicationCenter = () => {
           </>
         )}
 
-        {activeTab === 'excuse' && (
-          <Card className="rounded-2xl border-0 shadow-sm">
-            <div className="h-1 bg-gradient-to-r from-brand-navy to-brand-purple rounded-t-2xl" />
-            <CardContent className="p-4 space-y-4">
-              {children.length > 1 && (
-                <div>
-                  <p className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-2 font-cairo">
-                    {t('selectStudent')}
-                  </p>
-                  <select
-                    value={excuseChildId}
-                    onChange={e => setExcuseChildId(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-border dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-foreground dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-navy"
-                  >
-                    {children.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.full_name || c.name}
-                        {c.class_name ? ` (${c.class_name})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div>
-                <p className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-2 font-cairo">
-                  {t('absenceDateLabel')}
-                </p>
-                <input
-                  type="date"
-                  value={excuseDate}
-                  onChange={e => setExcuseDate(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-border dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-foreground dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-navy"
-                />
-              </div>
-
-              <div>
-                <p className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-2 font-cairo">
-                  {t('medicalExcuse')}
-                </p>
-                <textarea
-                  value={excuseDesc}
-                  onChange={e => setExcuseDesc(e.target.value)}
-                  placeholder={t('medicalExcuseDesc')}
-                  rows={3}
-                  className="w-full px-3 py-2.5 rounded-xl border border-border dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-foreground dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-navy resize-none placeholder:text-muted-foreground"
-                />
-              </div>
-
-              <div>
-                <p className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-2 font-cairo flex items-center gap-1.5">
-                  <Upload className="w-3.5 h-3.5" />
-                  {t('attachmentOptional')}
-                </p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                  onChange={handleFileChange}
-                  className="hidden"
-                  id="excuse-file-input"
-                />
-                {excuseFileName ? (
-                  <div className="flex items-center gap-2 p-3 rounded-xl border border-brand-navy/20 dark:border-brand-navy/40 bg-brand-navy/5 dark:bg-brand-navy/20">
-                    <FileText className="w-4 h-4 text-brand-navy dark:text-brand-navy/70 shrink-0" />
-                    <span className="text-sm text-brand-navy dark:text-brand-navy/80 truncate flex-1">{excuseFileName}</span>
-                    <button
-                      type="button"
-                      onClick={clearFile}
-                      className="text-muted-foreground hover:text-red-500 transition-colors shrink-0"
-                    >
-                      <AlertCircle className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-border dark:border-gray-700 hover:border-brand-navy/30 dark:hover:border-brand-navy/40 text-muted-foreground dark:text-muted-foreground hover:text-brand-navy dark:hover:text-brand-navy/70 transition-all"
-                  >
-                    <Upload className="w-4 h-4" />
-                    <span className="text-sm">{t('attachmentLink')}</span>
-                  </button>
-                )}
-              </div>
-
-              <button
-                onClick={handleSendExcuse}
-                disabled={!excuseDesc.trim() || !excuseChildId || sendingExcuse || !canSubmit}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-brand-navy to-brand-purple hover:from-brand-navy-dark hover:to-brand-purple text-white text-sm font-medium font-cairo disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-brand-navy/15 dark:shadow-brand-navy/30"
-              >
-                {sendingExcuse ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Upload className="w-4 h-4" />
-                )}
-                {sendingExcuse ? t('sendingExcuse') : t('sendExcuse')}
-              </button>
-            </CardContent>
-          </Card>
-        )}
-
         {activeTab === 'inbox' && (
           <Card className="rounded-2xl border-0 shadow-sm">
             <div className="h-1 bg-gradient-to-r from-brand-navy to-brand-purple rounded-t-2xl" />
@@ -529,6 +413,18 @@ const ParentCommunicationCenter = () => {
               )}
             </CardContent>
           </Card>
+        )}
+        </div>
+        )}
+
+        {outerTab === 'notifications' && (
+          <div className="-mx-1">
+            <NotificationsPage embedded />
+          </div>
+        )}
+
+        {outerTab === 'excuses' && (
+          <ParentAbsenceExcusePage embedded />
         )}
       </div>
     </PortalLayout>

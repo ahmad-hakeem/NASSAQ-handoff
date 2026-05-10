@@ -21,7 +21,7 @@ const STATUS_CONFIG = {
   rejected: { label: 'مرفوض', labelEn: 'Rejected', color: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-900/40', icon: XCircle },
 };
 
-const ParentAbsenceExcusePage = () => {
+const ParentAbsenceExcusePage = ({ embedded = false }) => {
   const { t } = useTranslation();
   const { token, user, api } = useAuth();
   const { isRTL } = useTheme();
@@ -95,18 +95,20 @@ const ParentAbsenceExcusePage = () => {
   };
 
   if (loading) {
-    return (
-      <PortalLayout portalType="parent">
-        <div className="p-4 space-y-4">
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 rounded-2xl" />)}
-        </div>
-      </PortalLayout>
+    const skeleton = (
+      <div className="p-4 space-y-4">
+        {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 rounded-2xl" />)}
+      </div>
     );
+    if (embedded) return skeleton;
+    return <PortalLayout portalType="parent">{skeleton}</PortalLayout>;
   }
 
-  return (
-    <PortalLayout portalType="parent">
-      <div className="p-4 sm:p-6 space-y-6 max-w-3xl mx-auto" dir={isRTL ? 'rtl' : 'ltr'}>
+  const body = (
+    <div
+      className={`${embedded ? 'space-y-6' : 'p-4 sm:p-6 space-y-6 max-w-3xl mx-auto'}`}
+      dir={isRTL ? 'rtl' : 'ltr'}
+    >
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground dark:text-gray-100 font-cairo flex items-center gap-2">
@@ -292,8 +294,10 @@ const ParentAbsenceExcusePage = () => {
           )}
         </div>
       </div>
-    </PortalLayout>
   );
+
+  if (embedded) return body;
+  return <PortalLayout portalType="parent">{body}</PortalLayout>;
 };
 
 export default ParentAbsenceExcusePage;

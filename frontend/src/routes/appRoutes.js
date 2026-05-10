@@ -104,7 +104,6 @@ const ChildBehaviorPage = lazy(() => import("../pages/ParentPortal").then(m => (
 const ChildHomeworkPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ChildHomeworkPage })));
 const ParentReportsPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentReportsPage })));
 const ParentMessagesPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentMessagesPage })));
-const ParentAbsenceExcusePage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentAbsenceExcusePage })));
 const ParentMeetingRequestPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentMeetingRequestPage })));
 const ParentSettingsPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentSettingsPage })));
 const ParentCommunicationCenter = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentCommunicationCenter })));
@@ -328,9 +327,13 @@ export default function AppRoutes() {
         <Route path="/parent/messages" element={
           <ProtectedRoute allowedRoles={['parent']}><ParentMessagesPage /></ProtectedRoute>
         } />
+        {/* Absence Excuse is now a tab inside the Communication Center.
+            Redirect old direct links so existing notifications/CTAs keep working. */}
         <Route path="/parent/absence-excuse" element={
-          <ProtectedRoute allowedRoles={['parent']}><ParentAbsenceExcusePage /></ProtectedRoute>
+          <Navigate to="/parent/communication?tab=excuses" replace />
         } />
+        {/* Meeting Request is hidden from the parent UI for now but the route
+            and component implementation are preserved for future reactivation. */}
         <Route path="/parent/meeting-request" element={
           <ProtectedRoute allowedRoles={['parent']}><ParentMeetingRequestPage /></ProtectedRoute>
         } />

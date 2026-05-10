@@ -411,28 +411,15 @@ export const Sidebar = ({ children }) => {
         href: '/parent/communication',
         roles: ['parent'],
       },
-      {
-        icon: FileText,
-        label: t('absenceExcuse'),
-        href: '/parent/absence-excuse',
-        roles: ['parent'],
-      },
-      {
-        icon: CalendarCheck,
-        label: t('meetingRequest'),
-        href: '/parent/meeting-request',
-        roles: ['parent'],
-      },
+      // Absence Excuse, Meeting Request and Notifications are now consolidated
+      // inside the Communication Center for parents (tabs). The underlying
+      // routes/components remain available for direct deep-links and future
+      // reactivation, but they are intentionally hidden from the sidebar to
+      // keep the parent IA simple.
       {
         icon: BarChart3,
         label: t('reports'),
         href: '/parent/reports',
-        roles: ['parent'],
-      },
-      {
-        icon: Bell,
-        label: t('notifications'),
-        href: '/notifications',
         roles: ['parent'],
       },
       {
