@@ -139,6 +139,53 @@ async def test_independent_teacher_no_workspace_returns_403_safe_arabic(
         assert "Exception" not in r.text
 
 
+@pytest.mark.asyncio
+async def test_school_teacher_missing_identity_fields_returns_403(
+    client, tenant_a
+):
+    """A school-teacher token whose `teacher_id` or `tenant_id` cannot be
+    resolved must fail closed with safe Arabic 403 — never silently
+    degrade into the empty-payload path, so that real ACL/provisioning
+    failures stay visible in monitoring."""
+    # Case 1: teacher_id missing from token entirely.
+    uid_no_tid = str(uuid.uuid4())
+    await gd_insert(db.session, "users", {
+        "id": uid_no_tid, "role": UserRole.TEACHER.value,
+        "tenant_id": tenant_a, "email": f"u-{uid_no_tid}@t.test",
+        "full_name": "NoTeacherId", "is_active": True, "password_hash": "x",
+    })
+    headers_no_tid = {"Authorization": "Bearer " + create_access_token({
+        "sub": uid_no_tid, "role": UserRole.TEACHER.value,
+        "tenant_id": tenant_a,
+        # teacher_id intentionally omitted
+    })}
+
+    # NOTE: missing `tenant_id` on the JWT alone is NOT a resolution failure
+    # — `get_current_user` backfills it from the persisted user record. The
+    # only resolver-level identity failure for school teachers is a missing
+    # `teacher_id`, which the user table does not silently backfill.
+
+    for label, headers in (("missing-teacher-id", headers_no_tid),):
+        for path in AI_INSIGHTS_ENDPOINTS:
+            r = await client.get(path, headers=headers)
+            assert r.status_code == 403, (
+                f"{label} {path} -> {r.status_code} {r.text} "
+                f"(expected fail-closed 403)"
+            )
+            body = r.json() if r.headers.get("content-type", "").startswith(
+                "application/json") else {}
+            message = None
+            if isinstance(body, dict):
+                err = body.get("error")
+                if isinstance(err, dict):
+                    message = err.get("message")
+                if message is None:
+                    message = body.get("detail")
+            assert message == SAFE_AR_DENIED, (
+                f"{label} {path} returned wrong error body: {body!r}"
+            )
+
+
 # ------------------------------------------------------------------ (b)
 @pytest.mark.asyncio
 async def test_independent_teacher_empty_workspace_schema_parity(

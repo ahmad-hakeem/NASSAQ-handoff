@@ -997,7 +997,12 @@ async def resolve_ai_insights_scope(current_user: dict):
         teacher_id = current_user.get("teacher_id")
         school_id = current_user.get("tenant_id")
         if not teacher_id or not school_id:
-            return NO_AUTHORIZED_SCOPE
+            # Authorization-resolution failure: a school teacher with no
+            # teacher_id or tenant_id on the token cannot have their scope
+            # determined. Fail closed with safe Arabic 403 instead of
+            # masking the failure as an empty 200 (which would be
+            # indistinguishable from "authorized but no records").
+            raise HTTPException(403, _AI_INSIGHTS_SCOPE_DENIED_AR)
 
         assignments = await gd_find(db.session, "teacher_assignments", {
             "teacher_id": teacher_id, "is_active": True,
