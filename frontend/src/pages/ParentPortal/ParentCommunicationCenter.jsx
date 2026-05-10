@@ -182,15 +182,15 @@ const ParentCommunicationCenter = () => {
 
   const getStatusBadge = (msg) => {
     if (msg.status === 'replied') {
-      return { label: t('replied'), className: 'bg-emerald-100 text-emerald-700' };
+      return { label: t('replied'), className: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300' };
     }
     if (msg.status === 'pending' || msg.status === 'sent' || msg.status === 'open') {
-      return { label: t('underReview'), className: 'bg-amber-100 text-amber-700' };
+      return { label: t('underReview'), className: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300' };
     }
     if (msg.status === 'closed') {
-      return { label: t('closed'), className: 'bg-gray-100 text-gray-600' };
+      return { label: t('closed'), className: 'bg-muted/40 text-muted-foreground' };
     }
-    return { label: msg.status || t('sentStatus'), className: 'bg-gray-100 text-gray-600' };
+    return { label: msg.status || t('sentStatus'), className: 'bg-muted/40 text-muted-foreground' };
   };
 
   if (loading) {
@@ -213,10 +213,10 @@ const ParentCommunicationCenter = () => {
             <MessageSquare className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100 font-cairo">
+            <h1 className="text-lg font-bold text-foreground dark:text-gray-100 font-cairo">
               {t('communicationCenter')}
             </h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-muted-foreground dark:text-muted-foreground">
               {t('communicationCenterDesc')}
             </p>
           </div>
@@ -252,14 +252,14 @@ const ParentCommunicationCenter = () => {
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
                   isActive
                     ? 'bg-brand-navy text-white shadow-md shadow-brand-navy/15 dark:shadow-brand-navy/30'
-                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-brand-navy/30 dark:hover:border-brand-navy/40'
+                    : 'bg-white dark:bg-gray-800 text-muted-foreground dark:text-muted-foreground/50 border border-border dark:border-gray-700 hover:border-brand-navy/30 dark:hover:border-brand-navy/40'
                 }`}
               >
                 <Icon className="w-4 h-4" />
                 {tab.label}
                 {unreadCount > 0 && (
                   <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold ${
-                    isActive ? 'bg-white text-brand-navy' : 'bg-red-500 text-white'
+                    isActive ? 'bg-white dark:bg-card text-brand-navy' : 'bg-red-500 text-white'
                   }`}>
                     {unreadCount}
                   </span>
@@ -282,7 +282,7 @@ const ParentCommunicationCenter = () => {
               <div className="h-1 bg-gradient-to-r from-brand-navy to-brand-purple rounded-t-2xl" />
               <CardContent className="p-4 space-y-4">
                 <div>
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 font-cairo">
+                  <p className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-2 font-cairo">
                     {t('messageTypeLabel')}
                   </p>
                   <div className="flex gap-2">
@@ -293,7 +293,7 @@ const ParentCommunicationCenter = () => {
                         className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${
                           msgType === mt.id
                             ? 'bg-brand-navy/15 dark:bg-brand-navy/20 text-brand-navy dark:text-brand-navy/80 border border-brand-navy/30 dark:border-brand-navy/40 shadow-sm'
-                            : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-transparent hover:border-gray-200 dark:hover:border-gray-600'
+                            : 'bg-muted/40 dark:bg-gray-800 text-muted-foreground dark:text-muted-foreground border border-transparent hover:border-border dark:hover:border-gray-600'
                         }`}
                       >
                         {mt.label}
@@ -303,7 +303,7 @@ const ParentCommunicationCenter = () => {
                 </div>
 
                 <div>
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 font-cairo">
+                  <p className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-2 font-cairo">
                     {t('recipientLabel')}
                   </p>
                   <div className="flex gap-2">
@@ -314,7 +314,7 @@ const ParentCommunicationCenter = () => {
                         className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${
                           recipient === rt.id
                             ? 'bg-brand-navy/15 dark:bg-brand-navy/20 text-brand-navy dark:text-brand-navy/80 border border-brand-navy/30 dark:border-brand-navy/40 shadow-sm'
-                            : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-transparent hover:border-gray-200 dark:hover:border-gray-600'
+                            : 'bg-muted/40 dark:bg-gray-800 text-muted-foreground dark:text-muted-foreground border border-transparent hover:border-border dark:hover:border-gray-600'
                         }`}
                       >
                         {rt.label}
@@ -328,7 +328,7 @@ const ParentCommunicationCenter = () => {
                   onChange={e => setMsgText(e.target.value)}
                   placeholder={t('writeYourMessageHere')}
                   rows={4}
-                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-navy resize-none placeholder:text-gray-400"
+                  className="w-full px-3 py-2.5 rounded-xl border border-border dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-foreground dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-navy resize-none placeholder:text-muted-foreground"
                 />
 
                 <button
@@ -354,13 +354,13 @@ const ParentCommunicationCenter = () => {
             <CardContent className="p-4 space-y-4">
               {children.length > 1 && (
                 <div>
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 font-cairo">
+                  <p className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-2 font-cairo">
                     {t('selectStudent')}
                   </p>
                   <select
                     value={excuseChildId}
                     onChange={e => setExcuseChildId(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-navy"
+                    className="w-full px-3 py-2.5 rounded-xl border border-border dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-foreground dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-navy"
                   >
                     {children.map(c => (
                       <option key={c.id} value={c.id}>
@@ -373,19 +373,19 @@ const ParentCommunicationCenter = () => {
               )}
 
               <div>
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 font-cairo">
+                <p className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-2 font-cairo">
                   {t('absenceDateLabel')}
                 </p>
                 <input
                   type="date"
                   value={excuseDate}
                   onChange={e => setExcuseDate(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-navy"
+                  className="w-full px-3 py-2.5 rounded-xl border border-border dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-foreground dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-navy"
                 />
               </div>
 
               <div>
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 font-cairo">
+                <p className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-2 font-cairo">
                   {t('medicalExcuse')}
                 </p>
                 <textarea
@@ -393,12 +393,12 @@ const ParentCommunicationCenter = () => {
                   onChange={e => setExcuseDesc(e.target.value)}
                   placeholder={t('medicalExcuseDesc')}
                   rows={3}
-                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-navy resize-none placeholder:text-gray-400"
+                  className="w-full px-3 py-2.5 rounded-xl border border-border dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-foreground dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-navy resize-none placeholder:text-muted-foreground"
                 />
               </div>
 
               <div>
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 font-cairo flex items-center gap-1.5">
+                <p className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-2 font-cairo flex items-center gap-1.5">
                   <Upload className="w-3.5 h-3.5" />
                   {t('attachmentOptional')}
                 </p>
@@ -417,7 +417,7 @@ const ParentCommunicationCenter = () => {
                     <button
                       type="button"
                       onClick={clearFile}
-                      className="text-gray-400 hover:text-red-500 transition-colors shrink-0"
+                      className="text-muted-foreground hover:text-red-500 transition-colors shrink-0"
                     >
                       <AlertCircle className="w-4 h-4" />
                     </button>
@@ -426,7 +426,7 @@ const ParentCommunicationCenter = () => {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 hover:border-brand-navy/30 dark:hover:border-brand-navy/40 text-gray-500 dark:text-gray-400 hover:text-brand-navy dark:hover:text-brand-navy/70 transition-all"
+                    className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-border dark:border-gray-700 hover:border-brand-navy/30 dark:hover:border-brand-navy/40 text-muted-foreground dark:text-muted-foreground hover:text-brand-navy dark:hover:text-brand-navy/70 transition-all"
                   >
                     <Upload className="w-4 h-4" />
                     <span className="text-sm">{t('attachmentLink')}</span>
@@ -456,8 +456,8 @@ const ParentCommunicationCenter = () => {
             <CardContent className="p-4">
               {messages.length === 0 ? (
                 <div className="text-center py-10">
-                  <Inbox className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-                  <p className="text-sm text-gray-500 dark:text-gray-400 font-cairo">
+                  <Inbox className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50 dark:text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground dark:text-muted-foreground font-cairo">
                     {t('noConversations')}
                   </p>
                 </div>
@@ -471,7 +471,7 @@ const ParentCommunicationCenter = () => {
                         key={msg.id || i}
                         className={`p-3.5 rounded-xl border transition-all ${
                           isRead
-                            ? 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700'
+                            ? 'bg-white dark:bg-gray-800 border-border dark:border-gray-700'
                             : 'bg-brand-navy/5 dark:bg-brand-navy/20 border-brand-navy/20 dark:border-brand-navy/30'
                         }`}
                       >
@@ -489,7 +489,7 @@ const ParentCommunicationCenter = () => {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between mb-1">
-                              <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+                              <p className="text-sm font-medium text-foreground dark:text-gray-200 truncate">
                                 {msg.is_sent
                                   ? t('toRecipient').replace('{name}', msg.receiver_name || t('recipientAdmin'))
                                   : t('fromSender').replace('{name}', msg.sender_name || '')}
@@ -502,11 +502,11 @@ const ParentCommunicationCenter = () => {
                                 )}
                               </div>
                             </div>
-                            <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2 mb-1.5">
+                            <p className="text-sm text-foreground dark:text-muted-foreground/50 line-clamp-2 mb-1.5">
                               {msg.content || msg.message || msg.subject}
                             </p>
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-1 text-xs text-gray-400">
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <Clock className="h-3 w-3" />
                                 <span>
                                   {msg.created_at

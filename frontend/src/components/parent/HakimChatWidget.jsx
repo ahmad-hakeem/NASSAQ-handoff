@@ -43,10 +43,10 @@ const MarkdownMessage = ({ content }) => {
     h1: ({ children }) => <h1 className="text-lg font-bold mt-3 mb-2 text-foreground font-cairo">{children}</h1>,
     h2: ({ children }) => <h2 className="text-base font-bold mt-2.5 mb-1.5 text-foreground font-cairo">{children}</h2>,
     h3: ({ children }) => <h3 className="text-[15px] font-semibold mt-2 mb-1 text-foreground/90 font-cairo">{children}</h3>,
-    p: ({ children }) => <p className="text-[15px] leading-relaxed mb-2 last:mb-0 text-gray-800 dark:text-gray-200">{children}</p>,
+    p: ({ children }) => <p className="text-[15px] leading-relaxed mb-2 last:mb-0 text-foreground dark:text-gray-200">{children}</p>,
     ul: ({ children }) => <ul className="text-[15px] list-disc list-inside space-y-1 mb-2 ms-1">{children}</ul>,
     ol: ({ children }) => <ol className="text-[15px] list-decimal list-inside space-y-1 mb-2 ms-1">{children}</ol>,
-    li: ({ children }) => <li className="text-[15px] leading-relaxed text-gray-700 dark:text-gray-300">{children}</li>,
+    li: ({ children }) => <li className="text-[15px] leading-relaxed text-foreground dark:text-muted-foreground/50">{children}</li>,
     strong: ({ children }) => <strong className="font-bold text-foreground">{children}</strong>,
     code: ({ children }) => <code className="bg-muted/60 text-sm px-1.5 py-0.5 rounded font-mono">{children}</code>,
     blockquote: ({ children }) => (

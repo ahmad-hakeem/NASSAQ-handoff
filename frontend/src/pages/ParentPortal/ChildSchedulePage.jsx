@@ -100,16 +100,16 @@ const ChildSchedulePage = () => {
               <Printer className="h-4 w-4" />
               {t('print')}
             </Button>
-            <div className="flex bg-gray-100 rounded-lg p-0.5 print:hidden">
+            <div className="flex bg-muted/40 rounded-lg p-0.5 print:hidden">
               <button
                 onClick={() => setViewMode('list')}
-                className={`px-3 py-1 text-xs rounded-md transition ${viewMode === 'list' ? 'bg-white shadow-sm font-medium' : 'text-gray-500'}`}
+                className={`px-3 py-1 text-xs rounded-md transition ${viewMode === 'list' ? 'bg-white dark:bg-card shadow-sm font-medium' : 'text-muted-foreground'}`}
               >
                 {t('list')}
               </button>
               <button
                 onClick={() => setViewMode('grid')}
-                className={`px-3 py-1 text-xs rounded-md transition ${viewMode === 'grid' ? 'bg-white shadow-sm font-medium' : 'text-gray-500'}`}
+                className={`px-3 py-1 text-xs rounded-md transition ${viewMode === 'grid' ? 'bg-white dark:bg-card shadow-sm font-medium' : 'text-muted-foreground'}`}
               >
                 {t('grid')}
               </button>
@@ -120,8 +120,8 @@ const ChildSchedulePage = () => {
         {days.length === 0 ? (
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="py-16 text-center">
-              <Calendar className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="font-bold font-cairo text-lg text-gray-700 mb-2">
+              <Calendar className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
+              <h3 className="font-bold font-cairo text-lg text-foreground mb-2">
                 {t('noScheduleAvailable')}
               </h3>
               <p className="text-sm text-muted-foreground">
@@ -149,7 +149,7 @@ const ChildSchedulePage = () => {
                     {entries.length > 0 ? (
                       <div className="space-y-2">
                         {entries.map((entry, idx) => (
-                          <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition">
+                          <div key={idx} className="flex items-center gap-3 p-3 bg-muted/40 rounded-xl hover:bg-muted/40 transition">
                             <div className="flex flex-col items-center justify-center min-w-[56px] h-12 rounded-lg bg-brand-navy/15">
                               <span className="text-[10px] font-bold text-brand-navy">{entry.start_time}</span>
                               <span className="text-[9px] text-brand-navy/60">{entry.end_time}</span>
@@ -160,7 +160,7 @@ const ChildSchedulePage = () => {
                                 <p className="font-semibold text-sm truncate">{entry.subject}</p>
                               </div>
                               <div className="flex items-center gap-2 mt-0.5">
-                                <User className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                                <User className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                                 <p className="text-xs text-muted-foreground truncate">{entry.teacher}</p>
                               </div>
                             </div>
@@ -190,7 +190,7 @@ const ChildSchedulePage = () => {
                   <table className="w-full text-xs border-collapse" dir="rtl">
                     <thead>
                       <tr>
-                        <th className="p-2 text-gray-500 font-medium border-b w-16">
+                        <th className="p-2 text-muted-foreground font-medium border-b w-16">
                           {t('period')}
                         </th>
                         {days.map(day => {
@@ -209,8 +209,8 @@ const ChildSchedulePage = () => {
                       {(() => {
                         const maxPeriods = Math.max(...days.map(d => (scheduleData[d] || []).length), 0);
                         return Array.from({ length: maxPeriods }, (_, i) => (
-                          <tr key={i} className="hover:bg-gray-50/50">
-                            <td className="p-1.5 text-center font-medium text-gray-400 border-b">
+                          <tr key={i} className="hover:bg-muted/40 dark:hover:bg-muted/30">
+                            <td className="p-1.5 text-center font-medium text-muted-foreground border-b">
                               {i + 1}
                             </td>
                             {days.map(day => {
@@ -218,7 +218,7 @@ const ChildSchedulePage = () => {
                               if (!entry) {
                                 return (
                                   <td key={day} className="p-1 border-b">
-                                    <div className="h-12 rounded-lg bg-gray-50 border border-dashed border-gray-200" />
+                                    <div className="h-12 rounded-lg bg-muted/40 border border-dashed border-border" />
                                   </td>
                                 );
                               }
@@ -228,7 +228,7 @@ const ChildSchedulePage = () => {
                                     <span className="text-[10px] font-semibold text-brand-navy truncate max-w-full">
                                       {entry.subject}
                                     </span>
-                                    <span className="text-[9px] text-gray-400 truncate max-w-full">
+                                    <span className="text-[9px] text-muted-foreground truncate max-w-full">
                                       {entry.teacher}
                                     </span>
                                   </div>

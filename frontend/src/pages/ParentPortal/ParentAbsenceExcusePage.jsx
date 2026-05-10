@@ -16,9 +16,9 @@ import {
 
 
 const STATUS_CONFIG = {
-  pending: { label: 'قيد المراجعة', labelEn: 'Pending', color: 'bg-amber-100 text-amber-700 border-amber-200', icon: Clock },
-  approved: { label: 'مقبول', labelEn: 'Approved', color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle },
-  rejected: { label: 'مرفوض', labelEn: 'Rejected', color: 'bg-red-100 text-red-700 border-red-200', icon: XCircle },
+  pending: { label: 'قيد المراجعة', labelEn: 'Pending', color: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-900/40', icon: Clock },
+  approved: { label: 'مقبول', labelEn: 'Approved', color: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-green-200 dark:border-green-900/40', icon: CheckCircle },
+  rejected: { label: 'مرفوض', labelEn: 'Rejected', color: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-900/40', icon: XCircle },
 };
 
 const ParentAbsenceExcusePage = () => {
@@ -109,11 +109,11 @@ const ParentAbsenceExcusePage = () => {
       <div className="p-4 sm:p-6 space-y-6 max-w-3xl mx-auto" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 font-cairo flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-foreground dark:text-gray-100 font-cairo flex items-center gap-2">
               <FileText className="h-7 w-7 text-brand-navy" />
               {t('absenceExcuse2')}
             </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            <p className="text-sm text-muted-foreground dark:text-muted-foreground mt-1">
               {t('submitAnAbsenceExcuseForYourChild')}
             </p>
           </div>
@@ -142,7 +142,7 @@ const ParentAbsenceExcusePage = () => {
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">
+                  <label className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-1.5 block">
                     {t('child')}
                   </label>
                   <Select value={selectedChild} onValueChange={setSelectedChild}>
@@ -156,7 +156,7 @@ const ParentAbsenceExcusePage = () => {
                             <User className="h-3.5 w-3.5" />
                             {child.full_name || child.name}
                             {child.class_name && (
-                              <span className="text-xs text-gray-400">({child.class_name})</span>
+                              <span className="text-xs text-muted-foreground">({child.class_name})</span>
                             )}
                           </span>
                         </SelectItem>
@@ -166,7 +166,7 @@ const ParentAbsenceExcusePage = () => {
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">
+                  <label className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-1.5 block">
                     {t('dateOfAbsence')}
                   </label>
                   <Input
@@ -179,7 +179,7 @@ const ParentAbsenceExcusePage = () => {
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">
+                  <label className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-1.5 block">
                     {t('reasonForAbsence')}
                   </label>
                   <textarea
@@ -192,7 +192,7 @@ const ParentAbsenceExcusePage = () => {
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">
+                  <label className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-1.5 block">
                     {t('attachmentOptional')}
                   </label>
                   <Input
@@ -201,7 +201,7 @@ const ParentAbsenceExcusePage = () => {
                     onChange={(e) => setAttachmentName(e.target.value)}
                     placeholder={t('documentNameOrAttachmentLink')}
                   />
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     {t('enterTheNameOfTheSupportingDocumentEgMedicalReport')}
                   </p>
                 </div>
@@ -226,7 +226,7 @@ const ParentAbsenceExcusePage = () => {
         )}
 
         <div className="space-y-3">
-          <h2 className="text-lg font-bold font-cairo text-gray-800 dark:text-gray-200 flex items-center gap-2">
+          <h2 className="text-lg font-bold font-cairo text-foreground dark:text-gray-200 flex items-center gap-2">
             <History className="h-5 w-5 text-brand-navy" />
             {t('excuseHistory')}
             {excuses.length > 0 && (
@@ -237,8 +237,8 @@ const ParentAbsenceExcusePage = () => {
           {excuses.length === 0 ? (
             <Card className="border-dashed">
               <CardContent className="text-center py-10">
-                <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-                <p className="text-gray-500 dark:text-gray-400 font-cairo">
+                <FileText className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50 dark:text-muted-foreground" />
+                <p className="text-muted-foreground dark:text-muted-foreground font-cairo">
                   {t('noExcusesSubmittedYet')}
                 </p>
               </CardContent>
@@ -257,7 +257,7 @@ const ParentAbsenceExcusePage = () => {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+                            <span className="font-semibold text-sm text-foreground dark:text-gray-100">
                               {excuse.child_name}
                             </span>
                             <Badge className={`text-[10px] ${status.color}`}>
@@ -265,7 +265,7 @@ const ParentAbsenceExcusePage = () => {
                               {isRTL ? status.label : status.labelEn}
                             </Badge>
                           </div>
-                          <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground dark:text-muted-foreground mb-1.5">
                             <span className="flex items-center gap-1">
                               <Calendar className="h-3 w-3" />
                               {formatDate(excuse.absence_date)}
@@ -275,7 +275,7 @@ const ParentAbsenceExcusePage = () => {
                               {formatDate(excuse.created_at)}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">{excuse.reason}</p>
+                          <p className="text-sm text-foreground dark:text-muted-foreground/50 line-clamp-2">{excuse.reason}</p>
                           {excuse.attachment_name && (
                             <div className="mt-1.5 flex items-center gap-1 text-xs text-brand-navy dark:text-brand-navy/70">
                               <Upload className="h-3 w-3" />

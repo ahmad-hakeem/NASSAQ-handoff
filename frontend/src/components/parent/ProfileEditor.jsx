@@ -60,7 +60,7 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
   return (
     <div className="space-y-5">
       <div>
-        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        <p className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-2">
           {isRTL ? 'الرمز التعبيري' : 'Emoji Avatar'}
         </p>
         <div className="flex flex-wrap gap-2">
@@ -69,7 +69,7 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
               key={e}
               onClick={() => setEmoji(e)}
               className={`w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all ${
-                emoji === e ? 'bg-brand-navy/15 dark:bg-brand-navy-dark/40 ring-2 ring-brand-navy scale-110' : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
+                emoji === e ? 'bg-brand-navy/15 dark:bg-brand-navy-dark/40 ring-2 ring-brand-navy scale-110' : 'bg-muted/40 dark:bg-gray-800 hover:bg-muted/40 dark:hover:bg-gray-700'
               }`}
             >
               {e}
@@ -79,7 +79,7 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
       </div>
 
       <div>
-        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        <p className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-2">
           {isRTL ? 'المشاكل الصحية' : 'Health Conditions'}
         </p>
         <div className="grid grid-cols-2 gap-2">
@@ -90,7 +90,7 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
               className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm transition-all border-2 ${
                 healthConditions.includes(id)
                   ? color
-                  : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-transparent hover:border-gray-200 dark:hover:border-gray-600'
+                  : 'bg-muted/40 dark:bg-gray-800 text-muted-foreground dark:text-muted-foreground border-transparent hover:border-border dark:hover:border-gray-600'
               }`}
             >
               <Icon className="w-4 h-4 flex-shrink-0" />
@@ -101,10 +101,10 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
       </div>
 
       <div>
-        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        <p className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-1">
           {isRTL ? 'سلوك يحتاج تحسين' : 'Behavioral Aspects'}
         </p>
-        <p className="text-xs text-gray-400 mb-2">
+        <p className="text-xs text-muted-foreground mb-2">
           {isRTL ? 'اختياري — يساعد المعلم على فهم الطالب أكثر' : 'Optional — helps the teacher understand the student better'}
         </p>
         <div className="grid grid-cols-1 gap-2">
@@ -115,7 +115,7 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all border-2 ${
                 behavioralAspects.includes(id)
                   ? 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700'
-                  : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-transparent hover:border-gray-200 dark:hover:border-gray-600'
+                  : 'bg-muted/40 dark:bg-gray-800 text-muted-foreground dark:text-muted-foreground border-transparent hover:border-border dark:hover:border-gray-600'
               }`}
             >
               <span className="text-lg">{icon}</span>
@@ -126,10 +126,10 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
       </div>
 
       <div>
-        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        <p className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-1">
           {isRTL ? 'الوضع العائلي' : 'Family Situation'}
         </p>
-        <p className="text-xs text-gray-400 mb-2">
+        <p className="text-xs text-muted-foreground mb-2">
           {isRTL ? 'اختياري — هل يعيش الطفل مع الوالدين؟' : 'Optional — does the child live with both parents?'}
         </p>
         <div className="grid grid-cols-2 gap-2">
@@ -140,7 +140,7 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
               className={`px-3 py-2.5 rounded-xl text-sm transition-all border-2 ${
                 familySituation === id
                   ? 'bg-brand-navy/5 text-brand-navy border-brand-navy/30 dark:bg-brand-navy-dark/30 dark:text-brand-navy-light dark:border-brand-navy-dark'
-                  : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-transparent hover:border-gray-200 dark:hover:border-gray-600'
+                  : 'bg-muted/40 dark:bg-gray-800 text-muted-foreground dark:text-muted-foreground border-transparent hover:border-border dark:hover:border-gray-600'
               }`}
             >
               {isRTL ? label_ar : label_en}
@@ -160,7 +160,7 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
         </button>
         <button
           onClick={onCancel}
-          className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          className="px-4 py-2.5 rounded-xl border border-border dark:border-gray-600 text-muted-foreground dark:text-muted-foreground text-sm font-medium hover:bg-muted/40 dark:hover:bg-gray-800 transition-colors"
         >
           <X className="w-4 h-4" />
         </button>

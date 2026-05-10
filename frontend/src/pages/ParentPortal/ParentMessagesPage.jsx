@@ -54,8 +54,8 @@ const ParentMessagesPage = () => {
         {messages.length === 0 ? (
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="py-16 text-center">
-              <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="font-cairo font-bold text-lg text-gray-700 mb-2">
+              <MessageSquare className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
+              <h3 className="font-cairo font-bold text-lg text-foreground mb-2">
                 {t('noMessagesYet')}
               </h3>
               <p className="text-muted-foreground text-sm">
@@ -70,12 +70,12 @@ const ParentMessagesPage = () => {
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                      msg.is_sent ? 'bg-blue-100' : 'bg-green-100'
+                      msg.is_sent ? 'bg-blue-100 dark:bg-blue-900/40' : 'bg-green-100 dark:bg-green-900/40'
                     }`}>
                       {msg.is_sent ? (
-                        <ArrowUpRight className="h-5 w-5 text-blue-600" />
+                        <ArrowUpRight className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                       ) : (
-                        <ArrowDownLeft className="h-5 w-5 text-green-600" />
+                        <ArrowDownLeft className="h-5 w-5 text-green-600 dark:text-green-400" />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -86,7 +86,7 @@ const ParentMessagesPage = () => {
                             : (isRTL ? `من: ${msg.sender_name}` : `From: ${msg.sender_name}`)}
                         </p>
                         {!msg.read_status && !msg.is_sent && (
-                          <Badge className="bg-red-100 text-red-600 border-0 text-xs">
+                          <Badge className="bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 border-0 text-xs">
                             {isRTL ? 'جديد' : 'New'}
                           </Badge>
                         )}

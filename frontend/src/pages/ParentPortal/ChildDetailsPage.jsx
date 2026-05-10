@@ -76,22 +76,22 @@ const ChildDetailsPage = () => {
   };
 
   const getGradeColor = (percentage) => {
-    if (percentage >= 90) return 'text-green-600';
-    if (percentage >= 75) return 'text-blue-600';
-    if (percentage >= 60) return 'text-amber-600';
-    return 'text-red-600';
+    if (percentage >= 90) return 'text-green-600 dark:text-green-400';
+    if (percentage >= 75) return 'text-blue-600 dark:text-blue-400';
+    if (percentage >= 60) return 'text-amber-600 dark:text-amber-400';
+    return 'text-red-600 dark:text-red-400';
   };
 
   const getStatusIcon = (status) => {
     switch (status) {
       case 'present':
-        return <CheckCircle className="h-4 w-4 text-green-600" />;
+        return <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />;
       case 'absent':
-        return <XCircle className="h-4 w-4 text-red-600" />;
+        return <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />;
       case 'late':
-        return <Clock className="h-4 w-4 text-amber-600" />;
+        return <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />;
       default:
-        return <AlertCircle className="h-4 w-4 text-gray-400" />;
+        return <AlertCircle className="h-4 w-4 text-muted-foreground" />;
     }
   };
 
@@ -112,8 +112,8 @@ const ChildDetailsPage = () => {
         <div className="p-4">
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="py-12 text-center">
-              <User className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="font-bold font-cairo text-lg text-gray-700 mb-2">
+              <User className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
+              <h3 className="font-bold font-cairo text-lg text-foreground mb-2">
                 {t('studentNotFound')}
               </h3>
               <Link to="/parent">
@@ -171,10 +171,10 @@ const ChildDetailsPage = () => {
           <Card className="rounded-xl border-0 shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
-                <div className="p-2 rounded-lg bg-green-100">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
+                <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/40">
+                  <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
                 </div>
-                <span className="text-2xl font-bold text-green-600">
+                <span className="text-2xl font-bold text-green-600 dark:text-green-400">
                   {attendance?.statistics?.attendance_rate || 0}%
                 </span>
               </div>
@@ -186,10 +186,10 @@ const ChildDetailsPage = () => {
           <Card className="rounded-xl border-0 shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
-                <div className="p-2 rounded-lg bg-blue-100">
-                  <Award className="h-5 w-5 text-blue-600" />
+                <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/40">
+                  <Award className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 </div>
-                <span className="text-2xl font-bold text-blue-600">
+                <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                   {grades?.overall_average || 0}%
                 </span>
               </div>
@@ -201,7 +201,7 @@ const ChildDetailsPage = () => {
 
         {/* Tabs */}
         <Tabs defaultValue="analytics" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 bg-gray-100 rounded-xl p-1">
+          <TabsList className="grid w-full grid-cols-4 bg-muted/40 rounded-xl p-1">
             <TabsTrigger value="analytics" className="rounded-lg text-xs">
               {t('cumulativeAnalytics')}
             </TabsTrigger>
@@ -259,20 +259,20 @@ const ChildDetailsPage = () => {
             <Card className="rounded-2xl border-0 shadow-sm">
               <CardHeader className="pb-2">
                 <div className="grid grid-cols-4 gap-2 text-center">
-                  <div className="p-2 bg-green-50 rounded-lg">
-                    <p className="text-lg font-bold text-green-600">{attendance?.statistics?.present || 0}</p>
+                  <div className="p-2 bg-green-50 dark:bg-green-950/30 rounded-lg">
+                    <p className="text-lg font-bold text-green-600 dark:text-green-400">{attendance?.statistics?.present || 0}</p>
                     <p className="text-[10px] text-muted-foreground">{t('present')}</p>
                   </div>
-                  <div className="p-2 bg-red-50 rounded-lg">
-                    <p className="text-lg font-bold text-red-600">{attendance?.statistics?.absent || 0}</p>
+                  <div className="p-2 bg-red-50 dark:bg-red-950/30 rounded-lg">
+                    <p className="text-lg font-bold text-red-600 dark:text-red-400">{attendance?.statistics?.absent || 0}</p>
                     <p className="text-[10px] text-muted-foreground">{t('absent')}</p>
                   </div>
-                  <div className="p-2 bg-amber-50 rounded-lg">
-                    <p className="text-lg font-bold text-amber-600">{attendance?.statistics?.late || 0}</p>
+                  <div className="p-2 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
+                    <p className="text-lg font-bold text-amber-600 dark:text-amber-400">{attendance?.statistics?.late || 0}</p>
                     <p className="text-[10px] text-muted-foreground">{t('late')}</p>
                   </div>
-                  <div className="p-2 bg-blue-50 rounded-lg">
-                    <p className="text-lg font-bold text-blue-600">{attendance?.statistics?.excused || 0}</p>
+                  <div className="p-2 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
+                    <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{attendance?.statistics?.excused || 0}</p>
                     <p className="text-[10px] text-muted-foreground">{t('excused2')}</p>
                   </div>
                 </div>
@@ -282,7 +282,7 @@ const ChildDetailsPage = () => {
                   {attendance?.records?.length > 0 ? (
                     <div className="space-y-2">
                       {attendance.records.slice(0, 20).map((record, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div key={idx} className="flex items-center justify-between p-3 bg-muted/40 rounded-lg">
                           <div className="flex items-center gap-2">
                             {getStatusIcon(record.status)}
                             <span className="text-sm">{record.date}</span>
@@ -320,7 +320,7 @@ const ChildDetailsPage = () => {
                           {schedule.schedule[day]?.length > 0 ? (
                             <div className="space-y-2">
                               {schedule.schedule[day].map((entry, idx) => (
-                                <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                <div key={idx} className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg">
                                   <div className="w-14 h-10 rounded bg-brand-navy/15 flex items-center justify-center">
                                     <span className="text-xs font-bold text-brand-navy">{entry.start_time}</span>
                                   </div>

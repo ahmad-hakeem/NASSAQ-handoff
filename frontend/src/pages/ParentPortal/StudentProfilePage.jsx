@@ -67,7 +67,7 @@ const StudentProfilePage = () => {
   if (!profile) {
     return (
       <PortalLayout portalType="parent">
-        <div className="p-4 text-center text-gray-500 mt-20" dir={isRTL ? 'rtl' : 'ltr'}>
+        <div className="p-4 text-center text-muted-foreground mt-20" dir={isRTL ? 'rtl' : 'ltr'}>
           <p>{isRTL ? 'لا يمكن عرض ملف الطالب حالياً' : 'Unable to display student profile'}</p>
           <Link to="/parent" className="text-brand-navy text-sm mt-2 inline-block">
             {isRTL ? 'العودة للرئيسية' : 'Back to Home'}
@@ -82,11 +82,11 @@ const StudentProfilePage = () => {
       <div className="p-4 space-y-4 max-w-lg mx-auto" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="flex items-center gap-3 mb-2">
           <Link to="/parent">
-            <button className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-              <ChevronLeft className={`w-5 h-5 text-gray-600 dark:text-gray-400 ${isRTL ? 'rotate-180' : ''}`} />
+            <button className="p-2 rounded-lg hover:bg-muted/40 dark:hover:bg-gray-800 transition-colors">
+              <ChevronLeft className={`w-5 h-5 text-muted-foreground dark:text-muted-foreground ${isRTL ? 'rotate-180' : ''}`} />
             </button>
           </Link>
-          <h1 className="text-lg font-bold font-cairo text-gray-800 dark:text-gray-200">
+          <h1 className="text-lg font-bold font-cairo text-foreground dark:text-gray-200">
             {isRTL ? 'ملف الطالب' : 'Student Profile'}
           </h1>
         </div>
@@ -144,7 +144,7 @@ const StudentProfilePage = () => {
               <div className="space-y-4">
                 {profile?.health_conditions?.length > 0 && (
                   <div>
-                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+                    <p className="text-xs font-medium text-muted-foreground dark:text-muted-foreground mb-2">
                       {isRTL ? 'المشاكل الصحية' : 'Health Conditions'}
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -152,7 +152,7 @@ const StudentProfilePage = () => {
                         const cfg = HEALTH_LABELS[c];
                         const Icon = cfg?.icon;
                         return (
-                          <span key={c} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${cfg?.color || 'bg-gray-100 text-gray-700'}`}>
+                          <span key={c} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${cfg?.color || 'bg-muted/40 text-foreground'}`}>
                             {Icon && <Icon className="w-3 h-3" />}
                             {cfg ? (isRTL ? cfg.ar : cfg.en) : c}
                           </span>
@@ -164,7 +164,7 @@ const StudentProfilePage = () => {
 
                 {profile?.behavioral_aspects?.length > 0 && (
                   <div>
-                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+                    <p className="text-xs font-medium text-muted-foreground dark:text-muted-foreground mb-2">
                       {isRTL ? 'سلوك يحتاج تحسين' : 'Behavioral Aspects'}
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -183,10 +183,10 @@ const StudentProfilePage = () => {
 
                 {profile?.family_situation && (
                   <div>
-                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    <p className="text-xs font-medium text-muted-foreground dark:text-muted-foreground mb-1">
                       {isRTL ? 'الوضع العائلي' : 'Family Situation'}
                     </p>
-                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                    <p className="text-sm text-foreground dark:text-muted-foreground/50">
                       {FAMILY_LABELS[profile.family_situation]
                         ? (isRTL ? FAMILY_LABELS[profile.family_situation].ar : FAMILY_LABELS[profile.family_situation].en)
                         : profile.family_situation}

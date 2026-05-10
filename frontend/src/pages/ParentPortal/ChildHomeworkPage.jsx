@@ -49,10 +49,10 @@ const ChildHomeworkPage = () => {
 
   const getStatusInfo = (status) => {
     const map = {
-      pending: { label: t('notStarted'), cls: 'bg-gray-100 text-gray-700', icon: Clock },
-      submitted: { label: t('submitted'), cls: 'bg-green-100 text-green-700', icon: CheckCircle },
-      graded: { label: t('graded2'), cls: 'bg-blue-100 text-blue-700', icon: BookOpen },
-      late: { label: t('late'), cls: 'bg-red-100 text-red-700', icon: AlertCircle },
+      pending: { label: t('notStarted'), cls: 'bg-muted/40 text-foreground', icon: Clock },
+      submitted: { label: t('submitted'), cls: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300', icon: CheckCircle },
+      graded: { label: t('graded2'), cls: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300', icon: BookOpen },
+      late: { label: t('late'), cls: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300', icon: AlertCircle },
     };
     return map[status] || map.pending;
   };
@@ -86,7 +86,7 @@ const ChildHomeworkPage = () => {
         {assignments.length === 0 ? (
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="py-12 text-center">
-              <ClipboardList className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+              <ClipboardList className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
               <p className="text-muted-foreground text-sm">{t('noHomeworkFound')}</p>
             </CardContent>
           </Card>
@@ -111,7 +111,7 @@ const ChildHomeworkPage = () => {
                       )}
                     </div>
                     {a.submission_date && (
-                      <p className="text-xs text-green-600 mt-1">
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1">
                         {t('submitted3')} {a.submission_date.slice(0, 10)}
                       </p>
                     )}

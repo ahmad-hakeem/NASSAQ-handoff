@@ -45,7 +45,7 @@ const StudentAnalyticsPage = () => {
   if (!data) {
     return (
       <PortalLayout portalType="parent">
-        <div className="p-4 text-center text-gray-500 mt-20">
+        <div className="p-4 text-center text-muted-foreground mt-20">
           <p>لا توجد بيانات تحليلية متاحة حالياً</p>
         </div>
       </PortalLayout>
@@ -53,9 +53,9 @@ const StudentAnalyticsPage = () => {
   }
 
   const followUpConfig = {
-    'مستقر': { color: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle, barColor: 'bg-emerald-500' },
-    'يحتاج متابعة': { color: 'bg-amber-50 text-amber-700 border-amber-200', icon: AlertTriangle, barColor: 'bg-amber-500' },
-    'بحاجة دعم': { color: 'bg-red-50 text-red-700 border-red-200', icon: ShieldAlert, barColor: 'bg-red-500' },
+    'مستقر': { color: 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/40', icon: CheckCircle, barColor: 'bg-emerald-500' },
+    'يحتاج متابعة': { color: 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-900/40', icon: AlertTriangle, barColor: 'bg-amber-500' },
+    'بحاجة دعم': { color: 'bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-900/40', icon: ShieldAlert, barColor: 'bg-red-500' },
   };
 
   const fuConf = followUpConfig[data.follow_up?.status] || followUpConfig['مستقر'];
@@ -66,13 +66,13 @@ const StudentAnalyticsPage = () => {
       <div className="p-4 space-y-4 max-w-lg mx-auto" dir="rtl">
         <div className="flex items-center gap-3 mb-2">
           <Link to={`/parent/child/${childId}/profile`}>
-            <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
-              <ChevronLeft className="w-5 h-5 text-gray-600" />
+            <button className="p-2 rounded-lg hover:bg-muted/40 transition-colors">
+              <ChevronLeft className="w-5 h-5 text-muted-foreground" />
             </button>
           </Link>
           <div>
-            <h1 className="text-lg font-bold font-cairo text-gray-800">تحليل الأداء</h1>
-            <p className="text-xs text-gray-500">{data.student_name}</p>
+            <h1 className="text-lg font-bold font-cairo text-foreground">تحليل الأداء</h1>
+            <p className="text-xs text-muted-foreground">{data.student_name}</p>
           </div>
         </div>
 
@@ -83,9 +83,9 @@ const StudentAnalyticsPage = () => {
                 <p className="text-2xl font-bold text-brand-navy">{data.summary?.overall_average}%</p>
                 <p className="text-xs text-brand-navy mt-1">المتوسط العام</p>
               </div>
-              <div className="p-3 rounded-xl bg-blue-50">
-                <p className="text-2xl font-bold text-blue-700">{data.summary?.class_average}%</p>
-                <p className="text-xs text-blue-600 mt-1">متوسط الفصل</p>
+              <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30">
+                <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">{data.summary?.class_average}%</p>
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">متوسط الفصل</p>
               </div>
               <div className="p-3 rounded-xl bg-brand-purple/5">
                 <p className="text-2xl font-bold text-brand-purple">{data.summary?.total_assessments}</p>
@@ -97,21 +97,21 @@ const StudentAnalyticsPage = () => {
 
         <Card className="rounded-2xl border-0 shadow-sm">
           <CardContent className="p-4">
-            <p className="text-sm font-semibold font-cairo text-gray-700 mb-3">مستوى الأداء الحالي</p>
+            <p className="text-sm font-semibold font-cairo text-foreground mb-3">مستوى الأداء الحالي</p>
             <GaugeChart value={data.gauge_data?.value || 0} level={data.gauge_data?.level || ''} />
           </CardContent>
         </Card>
 
         <Card className="rounded-2xl border-0 shadow-sm">
           <CardContent className="p-4">
-            <p className="text-sm font-semibold font-cairo text-gray-700 mb-3">اتجاه الأداء</p>
+            <p className="text-sm font-semibold font-cairo text-foreground mb-3">اتجاه الأداء</p>
             <PerformanceLine data={data.line_chart_data} />
           </CardContent>
         </Card>
 
         <Card className="rounded-2xl border-0 shadow-sm">
           <CardContent className="p-4">
-            <p className="text-sm font-semibold font-cairo text-gray-700 mb-3">توزيع النتائج في المواد</p>
+            <p className="text-sm font-semibold font-cairo text-foreground mb-3">توزيع النتائج في المواد</p>
             <SubjectRadar data={data.radar_data} />
           </CardContent>
         </Card>
@@ -121,14 +121,14 @@ const StudentAnalyticsPage = () => {
             <Card className="rounded-2xl border-0 shadow-sm">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <TrendingUp className="w-4 h-4 text-emerald-600" />
-                  <p className="text-sm font-semibold font-cairo text-gray-700">نقاط القوة</p>
+                  <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <p className="text-sm font-semibold font-cairo text-foreground">نقاط القوة</p>
                 </div>
                 <div className="space-y-2">
                   {data.strengths.map((s, i) => (
-                    <div key={i} className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-100">
-                      <p className="text-sm font-medium text-emerald-800">{s.area}</p>
-                      <p className="text-xs text-emerald-600">{s.detail}</p>
+                    <div key={i} className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40">
+                      <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">{s.area}</p>
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400">{s.detail}</p>
                     </div>
                   ))}
                 </div>
@@ -140,14 +140,14 @@ const StudentAnalyticsPage = () => {
             <Card className="rounded-2xl border-0 shadow-sm">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <TrendingDown className="w-4 h-4 text-amber-600" />
-                  <p className="text-sm font-semibold font-cairo text-gray-700">يحتاج تحسين</p>
+                  <TrendingDown className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  <p className="text-sm font-semibold font-cairo text-foreground">يحتاج تحسين</p>
                 </div>
                 <div className="space-y-2">
                   {data.weaknesses.map((w, i) => (
-                    <div key={i} className="p-2.5 rounded-lg bg-amber-50 border border-amber-100">
-                      <p className="text-sm font-medium text-amber-800">{w.area}</p>
-                      <p className="text-xs text-amber-600">{w.detail}</p>
+                    <div key={i} className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40">
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-300">{w.area}</p>
+                      <p className="text-xs text-amber-600 dark:text-amber-400">{w.detail}</p>
                     </div>
                   ))}
                 </div>
@@ -160,8 +160,8 @@ const StudentAnalyticsPage = () => {
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-gray-600" />
-                <p className="text-sm font-semibold font-cairo text-gray-700">مؤشر المتابعة المنزلية</p>
+                <Activity className="w-4 h-4 text-muted-foreground" />
+                <p className="text-sm font-semibold font-cairo text-foreground">مؤشر المتابعة المنزلية</p>
               </div>
               <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${fuConf.color}`}>
                 <FuIcon className="w-3.5 h-3.5" />
@@ -183,11 +183,11 @@ const StudentAnalyticsPage = () => {
 
 const BreakdownBar = ({ label, value, color }) => (
   <div className="flex items-center gap-3">
-    <span className="text-xs text-gray-500 w-16 shrink-0">{label}</span>
-    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+    <span className="text-xs text-muted-foreground w-16 shrink-0">{label}</span>
+    <div className="flex-1 h-2 bg-muted/40 rounded-full overflow-hidden">
       <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(value || 0, 100)}%` }} />
     </div>
-    <span className="text-xs font-medium text-gray-600 w-10 text-left tabular-nums">{Math.round(value || 0)}%</span>
+    <span className="text-xs font-medium text-muted-foreground w-10 text-left tabular-nums">{Math.round(value || 0)}%</span>
   </div>
 );
 
