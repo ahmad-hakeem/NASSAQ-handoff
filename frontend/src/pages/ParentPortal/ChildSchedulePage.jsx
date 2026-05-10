@@ -32,14 +32,17 @@ const ChildSchedulePage = () => {
   // Task #146 — fetch effective child id from global active-student context.
   const { childId: routeChildId } = useParams();
   useSyncRouteChildToActive(routeChildId);
-  const { activeChildId, hasLoadedChildren } = useParentActiveStudent();
+  const { activeChildId, activeChild, hasLoadedChildren } = useParentActiveStudent();
   // Context-only fetch id; the hook above rejects unauthorized route ids.
   const childId = activeChildId;
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [schedule, setSchedule] = useState(null);
-  const [child, setChild] = useState(null);
+  // Task #148 — basic identity (name, class) is read from the global
+  // active-student context instead of re-fetching `/parent-portal/child/:id`
+  // on every navigation.
+  const child = activeChild;
   const [viewMode, setViewMode] = useState('list');
 
   // Stale-response guard: out-of-order responses for a previous child must
@@ -51,13 +54,11 @@ const ChildSchedulePage = () => {
     if (!hasLoadedChildren || !childId) return;
     const requestedFor = childId;
     try {
-      const [scheduleRes, childRes] = await Promise.all([
-        api.get(`/parent-portal/child/${requestedFor}/schedule`),
-        api.get(`/parent-portal/child/${requestedFor}`).catch(() => ({ data: null }))
-      ]);
+      // Task #148 — only fetch the page-specific schedule endpoint; basic
+      // identity (name, class) comes from the global active-student context.
+      const scheduleRes = await api.get(`/parent-portal/child/${requestedFor}/schedule`);
       if (String(activeChildRef.current) !== String(requestedFor)) return;
       setSchedule(scheduleRes.data);
-      setChild(childRes.data);
     } catch (error) {
       if (String(activeChildRef.current) !== String(requestedFor)) return;
       if (!silent) nassaqError(t('errorFetchingSchedule'));
@@ -70,10 +71,10 @@ const ChildSchedulePage = () => {
     // No active child once children loaded → exit loading; the route-sync
     // hook handles URL canonicalization separately.
     if (hasLoadedChildren && !childId) { setLoading(false); return; }
-    // Reset to skeleton on child switch to avoid stale identity flash.
+    // Reset to skeleton on child switch to avoid stale data flash; basic
+    // identity comes from the global active-student context.
     setLoading(true);
     setSchedule(null);
-    setChild(null);
     fetchData();
   }, [token, fetchData, hasLoadedChildren, childId]);
 

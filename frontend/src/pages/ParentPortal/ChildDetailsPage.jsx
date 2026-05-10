@@ -49,17 +49,22 @@ const ChildDetailsPage = () => {
   // ids are rejected before any request fires.
   const { childId: routeChildId } = useParams();
   useSyncRouteChildToActive(routeChildId);
-  const { activeChildId, hasLoadedChildren } = useParentActiveStudent();
+  const { activeChildId, activeChild, hasLoadedChildren } = useParentActiveStudent();
   // Context-only fetch id: never use the raw route param as a fetch input;
   // it might be unauthorized. The hook above rejects bad ids and redirects.
   const childId = activeChildId;
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
-  const [child, setChild] = useState(null);
   const [grades, setGrades] = useState(null);
   const [attendance, setAttendance] = useState(null);
   const [schedule, setSchedule] = useState(null);
+
+  // Task #148 — basic identity (name, grade, class, avatar, school) is
+  // already in the global active-student context after Task #146, so we
+  // read it from there instead of re-fetching `/parent-portal/child/:id`
+  // on every navigation. Only page-specific data is fetched per page.
+  const child = activeChild;
 
   useEffect(() => {
     // Wait until the linked-children list resolves so we never fetch with an
@@ -70,22 +75,19 @@ const ChildDetailsPage = () => {
     if (!hasLoadedChildren || !childId) return;
     let cancelled = false;
     // Reset to skeletons immediately on child switch so we never flash the
-    // previous child's identity/data on the new one.
+    // previous child's data on the new one. Identity comes from context.
     setLoading(true);
-    setChild(null);
     setGrades(null);
     setAttendance(null);
     setSchedule(null);
     (async () => {
       try {
-        const [childRes, gradesRes, attendanceRes, scheduleRes] = await Promise.all([
-          api.get(`/parent-portal/child/${childId}`),
+        const [gradesRes, attendanceRes, scheduleRes] = await Promise.all([
           api.get(`/parent-portal/child/${childId}/grades`),
           api.get(`/parent-portal/child/${childId}/attendance`),
           api.get(`/parent-portal/child/${childId}/schedule`),
         ]);
         if (cancelled) return;
-        setChild(childRes.data);
         setGrades(gradesRes.data);
         setAttendance(attendanceRes.data);
         setSchedule(scheduleRes.data);
