@@ -106,6 +106,7 @@ const ParentReportsPage = lazy(() => import("../pages/ParentPortal").then(m => (
 const ParentMessagesPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentMessagesPage })));
 const ParentMeetingRequestPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentMeetingRequestPage })));
 const ParentSettingsPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentSettingsPage })));
+const ParentLegalDocumentPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentLegalDocumentPage })));
 const ParentCommunicationCenter = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentCommunicationCenter })));
 const ParentStudentProfilePage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.StudentProfilePage })));
 const ParentStudentAnalyticsPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.StudentAnalyticsPage })));
@@ -339,6 +340,9 @@ export default function AppRoutes() {
         } />
         <Route path="/parent/settings" element={
           <ProtectedRoute allowedRoles={['parent']}><ParentSettingsPage /></ProtectedRoute>
+        } />
+        <Route path="/parent/legal/:docType" element={
+          <ProtectedRoute allowedRoles={['parent']}><ParentLegalDocumentPage /></ProtectedRoute>
         } />
         <Route path="/parent/communication" element={
           <ProtectedRoute allowedRoles={['parent']}><ParentCommunicationCenter /></ProtectedRoute>

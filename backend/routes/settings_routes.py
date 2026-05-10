@@ -386,6 +386,68 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
             _log.getLogger("nassaq").error(f"Operation error: {e}")
             raise HTTPException(status_code=500, detail="حدث خطأ داخلي في الخادم")
     
+    # ============= PUBLISHED LEGAL CONTENT (any authenticated user) =============
+
+    @router.get("/terms/published")
+    async def get_published_terms(
+        current_user: dict = Depends(get_current_user)
+    ):
+        """الإصدار المنشور من الشروط والأحكام — متاح لأي مستخدم مسجّل."""
+        try:
+            v = await gd_find_one(
+                db.session,
+                "terms_versions",
+                {"is_published": True},
+                sort=[("version_number", -1)],
+            )
+            if not v:
+                return {
+                    "version_number": 0,
+                    "content_ar": "",
+                    "content_en": "",
+                    "published_at": None,
+                }
+            return {
+                "version_number": v.get("version_number", 0),
+                "content_ar": v.get("content_ar", ""),
+                "content_en": v.get("content_en", ""),
+                "published_at": v.get("published_at"),
+            }
+        except Exception as e:
+            import logging as _log
+            _log.getLogger("nassaq").error(f"get_published_terms error: {e}")
+            return {"version_number": 0, "content_ar": "", "content_en": "", "published_at": None}
+
+    @router.get("/privacy/published")
+    async def get_published_privacy(
+        current_user: dict = Depends(get_current_user)
+    ):
+        """الإصدار المنشور من سياسة الخصوصية — متاح لأي مستخدم مسجّل."""
+        try:
+            v = await gd_find_one(
+                db.session,
+                "privacy_versions",
+                {"is_published": True},
+                sort=[("version_number", -1)],
+            )
+            if not v:
+                return {
+                    "version_number": 0,
+                    "content_ar": "",
+                    "content_en": "",
+                    "published_at": None,
+                }
+            return {
+                "version_number": v.get("version_number", 0),
+                "content_ar": v.get("content_ar", ""),
+                "content_en": v.get("content_en", ""),
+                "published_at": v.get("published_at"),
+            }
+        except Exception as e:
+            import logging as _log
+            _log.getLogger("nassaq").error(f"get_published_privacy error: {e}")
+            return {"version_number": 0, "content_ar": "", "content_en": "", "published_at": None}
+
     # ============= CONTACT INFO =============
     
     @router.get("/contact", response_model=ContactInfo)
