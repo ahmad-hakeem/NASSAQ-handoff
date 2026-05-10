@@ -8,7 +8,6 @@ import { Badge } from '../../components/ui/badge';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Progress } from '../../components/ui/progress';
-import { Switch } from '../../components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
 import {
   Select,
@@ -25,10 +24,10 @@ import {
   TrendingUp, LayoutGrid, List, Clock, Play,
   ChevronLeft, Star, AlertTriangle, CheckCircle2,
   ArrowUpDown, Settings, Plus, FileSpreadsheet,
-  FileImage, FileText, Upload, Info, X,
-  Hand, BookCheck, Mic, Sparkles, Save, Trash2
+  FileImage, FileText, Upload, Info, X
 } from 'lucide-react';
 import SessionsManageTab from './SessionsManageTab';
+import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialog';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 
@@ -61,6 +60,8 @@ export default function TeacherClassesPage() {
   const [settingsSubject, setSettingsSubject] = useState('');
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
+  // Snake-case keys mirror the `/teacher/{id}/session-settings` payload contract
+  // so we can spread them directly into the PUT body without remapping.
   const [sessionConfig, setSessionConfig] = useState({
     participation_enabled: true,
     homework_enabled: false,
@@ -70,8 +71,15 @@ export default function TeacherClassesPage() {
     skills_enabled: false,
     custom_skills: [],
   });
-  const [newSkillName, setNewSkillName] = useState('');
-  const [showAddMorePrompt, setShowAddMorePrompt] = useState(false);
+  // Transient local state for the canonical SidebarSettingsDialog's Group A
+  // tabs (evaluation items + behaviours). The current /teacher/{id}/session-settings
+  // contract doesn't persist these, but we still back them with real state so
+  // the add/remove interactions work identically to the Interactive Class flow
+  // — i.e. the UI is fully functional within the open session, even if the
+  // values are not yet persisted server-side.
+  const [classEvaluationItems, setClassEvaluationItems] = useState([]);
+  const [classPositiveBehaviours, setClassPositiveBehaviours] = useState([]);
+  const [classNegativeBehaviours, setClassNegativeBehaviours] = useState([]);
 
   const [showAddClassDialog, setShowAddClassDialog] = useState(false);
   const [addClassForm, setAddClassForm] = useState({ name: '', grade: '', section: '', weekly_count: 5 });
@@ -202,15 +210,15 @@ export default function TeacherClassesPage() {
     loadSessionSettings(subjectId);
   };
 
-  const handleSaveSettings = async () => {
+  // Persist the current sessionConfig to the per-teacher / per-subject template.
+  // Reused as the canonical SidebarSettingsDialog Save handler — the legacy
+  // "add more elements?" confirm step was removed to match the Interactive
+  // Class UX, which saves directly with no intermediate prompt.
+  const doSaveSettings = async () => {
     if (!settingsSubject) {
-      nassaqError(t('noSubjectSelected'));
+      nassaqError(t('noSubjectSelected') || t('selectSubjectFirst'));
       return;
     }
-    setShowAddMorePrompt(true);
-  };
-
-  const doSaveSettings = async () => {
     setSettingsSaving(true);
     try {
       await api.put(`/teacher/${teacherId}/session-settings`, {
@@ -218,7 +226,6 @@ export default function TeacherClassesPage() {
         ...sessionConfig,
       });
       toast.success(t('patternSaved'));
-      setShowAddMorePrompt(false);
       setShowSettingsModal(false);
       setSettingsSubject('');
     } catch (err) {
@@ -231,26 +238,6 @@ export default function TeacherClassesPage() {
     } finally {
       setSettingsSaving(false);
     }
-  };
-
-  const handleAddMoreElements = () => {
-    setShowAddMorePrompt(false);
-  };
-
-  const handleAddSkill = () => {
-    if (!newSkillName.trim()) return;
-    setSessionConfig(prev => ({
-      ...prev,
-      custom_skills: [...prev.custom_skills, newSkillName.trim()],
-    }));
-    setNewSkillName('');
-  };
-
-  const handleRemoveSkill = (index) => {
-    setSessionConfig(prev => ({
-      ...prev,
-      custom_skills: prev.custom_skills.filter((_, i) => i !== index),
-    }));
   };
 
   const fetchGradeOptions = useCallback(async () => {
@@ -578,236 +565,111 @@ export default function TeacherClassesPage() {
     );
   };
 
-  const renderSettingsModal = () => (
-    <Dialog open={showSettingsModal} onOpenChange={(open) => { setShowSettingsModal(open); if (!open) { setSettingsSubject(''); } }}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" dir={isRTL ? 'rtl' : 'ltr'}>
-        <DialogHeader>
-          <DialogTitle className="font-cairo flex items-center gap-2">
-            <Settings className="h-5 w-5 text-brand-turquoise" />
-            {t('sessionSettings')}
-          </DialogTitle>
-          <p className="text-sm text-muted-foreground font-tajawal">{t('sessionSettingsDesc')}</p>
-        </DialogHeader>
-
-        <div className="space-y-5">
-          <div className="space-y-2">
-            <Label className="font-cairo text-sm font-medium">{t('selectSubject')}</Label>
-            <Select value={settingsSubject} onValueChange={handleSubjectChange}>
-              <SelectTrigger>
-                <SelectValue placeholder={t('selectSubject')} />
-              </SelectTrigger>
-              <SelectContent>
-                {allSubjects.map(s => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {!settingsSubject ? (
-            <div className="text-center py-8">
-              <BookOpen className="h-12 w-12 mx-auto mb-3 text-muted-foreground/20" />
-              <p className="text-sm text-muted-foreground font-cairo">{t('selectSubjectFirst')}</p>
-            </div>
-          ) : settingsLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-brand-turquoise" />
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-card">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                    <Hand className="h-4.5 w-4.5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-sm font-cairo">{t('enableParticipation')}</p>
-                    <p className="text-xs text-muted-foreground">{t('participation')}</p>
-                  </div>
-                </div>
-                <Switch
-                  checked={sessionConfig.participation_enabled}
-                  onCheckedChange={(v) => setSessionConfig(p => ({ ...p, participation_enabled: v }))}
-                />
-              </div>
-
-              <div className="rounded-lg border bg-card overflow-hidden">
-                <div className="flex items-center justify-between p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-                      <BookCheck className="h-4.5 w-4.5 text-emerald-600" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm font-cairo">{t('enableHomework')}</p>
-                      <p className="text-xs text-muted-foreground">{t('homeworkSubmissionMode')}</p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={sessionConfig.homework_enabled}
-                    onCheckedChange={(v) => setSessionConfig(p => ({ ...p, homework_enabled: v }))}
-                  />
-                </div>
-                {sessionConfig.homework_enabled && (
-                  <div className="px-3 pb-3 pt-0 ms-12 space-y-2">
-                    <label className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors duration-150">
-                      <input
-                        type="radio"
-                        name="hw_mode"
-                        checked={sessionConfig.homework_mode === 'didnt_submit'}
-                        onChange={() => setSessionConfig(p => ({ ...p, homework_mode: 'didnt_submit' }))}
-                        className="accent-brand-turquoise"
-                      />
-                      <span className="text-sm font-tajawal">{t('clickWhoDidntSubmit')}</span>
-                    </label>
-                    <label className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors duration-150">
-                      <input
-                        type="radio"
-                        name="hw_mode"
-                        checked={sessionConfig.homework_mode === 'submitted'}
-                        onChange={() => setSessionConfig(p => ({ ...p, homework_mode: 'submitted' }))}
-                        className="accent-brand-turquoise"
-                      />
-                      <span className="text-sm font-tajawal">{t('clickWhoSubmitted')}</span>
-                    </label>
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-lg border bg-card overflow-hidden">
-                <div className="flex items-center justify-between p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                      <Mic className="h-4.5 w-4.5 text-amber-600" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm font-cairo">{t('enableRecitation')}</p>
-                      <p className="text-xs text-muted-foreground">{t('attemptsForNonMastery')}</p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={sessionConfig.recitation_enabled}
-                    onCheckedChange={(v) => setSessionConfig(p => ({ ...p, recitation_enabled: v }))}
-                  />
-                </div>
-                {sessionConfig.recitation_enabled && (
-                  <div className="px-3 pb-3 pt-0 ms-12">
-                    <Label className="text-xs text-muted-foreground mb-1.5 block">{t('recitationAttempts')}</Label>
-                    <div className="flex items-center gap-2">
-                      {[1, 2, 3].map(n => (
-                        <Button
-                          key={n}
-                          variant={sessionConfig.recitation_attempts === n ? 'default' : 'outline'}
-                          size="sm"
-                          className={`h-9 w-14 ${sessionConfig.recitation_attempts === n ? 'bg-brand-turquoise hover:bg-brand-turquoise/90 text-white' : ''}`}
-                          onClick={() => setSessionConfig(p => ({ ...p, recitation_attempts: n }))}
-                        >
-                          {n}
-                        </Button>
-                      ))}
-                      <span className="text-xs text-muted-foreground">{t('attempts')}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-lg border bg-card overflow-hidden">
-                <div className="flex items-center justify-between p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                      <Sparkles className="h-4.5 w-4.5 text-purple-600" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm font-cairo">{t('enableSkills')}</p>
-                      <p className="text-xs text-muted-foreground">{t('skills')}</p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={sessionConfig.skills_enabled}
-                    onCheckedChange={(v) => setSessionConfig(p => ({ ...p, skills_enabled: v }))}
-                  />
-                </div>
-                {sessionConfig.skills_enabled && (
-                  <div className="px-3 pb-3 pt-0 ms-12 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        placeholder={t('skillName')}
-                        value={newSkillName}
-                        onChange={(e) => setNewSkillName(e.target.value)}
-                        className="h-8 text-sm flex-1"
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddSkill()}
-                      />
-                      <Button size="sm" variant="outline" className="h-8" onClick={handleAddSkill}>
-                        <Plus className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                    {sessionConfig.custom_skills.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {sessionConfig.custom_skills.map((skill, idx) => (
-                          <Badge key={idx} variant="secondary" className="gap-1 pe-1">
-                            {skill}
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveSkill(idx)}
-                              className="ms-0.5 hover:text-red-500 transition-colors duration-150"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
-                <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-blue-700 dark:text-blue-300 font-tajawal">{t('classDataLinkedToAdmin')}</p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {settingsSubject && !settingsLoading && (
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setShowSettingsModal(false)}>{t('cancel')}</Button>
-            <Button
-              className="bg-brand-navy hover:bg-brand-navy-dark text-white"
-              onClick={handleSaveSettings}
-              disabled={settingsSaving}
-            >
-              {settingsSaving ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Save className="h-4 w-4 me-2" />}
-              {t('savePattern')}
-            </Button>
-          </DialogFooter>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-
-  const renderAddMorePrompt = () => (
-    <Dialog open={showAddMorePrompt} onOpenChange={setShowAddMorePrompt}>
-      <DialogContent className="max-w-sm" dir={isRTL ? 'rtl' : 'ltr'}>
-        <DialogHeader>
-          <DialogTitle className="font-cairo text-center">{t('sessionEvaluationPattern')}</DialogTitle>
-        </DialogHeader>
-        <p className="text-sm text-muted-foreground text-center font-tajawal py-2">{t('doYouWantToAddMoreElements')}</p>
-        <div className="flex gap-3 justify-center">
-          <Button variant="outline" onClick={handleAddMoreElements}>
-            {t('yesAddMore')}
-          </Button>
-          <Button
-            className="bg-brand-navy hover:bg-brand-navy-dark text-white"
-            onClick={doSaveSettings}
-            disabled={settingsSaving}
-          >
-            {settingsSaving ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : null}
-            {t('noSaveNow')}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
+  // The "Class Settings" entry from "My Classes" now opens the same canonical
+  // SidebarSettingsDialog used by the Interactive Class flow (SessionTeachPage).
+  // We provide a `sessionConfig` payload here so the dialog renders the full
+  // tab set (تعريفات العناصر + تكوين الحصة) and we opt-in to the embedded
+  // subject picker via `showSubjectPicker`, since "My Classes" persists a
+  // per-(teacher, subject) template instead of a per-session record.
+  //
+  // Field translation between the dialog's camelCase props and the
+  // `/teacher/{id}/session-settings` snake_case payload happens here so the
+  // backend contract is unchanged.
+  const renderSettingsModal = () => {
+    const customSkillNames = (sessionConfig.custom_skills || []).map((s) =>
+      typeof s === 'string' ? s : (s?.name || '')
+    );
+    return (
+      <SidebarSettingsDialog
+        open={showSettingsModal}
+        onOpenChange={(open) => {
+          setShowSettingsModal(open);
+          if (!open) setSettingsSubject('');
+        }}
+        isRTL={isRTL}
+        t={t}
+        // Group A — element definitions. "My Classes" only persists custom
+        // skill names through the existing PUT contract; evaluation items and
+        // behaviours are kept in transient local state so add/remove behaves
+        // identically to the Interactive Class flow without forking the
+        // backend payload.
+        evaluationItems={classEvaluationItems}
+        onAddEvaluationItem={(item) => setClassEvaluationItems((prev) => [...prev, item])}
+        onRemoveEvaluationItem={(id) =>
+          setClassEvaluationItems((prev) => prev.filter((x) => x.id !== id))
+        }
+        positiveBehaviours={classPositiveBehaviours}
+        negativeBehaviours={classNegativeBehaviours}
+        onAddPositiveBehaviour={(item) => setClassPositiveBehaviours((prev) => [...prev, item])}
+        onAddNegativeBehaviour={(item) => setClassNegativeBehaviours((prev) => [...prev, item])}
+        onRemovePositiveBehaviour={(id) =>
+          setClassPositiveBehaviours((prev) =>
+            prev.filter((x) => (typeof x === 'string' ? `custom_${x}` !== id : x.id !== id))
+          )
+        }
+        onRemoveNegativeBehaviour={(id) =>
+          setClassNegativeBehaviours((prev) =>
+            prev.filter((x) => (typeof x === 'string' ? `custom_${x}` !== id : x.id !== id))
+          )
+        }
+        skillEnabled={!!sessionConfig.skills_enabled}
+        onToggleSkillEnabled={(v) => setSessionConfig((p) => ({ ...p, skills_enabled: v }))}
+        skillTypes={[]}
+        customSkills={customSkillNames}
+        onAddCustomSkill={(item) => {
+          const name = typeof item === 'string' ? item : (item?.name || '');
+          if (!name.trim()) return;
+          setSessionConfig((p) => ({ ...p, custom_skills: [...(p.custom_skills || []), name.trim()] }));
+        }}
+        onRemoveCustomSkill={(idx) =>
+          setSessionConfig((p) => ({
+            ...p,
+            custom_skills: (p.custom_skills || []).filter((_, i) => i !== idx),
+          }))
+        }
+        // Group B — session configuration (camelCase props mirror the
+        // canonical Interactive Class wiring).
+        sessionConfig={{
+          showSubjectPicker: true,
+          subjectsList: allSubjects,
+          subjectId: settingsSubject,
+          onSubjectIdChange: handleSubjectChange,
+          participationEnabled: sessionConfig.participation_enabled,
+          onParticipationEnabledChange: (v) =>
+            setSessionConfig((p) => ({ ...p, participation_enabled: v })),
+          homeworkEnabled: sessionConfig.homework_enabled,
+          onHomeworkEnabledChange: (v) =>
+            setSessionConfig((p) => ({ ...p, homework_enabled: v })),
+          // Backend stores 'didnt_submit' / 'submitted'; canonical UI uses
+          // 'not_submitted' / 'submitted'. Translate at the boundary.
+          homeworkViewMode:
+            sessionConfig.homework_mode === 'didnt_submit'
+              ? 'not_submitted'
+              : sessionConfig.homework_mode || 'not_submitted',
+          onHomeworkViewModeChange: (v) =>
+            setSessionConfig((p) => ({
+              ...p,
+              homework_mode: v === 'not_submitted' ? 'didnt_submit' : v,
+            })),
+          recitationEnabled: sessionConfig.recitation_enabled,
+          onRecitationEnabledChange: (v) =>
+            setSessionConfig((p) => ({ ...p, recitation_enabled: v })),
+          recitationMaxAttempts: sessionConfig.recitation_attempts,
+          onRecitationMaxAttemptsChange: (v) =>
+            setSessionConfig((p) => ({ ...p, recitation_attempts: v })),
+          // The per-subject template doesn't carry follow-up columns —
+          // those are session-bound. Provide a no-op so the canonical
+          // patterns tab still renders consistently.
+          followupColumns: [],
+          onFollowupColumnsChange: () => {},
+          showAddOtherItems: false,
+          onShowAddOtherItemsChange: () => {},
+          onSave: doSaveSettings,
+          saving: settingsSaving || settingsLoading,
+        }}
+      />
+    );
+  };
 
   const renderAddClassDialog = () => (
     <Dialog open={showAddClassDialog} onOpenChange={setShowAddClassDialog}>
@@ -1151,7 +1013,6 @@ export default function TeacherClassesPage() {
       </div>
 
       {renderSettingsModal()}
-      {renderAddMorePrompt()}
       {renderAddClassDialog()}
       {renderImportDialog()}
 

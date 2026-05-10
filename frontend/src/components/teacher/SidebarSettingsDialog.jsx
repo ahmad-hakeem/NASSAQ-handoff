@@ -607,8 +607,39 @@ export default function SidebarSettingsDialog({
     //   • Participation is always on by default and the toggle was
     //     causing confusion. The boolean is still kept in parent state
     //     (defaulted to true) so the API payload shape is unchanged.
+    //
+    // Callers that DON'T have a session context (e.g. "My Classes" → per-subject
+    // template) opt-in to a subject picker by passing `showSubjectPicker: true`
+    // along with `subjectsList`, `subjectId`, and `onSubjectIdChange`. This keeps
+    // the canonical Interactive Class UX untouched while letting non-session
+    // entry points reuse the exact same modal.
     return (
       <div className="space-y-5">
+        {sc.showSubjectPicker && (
+          <div className="space-y-1.5">
+            <label className="text-xs font-cairo text-muted-foreground">
+              {t('selectSubject') || 'اختر المادة'}
+            </label>
+            <select
+              value={sc.subjectId || ''}
+              onChange={(e) => sc.onSubjectIdChange?.(e.target.value)}
+              dir={isRTL ? 'rtl' : 'ltr'}
+              className={`w-full text-sm bg-card dark:bg-muted border border-border rounded-full px-4 py-2.5 outline-none focus:border-brand-turquoise font-cairo ${sc.subjectId ? '' : 'text-muted-foreground/60'}`}
+            >
+              <option value="" disabled>
+                {t('selectSubject') || 'اختر المادة'}
+              </option>
+              {(sc.subjectsList || []).map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+            {!sc.subjectId && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 font-cairo">
+                {t('selectSubjectFirst') || 'اختر المادة أولاً'}
+              </p>
+            )}
+          </div>
+        )}
         {/* Homework toggle + view-mode options */}
         <div className="space-y-2">
               <SettingsToggleRow
@@ -835,7 +866,7 @@ export default function SidebarSettingsDialog({
             <Button
               type="button"
               onClick={() => sessionConfig.onSave?.()}
-              disabled={!!sessionConfig.saving}
+              disabled={!!sessionConfig.saving || (!!sessionConfig.showSubjectPicker && !sessionConfig.subjectId)}
               className="w-full bg-violet-600 hover:bg-violet-700 text-white font-cairo font-bold"
             >
               {sessionConfig.saving ? (
