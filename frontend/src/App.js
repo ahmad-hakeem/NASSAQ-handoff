@@ -4,6 +4,7 @@ import { Toaster } from "./components/ui/sonner";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { WebSocketProvider } from "./contexts/WebSocketContext";
+import { ParentActiveStudentProvider } from "./contexts/ParentActiveStudentContext";
 import { NassaqAlertProvider } from "./components/ui/NassaqAlertDialog";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { GenericNameGuard } from "./components/GenericNameGuard";
@@ -17,13 +18,15 @@ function App() {
         <AuthProvider>
           <WebSocketProvider>
             <NassaqAlertProvider>
-              <BrowserRouter>
-                <BetaBanner />
-                <GenericNameGuard>
-                  <AppRoutes />
-                </GenericNameGuard>
-                <Toaster />
-              </BrowserRouter>
+              <ParentActiveStudentProvider>
+                <BrowserRouter>
+                  <BetaBanner />
+                  <GenericNameGuard>
+                    <AppRoutes />
+                  </GenericNameGuard>
+                  <Toaster />
+                </BrowserRouter>
+              </ParentActiveStudentProvider>
             </NassaqAlertProvider>
           </WebSocketProvider>
         </AuthProvider>

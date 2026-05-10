@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
+import { useSyncRouteChildToActive } from '../../contexts/ParentActiveStudentContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -42,6 +43,10 @@ const ChildDetailsPage = () => {
   const { t } = useTranslation();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const { childId } = useParams();
+  // Task #146 — keep the global active-student context in sync with the
+  // legacy `:childId` route so the shell switcher and other parent pages
+  // reflect the deep-linked child.
+  useSyncRouteChildToActive(childId);
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);

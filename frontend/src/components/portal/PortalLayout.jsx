@@ -20,6 +20,7 @@ import { Button } from '../ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Sidebar } from '../layout/Sidebar';
 import { NotificationBell } from '../notifications/NotificationBell';
+import ShellStudentSwitcher from '../parent/ShellStudentSwitcher';
 import {
   Home,
   Calendar,
@@ -70,6 +71,12 @@ const ParentShell = ({ children, hideHeaderNotifications }) => {
                   {isRTL ? 'ولي أمر' : 'Parent'}
                 </p>
               </div>
+            </div>
+
+            {/* Task #146 — global active-student switcher, mounted once for
+                the whole parent shell so every page reads the same context. */}
+            <div className="flex-1 min-w-0 flex justify-center">
+              <ShellStudentSwitcher />
             </div>
 
             <div className="flex items-center gap-1">

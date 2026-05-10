@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
+import React, { useEffect, useCallback, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from '../../contexts/ThemeContext';
+import { useParentActiveStudent } from '../../contexts/ParentActiveStudentContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent } from '../../components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
@@ -20,24 +20,21 @@ const VALID_TABS = ['details', 'schedule', 'homework', 'behavior'];
 
 const ParentChildrenPage = () => {
   const { t } = useTranslation();
-  const { token, api } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [loading, setLoading] = useState(true);
-  const [children, setChildren] = useState([]);
+  // Task #146 — children + active student come from the global parent
+  // context (mounted at App root). This page only owns the URL `?child=` /
+  // `?tab=` projection so deep links keep working.
+  const {
+    linkedChildren: children,
+    activeChildId,
+    activeChild,
+    setActiveChildId,
+    isLoading: loading,
+  } = useParentActiveStudent();
 
-  // URL is the single source of truth for active child + active tab. Tab
-  // changes and child changes go through setSearchParams, and what we render
-  // is derived from searchParams every render (no shadow useState).
   const urlChildId = searchParams.get('child');
   const urlTabRaw = searchParams.get('tab');
   const activeTab = VALID_TABS.includes(urlTabRaw) ? urlTabRaw : 'details';
-
-  const activeChild = useMemo(() => {
-    if (children.length === 0) return null;
-    const match = urlChildId && children.find(c => String(c.id) === String(urlChildId));
-    return match || children[0];
-  }, [children, urlChildId]);
-  const selectedChildId = activeChild ? String(activeChild.id) : null;
 
   const updateParams = useCallback((patch) => {
     setSearchParams(prev => {
@@ -50,29 +47,18 @@ const ParentChildrenPage = () => {
     }, { replace: true });
   }, [setSearchParams]);
 
+  // One-way: route ?child= → context. Runs once children are loaded so the
+  // initial deep link wins over the context's "first child" default.
   useEffect(() => {
-    let cancelled = false;
-    const fetchChildren = async () => {
-      try {
-        const res = await api.get('/parent-portal/children');
-        if (!cancelled) setChildren(res.data.children || []);
-      } catch {
-        try {
-          const res2 = await api.get('/parent-portal/dashboard');
-          if (!cancelled) setChildren(res2.data.children || []);
-        } catch {
-          if (!cancelled) setChildren([]);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    fetchChildren();
-    return () => { cancelled = true; };
-  }, [token, api]);
+    if (!urlChildId || children.length === 0) return;
+    const exists = children.some(c => String(c.id) === String(urlChildId));
+    if (exists && String(urlChildId) !== String(activeChildId)) {
+      setActiveChildId(urlChildId);
+    }
+  }, [urlChildId, children, activeChildId, setActiveChildId]);
 
-  // Normalize URL once children are loaded: if URL is missing/invalid, write
-  // the resolved child + tab back so the URL stays canonical for sharing.
+  // Keep the URL canonical for sharing: mirror the resolved active child +
+  // tab back into ?child= / ?tab= when they drift.
   useEffect(() => {
     if (!activeChild) return;
     const patch = {};
@@ -121,33 +107,8 @@ const ParentChildrenPage = () => {
           </Card>
         ) : (
           <>
-            {/* Child switcher (only when more than one) */}
-            {children.length > 1 && (
-              <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-                {children.map(c => {
-                  const isActive = String(c.id) === String(activeChild?.id);
-                  return (
-                    <button
-                      key={c.id}
-                      onClick={() => updateParams({ child: c.id })}
-                      className={`flex items-center gap-2 shrink-0 px-3 py-2 rounded-xl border transition ${
-                        isActive
-                          ? 'bg-brand-navy/10 dark:bg-brand-turquoise/15 border-brand-navy/30 dark:border-brand-turquoise/40 text-brand-navy dark:text-brand-turquoise font-semibold'
-                          : 'bg-card border-border text-foreground hover:bg-muted/40'
-                      }`}
-                    >
-                      <Avatar className="h-7 w-7">
-                        <AvatarImage src={c.photo_url || c.profile_picture} />
-                        <AvatarFallback className="text-xs bg-brand-navy/15 dark:bg-brand-turquoise/20 text-brand-navy dark:text-brand-turquoise">
-                          {c.name?.charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm truncate max-w-[120px]">{c.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            {/* Child switcher lives in the shell (PortalLayout / Task #146);
+                no inline switcher here so there is one source of truth. */}
 
             {activeChild && (
               <Card className="rounded-2xl border border-border shadow-sm overflow-hidden bg-card">

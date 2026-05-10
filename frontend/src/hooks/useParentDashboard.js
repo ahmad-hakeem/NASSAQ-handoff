@@ -1,31 +1,35 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useParentActiveStudent } from '../contexts/ParentActiveStudentContext';
 
+/**
+ * Task #146 — children + active selection now come from the global
+ * ParentActiveStudentContext (single source of truth, mounted at App root).
+ * This hook keeps the per-child live/weekly/notification fetch loops it
+ * always owned, but no longer fetches the children list itself and no
+ * longer holds a local `selectedChildIndex`.
+ */
 export default function useParentDashboard() {
-  const { api, user } = useAuth();
-  const [children, setChildren] = useState([]);
-  const [selectedChildIndex, setSelectedChildIndex] = useState(0);
+  const { api } = useAuth();
+  const {
+    linkedChildren: children,
+    activeChild: selectedChild,
+    activeChildId: selectedChildId,
+    setActiveChildId,
+    isLoading: childrenLoading,
+    error: childrenErrorObj,
+    refetch: refreshChildren,
+  } = useParentActiveStudent();
+
   const [liveData, setLiveData] = useState(null);
   const [weeklyStory, setWeeklyStory] = useState(null);
   const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
   const [liveLoading, setLiveLoading] = useState(false);
   const [weeklyLoading, setWeeklyLoading] = useState(false);
   const [liveError, setLiveError] = useState(false);
   const [weeklyError, setWeeklyError] = useState(false);
-  const [childrenError, setChildrenError] = useState(false);
   const timerRef = useRef(null);
-
-  const fetchChildren = useCallback(async () => {
-    setChildrenError(false);
-    try {
-      const res = await api.get('/parent-portal/children');
-      setChildren(res.data?.children || []);
-    } catch (err) {
-      setChildren([]);
-      setChildrenError(true);
-    }
-  }, [api]);
 
   const fetchLiveData = useCallback(async (childId) => {
     if (!childId) return;
@@ -34,7 +38,7 @@ export default function useParentDashboard() {
     try {
       const res = await api.get(`/parent-portal/child/${childId}/today-live`);
       setLiveData(res.data);
-    } catch (err) {
+    } catch {
       setLiveData(null);
       setLiveError(true);
     } finally {
@@ -49,7 +53,7 @@ export default function useParentDashboard() {
     try {
       const res = await api.get(`/parent-portal/child/${childId}/weekly-story`);
       setWeeklyStory(res.data);
-    } catch (err) {
+    } catch {
       setWeeklyStory(null);
       setWeeklyError(true);
     } finally {
@@ -63,27 +67,20 @@ export default function useParentDashboard() {
       setNotifications(res.data?.notifications || []);
     } catch {
       setNotifications([]);
+    } finally {
+      setNotificationsLoading(false);
     }
   }, [api]);
 
-  const selectChild = useCallback((index) => {
-    setSelectedChildIndex(index);
-  }, []);
-
   useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-      await fetchChildren();
-      await fetchNotifications();
-      setLoading(false);
-    };
-    init();
-  }, [fetchChildren, fetchNotifications]);
+    fetchNotifications();
+  }, [fetchNotifications]);
 
-  const selectedChild = children[selectedChildIndex];
-  const selectedChildId = selectedChild?.id;
-
+  // Reset per-child state whenever the active student changes so we never
+  // flash a previous child's live data on the new one's hero.
   useEffect(() => {
+    setLiveData(null);
+    setWeeklyStory(null);
     if (selectedChildId) {
       fetchLiveData(selectedChildId);
       fetchWeeklyStory(selectedChildId);
@@ -98,6 +95,18 @@ export default function useParentDashboard() {
     return () => clearInterval(timerRef.current);
   }, [selectedChildId, fetchLiveData]);
 
+  // Back-compat shim: legacy callers used `selectChild(index)`. Translate
+  // an index into the corresponding child id and push it through the
+  // global context so every other parent page reflects the change.
+  const selectChild = useCallback((index) => {
+    const c = children?.[index];
+    if (c?.id != null) setActiveChildId(c.id);
+  }, [children, setActiveChildId]);
+
+  const selectedChildIndex = selectedChildId
+    ? Math.max(0, children.findIndex(c => String(c.id) === String(selectedChildId)))
+    : 0;
+
   return {
     children,
     selectedChildIndex,
@@ -106,15 +115,15 @@ export default function useParentDashboard() {
     liveData,
     weeklyStory,
     notifications,
-    loading,
+    loading: childrenLoading || notificationsLoading,
     liveLoading,
     weeklyLoading,
     liveError,
     weeklyError,
-    childrenError,
+    childrenError: !!childrenErrorObj,
     selectChild,
     refreshLiveData: () => fetchLiveData(selectedChildId),
     refreshWeeklyStory: () => fetchWeeklyStory(selectedChildId),
-    refreshChildren: fetchChildren,
+    refreshChildren,
   };
 }

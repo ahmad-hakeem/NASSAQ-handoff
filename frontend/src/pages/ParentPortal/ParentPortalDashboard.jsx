@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import useParentDashboard from '../../hooks/useParentDashboard';
-import StudentSwitcher from '../../components/parent/StudentSwitcher';
 import CurrentClassCard from '../../components/parent/CurrentClassCard';
 import UpcomingClasses from '../../components/parent/UpcomingClasses';
 import WeeklyStory from '../../components/parent/WeeklyStory';
@@ -208,7 +207,6 @@ const ParentPortalDashboard = () => {
   const { isRTL } = useTheme();
   const {
     children,
-    selectedChildIndex,
     selectedChild,
     selectedChildId,
     liveData,
@@ -219,7 +217,6 @@ const ParentPortalDashboard = () => {
     weeklyLoading,
     weeklyError,
     childrenError,
-    selectChild,
     refreshLiveData,
     refreshWeeklyStory,
     refreshChildren,
@@ -258,11 +255,8 @@ const ParentPortalDashboard = () => {
         dir={isRTL ? 'rtl' : 'ltr'}
         data-testid="parent-portal-dashboard"
       >
-        <StudentSwitcher
-          children={children}
-          selectedIndex={selectedChildIndex}
-          onSelect={selectChild}
-        />
+        {/* Task #146 — the active-student switcher lives in the shell
+            (PortalLayout) so every parent page shares one control. */}
 
         {childrenError && (
           <Card className="rounded-2xl border border-red-100 dark:border-red-900/40 shadow-sm bg-card">

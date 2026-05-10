@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from '../../contexts/ThemeContext';
+import { useSyncRouteChildToActive } from '../../contexts/ParentActiveStudentContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { GaugeChart, PerformanceLine, SubjectRadar } from '../../components/parent/AnalyticsCharts';
 import { Card, CardContent } from '../../components/ui/card';
@@ -11,6 +12,7 @@ import { ChevronLeft, TrendingUp, TrendingDown, Activity, CheckCircle, AlertTria
 const StudentAnalyticsPage = () => {
   const { t } = useTranslation();
   const { childId } = useParams();
+  useSyncRouteChildToActive(childId); // Task #146
   const { api } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

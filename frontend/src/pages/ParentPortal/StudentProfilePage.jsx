@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
+import { useSyncRouteChildToActive } from '../../contexts/ParentActiveStudentContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import ProfileEditor from '../../components/parent/ProfileEditor';
 import AchievementsArchive from '../../components/parent/AchievementsArchive';
@@ -33,6 +34,7 @@ const FAMILY_LABELS = {
 const StudentProfilePage = () => {
   const { t } = useTranslation();
   const { childId } = useParams();
+  useSyncRouteChildToActive(childId); // Task #146
   const { api } = useAuth();
   const { isRTL } = useTheme();
   const [profile, setProfile] = useState(null);
