@@ -874,6 +874,168 @@ def _hakim_fallback(msg: str) -> HakimResponse:
 
 # ============== AI INSIGHTS APIs ==============
 
+# --- AI Insights authorization sentinel (Task #154 / H1) ---------------------
+#
+# Tri-state contract used by every AI Insights endpoint:
+#   * None                   -> caller is NOT a teacher-class role; continue
+#                               on the existing principal / school-wide path.
+#   * NO_AUTHORIZED_SCOPE    -> caller IS a teacher-class role and is
+#                               authorized in principle, but has no resolvable
+#                               owned/assigned records. Endpoint must return
+#                               the documented empty-shape payload.
+#   * dict                   -> populated scope; use _scope_query_for only.
+#
+# Authorization-resolution failures must surface as a controlled 403 with a
+# safe Arabic message — never as an empty 200.
+class _NoAuthorizedScopeType:
+    """Sentinel for the NO_AUTHORIZED_SCOPE tri-state value."""
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return "NO_AUTHORIZED_SCOPE"
+
+    def __bool__(self) -> bool:
+        return False
+
+
+NO_AUTHORIZED_SCOPE = _NoAuthorizedScopeType()
+
+_AI_INSIGHTS_SCOPE_DENIED_AR = "تعذّر التحقق من صلاحياتك للوصول إلى هذه البيانات"
+
+_TEACHER_CLASS_ROLES = {
+    UserRole.TEACHER.value,
+    UserRole.INDEPENDENT_TEACHER.value,
+}
+
+
+def _empty_insights_overview() -> Dict[str, Any]:
+    """Documented empty-shape payload for /ai/insights/overview.
+
+    Schema parity with the populated response: every key/nested-key the
+    populated path returns is present here with a zeroed/empty value.
+    """
+    return {
+        "overall_score": 0,
+        "trend": "flat",
+        "trend_value": 0,
+        "has_data": False,
+        "last_updated": datetime.now(timezone.utc).isoformat(),
+        "metrics": {
+            "attendance_rate": 0,
+            "engagement_rate": 0,
+            "student_teacher_ratio": 0,
+            "total_students": 0,
+            "total_teachers": 0,
+            "has_attendance_data": False,
+            "previous_month_score": 0,
+        },
+    }
+
+
+async def resolve_ai_insights_scope(current_user: dict):
+    """Single entry point for AI Insights scope resolution.
+
+    Returns one of:
+      * None                  -> non-teacher-class caller (principal/admin).
+      * NO_AUTHORIZED_SCOPE   -> teacher-class caller with no owned data.
+      * dict                  -> populated scope { school_id, class_ids,
+                                  student_ids, teacher_id }.
+
+    Raises HTTPException(403, safe Arabic) on any internal failure so a
+    resolution error never silently degrades into an unscoped 200.
+    """
+    role = current_user.get("role", "")
+    if role not in _TEACHER_CLASS_ROLES:
+        return None
+
+    try:
+        if role == UserRole.INDEPENDENT_TEACHER.value:
+            user_id = current_user.get("id") or current_user.get("_id")
+            if not user_id:
+                raise HTTPException(403, _AI_INSIGHTS_SCOPE_DENIED_AR)
+
+            workspace_id = f"itw_{user_id}"
+            workspace = await gd_find_one(db.session, "schools", {"id": workspace_id})
+            if not workspace:
+                # Workspace does not exist yet — treat as authorized-but-empty.
+                # The lazy create lives in class_management_routes; AI Insights
+                # is read-only and must NOT trigger workspace creation.
+                return NO_AUTHORIZED_SCOPE
+
+            classes = await gd_find(db.session, "classes", {
+                "school_id": workspace_id,
+            }, limit=200)
+            class_ids = [c.get("id") for c in classes if c.get("id")]
+
+            student_filter: Dict[str, Any] = {
+                "school_id": workspace_id,
+                "is_active": True,
+            }
+            if class_ids:
+                student_filter["class_id"] = {"$in": class_ids}
+            students = await gd_find(db.session, "students", student_filter, limit=2000)
+            student_ids = [s.get("id") for s in students if s.get("id")]
+
+            if not class_ids and not student_ids:
+                return NO_AUTHORIZED_SCOPE
+
+            return {
+                "teacher_id": current_user.get("teacher_id") or str(user_id),
+                "school_id": workspace_id,
+                "class_ids": class_ids,
+                "student_ids": student_ids,
+            }
+
+        # role == TEACHER (school-affiliated)
+        teacher_id = current_user.get("teacher_id")
+        school_id = current_user.get("tenant_id")
+        if not teacher_id or not school_id:
+            return NO_AUTHORIZED_SCOPE
+
+        assignments = await gd_find(db.session, "teacher_assignments", {
+            "teacher_id": teacher_id, "is_active": True,
+        }, limit=200)
+        tca_docs = await gd_find(db.session, "teacher_class_assignments", {
+            "teacher_id": teacher_id,
+        }, limit=200)
+        class_ids = list({
+            *(a.get("class_id") for a in assignments if a.get("class_id")),
+            *(d.get("class_id") for d in tca_docs if d.get("class_id")),
+        })
+
+        student_ids: List[str] = []
+        if class_ids:
+            students = await gd_find(db.session, "students", {
+                "school_id": school_id,
+                "class_id": {"$in": class_ids},
+                "is_active": True,
+            }, limit=2000)
+            student_ids = [s.get("id") for s in students if s.get("id")]
+
+        if not class_ids and not student_ids:
+            return NO_AUTHORIZED_SCOPE
+
+        return {
+            "teacher_id": teacher_id,
+            "school_id": school_id,
+            "class_ids": class_ids,
+            "student_ids": student_ids,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "AI insights scope resolution failed for user %s: %s",
+            current_user.get("id"), exc,
+        )
+        raise HTTPException(403, _AI_INSIGHTS_SCOPE_DENIED_AR)
+
+
 async def _resolve_teacher_scope(current_user: dict) -> Optional[Dict[str, Any]]:
     """
     If the current user is a teacher, return their scoping context: the list of
@@ -947,13 +1109,17 @@ async def get_ai_insights_overview(
 ):
     """Get AI-powered insights overview for the school (or for the current
     teacher's classes when the caller is a teacher)."""
-    school_id = current_user.get("tenant_id")
-    teacher_scope = await _resolve_teacher_scope(current_user)
+    # Tri-state authorization sentinel must be resolved before ANY business
+    # data query (Task #154 / H1).
+    scope_result = await resolve_ai_insights_scope(current_user)
+    if scope_result is NO_AUTHORIZED_SCOPE:
+        return _empty_insights_overview()
+    teacher_scope = scope_result if isinstance(scope_result, dict) else None
+    school_id = teacher_scope["school_id"] if teacher_scope else current_user.get("tenant_id")
 
     # Platform admins (no tenant_id) get aggregate stats across ALL schools so
     # the overview, attendance and counts stay consistent. School-scoped users
     # only see their own school's data. Teachers see only their own classes.
-    scope_query = {"school_id": school_id} if school_id else {}
     students_q = _scope_query_for(teacher_scope, school_id, "students")
     teachers_q = _scope_query_for(teacher_scope, school_id, "teachers")
     attendance_q = _scope_query_for(teacher_scope, school_id, "attendance")
@@ -1045,8 +1211,13 @@ async def get_ai_predictions(
 ):
     """Get AI predictions for the school (or for the current teacher's classes
     when the caller is a teacher) based on real data analysis."""
-    school_id = current_user.get("tenant_id")
-    teacher_scope = await _resolve_teacher_scope(current_user)
+    # Tri-state authorization sentinel must be resolved before ANY business
+    # data query (Task #154 / H1).
+    scope_result = await resolve_ai_insights_scope(current_user)
+    if scope_result is NO_AUTHORIZED_SCOPE:
+        return []
+    teacher_scope = scope_result if isinstance(scope_result, dict) else None
+    school_id = teacher_scope["school_id"] if teacher_scope else current_user.get("tenant_id")
     predictions = []
     pred_id = 0
 
@@ -1056,7 +1227,6 @@ async def get_ai_predictions(
     week_ago_str = week_ago.strftime("%Y-%m-%d")
     two_weeks_ago_str = two_weeks_ago.strftime("%Y-%m-%d")
 
-    q = {"school_id": school_id} if school_id else {}
     attendance_q = _scope_query_for(teacher_scope, school_id, "attendance")
     grades_q = _scope_query_for(teacher_scope, school_id, "grades")
 
@@ -1160,11 +1330,15 @@ async def get_ai_recommendations(
 ):
     """Get AI-powered recommendations based on real school data (or the
     current teacher's classes when the caller is a teacher)."""
-    school_id = current_user.get("tenant_id")
-    teacher_scope = await _resolve_teacher_scope(current_user)
+    # Tri-state authorization sentinel must be resolved before ANY business
+    # data query (Task #154 / H1).
+    scope_result = await resolve_ai_insights_scope(current_user)
+    if scope_result is NO_AUTHORIZED_SCOPE:
+        return []
+    teacher_scope = scope_result if isinstance(scope_result, dict) else None
+    school_id = teacher_scope["school_id"] if teacher_scope else current_user.get("tenant_id")
     recommendations = []
     rec_id = 0
-    q = {"school_id": school_id} if school_id else {}
     attendance_q = _scope_query_for(teacher_scope, school_id, "attendance")
     students_q = _scope_query_for(teacher_scope, school_id, "students")
     teachers_q = _scope_query_for(teacher_scope, school_id, "teachers")
@@ -1303,10 +1477,14 @@ async def get_ai_alerts(
 ):
     """Get AI-generated alerts based on real school data (or the current
     teacher's classes when the caller is a teacher)."""
-    school_id = current_user.get("tenant_id")
-    teacher_scope = await _resolve_teacher_scope(current_user)
+    # Tri-state authorization sentinel must be resolved before ANY business
+    # data query (Task #154 / H1).
+    scope_result = await resolve_ai_insights_scope(current_user)
+    if scope_result is NO_AUTHORIZED_SCOPE:
+        return []
+    teacher_scope = scope_result if isinstance(scope_result, dict) else None
+    school_id = teacher_scope["school_id"] if teacher_scope else current_user.get("tenant_id")
     alerts = []
-    q = {"school_id": school_id} if school_id else {}
     attendance_q = _scope_query_for(teacher_scope, school_id, "attendance")
     sessions_q = _scope_query_for(teacher_scope, school_id, "timetable_sessions")
     behaviour_q = _scope_query_for(teacher_scope, school_id, "behaviour_records")
@@ -1763,15 +1941,21 @@ async def get_at_risk_students(
     current_user: dict = Depends(require_roles([
         UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN,
         UserRole.SCHOOL_PRINCIPAL, UserRole.TEACHER,
+        UserRole.INDEPENDENT_TEACHER,
     ])),
 ):
     role = current_user.get("role", "")
-    school_id = current_user.get("tenant_id")
 
-    if role == UserRole.TEACHER.value:
-        scope = await _resolve_teacher_scope(current_user) or {}
+    # Tri-state authorization sentinel must be resolved before ANY business
+    # data query for teacher-class callers (Task #154 / H1).
+    if role in _TEACHER_CLASS_ROLES:
+        scope_result = await resolve_ai_insights_scope(current_user)
+        if scope_result is NO_AUTHORIZED_SCOPE:
+            return []
+        scope = scope_result if isinstance(scope_result, dict) else {}
         student_ids = scope.get("student_ids") or []
         class_ids = scope.get("class_ids") or []
+        school_id = scope.get("school_id") or current_user.get("tenant_id")
         if not student_ids:
             return []
 

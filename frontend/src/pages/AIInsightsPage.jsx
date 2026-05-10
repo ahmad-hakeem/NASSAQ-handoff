@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 const StudentPerformanceDashboard = lazy(() =>
   import('../components/student-performance/StudentPerformanceDashboard'));
@@ -534,12 +534,21 @@ const HealthRing = ({ label, value, color, icon: Icon, isRTL }) => {
   );
 };
 
-const TeacherMonitoringSection = ({ isRTL, api, isTeacher = false }) => {
+const TeacherMonitoringSection = ({ isRTL, api, isTeacher = false, userKey = '' }) => {
   const { t } = useTranslation();
   const [monitorData, setMonitorData] = useState(null);
   const [monitorLoading, setMonitorLoading] = useState(true);
+  // Request-version guard: each userKey change bumps the active request id.
+  // Async responses from a previous identity are dropped instead of
+  // overwriting state for the current user (Task #154 / M1 race fix).
+  const monitorReqIdRef = useRef(0);
 
   useEffect(() => {
+    // Reset on auth identity change so the previous user's numbers do not
+    // flash before the new fetch resolves (Task #154 / M1).
+    setMonitorData(null);
+    monitorReqIdRef.current += 1;
+    const myReqId = monitorReqIdRef.current;
     const fetchMonitorData = async () => {
       setMonitorLoading(true);
       try {
@@ -548,6 +557,7 @@ const TeacherMonitoringSection = ({ isRTL, api, isTeacher = false }) => {
           api.get('/reports/school/behavior').catch(() => ({ data: null })),
           api.get('/reports/school/grades').catch(() => ({ data: null })),
         ]);
+        if (myReqId !== monitorReqIdRef.current) return;
 
         const overview = overviewRes.data || {};
         const behavior = behaviorRes.data || {};
@@ -574,11 +584,11 @@ const TeacherMonitoringSection = ({ isRTL, api, isTeacher = false }) => {
       } catch (err) {
         console.error('Teacher monitoring data error:', err);
       } finally {
-        setMonitorLoading(false);
+        if (myReqId === monitorReqIdRef.current) setMonitorLoading(false);
       }
     };
     fetchMonitorData();
-  }, [api]);
+  }, [api, userKey]);
 
   if (monitorLoading) {
     return (
@@ -1093,7 +1103,19 @@ export const AIInsightsPage = () => {
   const [staffHeadcount, setStaffHeadcount] = useState(0);
   const [todayAttendanceCounts, setTodayAttendanceCounts] = useState({ present: 0, absent: 0, excused: 0, late: 0 });
 
+  // Auth identity key — when the signed-in user, role or tenant changes
+  // (logout/login, role switch, impersonation), reset the data regions to
+  // skeleton state so the previous user's analytics never flash on screen.
+  // The page header, filters and surrounding shell stay mounted (Task #154 / M1).
+  const userKey = `${user?.id || ''}|${user?.role || ''}|${user?.tenant_id || ''}`;
+
+  // Request-version guard: incremented on every userKey change. Async
+  // responses from a previous identity are dropped instead of overwriting
+  // state for the current user (Task #154 / M1 race fix).
+  const fetchReqIdRef = useRef(0);
+
   const fetchData = useCallback(async () => {
+    const myReqId = fetchReqIdRef.current;
     try {
       const todayDate = new Date().toISOString().split('T')[0];
       const [overviewRes, predictionsRes, recommendationsRes, alertsRes, risksRes, dashboardRes, attendanceReportRes, teachersRes, adminsRes, todayAttendanceRes] = await Promise.all([
@@ -1108,6 +1130,8 @@ export const AIInsightsPage = () => {
         isTeacher ? Promise.resolve({ data: [] }) : api.get('/teacher-attendance/school-admins').catch(() => ({ data: [] })),
         isTeacher ? Promise.resolve({ data: [] }) : api.get(`/teacher-attendance?date=${todayDate}`).catch(() => ({ data: [] })),
       ]);
+
+      if (myReqId !== fetchReqIdRef.current) return;
 
       setAttendanceData(dashboardRes?.data?.attendance || null);
       setAttendanceReport(attendanceReportRes?.data || null);
@@ -1140,11 +1164,27 @@ export const AIInsightsPage = () => {
     } catch (error) {
       console.error('Failed to load AI insights:', error);
     } finally {
-      setLoading(false);
+      if (myReqId === fetchReqIdRef.current) setLoading(false);
     }
   }, [api, isTeacher]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  // Reset every data region back to its empty/skeleton state whenever the
+  // signed-in user identity changes, BEFORE the next fetch runs. The page
+  // header, filters and shell stay mounted (Task #154 / M1).
+  useEffect(() => {
+    fetchReqIdRef.current += 1;
+    setInsights({ overall_score: 0, trend: 'up', trend_value: 0, metrics: {} });
+    setPredictions([]);
+    setRecommendations([]);
+    setAlerts([]);
+    setStudentRisks([]);
+    setAttendanceData(null);
+    setAttendanceReport(null);
+    setStaffHeadcount(0);
+    setTodayAttendanceCounts({ present: 0, absent: 0, excused: 0, late: 0 });
+    setLoading(true);
+    fetchData();
+  }, [userKey, fetchData]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -1409,7 +1449,7 @@ export const AIInsightsPage = () => {
 
           {/* ══════ TEACHER MONITORING INSIGHTS ══════ */}
           <div className="ai-slide-in">
-            <TeacherMonitoringSection isRTL={isRTL} api={api} isTeacher={isTeacher} />
+            <TeacherMonitoringSection isRTL={isRTL} api={api} isTeacher={isTeacher} userKey={userKey} />
           </div>
 
           {/* ══════ ALL SECTIONS ══════ */}
