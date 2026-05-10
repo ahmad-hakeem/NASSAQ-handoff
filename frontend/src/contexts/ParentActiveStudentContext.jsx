@@ -61,6 +61,22 @@ const EMPTY_VALUE = {
  */
 const SCHEDULE_DEPENDENT_KEYS = new Set(['schedule', 'details']);
 
+/**
+ * Task #151 — which cached endpoint keys are made stale by which incoming
+ * per-student event. The parent's red badge / NotificationBell handles the
+ * notification row itself; this map only governs the per-(childId, endpoint)
+ * cache populated by Task #149, so a parent who keeps the portal open sees
+ * fresh data on the next visit (or while the page is mounted) instead of a
+ * stale snapshot. Keep entries narrow — broad invalidations defeat the point
+ * of the cache.
+ */
+const CHILD_EVENT_KEYS = {
+  attendance: ['details', 'analytics', 'profile'],
+  assessment: ['details', 'analytics', 'profile'],
+  behaviour: ['behaviour', 'details', 'analytics', 'profile'],
+  homework: ['homework', 'analytics', 'profile'],
+};
+
 const LEGACY_CHILD_RE = /^\/parent\/child\/([^/]+)(?:\/.*)?$/;
 
 /**
@@ -220,6 +236,30 @@ export const ParentActiveStudentProvider = ({ children }) => {
     };
     window.addEventListener('nassaq:schedule_published', onSchedulePublished);
     return () => window.removeEventListener('nassaq:schedule_published', onSchedulePublished);
+  }, []);
+
+  // Task #151 — bridge per-student data-change WS events into targeted
+  // cache invalidations. We only touch entries for children the parent has
+  // actually viewed (i.e. that already have a per-child cache map), so an
+  // event for an unviewed child never triggers a fetch. The next visit to
+  // an affected page on the named child re-fetches and repopulates the
+  // cache; if that page is currently mounted, its own
+  // `nassaq:child_data_updated` listener (or the existing data hook) is
+  // responsible for refreshing what's on screen.
+  useEffect(() => {
+    const onChildDataUpdated = (e) => {
+      const detail = e?.detail || {};
+      const childId = detail.childId != null ? String(detail.childId) : null;
+      const kind = detail.kind;
+      if (!childId || !kind) return;
+      const keys = CHILD_EVENT_KEYS[kind];
+      if (!keys || keys.length === 0) return;
+      const childMap = endpointCacheRef.current.get(childId);
+      if (!childMap) return; // never viewed → nothing to invalidate, no fetches
+      for (const k of keys) childMap.delete(k);
+    };
+    window.addEventListener('nassaq:child_data_updated', onChildDataUpdated);
+    return () => window.removeEventListener('nassaq:child_data_updated', onChildDataUpdated);
   }, []);
 
   /**

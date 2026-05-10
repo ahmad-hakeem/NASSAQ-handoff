@@ -224,6 +224,20 @@ export const WebSocketProvider = ({ children }) => {
             setOnlineUsers(data.online_users || 0);
           } else if (data.type === 'realtime_notification') {
             handleNotification(data);
+            // Task #151 — realtime broadcasts may also carry per-student
+            // change hints in their extra_data (e.g. tenant-scoped pushes
+            // that include related_entity / related_entity_id). Bridge
+            // those too so the parent portal cache stays consistent
+            // regardless of which broadcast path the backend chose.
+            try {
+              const kind = data.notification_type;
+              const childId = data.related_entity === 'student' ? data.related_entity_id : null;
+              if (childId && (kind === 'attendance' || kind === 'assessment' || kind === 'behaviour' || kind === 'homework')) {
+                window.dispatchEvent(new CustomEvent('nassaq:child_data_updated', {
+                  detail: { childId: String(childId), kind },
+                }));
+              }
+            } catch (_dispatchErr) { /* no-op */ }
           } else if (data.type === 'schedule_published') {
             // Task #145 — bridge tenant-wide schedule publish events to a
             // window CustomEvent so any open teacher screen can silently
@@ -233,6 +247,23 @@ export const WebSocketProvider = ({ children }) => {
             try {
               window.dispatchEvent(new CustomEvent('nassaq:schedule_published', { detail: data }));
             } catch (_dispatchErr) { /* no-op */ }
+          } else if (data.type === 'new_notification') {
+            // Task #151 — bridge per-student data-change notifications
+            // (attendance flipped, grade posted, behaviour record added,
+            // homework assigned/graded) to a window CustomEvent so the
+            // parent portal's per-(childId, endpoint) cache can drop
+            // stale entries without a manual reload. The notification
+            // row itself is rendered by NotificationBell on its own
+            // poll/refresh path; we only care about the cache hint here.
+            const kind = data.notification_type;
+            const childId = data.related_entity === 'student' ? data.related_entity_id : null;
+            if (childId && (kind === 'attendance' || kind === 'assessment' || kind === 'behaviour' || kind === 'homework')) {
+              try {
+                window.dispatchEvent(new CustomEvent('nassaq:child_data_updated', {
+                  detail: { childId: String(childId), kind },
+                }));
+              } catch (_dispatchErr) { /* no-op */ }
+            }
           } else if (data.type === 'pong') {
             // Keep-alive response
           }

@@ -107,6 +107,20 @@ const StudentProfilePage = () => {
     fetchProfile();
   }, [fetchProfile, hasLoadedChildren, childId, getCachedEndpoint]);
 
+  // Task #151 — silently refetch the profile when an upstream child data
+  // event (attendance, grade, behaviour, homework) fires for the active
+  // child, since the profile aggregates these signals.
+  useEffect(() => {
+    const onUpdated = (e) => {
+      const d = e?.detail || {};
+      if (!['attendance', 'assessment', 'behaviour', 'homework'].includes(d.kind)) return;
+      if (String(d.childId) !== String(childId)) return;
+      fetchProfile();
+    };
+    window.addEventListener('nassaq:child_data_updated', onUpdated);
+    return () => window.removeEventListener('nassaq:child_data_updated', onUpdated);
+  }, [childId, fetchProfile]);
+
   if (loading) {
     return (
       <PortalLayout portalType="parent">

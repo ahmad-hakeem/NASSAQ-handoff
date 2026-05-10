@@ -37,6 +37,10 @@ const ChildBehaviorPage = () => {
   const activeChildRef = useRef(null);
   activeChildRef.current = childId;
 
+  // Task #151 — bump to force a silent refetch when a relevant
+  // ``nassaq:child_data_updated`` event fires for the active child.
+  const [refreshBump, setRefreshBump] = useState(0);
+
   useEffect(() => {
     if (hasLoadedChildren && !childId) {
       setLoading(false);
@@ -73,7 +77,20 @@ const ChildBehaviorPage = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [childId, hasLoadedChildren, token, api, getCachedEndpoint, setCachedEndpoint]);
+  }, [childId, hasLoadedChildren, token, api, getCachedEndpoint, setCachedEndpoint, refreshBump]);
+
+  // Task #151 — silently refetch when a teacher posts a new behaviour
+  // record for the currently-viewed child.
+  useEffect(() => {
+    const onUpdated = (e) => {
+      const d = e?.detail || {};
+      if (d.kind !== 'behaviour') return;
+      if (String(d.childId) !== String(childId)) return;
+      setRefreshBump((b) => b + 1);
+    };
+    window.addEventListener('nassaq:child_data_updated', onUpdated);
+    return () => window.removeEventListener('nassaq:child_data_updated', onUpdated);
+  }, [childId]);
 
   if (loading) {
     return (

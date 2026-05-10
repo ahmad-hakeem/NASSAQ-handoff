@@ -33,6 +33,10 @@ const StudentAnalyticsPage = () => {
   const activeChildRef = useRef(null);
   activeChildRef.current = childId;
 
+  // Task #151 — bump to force a silent refetch when a relevant
+  // ``nassaq:child_data_updated`` event fires for the active child.
+  const [refreshBump, setRefreshBump] = useState(0);
+
   useEffect(() => {
     if (hasLoadedChildren && !childId) {
       setLoading(false);
@@ -69,7 +73,21 @@ const StudentAnalyticsPage = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [childId, hasLoadedChildren, api, getCachedEndpoint, setCachedEndpoint]);
+  }, [childId, hasLoadedChildren, api, getCachedEndpoint, setCachedEndpoint, refreshBump]);
+
+  // Task #151 — silently refetch the analytics aggregate whenever any
+  // upstream child data (attendance, grade, behaviour, homework) for the
+  // currently-viewed child changes.
+  useEffect(() => {
+    const onUpdated = (e) => {
+      const d = e?.detail || {};
+      if (!['attendance', 'assessment', 'behaviour', 'homework'].includes(d.kind)) return;
+      if (String(d.childId) !== String(childId)) return;
+      setRefreshBump((b) => b + 1);
+    };
+    window.addEventListener('nassaq:child_data_updated', onUpdated);
+    return () => window.removeEventListener('nassaq:child_data_updated', onUpdated);
+  }, [childId]);
 
   if (loading) {
     return (

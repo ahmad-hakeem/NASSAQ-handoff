@@ -82,6 +82,10 @@ const ChildDetailsPage = () => {
   const activeChildRef = useRef(null);
   activeChildRef.current = childId;
 
+  // Task #151 — bump to force a silent refetch when an attendance / grade /
+  // behaviour event fires for the currently-viewed child.
+  const [refreshBump, setRefreshBump] = useState(0);
+
   useEffect(() => {
     // Wait until the linked-children list resolves so we never fetch with an
     // unverified id. If load completes with no valid active child, the
@@ -142,7 +146,20 @@ const ChildDetailsPage = () => {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [childId, hasLoadedChildren, token]);
+  }, [childId, hasLoadedChildren, token, refreshBump]);
+
+  // Task #151 — silently refetch the details bundle when a teacher posts
+  // new attendance, a grade, or a behaviour record for the active child.
+  useEffect(() => {
+    const onUpdated = (e) => {
+      const d = e?.detail || {};
+      if (!['attendance', 'assessment', 'behaviour'].includes(d.kind)) return;
+      if (String(d.childId) !== String(childId)) return;
+      setRefreshBump((b) => b + 1);
+    };
+    window.addEventListener('nassaq:child_data_updated', onUpdated);
+    return () => window.removeEventListener('nassaq:child_data_updated', onUpdated);
+  }, [childId]);
 
   const getGradeColor = (percentage) => {
     if (percentage >= 90) return 'text-green-600 dark:text-green-400';
