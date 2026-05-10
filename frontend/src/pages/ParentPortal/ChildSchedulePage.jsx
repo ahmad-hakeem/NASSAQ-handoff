@@ -11,6 +11,7 @@ import { Skeleton } from '../../components/ui/skeleton';
 import { ScrollArea } from '../../components/ui/scroll-area';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
+import BackgroundRefreshChip from '../../components/parent/BackgroundRefreshChip';
 import {
   Calendar, BookOpen, ChevronLeft, Clock, User, Printer
 } from 'lucide-react';
@@ -32,13 +33,23 @@ const ChildSchedulePage = () => {
   // Task #146 — fetch effective child id from global active-student context.
   const { childId: routeChildId } = useParams();
   useSyncRouteChildToActive(routeChildId);
-  const { activeChildId, activeChild, hasLoadedChildren } = useParentActiveStudent();
+  const {
+    activeChildId,
+    activeChild,
+    hasLoadedChildren,
+    getCachedEndpoint,
+    setCachedEndpoint,
+  } = useParentActiveStudent();
   // Context-only fetch id; the hook above rejects unauthorized route ids.
   const childId = activeChildId;
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
-  const [loading, setLoading] = useState(true);
-  const [schedule, setSchedule] = useState(null);
+  // Task #149 — seed from the per-(child, endpoint) cache so a return visit
+  // renders the previous schedule instantly instead of flashing a skeleton.
+  const cachedSchedule = getCachedEndpoint(childId, 'schedule');
+  const [loading, setLoading] = useState(!cachedSchedule);
+  const [refreshing, setRefreshing] = useState(false);
+  const [schedule, setSchedule] = useState(cachedSchedule ?? null);
   // Task #148 — basic identity (name, class) is read from the global
   // active-student context instead of re-fetching `/parent-portal/child/:id`
   // on every navigation.
@@ -53,30 +64,51 @@ const ChildSchedulePage = () => {
   const fetchData = useCallback(async ({ silent = false } = {}) => {
     if (!hasLoadedChildren || !childId) return;
     const requestedFor = childId;
+    if (!silent) setRefreshing(true);
     try {
       // Task #148 — only fetch the page-specific schedule endpoint; basic
       // identity (name, class) comes from the global active-student context.
       const scheduleRes = await api.get(`/parent-portal/child/${requestedFor}/schedule`);
       if (String(activeChildRef.current) !== String(requestedFor)) return;
+      setCachedEndpoint(requestedFor, 'schedule', scheduleRes.data);
       setSchedule(scheduleRes.data);
     } catch (error) {
       if (String(activeChildRef.current) !== String(requestedFor)) return;
-      if (!silent) nassaqError(t('errorFetchingSchedule'));
+      // Stay quiet on a background refresh failure if we already have data
+      // on screen — the user shouldn't see an alert for a soft refresh.
+      const hadData = !!getCachedEndpoint(requestedFor, 'schedule');
+      if (!silent && !hadData) nassaqError(t('errorFetchingSchedule'));
     } finally {
-      if (!silent && String(activeChildRef.current) === String(requestedFor)) setLoading(false);
+      if (String(activeChildRef.current) === String(requestedFor)) {
+        if (!silent) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
     }
-  }, [childId, hasLoadedChildren, api, nassaqError, t]);
+  }, [childId, hasLoadedChildren, api, nassaqError, t, getCachedEndpoint, setCachedEndpoint]);
 
   useEffect(() => {
     // No active child once children loaded → exit loading; the route-sync
     // hook handles URL canonicalization separately.
-    if (hasLoadedChildren && !childId) { setLoading(false); return; }
-    // Reset to skeleton on child switch to avoid stale data flash; basic
-    // identity comes from the global active-student context.
-    setLoading(true);
-    setSchedule(null);
+    if (hasLoadedChildren && !childId) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+    if (!hasLoadedChildren || !childId) return;
+    // Task #149 — render cached data immediately if present; otherwise show
+    // the skeleton. Either way, kick off a background refresh.
+    const cached = getCachedEndpoint(childId, 'schedule');
+    if (cached) {
+      setSchedule(cached);
+      setLoading(false);
+    } else {
+      setSchedule(null);
+      setLoading(true);
+    }
     fetchData();
-  }, [token, fetchData, hasLoadedChildren, childId]);
+  }, [token, fetchData, hasLoadedChildren, childId, getCachedEndpoint]);
 
   // Task #145 — silently refetch this child's published schedule when the
   // school admin publishes a new timetable, via the tenant-scoped
@@ -108,6 +140,7 @@ const ChildSchedulePage = () => {
   return (
     <PortalLayout portalType="parent">
       <div className="p-4 space-y-4" data-testid="child-schedule-page">
+        <BackgroundRefreshChip visible={refreshing} />
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link to={`/parent/child/${childId}`}>

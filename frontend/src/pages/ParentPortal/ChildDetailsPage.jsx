@@ -3,7 +3,7 @@
  * صفحة تفاصيل الابن لولي الأمر
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
@@ -20,6 +20,7 @@ import { ScrollArea } from '../../components/ui/scroll-area';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import CumulativeAnalytics from '../../components/parent/CumulativeAnalytics';
+import BackgroundRefreshChip from '../../components/parent/BackgroundRefreshChip';
 import {
   User,
   Calendar,
@@ -49,16 +50,27 @@ const ChildDetailsPage = () => {
   // ids are rejected before any request fires.
   const { childId: routeChildId } = useParams();
   useSyncRouteChildToActive(routeChildId);
-  const { activeChildId, activeChild, hasLoadedChildren } = useParentActiveStudent();
+  const {
+    activeChildId,
+    activeChild,
+    hasLoadedChildren,
+    getCachedEndpoint,
+    setCachedEndpoint,
+  } = useParentActiveStudent();
   // Context-only fetch id: never use the raw route param as a fetch input;
   // it might be unauthorized. The hook above rejects bad ids and redirects.
   const childId = activeChildId;
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
-  const [loading, setLoading] = useState(true);
-  const [grades, setGrades] = useState(null);
-  const [attendance, setAttendance] = useState(null);
-  const [schedule, setSchedule] = useState(null);
+  // Task #149 — seed page-specific data from the per-(child, endpoint) cache
+  // so flipping back to a previously-viewed child renders instantly. We only
+  // fall back to a skeleton on a true cold load.
+  const cachedDetails = getCachedEndpoint(childId, 'details');
+  const [loading, setLoading] = useState(!cachedDetails);
+  const [refreshing, setRefreshing] = useState(false);
+  const [grades, setGrades] = useState(cachedDetails?.grades ?? null);
+  const [attendance, setAttendance] = useState(cachedDetails?.attendance ?? null);
+  const [schedule, setSchedule] = useState(cachedDetails?.schedule ?? null);
 
   // Task #148 — basic identity (name, grade, class, avatar, school) is
   // already in the global active-student context after Task #146, so we
@@ -66,35 +78,66 @@ const ChildDetailsPage = () => {
   // on every navigation. Only page-specific data is fetched per page.
   const child = activeChild;
 
+  // Stale-response guard: discard out-of-order responses for previous children.
+  const activeChildRef = useRef(null);
+  activeChildRef.current = childId;
+
   useEffect(() => {
     // Wait until the linked-children list resolves so we never fetch with an
     // unverified id. If load completes with no valid active child, the
     // route-sync hook will have already redirected away — but we still drop
     // out of the loading state so the page never spins forever.
-    if (hasLoadedChildren && !childId) { setLoading(false); return; }
+    if (hasLoadedChildren && !childId) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     if (!hasLoadedChildren || !childId) return;
     let cancelled = false;
-    // Reset to skeletons immediately on child switch so we never flash the
-    // previous child's data on the new one. Identity comes from context.
-    setLoading(true);
-    setGrades(null);
-    setAttendance(null);
-    setSchedule(null);
+    const requestedFor = childId;
+    // Task #149 — render cached data immediately if we have it, otherwise
+    // show the skeleton. Either way we kick off a background refresh.
+    const cached = getCachedEndpoint(requestedFor, 'details');
+    if (cached) {
+      setGrades(cached.grades ?? null);
+      setAttendance(cached.attendance ?? null);
+      setSchedule(cached.schedule ?? null);
+      setLoading(false);
+      setRefreshing(true);
+    } else {
+      setGrades(null);
+      setAttendance(null);
+      setSchedule(null);
+      setLoading(true);
+      setRefreshing(false);
+    }
     (async () => {
       try {
         const [gradesRes, attendanceRes, scheduleRes] = await Promise.all([
-          api.get(`/parent-portal/child/${childId}/grades`),
-          api.get(`/parent-portal/child/${childId}/attendance`),
-          api.get(`/parent-portal/child/${childId}/schedule`),
+          api.get(`/parent-portal/child/${requestedFor}/grades`),
+          api.get(`/parent-portal/child/${requestedFor}/attendance`),
+          api.get(`/parent-portal/child/${requestedFor}/schedule`),
         ]);
-        if (cancelled) return;
-        setGrades(gradesRes.data);
-        setAttendance(attendanceRes.data);
-        setSchedule(scheduleRes.data);
+        if (cancelled || String(activeChildRef.current) !== String(requestedFor)) return;
+        const next = {
+          grades: gradesRes.data,
+          attendance: attendanceRes.data,
+          schedule: scheduleRes.data,
+        };
+        setCachedEndpoint(requestedFor, 'details', next);
+        setGrades(next.grades);
+        setAttendance(next.attendance);
+        setSchedule(next.schedule);
       } catch (error) {
-        if (!cancelled) nassaqError(t('errorFetchingData'));
+        if (cancelled || String(activeChildRef.current) !== String(requestedFor)) return;
+        // On cold-load failure surface the error; if we already had cached
+        // data we keep showing it and stay quiet (background refresh failed).
+        if (!cached) nassaqError(t('errorFetchingData'));
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && String(activeChildRef.current) === String(requestedFor)) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -158,6 +201,7 @@ const ChildDetailsPage = () => {
   return (
     <PortalLayout portalType="parent">
       <div className="p-4 space-y-4" data-testid="child-details-page">
+        <BackgroundRefreshChip visible={refreshing} />
         {/* Child Profile Card */}
         <Card className="rounded-2xl border-0 shadow-sm bg-gradient-to-br from-brand-navy to-brand-purple text-white">
           <CardContent className="p-6">

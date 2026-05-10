@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from '../../contexts/ThemeContext';
@@ -7,6 +7,7 @@ import PortalLayout from '../../components/portal/PortalLayout';
 import { GaugeChart, PerformanceLine, SubjectRadar } from '../../components/parent/AnalyticsCharts';
 import { Card, CardContent } from '../../components/ui/card';
 import { Skeleton } from '../../components/ui/skeleton';
+import BackgroundRefreshChip from '../../components/parent/BackgroundRefreshChip';
 import { ChevronLeft, TrendingUp, TrendingDown, Activity, CheckCircle, AlertTriangle, ShieldAlert } from 'lucide-react';
 
 const StudentAnalyticsPage = () => {
@@ -14,30 +15,61 @@ const StudentAnalyticsPage = () => {
   // Task #146 — read effective child id from the global context.
   const { childId: routeChildId } = useParams();
   useSyncRouteChildToActive(routeChildId);
-  const { activeChildId, hasLoadedChildren } = useParentActiveStudent();
+  const {
+    activeChildId,
+    hasLoadedChildren,
+    getCachedEndpoint,
+    setCachedEndpoint,
+  } = useParentActiveStudent();
   const childId = activeChildId;
   const { api } = useAuth();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Task #149 — seed from cache so a return visit renders instantly.
+  const cachedAnalytics = getCachedEndpoint(childId, 'analytics');
+  const [data, setData] = useState(cachedAnalytics ?? null);
+  const [loading, setLoading] = useState(!cachedAnalytics);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Stale-response guard against out-of-order responses on rapid switches.
+  const activeChildRef = useRef(null);
+  activeChildRef.current = childId;
 
   useEffect(() => {
-    if (hasLoadedChildren && !childId) { setLoading(false); return; }
+    if (hasLoadedChildren && !childId) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     if (!hasLoadedChildren || !childId) return;
     let cancelled = false;
-    setLoading(true);
-    setData(null);
+    const requestedFor = childId;
+    const cached = getCachedEndpoint(requestedFor, 'analytics');
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+      setRefreshing(true);
+    } else {
+      setData(null);
+      setLoading(true);
+      setRefreshing(false);
+    }
     (async () => {
       try {
-        const res = await api.get(`/parent-portal/child/${childId}/analytics`);
-        if (!cancelled) setData(res.data);
+        const res = await api.get(`/parent-portal/child/${requestedFor}/analytics`);
+        if (cancelled || String(activeChildRef.current) !== String(requestedFor)) return;
+        setCachedEndpoint(requestedFor, 'analytics', res.data);
+        setData(res.data);
       } catch {
-        if (!cancelled) setData(null);
+        if (cancelled || String(activeChildRef.current) !== String(requestedFor)) return;
+        if (!cached) setData(null);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && String(activeChildRef.current) === String(requestedFor)) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     })();
     return () => { cancelled = true; };
-  }, [childId, hasLoadedChildren, api]);
+  }, [childId, hasLoadedChildren, api, getCachedEndpoint, setCachedEndpoint]);
 
   if (loading) {
     return (
@@ -74,6 +106,7 @@ const StudentAnalyticsPage = () => {
   return (
     <PortalLayout portalType="parent">
       <div className="p-4 space-y-4 max-w-lg mx-auto" dir="rtl">
+        <BackgroundRefreshChip visible={refreshing} />
         <div className="flex items-center gap-3 mb-2">
           <Link to={`/parent/child/${childId}/profile`}>
             <button className="p-2 rounded-lg hover:bg-muted/40 transition-colors">

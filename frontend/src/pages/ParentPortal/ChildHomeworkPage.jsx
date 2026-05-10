@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
@@ -7,6 +7,7 @@ import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Skeleton } from '../../components/ui/skeleton';
+import BackgroundRefreshChip from '../../components/parent/BackgroundRefreshChip';
 import {
   ClipboardList, Clock, CheckCircle, AlertCircle, BookOpen, Calendar
 } from 'lucide-react';
@@ -17,31 +18,62 @@ const ChildHomeworkPage = () => {
   // Task #146 — read effective child id from the global context.
   const { childId: routeChildId } = useParams();
   useSyncRouteChildToActive(routeChildId);
-  const { activeChildId, hasLoadedChildren } = useParentActiveStudent();
+  const {
+    activeChildId,
+    hasLoadedChildren,
+    getCachedEndpoint,
+    setCachedEndpoint,
+  } = useParentActiveStudent();
   const childId = activeChildId;
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState(null);
+  // Task #149 — seed from cache so a return visit renders instantly.
+  const cachedHomework = getCachedEndpoint(childId, 'homework');
+  const [loading, setLoading] = useState(!cachedHomework);
+  const [refreshing, setRefreshing] = useState(false);
+  const [data, setData] = useState(cachedHomework ?? null);
+
+  // Stale-response guard against out-of-order responses on rapid switches.
+  const activeChildRef = useRef(null);
+  activeChildRef.current = childId;
 
   useEffect(() => {
-    if (hasLoadedChildren && !childId) { setLoading(false); return; }
+    if (hasLoadedChildren && !childId) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     if (!hasLoadedChildren || !childId) return;
     let cancelled = false;
-    setLoading(true);
-    setData(null);
+    const requestedFor = childId;
+    const cached = getCachedEndpoint(requestedFor, 'homework');
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+      setRefreshing(true);
+    } else {
+      setData(null);
+      setLoading(true);
+      setRefreshing(false);
+    }
     (async () => {
       try {
-        const res = await api.get(`/parent-portal/child/${childId}/homework`);
-        if (!cancelled) setData(res.data);
+        const res = await api.get(`/parent-portal/child/${requestedFor}/homework`);
+        if (cancelled || String(activeChildRef.current) !== String(requestedFor)) return;
+        setCachedEndpoint(requestedFor, 'homework', res.data);
+        setData(res.data);
       } catch {
-        if (!cancelled) setData(null);
+        if (cancelled || String(activeChildRef.current) !== String(requestedFor)) return;
+        if (!cached) setData(null);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && String(activeChildRef.current) === String(requestedFor)) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     })();
     return () => { cancelled = true; };
-  }, [childId, hasLoadedChildren, token, api]);
+  }, [childId, hasLoadedChildren, token, api, getCachedEndpoint, setCachedEndpoint]);
 
   if (loading) {
     return (
@@ -70,6 +102,7 @@ const ChildHomeworkPage = () => {
   return (
     <PortalLayout portalType="parent">
       <div className="p-4 space-y-4" data-testid="child-homework-page">
+        <BackgroundRefreshChip visible={refreshing} />
         <div className="flex items-center gap-2 mb-2">
           <ClipboardList className="h-6 w-6 text-brand-navy" />
           <h1 className="text-xl font-bold font-cairo">

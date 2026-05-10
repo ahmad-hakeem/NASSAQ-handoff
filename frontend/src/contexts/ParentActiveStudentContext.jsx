@@ -48,7 +48,18 @@ const EMPTY_VALUE = {
   hasLoadedChildren: false,
   error: null,
   refetch: () => {},
+  getCachedEndpoint: () => null,
+  setCachedEndpoint: () => {},
+  invalidateEndpointCache: () => {},
 };
+
+/**
+ * Endpoint keys recognised by the per-(childId, endpoint) cache used by
+ * Task #149 to eliminate the skeleton flash when switching between two
+ * previously-viewed children. Keep this list small and deliberate so cache
+ * invalidations stay easy to reason about.
+ */
+const SCHEDULE_DEPENDENT_KEYS = new Set(['schedule', 'details']);
 
 const LEGACY_CHILD_RE = /^\/parent\/child\/([^/]+)(?:\/.*)?$/;
 
@@ -85,6 +96,11 @@ export const ParentActiveStudentProvider = ({ children }) => {
   const [hasLoadedChildren, setHasLoadedChildren] = useState(false);
   const [error, setError] = useState(null);
   const fetchedForUserRef = useRef(null);
+  // Per-(childId, endpoint) response cache. `Map<childId, Map<endpointKey, value>>`.
+  // Lives in a ref so it persists across renders without causing one. Cleared on
+  // logout / role-switch and selectively invalidated on relevant WebSocket
+  // events (Task #149).
+  const endpointCacheRef = useRef(new Map());
   // Snapshot the URL child id at the moment the provider mounts / a parent
   // logs in, so we can use it as the seed once children resolve. We do NOT
   // re-read it on every navigation — page-level hooks handle subsequent
@@ -126,6 +142,9 @@ export const ParentActiveStudentProvider = ({ children }) => {
       fetchedForUserRef.current = null;
       initialDeepLinkRef.current = null;
       warnedInvalidRef.current = new Set();
+      // Clear the per-child endpoint cache on logout / role-switch so the
+      // next parent session never sees a previous parent's cached data.
+      endpointCacheRef.current = new Map();
       setLinkedChildren([]);
       setActiveChildIdState(null);
       setHasLoadedChildren(false);
@@ -133,6 +152,11 @@ export const ParentActiveStudentProvider = ({ children }) => {
       return;
     }
     if (fetchedForUserRef.current === user?.id) return;
+    // Different parent than last time — drop any cached responses from the
+    // previous identity before fetching.
+    if (fetchedForUserRef.current && fetchedForUserRef.current !== user?.id) {
+      endpointCacheRef.current = new Map();
+    }
     fetchedForUserRef.current = user?.id;
     initialDeepLinkRef.current = readChildIdFromLocation(location);
     fetchChildren();
@@ -140,6 +164,63 @@ export const ParentActiveStudentProvider = ({ children }) => {
     // changes are handled by page-level useSyncRouteChildToActive hooks.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isParent, user?.id, fetchChildren]);
+
+  // -- Per-(childId, endpoint) response cache (Task #149) ----------------
+  const getCachedEndpoint = useCallback((childId, key) => {
+    if (childId == null || !key) return null;
+    const childMap = endpointCacheRef.current.get(String(childId));
+    if (!childMap) return null;
+    return childMap.has(key) ? childMap.get(key) : null;
+  }, []);
+
+  const setCachedEndpoint = useCallback((childId, key, value) => {
+    if (childId == null || !key) return;
+    const sid = String(childId);
+    let childMap = endpointCacheRef.current.get(sid);
+    if (!childMap) {
+      childMap = new Map();
+      endpointCacheRef.current.set(sid, childMap);
+    }
+    childMap.set(key, value);
+  }, []);
+
+  /**
+   * Drop cached entries. Without arguments, clears the whole cache. Pass
+   * `{ key }` to drop one endpoint across all children, `{ childId }` to
+   * drop every endpoint for one child, or both to drop a single entry.
+   */
+  const invalidateEndpointCache = useCallback(({ childId, key } = {}) => {
+    if (childId == null && !key) {
+      endpointCacheRef.current = new Map();
+      return;
+    }
+    if (childId != null && key) {
+      const childMap = endpointCacheRef.current.get(String(childId));
+      if (childMap) childMap.delete(key);
+      return;
+    }
+    if (childId != null) {
+      endpointCacheRef.current.delete(String(childId));
+      return;
+    }
+    // key only — drop this key on every child.
+    for (const childMap of endpointCacheRef.current.values()) {
+      childMap.delete(key);
+    }
+  }, []);
+
+  // Schedule republish invalidates any cached schedule-derived responses
+  // for every child the parent has viewed, so the background refresh after
+  // a switch picks up the new timetable instead of serving stale data.
+  useEffect(() => {
+    const onSchedulePublished = () => {
+      for (const childMap of endpointCacheRef.current.values()) {
+        for (const k of SCHEDULE_DEPENDENT_KEYS) childMap.delete(k);
+      }
+    };
+    window.addEventListener('nassaq:schedule_published', onSchedulePublished);
+    return () => window.removeEventListener('nassaq:schedule_published', onSchedulePublished);
+  }, []);
 
   /**
    * setActiveChildId — only accepts ids belonging to the parent's linked
@@ -196,8 +277,23 @@ export const ParentActiveStudentProvider = ({ children }) => {
       hasLoadedChildren,
       error,
       refetch: fetchChildren,
+      getCachedEndpoint,
+      setCachedEndpoint,
+      invalidateEndpointCache,
     }),
-    [linkedChildren, activeChildId, activeChild, setActiveChildId, isLoading, hasLoadedChildren, error, fetchChildren],
+    [
+      linkedChildren,
+      activeChildId,
+      activeChild,
+      setActiveChildId,
+      isLoading,
+      hasLoadedChildren,
+      error,
+      fetchChildren,
+      getCachedEndpoint,
+      setCachedEndpoint,
+      invalidateEndpointCache,
+    ],
   );
 
   return (

@@ -9,6 +9,7 @@ import AchievementsArchive from '../../components/parent/AchievementsArchive';
 import ReportsPanel from '../../components/parent/panels/ReportsPanel';
 import { Card, CardContent } from '../../components/ui/card';
 import { Skeleton } from '../../components/ui/skeleton';
+import BackgroundRefreshChip from '../../components/parent/BackgroundRefreshChip';
 import { Edit3, Award, ChevronLeft, BarChart3, FileText, GraduationCap, Building, Heart, Eye, Wind, ShieldAlert } from 'lucide-react';
 
 const HEALTH_LABELS = {
@@ -36,12 +37,20 @@ const StudentProfilePage = () => {
   // Task #146 — read effective child id from the global context.
   const { childId: routeChildId } = useParams();
   useSyncRouteChildToActive(routeChildId);
-  const { activeChildId, hasLoadedChildren } = useParentActiveStudent();
+  const {
+    activeChildId,
+    hasLoadedChildren,
+    getCachedEndpoint,
+    setCachedEndpoint,
+  } = useParentActiveStudent();
   const childId = activeChildId;
   const { api } = useAuth();
   const { isRTL } = useTheme();
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Task #149 — seed from cache so a return visit renders instantly.
+  const cachedProfile = getCachedEndpoint(childId, 'profile');
+  const [profile, setProfile] = useState(cachedProfile ?? null);
+  const [loading, setLoading] = useState(!cachedProfile);
+  const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
   // Reports content fetches its own data; mount it only when the parent
@@ -56,28 +65,47 @@ const StudentProfilePage = () => {
   const fetchProfile = useCallback(async () => {
     if (!hasLoadedChildren || !childId) return;
     const requestedFor = childId;
+    const hadCached = !!getCachedEndpoint(requestedFor, 'profile');
+    if (hadCached) setRefreshing(true);
     try {
       const res = await api.get(`/parent-portal/child/${requestedFor}/profile`);
       if (String(activeChildRef.current) !== String(requestedFor)) return;
+      setCachedEndpoint(requestedFor, 'profile', res.data);
       setProfile(res.data);
     } catch {
       if (String(activeChildRef.current) !== String(requestedFor)) return;
-      setProfile(null);
+      // Keep showing the cached profile on a soft-refresh failure.
+      if (!hadCached) setProfile(null);
     } finally {
-      if (String(activeChildRef.current) === String(requestedFor)) setLoading(false);
+      if (String(activeChildRef.current) === String(requestedFor)) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [api, childId, hasLoadedChildren]);
+  }, [api, childId, hasLoadedChildren, getCachedEndpoint, setCachedEndpoint]);
 
   useEffect(() => {
     // No active child once children loaded → exit loading so the page
     // doesn't spin forever in edge routes; route-sync handles redirects.
-    if (hasLoadedChildren && !childId) { setLoading(false); setProfile(null); return; }
-    // Reset on child switch so a previous profile never flashes for the new
-    // child while the next fetch is in flight.
-    setLoading(true);
-    setProfile(null);
+    if (hasLoadedChildren && !childId) {
+      setLoading(false);
+      setRefreshing(false);
+      setProfile(null);
+      return;
+    }
+    if (!hasLoadedChildren || !childId) return;
+    // Task #149 — render cached profile immediately if present; otherwise
+    // show the skeleton. Either way, kick off a background refresh.
+    const cached = getCachedEndpoint(childId, 'profile');
+    if (cached) {
+      setProfile(cached);
+      setLoading(false);
+    } else {
+      setProfile(null);
+      setLoading(true);
+    }
     fetchProfile();
-  }, [fetchProfile, hasLoadedChildren, childId]);
+  }, [fetchProfile, hasLoadedChildren, childId, getCachedEndpoint]);
 
   if (loading) {
     return (
@@ -106,6 +134,7 @@ const StudentProfilePage = () => {
   return (
     <PortalLayout portalType="parent">
       <div className="p-4 space-y-4 max-w-lg mx-auto" dir={isRTL ? 'rtl' : 'ltr'}>
+        <BackgroundRefreshChip visible={refreshing} />
         <div className="flex items-center gap-3 mb-2">
           <Link to="/parent">
             <button className="p-2 rounded-lg hover:bg-muted/40 dark:hover:bg-gray-800 transition-colors">
