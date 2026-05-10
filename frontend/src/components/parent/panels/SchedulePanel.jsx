@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme, useTranslation } from '../../../contexts/ThemeContext';
 import { useNassaqAlert } from '../../ui/NassaqAlertDialog';
@@ -28,21 +28,29 @@ const SchedulePanel = ({ childId }) => {
   const [schedule, setSchedule] = useState(null);
   const [viewMode, setViewMode] = useState('list');
 
+  const loadSchedule = useCallback(async ({ silent = false } = {}) => {
+    try {
+      const res = await api.get(`/parent-portal/child/${childId}/schedule`);
+      setSchedule(res.data);
+    } catch {
+      if (!silent) nassaqError(t('errorFetchingSchedule'));
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, [childId, api, nassaqError, t]);
+
   useEffect(() => {
-    let cancelled = false;
     setLoading(true);
-    (async () => {
-      try {
-        const res = await api.get(`/parent-portal/child/${childId}/schedule`);
-        if (!cancelled) setSchedule(res.data);
-      } catch {
-        if (!cancelled) nassaqError(t('errorFetchingSchedule'));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [childId, token, api, nassaqError, t]);
+    loadSchedule();
+  }, [token, loadSchedule]);
+
+  // Task #145 — silently refetch when the school admin publishes a new
+  // timetable so the embedded parent schedule panel updates in place.
+  useEffect(() => {
+    const onPublished = () => { loadSchedule({ silent: true }); };
+    window.addEventListener('nassaq:schedule_published', onPublished);
+    return () => window.removeEventListener('nassaq:schedule_published', onPublished);
+  }, [loadSchedule]);
 
   if (loading) {
     return (

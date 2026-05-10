@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
@@ -36,24 +36,34 @@ const ChildSchedulePage = () => {
   const [child, setChild] = useState(null);
   const [viewMode, setViewMode] = useState('list');
 
+  const fetchData = useCallback(async ({ silent = false } = {}) => {
+    try {
+      const [scheduleRes, childRes] = await Promise.all([
+        api.get(`/parent-portal/child/${childId}/schedule`),
+        api.get(`/parent-portal/child/${childId}`).catch(() => ({ data: null }))
+      ]);
+      setSchedule(scheduleRes.data);
+      setChild(childRes.data);
+    } catch (error) {
+      console.error('Error fetching schedule:', error);
+      if (!silent) nassaqError(t('errorFetchingSchedule'));
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, [childId, api, nassaqError, t]);
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [scheduleRes, childRes] = await Promise.all([
-          api.get(`/parent-portal/child/${childId}/schedule`),
-          api.get(`/parent-portal/child/${childId}`).catch(() => ({ data: null }))
-        ]);
-        setSchedule(scheduleRes.data);
-        setChild(childRes.data);
-      } catch (error) {
-        console.error('Error fetching schedule:', error);
-        nassaqError(t('errorFetchingSchedule'));
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchData();
-  }, [childId, token, api, nassaqError, t]);
+  }, [token, fetchData]);
+
+  // Task #145 — silently refetch this child's published schedule when the
+  // school admin publishes a new timetable, via the tenant-scoped
+  // ``nassaq:schedule_published`` event bridged from WebSocketContext.
+  useEffect(() => {
+    const onPublished = () => { fetchData({ silent: true }); };
+    window.addEventListener('nassaq:schedule_published', onPublished);
+    return () => window.removeEventListener('nassaq:schedule_published', onPublished);
+  }, [fetchData]);
 
   const handlePrint = () => {
     window.print();

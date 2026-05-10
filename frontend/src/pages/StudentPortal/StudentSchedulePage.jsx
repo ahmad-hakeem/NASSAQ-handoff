@@ -3,7 +3,7 @@
  * صفحة الجدول الدراسي للطالب
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
@@ -47,22 +47,31 @@ const StudentSchedulePage = () => {
     return dayMap[new Date().getDay()] || 'الأحد';
   }
 
-  useEffect(() => {
-    fetchSchedule();
-  }, [token]);
-
-  const fetchSchedule = async () => {
+  const fetchSchedule = useCallback(async ({ silent = false } = {}) => {
     try {
       const response = await api.get('/student-portal/schedule');
       setSchedule(response.data.schedule || {});
       setStudentInfo(response.data.student_info);
     } catch (error) {
       console.error('Error fetching schedule:', error);
-      nassaqError(t('errorFetchingSchedule'));
+      if (!silent) nassaqError(t('errorFetchingSchedule'));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, [api, nassaqError, t]);
+
+  useEffect(() => {
+    fetchSchedule();
+  }, [token, fetchSchedule]);
+
+  // Task #145 — listen for the tenant-wide ``schedule_published`` WS event
+  // bridged through WebSocketContext and silently refetch so the student
+  // sees the newly published timetable in place, without a page reload.
+  useEffect(() => {
+    const onPublished = () => { fetchSchedule({ silent: true }); };
+    window.addEventListener('nassaq:schedule_published', onPublished);
+    return () => window.removeEventListener('nassaq:schedule_published', onPublished);
+  }, [fetchSchedule]);
 
   if (loading) {
     return (
