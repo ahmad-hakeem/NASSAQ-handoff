@@ -68,34 +68,48 @@ const DetailsPanel = ({ childId }) => {
     <div className="space-y-4">
       {/* Quick stats */}
       <div className="grid grid-cols-2 gap-3">
-        <Card className="rounded-xl border-0 shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/40">
-                <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
-              </div>
-              <span className="text-2xl font-bold text-green-600 dark:text-green-400">
-                {attendance?.statistics?.attendance_rate || 0}%
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">{isRTL ? 'نسبة الحضور' : 'Attendance'}</p>
-            <Progress value={attendance?.statistics?.attendance_rate || 0} className="h-1.5 mt-2" />
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-0 shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/40">
-                <Award className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                {grades?.overall_average || 0}%
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">{t('average2')}</p>
-            <Progress value={grades?.overall_average || 0} className="h-1.5 mt-2" />
-          </CardContent>
-        </Card>
+        {/* Honest KPI rendering: backend returns null for attendance_rate
+            and overall_average when the student truly has no records, so
+            we show em-dash instead of an invented 0%/100%. The progress
+            bar is hidden in that case to avoid suggesting a real value. */}
+        {(() => {
+          const attRate = attendance?.statistics?.attendance_rate;
+          const hasAtt = attRate !== null && attRate !== undefined;
+          const overall = grades?.overall_average;
+          const hasOverall = overall !== null && overall !== undefined;
+          return (
+            <>
+              <Card className="rounded-xl border-0 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/40">
+                      <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                    </div>
+                    <span className="text-2xl font-bold text-green-600 dark:text-green-400 tabular-nums">
+                      {hasAtt ? `${attRate}%` : '—'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{isRTL ? 'نسبة الحضور' : 'Attendance'}</p>
+                  {hasAtt && <Progress value={attRate} className="h-1.5 mt-2" />}
+                </CardContent>
+              </Card>
+              <Card className="rounded-xl border-0 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/40">
+                      <Award className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 tabular-nums">
+                      {hasOverall ? `${overall}%` : '—'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{t('average2')}</p>
+                  {hasOverall && <Progress value={overall} className="h-1.5 mt-2" />}
+                </CardContent>
+              </Card>
+            </>
+          );
+        })()}
       </div>
 
       {/* Inner sub-tabs */}

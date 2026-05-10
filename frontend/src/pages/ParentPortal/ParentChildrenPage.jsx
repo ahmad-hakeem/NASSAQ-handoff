@@ -175,13 +175,17 @@ const ParentChildrenPage = () => {
                 <CardContent className="p-4 space-y-4">
                   {/* KPI summary */}
                   <div className="grid grid-cols-2 gap-3">
+                    {/* KPI render is honest: backend returns null when the
+                        student has no attendance/grade records, and we show
+                        an em-dash here rather than inventing a 0% / 100%
+                        value that would mask missing data. */}
                     <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40">
                       <span className="w-9 h-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
                         <CheckCircle className="h-5 w-5" />
                       </span>
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">
-                          {activeChild.attendance_rate}%
+                          {activeChild.attendance_rate == null ? '—' : `${activeChild.attendance_rate}%`}
                         </p>
                         <p className="text-[10px] text-muted-foreground font-tajawal">{t('attendance2')}</p>
                       </div>
@@ -192,7 +196,7 @@ const ParentChildrenPage = () => {
                       </span>
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-blue-700 dark:text-blue-300 tabular-nums">
-                          {activeChild.average_score || 0}%
+                          {activeChild.average_score == null ? '—' : `${activeChild.average_score}%`}
                         </p>
                         <p className="text-[10px] text-muted-foreground font-tajawal">{t('average')}</p>
                       </div>

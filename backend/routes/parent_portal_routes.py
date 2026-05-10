@@ -124,11 +124,15 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
             total_days = await gd_count(db.session, "attendance", {"student_id": child_id})
             present_days = await gd_count(db.session, "attendance", {"student_id": child_id, "status": "present"})
-            attendance_rate = (present_days / total_days * 100) if total_days > 0 else 100
+            # Honest empty: when no attendance records exist, return null
+            # rather than an invented "100%" that masks missing data. The
+            # frontend renders a placeholder for null. (Audit 2026-05-10.)
+            attendance_rate = (present_days / total_days * 100) if total_days > 0 else None
 
             recent_grades = await gd_find(db.session, "grades", {"student_id": child_id}, order_by="date", desc_order=True, limit=3)
             all_grades = await gd_find(db.session, "grades", {"student_id": child_id}, limit=500)
-            avg_score = sum(g.get("percentage", 0) for g in all_grades) / len(all_grades) if all_grades else 0
+            # Honest empty for academics too — no grades => null, not a fake 0%.
+            avg_score = (sum(g.get("percentage", 0) for g in all_grades) / len(all_grades)) if all_grades else None
 
             child_school_name = child.get("school_name")
             if not child_school_name:
@@ -146,8 +150,8 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 "class_id": child.get("class_id"),
                 "school_name": child_school_name,
                 "profile_picture": child.get("profile_picture"),
-                "attendance_rate": round(attendance_rate, 1),
-                "average_score": round(avg_score, 1),
+                "attendance_rate": round(attendance_rate, 1) if attendance_rate is not None else None,
+                "average_score": round(avg_score, 1) if avg_score is not None else None,
                 "recent_grades": [
                     {
                         "subject": g.get("subject"),
@@ -202,10 +206,12 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
             total_days = await gd_count(db.session, "attendance", {"student_id": child_id})
             present_days = await gd_count(db.session, "attendance", {"student_id": child_id, "status": "present"})
-            att_rate = round((present_days / total_days * 100), 1) if total_days > 0 else 0
+            # Null when truly empty so KPI cards can render a placeholder
+            # instead of an invented 0%/100% claim. (Audit 2026-05-10.)
+            att_rate = round((present_days / total_days * 100), 1) if total_days > 0 else None
 
             all_grades = await gd_find(db.session, "grades", {"student_id": child_id}, limit=500)
-            avg_score = 0
+            avg_score = None
             if all_grades:
                 avg_score = round(sum(g.get("percentage", 0) for g in all_grades) / len(all_grades), 1)
 
@@ -421,7 +427,9 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 "absent": absent,
                 "late": late,
                 "excused": excused,
-                "attendance_rate": round((present / total * 100) if total > 0 else 100, 1)
+                # Honest empty: no records => null, not a fake 100%.
+                # Frontend renders a placeholder when null. (Audit 2026-05-10.)
+                "attendance_rate": round((present / total * 100), 1) if total > 0 else None
             }
         }
 
@@ -1150,24 +1158,25 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         all_grades = await gd_find(db.session, "grades", {"student_id": child_id}, limit=1000)
         overall_avg = round(sum(g.get("percentage", 0) for g in all_grades) / len(all_grades), 1) if all_grades else 0
 
-        target_subjects = {"رياضيات": 0, "علوم": 0, "عربي": 0, "إنجليزي": 0, "مهارات رقمية": 0}
-        subject_counts = {k: 0 for k in target_subjects}
+        # Build the radar from real subjects the student actually has grades
+        # in — never inject hardcoded subject names with 0% scores, which
+        # would invent failing subjects the student never took.
+        # (Audit 2026-05-10.)
         subject_all = {}
         for g in all_grades:
             subj = g.get("subject_name") or g.get("subject_id", "عام")
             if subj not in subject_all:
                 subject_all[subj] = []
             subject_all[subj].append(g.get("percentage", 0))
-            for key in target_subjects:
-                if key in subj:
-                    target_subjects[key] += g.get("percentage", 0)
-                    subject_counts[key] += 1
-                    break
 
-        radar_data = []
-        for subj, total in target_subjects.items():
-            count = subject_counts[subj]
-            radar_data.append({"subject": subj, "score": round(total / count, 1) if count > 0 else 0})
+        radar_data = sorted(
+            [
+                {"subject": subj, "score": round(sum(scores) / len(scores), 1)}
+                for subj, scores in subject_all.items() if scores
+            ],
+            key=lambda r: r["score"],
+            reverse=True,
+        )[:6]
 
         monthly_data = {}
         for g in all_grades:
@@ -1210,7 +1219,10 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
         total_att = await gd_count(db.session, "attendance", {"student_id": child_id})
         present_att = await gd_count(db.session, "attendance", {"student_id": child_id, "status": "present"})
-        att_rate = round((present_att / total_att * 100), 1) if total_att > 0 else 100
+        # 0 (not the old fake 100) when no attendance — keeps the composite
+        # follow-up math finite while not inflating the breakdown card.
+        # (Audit 2026-05-10.)
+        att_rate = round((present_att / total_att * 100), 1) if total_att > 0 else 0
 
         assignments = await gd_find(db.session, "student_assignments", {
             "$or": [{"class_id": class_id}, {"grade_id": child.get("grade_id")}]
@@ -1554,7 +1566,8 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         present = await gd_count(db.session, "attendance", {"student_id": child_id, "status": "present"})
         absent = await gd_count(db.session, "attendance", {"student_id": child_id, "status": "absent"})
         late = await gd_count(db.session, "attendance", {"student_id": child_id, "status": "late"})
-        attendance_rate = round((present / total_attendance * 100), 1) if total_attendance > 0 else 100
+        # Honest empty: null when no records (was a fake 100%). (Audit 2026-05-10.)
+        attendance_rate = round((present / total_attendance * 100), 1) if total_attendance > 0 else None
 
         grades = await gd_find(db.session, "grades", {"student_id": child_id}, limit=500)
         subjects_grades = {}
@@ -1568,7 +1581,11 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         for subj, scores in subjects_grades.items():
             subject_averages[subj] = round(sum(scores) / len(scores), 1) if scores else 0
 
-        overall_avg = round(sum(subject_averages.values()) / len(subject_averages), 1) if subject_averages else 0
+        # Single authoritative overall_average path: arithmetic mean of raw
+        # grade percentages (matches /grades and /analytics). The previous
+        # mean-of-subject-means produced a different number for the same
+        # student. (Audit 2026-05-10.)
+        overall_avg = round(sum(g.get("percentage", 0) for g in grades) / len(grades), 1) if grades else None
 
         behaviour_pos = await gd_count(db.session, "behaviour_records", {"student_id": child_id, "type": "positive"})
         behaviour_neg = await gd_count(db.session, "behaviour_records", {"student_id": child_id, "type": "negative"})
