@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
-import { useSyncRouteChildToActive } from '../../contexts/ParentActiveStudentContext';
+import { useSyncRouteChildToActive, useParentActiveStudent } from '../../contexts/ParentActiveStudentContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -14,26 +14,33 @@ import {
 
 const ChildBehaviorPage = () => {
   const { t } = useTranslation();
-  const { childId } = useParams();
-  useSyncRouteChildToActive(childId); // Task #146
+  // Task #146 — read effective child id from the global context.
+  const { childId: routeChildId } = useParams();
+  useSyncRouteChildToActive(routeChildId);
+  const { activeChildId } = useParentActiveStudent();
+  const childId = activeChildId || routeChildId;
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    const fetchData = async () => {
+    if (!childId) return;
+    let cancelled = false;
+    setLoading(true);
+    setData(null);
+    (async () => {
       try {
         const res = await api.get(`/parent-portal/child/${childId}/behaviour`);
-        setData(res.data);
-      } catch (err) {
-        console.error('Error:', err);
+        if (!cancelled) setData(res.data);
+      } catch {
+        if (!cancelled) setData(null);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
-    };
-    fetchData();
-  }, [childId, token]);
+    })();
+    return () => { cancelled = true; };
+  }, [childId, token, api]);
 
   if (loading) {
     return (

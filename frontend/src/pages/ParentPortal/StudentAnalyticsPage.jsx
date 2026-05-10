@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from '../../contexts/ThemeContext';
-import { useSyncRouteChildToActive } from '../../contexts/ParentActiveStudentContext';
+import { useSyncRouteChildToActive, useParentActiveStudent } from '../../contexts/ParentActiveStudentContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { GaugeChart, PerformanceLine, SubjectRadar } from '../../components/parent/AnalyticsCharts';
 import { Card, CardContent } from '../../components/ui/card';
@@ -11,25 +11,32 @@ import { ChevronLeft, TrendingUp, TrendingDown, Activity, CheckCircle, AlertTria
 
 const StudentAnalyticsPage = () => {
   const { t } = useTranslation();
-  const { childId } = useParams();
-  useSyncRouteChildToActive(childId); // Task #146
+  // Task #146 — read effective child id from the global context.
+  const { childId: routeChildId } = useParams();
+  useSyncRouteChildToActive(routeChildId);
+  const { activeChildId } = useParentActiveStudent();
+  const childId = activeChildId || routeChildId;
   const { api } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetch = async () => {
+    if (!childId) return;
+    let cancelled = false;
+    setLoading(true);
+    setData(null);
+    (async () => {
       try {
         const res = await api.get(`/parent-portal/child/${childId}/analytics`);
-        setData(res.data);
+        if (!cancelled) setData(res.data);
       } catch {
-        setData(null);
+        if (!cancelled) setData(null);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
-    };
-    fetch();
-  }, [childId]);
+    })();
+    return () => { cancelled = true; };
+  }, [childId, api]);
 
   if (loading) {
     return (

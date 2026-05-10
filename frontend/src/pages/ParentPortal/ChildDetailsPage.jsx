@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
-import { useSyncRouteChildToActive } from '../../contexts/ParentActiveStudentContext';
+import { useSyncRouteChildToActive, useParentActiveStudent } from '../../contexts/ParentActiveStudentContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -42,11 +42,15 @@ import {
 const ChildDetailsPage = () => {
   const { t } = useTranslation();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
-  const { childId } = useParams();
-  // Task #146 — keep the global active-student context in sync with the
-  // legacy `:childId` route so the shell switcher and other parent pages
-  // reflect the deep-linked child.
-  useSyncRouteChildToActive(childId);
+  // Task #146 — single source of truth: route `:childId` only seeds the
+  // global active-student context; all data fetches read the *effective*
+  // child id from that context. This prevents stale-id fetches when the
+  // user switches via the shell switcher and ensures unauthorized route
+  // ids are rejected before any request fires.
+  const { childId: routeChildId } = useParams();
+  useSyncRouteChildToActive(routeChildId);
+  const { activeChildId } = useParentActiveStudent();
+  const childId = activeChildId || routeChildId;
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -56,29 +60,37 @@ const ChildDetailsPage = () => {
   const [schedule, setSchedule] = useState(null);
 
   useEffect(() => {
-    fetchChildData();
+    if (!childId) return;
+    let cancelled = false;
+    // Reset to skeletons immediately on child switch so we never flash the
+    // previous child's identity/data on the new one.
+    setLoading(true);
+    setChild(null);
+    setGrades(null);
+    setAttendance(null);
+    setSchedule(null);
+    (async () => {
+      try {
+        const [childRes, gradesRes, attendanceRes, scheduleRes] = await Promise.all([
+          api.get(`/parent-portal/child/${childId}`),
+          api.get(`/parent-portal/child/${childId}/grades`),
+          api.get(`/parent-portal/child/${childId}/attendance`),
+          api.get(`/parent-portal/child/${childId}/schedule`),
+        ]);
+        if (cancelled) return;
+        setChild(childRes.data);
+        setGrades(gradesRes.data);
+        setAttendance(attendanceRes.data);
+        setSchedule(scheduleRes.data);
+      } catch (error) {
+        if (!cancelled) nassaqError(t('errorFetchingData'));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [childId, token]);
-
-  const fetchChildData = async () => {
-    try {
-      const [childRes, gradesRes, attendanceRes, scheduleRes] = await Promise.all([
-        api.get(`/parent-portal/child/${childId}`),
-        api.get(`/parent-portal/child/${childId}/grades`),
-        api.get(`/parent-portal/child/${childId}/attendance`),
-        api.get(`/parent-portal/child/${childId}/schedule`)
-      ]);
-      
-      setChild(childRes.data);
-      setGrades(gradesRes.data);
-      setAttendance(attendanceRes.data);
-      setSchedule(scheduleRes.data);
-    } catch (error) {
-      console.error('Error fetching child data:', error);
-      nassaqError(t('errorFetchingData'));
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const getGradeColor = (percentage) => {
     if (percentage >= 90) return 'text-green-600 dark:text-green-400';

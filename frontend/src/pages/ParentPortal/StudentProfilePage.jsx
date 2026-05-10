@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
-import { useSyncRouteChildToActive } from '../../contexts/ParentActiveStudentContext';
+import { useSyncRouteChildToActive, useParentActiveStudent } from '../../contexts/ParentActiveStudentContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import ProfileEditor from '../../components/parent/ProfileEditor';
 import AchievementsArchive from '../../components/parent/AchievementsArchive';
@@ -33,8 +33,11 @@ const FAMILY_LABELS = {
 
 const StudentProfilePage = () => {
   const { t } = useTranslation();
-  const { childId } = useParams();
-  useSyncRouteChildToActive(childId); // Task #146
+  // Task #146 — read effective child id from the global context.
+  const { childId: routeChildId } = useParams();
+  useSyncRouteChildToActive(routeChildId);
+  const { activeChildId } = useParentActiveStudent();
+  const childId = activeChildId || routeChildId;
   const { api } = useAuth();
   const { isRTL } = useTheme();
   const [profile, setProfile] = useState(null);
@@ -46,6 +49,7 @@ const StudentProfilePage = () => {
   const [showReports, setShowReports] = useState(false);
 
   const fetchProfile = useCallback(async () => {
+    if (!childId) return;
     try {
       const res = await api.get(`/parent-portal/child/${childId}/profile`);
       setProfile(res.data);
@@ -57,6 +61,10 @@ const StudentProfilePage = () => {
   }, [api, childId]);
 
   useEffect(() => {
+    // Reset on child switch so a previous profile never flashes for the new
+    // child while the next fetch is in flight.
+    setLoading(true);
+    setProfile(null);
     fetchProfile();
   }, [fetchProfile]);
 

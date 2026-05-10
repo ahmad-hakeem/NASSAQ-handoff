@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
-import { useSyncRouteChildToActive } from '../../contexts/ParentActiveStudentContext';
+import { useSyncRouteChildToActive, useParentActiveStudent } from '../../contexts/ParentActiveStudentContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -29,8 +29,11 @@ const DAY_NAMES = {
 const ChildSchedulePage = () => {
   const { t } = useTranslation();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
-  const { childId } = useParams();
-  useSyncRouteChildToActive(childId); // Task #146
+  // Task #146 — fetch effective child id from global active-student context.
+  const { childId: routeChildId } = useParams();
+  useSyncRouteChildToActive(routeChildId);
+  const { activeChildId } = useParentActiveStudent();
+  const childId = activeChildId || routeChildId;
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -39,6 +42,7 @@ const ChildSchedulePage = () => {
   const [viewMode, setViewMode] = useState('list');
 
   const fetchData = useCallback(async ({ silent = false } = {}) => {
+    if (!childId) return;
     try {
       const [scheduleRes, childRes] = await Promise.all([
         api.get(`/parent-portal/child/${childId}/schedule`),
@@ -47,7 +51,6 @@ const ChildSchedulePage = () => {
       setSchedule(scheduleRes.data);
       setChild(childRes.data);
     } catch (error) {
-      console.error('Error fetching schedule:', error);
       if (!silent) nassaqError(t('errorFetchingSchedule'));
     } finally {
       if (!silent) setLoading(false);
@@ -55,6 +58,10 @@ const ChildSchedulePage = () => {
   }, [childId, api, nassaqError, t]);
 
   useEffect(() => {
+    // Reset to skeleton on child switch to avoid stale identity flash.
+    setLoading(true);
+    setSchedule(null);
+    setChild(null);
     fetchData();
   }, [token, fetchData]);
 
