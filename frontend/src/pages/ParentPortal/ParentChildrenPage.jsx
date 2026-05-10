@@ -59,13 +59,29 @@ const ParentChildrenPage = () => {
 
   // Keep the URL canonical for sharing: mirror the resolved active child +
   // tab back into ?child= / ?tab= when they drift.
+  //
+  // IMPORTANT: do NOT canonicalize while there is a `?child=` deep link that
+  // refers to a valid linked child but hasn't won context resolution yet.
+  // Otherwise the canonicalizer races the route→context sync and can rewrite
+  // the URL back to the previously-active child, silently dropping the deep
+  // link the user just navigated to.
   useEffect(() => {
     if (!activeChild) return;
+    if (
+      urlChildId &&
+      String(urlChildId) !== String(activeChildId) &&
+      children.some((c) => String(c.id) === String(urlChildId))
+    ) {
+      // A valid deep-linked child id is pending sync into the context —
+      // skip this canonicalization pass and let the route→context effect
+      // converge first.
+      return;
+    }
     const patch = {};
     if (urlChildId !== String(activeChild.id)) patch.child = activeChild.id;
     if (urlTabRaw !== activeTab) patch.tab = activeTab;
     if (Object.keys(patch).length > 0) updateParams(patch);
-  }, [activeChild, urlChildId, urlTabRaw, activeTab, updateParams]);
+  }, [activeChild, activeChildId, children, urlChildId, urlTabRaw, activeTab, updateParams]);
 
   if (loading) {
     return (
