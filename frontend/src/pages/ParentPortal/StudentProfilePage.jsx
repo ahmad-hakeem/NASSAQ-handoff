@@ -61,12 +61,15 @@ const StudentProfilePage = () => {
   }, [api, childId, hasLoadedChildren]);
 
   useEffect(() => {
+    // No active child once children loaded → exit loading so the page
+    // doesn't spin forever in edge routes; route-sync handles redirects.
+    if (hasLoadedChildren && !childId) { setLoading(false); setProfile(null); return; }
     // Reset on child switch so a previous profile never flashes for the new
     // child while the next fetch is in flight.
     setLoading(true);
     setProfile(null);
     fetchProfile();
-  }, [fetchProfile]);
+  }, [fetchProfile, hasLoadedChildren, childId]);
 
   if (loading) {
     return (

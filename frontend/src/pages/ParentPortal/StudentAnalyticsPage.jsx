@@ -21,6 +21,7 @@ const StudentAnalyticsPage = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (hasLoadedChildren && !childId) { setLoading(false); return; }
     if (!hasLoadedChildren || !childId) return;
     let cancelled = false;
     setLoading(true);

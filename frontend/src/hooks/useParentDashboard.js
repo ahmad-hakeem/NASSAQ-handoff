@@ -77,13 +77,20 @@ export default function useParentDashboard() {
   }, [fetchNotifications]);
 
   // Reset per-child state whenever the active student changes so we never
-  // flash a previous child's live data on the new one's hero.
+  // flash a previous child's live data on the new one's hero. We flip the
+  // section loading flags ON synchronously so the dashboard renders local
+  // skeletons (instead of a brief blank gap) for the duration of the swap.
   useEffect(() => {
     setLiveData(null);
     setWeeklyStory(null);
     if (selectedChildId) {
+      setLiveLoading(true);
+      setWeeklyLoading(true);
       fetchLiveData(selectedChildId);
       fetchWeeklyStory(selectedChildId);
+    } else {
+      setLiveLoading(false);
+      setWeeklyLoading(false);
     }
   }, [selectedChildId, fetchLiveData, fetchWeeklyStory]);
 

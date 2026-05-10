@@ -59,12 +59,15 @@ const ChildSchedulePage = () => {
   }, [childId, hasLoadedChildren, api, nassaqError, t]);
 
   useEffect(() => {
+    // No active child once children loaded → exit loading; the route-sync
+    // hook handles URL canonicalization separately.
+    if (hasLoadedChildren && !childId) { setLoading(false); return; }
     // Reset to skeleton on child switch to avoid stale identity flash.
     setLoading(true);
     setSchedule(null);
     setChild(null);
     fetchData();
-  }, [token, fetchData]);
+  }, [token, fetchData, hasLoadedChildren, childId]);
 
   // Task #145 — silently refetch this child's published schedule when the
   // school admin publishes a new timetable, via the tenant-scoped

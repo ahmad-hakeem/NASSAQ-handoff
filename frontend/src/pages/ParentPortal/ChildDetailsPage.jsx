@@ -64,7 +64,9 @@ const ChildDetailsPage = () => {
   useEffect(() => {
     // Wait until the linked-children list resolves so we never fetch with an
     // unverified id. If load completes with no valid active child, the
-    // route-sync hook will have already redirected away.
+    // route-sync hook will have already redirected away — but we still drop
+    // out of the loading state so the page never spins forever.
+    if (hasLoadedChildren && !childId) { setLoading(false); return; }
     if (!hasLoadedChildren || !childId) return;
     let cancelled = false;
     // Reset to skeletons immediately on child switch so we never flash the

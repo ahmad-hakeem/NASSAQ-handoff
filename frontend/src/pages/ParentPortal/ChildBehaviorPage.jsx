@@ -25,6 +25,7 @@ const ChildBehaviorPage = () => {
   const [data, setData] = useState(null);
 
   useEffect(() => {
+    if (hasLoadedChildren && !childId) { setLoading(false); return; }
     if (!hasLoadedChildren || !childId) return;
     let cancelled = false;
     setLoading(true);
