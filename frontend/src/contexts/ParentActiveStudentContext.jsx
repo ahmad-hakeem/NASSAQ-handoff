@@ -59,7 +59,7 @@ const EMPTY_VALUE = {
  * previously-viewed children. Keep this list small and deliberate so cache
  * invalidations stay easy to reason about.
  */
-const SCHEDULE_DEPENDENT_KEYS = new Set(['schedule', 'details']);
+const SCHEDULE_DEPENDENT_KEYS = new Set(['schedule', 'details', 'dashboard']);
 
 /**
  * Task #151 — which cached endpoint keys are made stale by which incoming

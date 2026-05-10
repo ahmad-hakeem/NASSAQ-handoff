@@ -7,6 +7,7 @@ import CurrentClassCard from '../../components/parent/CurrentClassCard';
 import UpcomingClasses from '../../components/parent/UpcomingClasses';
 import WeeklyStory from '../../components/parent/WeeklyStory';
 import HakimChatWidget from '../../components/parent/HakimChatWidget';
+import BackgroundRefreshChip from '../../components/parent/BackgroundRefreshChip';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Skeleton } from '../../components/ui/skeleton';
@@ -217,6 +218,7 @@ const ParentPortalDashboard = () => {
     weeklyLoading,
     weeklyError,
     childrenError,
+    refreshing,
     refreshLiveData,
     refreshWeeklyStory,
     refreshChildren,
@@ -257,6 +259,11 @@ const ParentPortalDashboard = () => {
       >
         {/* Task #146 — the active-student switcher lives in the shell
             (PortalLayout) so every parent page shares one control. */}
+
+        {/* Task #150 — subtle chip while a background refresh runs on top
+            of cached dashboard data after switching back to a previously-
+            viewed child. Hidden on cold loads (the skeleton covers it). */}
+        <BackgroundRefreshChip visible={refreshing} />
 
         {childrenError && (
           <Card className="rounded-2xl border border-red-100 dark:border-red-900/40 shadow-sm bg-card">
