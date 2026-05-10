@@ -48,11 +48,14 @@ const ParentChildrenPage = () => {
   }, [setSearchParams]);
 
   // One-way: route ?child= → context. Runs once children are loaded so the
-  // initial deep link wins over the context's "first child" default.
+  // initial deep link wins over the context's "first child" default. We
+  // call setActiveChildId for *both* valid and invalid ids — invalid ids
+  // are rejected by the context with the standard Arabic NassaqAlert and
+  // the URL canonicalizer below then strips the bad `?child=` value, so
+  // UX parity matches the legacy `:childId` invalid-route handling.
   useEffect(() => {
     if (!urlChildId || children.length === 0) return;
-    const exists = children.some(c => String(c.id) === String(urlChildId));
-    if (exists && String(urlChildId) !== String(activeChildId)) {
+    if (String(urlChildId) !== String(activeChildId)) {
       setActiveChildId(urlChildId);
     }
   }, [urlChildId, children, activeChildId, setActiveChildId]);
