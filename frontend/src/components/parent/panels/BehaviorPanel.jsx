@@ -5,9 +5,10 @@ import { Card, CardContent } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Skeleton } from '../../ui/skeleton';
 import { Heart, ThumbsUp, ThumbsDown, Calendar } from 'lucide-react';
+import { formatBehaviorDate, localizeBehaviorEnum } from '../../../utils/behaviorFormat';
 
 const BehaviorPanel = ({ childId }) => {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const { token, api } = useAuth();
   const { isRTL: _isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -83,7 +84,7 @@ const BehaviorPanel = ({ childId }) => {
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
-                      <p className="font-medium text-sm">{record.category || record.title || (record.type === 'positive' ? t('positive2') : t('negative2'))}</p>
+                      <p className="font-medium text-sm">{record.title || localizeBehaviorEnum(t, record.category) || (record.type === 'positive' ? t('positive2') : t('negative2'))}</p>
                       <Badge className={`text-xs ${record.type === 'positive' ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'} border-0`}>
                         {record.points ? `${record.points > 0 ? '+' : ''}${record.points}` : record.type === 'positive' ? '+' : '-'}
                       </Badge>
@@ -92,7 +93,7 @@ const BehaviorPanel = ({ childId }) => {
                     {record.notes && <p className="text-xs text-muted-foreground mt-1">{record.notes}</p>}
                     <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
                       <Calendar className="h-3 w-3" />
-                      <span>{record.date || record.created_at?.slice(0, 10)}</span>
+                      <span>{formatBehaviorDate(record.date || record.created_at, language)}</span>
                       {record.teacher_name && <span>• {record.teacher_name}</span>}
                     </div>
                   </div>

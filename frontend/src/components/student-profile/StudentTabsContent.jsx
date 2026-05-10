@@ -28,6 +28,7 @@ import {
 import { Download } from 'lucide-react';
 
 import { useTranslation } from '../../contexts/ThemeContext';
+import { formatBehaviorDate, localizeBehaviorEnum } from '../../utils/behaviorFormat';
 export function OverviewTab({ hook }) {
   const { t } = useTranslation();
   const {
@@ -609,7 +610,7 @@ export function TalentsTab({ hook }) {
 }
 
 export function BehaviourTab({ hook }) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const {
     isRTL, student, user, isTeacher,
     behaviourRecords, behaviourSummary, loadingBehaviour, behaviourTrendData,
@@ -701,12 +702,13 @@ export function BehaviourTab({ hook }) {
                                   {rec.points > 0 ? '+' : ''}{rec.points}
                                 </Badge>
                               )}
-                              {rec.severity && <Badge className={`text-xs ${severityColors[rec.severity] || ''}`}>{rec.severity}</Badge>}
-                              {rec.status && <Badge className={`text-xs ${statusColors[rec.status] || ''}`}>{rec.status}</Badge>}
+                              {rec.category && <Badge variant="outline" className="text-xs font-cairo">{localizeBehaviorEnum(t, rec.category)}</Badge>}
+                              {rec.severity && <Badge className={`text-xs font-cairo ${severityColors[rec.severity] || ''}`}>{localizeBehaviorEnum(t, rec.severity)}</Badge>}
+                              {rec.status && <Badge className={`text-xs font-cairo ${statusColors[rec.status] || ''}`}>{localizeBehaviorEnum(t, rec.status)}</Badge>}
                             </div>
                             {rec.description && <p className="text-xs text-muted-foreground font-cairo mt-1 line-clamp-2">{rec.description}</p>}
                             <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                              <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{rec.incident_date || rec.created_at?.split('T')[0]}</span>
+                              <span className="flex items-center gap-1 font-cairo"><Calendar className="h-3 w-3" />{formatBehaviorDate(rec.incident_date || rec.created_at, language)}</span>
                               {rec.reported_by_name && <span className="flex items-center gap-1"><User className="h-3 w-3" />{rec.reported_by_name}</span>}
                             </div>
                           </div>
