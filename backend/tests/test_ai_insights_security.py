@@ -100,31 +100,43 @@ async def _seed_workspace_class_and_student(workspace_id: str):
 
 
 # ------------------------------------------------------------------ (a)
+SAFE_AR_DENIED = "تعذّر التحقق من صلاحياتك للوصول إلى هذه البيانات"
+
+
 @pytest.mark.asyncio
-async def test_independent_teacher_no_workspace_returns_empty_payload_not_global(
+async def test_independent_teacher_no_workspace_returns_403_safe_arabic(
     client, seeded_school
 ):
-    """An independent teacher whose workspace does not exist must receive the
-    documented empty-shape payload — NEVER fall through to platform-wide
-    counts. seeded_school provides 10 students in a separate tenant so we can
-    assert the response is not the global aggregate."""
+    """An independent teacher whose workspace cannot be resolved must
+    receive a controlled 403 with the safe Arabic denial message on EVERY
+    AI Insights endpoint — never silently fall through to the global
+    payload, never silently return an empty 200 that masks the real ACL/
+    resolution failure."""
     it = await _mk_independent_teacher(with_workspace=False)
 
-    overview = await client.get("/ai/insights/overview", headers=it["headers"])
-    assert overview.status_code == 200
-    body = overview.json()
-    # schema parity
-    assert set(body.keys()) == OVERVIEW_TOP_KEYS
-    assert set(body["metrics"].keys()) == OVERVIEW_METRIC_KEYS
-    # NOT the global aggregate (seeded_school has 10 students in tenant_a)
-    assert body["metrics"]["total_students"] == 0
-    assert body["has_data"] is False
-
-    for path in ("/ai/insights/predictions", "/ai/insights/recommendations",
-                 "/ai/insights/alerts", "/ai/insights/at-risk-students"):
+    for path in AI_INSIGHTS_ENDPOINTS:
         r = await client.get(path, headers=it["headers"])
-        assert r.status_code == 200, f"{path} -> {r.status_code} {r.text}"
-        assert r.json() == [], f"{path} returned non-empty for empty-workspace IT"
+        assert r.status_code == 403, (
+            f"{path} -> {r.status_code} {r.text} (expected 403 fail-closed)"
+        )
+        body = r.json()
+        # NASSAQ uses a custom error envelope:
+        #   { success: false, error: { code: "HTTP_403", message: "..." } }
+        # Accept either that envelope or the default FastAPI {"detail": "..."}.
+        message = None
+        if isinstance(body, dict):
+            err = body.get("error")
+            if isinstance(err, dict):
+                message = err.get("message")
+            if message is None:
+                message = body.get("detail")
+        assert message == SAFE_AR_DENIED, (
+            f"{path} returned wrong error body: {body!r}"
+        )
+        # Defence-in-depth: response body must NOT leak raw exception text
+        # or English stack traces.
+        assert "Traceback" not in r.text
+        assert "Exception" not in r.text
 
 
 # ------------------------------------------------------------------ (b)

@@ -1114,6 +1114,12 @@ export const AIInsightsPage = () => {
   // state for the current user (Task #154 / M1 race fix).
   const fetchReqIdRef = useRef(0);
 
+  // First-mount marker: the full-screen splash is allowed ONLY for the
+  // very first load of the page. On subsequent identity changes the page
+  // shell, header and filters must remain mounted — only the data
+  // regions reset to their empty/skeleton state (Task #154 / M1 spec).
+  const firstLoadRef = useRef(true);
+
   const fetchData = useCallback(async () => {
     const myReqId = fetchReqIdRef.current;
     try {
@@ -1182,7 +1188,16 @@ export const AIInsightsPage = () => {
     setAttendanceReport(null);
     setStaffHeadcount(0);
     setTodayAttendanceCounts({ present: 0, absent: 0, excused: 0, late: 0 });
-    setLoading(true);
+    if (firstLoadRef.current) {
+      // First ever mount: full-screen splash is acceptable.
+      setLoading(true);
+      firstLoadRef.current = false;
+    } else {
+      // Identity switch: keep shell/header/filters mounted, render the
+      // data regions in their (already-cleared) empty state until the
+      // new fetch arrives. No full-page takeover.
+      setLoading(false);
+    }
     fetchData();
   }, [userKey, fetchData]);
 

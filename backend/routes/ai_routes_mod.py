@@ -962,10 +962,12 @@ async def resolve_ai_insights_scope(current_user: dict):
             workspace_id = f"itw_{user_id}"
             workspace = await gd_find_one(db.session, "schools", {"id": workspace_id})
             if not workspace:
-                # Workspace does not exist yet — treat as authorized-but-empty.
-                # The lazy create lives in class_management_routes; AI Insights
-                # is read-only and must NOT trigger workspace creation.
-                return NO_AUTHORIZED_SCOPE
+                # Authorization-resolution failure: the caller's workspace
+                # could not be resolved at all. AI Insights is read-only and
+                # must NOT lazy-create; fail closed with safe Arabic 403
+                # rather than degrade into a silent empty 200 (which masks
+                # real ACL/provisioning failures from monitoring).
+                raise HTTPException(403, _AI_INSIGHTS_SCOPE_DENIED_AR)
 
             classes = await gd_find(db.session, "classes", {
                 "school_id": workspace_id,
