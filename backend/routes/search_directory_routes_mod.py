@@ -11,6 +11,7 @@ from dependencies import (
     db, get_current_user, require_roles, UserRole, logger
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+from auth_scope import require_request_school_id
 
 
 router = APIRouter()
@@ -26,12 +27,13 @@ async def global_search(
     current_user: dict = Depends(get_current_user)
 ):
     """Unified search across students, teachers, parents, classes, subjects"""
-    school_id = current_user.get("tenant_id") or current_user.get("school_id")
+    # Task #155: fail-closed school-id resolution; see audit row #3.
+    school_id = require_request_school_id(current_user)
 
     pattern = {"$regex": re.escape(q), "$options": "i"}
     results = {"students": [], "teachers": [], "parents": [], "classes": [], "subjects": [], "total": 0}
 
-    tenant_filter = {"tenant_id": school_id} if school_id else {}
+    tenant_filter = {"tenant_id": school_id}
 
     if not entity_type or entity_type == "student":
         students = await gd_find(db.session, "students", {**tenant_filter, "$or": [
@@ -46,7 +48,7 @@ async def global_search(
             ]}, limit=limit)
         results["teachers"] = [dict(t, entity_type="teacher") for t in teachers]
 
-    parent_filter = {"school_id": school_id} if school_id else {}
+    parent_filter = {"school_id": school_id}
     if not entity_type or entity_type == "parent":
         parents = await gd_find(db.session, "parents", {**parent_filter, "$or": [
                 {"full_name": pattern}, {"phone": pattern},
@@ -75,7 +77,10 @@ async def autocomplete_search(
     current_user: dict = Depends(get_current_user)
 ):
     """Fast autocomplete for search fields"""
-    school_id = current_user.get("tenant_id")
+    # Task #155: shared school-id adapter for consistency. Audit row #4
+    # classified the prior pattern as inconsistent-but-not-exploitable, but
+    # we still gate on the canonical fail-closed resolver.
+    school_id = require_request_school_id(current_user)
     pattern = {"$regex": f"^{re.escape(q)}", "$options": "i"}
     suggestions = []
 
@@ -105,10 +110,9 @@ async def directory_students(
     current_user: dict = Depends(get_current_user)
 ):
     """Student directory with filters and pagination"""
-    school_id = current_user.get("tenant_id") or current_user.get("school_id")
-    query = {}
-    if school_id:
-        query["tenant_id"] = school_id
+    # Task #155: fail-closed school-id resolution; see audit row #5.
+    school_id = require_request_school_id(current_user)
+    query = {"tenant_id": school_id}
     if class_id:
         query["class_id"] = class_id
     if grade_level:
@@ -139,10 +143,9 @@ async def directory_teachers(
     current_user: dict = Depends(get_current_user)
 ):
     """Teacher directory with filters and pagination"""
-    school_id = current_user.get("tenant_id") or current_user.get("school_id")
-    query = {"role": "teacher"}
-    if school_id:
-        query["tenant_id"] = school_id
+    # Task #155: fail-closed school-id resolution; see audit row #6.
+    school_id = require_request_school_id(current_user)
+    query = {"role": "teacher", "tenant_id": school_id}
 
     total = await gd_count(db.session, "users", query)
     skip = (page - 1) * per_page
@@ -169,10 +172,9 @@ async def directory_parents(
     current_user: dict = Depends(get_current_user)
 ):
     """Parent directory with children info"""
-    school_id = current_user.get("tenant_id") or current_user.get("school_id")
-    query = {}
-    if school_id:
-        query["school_id"] = school_id
+    # Task #155: fail-closed school-id resolution; see audit row #7.
+    school_id = require_request_school_id(current_user)
+    query = {"school_id": school_id}
 
     total = await gd_count(db.session, "parents", query)
     skip = (page - 1) * per_page
@@ -201,10 +203,9 @@ async def directory_classes(
     current_user: dict = Depends(get_current_user)
 ):
     """Class directory with student counts"""
-    school_id = current_user.get("tenant_id") or current_user.get("school_id")
-    query = {}
-    if school_id:
-        query["tenant_id"] = school_id
+    # Task #155: fail-closed school-id resolution; see audit row #8.
+    school_id = require_request_school_id(current_user)
+    query = {"tenant_id": school_id}
     if grade_level:
         query["grade_level"] = grade_level
 
@@ -222,9 +223,10 @@ async def directory_statistics(
     current_user: dict = Depends(get_current_user)
 ):
     """Get overall directory statistics"""
-    school_id = current_user.get("tenant_id") or current_user.get("school_id")
-    t_filter = {"tenant_id": school_id} if school_id else {}
-    s_filter = {"school_id": school_id} if school_id else {}
+    # Task #155: fail-closed school-id resolution; see audit row #9.
+    school_id = require_request_school_id(current_user)
+    t_filter = {"tenant_id": school_id}
+    s_filter = {"school_id": school_id}
 
     students_total = await gd_count(db.session, "students", t_filter)
     students_active = await gd_count(db.session, "students", {**t_filter, "is_active": {"$ne": False}})

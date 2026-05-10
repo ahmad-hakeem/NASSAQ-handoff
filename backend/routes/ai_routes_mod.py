@@ -1044,46 +1044,32 @@ async def resolve_ai_insights_scope(current_user: dict):
 
 
 async def _resolve_teacher_scope(current_user: dict) -> Optional[Dict[str, Any]]:
+    """DEPRECATED (Task #155): use ``resolve_ai_insights_scope`` instead.
+
+    Thin compatibility shim that flattens the canonical tri-state
+    (``None`` / ``NO_AUTHORIZED_SCOPE`` / dict) into the legacy 2-state
+    shape (``None`` for non-teacher OR no-scope, dict otherwise) that
+    pre-#154 callers expected.
+
+    No in-tree caller remains; this wrapper only exists to keep any
+    out-of-tree caller from crashing while a separate cleanup task
+    formally retires the symbol. Do NOT add new callers.
     """
-    If the current user is a teacher, return their scoping context: the list of
-    class IDs they teach plus the student IDs in those classes. Returns None for
-    any non-teacher role so callers fall back to school-wide queries.
-    """
+    import warnings
+
+    warnings.warn(
+        "_resolve_teacher_scope is deprecated (Task #155); "
+        "use resolve_ai_insights_scope instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     role = current_user.get("role", "")
     if role != UserRole.TEACHER.value:
         return None
-
-    teacher_id = current_user.get("teacher_id")
-    school_id = current_user.get("tenant_id")
-    if not teacher_id or not school_id:
-        return {"teacher_id": teacher_id, "school_id": school_id, "class_ids": [], "student_ids": []}
-
-    assignments = await gd_find(db.session, "teacher_assignments", {
-        "teacher_id": teacher_id, "is_active": True
-    }, limit=200)
-    tca_docs = await gd_find(db.session, "teacher_class_assignments", {
-        "teacher_id": teacher_id
-    }, limit=200)
-    class_ids = list({
-        *(a.get("class_id") for a in assignments if a.get("class_id")),
-        *(d.get("class_id") for d in tca_docs if d.get("class_id")),
-    })
-
-    student_ids: List[str] = []
-    if class_ids:
-        students = await gd_find(db.session, "students", {
-            "school_id": school_id,
-            "class_id": {"$in": class_ids},
-            "is_active": True,
-        }, limit=2000)
-        student_ids = [s.get("id") for s in students if s.get("id")]
-
-    return {
-        "teacher_id": teacher_id,
-        "school_id": school_id,
-        "class_ids": class_ids,
-        "student_ids": student_ids,
-    }
+    result = await resolve_ai_insights_scope(current_user)
+    if result is None or result is NO_AUTHORIZED_SCOPE:
+        return None
+    return result
 
 
 def _scope_query_for(scope: Optional[Dict[str, Any]], school_id: Optional[str], collection: str) -> Dict[str, Any]:
@@ -1091,6 +1077,13 @@ def _scope_query_for(scope: Optional[Dict[str, Any]], school_id: Optional[str], 
     Build a base filter dict for a given collection. For teachers, narrows by
     class_id (or student_id where applicable). For non-teachers, scopes by
     school_id only.
+
+    Task #155 audit row #12: the ``else {}`` baseline below is unreachable in
+    the current codebase because every caller goes through
+    ``resolve_ai_insights_scope`` first, which 403's on a missing school_id.
+    Keep the shape conservative: any new caller MUST resolve school_id via
+    the canonical resolver / ``require_request_school_id`` first; do NOT
+    invoke this helper with a falsy school_id.
     """
     base: Dict[str, Any] = {"school_id": school_id} if school_id else {}
     if not scope:

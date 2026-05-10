@@ -23,6 +23,7 @@ from dependencies import (
     REPORT_TYPES, generate_student_qr_code
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_aggregate
+from auth_scope import require_request_school_id
 
 from engines.attendance_engine import AttendanceEngine
 
@@ -566,13 +567,15 @@ async def get_attendance_summary(
     current_user: dict = Depends(get_current_user)
 ):
     """Get attendance summary for a period"""
-    query = {}
-    
+    # Task #155 (audit row #14, post-review): fail-closed scope. Previously
+    # this endpoint allowed `query = {}` plus a tenant filter only when one
+    # was present, leaking cross-tenant attendance summaries to any caller
+    # whose `tenant_id` was missing. Use the canonical adapter instead.
+    school_id = require_request_school_id(current_user)
+    query = {'tenant_id': school_id}
+
     if class_id:
         query['class_id'] = class_id
-    
-    if current_user.get('tenant_id'):
-        query['tenant_id'] = current_user['tenant_id']
     
     if start_date:
         query['date'] = {"$gte": start_date}
@@ -789,10 +792,11 @@ async def list_excuses(
     current_user: dict = Depends(get_current_user)
 ):
     """List attendance excuses"""
-    school_id = current_user.get("tenant_id")
-    query = {}
-    if school_id:
-        query["school_id"] = school_id
+    # Task #155 (audit row #15, post-review): fail-closed scope. The previous
+    # `query = {}` + optional tenant filter would surface every tenant's
+    # excuses when `tenant_id` was missing from the caller's identity.
+    school_id = require_request_school_id(current_user)
+    query = {"school_id": school_id}
     if status_filter:
         query["status"] = status_filter
     if student_id:
@@ -816,8 +820,11 @@ async def get_attendance_alerts(
     current_user: dict = Depends(get_current_user)
 ):
     """Get attendance-based alerts (low attendance, consecutive absences)"""
-    school_id = current_user.get("tenant_id")
-    q = {"school_id": school_id} if school_id else {}
+    # Task #155: replace the original tenantless fallback (`{} if not school_id`)
+    # with a fail-closed adapter that 403's on resolution failure. See
+    # docs/security/2026-05-ai-teacher-scope-audit.md row #1.
+    school_id = require_request_school_id(current_user)
+    q = {"school_id": school_id}
     alerts = []
     today = datetime.now(timezone.utc)
     week_ago_str = (today - timedelta(days=7)).strftime("%Y-%m-%d")
@@ -895,8 +902,9 @@ async def get_attendance_statistics(
     current_user: dict = Depends(get_current_user)
 ):
     """Get comprehensive attendance statistics"""
-    school_id = current_user.get("tenant_id")
-    q = {"school_id": school_id} if school_id else {}
+    # Task #155: fail-closed school-id resolution; see audit row #2.
+    school_id = require_request_school_id(current_user)
+    q = {"school_id": school_id}
     if class_id:
         q["class_id"] = class_id
 

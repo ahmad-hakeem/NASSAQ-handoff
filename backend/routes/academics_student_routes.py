@@ -23,6 +23,7 @@ from dependencies import (
     REPORT_TYPES, generate_student_qr_code
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc, _gd_pull, _gd_push, _gd_addtoset
+from auth_scope import require_request_school_id
 
 
 from shared_models import (
@@ -44,7 +45,10 @@ async def get_school_id_from_context(current_user: dict, x_school_context: str =
 
 
 def _independent_workspace_id(current_user: dict) -> Optional[str]:
-    """Return the independent-teacher workspace id for the current user, if applicable."""
+    """DEPRECATED (Task #155): use `auth_scope.independent_workspace_id`.
+    Retained only for transitional compatibility with any out-of-tree caller.
+    Do NOT use in new code; do NOT call from inside this module — every
+    in-module call site has been migrated to `require_request_school_id`."""
     role = current_user.get("role")
     account_type = current_user.get("account_type") or (current_user.get("data") or {}).get("account_type")
     if role != "independent_teacher" and account_type != "independent_teacher":
@@ -56,7 +60,11 @@ def _independent_workspace_id(current_user: dict) -> Optional[str]:
 
 
 def _scoped_school_id(current_user: dict) -> Optional[str]:
-    """Resolve a school/tenant id for a user, falling back to their personal workspace."""
+    """DEPRECATED (Task #155): tri-state resolver — returns None on failure
+    and is therefore unsafe in the broad-fallback pattern this audit was
+    written to eliminate. Use `auth_scope.require_request_school_id` instead,
+    which raises a fail-closed 403 with the safe Arabic message. Retained
+    only for transitional compatibility; no in-module callers remain."""
     return current_user.get("tenant_id") or _independent_workspace_id(current_user)
 
 # ============== STUDENTS ROUTES ==============
@@ -168,9 +176,10 @@ async def get_class_grades_options(current_user: dict = Depends(require_roles([
     UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER
 ]))):
     """Get available grade levels for class creation"""
-    school_id = _scoped_school_id(current_user)
+    # Task #155: fail-closed school-id resolution; see audit row #10.
+    school_id = require_request_school_id(current_user)
 
-    grades = await gd_find(db.session, "grade_levels", {"school_id": school_id} if school_id else {}, limit=100)
+    grades = await gd_find(db.session, "grade_levels", {"school_id": school_id}, limit=100)
     
     result_grades = []
     for g in grades:
@@ -208,9 +217,12 @@ async def get_class_teachers_options(current_user: dict = Depends(require_roles(
     UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER
 ]))):
     """Get available teachers for homeroom assignment"""
-    school_id = _scoped_school_id(current_user)
+    # Task #155 (audit row #16, post-review): fail-closed scope. The previous
+    # `if school_id else {}` form returned every tenant's teachers when scope
+    # could not be resolved.
+    school_id = require_request_school_id(current_user)
 
-    teachers = await gd_find(db.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}} if school_id else {"is_active": {"$ne": False}}, limit=200)
+    teachers = await gd_find(db.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=200)
     
     result_teachers = []
     for t in teachers:
@@ -230,9 +242,12 @@ async def get_class_students_options(current_user: dict = Depends(require_roles(
     UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER
 ]))):
     """Get available students for class assignment"""
-    school_id = _scoped_school_id(current_user) or current_user.get("school_id")
+    # Task #155 (audit row #17, post-review): fail-closed scope. The previous
+    # `if school_id else {}` form returned every tenant's students when scope
+    # could not be resolved.
+    school_id = require_request_school_id(current_user)
 
-    query = {"school_id": school_id, "is_active": {"$ne": False}} if school_id else {"is_active": {"$ne": False}}
+    query = {"school_id": school_id, "is_active": {"$ne": False}}
     students = await gd_find(db.session, "students", query, limit=500)
     
     result_students = []
