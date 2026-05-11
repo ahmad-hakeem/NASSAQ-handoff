@@ -96,29 +96,53 @@ async def tenant_scoped_find_one(
       - Platform admins (and sub-admins) bypass the tenant filter — they can
         legitimately read any tenant's records.
       - Every other caller MUST have a tenant_id; otherwise 403.
-      - The query always pins the tenant column (`tenant_id` for the small set
-        of legacy tables, `school_id` for everything else) so the row cannot
-        be returned even if the lookup id matches another tenant.
+      - The query always pins the tenant column. Per architect v3 feedback,
+        legacy data has rows where tenant_id was set on one row in a table
+        and school_id on another row in the same table — so we attempt the
+        primary tenant column first, and if no row matches, fall back to
+        the alternate column. BOTH queries pin the caller's tenant_id, so
+        the fallback cannot leak cross-tenant data.
       - Returns `None` when not found in the caller's tenant — callers raise 404.
-
-    This helper is the single entry point for `GET /{id}` style lookups against
-    tenant-owned tables. Project rule: tenant isolation is enforced at the DB
-    query level, not as an after-the-fact check.
     """
     from engines.sql_utils import gd_find_one  # local import to avoid cycles
 
-    filters: Dict[str, Any] = {id_field: record_id}
+    if _is_platform_admin(current_user):
+        return await gd_find_one(session, collection, {id_field: record_id})
 
-    if not _is_platform_admin(current_user):
-        tenant_id = current_user.get("tenant_id") or current_user.get("school_id")
-        if not tenant_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="تعذّر التحقق من صلاحياتك للوصول إلى هذه البيانات",
-            )
-        filters[_tenant_key_for(collection)] = tenant_id
+    tenant_id = current_user.get("tenant_id") or current_user.get("school_id")
+    if not tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="تعذّر التحقق من صلاحياتك للوصول إلى هذه البيانات",
+        )
 
-    return await gd_find_one(session, collection, filters)
+    primary = _tenant_key_for(collection)
+    alternate = "school_id" if primary == "tenant_id" else "tenant_id"
+
+    row = await gd_find_one(session, collection, {id_field: record_id, primary: tenant_id})
+    if row is not None:
+        return row
+    # Fallback for mixed-schema tables. Still tenant-pinned, so cannot leak
+    # foreign rows; just covers the case where this row was written under
+    # the alternate column name.
+    return await gd_find_one(session, collection, {id_field: record_id, alternate: tenant_id})
+
+
+async def tenant_scoped_assert_one(
+    session,
+    collection: str,
+    record_id: str,
+    current_user: dict,
+    *,
+    not_found_detail: str = "العنصر غير موجود",
+) -> Dict[str, Any]:
+    """Wrapper around `tenant_scoped_find_one` that raises 404 instead of
+    returning None — convenient for write paths (PUT/DELETE) where missing
+    rows and foreign-tenant rows must both 404 before any mutation runs."""
+    row = await tenant_scoped_find_one(session, collection, record_id, current_user)
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=not_found_detail)
+    return row
 
 
 async def can_view_student(session, current_user: dict, student_id: str) -> bool:

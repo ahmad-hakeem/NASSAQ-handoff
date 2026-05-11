@@ -278,45 +278,45 @@ export default function TeacherSchedulePage() {
         <td>${esc(s.end_time?.slice(0,5) || '')}</td>
       </tr>
     `).join('');
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html dir="${isRTL ? 'rtl' : 'ltr'}">
-        <head>
-          <title>${t('mySchedule')}</title>
-          <style>
-            body { font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif; padding: 20px; direction: ${isRTL ? 'rtl' : 'ltr'}; }
-            h1 { text-align: center; color: #1E3A5F; margin-bottom: 5px; }
-            p.subtitle { text-align: center; color: #666; margin-bottom: 20px; }
-            table { width: 100%; border-collapse: collapse; }
-            th { background: #1E3A5F; color: white; padding: 10px 8px; font-size: 14px; }
-            td { padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 13px; }
-            tr:nth-child(even) { background: #f8fafc; }
-            @media print { body { padding: 0; } }
-          </style>
-        </head>
-        <body>
-          <h1>${t('mySchedule2')}</h1>
-          <p class="subtitle">${t('nassaq2')} — ${new Date().toLocaleDateString(isRTL ? 'ar-SA' : 'en-US')}</p>
-          <table>
-            <thead><tr>
-              <th>${isRTL ? 'اليوم' : 'Day'}</th>
-              <th>${isRTL ? 'الحصة' : 'Period'}</th>
-              <th>${t('subject')}</th>
-              <th>${t('class')}</th>
-              <th>${t('room2')}</th>
-              <th>${t('start')}</th>
-              <th>${t('end')}</th>
-            </tr></thead>
-            <tbody>${tableRows}</tbody>
-          </table>
-        </body></html>
-      `);
-      printWindow.document.close();
-      setTimeout(() => { printWindow.print(); }, 300);
-    } else {
+    // SECURITY (audit L-1): use a Blob URL + DOM APIs instead of
+    // `printWindow.document.write(...)`. The HTML payload is built with
+    // pre-escaped strings, but document.write is on the lint denylist as
+    // a high-risk sink class — this version is equivalent and avoids it.
+    const html =
+      `<!doctype html><html dir="${isRTL ? 'rtl' : 'ltr'}"><head>` +
+      `<meta charset="utf-8"><title>${esc(t('mySchedule'))}</title>` +
+      `<style>` +
+      `body{font-family:'Cairo','Segoe UI',Tahoma,sans-serif;padding:20px;direction:${isRTL ? 'rtl' : 'ltr'};}` +
+      `h1{text-align:center;color:#1E3A5F;margin-bottom:5px;}` +
+      `p.subtitle{text-align:center;color:#666;margin-bottom:20px;}` +
+      `table{width:100%;border-collapse:collapse;}` +
+      `th{background:#1E3A5F;color:white;padding:10px 8px;font-size:14px;}` +
+      `td{padding:8px;border:1px solid #ddd;text-align:center;font-size:13px;}` +
+      `tr:nth-child(even){background:#f8fafc;}` +
+      `@media print{body{padding:0;}}` +
+      `</style></head><body>` +
+      `<h1>${esc(t('mySchedule2'))}</h1>` +
+      `<p class="subtitle">${esc(t('nassaq2'))} — ${esc(new Date().toLocaleDateString(isRTL ? 'ar-SA' : 'en-US'))}</p>` +
+      `<table><thead><tr>` +
+      `<th>${esc(isRTL ? 'اليوم' : 'Day')}</th>` +
+      `<th>${esc(isRTL ? 'الحصة' : 'Period')}</th>` +
+      `<th>${esc(t('subject'))}</th>` +
+      `<th>${esc(t('class'))}</th>` +
+      `<th>${esc(t('room2'))}</th>` +
+      `<th>${esc(t('start'))}</th>` +
+      `<th>${esc(t('end'))}</th>` +
+      `</tr></thead><tbody>${tableRows}</tbody></table>` +
+      `<script>setTimeout(function(){window.print();},300);</script>` +
+      `</body></html>`;
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const printWindow = window.open(url, '_blank');
+    if (!printWindow) {
+      URL.revokeObjectURL(url);
       toast.success(t('pleaseAllowPopupsToPrint'));
+      return;
     }
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
   const handleExport = () => {

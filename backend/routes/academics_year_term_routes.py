@@ -154,11 +154,13 @@ async def update_academic_year(
     data: AcademicYearBase,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
-    """Update an academic year"""
-    academic_year = await gd_find_one(db.session, "academic_years", {"id": academic_year_id})
-    if not academic_year:
-        raise HTTPException(status_code=404, detail="العام الدراسي غير موجود")
-    
+    """Update an academic year — tenant-scoped (audit C-3)."""
+    from utils.tenant_scope import tenant_scoped_assert_one
+    academic_year = await tenant_scoped_assert_one(
+        db.session, "academic_years", academic_year_id, current_user,
+        not_found_detail="العام الدراسي غير موجود",
+    )
+
     school_id = current_user.get("tenant_id") or data.school_id or academic_year.get("school_id")
     
     if data.is_current:
@@ -184,7 +186,12 @@ async def delete_academic_year(
     academic_year_id: str,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
-    """Delete an academic year"""
+    """Delete an academic year — tenant-scoped (audit C-3)."""
+    from utils.tenant_scope import tenant_scoped_assert_one
+    await tenant_scoped_assert_one(
+        db.session, "academic_years", academic_year_id, current_user,
+        not_found_detail="العام الدراسي غير موجود",
+    )
     result = await gd_delete_one(db.session, "academic_years", {"id": academic_year_id})
     if result == 0:
         raise HTTPException(status_code=404, detail="العام الدراسي غير موجود")
@@ -293,10 +300,12 @@ async def update_term(
     data: TermBase,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
-    """Update a term"""
-    term = await gd_find_one(db.session, "terms", {"id": term_id})
-    if not term:
-        raise HTTPException(status_code=404, detail="الفصل الدراسي غير موجود")
+    """Update a term — tenant-scoped (audit C-3)."""
+    from utils.tenant_scope import tenant_scoped_assert_one
+    term = await tenant_scoped_assert_one(
+        db.session, "terms", term_id, current_user,
+        not_found_detail="الفصل الدراسي غير موجود",
+    )
     
     # If setting as current, unset other current terms
     if data.is_current:
@@ -322,7 +331,12 @@ async def delete_term(
     term_id: str,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
-    """Delete a term"""
+    """Delete a term — tenant-scoped (audit C-3)."""
+    from utils.tenant_scope import tenant_scoped_assert_one
+    await tenant_scoped_assert_one(
+        db.session, "terms", term_id, current_user,
+        not_found_detail="الفصل الدراسي غير موجود",
+    )
     result = await gd_delete_one(db.session, "terms", {"id": term_id})
     if result == 0:
         raise HTTPException(status_code=404, detail="الفصل الدراسي غير موجود")
@@ -408,10 +422,12 @@ async def update_grade_level(
     data: GradeLevelBase,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
-    """Update a grade level"""
-    grade = await gd_find_one(db.session, "grade_levels", {"id": grade_id})
-    if not grade:
-        raise HTTPException(status_code=404, detail="المرحلة الدراسية غير موجودة")
+    """Update a grade level — tenant-scoped (audit C-3)."""
+    from utils.tenant_scope import tenant_scoped_assert_one
+    grade = await tenant_scoped_assert_one(
+        db.session, "grade_levels", grade_id, current_user,
+        not_found_detail="المرحلة الدراسية غير موجودة",
+    )
     
     update_data = {
         "name": data.name,
@@ -431,7 +447,12 @@ async def delete_grade_level(
     grade_id: str,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
-    """Delete a grade level"""
+    """Delete a grade level — tenant-scoped (audit C-3)."""
+    from utils.tenant_scope import tenant_scoped_assert_one
+    await tenant_scoped_assert_one(
+        db.session, "grade_levels", grade_id, current_user,
+        not_found_detail="المرحلة الدراسية غير موجودة",
+    )
     result = await gd_delete_one(db.session, "grade_levels", {"id": grade_id})
     if result == 0:
         raise HTTPException(status_code=404, detail="المرحلة الدراسية غير موجودة")

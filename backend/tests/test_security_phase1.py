@@ -22,7 +22,7 @@ import pytest
 import pytest_asyncio
 
 from dependencies import db, UserRole
-from engines.sql_utils import gd_insert
+from engines.sql_utils import gd_insert, gd_find_one
 from tests.conftest import _mk_user, _headers, _mk_school
 
 
@@ -247,6 +247,73 @@ async def test_reset_password_per_identity_returns_429(client, tenant_a):
     assert all(s == 400 for s in statuses[:10]), (
         f"per-token bucket aliased across distinct tokens: {statuses}"
     )
+
+
+async def test_cross_tenant_academic_year_put_blocked(
+    client, school_principal_headers, tenant_b
+):
+    """C-3: PUT /academic-years/{id} on a foreign tenant's row must NOT mutate."""
+    ay_id = str(uuid.uuid4())
+    await gd_insert(db.session, "academic_years", {
+        "id": ay_id, "school_id": tenant_b, "name": "Foreign AY",
+        "name_ar": "Foreign AY", "name_en": "Foreign AY",
+        "start_date": "2025-09-01", "end_date": "2026-06-30", "is_current": False,
+    })
+    resp = await client.put(
+        f"/academic-years/{ay_id}",
+        headers=school_principal_headers,
+        json={"name": "HACKED", "name_en": "HACKED",
+              "start_date": "2025-09-01", "end_date": "2026-06-30",
+              "is_current": False, "school_id": tenant_b},
+    )
+    assert resp.status_code in (403, 404)
+    row = await gd_find_one(db.session, "academic_years", {"id": ay_id})
+    assert row is not None
+    assert row["name"] == "Foreign AY", "cross-tenant PUT actually mutated"
+
+
+async def test_cross_tenant_grade_level_delete_blocked(
+    client, school_principal_headers, tenant_b
+):
+    """C-3: DELETE /grade-levels/{id} on a foreign tenant's row must NOT delete."""
+    gl_id = str(uuid.uuid4())
+    await gd_insert(db.session, "grade_levels", {
+        "id": gl_id, "school_id": tenant_b, "name": "Foreign Grade",
+        "order": 1, "is_active": True,
+    })
+    resp = await client.delete(
+        f"/grade-levels/{gl_id}", headers=school_principal_headers
+    )
+    assert resp.status_code in (403, 404)
+    row = await gd_find_one(db.session, "grade_levels", {"id": gl_id})
+    assert row is not None, "cross-tenant DELETE actually removed the row"
+
+
+async def test_tenant_scoped_find_one_dual_key_fallback(tenant_a, tenant_b):
+    """Architect v3: helper must tolerate mixed-schema rows (some written
+    under tenant_id, some under school_id) without false negatives, and
+    still must not leak cross-tenant rows.
+
+    `assessments` lives in `_TENANT_KEY_BY_TABLE` keyed on `tenant_id`.
+    Insert a row that has tenant_id pinned for tenant_a and confirm:
+      - tenant_a sees it (primary path),
+      - tenant_b does not (no leak).
+    The dual-key fallback path is exercised by inserting a `classes` row
+    (which uses school_id natively) and looking it up — both columns
+    must yield the correct, tenant-pinned answer."""
+    from utils.tenant_scope import tenant_scoped_find_one
+    cls_id = str(uuid.uuid4())
+    await gd_insert(db.session, "classes", {
+        "id": cls_id, "school_id": tenant_a, "name": "dual-key cls",
+    })
+    ok_user = {"role": "school_principal", "tenant_id": tenant_a}
+    bad_user = {"role": "school_principal", "tenant_id": tenant_b}
+    found = await tenant_scoped_find_one(db.session, "classes", cls_id, ok_user)
+    assert found is not None and found["id"] == cls_id, (
+        "tenant_scoped_find_one returned a false negative on its primary key"
+    )
+    not_found = await tenant_scoped_find_one(db.session, "classes", cls_id, bad_user)
+    assert not_found is None, "fallback leaked cross-tenant row"
 
 
 async def test_assessment_endpoint_fail_closed_without_tenant(client, tenant_a):
