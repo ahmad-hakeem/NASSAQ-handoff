@@ -602,7 +602,7 @@ async def put_standby_override(
         # English or Arabic — normalize both sides.
         unavail_rows = await gd_find(
             db.session, "unavailability",
-            {"school_id": str(sid)},
+            {"school_id": str(sid), "entity_type": "teacher"},
             limit=10000,
         )
         for row in unavail_rows or []:
