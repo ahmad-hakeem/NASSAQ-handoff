@@ -7,7 +7,6 @@ from models.enums import UserRole  # backend/ is on sys.path; matches existing c
 
 _PLATFORM_ROLES = frozenset({
     UserRole.PLATFORM_ADMIN.value,
-    UserRole.PLATFORM_SUB_ADMIN.value,
 })
 
 _SCHOOL_ADMIN_ROLES = frozenset({

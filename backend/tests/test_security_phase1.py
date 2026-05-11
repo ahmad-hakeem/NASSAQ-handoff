@@ -43,6 +43,17 @@ async def test_public_stats_school_principal_blocked(client, school_principal_he
     assert resp.status_code == 403
 
 
+async def test_public_stats_platform_sub_admin_blocked(client, tenant_a):
+    """Architect v5: PLATFORM_SUB_ADMIN must NOT receive global stats —
+    /public/stats and the tenant-scope helper bypass are PLATFORM_ADMIN-only."""
+    sub = await _mk_user(UserRole.PLATFORM_SUB_ADMIN, tenant_a)
+    resp = await client.get("/public/stats", headers=_headers(sub))
+    assert resp.status_code == 403, (
+        f"PLATFORM_SUB_ADMIN unexpectedly granted /public/stats "
+        f"(status={resp.status_code})"
+    )
+
+
 async def test_public_stats_platform_admin_allowed(client, platform_admin_headers):
     resp = await client.get("/public/stats", headers=platform_admin_headers)
     assert resp.status_code == 200

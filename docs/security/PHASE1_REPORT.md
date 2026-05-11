@@ -3,7 +3,11 @@
 **Date:** 2026-05-11  
 **Audit:** [`docs/security/SECURITY_AUDIT_2026-05-11.md`](./SECURITY_AUDIT_2026-05-11.md)  
 **Plan:** [`.local/tasks/task-166.md`](../../.local/tasks/task-166.md)  
-**Tests:** `backend/tests/test_security_phase1.py` — 21/21 passing.
+**Tests:** `backend/tests/test_security_phase1.py` — 25/25 passing.
+
+Final tightening (architect v5): `_PLATFORM_ROLES` shrunk to `PLATFORM_ADMIN`
+only — `PLATFORM_SUB_ADMIN` no longer bypasses tenant scoping or `/public/stats`.
+Regression test `test_public_stats_platform_sub_admin_blocked` covers this.
 
 This phase covers the audit's "fix this week" tier. Sweeping migrations
 (every unscoped `gd_find_one`, every grade/behaviour/notification IDOR, full
