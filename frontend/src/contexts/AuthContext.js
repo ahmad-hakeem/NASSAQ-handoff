@@ -331,8 +331,30 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password, rememberMe = false) => {
     try {
       const response = await api.post('/auth/login', { email, password, remember_me: rememberMe });
-      const { access_token, refresh_token: refreshToken, user: userData } = response.data;
-      
+      const data = response.data || {};
+
+      // Task #169 Step 10 — MFA-required login response.
+      // The backend returns { mfa_required: true, mfa_tier, challenge_token,
+      // challenge_expires_at, available_factor_kinds } and intentionally
+      // withholds access_token / refresh_token until the second factor is
+      // verified via /auth/mfa/verify. The login page surfaces this as an
+      // inline factor picker.
+      if (data.mfa_required) {
+        return {
+          success: false,
+          mfaChallenge: {
+            challenge_token: data.challenge_token,
+            challenge_expires_at: data.challenge_expires_at,
+            available_factor_kinds: data.available_factor_kinds || [],
+            mfa_tier: data.mfa_tier,
+            mfa_enrollment_required: !!data.mfa_enrollment_required,
+            remember_me: rememberMe,
+          },
+        };
+      }
+
+      const { access_token, refresh_token: refreshToken, user: userData } = data;
+
       localStorage.setItem('nassaq_token', access_token);
       setToken(access_token);
       setUser(userData);
@@ -391,6 +413,94 @@ export const AuthProvider = ({ children }) => {
       return { success: false, error: message };
     }
   };
+
+  // Task #169 Step 10 — Verify an MFA login challenge and apply the resulting
+  // session. Mirrors `login()` post-success: stores tokens (respecting
+  // remember_me), sets user, and applies preferences. The challenge_token
+  // is the bearer for /auth/mfa/verify; the response is a normal
+  // TokenResponse with access_token + refresh_token + user.
+  const verifyMfaLogin = useCallback(async ({
+    challenge_token,
+    factor_kind,
+    code,
+    webauthn_response,
+    webauthn_challenge_id,
+    remember_me,
+  }) => {
+    try {
+      const body = { factor_kind };
+      if (code) body.code = code;
+      if (webauthn_response) body.webauthn_response = webauthn_response;
+      if (webauthn_challenge_id) body.webauthn_challenge_id = webauthn_challenge_id;
+
+      const res = await axios.post(`${API_URL}/api/auth/mfa/verify`, body, {
+        headers: { Authorization: `Bearer ${challenge_token}` },
+      });
+      const { access_token, refresh_token: refreshToken, user: userData } = res.data || {};
+      if (!access_token || !userData) {
+        return { success: false, error: 'فشل التحقق' };
+      }
+
+      localStorage.setItem('nassaq_token', access_token);
+      setToken(access_token);
+      setUser(userData);
+
+      if (refreshToken) {
+        if (remember_me) {
+          localStorage.setItem('nassaq_refresh_token', refreshToken);
+          sessionStorage.removeItem('nassaq_refresh_token');
+        } else {
+          sessionStorage.setItem('nassaq_refresh_token', refreshToken);
+          localStorage.removeItem('nassaq_refresh_token');
+        }
+      }
+
+      if (userData?.preferred_theme) {
+        localStorage.setItem('nassaq_theme', userData.preferred_theme);
+        const root = window.document.documentElement;
+        root.classList.remove('light', 'dark');
+        root.classList.add(userData.preferred_theme);
+        root.setAttribute('data-theme', userData.preferred_theme);
+        window.dispatchEvent(new CustomEvent('nassaq-theme-sync', { detail: { theme: userData.preferred_theme } }));
+      }
+      if (userData?.preferred_language) {
+        localStorage.setItem('nassaq_language', userData.preferred_language);
+      }
+
+      return { success: true, user: userData, raw: res.data };
+    } catch (error) {
+      const detail =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.detail ||
+        'فشل التحقق';
+      return {
+        success: false,
+        error: typeof detail === 'string' ? detail : JSON.stringify(detail),
+        status: error?.response?.status,
+      };
+    }
+  }, []);
+
+  // Task #169 Step 10 — Trigger an email OTP for the active login challenge.
+  const sendMfaLoginEmailOtp = useCallback(async ({ challenge_token }) => {
+    try {
+      const res = await axios.post(`${API_URL}/api/auth/mfa/email-otp/send`, {}, {
+        headers: { Authorization: `Bearer ${challenge_token}` },
+      });
+      return { success: true, ...(res.data || {}) };
+    } catch (error) {
+      const detail =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.detail ||
+        'تعذر إرسال رمز البريد';
+      return {
+        success: false,
+        error: typeof detail === 'string' ? detail : JSON.stringify(detail),
+        status: error?.response?.status,
+        retryAfter: error?.response?.headers?.['retry-after'],
+      };
+    }
+  }, []);
 
   const applyAuthSession = useCallback(({ access_token, refresh_token: refreshToken, user: userData }) => {
     if (!access_token || !userData) return;
@@ -560,6 +670,8 @@ export const AuthProvider = ({ children }) => {
     token,
     loading,
     login,
+    verifyMfaLogin,
+    sendMfaLoginEmailOtp,
     register,
     applyAuthSession,
     logout,

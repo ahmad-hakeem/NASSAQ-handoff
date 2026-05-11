@@ -9,6 +9,7 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Checkbox } from '../components/ui/checkbox';
 import { toast } from 'sonner';
+import MfaLoginChallengePanel from '../components/mfa/MfaLoginChallengePanel';
 import {
   Eye,
   EyeOff,
@@ -44,6 +45,9 @@ export const LoginPage = () => {
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [hakimMsg, setHakimMsg] = useState(0);
+  // Task #169 Step 10 — MFA challenge handed back from /auth/login.
+  // When non-null, the inline factor picker replaces the password form.
+  const [mfaChallenge, setMfaChallenge] = useState(null);
 
   const hakimMessages = isRTL
     ? [
@@ -108,36 +112,13 @@ export const LoginPage = () => {
 
       if (result.success) {
         toast.success(t('loginSuccessful'));
-
-        switch (result.user.role) {
-          case 'platform_admin':
-            navigate('/admin');
-            break;
-          case 'school_principal':
-            navigate('/principal');
-            break;
-          case 'school_sub_admin':
-            navigate('/school');
-            break;
-          case 'school_admin':
-            navigate('/principal');
-            break;
-          case 'platform_operations_manager':
-            navigate('/admin');
-            break;
-          case 'teacher':
-          case 'independent_teacher':
-            navigate('/teacher');
-            break;
-          case 'student':
-            navigate('/student');
-            break;
-          case 'parent':
-            navigate('/parent');
-            break;
-          default:
-            navigate('/dashboard');
-        }
+        navigateForRole(result.user.role);
+      } else if (result.mfaChallenge) {
+        // Switch the card into MFA-challenge mode. The password form is
+        // hidden; the inline picker calls verifyMfaLogin and on success
+        // routes the user via navigateForRole below.
+        setMfaChallenge(result.mfaChallenge);
+        setError('');
       } else {
         setError(result.error || (t('invalidCredentials')));
         nassaqError(result.error || (t('invalidCredentials')));
@@ -148,6 +129,50 @@ export const LoginPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const navigateForRole = (role) => {
+    switch (role) {
+      case 'platform_admin':
+        navigate('/admin');
+        break;
+      case 'school_principal':
+        navigate('/principal');
+        break;
+      case 'school_sub_admin':
+        navigate('/school');
+        break;
+      case 'school_admin':
+        navigate('/principal');
+        break;
+      case 'platform_operations_manager':
+        navigate('/admin');
+        break;
+      case 'teacher':
+      case 'independent_teacher':
+        navigate('/teacher');
+        break;
+      case 'student':
+        navigate('/student');
+        break;
+      case 'parent':
+        navigate('/parent');
+        break;
+      default:
+        navigate('/dashboard');
+    }
+  };
+
+  const handleMfaSuccess = (userData) => {
+    toast.success(t('loginSuccessful'));
+    setMfaChallenge(null);
+    navigateForRole(userData?.role);
+  };
+
+  const handleMfaCancel = () => {
+    setMfaChallenge(null);
+    setPassword('');
+    setError('');
   };
 
   return (
@@ -257,12 +282,20 @@ export const LoginPage = () => {
             </CardHeader>
 
             <CardContent className="pt-4">
-              {error && (
+              {error && !mfaChallenge && (
                 <div className="mb-4 p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm font-tajawal text-center animate-fade-in">
                   {error}
                 </div>
               )}
 
+              {mfaChallenge ? (
+                <MfaLoginChallengePanel
+                  challenge={mfaChallenge}
+                  isRTL={isRTL}
+                  onSuccess={handleMfaSuccess}
+                  onCancel={handleMfaCancel}
+                />
+              ) : (
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="space-y-2">
                   <Label htmlFor="email" className="font-tajawal">
@@ -369,7 +402,9 @@ export const LoginPage = () => {
                   )}
                 </Button>
               </form>
+              )}
 
+              {!mfaChallenge && (
               <div className="mt-6 text-center">
                 <p className="text-sm text-muted-foreground font-tajawal">
                   {t('dontHaveAnAccount')}{' '}
@@ -382,6 +417,7 @@ export const LoginPage = () => {
                   </Link>
                 </p>
               </div>
+              )}
 
             </CardContent>
           </Card>
