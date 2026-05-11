@@ -156,7 +156,7 @@ def register_routes(app, api_router: APIRouter):
     security_router = setup_security_routes(db, get_current_user, require_roles, UserRole, _require_recent_mfa)
 
     from routes.audit_routes import setup_audit_routes
-    audit_router = setup_audit_routes(db, get_current_user, require_roles, UserRole)
+    audit_router = setup_audit_routes(db, get_current_user, require_roles, UserRole, _require_recent_mfa)
 
     from routes.settings_routes import setup_settings_routes
     settings_router = setup_settings_routes(db, get_current_user, require_roles, UserRole, _require_recent_mfa)

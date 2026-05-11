@@ -84,6 +84,28 @@ RATE_LIMITS = {
     # handlers (mirrors the `login_account:` pattern).
     "/api/auth/forgot-password": {"max": 20, "window": 3600},
     "/api/auth/reset-password": {"max": 20, "window": 3600},
+    # ----- Task #169 Step 8 — MFA brute-force / abuse limits ----------
+    # These are PER-IP outer limits. Per-identity (per-user, per-challenge)
+    # caps are enforced inside the handlers (challenge attempts counter,
+    # OTP send budget, recovery-code first-50-rows ceiling, etc.); both
+    # layers are required because a single attacker can spread guesses
+    # across many accounts but is bounded by their IP, while a credential
+    # stuffer rotating IPs is bounded by the per-identity counters.
+    "/api/auth/mfa/verify": {"max": 30, "window": 300},
+    "/api/auth/mfa/email-otp/send": {"max": 6, "window": 300},
+    "/api/auth/mfa/stepup/start": {"max": 30, "window": 300},
+    "/api/auth/mfa/stepup/verify": {"max": 30, "window": 300},
+    "/api/auth/mfa/webauthn/register/begin": {"max": 20, "window": 300},
+    "/api/auth/mfa/webauthn/register/finish": {"max": 20, "window": 300},
+    "/api/auth/mfa/webauthn/verify/begin": {"max": 30, "window": 300},
+    "/api/auth/mfa/webauthn/verify/finish": {"max": 30, "window": 300},
+    "/api/auth/mfa/totp/enroll/begin": {"max": 20, "window": 300},
+    "/api/auth/mfa/totp/enroll/confirm": {"max": 20, "window": 300},
+    "/api/auth/mfa/recovery-codes/regenerate": {"max": 5, "window": 3600},
+    # NDJSON export is platform-admin only, but cap it anyway to prevent
+    # accidental loops from hammering the DB.
+    "/api/audit/mfa-export": {"max": 10, "window": 3600},
+    "/api/audit/mfa-verify-chain": {"max": 30, "window": 3600},
     "/api/teachers/create": {"max": 20, "window": 60},
     "/api/classes/create": {"max": 30, "window": 60},
     "/api/student-wizard/create": {"max": 30, "window": 60},

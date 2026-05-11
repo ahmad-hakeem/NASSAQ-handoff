@@ -3,11 +3,15 @@ Audit Logs Routes - مسارات سجلات التدقيق
 APIs for audit logs management
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
+import hashlib
+import json as _json
 import logging
+from sqlalchemy import text as _sql_text
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 logger = logging.getLogger("nassaq.audit")
@@ -194,8 +198,33 @@ def _translate(action: str) -> str:
     return ACTION_TRANSLATIONS.get(action, action)
 
 
-def setup_audit_routes(db, get_current_user, require_roles, UserRole):
-    """Setup audit routes with database and auth dependencies"""
+def setup_audit_routes(db, get_current_user, require_roles, UserRole, require_recent_mfa=None):
+    """Setup audit routes with database and auth dependencies.
+
+    ``require_recent_mfa`` is the step-up dependency from
+    ``backend.dependencies``; the MFA NDJSON export and the chain
+    verification endpoint require a fresh second-factor proof on top of
+    the standard platform-admin role gate. When None (e.g. wired by an
+    older caller) we fall back to a no-op dep so the routes stay
+    operable but log a startup warning.
+    """
+
+    # ``require_recent_mfa`` from ``backend.dependencies`` is a *factory*:
+    # calling it returns the actual FastAPI dependency callable. Other
+    # MFA-protected routers (security_routes, settings_routes) follow the
+    # same convention with ``Depends(require_recent_mfa())``. We mirror
+    # that here so the step-up check is genuinely enforced rather than
+    # silently treated as "depend on the factory itself" (which FastAPI
+    # would resolve to the inner function object without ever calling it).
+    if require_recent_mfa is None:
+        def require_recent_mfa(max_age_seconds: int = 300):  # noqa: ARG001
+            async def _noop():
+                return None
+            return _noop
+        logger.warning(
+            "setup_audit_routes: require_recent_mfa not supplied — "
+            "MFA export endpoint will NOT enforce step-up. Wire it via app.routes."
+        )
 
     router = APIRouter(prefix="/audit", tags=["Audit Logs"])
 
@@ -488,8 +517,237 @@ def setup_audit_routes(db, get_current_user, require_roles, UserRole):
             "deleted_count": result
         }
 
+    # ------------------------------------------------------------------
+    # Task #169 Step 8 — MFA NDJSON export + hash-chain verification.
+    #
+    # The ``audit_logs`` rows whose ``action`` starts with ``mfa.`` form a
+    # per-tenant tamper-evident chain (see migration ``y1z2a3b4c5d6``):
+    # the BEFORE INSERT trigger fills ``prev_hash`` and ``row_hash`` for
+    # every new row, and the BEFORE UPDATE/DELETE trigger from
+    # ``x1y2z3a4b5c6`` rejects mutation of any ``mfa.*`` row.
+    #
+    # Together these mean an offline auditor (or our own SOC tooling) can
+    # take the NDJSON export, re-derive the chain, and detect any
+    # back-dated insert / silent rewrite at the database layer — even one
+    # made by a privileged operator who has DB credentials.
+    # ------------------------------------------------------------------
+
+    def _mfa_chain_payload(row: Dict[str, Any]) -> str:
+        """Mirror of audit_logs_mfa_hash_chain_fn() in pure Python.
+
+        Field order and the empty-default for NULLs MUST match the SQL
+        ``concat_ws('|', ...)`` exactly, AND the ``details`` / ``timestamp``
+        slots must use the raw Postgres ``::text`` representation rather
+        than any Python re-formatting (asyncpg's datetime → ISO string is
+        not byte-equal to ``timestamp::text``, and ``json.dumps`` is not
+        byte-equal to JSONB ``::text``). Callers must therefore SELECT
+        ``details::text AS details_text`` and ``timestamp::text AS
+        timestamp_text`` and supply those keys here.
+        """
+        details_text = row.get("details_text")
+        if details_text is None:
+            details_text = "{}"
+
+        ts_text = row.get("timestamp_text")
+        if ts_text is None:
+            ts = row.get("timestamp")
+            ts_text = ts.isoformat(sep=" ") if isinstance(ts, datetime) else (str(ts) if ts is not None else "")
+
+        parts = [
+            row.get("id") or "",
+            row.get("action") or "",
+            row.get("performed_by") or "",
+            row.get("school_id") or "",
+            row.get("entity_type") or "",
+            row.get("entity_id") or "",
+            row.get("ip_address") or "",
+            row.get("user_agent") or "",
+            details_text,
+            ts_text,
+            row.get("prev_hash") or ("0" * 64),
+        ]
+        return "|".join(parts)
+
+    @router.get("/mfa-export")
+    async def mfa_audit_export(
+        request: Request,
+        from_date: Optional[str] = Query(None, description="ISO timestamp lower bound"),
+        to_date: Optional[str] = Query(None, description="ISO timestamp upper bound"),
+        school_id: Optional[str] = Query(None, description="Restrict to one tenant"),
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+        _stepup: dict = Depends(require_recent_mfa()),
+    ):
+        """تصدير سجل التدقيق الخاص بالمصادقة متعددة العوامل (NDJSON).
+
+        - يتطلب صلاحية مدير المنصة + إثبات تحقق ثاني حديث (step-up).
+        - الناتج NDJSON: سطر JSON واحد لكل صف، مع ``prev_hash`` و
+          ``row_hash`` و حقل ``details_text`` (تمثيل JSONB كما خُزّن) كي
+          يستطيع المُدقّق إعادة احتساب السلسلة بشكل مستقل.
+        """
+        conditions = ["action LIKE 'mfa.%'"]
+        params: Dict[str, Any] = {}
+        if from_date:
+            conditions.append("timestamp >= :from_date")
+            params["from_date"] = from_date
+        if to_date:
+            conditions.append("timestamp <= :to_date")
+            params["to_date"] = to_date
+        if school_id:
+            conditions.append("school_id = :school_id")
+            params["school_id"] = school_id
+        where_sql = " AND ".join(conditions)
+
+        # Pull details as text so the auditor sees the *exact* JSONB
+        # representation Postgres hashed, plus the parsed JSON for
+        # readability. We stream row-by-row to bound memory.
+        sql = _sql_text(
+            f"""
+            SELECT id, action, severity, performed_by, actor_name, actor_role,
+                   actor_email, school_id, entity_type, entity_id, ip_address,
+                   user_agent, timestamp, timestamp::text AS timestamp_text,
+                   details, details::text AS details_text,
+                   prev_hash, row_hash
+              FROM audit_logs
+             WHERE {where_sql}
+             ORDER BY school_id NULLS FIRST, timestamp ASC, id ASC
+            """
+        )
+
+        # Audit the export itself. We log BEFORE streaming so a torn
+        # connection still leaves a trail of "an export was attempted".
+        try:
+            from engines.audit_engine import AuditLogEngine
+            class _Repos:
+                def __init__(self, s): self.session = s
+            audit_engine = AuditLogEngine(_Repos(db.session))
+            await audit_engine.log(
+                action="mfa.audit.export",
+                performed_by=current_user.get("id"),
+                actor_name=current_user.get("full_name"),
+                actor_role=current_user.get("role"),
+                actor_email=current_user.get("email"),
+                tenant_id=current_user.get("tenant_id"),
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent"),
+                details={
+                    "from_date": from_date,
+                    "to_date": to_date,
+                    "school_id_filter": school_id,
+                },
+            )
+        except Exception as exc:
+            logger.warning(f"mfa_audit_export: audit log failed: {exc}")
+
+        async def _generator():
+            result = await db.session.execute(sql, params)
+            for row in result.mappings():
+                rec = dict(row)
+                # Make the row JSON-serialisable (datetime, JSONB).
+                ts = rec.get("timestamp")
+                if isinstance(ts, datetime):
+                    rec["timestamp"] = ts.isoformat()
+                yield (_json.dumps(rec, ensure_ascii=False, default=str) + "\n").encode("utf-8")
+
+        return StreamingResponse(
+            _generator(),
+            media_type="application/x-ndjson",
+            headers={
+                "Content-Disposition": "attachment; filename=\"nassaq_mfa_audit.ndjson\"",
+                "Cache-Control": "no-store",
+            },
+        )
+
+    @router.get("/mfa-verify-chain")
+    async def mfa_audit_verify_chain(
+        request: Request,
+        school_id: Optional[str] = Query(None, description="Restrict to one tenant; default = verify every chain"),
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+        _stepup: dict = Depends(require_recent_mfa()),
+    ):
+        """التحقق من سلامة سلسلة التجزئة لسجلات MFA.
+
+        تمشي السلسلة لكل مدرسة (``school_id``) بترتيب الزمن وتعيد احتساب
+        ``row_hash`` ومقارنته بالقيمة المخزّنة. أيّ عدم تطابق يعني تعديلاً
+        غير مشروع على قاعدة البيانات.
+        """
+        conditions = ["action LIKE 'mfa.%'", "row_hash IS NOT NULL"]
+        params: Dict[str, Any] = {}
+        if school_id:
+            conditions.append("school_id = :school_id")
+            params["school_id"] = school_id
+        where_sql = " AND ".join(conditions)
+
+        sql = _sql_text(
+            f"""
+            SELECT id, action, performed_by, school_id, entity_type, entity_id,
+                   ip_address, user_agent, timestamp,
+                   timestamp::text AS timestamp_text,
+                   details::text AS details_text,
+                   prev_hash, row_hash
+              FROM audit_logs
+             WHERE {where_sql}
+             ORDER BY school_id NULLS FIRST, timestamp ASC, id ASC
+            """
+        )
+        result = await db.session.execute(sql, params)
+        rows = list(result.mappings())
+
+        # Per-tenant walk: each chain starts with prev_hash = '0'*64 and
+        # every subsequent row's prev_hash must equal the previous row's
+        # row_hash.
+        chains: Dict[str, Dict[str, Any]] = {}
+        per_tenant_prev: Dict[Any, Optional[str]] = {}
+        breaks: List[Dict[str, Any]] = []
+        verified = 0
+
+        for row in rows:
+            r = dict(row)
+            tenant_key = r.get("school_id") or "__platform__"
+            chain_state = chains.setdefault(tenant_key, {"count": 0, "intact": True})
+
+            recomputed = hashlib.sha256(_mfa_chain_payload(r).encode("utf-8")).hexdigest()
+            stored = r.get("row_hash")
+
+            expected_prev = per_tenant_prev.get(tenant_key, "0" * 64)
+            if expected_prev is None:
+                expected_prev = "0" * 64
+
+            row_ok = (recomputed == stored)
+            link_ok = (r.get("prev_hash") == expected_prev)
+
+            if not row_ok or not link_ok:
+                chain_state["intact"] = False
+                breaks.append({
+                    "id": r.get("id"),
+                    "school_id": r.get("school_id"),
+                    "action": r.get("action"),
+                    "timestamp": r.get("timestamp").isoformat() if isinstance(r.get("timestamp"), datetime) else r.get("timestamp"),
+                    "row_hash_match": row_ok,
+                    "prev_hash_match": link_ok,
+                    "expected_prev_hash": expected_prev,
+                    "stored_prev_hash": r.get("prev_hash"),
+                })
+            else:
+                verified += 1
+
+            chain_state["count"] += 1
+            per_tenant_prev[tenant_key] = stored
+
+        return {
+            "intact": all(c["intact"] for c in chains.values()),
+            "tenants_checked": len(chains),
+            "rows_checked": len(rows),
+            "rows_verified": verified,
+            "rows_failed": len(breaks),
+            "per_tenant": [
+                {"school_id": (None if k == "__platform__" else k), "count": v["count"], "intact": v["intact"]}
+                for k, v in chains.items()
+            ],
+            "breaks": breaks[:50],  # cap response size
+        }
+
     return router
 
 
-def create_audit_router(db, get_current_user, require_roles, UserRole):
-    return setup_audit_routes(db, get_current_user, require_roles, UserRole)
+def create_audit_router(db, get_current_user, require_roles, UserRole, require_recent_mfa=None):
+    return setup_audit_routes(db, get_current_user, require_roles, UserRole, require_recent_mfa)
