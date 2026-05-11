@@ -1324,18 +1324,221 @@ async def get_ai_predictions(
 
     return predictions
 
+# --------------------------------------------------------------------------
+# Role-aware recommendation builders.
+#
+# Every smart recommendation card carries explicit audience semantics so the
+# backend (not the frontend) is the authoritative layer that decides:
+#   * `audience`           -> which roles may see this card at all,
+#   * `action_owner`       -> who is expected to act on it,
+#   * `scope_level`        -> "school" vs "classroom",
+#   * `recommendation_type`-> stable machine identifier of the rec family.
+# Wording is selected per-role so a teacher never sees principal-directed
+# operational instructions (e.g. "follow up with class teachers", "review
+# school start times", "hire more teachers").
+# --------------------------------------------------------------------------
+_PRINCIPAL_AUDIENCE = [
+    UserRole.SCHOOL_ADMIN.value,
+    UserRole.SCHOOL_SUB_ADMIN.value,
+    UserRole.SCHOOL_PRINCIPAL.value,
+]
+_TEACHER_AUDIENCE = [
+    UserRole.TEACHER.value,
+    UserRole.INDEPENDENT_TEACHER.value,
+]
+_ALL_SCHOOL_AUDIENCE = _PRINCIPAL_AUDIENCE + _TEACHER_AUDIENCE
+
+
+def _is_teacher_role(role: str) -> bool:
+    return role in _TEACHER_CLASS_ROLES
+
+
+def _build_attendance_rec(rec_id: str, att_rate: float, *, is_teacher: bool) -> dict:
+    if is_teacher:
+        body = {
+            "category": {"ar": "الحضور والانضباط", "en": "Attendance & Discipline"},
+            "title": {"ar": "تحسين حضور فصلك",
+                      "en": "Improve Your Class Attendance"},
+            "description": {
+                "ar": (f"نسبة حضور طلابك الحالية {att_rate}% أقل من المستوى "
+                       "المطلوب (85%). تواصل مع طلابك وأولياء أمورهم وراجع "
+                       "أسباب الغياب داخل فصلك."),
+                "en": (f"Your students' attendance is {att_rate}% — below the "
+                       "85% target. Reach out to your students and their "
+                       "guardians and review absence causes inside your class."),
+            },
+            "action_owner": "teacher",
+            "scope_level": "classroom",
+        }
+    else:
+        body = {
+            "category": {"ar": "الحضور والانضباط", "en": "Attendance & Discipline"},
+            "title": {"ar": "تحسين نسبة الحضور", "en": "Improve Attendance Rate"},
+            "description": {
+                "ar": (f"نسبة الحضور الحالية {att_rate}% أقل من المستوى "
+                       "المطلوب (85%). يُنصح بتطبيق نظام حوافز للحضور المنتظم "
+                       "والتواصل مع أولياء الأمور"),
+                "en": (f"Current attendance {att_rate}% is below target (85%). "
+                       "Implement incentive system and parent outreach"),
+            },
+            "action_owner": "principal",
+            "scope_level": "school",
+        }
+    return {
+        "id": rec_id,
+        "priority": "high" if att_rate < 75 else "medium",
+        "expected_impact": int(85 - att_rate),
+        "recommendation_type": "attendance_improve",
+        "audience": _ALL_SCHOOL_AUDIENCE,
+        **body,
+    }
+
+
+def _build_tardiness_rec(rec_id: str, late_pct: float, *, is_teacher: bool) -> dict:
+    if is_teacher:
+        body = {
+            "category": {"ar": "الحضور والانضباط", "en": "Attendance & Discipline"},
+            "title": {"ar": "متابعة تأخر طلابك",
+                      "en": "Follow Up on Your Students' Tardiness"},
+            "description": {
+                "ar": (f"نسبة التأخر بين طلابك {late_pct}% مرتفعة. ذكّر "
+                       "طلابك بأهمية الالتزام بموعد الحصة وتواصل مع أسر "
+                       "المتأخرين باستمرار."),
+                "en": (f"Your students' tardiness rate is {late_pct}%. Remind "
+                       "your class about punctuality and contact the families "
+                       "of the students who arrive late."),
+            },
+            "action_owner": "teacher",
+            "scope_level": "classroom",
+        }
+    else:
+        body = {
+            "category": {"ar": "الحضور والانضباط", "en": "Attendance & Discipline"},
+            "title": {"ar": "معالجة ظاهرة التأخر", "en": "Address Tardiness"},
+            "description": {
+                "ar": (f"نسبة التأخر {late_pct}% مرتفعة. يُنصح بمراجعة "
+                       "أوقات بدء الدوام والتواصل مع الأسر"),
+                "en": (f"Tardiness rate {late_pct}% is high. Review start "
+                       "times and contact families"),
+            },
+            "action_owner": "principal",
+            "scope_level": "school",
+        }
+    return {
+        "id": rec_id,
+        "priority": "medium",
+        "expected_impact": 10,
+        "recommendation_type": "tardiness_address",
+        "audience": _ALL_SCHOOL_AUDIENCE,
+        **body,
+    }
+
+
+def _build_low_att_classes_rec(rec_id: str, class_names: str,
+                               *, is_teacher: bool) -> dict:
+    """Class-level low-attendance card.
+
+    Principal variant: school-wide coordination wording — "follow up with
+    class teachers". Teacher variant: scoped to the teacher's own class —
+    they ARE the class teacher, so "follow up with class teachers" would
+    be nonsensical and is replaced with classroom-action wording.
+    """
+    if is_teacher:
+        body = {
+            "category": {"ar": "متابعة فصلك", "en": "Your Class Monitoring"},
+            "title": {"ar": "فصل من فصولك يحتاج اهتمامك",
+                      "en": "One of Your Classes Needs Attention"},
+            "description": {
+                "ar": (f"الحضور منخفض في: {class_names}. راجع أسباب الغياب "
+                       "مع طلابك وتواصل مع أولياء أمورهم لمعالجة الوضع."),
+                "en": (f"Low attendance in: {class_names}. Review absence "
+                       "causes with your students and contact their guardians."),
+            },
+            "action_owner": "teacher",
+            "scope_level": "classroom",
+        }
+    else:
+        body = {
+            "category": {"ar": "متابعة الفصول", "en": "Class Monitoring"},
+            "title": {"ar": "فصول تحتاج اهتمام خاص",
+                      "en": "Classes Needing Attention"},
+            "description": {
+                "ar": (f"الفصول التالية حضورها منخفض: {class_names}. يُنصح "
+                       "بمتابعة أسباب الغياب مع معلمي الفصول"),
+                "en": (f"Low attendance in: {class_names}. Investigate causes "
+                       "with class teachers"),
+            },
+            "action_owner": "principal",
+            "scope_level": "school",
+        }
+    return {
+        "id": rec_id,
+        "priority": "high",
+        "expected_impact": 15,
+        "recommendation_type": "class_low_attendance",
+        "audience": _ALL_SCHOOL_AUDIENCE,
+        **body,
+    }
+
+
+# Roles that are subject to audience filtering. Platform admins (and any
+# future cross-tenant oversight role) are intentionally NOT in this set —
+# they oversee the whole platform and must keep seeing every card the
+# generator produced, regardless of the per-card school-audience tags.
+_AUDIENCE_FILTERED_ROLES = frozenset({
+    UserRole.SCHOOL_ADMIN.value,
+    UserRole.SCHOOL_SUB_ADMIN.value,
+    UserRole.SCHOOL_PRINCIPAL.value,
+    UserRole.TEACHER.value,
+    UserRole.INDEPENDENT_TEACHER.value,
+})
+
+
+def _filter_recommendations_for_role(
+    recommendations: list, role: str
+) -> list:
+    """Authoritative, backend-side audience filter.
+
+    For school-level roles (admin/principal/sub-admin/teacher), drops any
+    card whose `audience` list does not include the caller's role. Items
+    without an `audience` field are kept (legacy / safe defaults).
+
+    Roles outside `_AUDIENCE_FILTERED_ROLES` (e.g. `platform_admin`) are
+    pass-through: the per-card school-audience tags must not silently
+    strip every card from a cross-tenant oversight caller.
+    """
+    if role not in _AUDIENCE_FILTERED_ROLES:
+        return list(recommendations)
+    out = []
+    for r in recommendations:
+        aud = r.get("audience")
+        if aud and role not in aud:
+            continue
+        out.append(r)
+    return out
+
+
 @router.get("/ai/insights/recommendations")
 async def get_ai_recommendations(
     current_user: dict = Depends(get_current_user)
 ):
     """Get AI-powered recommendations based on real school data (or the
-    current teacher's classes when the caller is a teacher)."""
+    current teacher's classes when the caller is a teacher).
+
+    Each returned recommendation carries explicit audience metadata
+    (`audience`, `action_owner`, `scope_level`, `recommendation_type`) and
+    a role-appropriate wording variant. Principal-only operational advice
+    (HR/staffing) is dropped server-side for teacher callers, and shared
+    recommendations are reworded so a teacher never sees principal-directed
+    instructions like "follow up with class teachers"."""
     # Tri-state authorization sentinel must be resolved before ANY business
     # data query (Task #154 / H1).
     scope_result = await resolve_ai_insights_scope(current_user)
     if scope_result is NO_AUTHORIZED_SCOPE:
         return []
     teacher_scope = scope_result if isinstance(scope_result, dict) else None
+    is_teacher = teacher_scope is not None
+    role = current_user.get("role", "")
     school_id = teacher_scope["school_id"] if teacher_scope else current_user.get("tenant_id")
     recommendations = []
     rec_id = 0
@@ -1355,35 +1558,25 @@ async def get_ai_recommendations(
 
     if att_rate < 85:
         rec_id += 1
-        recommendations.append({
-            "id": str(rec_id),
-            "category": {"ar": "الحضور والانضباط", "en": "Attendance & Discipline"},
-            "title": {"ar": "تحسين نسبة الحضور", "en": "Improve Attendance Rate"},
-            "description": {"ar": f"نسبة الحضور الحالية {att_rate}% أقل من المستوى المطلوب (85%). يُنصح بتطبيق نظام حوافز للحضور المنتظم والتواصل مع أولياء الأمور", "en": f"Current attendance {att_rate}% is below target (85%). Implement incentive system and parent outreach"},
-            "priority": "high" if att_rate < 75 else "medium",
-            "expected_impact": int(85 - att_rate)
-        })
+        recommendations.append(
+            _build_attendance_rec(str(rec_id), att_rate, is_teacher=is_teacher)
+        )
 
     late_count = await gd_count(db.session, "attendance", {**attendance_q, "date": {"$gte": month_ago_str}, "status": "late"})
     if total_att > 0 and (late_count / total_att * 100) > 5:
         rec_id += 1
         late_pct = round(late_count / total_att * 100, 1)
-        recommendations.append({
-            "id": str(rec_id),
-            "category": {"ar": "الحضور والانضباط", "en": "Attendance & Discipline"},
-            "title": {"ar": "معالجة ظاهرة التأخر", "en": "Address Tardiness"},
-            "description": {"ar": f"نسبة التأخر {late_pct}% مرتفعة. يُنصح بمراجعة أوقات بدء الدوام والتواصل مع الأسر", "en": f"Tardiness rate {late_pct}% is high. Review start times and contact families"},
-            "priority": "medium",
-            "expected_impact": 10
-        })
+        recommendations.append(
+            _build_tardiness_rec(str(rec_id), late_pct, is_teacher=is_teacher)
+        )
 
     total_students = await gd_count(db.session, "students", students_q)
     total_teachers = await gd_count(db.session, "teachers", teachers_q)
     # The HR/staffing recommendation ("Strengthen Teaching Staff") is a
-    # school-admin concern — teachers can't hire colleagues, so skip it
-    # entirely when the caller is a teacher. (For teachers `teachers_q`
-    # filters down to themselves, which would otherwise produce an
-    # absurd N:1 ratio and trigger this admin-only nudge.)
+    # school-admin concern — teachers can't hire colleagues, so it carries
+    # a principal-only `audience` and is additionally skipped before
+    # generation when the caller is a teacher (their `teachers_q` filters
+    # down to themselves and would produce an absurd N:1 ratio).
     if teacher_scope is None and total_teachers > 0:
         ratio = total_students / total_teachers
         if ratio > 25:
@@ -1394,7 +1587,11 @@ async def get_ai_recommendations(
                 "title": {"ar": "تعزيز الكادر التعليمي", "en": "Strengthen Teaching Staff"},
                 "description": {"ar": f"نسبة الطلاب للمعلمين ({ratio:.0f}:1) مرتفعة. يُنصح بتعيين معلمين إضافيين لتحسين جودة التعليم", "en": f"Student-teacher ratio ({ratio:.0f}:1) is high. Consider hiring additional teachers"},
                 "priority": "high",
-                "expected_impact": 20
+                "expected_impact": 20,
+                "recommendation_type": "staffing_strengthen",
+                "audience": list(_PRINCIPAL_AUDIENCE),
+                "action_owner": "principal",
+                "scope_level": "school",
             })
 
     classes_list = await gd_find(db.session, "classes", classes_q, limit=100)
@@ -1428,26 +1625,58 @@ async def get_ai_recommendations(
     if low_att_classes:
         rec_id += 1
         class_names = ", ".join([c["name"] for c in low_att_classes[:3]])
-        recommendations.append({
-            "id": str(rec_id),
-            "category": {"ar": "متابعة الفصول", "en": "Class Monitoring"},
-            "title": {"ar": "فصول تحتاج اهتمام خاص", "en": "Classes Needing Attention"},
-            "description": {"ar": f"الفصول التالية حضورها منخفض: {class_names}. يُنصح بمتابعة أسباب الغياب مع معلمي الفصول", "en": f"Low attendance in: {class_names}. Investigate causes with class teachers"},
-            "priority": "high",
-            "expected_impact": 15
-        })
+        recommendations.append(
+            _build_low_att_classes_rec(
+                str(rec_id), class_names, is_teacher=is_teacher
+            )
+        )
 
     recent_assessments = await gd_count(db.session, "assessments", {**assessments_q, "created_at": {"$gte": month_ago.isoformat()}})
     if recent_assessments == 0 and total_students > 0:
         rec_id += 1
+        if is_teacher:
+            assessment_body = {
+                "category": {"ar": "التحصيل الأكاديمي",
+                             "en": "Academic Achievement"},
+                "title": {"ar": "فعّل التقييم المستمر في فصلك",
+                          "en": "Activate Continuous Assessment in Your Class"},
+                "description": {
+                    "ar": ("لم تُسجَّل أي تقييمات لطلابك خلال الشهر الماضي. "
+                           "أنشئ اختبارات قصيرة في فصلك لمتابعة مستوى طلابك."),
+                    "en": ("No assessments recorded for your students this "
+                           "month. Create short quizzes in your class to "
+                           "track your students' progress."),
+                },
+                "action_owner": "teacher",
+                "scope_level": "classroom",
+            }
+        else:
+            assessment_body = {
+                "category": {"ar": "التحصيل الأكاديمي",
+                             "en": "Academic Achievement"},
+                "title": {"ar": "تفعيل التقييم المستمر",
+                          "en": "Activate Continuous Assessment"},
+                "description": {
+                    "ar": ("لم يتم تسجيل أي تقييمات خلال الشهر الماضي. يُنصح "
+                           "بإنشاء اختبارات قصيرة لمتابعة مستوى الطلاب"),
+                    "en": ("No assessments recorded this month. Create "
+                           "quizzes to track student progress"),
+                },
+                "action_owner": "principal",
+                "scope_level": "school",
+            }
         recommendations.append({
             "id": str(rec_id),
-            "category": {"ar": "التحصيل الأكاديمي", "en": "Academic Achievement"},
-            "title": {"ar": "تفعيل التقييم المستمر", "en": "Activate Continuous Assessment"},
-            "description": {"ar": "لم يتم تسجيل أي تقييمات خلال الشهر الماضي. يُنصح بإنشاء اختبارات قصيرة لمتابعة مستوى الطلاب", "en": "No assessments recorded this month. Create quizzes to track student progress"},
             "priority": "high",
-            "expected_impact": 25
+            "expected_impact": 25,
+            "recommendation_type": "assessment_activate",
+            "audience": _ALL_SCHOOL_AUDIENCE,
+            **assessment_body,
         })
+
+    # Authoritative server-side audience filter — defence in depth in case
+    # any future builder forgets to skip an admin-only card for teachers.
+    recommendations = _filter_recommendations_for_role(recommendations, role)
 
     if not recommendations:
         if teacher_scope is not None:
@@ -1457,7 +1686,11 @@ async def get_ai_recommendations(
                 "title": {"ar": "فصولك تسير بشكل ممتاز", "en": "Your Classes Are Doing Great"},
                 "description": {"ar": "لا توجد توصيات عاجلة لفصولك حالياً. استمر في متابعة الأداء والمشاركة الصفية", "en": "No urgent recommendations for your classes right now. Keep monitoring participation and progress"},
                 "priority": "low",
-                "expected_impact": 5
+                "expected_impact": 5,
+                "recommendation_type": "all_clear",
+                "audience": list(_TEACHER_AUDIENCE),
+                "action_owner": "teacher",
+                "scope_level": "classroom",
             })
         else:
             recommendations.append({
@@ -1466,7 +1699,11 @@ async def get_ai_recommendations(
                 "title": {"ar": "أداء المدرسة جيد", "en": "School Performance is Good"},
                 "description": {"ar": "المؤشرات الحالية جيدة. استمر في متابعة الأداء بانتظام للحفاظ على هذا المستوى", "en": "Current indicators are good. Continue regular monitoring to maintain this level"},
                 "priority": "low",
-                "expected_impact": 5
+                "expected_impact": 5,
+                "recommendation_type": "all_clear",
+                "audience": list(_PRINCIPAL_AUDIENCE),
+                "action_owner": "principal",
+                "scope_level": "school",
             })
 
     return recommendations

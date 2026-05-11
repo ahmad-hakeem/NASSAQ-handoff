@@ -333,7 +333,19 @@ const ADMIN_ONLY_CATEGORY_PATTERNS = [
   /الجدول/,
 ];
 
+const TEACHER_ROLES = ['teacher', 'independent_teacher'];
+
+// An item is admin-only if either:
+//   1. The backend explicitly marks it with an `audience` array that does
+//      NOT include any teacher role (this is the authoritative signal — the
+//      backend now ships role-aware wording variants per Task #155), OR
+//   2. As a defence-in-depth fallback for items missing audience metadata,
+//      the legacy category/title regex catches obvious admin-level cards.
 const isAdminOnlyItem = (item) => {
+  const audience = item?.audience;
+  if (Array.isArray(audience) && audience.length > 0) {
+    return !audience.some(r => TEACHER_ROLES.includes(r));
+  }
   const cat = item?.category;
   const candidates = [
     typeof cat === 'string' ? cat : null,
