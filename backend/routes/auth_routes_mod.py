@@ -296,12 +296,51 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
     except HTTPException:
         raise
     except Exception as _mfa_err:
-        # Fail-safe: if the MFA challenge plumbing itself errors (e.g. schema
-        # not migrated in a stale environment), log and fall through to normal
-        # token issuance so the user is never locked out by a half-deployed
-        # rollout. Phase-2 hardening will turn this into a hard failure
-        # behind a feature flag.
-        logger.warning(f"login: MFA challenge gate skipped due to error: {_mfa_err}")
+        # SECURITY (Task #169 Step 8 hardening — was previously fail-OPEN):
+        # If the MFA challenge plumbing itself errors we MUST NOT fall through
+        # to issuing a fully-authenticated session. For any user whose role
+        # falls under an MFA tier (A/B/C — i.e. anyone other than student /
+        # gatekeeper / driver) we fail CLOSED with a 503 and a safe Arabic
+        # message. The login attempt is audited as a critical failure so SOC
+        # tooling can flag a suspicious surge (which would otherwise look
+        # like normal "MFA service down" noise). Out-of-tier users still
+        # proceed to token issuance — they have no second factor required by
+        # policy, so refusing them would lock the platform out without any
+        # security benefit.
+        logger.error(f"login: MFA challenge gate errored for user={user_id}: {_mfa_err}", exc_info=True)
+        try:
+            from services import mfa_policy as _mp
+            _tier_on_err = _mp.required_for(user)
+        except Exception:
+            # If we cannot even determine the tier, treat the user as
+            # in-tier (the conservative choice) so we never accidentally
+            # admit a Tier-A/B/C user without a second factor.
+            _tier_on_err = True
+
+        if _tier_on_err is not None:
+            try:
+                await audit_engine.log_auth_event(
+                    action="mfa.login.failure",
+                    user_id=user_id,
+                    tenant_id=user.get("tenant_id"),
+                    success=False,
+                    email=credentials.email,
+                    reason=f"mfa_gate_error:{type(_mfa_err).__name__}",
+                )
+            except Exception as _audit_err:
+                logger.debug(f"login: failed to audit mfa gate error: {_audit_err}")
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "MFA_UNAVAILABLE",
+                    "message": "MFA service is temporarily unavailable",
+                    "message_ar": "خدمة التحقق متعدد العوامل غير متاحة مؤقتاً. يرجى المحاولة لاحقاً",
+                },
+            )
+        # Out-of-tier user (e.g. student) → fall through to normal token
+        # issuance below. Logged as a warning, not error, since it's expected
+        # for those roles.
+        logger.warning(f"login: MFA gate skipped for out-of-tier user={user_id}")
 
     token_payload = {"sub": user_id, "role": user["role"]}
     if user.get("tenant_id"):
