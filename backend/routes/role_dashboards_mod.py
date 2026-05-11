@@ -206,6 +206,15 @@ def _verify_teacher_access(teacher_id: str, current_user: dict):
         raise HTTPException(status_code=403, detail="ليس لديك صلاحية للوصول لبيانات هذا المعلم")
 
 
+def _check_teacher_tenant(teacher: Optional[dict], current_user: dict):
+    """Reject school-scoped admins that try to access a teacher from another tenant."""
+    if current_user.get("role") in ("school_admin", "school_principal"):
+        caller_tenant = current_user.get("tenant_id")
+        target_tenant = (teacher or {}).get("school_id")
+        if caller_tenant and target_tenant and caller_tenant != target_tenant:
+            raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات معلم من مدرسة أخرى")
+
+
 async def _resolve_teacher_record(teacher_id: str):
     """
     Resolve the actual teachers-collection record from any of:
@@ -300,12 +309,20 @@ async def get_teacher_dashboard(
     # data. ``_resolve_teacher_record`` requires a unique-email match for
     # the user→teacher fallback and refuses to resolve when ambiguous.
     teacher = await _resolve_teacher_record(teacher_id)
+    _check_teacher_tenant(teacher, current_user)
 
     if not teacher:
         # Return default data if teacher not found in teachers collection
         # This allows the dashboard to work even if data is only in users collection
         user = await gd_find_one(db.session, "users", {"id": teacher_id})
         if user and user.get("role") == "teacher":
+            # Enforce tenant isolation on fallback user lookup for school-scoped roles
+            _fb_caller_role = current_user.get("role", "")
+            _fb_caller_tenant = current_user.get("tenant_id")
+            if _fb_caller_role in ("school_admin", "school_principal"):
+                _fb_target_tenant = user.get("tenant_id")
+                if _fb_caller_tenant and _fb_target_tenant and _fb_caller_tenant != _fb_target_tenant:
+                    raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات معلم من مدرسة أخرى")
             fb_school_id = user.get("tenant_id") or ""
             fb_school = await gd_find_one(db.session, "schools", {"id": fb_school_id}) if fb_school_id else None
             fb_school = fb_school or {}
@@ -470,7 +487,29 @@ async def get_student_dashboard(
     if user_tenant:
         if not student_school or user_tenant != student_school:
             raise HTTPException(status_code=403, detail="لا يمكنك الوصول إلى بيانات طالب من مدرسة أخرى")
-    
+
+    _sd_caller_role = current_user.get("role", "")
+    _sd_caller_id = current_user.get("id")
+    _SD_ADMIN_ROLES = {"platform_admin", "admin", "super_admin", "school_principal", "school_admin", "school_sub_admin"}
+    if _sd_caller_role not in _SD_ADMIN_ROLES:
+        if _sd_caller_role == "student":
+            if current_user.get("student_id") != student_id and _sd_caller_id != student_id:
+                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات طالب آخر")
+        elif _sd_caller_role == "parent":
+            _sd_parent = await gd_find_one(db.session, "parents", {"user_id": _sd_caller_id})
+            if not _sd_parent or student_id not in (_sd_parent.get("student_ids") or []):
+                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات هذا الطالب")
+        elif _sd_caller_role == "teacher":
+            _sd_teacher_id = current_user.get("teacher_id") or _sd_caller_id
+            _sd_class_id = student.get("class_id")
+            _sd_assign = await gd_find_one(db.session, "teacher_assignments", {"teacher_id": _sd_teacher_id, "class_id": _sd_class_id})
+            if not _sd_assign:
+                _sd_sess = await gd_find_one(db.session, "class_sessions", {"teacher_id": _sd_teacher_id, "class_id": _sd_class_id})
+                if not _sd_sess:
+                    raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات هذا الطالب")
+        else:
+            raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات هذا الطالب")
+
     school_id = student_school
     class_id = student.get("class_id")
     
@@ -602,8 +641,21 @@ async def get_parent_dashboard(
     parent = await gd_find_one(db.session, "parents", {"id": parent_id})
     if not parent:
         raise HTTPException(status_code=404, detail="ولي الأمر غير موجود")
-    
+
     school_id = parent.get("school_id")
+    caller_role = current_user.get("role", "")
+    caller_id = current_user.get("id")
+    caller_tenant = current_user.get("tenant_id")
+
+    if caller_role == "platform_admin":
+        pass
+    elif caller_role in ("school_admin", "school_principal", "school_sub_admin", "admin", "super_admin"):
+        if caller_tenant and school_id and caller_tenant != school_id:
+            raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات ولي أمر من مدرسة أخرى")
+    else:
+        parent_user_id = parent.get("user_id")
+        if caller_id != parent_user_id and caller_id != parent_id:
+            raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات ولي أمر آخر")
     
     # Get children
     student_ids = parent.get("student_ids", [])
@@ -806,6 +858,7 @@ async def get_teacher_sessions_list(
 ):
     _verify_teacher_access(teacher_id, current_user)
     teacher = await _resolve_teacher_record(teacher_id)
+    _check_teacher_tenant(teacher, current_user)
     resolved_teacher_id = teacher.get("id") if teacher else teacher_id
     sessions_list = await gd_find(db.session, "teacher_sessions", {"teacher_id": resolved_teacher_id}, order_by="created_at", desc_order=True, limit=200)
 
@@ -832,6 +885,7 @@ async def get_teacher_classes(
     _verify_teacher_access(teacher_id, current_user)
 
     teacher = await _resolve_teacher_record(teacher_id)
+    _check_teacher_tenant(teacher, current_user)
     school_id = teacher.get("school_id") if teacher else None
     # Use the actual teachers.id for queries — admin-side assignments are
     # stored against teachers.id, not users.id.
@@ -986,6 +1040,7 @@ async def get_teacher_schedule(
     """
     _verify_teacher_access(teacher_id, current_user)
     teacher = await _resolve_teacher_record(teacher_id)
+    _check_teacher_tenant(teacher, current_user)
     if not teacher:
         return []
 
@@ -1012,6 +1067,7 @@ async def get_teacher_assessments(
     """
     _verify_teacher_access(teacher_id, current_user)
     teacher = await _resolve_teacher_record(teacher_id)
+    _check_teacher_tenant(teacher, current_user)
     resolved_teacher_id = teacher.get("id") if teacher else teacher_id
     assessments = await gd_find(db.session, "assessments", {
         "teacher_id": resolved_teacher_id
@@ -1032,13 +1088,21 @@ async def get_assessment_grades(
     current_user: dict = Depends(require_roles([UserRole.TEACHER, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.PLATFORM_ADMIN]))
 ):
     """Get grades for an assessment"""
-    if current_user.get("role") != UserRole.PLATFORM_ADMIN:
+    _ag_role = current_user.get("role")
+    if _ag_role != UserRole.PLATFORM_ADMIN:
         assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
         if not assessment:
             raise HTTPException(status_code=404, detail="Assessment not found")
         user_tenant = current_user.get("tenant_id")
         if user_tenant and assessment.get("school_id") and assessment["school_id"] != user_tenant:
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise HTTPException(status_code=403, detail="غير مصرح بالوصول")
+        if _ag_role == UserRole.TEACHER:
+            _ag_teacher_id = current_user.get("teacher_id") or current_user.get("id")
+            _ag_owned = (assessment.get("created_by") == _ag_teacher_id or assessment.get("teacher_id") == _ag_teacher_id)
+            if not _ag_owned:
+                _ag_assign = await gd_find_one(db.session, "teacher_assignments", {"teacher_id": _ag_teacher_id, "class_id": assessment.get("class_id")})
+                if not _ag_assign:
+                    raise HTTPException(status_code=403, detail="لا يمكنك الوصول لدرجات تقييم لا تملكه")
     grades = await gd_find(db.session, "grades", {"assessment_id": assessment_id}, limit=200)
     return grades
 
@@ -1050,13 +1114,21 @@ async def save_assessment_grades(
     current_user: dict = Depends(require_roles([UserRole.TEACHER, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.PLATFORM_ADMIN]))
 ):
     """Save grades for assessment - حفظ درجات التقييم"""
-    if current_user.get("role") != UserRole.PLATFORM_ADMIN:
+    _sg_role = current_user.get("role")
+    if _sg_role != UserRole.PLATFORM_ADMIN:
         assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
         if not assessment:
             raise HTTPException(status_code=404, detail="Assessment not found")
         user_tenant = current_user.get("tenant_id")
         if user_tenant and assessment.get("school_id") and assessment["school_id"] != user_tenant:
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise HTTPException(status_code=403, detail="غير مصرح بالوصول")
+        if _sg_role == UserRole.TEACHER:
+            _sg_teacher_id = current_user.get("teacher_id") or current_user.get("id")
+            _sg_owned = (assessment.get("created_by") == _sg_teacher_id or assessment.get("teacher_id") == _sg_teacher_id)
+            if not _sg_owned:
+                _sg_assign = await gd_find_one(db.session, "teacher_assignments", {"teacher_id": _sg_teacher_id, "class_id": assessment.get("class_id")})
+                if not _sg_assign:
+                    raise HTTPException(status_code=403, detail="لا يمكنك تعديل درجات تقييم لا تملكه")
     grades = data.get("grades", [])
     
     for grade in grades:
@@ -1085,16 +1157,42 @@ async def get_student_grades(
     current_user: dict = Depends(get_current_user)
 ):
     """Get all grades for a student"""
+    _stg_student = await gd_find_one(db.session, "students", {"id": student_id})
+    if not _stg_student:
+        raise HTTPException(status_code=404, detail="الطالب غير موجود")
+    _stg_role = current_user.get("role", "")
+    _stg_caller_id = current_user.get("id")
+    _stg_caller_tenant = current_user.get("tenant_id")
+    _STG_ADMIN_ROLES = {"platform_admin", "admin", "super_admin", "school_principal", "school_admin", "school_sub_admin"}
+    if _stg_role not in _STG_ADMIN_ROLES:
+        if _stg_role == "student":
+            if current_user.get("student_id") != student_id and _stg_caller_id != student_id:
+                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لدرجات طالب آخر")
+        elif _stg_role == "parent":
+            _stg_parent = await gd_find_one(db.session, "parents", {"user_id": _stg_caller_id})
+            if not _stg_parent or student_id not in (_stg_parent.get("student_ids") or []):
+                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لدرجات هذا الطالب")
+        elif _stg_role == "teacher":
+            _stg_teacher_id = current_user.get("teacher_id") or _stg_caller_id
+            _stg_assign = await gd_find_one(db.session, "teacher_assignments", {"teacher_id": _stg_teacher_id, "class_id": _stg_student.get("class_id")})
+            if not _stg_assign:
+                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لدرجات هذا الطالب")
+        else:
+            raise HTTPException(status_code=403, detail="لا يمكنك الوصول لدرجات هذا الطالب")
+    else:
+        if _stg_role != "platform_admin" and _stg_caller_tenant:
+            if _stg_student.get("school_id") and _stg_student["school_id"] != _stg_caller_tenant:
+                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لدرجات طالب من مدرسة أخرى")
+
     grades = await gd_find(db.session, "grades", {"student_id": student_id}, limit=100)
-    
-    # Enrich with assessment info
+
     for grade in grades:
         assessment = await gd_find_one(db.session, "assessments", {"id": grade.get("assessment_id")})
         if assessment:
             grade["assessment_name"] = assessment.get("name")
             grade["type"] = assessment.get("type")
             grade["max_score"] = assessment.get("max_score", 100)
-    
+
     return grades
 
 
@@ -1104,13 +1202,40 @@ async def get_student_attendance_stats(
     current_user: dict = Depends(get_current_user)
 ):
     """Get attendance statistics for a student"""
+    _sas_student = await gd_find_one(db.session, "students", {"id": student_id})
+    if not _sas_student:
+        raise HTTPException(status_code=404, detail="الطالب غير موجود")
+    _sas_role = current_user.get("role", "")
+    _sas_caller_id = current_user.get("id")
+    _sas_caller_tenant = current_user.get("tenant_id")
+    _SAS_ADMIN_ROLES = {"platform_admin", "admin", "super_admin", "school_principal", "school_admin", "school_sub_admin"}
+    if _sas_role not in _SAS_ADMIN_ROLES:
+        if _sas_role == "student":
+            if current_user.get("student_id") != student_id and _sas_caller_id != student_id:
+                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات حضور طالب آخر")
+        elif _sas_role == "parent":
+            _sas_parent = await gd_find_one(db.session, "parents", {"user_id": _sas_caller_id})
+            if not _sas_parent or student_id not in (_sas_parent.get("student_ids") or []):
+                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات حضور هذا الطالب")
+        elif _sas_role == "teacher":
+            _sas_teacher_id = current_user.get("teacher_id") or _sas_caller_id
+            _sas_assign = await gd_find_one(db.session, "teacher_assignments", {"teacher_id": _sas_teacher_id, "class_id": _sas_student.get("class_id")})
+            if not _sas_assign:
+                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات حضور هذا الطالب")
+        else:
+            raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات حضور هذا الطالب")
+    else:
+        if _sas_role != "platform_admin" and _sas_caller_tenant:
+            if _sas_student.get("school_id") and _sas_student["school_id"] != _sas_caller_tenant:
+                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات طالب من مدرسة أخرى")
+
     total = await gd_count(db.session, "attendance", {"student_id": student_id})
     present = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "present"})
     absent = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "absent"})
     late = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "late"})
-    
+
     rate = (present / total * 100) if total > 0 else 0
-    
+
     return {
         "total": total,
         "present": present,
@@ -1127,12 +1252,22 @@ async def get_behavior_records(
     current_user: dict = Depends(get_current_user)
 ):
     """Get behavior records"""
+    _beh_role = current_user.get("role", "")
+    _beh_tenant = current_user.get("tenant_id")
+    _BEH_ADMIN_ROLES = {"platform_admin", "admin", "super_admin", "school_principal", "school_admin", "school_sub_admin"}
+
+    if _beh_role not in _BEH_ADMIN_ROLES and _beh_role != "teacher":
+        raise HTTPException(status_code=403, detail="غير مصرح بالوصول لسجلات السلوك")
+
     query = {}
     if class_id:
         query["class_id"] = class_id
     if student_id:
         query["student_id"] = student_id
-    
+
+    if _beh_role != "platform_admin" and _beh_tenant:
+        query["school_id"] = _beh_tenant
+
     records = await gd_find(db.session, "behavior", query, order_by="date", desc_order=True, limit=200)
     return records
 
@@ -1267,9 +1402,19 @@ async def get_student_analytics(
     current_user: dict = Depends(get_current_user)
 ):
     """Get comprehensive analytics for a single student"""
-    if current_user.get("role") not in ADMIN_ROLES:
+    _ana_role = current_user.get("role", "")
+    _ana_tenant = current_user.get("tenant_id")
+    _ANA_ADMIN_ROLES = {"platform_admin", "admin", "super_admin", "school_principal", "school_admin", "school_sub_admin"}
+    student = await gd_find_one(db.session, "students", {"id": student_id})
+    if not student:
+        raise HTTPException(status_code=404, detail="الطالب غير موجود")
+
+    if _ana_role in _ANA_ADMIN_ROLES:
+        if _ana_role != "platform_admin" and _ana_tenant:
+            if student.get("school_id") and student["school_id"] != _ana_tenant:
+                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات طالب من مدرسة أخرى")
+    else:
         teacher_id = current_user.get("teacher_id") or current_user.get("id")
-        student = await gd_find_one(db.session, "students", {"id": student_id})
         if student:
             class_id = student.get("class_id")
             assignment = await gd_find_one(db.session, "teacher_assignments", {"teacher_id": teacher_id, "class_id": class_id})
@@ -1431,16 +1576,31 @@ async def get_messages(
     """Get messages filtered by sender or recipient"""
     query = {}
     caller_id = current_user.get("teacher_id") or current_user.get("id")
+    _msg_role = current_user.get("role", "")
+    _msg_tenant = current_user.get("tenant_id")
+    _MSG_SCOPE_ROLES = ("platform_admin", "school_principal", "school_admin")
+
     if sender_id:
-        if sender_id != caller_id and current_user.get("role") not in ("platform_admin", "school_principal", "school_admin"):
+        if sender_id != caller_id and _msg_role not in _MSG_SCOPE_ROLES:
             raise HTTPException(status_code=403, detail="غير مصرح")
+        if sender_id != caller_id and _msg_role in ("school_principal", "school_admin"):
+            _msg_target_user = await gd_find_one(db.session, "users", {"id": sender_id})
+            if _msg_tenant and _msg_target_user and _msg_target_user.get("tenant_id") != _msg_tenant:
+                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لرسائل مستخدم من مدرسة أخرى")
         query["sender_id"] = sender_id
     elif recipient_id:
-        if recipient_id != caller_id and current_user.get("role") not in ("platform_admin", "school_principal", "school_admin"):
+        if recipient_id != caller_id and _msg_role not in _MSG_SCOPE_ROLES:
             raise HTTPException(status_code=403, detail="غير مصرح")
+        if recipient_id != caller_id and _msg_role in ("school_principal", "school_admin"):
+            _msg_target_user = await gd_find_one(db.session, "users", {"id": recipient_id})
+            if _msg_tenant and _msg_target_user and _msg_target_user.get("tenant_id") != _msg_tenant:
+                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لرسائل مستخدم من مدرسة أخرى")
         query["$or"] = [{"recipient_ids": recipient_id}, {"recipient_id": recipient_id}]
     else:
         query["$or"] = [{"sender_id": caller_id}, {"recipient_ids": caller_id}, {"recipient_id": caller_id}]
+
+    if _msg_role != "platform_admin" and _msg_tenant:
+        query["school_id"] = _msg_tenant
 
     messages = await gd_find(db.session, "messages", query, order_by="created_at", desc_order=True, limit=100)
     return messages
@@ -1461,18 +1621,27 @@ async def send_message(
     if single and single not in raw_recipients:
         raw_recipients.append(single)
 
+    _snd_tenant = current_user.get("tenant_id")
+    _snd_role = current_user.get("role", "")
+
     resolved_recipient_id = None
     for rid in raw_recipients:
         if not rid:
             continue
         user = await gd_find_one(db.session, "users", {"id": rid})
         if user:
+            if _snd_role != "platform_admin" and _snd_tenant:
+                if user.get("tenant_id") and user["tenant_id"] != _snd_tenant:
+                    raise HTTPException(status_code=403, detail="لا يمكنك إرسال رسائل لمستخدمين من مدرسة أخرى")
             resolved_recipient_id = user["id"]
             break
         student = await gd_find_one(db.session, "students", {"id": rid})
         if not student:
             student = await gd_find_one(db.session, "students", {"parent_id": rid})
         if student:
+            if _snd_role != "platform_admin" and _snd_tenant:
+                if student.get("school_id") and student["school_id"] != _snd_tenant:
+                    raise HTTPException(status_code=403, detail="لا يمكنك إرسال رسائل لطلاب من مدرسة أخرى")
             parent_user = None
             if student.get("parent_email"):
                 parent_user = await gd_find_one(db.session, "users", {"email": student["parent_email"], "role": "parent"})
@@ -1481,6 +1650,9 @@ async def send_message(
             if not parent_user and student.get("parent_name"):
                 parent_user = await gd_find_one(db.session, "users", {"full_name": student["parent_name"], "role": "parent"})
             if parent_user:
+                if _snd_role != "platform_admin" and _snd_tenant:
+                    if parent_user.get("tenant_id") and parent_user["tenant_id"] != _snd_tenant:
+                        raise HTTPException(status_code=403, detail="لا يمكنك إرسال رسائل لمستخدمين من مدرسة أخرى")
                 resolved_recipient_id = parent_user["id"]
                 break
 
@@ -1508,15 +1680,27 @@ async def get_grades(
     current_user: dict = Depends(get_current_user)
 ):
     """Get grades with filters"""
+    _gr_role = current_user.get("role", "")
+    _gr_tenant = current_user.get("tenant_id")
+    _GR_ADMIN_ROLES = {"platform_admin", "admin", "super_admin", "school_principal", "school_admin", "school_sub_admin"}
+
+    if _gr_role not in _GR_ADMIN_ROLES and _gr_role != "teacher":
+        raise HTTPException(status_code=403, detail="غير مصرح بالوصول لسجلات الدرجات")
+
+    if not class_id and not student_id and _gr_role not in ("platform_admin", "admin", "super_admin"):
+        raise HTTPException(status_code=400, detail="يجب تحديد فصل أو طالب لعرض الدرجات")
+
     query = {}
     if class_id:
-        # Get assessments for this class first
         assessments = await gd_find(db.session, "assessments", {"class_id": class_id}, limit=100)
         assessment_ids = [a.get("id") for a in assessments]
         query["assessment_id"] = {"$in": assessment_ids}
     if student_id:
         query["student_id"] = student_id
-    
+
+    if _gr_role != "platform_admin" and _gr_tenant:
+        query["school_id"] = _gr_tenant
+
     grades = await gd_find(db.session, "grades", query, limit=500)
     return grades
 
@@ -1528,8 +1712,15 @@ async def get_notification_settings(
 ):
     """Get user notification settings (self or admin only)"""
     caller_id = current_user.get("id")
-    if user_id != caller_id and current_user.get("role") not in ("platform_admin", "school_principal", "school_admin"):
-        raise HTTPException(status_code=403, detail="غير مصرح بالوصول لإعدادات مستخدم آخر")
+    _ns_role = current_user.get("role", "")
+    _ns_tenant = current_user.get("tenant_id")
+    if user_id != caller_id:
+        if _ns_role not in ("platform_admin", "school_principal", "school_admin"):
+            raise HTTPException(status_code=403, detail="غير مصرح بالوصول لإعدادات مستخدم آخر")
+        if _ns_role in ("school_principal", "school_admin"):
+            _ns_target = await gd_find_one(db.session, "users", {"id": user_id})
+            if _ns_tenant and _ns_target and _ns_target.get("tenant_id") != _ns_tenant:
+                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لإعدادات مستخدم من مدرسة أخرى")
     settings = await gd_find_one(db.session, "notification_settings", {"user_id": user_id})
     return settings or {}
 
@@ -1542,8 +1733,15 @@ async def update_notification_settings(
 ):
     """Update user notification settings (self or admin only)"""
     caller_id = current_user.get("id")
-    if user_id != caller_id and current_user.get("role") not in ("platform_admin", "school_principal", "school_admin"):
-        raise HTTPException(status_code=403, detail="غير مصرح بتعديل إعدادات مستخدم آخر")
+    _nsu_role = current_user.get("role", "")
+    _nsu_tenant = current_user.get("tenant_id")
+    if user_id != caller_id:
+        if _nsu_role not in ("platform_admin", "school_principal", "school_admin"):
+            raise HTTPException(status_code=403, detail="غير مصرح بتعديل إعدادات مستخدم آخر")
+        if _nsu_role in ("school_principal", "school_admin"):
+            _nsu_target = await gd_find_one(db.session, "users", {"id": user_id})
+            if _nsu_tenant and _nsu_target and _nsu_target.get("tenant_id") != _nsu_tenant:
+                raise HTTPException(status_code=403, detail="لا يمكنك تعديل إعدادات مستخدم من مدرسة أخرى")
     await gd_update_one(db.session, "notification_settings", {"user_id": user_id}, {**data, "updated_at": datetime.now(timezone.utc).isoformat()})
     return {"message": "تم حفظ الإعدادات"}
 
@@ -2085,6 +2283,7 @@ async def get_teacher_class_metrics(
     """
     _verify_teacher_access(teacher_id, current_user)
     teacher = await _resolve_teacher_record(teacher_id)
+    _check_teacher_tenant(teacher, current_user)
     resolved_teacher_id = teacher.get("id") if teacher else teacher_id
     assignments = await gd_find(db.session, "teacher_assignments", {"teacher_id": resolved_teacher_id, "is_active": True}, limit=200)
     class_ids_from_ta = set(a.get("class_id") for a in assignments if a.get("class_id"))
