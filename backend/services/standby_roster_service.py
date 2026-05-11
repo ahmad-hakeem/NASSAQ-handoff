@@ -163,9 +163,19 @@ async def compute_standby_roster(
     # See spec docs/superpowers/specs/2026-05-03-standby-engine-refactor-design.md.
     school_cap = await _fetch_school_standby_cap(session, school_id)
 
-    # 2) For each teacher, compute their free slots and distribute capacity.
+    # 2) Distribute capacity, prioritizing teachers with the most free
+    # headroom (max remaining_capacity first). Stable secondary key on
+    # full_name keeps the result deterministic across runs.
+    def _priority(t: dict) -> tuple:
+        wq = _safe_int(t.get("weekly_periods"), 0)
+        load = teacher_load.get(t.get("id"), 0)
+        free = max(wq - load, 0)
+        return (-free, (t.get("full_name") or "").lower())
+
+    teachers_sorted = sorted(teachers, key=_priority)
+
     roster: Dict[str, Set[Tuple[str, int]]] = {}
-    for t in teachers:
+    for t in teachers_sorted:
         tid = t.get("id")
         if not tid:
             continue
@@ -232,9 +242,16 @@ async def compute_standby_roster(
         overrides = await fetch_standby_overrides(
             session, school_id=school_id, timetable_id=timetable_id,
         )
-        # نمرّر `busy` كي ترفض دالة الدمج إضافة خانة فوق حصة مجدولة فعلاً
-        # (حماية من override يصطدم بالجدول الأصلي).
-        roster = apply_overrides_to_roster(roster, overrides, busy=busy)
+        blocked_by_teacher = {
+            t["id"]: _resolve_blocked_days(t)
+            for t in teachers if t.get("id")
+        }
+        roster = apply_overrides_to_roster(
+            roster, overrides,
+            busy=busy,
+            unavailable=unavailable,
+            blocked_by_teacher=blocked_by_teacher,
+        )
 
     return roster
 
@@ -267,33 +284,40 @@ def apply_overrides_to_roster(
     auto_roster: Dict[str, Set[Tuple[str, int]]],
     overrides: List[dict],
     busy: Dict[str, Set[Tuple[str, int]]] | None = None,
+    unavailable: Dict[str, Set[Tuple[str, int]]] | None = None,
+    blocked_by_teacher: Dict[str, Set[str]] | None = None,
 ) -> Dict[str, Set[Tuple[str, int]]]:
-    """يطبّق قائمة `overrides` فوق الـ auto roster ويُرجع النسخة النهائية.
+    """Apply manual `overrides` on top of the auto roster.
 
-    الإضافة تُتجاهل بصمت إذا كانت الخانة مشغولة فعلاً بحصة في الجدول الأصلي
-    (المعلم لا يمكن أن يكون في انتظار وفي حصة في الوقت نفسه).
+    Manual `add` overrides are dropped (kept in DB, surfaced as warnings
+    by the projection) when the slot collides with a real teaching
+    session, an `unavailability` lockout, or a teacher's blocked day.
     """
     final: Dict[str, Set[Tuple[str, int]]] = {
         tid: set(slots) for tid, slots in auto_roster.items()
     }
     busy = busy or {}
+    unavailable = unavailable or {}
+    blocked_by_teacher = blocked_by_teacher or {}
     for ov in overrides or []:
         tid = ov.get("teacher_id")
-        day = (ov.get("day") or "").lower()
+        day = _normalize_day_key(ov.get("day")) or (ov.get("day") or "").lower()
         period = _safe_int(ov.get("period"), 0)
         action = (ov.get("action") or "").lower()
         if not tid or day not in DAYS or period not in PERIODS:
             continue
         if action == "add":
             if (day, period) in busy.get(tid, set()):
-                # لا يمكن إضافة خانة فوق حصة فعلية — نتجاهل بصمت.
+                continue
+            if (day, period) in unavailable.get(tid, set()):
+                continue
+            if day in blocked_by_teacher.get(tid, set()):
                 continue
             final.setdefault(tid, set()).add((day, period))
         elif action == "remove":
             slots = final.get(tid)
             if slots is not None:
                 slots.discard((day, period))
-        # أي action آخر — نتجاهل (forward compatibility).
     return final
 
 

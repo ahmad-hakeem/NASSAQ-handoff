@@ -500,14 +500,14 @@ async def get_standby_roster(
         unavailable: dict[str, set] = {tid: set() for tid in busy}
         unavail_rows = await gd_find(
             db.session, "unavailability",
-            {"school_id": str(sid), "entity_type": "teacher"},
+            {"school_id": str(sid)},
             limit=10000,
         )
         for row in unavail_rows or []:
             tid = row.get("entity_id") or row.get("teacher_id")
             if not tid or tid not in unavailable:
                 continue
-            d = (row.get("day") or "").lower()
+            d = _normalize_day_key(row.get("day"))
             try:
                 p = int(row.get("period"))
             except (TypeError, ValueError):
