@@ -111,7 +111,12 @@ class UserAccountSettings(BaseModel):
     profile_picture: Optional[str] = None
 
 
-def setup_settings_routes(db, get_current_user, require_roles, UserRole):
+def setup_settings_routes(db, get_current_user, require_roles, UserRole, require_recent_mfa=None):
+    # Task #169 Step 7: see security_routes.setup_security_routes for the
+    # rationale behind the fallback.
+    if require_recent_mfa is None:
+        def require_recent_mfa(max_age_seconds: int = 300):  # noqa: ARG001
+            return get_current_user
     """Setup settings routes with database and auth dependencies"""
     
     router = APIRouter(prefix="/settings", tags=["System Settings"])
@@ -198,7 +203,9 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
     @router.put("/maintenance")
     async def update_maintenance_settings(
         settings: MaintenanceSettings,
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+        # Task #169 Step 7: maintenance toggle can lock all users out → fresh MFA.
+        _stepup: dict = Depends(require_recent_mfa()),
     ):
         """تحديث إعدادات الصيانة"""
         try:
@@ -532,7 +539,9 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
     @router.put("/security")
     async def update_security_settings(
         settings: SecuritySettings,
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+        # Task #169 Step 7: editing platform-wide security policy → fresh MFA.
+        _stepup: dict = Depends(require_recent_mfa()),
     ):
         """تحديث إعدادات الأمان مع تتبع التغييرات"""
         now = datetime.now(timezone.utc).isoformat()

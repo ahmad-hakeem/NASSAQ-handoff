@@ -70,16 +70,31 @@ def create_app() -> FastAPI:
 
     @application.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-        detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        # Routes may raise HTTPException(detail={...}) with a structured
+        # payload (e.g. require_recent_mfa returns
+        # {code: "MFA_STEPUP_REQUIRED", message, challenge_endpoint, ...}).
+        # Stringifying that would break the frontend interceptor's ability
+        # to dispatch on the machine-readable code, so when detail is a
+        # dict we splice its fields into the standard envelope and surface
+        # the dict itself under `error.detail` for clients that want raw
+        # access.
+        if isinstance(exc.detail, dict):
+            err = {
+                "code": exc.detail.get("code") or f"HTTP_{exc.status_code}",
+                "message": exc.detail.get("message") or "",
+                "detail": exc.detail,
+            }
+            for k, v in exc.detail.items():
+                if k not in err:
+                    err[k] = v
+        else:
+            err = {
+                "code": f"HTTP_{exc.status_code}",
+                "message": exc.detail if isinstance(exc.detail, str) else str(exc.detail),
+            }
         return JSONResponse(
             status_code=exc.status_code,
-            content={
-                "success": False,
-                "error": {
-                    "code": f"HTTP_{exc.status_code}",
-                    "message": detail,
-                },
-            },
+            content={"success": False, "error": err},
         )
 
     @application.exception_handler(IntegrityError)

@@ -13,7 +13,7 @@ from datetime import datetime, timezone, timedelta
 import uuid, os, logging, json, random, re, io, base64, jwt
 
 from dependencies import (
-    db, get_current_user, require_roles, UserRole, SchoolStatus,
+    db, get_current_user, require_roles, require_recent_mfa, UserRole, SchoolStatus,
     hash_password, verify_password, create_access_token, create_refresh_token,
     JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE, security, logger,
     audit_engine, AuditAction, AuditSeverity,
@@ -536,7 +536,17 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
         logger.error(f"refresh: failed to claim old jti: {_claim_err}")
         raise HTTPException(status_code=500, detail="Failed to rotate refresh token")
 
-    new_access = create_access_token(token_payload)
+    # Task #169 Step 7: refresh PRESERVES but does NOT advance mfa_recent_at
+    # (and the companion mfa_kind tag). The only paths that advance the
+    # timestamp are /auth/mfa/verify and /auth/mfa/stepup/verify.
+    _preserved_mfa_recent_at = payload.get("mfa_recent_at")
+    _preserved_mfa_kind = payload.get("mfa_kind")
+
+    new_access = create_access_token(
+        token_payload,
+        mfa_recent_at=_preserved_mfa_recent_at,
+        mfa_kind=_preserved_mfa_kind,
+    )
     try:
         new_acc_jti = jwt.decode(new_access, JWT_SECRET, algorithms=[JWT_ALGORITHM]).get("jti")
     except Exception:
@@ -550,6 +560,8 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
         remember_me=is_remember_me,
         linked_access_jti=new_acc_jti,
         family_id=payload.get("fid"),
+        mfa_recent_at=_preserved_mfa_recent_at,
+        mfa_kind=_preserved_mfa_kind,
     )
 
     # Best-effort: revoke the prior access-session row tied to this refresh
@@ -1039,7 +1051,11 @@ class PasswordChangeRequest(BaseModel):
 @router.post("/auth/change-password")
 async def change_password(
     request: PasswordChangeRequest,
-    current_user: dict = Depends(get_current_user)
+    # Task #169 Step 7: change-password is a high-impact sensitive route,
+    # gated by both the existing current-password check AND a fresh MFA
+    # proof (≤5 minutes). require_recent_mfa returns the same user dict
+    # as get_current_user, so the body of this handler is unchanged.
+    current_user: dict = Depends(require_recent_mfa()),
 ):
     """
     Change user password. Required for first-time login with temporary password.
@@ -1302,7 +1318,9 @@ IMPERSONATION_TOKEN_TTL_MINUTES = 15
 async def switch_role(
     request: Request,
     data: dict = Body(...),
-    current_user: dict = Depends(get_current_user),
+    # Task #169 Step 7: cross-tenant role-switch is the canonical
+    # privilege-escalation surface for platform admins; require fresh MFA.
+    current_user: dict = Depends(require_recent_mfa()),
 ):
     target_role = data.get("target_role")
     target_school_id = data.get("school_id")
@@ -1434,7 +1452,9 @@ async def switch_role(
 async def restore_role(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    current_user: dict = Depends(get_current_user),
+    # Task #169 Step 7: returning to the original role is symmetric to
+    # role-switch in audit terms; gate it the same way.
+    current_user: dict = Depends(require_recent_mfa()),
 ):
     """Restore the original role for an impersonating session.
 

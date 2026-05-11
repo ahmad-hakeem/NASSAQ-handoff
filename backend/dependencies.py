@@ -128,13 +128,32 @@ def verify_password(password: str, hashed: str) -> bool:
     except (ValueError, TypeError):
         return False
 
-def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
+def create_access_token(
+    data: dict,
+    expires_delta: timedelta = None,
+    mfa_recent_at: Optional[int] = None,
+    mfa_kind: Optional[str] = None,
+) -> str:
+    """Mint a ``type=access`` JWT.
+
+    Task #169 Step 7: ``mfa_recent_at`` is the UTC unix-second timestamp of
+    the user's most recent successful MFA verification; ``mfa_kind`` records
+    which factor was used. Both are embedded so the ``require_recent_mfa``
+    dependency can decide whether a sensitive route call is fresh enough
+    without re-querying the DB. Refresh PRESERVES (does not advance) these
+    claims; the only path that ADVANCES ``mfa_recent_at`` is a successful
+    ``/auth/mfa/verify`` or ``/auth/mfa/stepup/verify`` mint.
+    """
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE)
     to_encode.update({"exp": expire, "type": "access", "jti": str(uuid.uuid4())})
+    if mfa_recent_at is not None:
+        to_encode["mfa_recent_at"] = int(mfa_recent_at)
+    if mfa_kind:
+        to_encode["mfa_kind"] = mfa_kind
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -172,6 +191,8 @@ def create_refresh_token(
     remember_me: bool = False,
     linked_access_jti: Optional[str] = None,
     family_id: Optional[str] = None,
+    mfa_recent_at: Optional[int] = None,
+    mfa_kind: Optional[str] = None,
 ) -> str:
     to_encode = data.copy()
     now = datetime.now(timezone.utc)
@@ -179,6 +200,10 @@ def create_refresh_token(
         expire = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     else:
         expire = now + timedelta(hours=REFRESH_TOKEN_SHORT_HOURS)
+    if mfa_recent_at is not None:
+        to_encode["mfa_recent_at"] = int(mfa_recent_at)
+    if mfa_kind:
+        to_encode["mfa_kind"] = mfa_kind
     to_encode.update({
         "exp": expire,
         # Explicitly include iat so the refresh endpoint can compare issuance
@@ -349,3 +374,133 @@ def require_roles(allowed_roles: List[UserRole]):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         return current_user
     return role_checker
+
+
+# ---------------------------------------------------------------------------
+# Task #169 Step 7 — server-side step-up dependency
+# ---------------------------------------------------------------------------
+#
+# ``require_recent_mfa(max_age_seconds=300)`` is the ONLY authority for
+# step-up enforcement. It returns a FastAPI dependency that:
+#
+#   * Fast-paths users whose role is not subject to MFA policy (students,
+#     drivers, gatekeepers, etc.) — they pass through unchanged.
+#   * Reads ``mfa_recent_at`` directly from the bearer JWT (the token
+#     signature was already verified by ``get_current_user`` upstream).
+#     Missing or older-than-``max_age_seconds`` → HTTP 401 with structured
+#     body {detail: {code: "MFA_STEPUP_REQUIRED", ...}}. The Step-9 Axios
+#     interceptor opens the step-up modal on this code.
+#   * For Tier-A users only, additionally enforces:
+#       - ``mfa_must_restore_factor`` (set when a recovery code is consumed)
+#         → 401 ``MFA_RESTORE_REQUIRED`` until the user re-enrols a normal
+#         factor (Passkey or TOTP).
+#       - At-least-one active WebAuthn credential
+#         → 401 ``MFA_PASSKEY_REQUIRED`` until the user adds one.
+#
+# Refresh deliberately PRESERVES but does NOT advance ``mfa_recent_at``;
+# the only paths that mint a fresh timestamp are ``/auth/mfa/verify`` and
+# ``/auth/mfa/stepup/verify``.
+
+_STEPUP_CHALLENGE_ENDPOINT = "/api/auth/mfa/stepup/start"
+
+
+def _stepup_required_detail(
+    code: str,
+    message_ar: str,
+    max_age_seconds: int,
+) -> dict:
+    return {
+        "code": code,
+        "message": message_ar,
+        "challenge_endpoint": _STEPUP_CHALLENGE_ENDPOINT,
+        "max_age_seconds": max_age_seconds,
+    }
+
+
+def require_recent_mfa(max_age_seconds: int = 300):
+    """Return a FastAPI dependency that enforces a fresh MFA proof.
+
+    Stack alongside ``require_roles`` (or use as the sole dep when the
+    route doesn't already require a specific role) — both reuse the same
+    upstream ``get_current_user`` so FastAPI dedupes the call.
+    """
+    async def _dep(
+        credentials: HTTPAuthorizationCredentials = Depends(security),
+        current_user: dict = Depends(get_current_user),
+    ) -> dict:
+        # Lazy import to avoid module-load cycles.
+        from services import mfa_policy as _mfa_policy
+
+        # Roles outside Tier A/B/C have no MFA policy at all — the route
+        # guard collapses to "authenticated" for them. Sensitive routes
+        # like change-password are still always called by an authed user;
+        # this branch only fires for student/driver/gatekeeper accounts.
+        if not _mfa_policy.is_required(current_user):
+            return current_user
+
+        # Re-decode the bearer to read the post-MFA claims. Signature was
+        # validated upstream by get_current_user; we only need the payload.
+        try:
+            payload = jwt.decode(
+                credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM]
+            )
+        except jwt.PyJWTError:
+            raise HTTPException(
+                status_code=401,
+                detail=_stepup_required_detail(
+                    "MFA_STEPUP_REQUIRED",
+                    "يلزم التحقق المسبق عبر العامل الثاني للمتابعة",
+                    max_age_seconds,
+                ),
+            )
+
+        # Tier-A-only hard blocks. These ALWAYS run before the freshness
+        # check so a Tier-A user with a stale token still sees the most
+        # specific reason (passkey/restore) rather than a generic step-up
+        # prompt that they cannot satisfy.
+        if _mfa_policy.is_tier_a(current_user):
+            if current_user.get("mfa_must_restore_factor"):
+                raise HTTPException(
+                    status_code=401,
+                    detail=_stepup_required_detail(
+                        "MFA_RESTORE_REQUIRED",
+                        "تم استخدام رمز استرداد. يجب إعادة تسجيل عامل تحقق (مفتاح أمان أو تطبيق مصادقة) قبل المتابعة",
+                        max_age_seconds,
+                    ),
+                )
+            try:
+                from engines.sql_utils import gd_find as _gd_find
+                rows = await _gd_find(
+                    db.session,
+                    "mfa_factors",
+                    {"user_id": current_user["id"], "kind": "webauthn", "is_active": True},
+                ) or []
+                if not _mfa_policy.tier_a_passkey_satisfied(rows):
+                    raise HTTPException(
+                        status_code=401,
+                        detail=_stepup_required_detail(
+                            "MFA_PASSKEY_REQUIRED",
+                            "هذا الإجراء يتطلب تسجيل مفتاح أمان (Passkey) أولاً",
+                            max_age_seconds,
+                        ),
+                    )
+            except HTTPException:
+                raise
+            except Exception as exc:
+                logger.warning(f"require_recent_mfa: tier-A passkey check failed: {exc}")
+
+        mfa_recent_at = payload.get("mfa_recent_at")
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        if mfa_recent_at is None or (now_ts - int(mfa_recent_at)) > max_age_seconds:
+            raise HTTPException(
+                status_code=401,
+                detail=_stepup_required_detail(
+                    "MFA_STEPUP_REQUIRED",
+                    "يلزم التحقق المسبق عبر العامل الثاني للمتابعة",
+                    max_age_seconds,
+                ),
+            )
+
+        return current_user
+
+    return _dep

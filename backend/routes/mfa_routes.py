@@ -142,47 +142,77 @@ async def _complete_mfa_login(
     challenge: dict,
     factor_kind: str,
     request: Optional[Request],
-) -> TokenResponse:
-    """Mint access+refresh tokens, record the session, mark the challenge
-    consumed, mark the factor as last-used, and write the success audit
-    row. Shared by every successful factor verification path (Steps 3-6)."""
+    stepup_only: bool = False,
+):
+    """Mint tokens, record the session, mark the challenge consumed, mark
+    the factor as last-used, and write the success audit row. Shared by
+    every successful factor verification path (Steps 3-6).
+
+    Task #169 Step 7: when ``stepup_only=True`` this is the post-step-up
+    completion path. We mint ONLY a fresh access token with an updated
+    ``mfa_recent_at`` claim — the existing refresh token (and therefore
+    the existing session lifetime) is preserved. We also skip the new
+    user_sessions row to avoid churning that table; the old access token
+    continues to age out naturally and the new one inherits the same
+    sub/role/tenant claims. Returns a plain dict in step-up mode and a
+    full ``TokenResponse`` in login mode.
+    """
     user_id = user["id"]
     token_payload = {"sub": user_id, "role": user["role"]}
     if user.get("tenant_id"):
         token_payload["tenant_id"] = user["tenant_id"]
     if user.get("school_id"):
         token_payload["school_id"] = user["school_id"]
-    access = create_access_token(token_payload)
+
+    # Step 7: stamp mfa_recent_at + mfa_kind on the freshly minted access AND
+    # refresh tokens. Refresh PRESERVES (does not advance) these claims;
+    # only this path and /auth/mfa/stepup/verify advance them.
+    mfa_recent_at = int(datetime.now(timezone.utc).timestamp())
+
+    access = create_access_token(
+        token_payload, mfa_recent_at=mfa_recent_at, mfa_kind=factor_kind
+    )
     try:
         access_jti = jwt.decode(access, JWT_SECRET, algorithms=[JWT_ALGORITHM]).get("jti")
     except Exception:
         access_jti = None
-    refresh = create_refresh_token(
-        token_payload,
-        remember_me=bool(challenge.get("remember_me")),
-        linked_access_jti=access_jti,
-    )
+    if not stepup_only:
+        refresh = create_refresh_token(
+            token_payload,
+            remember_me=bool(challenge.get("remember_me")),
+            linked_access_jti=access_jti,
+            mfa_recent_at=mfa_recent_at,
+            mfa_kind=factor_kind,
+        )
 
-    # Best-effort session row (lazy-import to avoid circular import with auth_routes_mod)
-    try:
-        from routes.auth_routes_mod import _record_session_from_token
-        ip = request.client.host if request and request.client else None
-        ua = request.headers.get("user-agent") if request else None
-        await _record_session_from_token(db.session, access, user_id, ip, ua)
-    except Exception as exc:
-        logger.debug(f"_complete_mfa_login: session record failed: {exc}")
+        # Best-effort session row (lazy-import to avoid circular import with auth_routes_mod)
+        try:
+            from routes.auth_routes_mod import _record_session_from_token
+            ip = request.client.host if request and request.client else None
+            ua = request.headers.get("user-agent") if request else None
+            await _record_session_from_token(db.session, access, user_id, ip, ua)
+        except Exception as exc:
+            logger.debug(f"_complete_mfa_login: session record failed: {exc}")
 
     await _consume_challenge(challenge)
 
     audit = AuditLogEngine(Repos(db.session))
     await audit.log_auth_event(
-        action="mfa.login.success",
+        action=("mfa.stepup.success" if stepup_only else "mfa.login.success"),
         user_id=user_id,
         tenant_id=user.get("tenant_id"),
         success=True,
         email=user.get("email"),
         reason=factor_kind,
     )
+
+    if stepup_only:
+        return {
+            "access_token": access,
+            "mfa_recent_at": mfa_recent_at,
+            "mfa_kind": factor_kind,
+            "token_type": "bearer",
+        }
 
     from engines.name_validation import is_generic_name
     user_response = UserResponse(
@@ -604,6 +634,266 @@ async def verify_mfa(
 
 
 # ---------------------------------------------------------------------------
+# Step-up: server-driven re-prompt before sensitive actions (Task #169 Step 7)
+# ---------------------------------------------------------------------------
+#
+# Flow
+# ----
+# Sensitive routes are guarded by ``require_recent_mfa(max_age_seconds=300)``
+# (see backend/dependencies.py). When the user's bearer JWT lacks a fresh
+# enough ``mfa_recent_at`` claim, the server replies 401 with
+# ``{detail: {code: "MFA_STEPUP_REQUIRED", challenge_endpoint:
+# "/api/auth/mfa/stepup/start", ...}}``. The frontend Axios interceptor
+# (Step 9) opens the step-up modal which:
+#
+#   1. POST /auth/mfa/stepup/start (Authorization: Bearer <ACCESS_TOKEN>)
+#      → server creates a fresh mfa_pending_challenges row for the user
+#        and returns a short-lived ``mfa_challenge`` JWT plus the list of
+#        factor kinds the user can satisfy.
+#   2. POST /auth/mfa/stepup/verify { factor_kind, code|webauthn_response }
+#      with Authorization: Bearer <CHALLENGE_TOKEN>
+#      → on success the server mints a NEW access token with a refreshed
+#        ``mfa_recent_at`` claim. The user's REFRESH token is left
+#        untouched — the existing session continues with the new access
+#        token; the old access token's natural expiry is unchanged.
+#
+# The two endpoints intentionally reuse the same per-factor verification
+# helpers as the login path. The only behavioural deltas live in
+# ``_complete_mfa_login(stepup_only=True)``: skip refresh mint, skip
+# user_sessions row, return a small ``StepupVerifyResponse`` shape.
+
+class StepupStartResponse(BaseModel):
+    challenge_token: str
+    challenge_expires_at: str
+    available_factor_kinds: List[str]
+    mfa_tier: str
+
+
+class StepupVerifyResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    mfa_recent_at: int
+    mfa_kind: str
+
+
+@router.post("/auth/mfa/stepup/start", response_model=StepupStartResponse)
+async def stepup_start(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    """Mint a fresh MFA challenge for the currently-authenticated user so
+    they can re-satisfy their second factor before a sensitive action.
+
+    Bearer is the user's normal access token — there is no password
+    re-prompt; the act of re-presenting a fresh second factor IS the
+    step-up. Roles outside Tier A/B/C have no factor to present and get
+    409 here, but they would never have hit a require_recent_mfa guard
+    in the first place because that dep fast-paths them.
+    """
+    tier = mfa_policy.required_for(current_user)
+    if tier is None:
+        raise HTTPException(
+            status_code=409,
+            detail="هذا الحساب غير مشمول بسياسة العامل الثاني",
+        )
+
+    user_id = current_user["id"]
+    active_factors = await gd_find(
+        db.session, "mfa_factors", {"user_id": user_id, "is_active": True}
+    ) or []
+
+    # Tier B/C have an implicit email_otp factor (the user's email IS the
+    # delivery channel). Tier A users must hold at least one enrolled
+    # active factor — if they have none they'd already be blocked by the
+    # tier-A passkey enforcement branch in require_recent_mfa.
+    from services.mfa_policy import MfaTier as _MfaTier
+    implicit_email_otp = tier in (_MfaTier.B, _MfaTier.C)
+    if not active_factors and not implicit_email_otp:
+        raise HTTPException(
+            status_code=409,
+            detail="لا يوجد عامل تحقق مفعّل — يجب تسجيل عامل أولاً",
+        )
+
+    from dependencies import create_mfa_challenge_token
+    challenge_token, challenge_jti, challenge_exp = create_mfa_challenge_token(
+        user_id, current_user["role"], current_user.get("tenant_id"),
+    )
+
+    await gd_insert(
+        db.session,
+        "mfa_pending_challenges",
+        {
+            "user_id": user_id,
+            "challenge_token_jti": challenge_jti,
+            "expires_at": challenge_exp,
+            "attempts": 0,
+            "ip": request.client.host if request and request.client else None,
+            "user_agent": (request.headers.get("user-agent") if request else None) or None,
+            # Step-up does not extend the refresh-token lifetime so this is
+            # always the short-lived flavour regardless of the original
+            # session's remember_me posture.
+            "remember_me": False,
+        },
+    )
+
+    try:
+        audit = AuditLogEngine(Repos(db.session))
+        await audit.log_auth_event(
+            action="mfa.stepup.challenge_issued",
+            user_id=user_id,
+            tenant_id=current_user.get("tenant_id"),
+            success=True,
+            email=current_user.get("email"),
+        )
+    except Exception as exc:
+        logger.debug(f"stepup_start: audit failed: {exc}")
+
+    allowed_for_user = mfa_policy.allowed_factor_kinds(current_user)
+    enrolled_kinds = {
+        f.get("kind") for f in active_factors
+        if f.get("kind") in allowed_for_user
+    }
+    if implicit_email_otp and "email_otp" in allowed_for_user:
+        enrolled_kinds.add("email_otp")
+    if "recovery_code" in allowed_for_user:
+        try:
+            rc_rows = await gd_find(
+                db.session,
+                "mfa_recovery_codes",
+                {"user_id": user_id, "consumed_at": None},
+            ) or []
+            if rc_rows:
+                enrolled_kinds.add("recovery_code")
+        except Exception as exc:
+            logger.debug(f"stepup_start: recovery_code lookup failed: {exc}")
+
+    return StepupStartResponse(
+        challenge_token=challenge_token,
+        challenge_expires_at=challenge_exp.isoformat(),
+        available_factor_kinds=sorted(k for k in enrolled_kinds if k),
+        mfa_tier=tier.value,
+    )
+
+
+@router.post("/auth/mfa/stepup/verify", response_model=StepupVerifyResponse)
+async def stepup_verify(
+    body: MfaVerifyRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(_security),
+):
+    """Consume a step-up challenge by presenting a valid factor proof.
+
+    Mirrors ``/auth/mfa/verify`` byte-for-byte except every per-factor
+    branch threads ``stepup_only=True`` so the completion helper mints a
+    NEW access token with a refreshed ``mfa_recent_at`` claim and
+    intentionally leaves the existing refresh token untouched.
+    """
+    challenge, user = await _resolve_challenge(credentials)
+
+    if body.factor_kind == "recovery":
+        body.factor_kind = "recovery_code"
+
+    allowed = mfa_policy.allowed_factor_kinds(user)
+    if body.factor_kind not in allowed:
+        await _bump_challenge_attempts(challenge)
+        raise HTTPException(status_code=400, detail="نوع العامل غير مسموح لهذا الحساب")
+
+    if body.factor_kind == "totp":
+        if not body.code:
+            await _bump_challenge_attempts(challenge)
+            raise HTTPException(status_code=400, detail="رمز التحقق مطلوب")
+        factors = await gd_find(
+            db.session, "mfa_factors", {"user_id": user["id"], "kind": "totp", "is_active": True}
+        )
+        if not factors:
+            await _bump_challenge_attempts(challenge)
+            raise HTTPException(status_code=400, detail="لا يوجد عامل TOTP مفعّل لهذا الحساب")
+
+        def _sort_key(f):
+            return f.get("verified_at") or f.get("created_at") or datetime.min
+
+        factor = sorted(factors, key=_sort_key, reverse=True)[0]
+        encrypted = factor.get("totp_secret_encrypted")
+        try:
+            secret_b32 = mfa_crypto.decrypt_totp_secret(
+                encrypted if isinstance(encrypted, (bytes, bytearray)) else bytes(encrypted)
+            )
+        except mfa_crypto.MfaCryptoConfigError as exc:
+            logger.warning(f"stepup_verify(totp): decrypt failed for factor {factor.get('id')}: {exc}")
+            await _bump_challenge_attempts(challenge)
+            raise HTTPException(status_code=500, detail="عامل التحقق غير صالح")
+
+        if not mfa_crypto.verify_totp_code(secret_b32, body.code, window=1):
+            await _bump_challenge_attempts(challenge)
+            try:
+                audit = AuditLogEngine(Repos(db.session))
+                await audit.log_auth_event(
+                    action="mfa.stepup.failure",
+                    user_id=user["id"],
+                    tenant_id=user.get("tenant_id"),
+                    success=False,
+                    email=user.get("email"),
+                    reason="totp_invalid",
+                )
+            except Exception as exc:
+                logger.debug(f"stepup_verify(totp): audit failed: {exc}")
+            raise HTTPException(status_code=400, detail="رمز التحقق غير صحيح")
+
+        try:
+            await gd_update_one(
+                db.session,
+                "mfa_factors",
+                {"id": factor["id"]},
+                {"last_used_at": datetime.now(timezone.utc)},
+            )
+        except Exception as exc:
+            logger.debug(f"stepup_verify(totp): last_used_at update failed: {exc}")
+
+        return StepupVerifyResponse(
+            **(await _complete_mfa_login(user, challenge, "totp", request, stepup_only=True))
+        )
+
+    if body.factor_kind == "webauthn":
+        if not body.webauthn_response:
+            await _bump_challenge_attempts(challenge)
+            raise HTTPException(status_code=400, detail="استجابة مفتاح الأمان مطلوبة")
+        result = await _verify_webauthn_and_complete(
+            user=user,
+            challenge=challenge,
+            credential=body.webauthn_response,
+            webauthn_challenge_id=body.webauthn_challenge_id,
+            request=request,
+            stepup_only=True,
+        )
+        return StepupVerifyResponse(**result)
+
+    if body.factor_kind == "email_otp":
+        if not body.code:
+            await _bump_challenge_attempts(challenge)
+            raise HTTPException(status_code=400, detail="رمز التحقق مطلوب")
+        result = await _verify_email_otp_and_complete(
+            user=user, challenge=challenge, code=body.code, request=request,
+            stepup_only=True,
+        )
+        return StepupVerifyResponse(**result)
+
+    if body.factor_kind == "recovery_code":
+        if not body.code:
+            await _bump_challenge_attempts(challenge)
+            raise HTTPException(status_code=400, detail="رمز الاسترداد مطلوب")
+        result = await _verify_recovery_code_and_complete(
+            user=user, challenge=challenge, code=body.code, request=request,
+            stepup_only=True,
+        )
+        return StepupVerifyResponse(**result)
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"نوع العامل غير مدعوم: {body.factor_kind!r}",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Email OTP — Tier B/C factor (Step 5)
 # ---------------------------------------------------------------------------
 #
@@ -769,8 +1059,9 @@ async def email_otp_send(
 
 
 async def _verify_email_otp_and_complete(
-    *, user: dict, challenge: dict, code: str, request: Optional[Request]
-) -> TokenResponse:
+    *, user: dict, challenge: dict, code: str, request: Optional[Request],
+    stepup_only: bool = False,
+):
     """Match a user-supplied 6-digit OTP against the latest unconsumed
     unexpired row for this challenge. On success: stamp consumed_at,
     delete the row's siblings (defence-in-depth — only one OTP per
@@ -868,7 +1159,7 @@ async def _verify_email_otp_and_complete(
     except Exception as exc:
         logger.debug(f"verify_mfa(email_otp): consumed_at update failed: {exc}")
 
-    return await _complete_mfa_login(user, challenge, "email_otp", request)
+    return await _complete_mfa_login(user, challenge, "email_otp", request, stepup_only=stepup_only)
 
 
 # ---------------------------------------------------------------------------
@@ -1320,7 +1611,8 @@ async def _verify_webauthn_and_complete(
     credential: dict,
     request: Optional[Request],
     webauthn_challenge_id: Optional[str] = None,
-) -> TokenResponse:
+    stepup_only: bool = False,
+):
     """Shared helper: verify a WebAuthn assertion against a stored
     credential, bump the sign count, delete the verify challenge, and
     mint final tokens via ``_complete_mfa_login``.
@@ -1402,7 +1694,7 @@ async def _verify_webauthn_and_complete(
         logger.debug(f"webauthn verify: factor update failed: {exc}")
 
     await _delete_webauthn_challenge(chal_row["id"])
-    return await _complete_mfa_login(user, challenge, "webauthn", request)
+    return await _complete_mfa_login(user, challenge, "webauthn", request, stepup_only=stepup_only)
 
 
 @router.post(
@@ -1663,8 +1955,9 @@ async def recovery_codes_status(
 
 
 async def _verify_recovery_code_and_complete(
-    *, user: dict, challenge: dict, code: str, request: Optional[Request]
-) -> TokenResponse:
+    *, user: dict, challenge: dict, code: str, request: Optional[Request],
+    stepup_only: bool = False,
+):
     """Verify a single-use recovery code, mark it consumed, and
     complete the login. Bcrypt verifies are slow (~250 ms each) so we
     cap the per-call check at the user's first 50 unconsumed rows; in
@@ -1726,14 +2019,31 @@ async def _verify_recovery_code_and_complete(
     except Exception as exc:
         logger.warning(f"verify_mfa(recovery): consumed_at update failed: {exc}")
 
-    response = await _complete_mfa_login(user, challenge, "recovery_code", request)
+    # Step 6 deferral satisfied here in Step 7: a recovery-code redemption
+    # sets mfa_must_restore_factor=True so the require_recent_mfa
+    # dependency refuses every Tier-A sensitive route with
+    # MFA_RESTORE_REQUIRED until the user re-enrols a normal factor
+    # (Passkey or TOTP). Tier B/C users can ignore this flag — their
+    # require_recent_mfa branch is the freshness check only.
+    try:
+        await gd_update_one(
+            db.session,
+            "users",
+            {"id": user["id"]},
+            {"mfa_must_restore_factor": True},
+        )
+    except Exception as exc:
+        logger.warning(f"verify_mfa(recovery): mfa_must_restore_factor stamp failed: {exc}")
+
+    response = await _complete_mfa_login(user, challenge, "recovery_code", request, stepup_only=stepup_only)
 
     # If the user is now low on codes, force the post-login nudge regardless
     # of the acknowledgement flag — they must regenerate before they get
-    # locked out.
+    # locked out. (Only meaningful for the full-login response shape; the
+    # step-up dict response has no equivalent flag to attach.)
     remaining_after = sum(
         1 for r in fresh if r["id"] != matched["id"] and r.get("consumed_at") is None
     )
-    if remaining_after <= RECOVERY_LOW_REMAINING_THRESHOLD:
+    if remaining_after <= RECOVERY_LOW_REMAINING_THRESHOLD and not stepup_only:
         response = response.copy(update={"mfa_recovery_codes_pending_view": True})
     return response

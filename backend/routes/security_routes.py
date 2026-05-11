@@ -44,7 +44,14 @@ class SessionActionResult(BaseModel):
     affected_count: int = 0
 
 
-def setup_security_routes(db, get_current_user, require_roles, UserRole):
+def setup_security_routes(db, get_current_user, require_roles, UserRole, require_recent_mfa=None):
+    # Task #169 Step 7: require_recent_mfa is injected by app/routes.py.
+    # Defensive default: if a caller forgets to pass it (e.g. an old test
+    # harness), fall back to a no-op that simply re-uses get_current_user
+    # — that fail-open behaviour is ONLY acceptable in test contexts.
+    if require_recent_mfa is None:
+        def require_recent_mfa(max_age_seconds: int = 300):  # noqa: ARG001
+            return get_current_user
     """Setup security routes with database and auth dependencies"""
     
     router = APIRouter(prefix="/security", tags=["Security Center"])
@@ -92,7 +99,10 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
     @router.post("/lock-account/{user_id}")
     async def lock_account(
         user_id: str,
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+        # Task #169 Step 7: locking accounts is platform-admin only AND
+        # requires a fresh MFA proof (≤5 minutes).
+        _stepup: dict = Depends(require_recent_mfa()),
     ):
         """
         قفل حساب مستخدم
@@ -192,7 +202,10 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
     
     @router.post("/end-all-sessions", response_model=SessionActionResult)
     async def end_all_sessions(
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+        # Task #169 Step 7: terminating every active session platform-wide
+        # is the broadest blast-radius admin action — gate with fresh MFA.
+        _stepup: dict = Depends(require_recent_mfa()),
     ):
         """
         إنهاء جميع الجلسات النشطة لجميع المستخدمين
@@ -304,7 +317,10 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
     @router.post("/deactivate-account/{user_id}")
     async def deactivate_account(
         user_id: str,
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+        # Task #169 Step 7: deactivation is irreversible from the user's
+        # perspective until reactivated; gate with fresh MFA.
+        _stepup: dict = Depends(require_recent_mfa()),
     ):
         """تعطيل حساب مستخدم"""
         try:
@@ -364,7 +380,10 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
     @router.post("/password-reset-request/{user_id}")
     async def create_password_reset(
         user_id: str,
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+        # Task #169 Step 7: admin-issued password resets mint a temp
+        # password that grants login → also gate with fresh MFA.
+        _stepup: dict = Depends(require_recent_mfa()),
     ):
         """إنشاء طلب إعادة تعيين كلمة المرور (يرسل كلمة مرور مؤقتة)"""
         try:
