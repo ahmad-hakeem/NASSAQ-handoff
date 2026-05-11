@@ -983,12 +983,17 @@ async def get_school_dashboard(
 
 
 
-# ============== PUBLIC STATS ROUTE (No Auth Required) ==============
+# ============== PLATFORM STATS ROUTE (Platform admins only) ==============
+# SECURITY (audit C-4): originally unauthenticated; tenant/usage enumeration
+# is a sovereign-grade red line. Restricted to platform admins. The duplicate
+# in `routes/public_routes.py` carries the same gate.
 @router.get("/public/stats")
-async def get_public_stats():
+async def get_public_stats(current_user: dict = Depends(get_current_user)):
+    from utils.tenant_scope import _PLATFORM_ROLES
+    if current_user.get("role") not in _PLATFORM_ROLES:
+        raise HTTPException(status_code=403, detail="غير مصرح بالوصول")
     """
-    Get public platform statistics for Landing Page.
-    No authentication required.
+    Get platform statistics for the landing page (admin-gated).
     """
     try:
         _now = _time.monotonic()

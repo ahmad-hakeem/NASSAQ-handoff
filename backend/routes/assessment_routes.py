@@ -170,12 +170,18 @@ def create_assessment_router(db, get_current_user, require_roles, UserRole):
         assessment_id: str,
         current_user: dict = Depends(get_current_user)
     ):
-        """Get assessment by ID"""
-        assessment = await engine.get_assessment_by_id(assessment_id)
-        
+        """Get assessment by ID — tenant-scoped (audit C-3)."""
+        from utils.tenant_scope import _is_platform_admin
+        tenant_id = None
+        if not _is_platform_admin(current_user):
+            tenant_id = current_user.get("tenant_id")
+            if not tenant_id:
+                raise HTTPException(status_code=403, detail="تعذّر التحقق من صلاحياتك للوصول إلى هذه البيانات")
+        assessment = await engine.get_assessment_by_id(assessment_id, tenant_id=tenant_id)
+
         if not assessment:
             raise HTTPException(status_code=404, detail="التقييم غير موجود")
-        
+
         return assessment
     
     @router.put("/{assessment_id}", response_model=AssessmentResponse)

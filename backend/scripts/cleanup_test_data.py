@@ -13,9 +13,27 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from db import async_session_factory
 from sqlalchemy import text
+from config import NassaqConfig as Config
+
+
+def _assert_destructive_ops_allowed() -> None:
+    """SECURITY (audit M-7): never let this script run outside dev.
+
+    Even though it filters by `'Test School%'`, a fat-finger rename of a real
+    school could match. Defense-in-depth: hard-fail with a loud message in
+    any non-development environment.
+    """
+    if not Config.destructive_ops_allowed():
+        env = os.environ.get("ENVIRONMENT") or os.environ.get("REPLIT_DEPLOYMENT", "unknown")
+        sys.stderr.write(
+            f"REFUSING TO RUN cleanup_test_data.py in environment={env!r}: "
+            "destructive ops are blocked outside development.\n"
+        )
+        raise SystemExit(2)
 
 
 async def cleanup():
+    _assert_destructive_ops_allowed()
     async with async_session_factory() as session:
         result = await session.execute(
             text("SELECT id, name_en FROM schools WHERE name_en LIKE 'Test School%'")

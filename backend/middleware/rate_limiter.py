@@ -74,6 +74,11 @@ RATE_LIMITS = {
     "/api/reports/export": {"max": 10, "window": 120},
     "/api/hakim/analyze": {"max": 5, "window": 60},
     "/api/auth/change-password": {"max": 5, "window": 300},
+    # SECURITY (audit H-3): per-IP brute-force/enumeration limit on the
+    # password recovery surface. Per-email limits are layered inside the
+    # handlers (mirrors the `login_account:` pattern).
+    "/api/auth/forgot-password": {"max": 20, "window": 3600},
+    "/api/auth/reset-password": {"max": 20, "window": 3600},
     "/api/teachers/create": {"max": 20, "window": 60},
     "/api/classes/create": {"max": 30, "window": 60},
     "/api/student-wizard/create": {"max": 30, "window": 60},

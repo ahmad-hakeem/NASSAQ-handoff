@@ -2,6 +2,18 @@
 const path = require("path");
 require("dotenv").config();
 
+// SECURITY (audit M-3): production builds must never honour
+// DANGEROUSLY_DISABLE_HOST_CHECK. CRA only consumes the flag in the dev
+// server, but defense-in-depth: hard-fail any production build that has it
+// set to true.
+if (process.env.NODE_ENV === "production" && String(process.env.DANGEROUSLY_DISABLE_HOST_CHECK).toLowerCase() === "true") {
+  console.error(
+    "REFUSING TO BUILD: DANGEROUSLY_DISABLE_HOST_CHECK=true is forbidden in production builds. " +
+    "Unset it in the deployment environment before retrying."
+  );
+  process.exit(1);
+}
+
 // Check if we're in development/preview mode (not production build)
 // Craco sets NODE_ENV=development for start, NODE_ENV=production for build
 const isDevServer = process.env.NODE_ENV !== "production";
@@ -29,6 +41,24 @@ let webpackConfig = {
       rules: {
         "react-hooks/rules-of-hooks": "warn",
         "react-hooks/exhaustive-deps": "warn",
+        // SECURITY (audit H-5 / L-1): block new XSS sinks. Existing
+        // call sites are sanitised; future ones must be either deleted
+        // or explicitly justified with an `// eslint-disable-next-line`.
+        "no-restricted-syntax": [
+          "warn",
+          {
+            "selector": "AssignmentExpression[left.property.name='innerHTML']",
+            "message": "Avoid innerHTML — use textContent or DOM APIs (audit H-5)."
+          },
+          {
+            "selector": "AssignmentExpression[left.property.name='outerHTML']",
+            "message": "Avoid outerHTML — use DOM APIs (audit H-5)."
+          },
+          {
+            "selector": "CallExpression[callee.property.name='write'][callee.object.name='document']",
+            "message": "Avoid document.write — use DOM APIs."
+          }
+        ],
       },
     },
   },

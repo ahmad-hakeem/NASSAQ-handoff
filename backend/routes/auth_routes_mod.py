@@ -769,6 +769,15 @@ def _token_hash(token: str) -> str:
 
 @router.post("/auth/forgot-password")
 async def forgot_password(request: ForgotPasswordRequest):
+    # SECURITY (audit H-3): per-email brute-force / enumeration limit, layered
+    # on top of the per-IP middleware bucket. Mirrors the `login_account:`
+    # pattern. Response stays generic regardless of outcome.
+    from middleware.rate_limiter import rate_store
+    email_key = f"forgot_password_email:{(request.email or '').strip().lower()}"
+    limited, _, _ = await rate_store.is_rate_limited(email_key, 5, 3600)
+    if limited:
+        return {"message": "إذا كان البريد الإلكتروني مسجلاً، ستصلك رسالة لإعادة تعيين كلمة المرور"}
+
     user = await gd_find_one(db.session, "users", {"email": request.email})
 
     if user and user.get("is_active", True):
@@ -801,6 +810,13 @@ async def forgot_password(request: ForgotPasswordRequest):
 
 @router.post("/auth/reset-password")
 async def reset_password(request: ResetPasswordRequest):
+    # SECURITY (audit H-3): per-token-prefix limit so an attacker cannot
+    # silently brute-force the JWT signature space against a single victim.
+    from middleware.rate_limiter import rate_store
+    token_prefix_key = f"reset_password_token:{(request.token or '')[:24]}"
+    limited, _, _ = await rate_store.is_rate_limited(token_prefix_key, 10, 3600)
+    if limited:
+        raise HTTPException(status_code=429, detail="عدد المحاولات تجاوز الحد المسموح. يرجى المحاولة لاحقاً")
     try:
         payload = jwt.decode(request.token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:

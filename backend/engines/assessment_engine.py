@@ -139,8 +139,18 @@ class AssessmentEngine:
 
         return assessments
 
-    async def get_assessment_by_id(self, assessment_id: str) -> Optional[Dict[str, Any]]:
-        return await gd_find_one(self.session, "assessments", {"id": assessment_id})
+    async def get_assessment_by_id(
+        self,
+        assessment_id: str,
+        tenant_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        # SECURITY (audit C-3): when a tenant is supplied, pin it at the query
+        # level so a foreign-tenant id cannot be returned. Internal callers
+        # (engine helpers that already validated the assessment) may pass None.
+        filters: Dict[str, Any] = {"id": assessment_id}
+        if tenant_id:
+            filters["tenant_id"] = tenant_id
+        return await gd_find_one(self.session, "assessments", filters)
 
     async def update_assessment(
         self,

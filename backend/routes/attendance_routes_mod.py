@@ -454,6 +454,13 @@ async def get_student_attendance_history(
     current_user: dict = Depends(get_current_user)
 ):
     """Get attendance history for a specific student"""
+    # SECURITY (audit H-1): same-tenant alone is not sufficient — require
+    # an explicit guardian/teacher/admin/self relationship before exposing
+    # this student's attendance history.
+    from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+    require_can_view_student_sync_check(
+        await can_view_student(db.session, current_user, student_id)
+    )
     student = await gd_find_one(db.session, "students", {"id": student_id})
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")

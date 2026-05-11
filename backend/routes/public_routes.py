@@ -2,11 +2,13 @@
 NASSAQ - Public Routes
 Public endpoints that don't require authentication
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timezone
 import logging
 import time
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
+from dependencies import get_current_user
+from utils.tenant_scope import _PLATFORM_ROLES
 
 logger = logging.getLogger("nassaq.public_routes")
 
@@ -17,9 +19,14 @@ _STATS_TTL = 60
 def create_public_routes(db):
     """Create public router"""
     router = APIRouter(prefix="/public", tags=["Public"])
-    
+
     @router.get("/stats")
-    async def get_public_stats():
+    async def get_public_stats(current_user: dict = Depends(get_current_user)):
+        # SECURITY (audit C-4): platform-wide aggregates are no longer
+        # publicly readable — tenant/usage enumeration is a sovereign-grade
+        # red line. Restricted to platform admins.
+        if current_user.get("role") not in _PLATFORM_ROLES:
+            raise HTTPException(status_code=403, detail="غير مصرح بالوصول")
         """Get public platform statistics for Landing Page"""
         try:
             now = time.monotonic()

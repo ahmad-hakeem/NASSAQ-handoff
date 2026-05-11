@@ -478,7 +478,10 @@ async def get_student_dashboard(
     - نسبة الحضور
     - الإشعارات
     """
-    student = await gd_find_one(db.session, "students", {"id": student_id})
+    # SECURITY (audit C-3): tenant-scope the lookup itself so a foreign
+    # student-id no longer reveals the school structure via 200 vs 404 timing.
+    from utils.tenant_scope import tenant_scoped_find_one
+    student = await tenant_scoped_find_one(db.session, "students", student_id, current_user)
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 

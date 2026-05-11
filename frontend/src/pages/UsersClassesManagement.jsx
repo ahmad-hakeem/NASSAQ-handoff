@@ -708,7 +708,16 @@ const PermanentHakimWidget = ({ insights, isRTL, onAction, stats }) => {
         title={t('hakimSmartAssistant')}>
         <div className={`w-[72px] h-[72px] rounded-full overflow-hidden bg-white shadow-xl ring-3 ${hasInsights ? 'ring-violet-400 animate-[hakim-ring-pulse_2s_ease-in-out_infinite]' : 'ring-violet-200'} flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:shadow-2xl`}>
           <img src="/hakim-poses/detecting-patterns.png" alt="Hakim" className="hakim-img w-20 h-20 object-contain animate-[hakim-alive_4s_ease-in-out_infinite]"
-            onError={(e) => { e.target.style.display = 'none'; e.target.parentElement.innerHTML = '<span class="text-3xl">🧠</span>'; }} />
+            onError={(e) => {
+              e.target.style.display = 'none';
+              const parent = e.target.parentElement;
+              if (parent && !parent.querySelector('.hakim-fallback-emoji')) {
+                const span = document.createElement('span');
+                span.className = 'hakim-fallback-emoji text-3xl';
+                span.textContent = '🧠';
+                parent.appendChild(span);
+              }
+            }} />
         </div>
         {hasInsights && (
           <span className="absolute -top-1 -end-1 w-6 h-6 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center shadow-md animate-[hakim-badge_2s_ease-in-out_infinite]">

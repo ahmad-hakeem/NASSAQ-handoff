@@ -141,8 +141,9 @@ async def get_academic_year(
     academic_year_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get a single academic year"""
-    academic_year = await gd_find_one(db.session, "academic_years", {"id": academic_year_id})
+    """Get a single academic year — tenant-scoped (audit C-3)."""
+    from utils.tenant_scope import tenant_scoped_find_one
+    academic_year = await tenant_scoped_find_one(db.session, "academic_years", academic_year_id, current_user)
     if not academic_year:
         raise HTTPException(status_code=404, detail="العام الدراسي غير موجود")
     return AcademicYearResponse(**normalize_academic_year(academic_year))
@@ -279,8 +280,9 @@ async def get_term(
     term_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get a single term"""
-    term = await gd_find_one(db.session, "terms", {"id": term_id})
+    """Get a single term — tenant-scoped (audit C-3)."""
+    from utils.tenant_scope import tenant_scoped_find_one
+    term = await tenant_scoped_find_one(db.session, "terms", term_id, current_user)
     if not term:
         raise HTTPException(status_code=404, detail="الفصل الدراسي غير موجود")
     return TermResponse(**term)
@@ -393,8 +395,9 @@ async def get_grade_level(
     grade_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get a single grade level"""
-    grade = await gd_find_one(db.session, "grade_levels", {"id": grade_id})
+    """Get a single grade level — tenant-scoped (audit C-3)."""
+    from utils.tenant_scope import tenant_scoped_find_one
+    grade = await tenant_scoped_find_one(db.session, "grade_levels", grade_id, current_user)
     if not grade:
         raise HTTPException(status_code=404, detail="المرحلة الدراسية غير موجودة")
     return GradeLevelResponse(**grade)

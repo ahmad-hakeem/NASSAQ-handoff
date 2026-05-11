@@ -95,6 +95,10 @@ def register_middleware(app: FastAPI):
         # B-02: Removed 'unsafe-eval' (CRA build doesn't need it).
         # 'unsafe-inline' for scripts retained until the SPA migrates to nonces;
         # CSS still needs unsafe-inline because Tailwind/CRA inject inline style attrs.
+        # SECURITY (audit H-4): tactical CSP tightening — adds object-src,
+        # base-uri, form-action, and trims connect-src. 'unsafe-inline' for
+        # scripts is intentionally retained until the SPA migrates to nonces
+        # (Phase 3 — see docs/security/PHASE1_REPORT.md).
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline'; "
@@ -103,6 +107,9 @@ def register_middleware(app: FastAPI):
             "img-src 'self' data: blob: https:; "
             "media-src 'self' https:; "
             "connect-src 'self' wss: ws:; "
+            "object-src 'none'; "
+            "base-uri 'none'; "
+            "form-action 'self'; "
             "frame-ancestors 'none';"
         )
         # B-03: aggressive cache for hashed/static asset bundles. CRA writes

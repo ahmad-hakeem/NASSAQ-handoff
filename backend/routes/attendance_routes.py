@@ -259,12 +259,21 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
         status: Optional[str] = None,
         current_user: dict = Depends(get_current_user)
     ):
-        """Get attendance records for a student"""
+        """Get attendance records for a student.
+
+        SECURITY (audit H-1): same-tenant alone is not enough. The caller must
+        be the student themselves, a guardian of the student, a teacher
+        assigned to the student's class, or an admin role within the tenant.
+        """
         tenant_id = current_user.get("tenant_id") or current_user.get("primary_tenant_id")
-        
+
         if not tenant_id:
             raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
-        
+
+        from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+        allowed = await can_view_student(db.session, current_user, student_id)
+        require_can_view_student_sync_check(allowed)
+
         records = await engine.get_student_attendance(
             tenant_id=tenant_id,
             student_id=student_id,
@@ -272,7 +281,7 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
             end_date=end_date,
             status=status
         )
-        
+
         return records
     
     @router.get("/section/{section_id}")

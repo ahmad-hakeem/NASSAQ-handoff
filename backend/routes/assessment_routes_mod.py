@@ -291,15 +291,16 @@ async def get_assessment(
     current_user: dict = Depends(get_current_user)
 ):
     """Get a single assessment by ID"""
-    assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
+    # SECURITY (audit C-3): tenant pinning at the query level via the
+    # fail-closed helper. This is the route the app router actually serves
+    # (assessment_routes_mod wins over assessment_routes for overlapping
+    # paths — see backend/app/routes.py).
+    from utils.tenant_scope import tenant_scoped_find_one
+    assessment = await tenant_scoped_find_one(
+        db.session, "assessments", assessment_id, current_user
+    )
     if not assessment:
         raise HTTPException(status_code=404, detail="Assessment not found")
-
-    tenant_id = current_user.get("tenant_id")
-    if tenant_id and current_user["role"] != UserRole.PLATFORM_ADMIN.value:
-        assess_tenant = assessment.get("tenant_id") or assessment.get("school_id")
-        if assess_tenant and assess_tenant != tenant_id:
-            raise HTTPException(status_code=404, detail="Assessment not found")
 
     class_info = await gd_find_one(db.session, "classes", {"id": assessment['class_id']})
     subject = await gd_find_one(db.session, "subjects", {"id": assessment['subject_id']})

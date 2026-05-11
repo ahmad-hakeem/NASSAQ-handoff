@@ -526,7 +526,29 @@ export default function SecurityCenterPage() {
       container.style.position = 'fixed';
       container.style.left = '-9999px';
       container.style.top = '0';
-      container.innerHTML = html;
+      // SECURITY (audit H-5): replace `container.innerHTML = html` (a known
+      // XSS-sink shape) with a parse-then-sanitise pipeline. All interpolated
+      // values above already pass through `escHtml`; this strips any unknown
+      // <script>/<iframe>/event-handler/javascript: attribute that a future
+      // refactor might accidentally let through.
+      const parser = new DOMParser();
+      const parsedDoc = parser.parseFromString(html, 'text/html');
+      const reportRoot = parsedDoc.body.firstElementChild;
+      if (reportRoot) {
+        reportRoot.querySelectorAll('script,iframe,object,embed,link,style').forEach((n) => n.remove());
+        reportRoot.querySelectorAll('*').forEach((el) => {
+          [...el.attributes].forEach((attr) => {
+            const name = attr.name.toLowerCase();
+            const value = (attr.value || '').toLowerCase();
+            if (name.startsWith('on')) {
+              el.removeAttribute(attr.name);
+            } else if ((name === 'href' || name === 'src' || name === 'xlink:href') && value.startsWith('javascript:')) {
+              el.removeAttribute(attr.name);
+            }
+          });
+        });
+        container.appendChild(reportRoot);
+      }
       document.body.appendChild(container);
 
       const canvas = await html2canvas(container.firstElementChild, { scale: 2, useCORS: true, logging: false });
