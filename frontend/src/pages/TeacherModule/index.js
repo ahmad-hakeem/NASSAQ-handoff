@@ -21,3 +21,4 @@ export { default as TeacherAchievementsPage } from './TeacherAchievementsPage';
 export { default as TeacherCommunicationPage } from './TeacherCommunicationPage';
 export { default as TeacherResourcesPage } from './TeacherResourcesPage';
 export { default as TeacherSettingsPage } from './TeacherSettingsPage';
+export { default as TeacherStandbyPage } from './TeacherStandbyPage';

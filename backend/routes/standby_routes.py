@@ -24,7 +24,7 @@ from typing import List
 
 from dependencies import db, get_current_user, require_roles, UserRole
 from engines.notification_engine import NotificationEngine
-from engines.sql_utils import gd_delete_many, gd_find, gd_find_one, gd_insert
+from engines.sql_utils import gd_delete_many, gd_find, gd_find_one, gd_insert, gd_upsert
 from utils.tenant_scope import assert_school_access, resolve_school_id
 
 # Standby roster is principal/admin-only (Task #157).
@@ -34,6 +34,11 @@ _STANDBY_ROSTER_ROLES = [
     UserRole.PLATFORM_ADMIN,
 ]
 require_standby_roster_role = require_roles(_STANDBY_ROSTER_ROLES)
+
+_AR_DAY_LABEL = {
+    "sunday": "الأحد", "monday": "الإثنين", "tuesday": "الثلاثاء",
+    "wednesday": "الأربعاء", "thursday": "الخميس",
+}
 
 from services.standby_roster_service import (
     DAYS,
@@ -534,6 +539,146 @@ async def get_standby_roster(
     return payload
 
 
+def _roster_signature_for_teacher(cells_for_teacher: dict) -> list:
+    """Sorted list of (day, period) where this teacher has standby."""
+    out = []
+    for day, periods_map in (cells_for_teacher or {}).items():
+        for p, c in (periods_map or {}).items():
+            if c and c.get("status") == "standby":
+                try:
+                    out.append([day, int(p)])
+                except (TypeError, ValueError):
+                    continue
+    out.sort(key=lambda x: (x[0], x[1]))
+    return out
+
+
+async def _notify_affected_teachers_after_regenerate(
+    *, school_id: str, payload: dict, actor_user_id: Optional[str],
+) -> int:
+    """Diff fresh roster vs. last persisted snapshot and notify teachers
+    whose set of standby slots changed. Snapshot is stored under
+    `school_settings.custom_settings.standby_last_snapshot` so we don't
+    add a new collection. Returns the number of notified teachers.
+    """
+    cells = payload.get("cells") or {}
+    teachers = payload.get("teachers") or []
+    teacher_index = {t.get("id"): t for t in teachers if t.get("id")}
+
+    new_snapshot: dict = {}
+    for tid, t_cells in cells.items():
+        sig = _roster_signature_for_teacher(t_cells)
+        if sig:
+            new_snapshot[tid] = sig
+
+    # Atomically read-and-update only the `standby_last_snapshot` key so
+    # concurrent writers to other `custom_settings` keys (or another
+    # regenerate request) cannot clobber each other. We use the
+    # request-scoped session, lock the row with `FOR UPDATE`, diff vs.
+    # the current value, then patch via `jsonb_set` — all in the same
+    # transaction so PostgreSQL serializes concurrent regenerates.
+    from sqlalchemy import text as _sql_text
+    import json as _json
+
+    sess = db.session
+    val_json = _json.dumps(new_snapshot)
+    prior: dict = {}
+    try:
+        row = (await sess.execute(_sql_text(
+            "SELECT custom_settings FROM school_settings "
+            "WHERE school_id = :sid FOR UPDATE"
+        ), {"sid": school_id})).first()
+        if row is not None:
+            cs = row[0] or {}
+            p = cs.get("standby_last_snapshot") if isinstance(cs, dict) else None
+            if isinstance(p, dict):
+                prior = p
+            await sess.execute(_sql_text(
+                "UPDATE school_settings "
+                "SET custom_settings = jsonb_set("
+                "  COALESCE(custom_settings, '{}'::jsonb), "
+                "  '{standby_last_snapshot}', CAST(:val AS jsonb), true) "
+                "WHERE school_id = :sid"
+            ), {"sid": school_id, "val": val_json})
+        else:
+            # No row yet — create with only our key, race-safe via ON CONFLICT.
+            await sess.execute(_sql_text(
+                "INSERT INTO school_settings (school_id, custom_settings) "
+                "VALUES (:sid, jsonb_build_object("
+                "  'standby_last_snapshot', CAST(:val AS jsonb))) "
+                "ON CONFLICT (school_id) DO UPDATE SET "
+                "custom_settings = jsonb_set("
+                "  COALESCE(school_settings.custom_settings, '{}'::jsonb), "
+                "  '{standby_last_snapshot}', CAST(:val AS jsonb), true)"
+            ), {"sid": school_id, "val": val_json})
+        await sess.flush()
+    except Exception:
+        logger.exception("Failed to persist standby snapshot for school=%s", school_id)
+        # Without a reliable prior we cannot diff safely → don't notify.
+        return 0
+
+    affected: set = set()
+    for tid in set(prior.keys()) | set(new_snapshot.keys()):
+        if prior.get(tid) != new_snapshot.get(tid):
+            affected.add(tid)
+
+    if not affected:
+        return 0
+
+    # Resolve teacher.user_id for each affected teacher (one batched fetch).
+    rows = await gd_find(
+        db.session, "teachers",
+        {"school_id": school_id, "is_active": True},
+        limit=2000,
+    )
+    user_id_by_teacher = {r.get("id"): r.get("user_id") for r in rows if r.get("id")}
+
+    from engines.notification_engine import (
+        NotificationCategory, NotificationPriority, NotificationType,
+    )
+    notif = NotificationEngine(db)
+    notified = 0
+    for tid in affected:
+        user_id = user_id_by_teacher.get(tid)
+        if not user_id:
+            continue
+        meta = teacher_index.get(tid) or {}
+        new_slots = new_snapshot.get(tid, [])
+        old_slots = prior.get(tid, []) if isinstance(prior.get(tid), list) else []
+        delta = len(new_slots) - len(old_slots)
+        if delta > 0:
+            msg = f"تم تحديث جدول حصص الانتظار: لديك {len(new_slots)} خانة (+{delta} عن السابق)."
+        elif delta < 0:
+            msg = f"تم تحديث جدول حصص الانتظار: لديك {len(new_slots)} خانة ({delta} عن السابق)."
+        else:
+            msg = f"تم تحديث جدول حصص الانتظار: لديك {len(new_slots)} خانة (تغيّرت توزيعتها)."
+        try:
+            await notif.create_notification(
+                tenant_id=school_id,
+                recipient_id=user_id,
+                title="تحديث جدول حصص الانتظار",
+                message=msg,
+                notification_type=NotificationType.INFO.value,
+                category=NotificationCategory.SCHEDULE.value,
+                priority=NotificationPriority.MEDIUM.value,
+                entity_type="standby_roster",
+                entity_id=tid,
+                action_url="/teacher/standby",
+                sender_id=actor_user_id,
+                metadata={
+                    "teacher_id": tid,
+                    "slot_count": len(new_slots),
+                    "previous_slot_count": len(old_slots),
+                },
+            )
+            notified += 1
+        except Exception:
+            logger.exception(
+                "Failed to notify teacher=%s about standby roster update", tid,
+            )
+    return notified
+
+
 @router.post("/standby/roster/regenerate")
 async def regenerate_standby_roster(
     school_id: Optional[str] = Query(None),
@@ -550,14 +695,106 @@ async def regenerate_standby_roster(
     (they're applied on top of the freshly computed auto roster). Any
     that now conflict with reality (busy/unavailable/blocked-day)
     surface in `day_centric.warnings` and are excluded from the
-    effective roster — never silently overwritten or deleted.
+    effective roster — never silently overwritten or deleted. Affected
+    teachers (set of standby slots changed) receive an in-app
+    notification so they don't have to refresh manually.
     """
-    return await get_standby_roster(
+    payload = await get_standby_roster(
         school_id=school_id,
         shape=shape,
         x_school_context=x_school_context,
         current_user=current_user,
     )
+    sid = resolve_school_id(current_user, school_id or x_school_context)
+    if sid:
+        notified = await _notify_affected_teachers_after_regenerate(
+            school_id=str(sid),
+            payload=payload,
+            actor_user_id=current_user.get("id") if current_user else None,
+        )
+        totals = dict(payload.get("totals") or {})
+        totals["notified_teachers"] = notified
+        payload["totals"] = totals
+    return payload
+
+
+# ── Teacher-facing standby roster ─────────────────────────────────────────
+
+@router.get("/standby/roster/me")
+async def get_my_standby_roster(
+    school_id: Optional[str] = Query(None),
+    x_school_context: Optional[str] = Header(None),
+    current_user: dict = Depends(get_current_user),
+):
+    """يُرجع جدول حصص الانتظار الخاص بالمعلم الحالي للأسبوع الجاري.
+
+    Pulls only the cells for the authenticated teacher from the same
+    `compute_standby_roster` source the principal view uses, so the
+    teacher sees exactly what the school has assigned (auto + manual
+    overrides). Read-only and tenant-scoped.
+    """
+    role = (current_user or {}).get("role")
+    if role != UserRole.TEACHER.value:
+        raise HTTPException(status_code=403, detail="مخصص للمعلمين فقط")
+    teacher_id = (current_user or {}).get("teacher_id")
+    if not teacher_id:
+        raise HTTPException(status_code=400, detail="حساب المعلم غير مكتمل")
+
+    sid = resolve_school_id(current_user, school_id or x_school_context)
+    if not sid:
+        raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
+    assert_school_access(current_user, str(sid))
+
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+    if not teacher or teacher.get("school_id") != str(sid):
+        raise HTTPException(status_code=404, detail="المعلم غير موجود في هذه المدرسة")
+
+    timetable = await _resolve_active_timetable(str(sid))
+    timetable_id = timetable.get("id") if timetable else None
+    sessions: list[dict] = []
+    if timetable_id:
+        sessions = await gd_find(
+            db.session, "timetable_sessions",
+            {"timetable_id": timetable_id},
+            limit=10000,
+        )
+    periods = _detect_periods(sessions)
+
+    teachers_all = await gd_find(
+        db.session, "teachers",
+        {"school_id": str(sid), "is_active": True},
+        limit=2000,
+    )
+
+    final_roster = await compute_standby_roster(
+        db.session,
+        school_id=str(sid),
+        timetable_id=timetable_id,
+        teachers=teachers_all,
+        sessions=sessions,
+        apply_overrides=True,
+    )
+    my_slots = sorted(final_roster.get(teacher_id, set()),
+                      key=lambda x: (DAYS.index(x[0]) if x[0] in DAYS else 99, x[1]))
+
+    # Group by day for the UI.
+    by_day: dict = {d: [] for d in DAYS}
+    for d, p in my_slots:
+        if d in by_day:
+            by_day[d].append(p)
+    days_payload = [
+        {"day": d, "day_ar": _AR_DAY_LABEL.get(d, d), "periods": by_day[d]}
+        for d in DAYS
+    ]
+
+    return {
+        "teacher_id": teacher_id,
+        "teacher_name": teacher.get("full_name") or teacher.get("name") or "",
+        "periods": periods,
+        "days": days_payload,
+        "total_slots": len(my_slots),
+        "timetable_id": timetable_id,
+    }
 
 
 class StandbyOverrideRequest(BaseModel):

@@ -340,15 +340,15 @@ export function StandbyRosterContent() {
   return (
     <>
       {/* ── Header ───────────────────────────────────────────────── */}
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 shrink-0">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-[#1C3D74] flex items-center gap-2">
-              <Hourglass className="h-7 w-7 text-amber-500" />
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 shrink-0">
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-bold text-[#1C3D74] flex items-center gap-2 leading-tight">
+              <Hourglass className="h-5 w-5 md:h-6 md:w-6 text-amber-500 shrink-0" />
               جدول حصص الانتظار
+              <span className="hidden md:inline text-[11px] font-medium text-slate-400">
+                — كل خانة (يوم/حصة) تدعم عدّة معلمين بترتيب الأولوية.
+              </span>
             </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              عرض وزارة التعليم: لكل يوم صفوف بعدد المعلمين المنتظرين، وأعمدة بالحصص. عند إعادة التوليد يُعاد بناء الإسناد التلقائي من الجدول الرئيسي مع الحفاظ على التعديلات اليدوية، وأي تعارض (إجازة/منع زمني/يوم إجازة) يظهر كتنبيه أعلى الجدول.
-            </p>
           </div>
 
           {/* Unified toolbar: view toggle + refresh + primary regenerate. */}
@@ -435,13 +435,13 @@ export function StandbyRosterContent() {
         </div>
 
         {/* ── Legend ──────────────────────────────────────────────── */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 shrink-0">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 shrink-0 -mt-1">
           {viewMode === 'day' ? (
             <>
-              <LegendChip color="bg-white border border-emerald-300" label="انتظار تلقائي" />
-              <LegendChip color="bg-violet-100 border border-violet-400" label="مُسند يدوياً" />
+              <LegendChip color="bg-white border border-emerald-300" label="تلقائي" />
+              <LegendChip color="bg-violet-100 border border-violet-400" label="يدوي" />
               <span className="text-[11px] text-slate-500 mr-auto">
-                اضغط خانة فارغة لإضافة معلم • اضغط معلماً لاستثنائه.
+                اضغط + لإضافة معلم • اضغط الاسم لاستثنائه.
               </span>
             </>
           ) : (
@@ -555,7 +555,7 @@ export default function StandbyRosterPage() {
     <Sidebar>
       <div
         dir="rtl"
-        className="flex flex-col h-[calc(100dvh-3.5rem)] lg:h-[100dvh] p-4 md:p-6 gap-5 bg-slate-50 text-slate-900 overflow-hidden"
+        className="flex flex-col h-[calc(100dvh-3.5rem)] lg:h-[100dvh] p-3 md:p-5 gap-3 bg-slate-50 text-slate-900 overflow-hidden"
       >
         <ScheduleTabNav active="standby" />
         <StandbyRosterContent />

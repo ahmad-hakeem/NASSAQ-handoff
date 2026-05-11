@@ -50,6 +50,7 @@ import {
   Award,
   Lightbulb,
   ChevronDown,
+  Hourglass,
 } from 'lucide-react';
 
 
@@ -374,6 +375,12 @@ export const Sidebar = ({ children }) => {
         icon: MessageSquare,
         label: t('communicationNotifications'),
         href: '/teacher/communication',
+        roles: ['teacher'],
+      },
+      {
+        icon: Hourglass,
+        label: 'حصص الانتظار',
+        href: '/teacher/standby',
         roles: ['teacher'],
       },
       {
