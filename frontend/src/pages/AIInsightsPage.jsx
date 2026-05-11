@@ -26,6 +26,7 @@ import { AttendanceRadial } from '../components/dashboard/AttendancePanel';
 import SectionErrorBoundary from '../components/SectionErrorBoundary';
 import { CircularProgressRing } from '../components/ui/CircularProgressRing';
 import { CalendarCheck, FileText, XCircle, Download, Filter } from 'lucide-react';
+import { formatGregorianShort, formatGregorianFull } from '../utils/hijriDate';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -801,6 +802,13 @@ const AttendanceReportsSection = ({
   iconColor = 'text-brand-purple',
 }) => {
   const [rangeDays, setRangeDays] = useState(14);
+  const locale = isRTL ? 'ar' : 'en';
+
+  const parseDate = (value) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
 
   const allDaily = useMemo(() => report?.daily || [], [report]);
 
@@ -809,8 +817,8 @@ const AttendanceReportsSection = ({
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - rangeDays);
     return allDaily.filter((row) => {
-      const d = new Date(row.date);
-      return Number.isNaN(d.getTime()) ? true : d >= cutoff;
+      const d = parseDate(row.date);
+      return d ? d >= cutoff : true;
     });
   }, [allDaily, rangeDays]);
 
@@ -818,15 +826,20 @@ const AttendanceReportsSection = ({
     () =>
       [...filtered]
         .sort((a, b) => (a.date > b.date ? 1 : -1))
-        .map((row) => ({
-          date: row.date,
-          present: row.present || 0,
-          absent: row.absent || 0,
-          excused: row.excused || 0,
-          late: row.late || 0,
-          rate: row.attendance_rate || 0,
-        })),
-    [filtered]
+        .map((row) => {
+          const d = parseDate(row.date);
+          return {
+            date: row.date,
+            dateShort: d ? formatGregorianShort(d, locale) : '—',
+            dateFull: d ? formatGregorianFull(d, locale) : '—',
+            present: row.present || 0,
+            absent: row.absent || 0,
+            excused: row.excused || 0,
+            late: row.late || 0,
+            rate: row.attendance_rate || 0,
+          };
+        }),
+    [filtered, locale]
   );
 
   const windowTotals = useMemo(() => {
@@ -849,28 +862,41 @@ const AttendanceReportsSection = ({
   }, [filtered]);
 
   const handleExportCsv = () => {
-    const header = ['date', 'present', 'absent', 'excused', 'late', 'total', 'attendance_rate'];
+    const headerLabels = isRTL
+      ? ['التاريخ', 'اليوم', 'حاضر', 'غائب', 'بعذر', 'متأخر', 'الإجمالي', 'نسبة الحضور %']
+      : ['Date', 'Day', 'Present', 'Absent', 'Excused', 'Late', 'Total', 'Attendance Rate %'];
+
+    const escape = (val) => {
+      const s = String(val ?? '');
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
     const rows = [...filtered].sort((a, b) => (a.date > b.date ? 1 : -1));
     const csv = [
-      header.join(','),
-      ...rows.map((r) =>
-        [
-          r.date,
+      headerLabels.map(escape).join(','),
+      ...rows.map((r) => {
+        const d = parseDate(r.date);
+        const isoDay = d ? d.toISOString().slice(0, 10) : '—';
+        const readable = d ? formatGregorianFull(d, locale) : '—';
+        return [
+          isoDay,
+          readable,
           r.present || 0,
           r.absent || 0,
           r.excused || 0,
           r.late || 0,
           r.total || 0,
           r.attendance_rate || 0,
-        ].join(',')
-      ),
-    ].join('\n');
+        ].map(escape).join(',');
+      }),
+    ].join('\r\n');
 
     const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${exportFilenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`;
+    const rangeTag = rangeDays ? `${rangeDays}d` : 'all';
+    a.download = `${exportFilenamePrefix}-${rangeTag}-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -948,9 +974,10 @@ const AttendanceReportsSection = ({
                 <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: -16, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-muted/20" />
                   <XAxis
-                    dataKey="date"
+                    dataKey="dateShort"
                     tick={{ fontSize: 11 }}
-                    tickFormatter={(v) => v?.slice(5) || v}
+                    interval="preserveStartEnd"
+                    minTickGap={16}
                     reversed={isRTL}
                   />
                   <YAxis yAxisId="left" tick={{ fontSize: 11 }} allowDecimals={false} orientation={isRTL ? 'right' : 'left'} />
@@ -963,6 +990,10 @@ const AttendanceReportsSection = ({
                   />
                   <RechartsTooltip
                     contentStyle={{ borderRadius: 12, fontSize: 12 }}
+                    labelFormatter={(_, payload) => {
+                      const item = payload && payload[0] && payload[0].payload;
+                      return item?.dateFull || '—';
+                    }}
                     formatter={(value, name) => {
                       if (name === 'rate') return [`${value}%`, isRTL ? 'نسبة الحضور' : 'Rate'];
                       const labels = {
@@ -1026,7 +1057,12 @@ const AttendanceReportsSection = ({
                       key={row.date}
                       className="border-b border-border/40 hover:bg-muted/30 transition-colors"
                     >
-                      <td className="py-2 px-3 font-tajawal">{row.date}</td>
+                      <td className="py-2 px-3 font-tajawal whitespace-nowrap">
+                        {(() => {
+                          const d = parseDate(row.date);
+                          return d ? formatGregorianFull(d, locale) : '—';
+                        })()}
+                      </td>
                       <td className="text-center py-2 px-3">
                         <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
                           {row.present}

@@ -89,6 +89,35 @@ export function formatGregorianArabic(date = new Date()) {
   return `${toEasternArabic(h.gregorianDay)} ${h.gregorianMonthAr} ${toEasternArabic(h.gregorianYear)}`;
 }
 
+const GREGORIAN_MONTHS_SHORT_EN = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+export function formatGregorianShort(date = new Date(), locale = 'ar') {
+  const d = date instanceof Date ? date : new Date(date);
+  if (!d || Number.isNaN(d.getTime())) return '—';
+  const day = d.getDate();
+  const monthIdx = d.getMonth();
+  if (locale === 'ar') {
+    return `${toEasternArabic(day)} ${GREGORIAN_MONTHS_AR[monthIdx]}`;
+  }
+  return `${day} ${GREGORIAN_MONTHS_SHORT_EN[monthIdx]}`;
+}
+
+export function formatGregorianFull(date = new Date(), locale = 'ar') {
+  const d = date instanceof Date ? date : new Date(date);
+  if (!d || Number.isNaN(d.getTime())) return '—';
+  const weekdayIdx = d.getDay();
+  const day = d.getDate();
+  const monthIdx = d.getMonth();
+  const year = d.getFullYear();
+  if (locale === 'ar') {
+    return `${WEEKDAYS_AR[weekdayIdx]} ${toEasternArabic(day)} ${GREGORIAN_MONTHS_AR[monthIdx]} ${toEasternArabic(year)}`;
+  }
+  return `${WEEKDAYS_EN[weekdayIdx]} ${day} ${GREGORIAN_MONTHS_SHORT_EN[monthIdx]} ${year}`;
+}
+
 export function getWeekdayName(date = new Date(), locale = 'ar') {
   const idx = date.getDay();
   return locale === 'ar' ? WEEKDAYS_AR[idx] : WEEKDAYS_EN[idx];
