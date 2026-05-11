@@ -222,6 +222,20 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
             from_role = current_user.get("role")
             original_role = current_user.get("original_role") or user.get("role")
 
+            # SECURITY (audit H-2 / M-6 — Phase 2): for cross-tenant
+            # platform-admin switches (the impersonation-style path on
+            # this legacy endpoint), apply the same 15-minute TTL cap
+            # and server-side `impersonation_sessions` persistence as
+            # the hardened `/role-switch/switch` route. Same-user
+            # multi-role swaps (e.g. principal ↔ teacher on the same
+            # tenant) are NOT impersonation and keep the default TTL.
+            is_cross_tenant_impersonation = (
+                from_role == "platform_admin"
+                and target_role in SCHOOL_SCOPED_ROLES
+                and target_tenant_id
+                and target_tenant_id != user.get("tenant_id")
+            )
+
             token_data = {
                 "sub": user_id,
                 "role": target_role,
@@ -230,9 +244,54 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
                 "original_role": original_role,
                 "is_switched": True
             }
-            new_token = create_access_token(token_data)
 
-            client_ip = request.client.host if request.client else None
+            if is_cross_tenant_impersonation:
+                from datetime import timedelta as _td
+                new_token = create_access_token(token_data, expires_delta=_td(minutes=15))
+            else:
+                new_token = create_access_token(token_data)
+
+            from utils.trusted_proxy import extract_client_ip as _ip
+            client_ip = _ip(request)
+
+            if is_cross_tenant_impersonation:
+                import jwt as _jwt
+                from config import JWT_SECRET as _JS, JWT_ALGORITHM as _JA
+                from sqlalchemy import text as _sa_text
+                from datetime import timedelta as _td
+                _payload = _jwt.decode(new_token, _JS, algorithms=[_JA])
+                _now = datetime.now(timezone.utc)
+                try:
+                    await db.session.execute(
+                        _sa_text(
+                            """
+                            INSERT INTO impersonation_sessions
+                              (id, jti, original_user_id, original_role, target_user_id,
+                               target_role, target_tenant_id, reason, started_at,
+                               expires_at, ip_address)
+                            VALUES
+                              (:id, :jti, :ouid, :orole, :tuid, :trole, :ttid,
+                               :reason, :started_at, :expires_at, :ip)
+                            """
+                        ),
+                        {
+                            "id": str(uuid.uuid4()),
+                            "jti": _payload.get("jti"),
+                            "ouid": user_id,
+                            "orole": from_role,
+                            "tuid": user_id,
+                            "trole": target_role,
+                            "ttid": target_tenant_id,
+                            "reason": "legacy /user-roles/switch (cross-tenant impersonation)",
+                            "started_at": _now,
+                            "expires_at": _now + _td(minutes=15),
+                            "ip": client_ip,
+                        },
+                    )
+                except Exception as _e:
+                    logger.warning(
+                        f"Failed to persist legacy impersonation session: {_e}"
+                    )
 
             await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),

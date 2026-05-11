@@ -1141,13 +1141,35 @@ async def get_available_roles(
         "schools": schools,
     }
 
+# SECURITY (audit H-2 / M-6): impersonation tokens are now bounded to a
+# short server-controlled TTL and persisted in `impersonation_sessions`.
+# The previous implementation trusted `original_user_id` from the switched
+# JWT, which let any holder of a switched token mint a token back to *any*
+# user_id of their choice. The restore handler now ignores that claim and
+# resolves the original user from the persisted row keyed by the switched
+# token's JTI.
+IMPERSONATION_TOKEN_TTL_MINUTES = 15
+
+
 @router.post("/role-switch/switch")
 async def switch_role(
+    request: Request,
     data: dict = Body(...),
     current_user: dict = Depends(get_current_user),
 ):
     target_role = data.get("target_role")
     target_school_id = data.get("school_id")
+    reason = (data.get("reason") or "").strip()
+
+    if not reason or len(reason) < 4:
+        raise HTTPException(400, "يجب إدخال سبب واضح للتبديل (4 أحرف على الأقل)")
+    if len(reason) > 500:
+        raise HTTPException(400, "السبب طويل جداً (الحد الأقصى 500 حرف)")
+
+    if current_user.get("is_impersonating"):
+        # Disallow nested impersonation — keeps the audit trail linear and
+        # makes restore unambiguous.
+        raise HTTPException(409, "لا يمكنك التبديل وأنت بالفعل في وضع تبديل دور")
 
     current_role = current_user.get("role", "")
     allowed = ROLE_SWITCH_ALLOWED.get(current_role, [])
@@ -1169,25 +1191,89 @@ async def switch_role(
 
     user_id = current_user.get("id")
 
+    # Mint the switched token with a hard 15-minute cap, regardless of the
+    # platform-default access-token TTL.
     token_data = {
         "sub": user_id,
         "role": target_role,
         "original_role": current_role,
+        # `original_user_id` is retained for backwards compatibility with
+        # log readers, but the restore endpoint NO LONGER trusts it.
         "original_user_id": user_id,
         "tenant_id": target_school_id,
         "is_impersonating": True,
     }
-    new_token = create_access_token(token_data)
+    new_token = create_access_token(
+        token_data,
+        expires_delta=timedelta(minutes=IMPERSONATION_TOKEN_TTL_MINUTES),
+    )
+    new_jti = jwt.decode(new_token, JWT_SECRET, algorithms=[JWT_ALGORITHM]).get("jti")
+
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(minutes=IMPERSONATION_TOKEN_TTL_MINUTES)
+
+    from sqlalchemy import text as _sa_text
+    from utils.trusted_proxy import extract_client_ip as _ip
+
+    await db.session.execute(
+        _sa_text(
+            """
+            INSERT INTO impersonation_sessions
+              (id, jti, original_user_id, original_role, target_user_id,
+               target_role, target_tenant_id, reason, started_at, expires_at,
+               ip_address)
+            VALUES
+              (:id, :jti, :ouid, :orole, :tuid, :trole, :ttid, :reason,
+               :started_at, :expires_at, :ip)
+            """
+        ),
+        {
+            "id": str(uuid.uuid4()),
+            "jti": new_jti,
+            "ouid": user_id,
+            "orole": current_role,
+            "tuid": user_id,  # platform/principal switches into their own user
+            "trole": target_role,
+            "ttid": target_school_id,
+            "reason": reason,
+            "started_at": now,
+            "expires_at": expires_at,
+            "ip": _ip(request),
+        },
+    )
 
     await gd_insert(db.session, "audit_logs", {
         "id": str(uuid.uuid4()),
         "action": "role_switch",
+        "severity": "high",
         "action_by": user_id,
+        "performed_by": user_id,
+        "actor_role": current_role,
         "original_role": current_role,
         "target_role": target_role,
         "target_school_id": target_school_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "tenant_id": target_school_id,
+        "reason": reason,
+        "ip_address": _ip(request),
+        "timestamp": now.isoformat(),
     })
+
+    try:
+        from services.audit_sink import emit_audit
+        emit_audit({
+            "action": "role_switch.start",
+            "severity": "high",
+            "original_user_id": user_id,
+            "original_role": current_role,
+            "target_role": target_role,
+            "target_tenant_id": target_school_id,
+            "jti": new_jti,
+            "reason": reason,
+            "expires_at": expires_at.isoformat(),
+            "ip_address": _ip(request),
+        })
+    except Exception as _e:
+        logger.debug(f"audit_sink emit failed (role_switch.start): {_e}")
 
     return {
         "token": new_token,
@@ -1199,35 +1285,99 @@ async def switch_role(
 
 @router.post("/role-switch/restore")
 async def restore_role(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     current_user: dict = Depends(get_current_user),
 ):
-    original_role = current_user.get("original_role")
-    if not original_role:
+    """Restore the original role for an impersonating session.
+
+    SECURITY (audit H-2): the original-user identity is read from the
+    server-side `impersonation_sessions` row keyed by the *current
+    switched token's JTI*. We deliberately ignore `original_user_id`
+    from the JWT body — it's an attacker-controllable claim once the
+    switched token is in their possession.
+    """
+    if not current_user.get("is_impersonating"):
         return {"message": "أنت بالفعل في دورك الأصلي", "restored": False}
 
-    user_id = current_user.get("original_user_id") or current_user.get("id")
+    # Re-decode the bearer to lift the JTI out — `get_current_user`
+    # already validated the signature, exp, revocation and account state.
+    try:
+        payload = jwt.decode(
+            credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM]
+        )
+    except jwt.PyJWTError:
+        raise HTTPException(401, "رمز غير صالح")
 
-    user = await gd_find_one(db.session, "users", {"id": user_id})
-    if not user:
-        
-        try:
-            user = await gd_find_one(db.session, "users", {"_id": str(user_id)})
-        except Exception as e:
-            logger.debug(f"User lookup fallback failed for user_id={user_id}: {e}")
+    jti = payload.get("jti")
+    if not jti:
+        raise HTTPException(401, "رمز التبديل غير صالح")
+
+    from sqlalchemy import text as _sa_text
+    from utils.trusted_proxy import extract_client_ip as _ip
+
+    row = (
+        await db.session.execute(
+            _sa_text(
+                """
+                SELECT original_user_id, original_role, target_role,
+                       target_tenant_id, ended_at, expires_at
+                FROM impersonation_sessions
+                WHERE jti = :jti
+                """
+            ),
+            {"jti": jti},
+        )
+    ).mappings().first()
+
+    if not row:
+        # No server-side row → the token's claim is not honoured.
+        raise HTTPException(401, "جلسة التبديل غير موجودة على الخادم")
+    if row["ended_at"] is not None:
+        raise HTTPException(401, "جلسة التبديل منتهية")
+
+    original_user_id = row["original_user_id"]
+    original_role_db = row["original_role"]
+
+    user = await gd_find_one(db.session, "users", {"id": original_user_id})
     if not user:
         raise HTTPException(404, "المستخدم الأصلي غير موجود")
 
-    uid = user.get("id") or str(user.get("_id"))
+    uid = user.get("id") or original_user_id
     token_data = {
         "sub": uid,
-        "role": user.get("role", original_role),
+        "role": user.get("role", original_role_db),
         "tenant_id": user.get("tenant_id"),
     }
     new_token = create_access_token(token_data)
 
+    now = datetime.now(timezone.utc)
+    await db.session.execute(
+        _sa_text(
+            """
+            UPDATE impersonation_sessions
+            SET ended_at = :ended_at, end_reason = :reason
+            WHERE jti = :jti AND ended_at IS NULL
+            """
+        ),
+        {"ended_at": now, "reason": "restored", "jti": jti},
+    )
+
+    try:
+        from services.audit_sink import emit_audit
+        emit_audit({
+            "action": "role_switch.restore",
+            "severity": "high",
+            "original_user_id": original_user_id,
+            "jti": jti,
+            "ip_address": _ip(request),
+        })
+    except Exception as _e:
+        logger.debug(f"audit_sink emit failed (role_switch.restore): {_e}")
+
     return {
         "token": new_token,
-        "role": user.get("role", original_role),
+        "role": user.get("role", original_role_db),
         "school_id": user.get("tenant_id"),
         "is_impersonating": False,
         "restored": True,

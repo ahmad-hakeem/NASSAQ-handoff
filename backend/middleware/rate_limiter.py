@@ -9,7 +9,10 @@ PRODUCTION NOTE:
   effective limits are multiplied by the worker count. For strict
   distributed rate limiting, swap ``RateLimitStore`` for a Redis-backed
   implementation (e.g. redis INCR + EXPIRE).  The current design is
-  intentional for single-worker Replit deployments.
+  intentional for single-worker Replit deployments. The Phase 2 audit
+  (item M-3) tracks the move to a shared store; this module is wired to
+  the new ``utils.trusted_proxy.extract_client_ip`` helper so that work
+  can drop in without re-touching the keying logic.
 """
 import time
 import asyncio
@@ -17,6 +20,8 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 import logging
+
+from utils.trusted_proxy import extract_client_ip
 
 logger = logging.getLogger("nassaq.ratelimit")
 
@@ -90,11 +95,13 @@ RATE_LIMITS = {
 class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        # Security: never trust client-controlled X-Forwarded-For for rate-limit
-        # keying. An attacker can rotate that header freely to bypass limits.
-        # Always key on the actual TCP-level peer address which cannot be spoofed
-        # by the client itself.
-        client_ip = request.client.host if request.client else "unknown"
+        # SECURITY (audit C-1): we used to refuse XFF entirely, which made
+        # per-IP limits useless behind Replit's edge (every request collapsed
+        # to the proxy IP). The trusted-proxy helper honours XFF only when
+        # the immediate peer is itself in the configured allow-list
+        # (`TRUSTED_PROXY_CIDRS`); otherwise it falls back to the un-spoofable
+        # peer address.
+        client_ip = extract_client_ip(request)
 
         matched_limits = None
         for pattern, limits in RATE_LIMITS.items():

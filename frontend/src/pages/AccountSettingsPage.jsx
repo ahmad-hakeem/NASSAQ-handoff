@@ -172,7 +172,7 @@ const NotificationRow = ({ title, desc, checked, onChange }) => (
 
 export const AccountSettingsPage = () => {
   const { t } = useTranslation();
-  const { user, api, logout, refreshUser } = useAuth();
+  const { user, api, logout, refreshUser, updateToken } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark, language, setLanguage, theme, setTheme } = useTheme();
 
   const [saving, setSaving] = useState(false);
@@ -382,7 +382,11 @@ export const AccountSettingsPage = () => {
     setSwitchingRole(true);
     try {
       const response = await api.post(`/user-roles/switch/${roleId}`);
-      if (response.data?.access_token) localStorage.setItem('nassaq_token', response.data.access_token);
+      // SECURITY (audit Phase 2): all auth-token writes must route through
+      // AuthContext so the upcoming HttpOnly-cookie cutover has a single
+      // chokepoint. Direct localStorage writes are blocked by
+      // scripts/check_token_storage.sh.
+      if (response.data?.access_token) await updateToken(response.data.access_token);
       toast.success(t('roleSwitchedSuccessfully'));
       setTimeout(() => window.location.reload(), 1000);
     } catch (error) {

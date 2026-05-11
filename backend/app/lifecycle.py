@@ -220,5 +220,16 @@ async def shutdown_tasks():
         mgr.tenant_connections.clear()
     except Exception as e:
         logger.debug(f"WS cleanup on shutdown: {e}")
+    # SECURITY (audit M-4 / Phase 2 review): drain any in-flight audit
+    # events so the last few hundred ms of activity before SIGTERM aren't
+    # lost. Best-effort with a short timeout.
+    try:
+        from services.audit_sink import audit_sink as _sink
+        pending = await _sink.drain(timeout=3.0)
+        if pending:
+            logger.warning(f"audit_sink: {pending} events still pending at shutdown")
+    except Exception as e:
+        logger.debug(f"audit_sink drain on shutdown: {e}")
+
     await close_pg_engine()
     logger.info("NASSAQ shutdown complete")

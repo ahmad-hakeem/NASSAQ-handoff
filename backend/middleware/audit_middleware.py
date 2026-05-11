@@ -275,14 +275,18 @@ def _should_audit(method: str, path: str) -> bool:
 
 
 def _extract_real_ip(request: Request) -> str:
-    """Extract real IP, accounting for proxies"""
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    real_ip = request.headers.get("x-real-ip")
-    if real_ip:
-        return real_ip
-    return request.client.host if request.client else "غير معروف"
+    """Extract real IP, accounting for trusted proxies only.
+
+    SECURITY (audit C-1): the previous implementation trusted any
+    client-supplied ``X-Forwarded-For`` header, which let attackers
+    spoof their attribution in the audit trail. We now route through
+    ``utils.trusted_proxy.extract_client_ip``, which only honours
+    forwarded headers when the immediate peer is in the
+    ``TRUSTED_PROXY_CIDRS`` allow-list.
+    """
+    from utils.trusted_proxy import extract_client_ip as _ip
+    val = _ip(request)
+    return val or "غير معروف"
 
 
 class AuditMiddleware(BaseHTTPMiddleware):
