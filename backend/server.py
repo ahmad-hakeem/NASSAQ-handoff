@@ -109,6 +109,14 @@ def create_app() -> FastAPI:
             {"field": ".".join(str(loc) for loc in e["loc"]), "message": e["msg"]}
             for e in exc.errors()
         ]
+        # Log for triage — request validation failures are otherwise opaque
+        # at the access-log level and the frontend can only show a generic
+        # message to the user.
+        import logging as _logging
+        _logging.getLogger("nassaq.validation").warning(
+            "validation failed: method=%s path=%s errors=%s",
+            request.method, request.url.path, errors,
+        )
         return JSONResponse(
             status_code=422,
             content={

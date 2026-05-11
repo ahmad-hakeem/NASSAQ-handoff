@@ -163,11 +163,24 @@ export default function SessionEditDrawer({
       onSaved?.(isCreate ? 'created' : 'updated');
       onClose?.();
     } catch (e) {
-      const detail = e?.response?.data?.detail;
+      const data = e?.response?.data;
+      const detail = data?.detail;
       let msg = t('sessionEditFailed');
       if (typeof detail === 'string' && detail) msg = detail;
       else if (detail?.message_ar) msg = detail.message_ar;
-      else if (e?.response?.data?.message_ar) msg = e.response.data.message_ar;
+      else if (data?.message_ar) msg = data.message_ar;
+      else if (data?.error?.message) msg = data.error.message;
+      // Surface field-level validation errors (new error envelope:
+      // { success:false, error:{message}, meta:{validation_errors:[{field,message}]} })
+      // so the user sees *which* field failed instead of an opaque
+      // "Request validation failed".
+      const fieldErrors = data?.meta?.validation_errors;
+      if (Array.isArray(fieldErrors) && fieldErrors.length) {
+        const lines = fieldErrors
+          .map((fe) => `• ${fe.field}: ${fe.message}`)
+          .join('\n');
+        msg = `${msg}\n${lines}`;
+      }
       nassaqError(msg, { title: t('sessionEditFailedTitle') });
     } finally {
       setSaving(false);
