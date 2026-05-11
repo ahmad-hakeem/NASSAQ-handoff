@@ -66,7 +66,6 @@ const TeacherAchievementsPage = lazy(() => import("../pages/TeacherModule").then
 const TeacherCommunicationPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherCommunicationPage })));
 const TeacherResourcesPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherResourcesPage })));
 const TeacherSettingsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherSettingsPage })));
-const TeacherStandbyPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherStandbyPage })));
 
 const ProductHubPage = lazy(() => import("../pages/ProductHubPage").then(m => ({ default: m.ProductHubPage })));
 const ProductHubSubmitPage = lazy(() => import("../pages/ProductHubSubmitPage").then(m => ({ default: m.ProductHubSubmitPage })));
@@ -250,12 +249,12 @@ export default function AppRoutes() {
         <Route path="/teacher/session/teach" element={
           <ProtectedRoute allowedRoles={TEACHER_ROLES}><SessionTeachPage /></ProtectedRoute>
         } />
-        {/* Standby roster is a school-internal duty roster — independent_teacher
-            users have no school context, so this surface is restricted to
-            in-school teachers only (matches backend `/standby/roster/me`). */}
-        <Route path="/teacher/standby" element={
-          <ProtectedRoute allowedRoles={['teacher']}><TeacherStandbyPage /></ProtectedRoute>
-        } />
+        {/* Standby Periods now lives as a tab inside the Classes page so all
+            teaching surfaces share one shell. The legacy /teacher/standby
+            route — and any in-app notifications still pointing at it — are
+            redirected to the Classes page with the standby tab preselected.
+            Backend remains the security boundary (`role == teacher`). */}
+        <Route path="/teacher/standby" element={<Navigate to="/teacher/classes?tab=standby" replace />} />
         <Route path="/teacher/schedule" element={
           <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherSchedulePage /></ProtectedRoute>
         } />

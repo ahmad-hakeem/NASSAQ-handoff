@@ -378,9 +378,12 @@ export const Sidebar = ({ children }) => {
         roles: ['teacher'],
       },
       {
+        // Standby Periods is consolidated into the Classes page as a tab,
+        // so the sidebar entry deep-links straight into that tab state to
+        // avoid splitting teaching workflows across separate pages.
         icon: Hourglass,
         label: 'حصص الانتظار',
-        href: '/teacher/standby',
+        href: '/teacher/classes?tab=standby',
         roles: ['teacher'],
       },
       {

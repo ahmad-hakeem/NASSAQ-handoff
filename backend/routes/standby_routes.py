@@ -663,7 +663,7 @@ async def _notify_affected_teachers_after_regenerate(
                 priority=NotificationPriority.MEDIUM.value,
                 entity_type="standby_roster",
                 entity_id=tid,
-                action_url="/teacher/standby",
+                action_url="/teacher/classes?tab=standby",
                 sender_id=actor_user_id,
                 metadata={
                     "teacher_id": tid,

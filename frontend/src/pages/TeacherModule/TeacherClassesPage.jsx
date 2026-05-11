@@ -20,13 +20,14 @@ import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import {
   Users, BookOpen, Search, RefreshCw, Loader2,
-  GraduationCap, ClipboardCheck, BarChart3, Calendar,
+  GraduationCap, ClipboardCheck, BarChart3, Calendar, Hourglass,
   TrendingUp, LayoutGrid, List, Clock, Play,
   ChevronLeft, Star, AlertTriangle, CheckCircle2,
   ArrowUpDown, Settings, Plus, FileSpreadsheet,
   FileImage, FileText, Upload, Info, X
 } from 'lucide-react';
 import SessionsManageTab from './SessionsManageTab';
+import StandbyTab from './StandbyTab';
 import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialog';
 
 import { useTranslation } from '../../contexts/ThemeContext';
@@ -48,7 +49,10 @@ export default function TeacherClassesPage() {
   const { user, api, isRTL } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') === 'sessions' ? 'sessions' : 'classes';
+  const _rawTab = searchParams.get('tab');
+  const activeTab = _rawTab === 'sessions' ? 'sessions'
+    : _rawTab === 'standby' ? 'standby'
+    : 'classes';
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -117,7 +121,11 @@ export default function TeacherClassesPage() {
   };
 
   const handleTabChange = (tab) => {
-    setSearchParams(tab === 'sessions' ? { tab: 'sessions' } : {});
+    setSearchParams(
+      tab === 'sessions' ? { tab: 'sessions' }
+      : tab === 'standby' ? { tab: 'standby' }
+      : {}
+    );
   };
 
   const fetchClasses = useCallback(async () => {
@@ -886,12 +894,30 @@ export default function TeacherClassesPage() {
                 <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
               )}
             </button>
+            <button
+              onClick={() => handleTabChange('standby')}
+              className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative ${
+                activeTab === 'standby'
+                  ? 'text-brand-navy dark:text-brand-turquoise'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <span className="flex items-center gap-1.5">
+                <Hourglass className="h-4 w-4" />
+                حصص الانتظار
+              </span>
+              {activeTab === 'standby' && (
+                <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
+              )}
+            </button>
           </div>
         </div>
 
         <div className="px-4 sm:px-6 py-4 space-y-4">
         {activeTab === 'sessions' ? (
           <SessionsManageTab />
+        ) : activeTab === 'standby' ? (
+          <StandbyTab />
         ) : (
           <>
           {!loading && stats && (
