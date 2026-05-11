@@ -45,6 +45,8 @@ import ScheduleTabNav from '../components/schedule/ScheduleTabNav';
 import ScheduleSettingsTabContent from '../components/schedule/ScheduleSettingsTabContent';
 import FilledCell from '../components/schedule/FilledCell';
 import SessionEditDrawer from '../components/schedule/SessionEditDrawer';
+import { DndContext } from '@dnd-kit/core';
+import { DraggableSession, DroppableSlot, useDragSensors } from '../components/schedule/MasterMatrixDnd';
 import { SessionDetailModal, getDayBandClass, getDayTintClass, getDayTextOnBand } from '../components/schedule/grid-theme';
 import { computeDisplayDays } from '../components/schedule/grid-helpers';
 import { StandbyRosterContent } from './StandbyRosterPage';
@@ -1104,6 +1106,58 @@ export default function SchedulePageNew() {
     }
   }, [api, schoolId, loadGrid, nassaqError, t]);
 
+  // ── Drag-and-drop handler (draft master grid) ─────────────────────
+  // The page is the source of truth for grid mutations: it picks the
+  // correct backend endpoint based on whether the drop target is empty
+  // (move) or filled (swap), then refreshes the draft so the matrix
+  // reflects the authoritative server state. The backend remains the
+  // primary security boundary — it enforces tenant isolation, draft-only
+  // mutability, and full conflict detection. We never apply optimistic
+  // mutations here because rollback would have to undo a swap across two
+  // cells, which is brittle; pessimistic + fast reconcile is the cleaner
+  // contract.
+  const handleSessionDragMove = useCallback(async ({
+    sessionId,
+    targetDay,
+    targetPeriod,
+    targetSessionId,
+  }) => {
+    if (!sessionId || !schoolId || !targetDay || !targetPeriod) return;
+    try {
+      if (targetSessionId) {
+        // Filled target → swap the two sessions atomically.
+        await api.post(
+          '/smart-scheduling/sessions/swap',
+          { session_id_1: sessionId, session_id_2: targetSessionId },
+          { headers: { 'X-School-Context': schoolId } },
+        );
+        toast.success(t('sessionSwapSuccess'));
+      } else {
+        // Empty target → move the source session into it.
+        await api.post(
+          '/smart-scheduling/sessions/move',
+          { session_id: sessionId, new_day: targetDay, new_period: targetPeriod },
+          { headers: { 'X-School-Context': schoolId } },
+        );
+        toast.success(t('sessionMoveSuccess'));
+      }
+      await loadGrid('draft');
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      const msg = (typeof detail === 'string' && detail)
+        || detail?.message_ar
+        || e?.response?.data?.message_ar
+        || t('sessionMoveFailed');
+      // Conflict / authorization errors get the branded NassaqAlertDialog
+      // — never a native browser alert or a bare toast.error per the
+      // platform UI contract in replit.md.
+      nassaqError(msg, { title: t('sessionMoveFailedTitle') });
+      // The grid is the source of truth — re-fetch so the dragged tile
+      // visually reverts to its original cell on the next render.
+      await loadGrid('draft');
+    }
+  }, [api, schoolId, loadGrid, nassaqError, t]);
+
   const handleConfirmUndoAbsence = useCallback(async () => {
     if (!undoTeacher?.id) return;
     if (!schoolId) {
@@ -2047,6 +2101,7 @@ export default function SchedulePageNew() {
                 setEditDrawerContext(ctx);
                 setEditDrawerOpen(true);
               }}
+              onDragMove={handleSessionDragMove}
             />
           )}
 
@@ -2325,7 +2380,7 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
 // التصميم البصري الجديد: خلفية بيضاء، رؤوس فاتحة (slate-50)، حدود رفيعة
 // (slate-100)، وعمود المعلم على يمين الشاشة (RTL) مع ظل خفيف يفصل المنطقة
 // المثبَّتة عن منطقة التمرير.
-function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, onAcknowledgeRelocation, today, periodTimes = {}, unresolvedConflicts = [], viewMode = 'weekly', selectedDay = null, totalTeachers = null, canEdit = false, onEditSession, onCreateSession }) {
+function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, onAcknowledgeRelocation, today, periodTimes = {}, unresolvedConflicts = [], viewMode = 'weekly', selectedDay = null, totalTeachers = null, canEdit = false, onEditSession, onCreateSession, onDragMove }) {
   const { t, language } = useTranslation();
   const [selectedSession, setSelectedSession] = useState(null);
   // فهرس "رؤى حكيم" بمفتاح teacher_id|day|period → reason_ar. التحديد
@@ -2380,7 +2435,39 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
   // نحو اليسار داخل منطقة التمرير).
   const teacherStickyShadow = 'shadow-[-2px_0_5px_rgba(0,0,0,0.02)]';
 
-  return (
+  // ── Drag-and-drop wiring (draft only) ─────────────────────────────
+  // Sensors live here so click-to-edit (PointerSensor.distance = 6) and
+  // keyboard fallback both keep working. The DndContext is only mounted
+  // when the page passed both `canEdit` and `onDragMove`; on the
+  // published view the matrix renders without any DnD scaffolding.
+  const dndEnabled = !!(canEdit && onDragMove);
+  const dragSensors = useDragSensors();
+  const handleDragEnd = (event) => {
+    const src = event?.active?.data?.current;
+    const dst = event?.over?.data?.current;
+    if (!src || !dst || src.kind !== 'session' || dst.kind !== 'slot') return;
+    if (!src.session_id) return;
+    // Same (day, period) drop is a no-op for the backend `move` API
+    // (which only keys on day + period, not teacher row). Dropping the
+    // session onto a different teacher row at the same day/period would
+    // therefore round-trip to the server with no real change, so we
+    // silently ignore it here. Reassigning a teacher is a separate flow
+    // handled by the edit drawer, not by drag-and-drop.
+    if (src.day_of_week === dst.day_of_week
+        && src.period_number === dst.period_number) return;
+    onDragMove?.({
+      sessionId: src.session_id,
+      sourceTeacherId: src.teacher_id,
+      sourceDay: src.day_of_week,
+      sourcePeriod: src.period_number,
+      targetTeacherId: dst.teacher_id,
+      targetDay: dst.day_of_week,
+      targetPeriod: dst.period_number,
+      targetSessionId: dst.session_id || null,
+    });
+  };
+
+  const matrix = (
     <div
       data-testid={`master-matrix-${isDaily ? 'daily' : 'weekly'}`}
       className="grid text-[11px] w-full"
@@ -2560,6 +2647,58 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                 const subjectBarColor = cell && !cell.is_vacant
                   ? (cell.subject_color || '#1C3D74')
                   : null;
+                // Drag-and-drop only on draft cells. A "normal" filled cell
+                // (not vacant, not substituted, not relocated, not locked,
+                // and carrying a real session id) is the draggable surface.
+                // Every cell — filled or empty — is a droppable target so the
+                // engine can land a swap or a move respectively.
+                const isNormalFilled = !!cell && !cell.is_vacant && !cell.is_substituted
+                  && !cell.is_substitute && !cell.is_relocated && !cell.is_locked;
+                const cellSessionId = cell?.session_id || cell?.id || null;
+                const dndEnabled = !!(canEdit && onDragMove);
+                const slotId = `slot:${teacher.id}:${dayKey}:${p}`;
+                const slotPayload = {
+                  kind: 'slot',
+                  teacher_id: teacher.id,
+                  day_of_week: dayKey,
+                  period_number: p,
+                  session_id: cellSessionId,
+                  is_normal_filled: isNormalFilled,
+                };
+                const inner = cell ? (
+                  <FilledCell
+                    cell={cell}
+                    dayKey={dayKey}
+                    compact={!isDaily}
+                    onClick={cell.is_vacant ? () => onVacantClick(cellData) : handleNormalClick}
+                    onAcknowledgeRelocation={onAcknowledgeRelocation}
+                  />
+                ) : (
+                  <EmptyCell
+                    onClick={canEdit && onCreateSession
+                      ? () => onCreateSession({
+                          teacher_id: teacher.id,
+                          day_of_week: dayKey,
+                          period_number: p,
+                        })
+                      : null}
+                    addLabel={t('addLessonHere')}
+                  />
+                );
+                const innerWithDrag = (dndEnabled && isNormalFilled && cellSessionId) ? (
+                  <DraggableSession
+                    id={`session:${cellSessionId}`}
+                    payload={{
+                      kind: 'session',
+                      session_id: cellSessionId,
+                      teacher_id: teacher.id,
+                      day_of_week: dayKey,
+                      period_number: p,
+                    }}
+                  >
+                    {inner}
+                  </DraggableSession>
+                ) : inner;
                 return (
                   <div
                     key={`${teacher.id}-${dayKey}-${p}`}
@@ -2574,26 +2713,11 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                     }}
                     title={conflictTip || undefined}
                   >
-                    {cell ? (
-                      <FilledCell
-                        cell={cell}
-                        dayKey={dayKey}
-                        compact={!isDaily}
-                        onClick={cell.is_vacant ? () => onVacantClick(cellData) : handleNormalClick}
-                        onAcknowledgeRelocation={onAcknowledgeRelocation}
-                      />
-                    ) : (
-                      <EmptyCell
-                        onClick={canEdit && onCreateSession
-                          ? () => onCreateSession({
-                              teacher_id: teacher.id,
-                              day_of_week: dayKey,
-                              period_number: p,
-                            })
-                          : null}
-                        addLabel={t('addLessonHere')}
-                      />
-                    )}
+                    {dndEnabled ? (
+                      <DroppableSlot id={slotId} payload={slotPayload}>
+                        {innerWithDrag}
+                      </DroppableSlot>
+                    ) : innerWithDrag}
                   </div>
                 );
               })
@@ -2620,4 +2744,13 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
       />
     </div>
   );
+
+  // Mount DndContext only on draft+editable matrices; the published view
+  // renders identical markup without the DnD scaffolding so the existing
+  // MasterMatrix layout tests keep passing untouched.
+  return dndEnabled ? (
+    <DndContext sensors={dragSensors} onDragEnd={handleDragEnd}>
+      {matrix}
+    </DndContext>
+  ) : matrix;
 }
