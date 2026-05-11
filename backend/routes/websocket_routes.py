@@ -174,7 +174,7 @@ def create_websocket_routes(db, decode_token):
             return
         
         try:
-            payload = decode_token(auth_token)
+            payload = await decode_token(auth_token)
             if not payload:
                 await websocket.send_json({"type": "error", "message": "Invalid token"})
                 await websocket.close(code=4001, reason="Invalid token")

@@ -140,12 +140,17 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
 
 def create_refresh_token(data: dict, remember_me: bool = False, linked_access_jti: Optional[str] = None) -> str:
     to_encode = data.copy()
+    now = datetime.now(timezone.utc)
     if remember_me:
-        expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        expire = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     else:
-        expire = datetime.now(timezone.utc) + timedelta(hours=REFRESH_TOKEN_SHORT_HOURS)
+        expire = now + timedelta(hours=REFRESH_TOKEN_SHORT_HOURS)
     to_encode.update({
         "exp": expire,
+        # Explicitly include iat so the refresh endpoint can compare issuance
+        # time against last_password_change and reject stale tokens after a
+        # password change or reset.
+        "iat": now,
         "type": "refresh",
         "rm": remember_me,
         "jti": str(uuid.uuid4()),

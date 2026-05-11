@@ -386,9 +386,15 @@ export const AuthProvider = ({ children }) => {
     try {
       const currentToken = localStorage.getItem('nassaq_token');
       if (currentToken) {
-        axios.post(`${API_URL}/api/auth/logout`, null, {
-          headers: { Authorization: `Bearer ${currentToken}` }
-        }).catch(() => {});
+        const refreshToken =
+          localStorage.getItem('nassaq_refresh_token') ||
+          sessionStorage.getItem('nassaq_refresh_token') ||
+          null;
+        axios.post(
+          `${API_URL}/api/auth/logout`,
+          { refresh_token: refreshToken },
+          { headers: { Authorization: `Bearer ${currentToken}` } }
+        ).catch(() => {});
       }
     } catch {}
     clearAllAuthTokens();

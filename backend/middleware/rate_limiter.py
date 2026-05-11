@@ -85,11 +85,11 @@ RATE_LIMITS = {
 class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            client_ip = forwarded.split(",")[0].strip()
-        else:
-            client_ip = request.client.host if request.client else "unknown"
+        # Security: never trust client-controlled X-Forwarded-For for rate-limit
+        # keying. An attacker can rotate that header freely to bypass limits.
+        # Always key on the actual TCP-level peer address which cannot be spoofed
+        # by the client itself.
+        client_ip = request.client.host if request.client else "unknown"
 
         matched_limits = None
         for pattern, limits in RATE_LIMITS.items():

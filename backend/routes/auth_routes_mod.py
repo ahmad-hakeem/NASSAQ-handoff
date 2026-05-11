@@ -153,6 +153,19 @@ async def _record_session_from_token(session, token_str: str, user_id: str, ip_a
 
 @router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin, request: Request, background_tasks: BackgroundTasks):
+    from middleware.rate_limiter import rate_store
+
+    # Per-account brute-force protection: limit login attempts by email address
+    # regardless of source IP. This prevents credential-stuffing attacks even
+    # when the per-IP limit is circumvented (e.g. distributed bots).
+    account_key = f"login_account:{credentials.email.lower()}"
+    acc_limited, _acc_rem, _acc_retry = await rate_store.is_rate_limited(account_key, 10, 60)
+    if acc_limited:
+        raise HTTPException(
+            status_code=429,
+            detail="عدد محاولات تسجيل الدخول تجاوز الحد المسموح. يرجى المحاولة بعد دقيقة",
+        )
+
     user = await gd_find_one(db.session, "users", {"email": credentials.email})
     if not user:
         # Log failed login attempt
@@ -188,6 +201,17 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
             reason="account_disabled"
         )
         raise HTTPException(status_code=401, detail="الحساب معطل")
+
+    if user.get("is_locked", False):
+        await audit_engine.log_auth_event(
+            action=AuditAction.LOGIN_FAILED.value,
+            user_id=str(user.get("id") or user["_id"]),
+            tenant_id=user.get("tenant_id"),
+            success=False,
+            email=credentials.email,
+            reason="account_locked"
+        )
+        raise HTTPException(status_code=401, detail="الحساب مقفل. يرجى التواصل مع الإدارة")
     
     user_id = user.get("id") or str(user["_id"])
     token_payload = {"sub": user_id, "role": user["role"]}
@@ -296,6 +320,39 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
     if user.get("is_locked", False):
         raise HTTPException(status_code=401, detail="Account is locked")
 
+    # Reject refresh tokens issued before the last password change.
+    # This ensures that after a password change or reset, all previously
+    # issued refresh tokens (e.g. on a stolen device) are invalidated.
+    #
+    # Security policy:
+    #   - If last_password_change is set AND the token has no iat claim,
+    #     reject it — tokens without iat cannot be verified against the
+    #     password-change boundary and must not be accepted.
+    #   - If both are present, compare timestamps and reject stale tokens.
+    last_pw_change = user.get("last_password_change")
+    token_iat = payload.get("iat")
+    if last_pw_change:
+        if token_iat is None:
+            # Legacy token without iat — cannot verify issuance time relative
+            # to password change. Force re-login for safety.
+            raise HTTPException(
+                status_code=401,
+                detail="انتهت صلاحية الجلسة. يرجى تسجيل الدخول مجدداً"
+            )
+        try:
+            _lpc_str = last_pw_change if isinstance(last_pw_change, str) else str(last_pw_change)
+            _lpc_str = _lpc_str.replace("Z", "+00:00")
+            pw_change_ts = datetime.fromisoformat(_lpc_str).timestamp()
+            if token_iat < pw_change_ts:
+                raise HTTPException(
+                    status_code=401,
+                    detail="انتهت صلاحية الجلسة بسبب تغيير كلمة المرور. يرجى تسجيل الدخول مجدداً"
+                )
+        except HTTPException:
+            raise
+        except Exception as _ts_err:
+            logger.debug(f"refresh: last_password_change parse failed: {_ts_err}")
+
     token_payload = {"sub": user_id, "role": user["role"]}
     if user.get("tenant_id"):
         token_payload["tenant_id"] = user["tenant_id"]
@@ -387,26 +444,34 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
     return TokenResponse(access_token=new_access, refresh_token=new_refresh, user=user_response)
 
 
+class LogoutRequest(BaseModel):
+    refresh_token: Optional[str] = None
+
+
 @router.post("/auth/logout")
 async def logout(
     request: Request,
+    body: LogoutRequest = Body(default=LogoutRequest()),
     credentials: HTTPAuthorizationCredentials = Depends(security),
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Logout endpoint — revokes the JWT by inserting its jti into revoked_tokens,
-    then records an audit trail for session end.
+    Logout endpoint — revokes both the access token JTI and the refresh token
+    JTI (when provided) by inserting them into revoked_tokens. This ensures
+    that a stolen refresh token cannot be used to mint new access tokens after
+    the legitimate user has logged out.
     """
     user_id = current_user.get("id") or str(current_user.get("_id", ""))
     ip_address = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
+    from datetime import timezone as _tz
 
+    # Revoke the access token
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         jti = payload.get("jti")
         exp = payload.get("exp")
         if jti and exp:
-            from datetime import timezone as _tz
             expires_at = datetime.fromtimestamp(exp, tz=_tz.utc)
             await gd_insert(db.session, "revoked_tokens", {
                 "jti": jti,
@@ -419,6 +484,24 @@ async def logout(
                 pass
     except Exception:
         pass
+
+    # Revoke the refresh token when the client provides it.
+    # This closes the window where an attacker with a stolen refresh token
+    # can keep minting new access tokens after the user logs out.
+    if body.refresh_token:
+        try:
+            rt_payload = jwt.decode(body.refresh_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            rt_jti = rt_payload.get("jti")
+            rt_exp = rt_payload.get("exp")
+            if rt_jti and rt_exp and rt_payload.get("type") == "refresh":
+                rt_expires_at = datetime.fromtimestamp(rt_exp, tz=_tz.utc)
+                await gd_insert(db.session, "revoked_tokens", {
+                    "jti": rt_jti,
+                    "expires_at": rt_expires_at.isoformat(),
+                    "revoked_at": datetime.now(_tz.utc).isoformat(),
+                })
+        except Exception:
+            pass
 
     await audit_engine.log_auth_event(
         action=AuditAction.LOGOUT.value,

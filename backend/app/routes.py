@@ -162,10 +162,42 @@ def register_routes(app, api_router: APIRouter):
     user_roles_router = setup_user_roles_routes(db, get_current_user, require_roles, UserRole, create_access_token)
 
     from routes.websocket_routes import create_websocket_routes
+    from db import async_session_factory as _ws_session_factory
 
-    def decode_token_for_ws(token: str):
+    async def decode_token_for_ws(token: str):
+        """
+        Validate a JWT for WebSocket connections with the same rigour as HTTP
+        routes:  verify signature+expiry, reject refresh tokens, check the JTI
+        against revoked_tokens, and confirm the user is still active and not
+        locked.  Returns the payload on success, None on any failure.
+        """
         try:
             payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            # Reject refresh tokens — only access tokens may open a socket.
+            if payload.get("type") == "refresh":
+                return None
+            jti = payload.get("jti")
+            user_id = payload.get("sub")
+            if not user_id:
+                return None
+            from engines.sql_utils import gd_find_one as _gdf
+            async with _ws_session_factory() as ws_auth_session:
+                # Check token revocation
+                if jti:
+                    revoked = await _gdf(ws_auth_session, "revoked_tokens", {"jti": jti})
+                    if revoked:
+                        logger.info(f"WebSocket auth rejected: revoked JTI={jti}")
+                        return None
+                # Check account is active and not locked
+                user = await _gdf(ws_auth_session, "users", {"id": user_id})
+                if not user:
+                    return None
+                if not user.get("is_active", True):
+                    logger.info(f"WebSocket auth rejected: inactive user={user_id}")
+                    return None
+                if user.get("is_locked", False):
+                    logger.info(f"WebSocket auth rejected: locked user={user_id}")
+                    return None
             return payload
         except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, Exception):
             return None
