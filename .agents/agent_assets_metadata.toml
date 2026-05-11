@@ -42,3 +42,9 @@ id = "u7fupcBDOfPouttDg74db"
 uri = "file://reports/تقرير_حساب_المعلم_بعد_التحديث.docx"
 type = "word_document"
 title = "تقرير حساب المعلم بعد التحديث"
+
+[[outputs]]
+id = "aH_JtqV2NtMhM63D5bC9G"
+uri = "file://docs/security/SECURITY_AUDIT_2026-05-11.md"
+type = "text"
+title = "NASSAQ Security Audit — 2026-05-11"
