@@ -789,7 +789,17 @@ const REPORT_RANGE_OPTIONS = [
   { value: 0, ar: 'الكل', en: 'All' },
 ];
 
-const StaffAttendanceReports = ({ report, isRTL, t }) => {
+const AttendanceReportsSection = ({
+  report,
+  isRTL,
+  t,
+  title,
+  subjectLabel,
+  exportFilenamePrefix = 'attendance-report',
+  testIdPrefix = 'ai-attendance',
+  iconBg = 'bg-brand-purple/10',
+  iconColor = 'text-brand-purple',
+}) => {
   const [rangeDays, setRangeDays] = useState(14);
 
   const allDaily = useMemo(() => report?.daily || [], [report]);
@@ -860,7 +870,7 @@ const StaffAttendanceReports = ({ report, isRTL, t }) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `attendance-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `${exportFilenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -870,21 +880,21 @@ const StaffAttendanceReports = ({ report, isRTL, t }) => {
   const labelFor = (opt) => (isRTL ? opt.ar : opt.en);
 
   return (
-    <Card className="card-nassaq" data-testid="ai-attendance-reports">
+    <Card className="card-nassaq" data-testid={`${testIdPrefix}-reports`}>
       <CardHeader>
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-brand-purple/10 flex items-center justify-center">
-              <BarChart3 className="h-5 w-5 text-brand-purple" />
+            <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center`}>
+              <BarChart3 className={`h-5 w-5 ${iconColor}`} />
             </div>
             <div>
               <CardTitle className="font-cairo text-base">
-                {t('attendanceReports') || (isRTL ? 'تقارير الحضور' : 'Attendance Reports')}
+                {title}
               </CardTitle>
               <p className="text-xs text-muted-foreground font-tajawal">
                 {isRTL
-                  ? `${filtered.length} يوم • نسبة الحضور ${windowTotals.rate}%`
-                  : `${filtered.length} days • ${windowTotals.rate}% attendance rate`}
+                  ? `${filtered.length} يوم • نسبة حضور ${subjectLabel || ''} ${windowTotals.rate}%`
+                  : `${filtered.length} days • ${windowTotals.rate}% ${subjectLabel || ''} attendance rate`}
               </p>
             </div>
           </div>
@@ -903,7 +913,7 @@ const StaffAttendanceReports = ({ report, isRTL, t }) => {
                         ? 'bg-white dark:bg-gray-800 text-foreground shadow-sm'
                         : 'text-muted-foreground hover:text-foreground'
                     }`}
-                    data-testid={`ai-attendance-range-${opt.value}`}
+                    data-testid={`${testIdPrefix}-range-${opt.value}`}
                   >
                     {labelFor(opt)}
                   </button>
@@ -917,7 +927,7 @@ const StaffAttendanceReports = ({ report, isRTL, t }) => {
               className="rounded-xl"
               onClick={handleExportCsv}
               disabled={filtered.length === 0}
-              data-testid="ai-attendance-export-csv-btn"
+              data-testid={`${testIdPrefix}-export-csv-btn`}
             >
               <Download className="h-3.5 w-3.5 me-1.5" />
               {isRTL ? 'تصدير CSV' : 'Export CSV'}
@@ -1112,6 +1122,7 @@ export const AIInsightsPage = () => {
   const [studentRisks, setStudentRisks] = useState([]);
   const [attendanceData, setAttendanceData] = useState(null);
   const [attendanceReport, setAttendanceReport] = useState(null);
+  const [studentAttendanceReport, setStudentAttendanceReport] = useState(null);
   const [staffHeadcount, setStaffHeadcount] = useState(0);
   const [todayAttendanceCounts, setTodayAttendanceCounts] = useState({ present: 0, absent: 0, excused: 0, late: 0 });
 
@@ -1136,7 +1147,7 @@ export const AIInsightsPage = () => {
     const myReqId = fetchReqIdRef.current;
     try {
       const todayDate = new Date().toISOString().split('T')[0];
-      const [overviewRes, predictionsRes, recommendationsRes, alertsRes, risksRes, dashboardRes, attendanceReportRes, teachersRes, adminsRes, todayAttendanceRes] = await Promise.all([
+      const [overviewRes, predictionsRes, recommendationsRes, alertsRes, risksRes, dashboardRes, attendanceReportRes, studentAttendanceReportRes, teachersRes, adminsRes, todayAttendanceRes] = await Promise.all([
         api.get('/ai/insights/overview').catch(() => ({ data: null })),
         api.get('/ai/insights/predictions').catch(() => ({ data: [] })),
         api.get('/ai/insights/recommendations').catch(() => ({ data: [] })),
@@ -1144,6 +1155,7 @@ export const AIInsightsPage = () => {
         api.get('/ai/insights/at-risk-students').catch(() => ({ data: [] })),
         api.get('/school/dashboard').catch(() => ({ data: null })),
         api.get('/teacher-attendance/report/summary').catch(() => ({ data: null })),
+        isTeacher ? Promise.resolve({ data: null }) : api.get('/attendance/report/summary').catch(() => ({ data: null })),
         isTeacher ? Promise.resolve({ data: [] }) : api.get('/teachers').catch(() => ({ data: [] })),
         isTeacher ? Promise.resolve({ data: [] }) : api.get('/teacher-attendance/school-admins').catch(() => ({ data: [] })),
         isTeacher ? Promise.resolve({ data: [] }) : api.get(`/teacher-attendance?date=${todayDate}`).catch(() => ({ data: [] })),
@@ -1153,6 +1165,7 @@ export const AIInsightsPage = () => {
 
       setAttendanceData(dashboardRes?.data?.attendance || null);
       setAttendanceReport(attendanceReportRes?.data || null);
+      setStudentAttendanceReport(studentAttendanceReportRes?.data || null);
       const teacherCount = Array.isArray(teachersRes?.data) ? teachersRes.data.length : 0;
       const adminCount = Array.isArray(adminsRes?.data) ? adminsRes.data.length : 0;
       setStaffHeadcount(teacherCount + adminCount);
@@ -1198,6 +1211,7 @@ export const AIInsightsPage = () => {
     setStudentRisks([]);
     setAttendanceData(null);
     setAttendanceReport(null);
+    setStudentAttendanceReport(null);
     setStaffHeadcount(0);
     setTodayAttendanceCounts({ present: 0, absent: 0, excused: 0, late: 0 });
     if (firstLoadRef.current) {
@@ -1469,7 +1483,35 @@ export const AIInsightsPage = () => {
               </SectionErrorBoundary>
 
               <SectionErrorBoundary name="StaffAttendanceReports" isRTL={isRTL} fallbackMessage={t('failedToLoadAttendanceData')}>
-                <StaffAttendanceReports report={attendanceReport} isRTL={isRTL} t={t} />
+                <AttendanceReportsSection
+                  report={attendanceReport}
+                  isRTL={isRTL}
+                  t={t}
+                  title={isRTL ? 'تقارير حضور المعلمين والإداريين' : 'Teacher & Admin Attendance Reports'}
+                  subjectLabel={isRTL ? 'الكوادر' : 'staff'}
+                  exportFilenamePrefix="staff-attendance-report"
+                  testIdPrefix="ai-staff-attendance"
+                  iconBg="bg-brand-purple/10"
+                  iconColor="text-brand-purple"
+                />
+              </SectionErrorBoundary>
+            </div>
+          )}
+
+          {!isTeacher && studentAttendanceReport && (
+            <div className="ai-slide-in space-y-6">
+              <SectionErrorBoundary name="StudentAttendanceReports" isRTL={isRTL} fallbackMessage={t('failedToLoadAttendanceData')}>
+                <AttendanceReportsSection
+                  report={studentAttendanceReport}
+                  isRTL={isRTL}
+                  t={t}
+                  title={isRTL ? 'تقارير حضور الطلاب' : 'Student Attendance Reports'}
+                  subjectLabel={isRTL ? 'الطلاب' : 'student'}
+                  exportFilenamePrefix="student-attendance-report"
+                  testIdPrefix="ai-student-attendance"
+                  iconBg="bg-brand-turquoise/10"
+                  iconColor="text-brand-turquoise"
+                />
               </SectionErrorBoundary>
             </div>
           )}
