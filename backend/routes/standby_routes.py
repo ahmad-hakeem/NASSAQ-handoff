@@ -417,7 +417,7 @@ async def get_standby_roster(
     unavailable: dict[str, set] = {tid: set() for tid in busy}
     unavail_rows = await gd_find(
         db.session, "unavailability",
-        {"school_id": str(sid)},
+        {"school_id": str(sid), "entity_type": "teacher"},
         limit=10000,
     )
     for row in unavail_rows or []:

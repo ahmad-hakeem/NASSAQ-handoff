@@ -310,6 +310,20 @@ export function StandbyRosterContent() {
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             </Button>
+            <Button
+              onClick={() => nassaqConfirm(
+                'سيُعاد توليد جدول الانتظار من الجدول الحالي. التعديلات اليدوية المحفوظة لن تُمسح، وأي تعارضات (إجازات/منع زمني/يوم إجازة) ستظهر في تنبيهات أعلى الجدول.',
+                () => loadRoster(),
+                { confirmText: 'إعادة التوليد', title: 'إعادة توليد جدول الانتظار' },
+              )}
+              variant="outline"
+              disabled={refreshing}
+              className="border-[#1C3D74] text-[#1C3D74] hover:bg-[#1C3D74]/5"
+              title="إعادة توليد جدول الانتظار من الجدول الحالي مع الحفاظ على التعديلات اليدوية"
+            >
+              <Sparkles className="h-4 w-4 ml-2" />
+              إعادة التوليد
+            </Button>
           </div>
         </div>
 
