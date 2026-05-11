@@ -342,7 +342,7 @@ async def hakim_evidence_text(
         }
 
     reason = result.get("reason") or "HAKIM_FAILED"
-    if reason == "AI_DISABLED":
+    if reason in ("AI_DISABLED", "AI_DISABLED_BY_TENANT", "AI_CONSENT_UNVERIFIED"):
         return {"success": False, "text": text_in, "reason": reason}
     if reason == "TEXT_TOO_SHORT":
         raise HTTPException(status_code=422, detail="TEXT_TOO_SHORT")
@@ -1537,8 +1537,8 @@ async def _hakim_call(
         return result["text"]
 
     reason = result.get("reason") or "HAKIM_FAILED"
-    if reason == "AI_DISABLED":
-        raise HTTPException(status_code=503, detail="AI_DISABLED")
+    if reason in ("AI_DISABLED", "AI_DISABLED_BY_TENANT", "AI_CONSENT_UNVERIFIED"):
+        raise HTTPException(status_code=503, detail=reason)
     if reason == "TEXT_TOO_SHORT":
         raise HTTPException(status_code=422, detail="TEXT_TOO_SHORT")
     raise HTTPException(status_code=502, detail="HAKIM_FAILED")

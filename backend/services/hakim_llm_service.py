@@ -664,9 +664,13 @@ async def hakim_generate(
     gen_id = uuid.uuid4().hex[:12]
     started = time.perf_counter()
 
-    # Phase 3 — per-tenant AI consent kill-switch. We read the typed
-    # `schools.ai_consent_enabled` column directly because the gd_find_one
-    # JSON view does not surface typed-only columns.
+    # Phase 3 — per-tenant AI consent kill-switch. FAIL-CLOSED: if a
+    # tenant_id is provided but we cannot conclusively read consent
+    # status, we MUST refuse to call the LLM. Sending children's data to
+    # the provider on a transient DB error or schema drift would violate
+    # the regulated-data control. We read the typed
+    # `schools.ai_consent_enabled` column directly because the
+    # gd_find_one JSON view does not surface typed-only columns.
     if tenant_id:
         try:
             from dependencies import db as _db
@@ -675,16 +679,31 @@ async def hakim_generate(
                 _sa_text_consent("SELECT ai_consent_enabled FROM schools WHERE id=:i"),
                 {"i": tenant_id},
             )).first()
-            if row is not None and row[0] is False:
-                return _result(
-                    False, text or "", mode, field, model, language, gen_id, started,
-                    reason="AI_DISABLED_BY_TENANT",
-                )
         except Exception as _consent_err:
-            # Fail-open ONLY if the schools table cannot be read at all
-            # (e.g. test fixture without the column). In real deployments
-            # the column exists and the check is authoritative.
-            logger.debug(f"[Hakim:{gen_id}] tenant consent check skipped: {_consent_err}")
+            # Fail-closed: cannot verify consent → refuse outbound call.
+            logger.warning(
+                f"[Hakim:{gen_id}] tenant consent check failed → refusing LLM "
+                f"call (fail-closed): {_consent_err}"
+            )
+            return _result(
+                False, text or "", mode, field, model, language, gen_id, started,
+                reason="AI_CONSENT_UNVERIFIED",
+            )
+        if row is None:
+            # No school row found → unknown tenant. Refuse.
+            logger.warning(
+                f"[Hakim:{gen_id}] tenant {tenant_id} not found → refusing LLM "
+                f"call (fail-closed)"
+            )
+            return _result(
+                False, text or "", mode, field, model, language, gen_id, started,
+                reason="AI_CONSENT_UNVERIFIED",
+            )
+        if row[0] is False:
+            return _result(
+                False, text or "", mode, field, model, language, gen_id, started,
+                reason="AI_DISABLED_BY_TENANT",
+            )
 
     mode = (mode or "").strip().lower()
     field = (field or "").strip().lower()

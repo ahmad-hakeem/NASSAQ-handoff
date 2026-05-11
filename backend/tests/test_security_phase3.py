@@ -277,3 +277,74 @@ async def test_portfolio_route_propagates_tenant_consent(monkeypatch, client, te
         body = r.json()
         assert body.get("success") is False
         assert body.get("reason") in ("AI_DISABLED_BY_TENANT", "AI_DISABLED")
+
+
+@pytest.mark.asyncio
+async def test_hakim_consent_check_fails_closed_on_db_error(monkeypatch):
+    """If the consent SELECT raises (e.g. transient DB / schema drift), the
+    service MUST refuse to call the LLM and return AI_CONSENT_UNVERIFIED.
+    Sending children's data to the provider on a fail-open path is the
+    exact regression that earlier code review flagged as blocking."""
+    from services import hakim_llm_service as svc
+
+    called = {"n": 0}
+
+    class _BoomClient:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(*a, **k):
+                    called["n"] += 1
+                    raise RuntimeError("must not be called when consent unverified")
+
+    monkeypatch.setattr(svc, "_get_client", lambda: _BoomClient())
+
+    # Force the consent SELECT to blow up
+    class _BoomSession:
+        async def execute(self, *a, **kw):
+            raise RuntimeError("simulated DB read failure")
+
+    from dependencies import db as _db
+    real = _db.session
+    _db.set_session(_BoomSession())
+    try:
+        res = await svc.hakim_generate(
+            mode="generate",
+            field="behavior_note",
+            text="hello",
+            tenant_id=str(uuid.uuid4()),
+        )
+    finally:
+        _db.set_session(real)
+
+    assert res["success"] is False
+    assert res["reason"] == "AI_CONSENT_UNVERIFIED"
+    assert called["n"] == 0
+
+
+@pytest.mark.asyncio
+async def test_hakim_consent_check_fails_closed_on_unknown_tenant(monkeypatch):
+    """Unknown tenant_id → AI_CONSENT_UNVERIFIED, no LLM call."""
+    from services import hakim_llm_service as svc
+
+    called = {"n": 0}
+
+    class _BoomClient:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(*a, **k):
+                    called["n"] += 1
+                    raise RuntimeError("must not be called for unknown tenant")
+
+    monkeypatch.setattr(svc, "_get_client", lambda: _BoomClient())
+
+    res = await svc.hakim_generate(
+        mode="generate",
+        field="behavior_note",
+        text="hello",
+        tenant_id=str(uuid.uuid4()),  # not seeded → no row
+    )
+    assert res["success"] is False
+    assert res["reason"] == "AI_CONSENT_UNVERIFIED"
+    assert called["n"] == 0

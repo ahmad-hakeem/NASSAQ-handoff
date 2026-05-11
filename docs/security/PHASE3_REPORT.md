@@ -39,7 +39,7 @@
   AI pipeline (lawful basis, data minimisation, retention, subject rights).
 
 ### 5. Tests
-- `backend/tests/test_security_phase3.py` — 10 tests, all passing:
+- `backend/tests/test_security_phase3.py` — 12 tests, all passing:
   - pseudonymizer round-trip (basic, no-leak of national_id/phone/email,
     longest-match ordering, unknown-token passthrough).
   - refresh tokens carry `fid`; rotation preserves family across multiple hops.
@@ -48,10 +48,17 @@
   - Route-level integration: `/teacher/portfolio/generate-evidence-text`
     with `ai_consent_enabled=False` proves `tenant_id` is propagated end-to-end
     and the LLM client is never invoked.
+  - Fail-closed consent: simulated DB read failure → `AI_CONSENT_UNVERIFIED`,
+    no LLM call. Unknown tenant_id → `AI_CONSENT_UNVERIFIED`, no LLM call.
+
+**Fail-closed posture:** consent enforcement is authoritative. If `tenant_id`
+is provided but consent cannot be conclusively read (DB error, missing row,
+schema drift), `hakim_generate` returns `AI_CONSENT_UNVERIFIED` and the LLM
+is never called. Only an explicit `True` consent value allows outbound calls.
 - All four production call sites updated to forward `tenant_id`:
   `portfolio_routes_mod.py` (3 sites + helper) and `parent_portal_routes.py`
   (2 sites — story + tip).
-- Full security suite: **45 passed** (Phase 1 + Phase 2 + Phase 3, no regressions).
+- Full security suite: **47 passed** (Phase 1 + Phase 2 + Phase 3, no regressions).
 
 ## Drift — explicitly NOT shipped (deferred to Phase 4)
 
