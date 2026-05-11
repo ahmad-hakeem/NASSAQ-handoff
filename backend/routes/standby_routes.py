@@ -22,10 +22,22 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import List
 
-from dependencies import db, get_current_user
+from dependencies import db, get_current_user, require_roles, UserRole
 from engines.notification_engine import NotificationEngine
 from engines.sql_utils import gd_delete_many, gd_find, gd_find_one, gd_insert
 from utils.tenant_scope import assert_school_access, resolve_school_id
+
+# Roles permitted to read or edit the standby roster. Principals own the
+# roster; school admins and platform super-admin are also allowed.
+# Everyone else (teachers, students, parents, sub-admins limited scope,
+# etc.) is denied with HTTP 403 even when the tenant matches — this
+# enforces the principal/admin-only contract from Task #157 server-side.
+_STANDBY_ROSTER_ROLES = [
+    UserRole.SCHOOL_PRINCIPAL,
+    UserRole.SCHOOL_ADMIN,
+    UserRole.PLATFORM_ADMIN,
+]
+require_standby_roster_role = require_roles(_STANDBY_ROSTER_ROLES)
 
 from services.standby_roster_service import (
     DAYS,
@@ -316,7 +328,7 @@ async def get_standby_roster(
         description="نمط العرض الإضافي: 'day_centric' لإرفاق إسقاط الجدول السعودي.",
     ),
     x_school_context: Optional[str] = Header(None),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_standby_roster_role),
 ):
     """يُرجع جدول الانتظار الكامل بصيغة matrix (teachers × days × periods).
 
@@ -539,7 +551,7 @@ async def put_standby_override(
     body: StandbyOverrideRequest,
     school_id: Optional[str] = Query(None),
     x_school_context: Optional[str] = Header(None),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_standby_roster_role),
 ):
     """يضبط/يُلغي تعديلاً يدوياً لخانة انتظار واحدة.
 

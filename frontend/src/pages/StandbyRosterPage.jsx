@@ -167,9 +167,10 @@ export function StandbyRosterContent() {
 
   const sendOverride = useCallback(async (teacherId, day, period, action, slotIndex = null) => {
     if (!schoolId) return;
-    const cellKey = slotIndex != null
-      ? `slot:${day}:${period}:${slotIndex}`
-      : `${teacherId}:${day}:${period}`;
+    // Always set the teacher-keyed busyCellKey so the day-centric table
+    // (which keys filled cells as `<teacher_id>:<day>:<period>`) shows
+    // the in-flight disable state on the cell being edited.
+    const cellKey = `${teacherId}:${day}:${period}`;
     setBusyCellKey(cellKey);
     try {
       const body = { teacher_id: teacherId, day, period, action };
