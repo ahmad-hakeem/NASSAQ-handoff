@@ -46,6 +46,8 @@ def _get_orm_model(collection: str):
         BehaviourType, TimetableConstraint, ApprovalRequest,
         Event, SystemSetting, RevokedToken, UserSession,
         CalendarEvent, DailyTask,
+        MfaFactor, MfaRecoveryCode, MfaPendingChallenge,
+        MfaEmailOtp, MfaWebauthnChallenge,
     )
     _ORM_REGISTRY = {
         "users": User,
@@ -102,6 +104,11 @@ def _get_orm_model(collection: str):
         "system_settings": SystemSetting,
         "revoked_tokens": RevokedToken,
         "user_sessions": UserSession,
+        "mfa_factors": MfaFactor,
+        "mfa_recovery_codes": MfaRecoveryCode,
+        "mfa_pending_challenges": MfaPendingChallenge,
+        "mfa_email_otps": MfaEmailOtp,
+        "mfa_webauthn_challenges": MfaWebauthnChallenge,
     }
     return _ORM_REGISTRY.get(collection)
 

@@ -101,6 +101,78 @@ def decrypt_totp_secret(ciphertext: bytes) -> str:
         ) from exc
 
 
+# ---- TOTP code generation / verification -----------------------------------
+
+# pyotp + qrcode are optional-at-import-time so the module can be imported
+# in environments where TOTP is disabled (e.g. unit tests of recovery codes
+# only). Missing imports fail loudly when the helpers are *called*.
+try:
+    import pyotp as _pyotp  # type: ignore
+except Exception:  # pragma: no cover
+    _pyotp = None  # type: ignore
+
+try:
+    import qrcode as _qrcode  # type: ignore
+    from qrcode.image.svg import SvgImage as _SvgImage  # type: ignore
+except Exception:  # pragma: no cover
+    _qrcode = None  # type: ignore
+    _SvgImage = None  # type: ignore
+
+
+def generate_totp_secret() -> str:
+    """Generate a 160-bit random base32 secret suitable for RFC-6238 TOTP."""
+    if _pyotp is None:
+        raise RuntimeError("pyotp is not installed")
+    return _pyotp.random_base32(length=32)
+
+
+def build_otpauth_uri(account_label: str, secret_b32: str, issuer: str = "NASSAQ") -> str:
+    """Build an ``otpauth://totp/...`` URI for QR-code provisioning.
+
+    ``account_label`` should be the user's email (or another stable
+    identifier) — it is what the authenticator app displays under the
+    issuer name.
+    """
+    if _pyotp is None:
+        raise RuntimeError("pyotp is not installed")
+    return _pyotp.TOTP(secret_b32).provisioning_uri(name=account_label, issuer_name=issuer)
+
+
+def qr_svg_for_otpauth(uri: str) -> str:
+    """Render an otpauth URI as an inline SVG string. Returned value is
+    safe to embed in HTML / React via ``dangerouslySetInnerHTML`` because
+    it contains no user-controlled data — only the URI we just built."""
+    if _qrcode is None or _SvgImage is None:
+        raise RuntimeError("qrcode is not installed")
+    img = _qrcode.make(uri, image_factory=_SvgImage, box_size=10, border=2)
+    import io
+    buf = io.BytesIO()
+    img.save(buf)
+    return buf.getvalue().decode("utf-8")
+
+
+def verify_totp_code(secret_b32: str, code: str, *, window: int = 1) -> bool:
+    """Constant-time-ish verify of a 6-digit TOTP code with a +/- 1 step
+    tolerance (default ``window=1`` = 30s slack on either side, total
+    90s acceptance window). Wider windows are forbidden — they materially
+    weaken the factor."""
+    if _pyotp is None:
+        raise RuntimeError("pyotp is not installed")
+    if not code or not secret_b32:
+        return False
+    cleaned = "".join(ch for ch in (code or "") if ch.isdigit())
+    if len(cleaned) != 6:
+        return False
+    if window < 0 or window > 1:
+        # Refuse pathological windows. The plan caller passes 1.
+        window = 1
+    try:
+        return bool(_pyotp.TOTP(secret_b32).verify(cleaned, valid_window=window))
+    except Exception as exc:  # malformed secret etc — treat as failure
+        logger.warning(f"verify_totp_code: pyotp raised: {exc}")
+        return False
+
+
 # ---- Recovery codes --------------------------------------------------------
 
 _RECOVERY_ALPHABET: Final[str] = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"

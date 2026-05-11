@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import (
     Column, String, Integer, Float, Boolean, DateTime, Text, Enum as SAEnum,
-    ForeignKey, Index, JSON, UniqueConstraint, Sequence, text
+    ForeignKey, Index, JSON, LargeBinary, UniqueConstraint, Sequence, text
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
 from sqlalchemy.orm import relationship
@@ -1324,12 +1324,16 @@ class MfaFactor(Base):
     is_primary = Column(Boolean, nullable=False, default=False)
     is_active = Column(Boolean, nullable=False, default=False)
 
-    # TOTP — null for non-TOTP rows
-    totp_secret_encrypted = Column(Text, nullable=True)  # bytea but driver returns bytes/memoryview
+    # TOTP — null for non-TOTP rows. Stored as PostgreSQL ``BYTEA`` because
+    # Fernet ciphertext is binary and round-trips cleanly via asyncpg as
+    # ``bytes`` / ``memoryview``.
+    totp_secret_encrypted = Column(LargeBinary, nullable=True)
 
-    # WebAuthn — null for non-WebAuthn rows
-    webauthn_credential_id = Column(Text, nullable=True)
-    webauthn_public_key = Column(Text, nullable=True)
+    # WebAuthn — null for non-WebAuthn rows. Credential ID + public key are
+    # raw CBOR/COSE bytes; storing as ``BYTEA`` avoids any base64-roundtrip
+    # ambiguity at compare time.
+    webauthn_credential_id = Column(LargeBinary, nullable=True)
+    webauthn_public_key = Column(LargeBinary, nullable=True)
     webauthn_sign_count = Column(Integer, nullable=True)
     webauthn_aaguid = Column(String, nullable=True)
     webauthn_attachment = Column(String, nullable=True)  # 'platform' | 'cross-platform'
@@ -1414,7 +1418,7 @@ class MfaWebauthnChallenge(Base):
     id = Column(String, primary_key=True, default=_uuid)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     purpose = Column(String, nullable=False)  # 'enroll' | 'verify'
-    challenge = Column(Text, nullable=False)  # bytea
+    challenge = Column(LargeBinary, nullable=False)  # raw random bytes
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
 
