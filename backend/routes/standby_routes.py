@@ -534,6 +534,32 @@ async def get_standby_roster(
     return payload
 
 
+@router.post("/standby/roster/regenerate")
+async def regenerate_standby_roster(
+    school_id: Optional[str] = Query(None),
+    shape: Optional[str] = Query(
+        "day_centric",
+        description="نمط العرض الإضافي: 'day_centric' لإرفاق إسقاط الجدول السعودي.",
+    ),
+    x_school_context: Optional[str] = Header(None),
+    current_user: dict = Depends(require_standby_roster_role),
+):
+    """Rebuild the standby roster from the live master timetable.
+
+    Manual overrides in `standby_overrides` are preserved by design
+    (they're applied on top of the freshly computed auto roster). Any
+    that now conflict with reality (busy/unavailable/blocked-day)
+    surface in `day_centric.warnings` and are excluded from the
+    effective roster — never silently overwritten or deleted.
+    """
+    return await get_standby_roster(
+        school_id=school_id,
+        shape=shape,
+        x_school_context=x_school_context,
+        current_user=current_user,
+    )
+
+
 class StandbyOverrideRequest(BaseModel):
     teacher_id: str = Field(..., min_length=1)
     day: str = Field(..., min_length=3)

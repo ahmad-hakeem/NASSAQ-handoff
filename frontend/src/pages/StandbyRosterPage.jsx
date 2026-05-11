@@ -14,7 +14,6 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -22,7 +21,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import {
-  Hourglass, Loader2, RefreshCw, ArrowRight, Sparkles,
+  Hourglass, Loader2, RefreshCw, Sparkles,
   CheckCircle2, MinusCircle, Lock, CalendarOff, LayoutGrid, Rows3,
 } from 'lucide-react';
 import {
@@ -132,7 +131,6 @@ function LegendChip({ color, label }) {
 // ─── Standby content ──────────────────────────────────────────────────
 export function StandbyRosterContent() {
   const { user, api } = useAuth();
-  const navigate = useNavigate();
   const { nassaqConfirm, nassaqError } = useNassaqAlert();
   const schoolId = user?.tenant_id;
 
@@ -225,6 +223,32 @@ export function StandbyRosterContent() {
     loadRoster();
   }, [loadRoster]);
 
+  // Real server-side regenerate: POST rebuilds the standby roster from
+  // the current master timetable (preserving manual overrides) and
+  // returns the fresh payload — no full-page reload.
+  const regenerateRoster = useCallback(async () => {
+    if (!schoolId) return;
+    setRefreshing(true);
+    try {
+      const response = await api.post(
+        '/standby/roster/regenerate',
+        null,
+        {
+          params: { school_id: schoolId, shape: 'day_centric' },
+          headers: { 'X-School-Context': schoolId },
+        },
+      );
+      setData(response.data);
+      setError('');
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      const msg = typeof detail === 'string' ? detail : 'تعذّر إعادة توليد جدول الانتظار';
+      nassaqError(msg);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [api, schoolId, nassaqError]);
+
   const teachers = data?.teachers || [];
   const cells = data?.cells || {};
   const periods = data?.periods || [1, 2, 3, 4, 5, 6, 7];
@@ -294,14 +318,6 @@ export function StandbyRosterContent() {
               </button>
             </div>
             <Button
-              variant="outline"
-              onClick={() => navigate('/school/schedule')}
-              className="border-slate-300"
-            >
-              <ArrowRight className="h-4 w-4 ml-2" />
-              العودة لإدارة الجداول
-            </Button>
-            <Button
               onClick={handleRefresh}
               variant="ghost"
               size="icon"
@@ -312,14 +328,14 @@ export function StandbyRosterContent() {
             </Button>
             <Button
               onClick={() => nassaqConfirm(
-                'سيُعاد توليد جدول الانتظار من الجدول الحالي. التعديلات اليدوية المحفوظة لن تُمسح، وأي تعارضات (إجازات/منع زمني/يوم إجازة) ستظهر في تنبيهات أعلى الجدول.',
-                () => loadRoster(),
+                'سيُعاد توليد جدول الانتظار من الجدول الرئيسي الحالي. التعديلات اليدوية المحفوظة لن تُمسح، وأي تعارضات (إجازات/منع زمني/يوم إجازة) ستظهر في تنبيهات أعلى الجدول.',
+                () => regenerateRoster(),
                 { confirmText: 'إعادة التوليد', title: 'إعادة توليد جدول الانتظار' },
               )}
               variant="outline"
               disabled={refreshing}
               className="border-[#1C3D74] text-[#1C3D74] hover:bg-[#1C3D74]/5"
-              title="إعادة توليد جدول الانتظار من الجدول الحالي مع الحفاظ على التعديلات اليدوية"
+              title="إعادة توليد جدول الانتظار من الجدول الرئيسي مع الحفاظ على التعديلات اليدوية"
             >
               <Sparkles className="h-4 w-4 ml-2" />
               إعادة التوليد
