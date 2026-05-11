@@ -167,9 +167,6 @@ export function StandbyRosterContent() {
 
   const sendOverride = useCallback(async (teacherId, day, period, action, slotIndex = null) => {
     if (!schoolId) return;
-    // Always set the teacher-keyed busyCellKey so the day-centric table
-    // (which keys filled cells as `<teacher_id>:<day>:<period>`) shows
-    // the in-flight disable state on the cell being edited.
     const cellKey = `${teacherId}:${day}:${period}`;
     setBusyCellKey(cellKey);
     try {
@@ -209,8 +206,6 @@ export function StandbyRosterContent() {
   const onDayCellClick = useCallback(({ cell, day, period, slot_index }) => {
     if (cell) {
       // Filled — confirm remove (or reset for manual-add overrides).
-      // Edits are slot-addressable: server scopes the change to the
-      // exact (day, period, slot_index) so other rows are unaffected.
       const action = cell.source === 'manual' ? 'reset' : 'remove';
       const verb = action === 'reset' ? 'إلغاء الإسناد اليدوي' : 'استثناء المعلم';
       nassaqConfirm(

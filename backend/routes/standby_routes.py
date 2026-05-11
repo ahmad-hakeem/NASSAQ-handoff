@@ -27,11 +27,7 @@ from engines.notification_engine import NotificationEngine
 from engines.sql_utils import gd_delete_many, gd_find, gd_find_one, gd_insert
 from utils.tenant_scope import assert_school_access, resolve_school_id
 
-# Roles permitted to read or edit the standby roster. Principals own the
-# roster; school admins and platform super-admin are also allowed.
-# Everyone else (teachers, students, parents, sub-admins limited scope,
-# etc.) is denied with HTTP 403 even when the tenant matches — this
-# enforces the principal/admin-only contract from Task #157 server-side.
+# Standby roster is principal/admin-only (Task #157).
 _STANDBY_ROSTER_ROLES = [
     UserRole.SCHOOL_PRINCIPAL,
     UserRole.SCHOOL_ADMIN,
@@ -42,6 +38,8 @@ require_standby_roster_role = require_roles(_STANDBY_ROSTER_ROLES)
 from services.standby_roster_service import (
     DAYS,
     PERIODS,
+    _normalize_day_key,
+    _resolve_blocked_days,
     apply_overrides_to_roster,
     compute_standby_roster,
     fetch_standby_overrides,
@@ -497,10 +495,8 @@ async def get_standby_roster(
     # overrides keep their priority because final_roster is already the
     # output of `apply_overrides_to_roster`.
     if (shape or "").lower() == "day_centric":
-        # Pull per-slot unavailability so the projection can flag manual
-        # overrides that now collide with approved leave / lockouts (not
-        # just teaching busy collisions). Same scope guard as the rest of
-        # the endpoint — school_id filtered.
+        # Pull per-slot unavailability so the projection can flag stale
+        # manual overrides that collide with approved leave/lockouts.
         unavailable: dict[str, set] = {tid: set() for tid in busy}
         unavail_rows = await gd_find(
             db.session, "unavailability",
@@ -538,11 +534,7 @@ class StandbyOverrideRequest(BaseModel):
     day: str = Field(..., min_length=3)
     period: int = Field(..., ge=1, le=12)
     action: str = Field(..., description="add | remove | reset")
-    # Optional 1-based slot_index for day-centric edits. When provided,
-    # the override is anchored to (day, period, slot_index) so a single
-    # cell edit only affects that exact cell. Omit for legacy
-    # teacher-centric edits (server falls back to teacher+day+period
-    # scoping).
+    # 1-based slot anchor for day-centric edits; omit for legacy scoping.
     slot_index: Optional[int] = Field(None, ge=1, le=50)
 
 
@@ -581,10 +573,7 @@ async def put_standby_override(
     timetable = await _resolve_active_timetable(str(sid))
     timetable_id = timetable.get("id") if timetable else None
 
-    # Reject manual adds at write time when the slot would be silently
-    # dropped from the day-centric projection — busy class, blocked
-    # day, or unavailability lockout. Better to fail loudly than to
-    # save an override the principal can't see.
+    # Reject manual adds that would be silently dropped (busy/leave/blocked).
     if action == "add":
         if timetable_id:
             clash = await gd_find(
@@ -603,24 +592,29 @@ async def put_standby_override(
                     detail="لا يمكن إضافة خانة انتظار فوق حصة مجدولة للمعلم نفسه",
                 )
 
-        unavail = await gd_find(
+        # Match compute/projection semantics: unavailability rows can
+        # use either `entity_id` or `teacher_id`, and `day` may be raw
+        # English or Arabic — normalize both sides.
+        unavail_rows = await gd_find(
             db.session, "unavailability",
-            {
-                "school_id": str(sid),
-                "entity_type": "teacher",
-                "entity_id": body.teacher_id,
-                "day": day,
-                "period": period,
-            },
-            limit=1,
+            {"school_id": str(sid)},
+            limit=10000,
         )
-        if unavail:
-            raise HTTPException(
-                status_code=409,
-                detail="لا يمكن إضافة خانة انتظار في وقت يقع ضمن منع زمني للمعلم",
-            )
+        for row in unavail_rows or []:
+            row_tid = row.get("entity_id") or row.get("teacher_id")
+            if row_tid != body.teacher_id:
+                continue
+            row_day = _normalize_day_key(row.get("day")) or (row.get("day") or "").lower()
+            try:
+                row_p = int(row.get("period"))
+            except (TypeError, ValueError):
+                continue
+            if row_day == day and row_p == period:
+                raise HTTPException(
+                    status_code=409,
+                    detail="لا يمكن إضافة خانة انتظار في وقت يقع ضمن منع زمني للمعلم",
+                )
 
-        from services.standby_roster_service import _resolve_blocked_days
         if day in _resolve_blocked_days(teacher):
             raise HTTPException(
                 status_code=409,
@@ -631,16 +625,9 @@ async def put_standby_override(
     deleted_total = 0
 
     if slot_index is not None:
-        # Day-centric, slot-addressable edit. Two layers of cleanup so
-        # the new override is the only one anchored to this cell:
-        #   1. Drop any override pinned to (day, period, slot_index)
-        #      regardless of teacher (covers a different teacher
-        #      previously occupying this slot via a pinned add, or a
-        #      pinned remove being reset).
-        #   2. Drop any override at (teacher, day, period) regardless
-        #      of slot_index (covers legacy unpinned overrides for the
-        #      same teacher in the same column to keep the collection
-        #      idempotent and prevent duplicates).
+        # Slot-addressable edit: clear any override pinned to this cell
+        # (any teacher) plus any legacy override for this teacher in
+        # this column to keep the collection idempotent.
         deleted_total += await gd_delete_many(
             db.session, "standby_overrides",
             {

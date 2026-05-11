@@ -396,26 +396,12 @@ def project_day_centric_roster(
     unavailable: Dict[str, Set[Tuple[str, int]]] | None = None,
     blocked_by_teacher: Dict[str, Set[str]] | None = None,
 ) -> Dict[str, Any]:
-    """يبني عرض «جدول الانتظار» السعودي day-centric من سجلات atomic موجودة.
+    """Day-centric projection of the standby roster (Saudi MoE format).
 
-    لا migration ولا collection جديدة — نقرأ نفس `final_roster` و
-    `standby_overrides` التي تستهلكها الواجهة الـ teacher-centric ونعيد
-    تجميعها بصيغة (يوم → صف منتظر #N → عمود حصة → معلم).
-
-    لكل (يوم، حصة) نُرتّب المعلمين بالاسم الأبجدي حصراً (ترتيب مستقر) كي
-    لا يُسبّب تعديل خانة واحدة إعادة ترتيب صفوف أخرى — slot_index = موقع
-    المعلم في قائمة مرتّبة بالاسم. التحرير على الواجهة يستهدف
-    (teacher_id, day, period) المستخرج من نفس الخانة، فيبقى التعديل
-    موضعياً ولا يؤثر على الصفوف الأخرى.
-
-    عدد صفوف اليوم = أقصى طول لقوائم الحصص في ذلك اليوم. يحفظ صف #N
-    هويته بين عمليات إعادة التوليد لأن كل (teacher, day, period) سجل
-    atomic مستقل في `standby_overrides`، والترتيب الأبجدي ثابت.
-
-    يعيد أيضاً قائمة `warnings` لأي override يدوي صار يصطدم مع قيد
-    حقيقي على المعلم — حصة فعلية، أو منع زمني (unavailability)، أو يوم
-    إجازة. هذه السجلات لم تُمحَ (محفوظة في `standby_overrides`) لكنها
-    أُسقطت من العرض حماية للمستخدم.
+    Rows are pinned by slot_index for manual overrides; auto teachers
+    fill remaining slots alphabetically. Returns `warnings` for stale
+    manual overrides that collide with busy/unavailable/blocked-day
+    constraints (records remain in `standby_overrides`).
     """
     unavailable = unavailable or {}
     blocked_by_teacher = blocked_by_teacher or {}
@@ -430,22 +416,8 @@ def project_day_centric_roster(
             "subject": t.get("specialization") or t.get("subject") or "",
         }
 
-    # ── Walk overrides and split by addressability ──────────────────
-    # Three buckets:
-    #   pinned_add[(d,p,slot)]      = manual add anchored to a specific
-    #                                  day-centric cell. Survives
-    #                                  unrelated edits because we place
-    #                                  it at its slot regardless of
-    #                                  alphabetic order.
-    #   pinned_remove[(d,p,slot)]   = manual remove pinned to a slot.
-    #                                  Holds the slot empty (no
-    #                                  backfill) so a single-cell remove
-    #                                  doesn't shift other rows.
-    #   manual_add_unpinned         = legacy manual adds without a
-    #                                  slot_index. Still respected (via
-    #                                  final_roster), but they get a
-    #                                  position-derived slot in the
-    #                                  alphabetic auto pool.
+    # Split overrides into pinned-add, pinned-remove, and legacy
+    # unpinned buckets so day-centric edits stay slot-local.
     pinned_add: Dict[Tuple[str, int, int], dict] = {}
     pinned_remove: Dict[Tuple[str, int, int], str] = {}
     manual_add_unpinned: Set[Tuple[str, str, int]] = set()
@@ -477,9 +449,8 @@ def project_day_centric_roster(
                 "subject": meta["subject"],
                 "source": "manual",
             }
-            # Drop pinned add if reality conflicts (busy / unavailable /
-            # blocked). The override stays in the DB; the projection
-            # surfaces it via `warnings` so the principal can act on it.
+            # Drop pinned add on busy/unavail/blocked; override stays
+            # in DB and surfaces as a warning below.
             if (d, p) in busy.get(tid, set()):
                 continue
             if (d, p) in unavailable.get(tid, set()):
@@ -491,9 +462,8 @@ def project_day_centric_roster(
         elif action == "remove" and slot is not None:
             pinned_remove[(d, p, slot)] = tid
 
-    # ── Auto pool: teachers from final_roster that aren't pinned ────
-    # Excludes teachers already pinned at any slot of the same (d,p)
-    # so they don't appear twice in the same column.
+    # Auto pool: teachers from final_roster excluding those already
+    # pinned in the same (d,p) so no teacher appears twice per column.
     auto_pool: Dict[Tuple[str, int], List[dict]] = {}
     for tid, slots in final_roster.items():
         meta = teacher_meta.get(tid)
@@ -512,10 +482,9 @@ def project_day_centric_roster(
                 "source": source,
             })
     for key in auto_pool:
-        # Alphabetic ordering for stable, deterministic auto placement.
         auto_pool[key].sort(key=lambda e: e["teacher_name"])
 
-    # ── Place autos into non-pinned slots, lowest slot first ────────
+    # Place autos into the lowest-numbered non-pinned slots.
     auto_slot: Dict[Tuple[str, int, int], dict] = {}
     auto_max_slot: Dict[Tuple[str, int], int] = {}
     for (d_key, p_key), pool in auto_pool.items():
@@ -531,14 +500,12 @@ def project_day_centric_roster(
             auto_max_slot[(d_key, p_key)] = s
             idx += 1
 
-    # ── Determine slot_count per day ────────────────────────────────
     pinned_max_in_dp: Dict[Tuple[str, int], int] = {}
     for (dd, pp, s) in list(pinned_add) + list(pinned_remove):
         cur = pinned_max_in_dp.get((dd, pp), 0)
         if s > cur:
             pinned_max_in_dp[(dd, pp)] = s
 
-    # ── Build day-centric rows ──────────────────────────────────────
     days_payload: List[dict] = []
     for d in days:
         max_slots = 0
@@ -556,8 +523,7 @@ def project_day_centric_roster(
                 if (d, p, slot_idx) in pinned_add:
                     cells[str(p)] = pinned_add[(d, p, slot_idx)]
                 elif (d, p, slot_idx) in pinned_remove:
-                    # Slot held empty by a manual remove. Edit-locality
-                    # means we do NOT backfill from the auto pool.
+                    # Manual remove holds the slot empty (no backfill).
                     cells[str(p)] = None
                 elif (d, p, slot_idx) in auto_slot:
                     cells[str(p)] = auto_slot[(d, p, slot_idx)]
@@ -570,16 +536,12 @@ def project_day_centric_roster(
             "rows": rows,
         })
 
-    # Legacy `manual_add` set used by the warnings block below covers
-    # both pinned and unpinned manual adds.
+    # Aggregate every manual add (pinned + unpinned + dropped) so the
+    # warning loop catches DB rows that won't appear in the projection.
     manual_add: Set[Tuple[str, str, int]] = set(manual_add_unpinned)
     for (d_key, p_key, _s), entry in pinned_add.items():
         manual_add.add((entry["teacher_id"], d_key, p_key))
     for ov in overrides or []:
-        # Pinned-add overrides that were dropped above (busy/unavail/
-        # blocked) won't be in pinned_add — but they're still in the DB
-        # and need a warning. Re-add their (tid,d,p) to manual_add so
-        # the warning loop catches them.
         if (ov.get("action") or "").lower() != "add":
             continue
         tid = ov.get("teacher_id")
@@ -591,10 +553,7 @@ def project_day_centric_roster(
         if tid and d in days and p in periods:
             manual_add.add((tid, d, p))
 
-    # Conflict warnings: any manual override that was silently dropped
-    # because reality changed underneath it. We surface three classes of
-    # collisions so the principal can act on stale overrides without us
-    # destroying their intent.
+    # Surface stale manual adds dropped because reality changed.
     warnings: List[dict] = []
     for (tid, d, p) in manual_add:
         meta = teacher_meta.get(tid)
