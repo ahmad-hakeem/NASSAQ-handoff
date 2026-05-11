@@ -261,6 +261,29 @@ def test_cleanup_test_data_refuses_outside_dev(monkeypatch):
     assert exc.value.code == 2
 
 
+async def test_cleanup_test_data_reasserts_at_exit(monkeypatch):
+    """If ENVIRONMENT flips mid-run, the finally-block guard must trip even
+    after _run_cleanup() returns successfully."""
+    import importlib
+    from config import NassaqConfig as Config
+    cleanup_mod = importlib.import_module("scripts.cleanup_test_data")
+
+    call_log = []
+
+    async def fake_run_cleanup():
+        call_log.append("ran")
+        # Flip the environment after the work is done — the exit-time
+        # _assert_destructive_ops_allowed() must catch it.
+        monkeypatch.setattr(Config, "ENVIRONMENT", "production", raising=False)
+
+    monkeypatch.setattr(Config, "ENVIRONMENT", "development", raising=False)
+    monkeypatch.setattr(cleanup_mod, "_run_cleanup", fake_run_cleanup)
+    with pytest.raises(SystemExit) as exc:
+        await cleanup_mod.cleanup()
+    assert exc.value.code == 2
+    assert call_log == ["ran"]  # the work did run, then the exit guard tripped
+
+
 # ---------------------------------------------------------------------------
 # tenant_scoped_find_one — fail-closed semantics
 # ---------------------------------------------------------------------------

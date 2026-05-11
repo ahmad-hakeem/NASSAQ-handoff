@@ -61,8 +61,16 @@ TENANT_TABLES=(
 
 scan() {
   for table in "${TENANT_TABLES[@]}"; do
+    # gd_find_one(... "<table>", { ... "id": ... })
     rg -n --no-heading -t py \
         "gd_find_one\([^,]+,\s*\"${table}\"\s*,\s*\{[^}]*\"id\"[^}]*\}\)" \
+        backend/routes 2>/dev/null \
+      | rg -v "school_id|tenant_id" \
+      | sed "s|^|${table}\t|" || true
+    # gd_find(... "<table>", { ... }) — bulk reads against tenant-owned tables
+    # must also pin school_id/tenant_id, otherwise they leak cross-tenant rows.
+    rg -n --no-heading -t py \
+        "\bgd_find\([^,]+,\s*\"${table}\"\s*," \
         backend/routes 2>/dev/null \
       | rg -v "school_id|tenant_id" \
       | sed "s|^|${table}\t|" || true

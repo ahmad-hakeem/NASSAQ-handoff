@@ -45,7 +45,7 @@ let webpackConfig = {
         // call sites are sanitised; future ones must be either deleted
         // or explicitly justified with an `// eslint-disable-next-line`.
         "no-restricted-syntax": [
-          "warn",
+          "error",
           {
             "selector": "AssignmentExpression[left.property.name='innerHTML']",
             "message": "Avoid innerHTML — use textContent or DOM APIs (audit H-5)."

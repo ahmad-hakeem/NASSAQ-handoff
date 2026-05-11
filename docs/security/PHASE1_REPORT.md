@@ -3,7 +3,7 @@
 **Date:** 2026-05-11  
 **Audit:** [`docs/security/SECURITY_AUDIT_2026-05-11.md`](./SECURITY_AUDIT_2026-05-11.md)  
 **Plan:** [`.local/tasks/task-166.md`](../../.local/tasks/task-166.md)  
-**Tests:** `backend/tests/test_security_phase1.py` — 16/16 passing.
+**Tests:** `backend/tests/test_security_phase1.py` — 19/19 passing.
 
 This phase covers the audit's "fix this week" tier. Sweeping migrations
 (every unscoped `gd_find_one`, every grade/behaviour/notification IDOR, full
@@ -27,7 +27,9 @@ tenant column at the query level (no after-the-fact check):
 ### C-3 (gate) — New unscoped lookups blocked at CI
 - `scripts/check_tenant_scoped_lookups.sh` — grep gate over
   `backend/routes/**.py` against the tenant-owned-table allow-list.
-- Baseline of the 163 currently-known unscoped lookups checked in at
+  Detects both `gd_find_one(... "id" ...)` and bulk `gd_find(...)` against
+  tenant-owned tables that don't pin `school_id`/`tenant_id`.
+- Baseline of the 338 currently-known unscoped lookups checked in at
   `scripts/tenant_lookup_baseline.txt`. New entries fail the gate; clearing
   the backlog is Phase 2 work.
 
@@ -64,8 +66,8 @@ tenant column at the query level (no after-the-fact check):
   longer sets `parentElement.innerHTML`; uses
   `createElement` + `textContent`.
 - ESLint `no-restricted-syntax` rule added in `frontend/craco.config.js`
-  warning on `innerHTML` / `outerHTML` / `document.write` so future call
-  sites surface in CI.
+  at **error** level on `innerHTML` / `outerHTML` / `document.write` so
+  future call sites fail the build.
 
 ### M-3 — `DANGEROUSLY_DISABLE_HOST_CHECK` build assertion
 - `frontend/craco.config.js` hard-fails any production build
@@ -75,7 +77,8 @@ tenant column at the query level (no after-the-fact check):
 ### M-7 — Destructive cleanup script guard
 - `backend/scripts/cleanup_test_data.py` now calls
   `NassaqConfig.destructive_ops_allowed()` and exits with code 2 in any
-  non-development environment.
+  non-development environment. Re-asserted in a `finally:` block so a
+  mid-run environment flip can't let the script "succeed silently".
 
 ---
 

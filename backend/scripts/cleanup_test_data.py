@@ -34,6 +34,18 @@ def _assert_destructive_ops_allowed() -> None:
 
 async def cleanup():
     _assert_destructive_ops_allowed()
+    try:
+        await _run_cleanup()
+    finally:
+        # SECURITY (audit M-7): re-assert at exit. Defends against the case
+        # where Config.ENVIRONMENT was mutated mid-run (e.g. by a misbehaving
+        # plugin or a long-lived REPL that imported this module while still
+        # in dev and then flipped to prod). Refusing to "succeed silently"
+        # in prod is the safer failure mode.
+        _assert_destructive_ops_allowed()
+
+
+async def _run_cleanup():
     async with async_session_factory() as session:
         result = await session.execute(
             text("SELECT id, name_en FROM schools WHERE name_en LIKE 'Test School%'")
