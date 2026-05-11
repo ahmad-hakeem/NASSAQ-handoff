@@ -453,7 +453,7 @@ async def get_student_full_profile(
     guardians = await gd_find(db.session, "guardian_links", {**_entity_tenant_filter(tenant_id), "student_id": student_id, "is_active": True}, limit=10)
 
     if not guardians and student.get("parent_id"):
-        parent = await gd_find_one(db.session, "parents", {"id": student["parent_id"]})
+        parent = await gd_find_one(db.session, "parents", {"id": student["parent_id"], **_entity_tenant_filter(tenant_id)})
         if parent:
             guardians = [{
                 "parent_ref": parent.get("id"),
@@ -463,16 +463,26 @@ async def get_student_full_profile(
                 "permissions": {"can_pickup": True, "can_view_grades": True, "can_view_attendance": True, "can_communicate": True}
             }]
 
+    _PARENT_SAFE_FIELDS = {
+        "id", "full_name", "full_name_en", "email", "phone", "alt_phone",
+        "national_id", "gender", "nationality", "date_of_birth", "marital_status",
+        "address", "city", "country", "avatar_url", "status", "is_active",
+        "role", "preferred_language", "preferred_theme", "tenant_id", "school_id",
+        "parent_id", "student_ids", "relationship_type", "occupation",
+        "created_at", "updated_at",
+    }
+
     parent_details = []
     for g in guardians:
         pref = g.get("parent_ref") or g.get("parent_id")
         if pref:
-            p = await gd_find_one(db.session, "parents", {"id": pref})
+            p = await gd_find_one(db.session, "parents", {"id": pref, **_entity_tenant_filter(tenant_id)})
             if not p:
-                p = await gd_find_one(db.session, "users", {"id": pref})
+                p = await gd_find_one(db.session, "users", {"id": pref, "tenant_id": tenant_id, "role": "parent"})
             if p:
+                safe_p = {k: v for k, v in p.items() if k in _PARENT_SAFE_FIELDS}
                 parent_details.append({
-                    **p,
+                    **safe_p,
                     "relationship": g.get("relationship"),
                     "is_primary": g.get("is_primary", False),
                     "link_id": g.get("id"),

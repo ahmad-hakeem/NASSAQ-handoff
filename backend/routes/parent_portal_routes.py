@@ -22,10 +22,12 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
     router = APIRouter(prefix="/parent-portal", tags=["Parent Portal"])
 
-    def _parent_or_conditions(parent_user_id: str, parent_phone: Optional[str], parent_record_id: Optional[str] = None, parent_email: Optional[str] = None) -> list:
-        """Build an $or list that matches students regardless of whether the
-        backing code stored parent link as user.id or as parents.id, and
-        provides safe fallbacks by parent phone/email as well.
+    def _parent_or_conditions(parent_user_id: str, parent_phone: Optional[str] = None, parent_record_id: Optional[str] = None, parent_email: Optional[str] = None) -> list:
+        """Build an $or list that matches students based solely on canonical
+        parent identifiers (user.id / parents.id).  Mutable contact fields
+        such as phone and email are intentionally excluded because they can be
+        changed by the authenticated user and must not be used as an
+        authorization key.
         """
         conditions = []
         seen = set()
@@ -34,10 +36,6 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 conditions.append({"parent_id": pid})
                 conditions.append({"parent_user_id": pid})
                 seen.add(pid)
-        if parent_phone:
-            conditions.append({"parent_phone": parent_phone})
-        if parent_email:
-            conditions.append({"parent_email": parent_email})
         return conditions
 
     def _parent_refs(current_user: dict) -> List[str]:

@@ -80,9 +80,9 @@ async def link_guardian_to_student(
 
     parent = None
     if data.parent_id:
-        parent = await gd_find_one(db.session, "parents", {"id": data.parent_id})
+        parent = await gd_find_one(db.session, "parents", {"id": data.parent_id, "school_id": school_id})
     elif data.parent_user_id:
-        parent = await gd_find_one(db.session, "users", {"id": data.parent_user_id})
+        parent = await gd_find_one(db.session, "users", {"id": data.parent_user_id, "tenant_id": school_id, "role": "parent"})
 
     if not parent:
         raise HTTPException(status_code=404, detail="ولي الأمر غير موجود")
