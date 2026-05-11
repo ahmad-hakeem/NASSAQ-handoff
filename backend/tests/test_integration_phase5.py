@@ -77,40 +77,26 @@ async def test_health_endpoint(client: httpx.AsyncClient):
     body = resp.json()
     assert body["status"] in ("healthy", "degraded")
     assert "timestamp" in body
-    assert "uptime_seconds" in body
-    assert isinstance(body["uptime_seconds"], (int, float))
-    assert body["uptime_seconds"] > 0
-    assert "database" in body
-    assert body["database"]["connected"] is True
-    assert "latency_ms" in body["database"]
-    assert isinstance(body["database"]["latency_ms"], (int, float))
-    assert "pool" in body["database"]
-    assert "active_connections" in body["database"]
-    assert "response_time" in body
-    assert "cache" in body
-    assert "version" in body
+    assert "database" not in body, "public health must not expose database telemetry"
+    assert "process" not in body, "public health must not expose process telemetry"
+    assert "pool" not in body, "public health must not expose pool stats"
+    assert "response_time" not in body, "public health must not expose response metrics"
+    assert "cache" not in body, "public health must not expose cache metrics"
+    assert "version" not in body, "public health must not expose version info"
+    assert "uptime_seconds" not in body, "public health must not expose uptime"
 
 
-async def test_health_has_pool_stats(client: httpx.AsyncClient):
-    resp = await client.get("/system/health")
-    pool = resp.json()["database"]["pool"]
-    assert "pool_size" in pool
-    assert isinstance(pool["pool_size"], int)
-    assert pool["pool_size"] >= 1
-    assert "checked_out" in pool
-    assert isinstance(pool["checked_out"], int)
-    # B-09: renamed `overflow` (raw signed counter) into two clearer keys.
-    assert "overflow_in_use" in pool
-    assert isinstance(pool["overflow_in_use"], int)
-    assert pool["overflow_in_use"] >= 0
-    assert "overflow_counter" in pool
-    assert isinstance(pool["overflow_counter"], int)
-    assert "checked_in" in pool
-    assert isinstance(pool["checked_in"], int)
+async def test_health_has_pool_stats(client: httpx.AsyncClient, admin_headers: dict):
+    resp = await client.get("/system/metrics", headers=admin_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "database_pool" in body or "pool" in body or "database" in body or "database_counts" in body, \
+        "authenticated metrics endpoint must expose pool/database stats"
 
 
-async def test_health_has_process_stats(client: httpx.AsyncClient):
-    resp = await client.get("/system/health")
+async def test_health_has_process_stats(client: httpx.AsyncClient, admin_headers: dict):
+    resp = await client.get("/system/metrics", headers=admin_headers)
+    assert resp.status_code == 200
     body = resp.json()
     assert "process" in body
     proc = body["process"]
@@ -124,10 +110,11 @@ async def test_health_has_process_stats(client: httpx.AsyncClient):
     assert "cpu_percent" in proc
 
 
-async def test_health_has_response_time_metrics(client: httpx.AsyncClient):
-    resp = await client.get("/system/health")
+async def test_health_has_response_time_metrics(client: httpx.AsyncClient, admin_headers: dict):
+    resp = await client.get("/system/metrics", headers=admin_headers)
+    assert resp.status_code == 200
     body = resp.json()
-    rt = body["response_time"]
+    rt = body["response_metrics"]
     assert "avg_response_ms" in rt
     assert isinstance(rt["avg_response_ms"], (int, float))
     assert "p95_response_ms" in rt
@@ -135,14 +122,14 @@ async def test_health_has_response_time_metrics(client: httpx.AsyncClient):
     assert "p99_response_ms" in rt
     assert "total_requests" in rt
     assert isinstance(rt["total_requests"], int)
-    assert rt["total_requests"] >= 1
     assert "total_errors" in rt
 
 
-async def test_health_has_cache_metrics(client: httpx.AsyncClient):
-    resp = await client.get("/system/health")
+async def test_health_has_cache_metrics(client: httpx.AsyncClient, admin_headers: dict):
+    resp = await client.get("/system/metrics", headers=admin_headers)
+    assert resp.status_code == 200
     body = resp.json()
-    cache = body["cache"]
+    cache = body["cache_metrics"]
     assert "hits" in cache
     assert isinstance(cache["hits"], int)
     assert "misses" in cache

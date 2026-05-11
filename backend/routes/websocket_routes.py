@@ -11,6 +11,7 @@ import asyncio
 import uuid
 import logging
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
+from dependencies import require_roles, UserRole
 
 logger = logging.getLogger("nassaq.websocket")
 
@@ -271,7 +272,7 @@ def create_websocket_routes(db, decode_token):
                 logger.debug(f"Failed to close WebSocket gracefully: {e}")
     
     @router.get("/ws/stats")
-    async def get_websocket_stats():
+    async def get_websocket_stats(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
         """إحصائيات الاتصالات"""
         return {
             "online_users": manager.get_online_users_count(),

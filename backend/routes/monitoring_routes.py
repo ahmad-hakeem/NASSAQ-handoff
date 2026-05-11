@@ -121,69 +121,16 @@ async def _pg_table_count(db_ref):
 @router.get("/health")
 async def health_check():
     db_ok = False
-    db_latency_ms = 0
     try:
-        db_ok, db_latency_ms = await _pg_ping(db)
+        db_ok, _ = await _pg_ping(db)
     except (SQLAlchemyError, ConnectionError, OSError) as e:
         logger.error(f"Health check DB ping failed: {e}")
     except Exception as e:
         logger.error(f"Health check unexpected error: {e}")
 
-    pool_stats = {}
-    try:
-        from db import get_sync_engine
-        from middleware.query_monitor import get_pool_stats
-        pool_stats = get_pool_stats(get_sync_engine())
-    except Exception as e:
-        logger.debug(f"Pool stats unavailable: {e}")
-
-    process_stats = {}
-    try:
-        import psutil
-        proc = psutil.Process()
-        mem = proc.memory_info()
-        process_stats = {
-            "cpu_percent": proc.cpu_percent(interval=None),
-            "memory_rss_mb": round(mem.rss / 1024 / 1024, 1),
-            "threads": proc.num_threads(),
-            "open_fds": proc.num_fds() if hasattr(proc, "num_fds") else None,
-        }
-    except Exception as e:
-        logger.debug(f"Process stats unavailable: {e}")
-
-    response_metrics = {}
-    try:
-        from middleware.request_tracing import get_response_metrics
-        response_metrics = get_response_metrics()
-    except Exception as e:
-        logger.debug(f"Response metrics unavailable: {e}")
-
-    cache_metrics = {}
-    try:
-        from middleware.cache_metrics import get_cache_metrics
-        cache_metrics = get_cache_metrics()
-    except Exception as e:
-        logger.debug(f"Cache metrics unavailable: {e}")
-
-    active_connections = pool_stats.get("checked_out", 0)
-
-    uptime_seconds = round(time.time() - _start_time)
-    status = "healthy" if db_ok else "degraded"
-
     return {
-        "status": status,
+        "status": "healthy" if db_ok else "degraded",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "uptime_seconds": uptime_seconds,
-        "database": {
-            "connected": db_ok,
-            "latency_ms": db_latency_ms,
-            "active_connections": active_connections,
-            "pool": pool_stats,
-        },
-        "process": process_stats,
-        "response_time": response_metrics,
-        "cache": cache_metrics,
-        "version": "3.0.0",
     }
 
 

@@ -70,16 +70,13 @@ class TestWebSocketAPIs:
         
         print(f"✅ WebSocket stats: {data}")
     
-    def test_ws_stats_no_auth_required(self):
-        """Test /api/ws/stats works without authentication"""
-        # Create new session without auth
+    def test_ws_stats_requires_auth(self):
+        """Test /api/ws/stats is not accessible without authentication"""
         session = requests.Session()
         response = session.get(f"{BASE_URL}/api/ws/stats")
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert "online_users" in data
-        print("✅ WebSocket stats accessible without auth")
+        assert response.status_code in (401, 403), \
+            f"Expected 401/403 but got {response.status_code}: unauthenticated access to ws/stats must be denied"
+        print("✅ WebSocket stats correctly requires authentication")
     
     def test_broadcast_message_creates_notification(self):
         """Test sending broadcast message creates real-time notification"""
