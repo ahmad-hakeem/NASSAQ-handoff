@@ -581,22 +581,50 @@ async def put_standby_override(
     timetable = await _resolve_active_timetable(str(sid))
     timetable_id = timetable.get("id") if timetable else None
 
-    # validate the slot isn't a busy class when we're trying to add.
-    if action == "add" and timetable_id:
-        clash = await gd_find(
-            db.session, "timetable_sessions",
+    # Reject manual adds at write time when the slot would be silently
+    # dropped from the day-centric projection — busy class, blocked
+    # day, or unavailability lockout. Better to fail loudly than to
+    # save an override the principal can't see.
+    if action == "add":
+        if timetable_id:
+            clash = await gd_find(
+                db.session, "timetable_sessions",
+                {
+                    "timetable_id": timetable_id,
+                    "teacher_id": body.teacher_id,
+                    "day_of_week": day,
+                    "period_number": period,
+                },
+                limit=1,
+            )
+            if clash:
+                raise HTTPException(
+                    status_code=409,
+                    detail="لا يمكن إضافة خانة انتظار فوق حصة مجدولة للمعلم نفسه",
+                )
+
+        unavail = await gd_find(
+            db.session, "unavailability",
             {
-                "timetable_id": timetable_id,
-                "teacher_id": body.teacher_id,
-                "day_of_week": day,
-                "period_number": period,
+                "school_id": str(sid),
+                "entity_type": "teacher",
+                "entity_id": body.teacher_id,
+                "day": day,
+                "period": period,
             },
             limit=1,
         )
-        if clash:
+        if unavail:
             raise HTTPException(
                 status_code=409,
-                detail="لا يمكن إضافة خانة انتظار فوق حصة مجدولة للمعلم نفسه",
+                detail="لا يمكن إضافة خانة انتظار في وقت يقع ضمن منع زمني للمعلم",
+            )
+
+        from services.standby_roster_service import _resolve_blocked_days
+        if day in _resolve_blocked_days(teacher):
+            raise HTTPException(
+                status_code=409,
+                detail="لا يمكن إضافة خانة انتظار في يوم إجازة المعلم",
             )
 
     slot_index = body.slot_index
