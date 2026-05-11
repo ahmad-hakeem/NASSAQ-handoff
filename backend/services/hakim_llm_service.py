@@ -649,10 +649,42 @@ async def hakim_generate(
     tone: str = "professional",
     constraints: Optional[Dict[str, Any]] = None,
     model: str = DEFAULT_MODEL,
+    tenant_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Generate, improve, summarize, convert or suggest text via the Hakim LLM service."""
+    """Generate, improve, summarize, convert or suggest text via the Hakim LLM service.
+
+    Phase 3 hardening:
+      * If `tenant_id` is provided, the per-tenant `schools.ai_consent_enabled`
+        flag is consulted; when FALSE, no outbound LLM call is made.
+      * Personal names in `text` and `context` are replaced with stable opaque
+        tokens before the prompt is built, and rehydrated on the response
+        (see `services/hakim_pseudonymizer.py`). The LLM provider never
+        receives student / teacher / parent real names.
+    """
     gen_id = uuid.uuid4().hex[:12]
     started = time.perf_counter()
+
+    # Phase 3 — per-tenant AI consent kill-switch. We read the typed
+    # `schools.ai_consent_enabled` column directly because the gd_find_one
+    # JSON view does not surface typed-only columns.
+    if tenant_id:
+        try:
+            from dependencies import db as _db
+            from sqlalchemy import text as _sa_text_consent
+            row = (await _db.session.execute(
+                _sa_text_consent("SELECT ai_consent_enabled FROM schools WHERE id=:i"),
+                {"i": tenant_id},
+            )).first()
+            if row is not None and row[0] is False:
+                return _result(
+                    False, text or "", mode, field, model, language, gen_id, started,
+                    reason="AI_DISABLED_BY_TENANT",
+                )
+        except Exception as _consent_err:
+            # Fail-open ONLY if the schools table cannot be read at all
+            # (e.g. test fixture without the column). In real deployments
+            # the column exists and the check is authoritative.
+            logger.debug(f"[Hakim:{gen_id}] tenant consent check skipped: {_consent_err}")
 
     mode = (mode or "").strip().lower()
     field = (field or "").strip().lower()
@@ -687,10 +719,20 @@ async def hakim_generate(
     last_reason: Optional[str] = None
     out_text = ""
 
+    # Phase 3 — pseudonymize names before the prompt is built. The provider
+    # never sees real student / teacher / parent names; tokens are rehydrated
+    # on the response.
+    from services.hakim_pseudonymizer import Pseudonymizer, collect_names_from_context
+    _pseudo = Pseudonymizer()
+    _ctx_for_prompt = _pseudo.sanitize_context(context)
+    _text_for_prompt = _pseudo.sanitize(
+        text_in, names=collect_names_from_context(context)
+    )
+
     for attempt in (0, 1):
         sharpen = attempt == 1
         system, user = _build_prompts(
-            mode=mode, field=field, text=text_in, context=context,
+            mode=mode, field=field, text=_text_for_prompt, context=_ctx_for_prompt,
             language=language, tone=tone, constraints=constraints,
             sharpen=sharpen,
         )
@@ -712,7 +754,7 @@ async def hakim_generate(
             return _result(False, text_in, mode, field, model, language, gen_id, started,
                            reason="LLM_ERROR", retried=retried)
 
-        out_text = _strip_artifacts(raw)
+        out_text = _pseudo.rehydrate(_strip_artifacts(raw))
         last_reason = _validate(
             out_text, field, language,
             original=text_in if mode == "improve" else "",

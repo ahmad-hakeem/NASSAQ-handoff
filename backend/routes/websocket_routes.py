@@ -216,11 +216,38 @@ def create_websocket_routes(db, decode_token):
                 "online_users": manager.get_online_users_count()
             })
             
-            async def _server_ping_loop(ws, uid):
-                """Server-initiated ping every 30s; force-closes socket on failure."""
+            # Capture the access-token jti so the ping loop can revalidate
+            # it against revoked_tokens and force-close in-flight sockets
+            # whose token was logged out / revoked elsewhere
+            # (audit Open Question 3).
+            _conn_jti = payload.get("jti")
+
+            async def _server_ping_loop(ws, uid, conn_jti):
+                """Server-initiated ping every 30s + revocation check.
+                Force-closes the socket on send failure OR when the JWT jti
+                that authenticated the connection has been revoked."""
                 try:
                     while True:
                         await asyncio.sleep(30)
+                        # Phase 3 — in-flight revocation propagation.
+                        if conn_jti:
+                            try:
+                                from db import async_session_factory as _asf
+                                async with _asf() as _ws_check:
+                                    revoked = await gd_find_one(
+                                        _ws_check, "revoked_tokens", {"jti": conn_jti}
+                                    )
+                                if revoked:
+                                    logger.info(
+                                        f"WS jti={conn_jti} revoked — closing socket for user={uid}"
+                                    )
+                                    try:
+                                        await ws.close(code=4001, reason="token revoked")
+                                    except Exception:
+                                        pass
+                                    return
+                            except Exception as _rv:
+                                logger.debug(f"WS revocation check failed: {_rv}")
                         try:
                             await ws.send_json({"type": "server_ping", "ts": datetime.now(timezone.utc).isoformat()})
                         except Exception:
@@ -233,7 +260,7 @@ def create_websocket_routes(db, decode_token):
                 except asyncio.CancelledError:
                     pass
 
-            ping_task = asyncio.create_task(_server_ping_loop(websocket, user_id))
+            ping_task = asyncio.create_task(_server_ping_loop(websocket, user_id, _conn_jti))
             try:
                 while True:
                     data = await websocket.receive_text()

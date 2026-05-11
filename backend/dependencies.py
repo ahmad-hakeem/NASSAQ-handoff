@@ -138,7 +138,12 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
-def create_refresh_token(data: dict, remember_me: bool = False, linked_access_jti: Optional[str] = None) -> str:
+def create_refresh_token(
+    data: dict,
+    remember_me: bool = False,
+    linked_access_jti: Optional[str] = None,
+    family_id: Optional[str] = None,
+) -> str:
     to_encode = data.copy()
     now = datetime.now(timezone.utc)
     if remember_me:
@@ -154,6 +159,13 @@ def create_refresh_token(data: dict, remember_me: bool = False, linked_access_jt
         "type": "refresh",
         "rm": remember_me,
         "jti": str(uuid.uuid4()),
+        # Phase 3 (audit Open Question 5): every refresh token belongs to a
+        # *family*. On legitimate rotation the family id is preserved across
+        # the new token. If a previously-rotated jti is ever replayed, the
+        # `/auth/refresh` handler revokes the entire family in one shot —
+        # killing the attacker's tokens AND the legitimate user's, forcing
+        # re-login. This is the standard stolen-refresh-token pattern.
+        "fid": family_id or str(uuid.uuid4()),
     })
     if linked_access_jti:
         to_encode["acc_jti"] = linked_access_jti

@@ -312,6 +312,29 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
+    # Phase 3 (audit Open Question 5): refresh-token family check. If the
+    # whole family was revoked (e.g. due to a previously detected reuse),
+    # refuse here — even before consulting revoked_tokens for the individual
+    # jti — so that ALL siblings spawned from the compromised lineage are
+    # killed in one shot.
+    _fid = payload.get("fid")
+    if _fid:
+        try:
+            from sqlalchemy import text as _sa_text_fid
+            row = (await db.session.execute(
+                _sa_text_fid("SELECT family_id FROM revoked_token_families WHERE family_id=:f"),
+                {"f": _fid},
+            )).first()
+            if row:
+                raise HTTPException(status_code=401, detail="Refresh token family has been revoked")
+        except HTTPException:
+            raise
+        except Exception as _fid_err:
+            # Schema not migrated yet → fall through. A missing migration
+            # must not break refresh; the per-jti revocation check below
+            # still applies.
+            logger.debug(f"refresh: family check skipped: {_fid_err}")
+
     user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
@@ -379,16 +402,44 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
         old_exp_dt = (
             _dt2.fromtimestamp(old_exp, tz=_tz2.utc) if old_exp else now2
         )
-        await db.session.execute(
-            _sa_text(
-                "INSERT INTO revoked_tokens (jti, expires_at, revoked_at) "
-                "VALUES (:jti, :exp, :rev)"
-            ),
-            {"jti": old_refresh_jti, "exp": old_exp_dt, "rev": now2},
-        )
-        await db.session.flush()
+        # Use a savepoint so an IntegrityError (replay) only rolls back the
+        # claim, leaving the outer transaction usable for the family-
+        # revocation insert below.
+        async with db.session.begin_nested():
+            await db.session.execute(
+                _sa_text(
+                    "INSERT INTO revoked_tokens (jti, expires_at, revoked_at) "
+                    "VALUES (:jti, :exp, :rev)"
+                ),
+                {"jti": old_refresh_jti, "exp": old_exp_dt, "rev": now2},
+            )
     except _IE:
-        # Duplicate → token was already rotated (concurrent or sequential replay)
+        # Duplicate → token was already rotated (concurrent or sequential replay).
+        # Phase 3: this is the canonical stolen-refresh-token signal. Revoke
+        # the ENTIRE family so any sibling token spawned from this lineage
+        # (legitimate or attacker-held) is killed too. The legitimate user
+        # is forced to re-login; the attacker's chain dies.
+        try:
+            _replay_fid = payload.get("fid")
+            if _replay_fid:
+                await db.session.execute(
+                    _sa_text(
+                        "INSERT INTO revoked_token_families "
+                        "(family_id, revoked_at, reason, user_id) "
+                        "VALUES (:f, :r, :why, :uid) "
+                        "ON CONFLICT (family_id) DO NOTHING"
+                    ),
+                    {"f": _replay_fid, "r": now2, "why": "refresh_token_reuse_detected", "uid": user_id},
+                )
+                await db.session.flush()
+                logger.warning(
+                    f"refresh: reuse detected — revoked family {_replay_fid} for user {user_id}"
+                )
+        except Exception as _fam_err:
+            # Best-effort: even if we can't write the family revocation
+            # (schema not migrated), the per-jti revocation already blocks
+            # the replayed token.
+            logger.debug(f"refresh: family revoke on reuse failed: {_fam_err}")
         raise HTTPException(status_code=401, detail="Refresh token has been revoked")
     except HTTPException:
         raise
@@ -403,7 +454,14 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
         new_acc_jti = None
 
     is_remember_me = payload.get("rm", False)
-    new_refresh = create_refresh_token(token_payload, remember_me=is_remember_me, linked_access_jti=new_acc_jti)
+    # Preserve family id across rotation so reuse-detection works on the
+    # whole lineage.
+    new_refresh = create_refresh_token(
+        token_payload,
+        remember_me=is_remember_me,
+        linked_access_jti=new_acc_jti,
+        family_id=payload.get("fid"),
+    )
 
     # Best-effort: revoke the prior access-session row tied to this refresh
     _r_ip = request.client.host if request and request.client else None
