@@ -485,6 +485,28 @@ async def get_standby_roster(
     # overrides keep their priority because final_roster is already the
     # output of `apply_overrides_to_roster`.
     if (shape or "").lower() == "day_centric":
+        # Pull per-slot unavailability so the projection can flag manual
+        # overrides that now collide with approved leave / lockouts (not
+        # just teaching busy collisions). Same scope guard as the rest of
+        # the endpoint — school_id filtered.
+        unavailable: dict[str, set] = {tid: set() for tid in busy}
+        unavail_rows = await gd_find(
+            db.session, "unavailability",
+            {"school_id": str(sid), "entity_type": "teacher"},
+            limit=10000,
+        )
+        for row in unavail_rows or []:
+            tid = row.get("entity_id") or row.get("teacher_id")
+            if not tid or tid not in unavailable:
+                continue
+            d = (row.get("day") or "").lower()
+            try:
+                p = int(row.get("period"))
+            except (TypeError, ValueError):
+                continue
+            if d in DAYS and p in periods:
+                unavailable[tid].add((d, p))
+
         payload["day_centric"] = project_day_centric_roster(
             final_roster=final_roster,
             teachers=teachers,
@@ -492,6 +514,8 @@ async def get_standby_roster(
             busy=busy,
             periods=periods,
             days=DAYS,
+            unavailable=unavailable,
+            blocked_by_teacher=blocked_by_teacher,
         )
 
     return payload

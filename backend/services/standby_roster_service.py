@@ -393,6 +393,8 @@ def project_day_centric_roster(
     busy: Dict[str, Set[Tuple[str, int]]],
     periods: List[int],
     days: List[str] = DAYS,
+    unavailable: Dict[str, Set[Tuple[str, int]]] | None = None,
+    blocked_by_teacher: Dict[str, Set[str]] | None = None,
 ) -> Dict[str, Any]:
     """يبني عرض «جدول الانتظار» السعودي day-centric من سجلات atomic موجودة.
 
@@ -400,14 +402,23 @@ def project_day_centric_roster(
     `standby_overrides` التي تستهلكها الواجهة الـ teacher-centric ونعيد
     تجميعها بصيغة (يوم → صف منتظر #N → عمود حصة → معلم).
 
-    لكل (يوم، حصة) نأخذ قائمة المعلمين المُسندين للانتظار، نفرز التعديلات
-    اليدوية ("manual") قبل التلقائية ("auto") ثم بالاسم الأبجدي لضمان ترتيب
-    ثابت. عدد صفوف اليوم = أقصى طول لقوائم الحصص في ذلك اليوم.
+    لكل (يوم، حصة) نُرتّب المعلمين بالاسم الأبجدي حصراً (ترتيب مستقر) كي
+    لا يُسبّب تعديل خانة واحدة إعادة ترتيب صفوف أخرى — slot_index = موقع
+    المعلم في قائمة مرتّبة بالاسم. التحرير على الواجهة يستهدف
+    (teacher_id, day, period) المستخرج من نفس الخانة، فيبقى التعديل
+    موضعياً ولا يؤثر على الصفوف الأخرى.
 
-    يعيد أيضاً قائمة `warnings` لأي override يدوي صار يصطدم مع حصة فعلية
-    للمعلم — لم يتم محوه (محفوظ في `standby_overrides`) لكنه أُسقط من العرض
-    حماية للمستخدم.
+    عدد صفوف اليوم = أقصى طول لقوائم الحصص في ذلك اليوم. يحفظ صف #N
+    هويته بين عمليات إعادة التوليد لأن كل (teacher, day, period) سجل
+    atomic مستقل في `standby_overrides`، والترتيب الأبجدي ثابت.
+
+    يعيد أيضاً قائمة `warnings` لأي override يدوي صار يصطدم مع قيد
+    حقيقي على المعلم — حصة فعلية، أو منع زمني (unavailability)، أو يوم
+    إجازة. هذه السجلات لم تُمحَ (محفوظة في `standby_overrides`) لكنها
+    أُسقطت من العرض حماية للمستخدم.
     """
+    unavailable = unavailable or {}
+    blocked_by_teacher = blocked_by_teacher or {}
     teacher_meta = {}
     for t in teachers:
         tid = t.get("id")
@@ -450,11 +461,13 @@ def project_day_centric_roster(
                 "source": source,
             })
 
-    # Stable ordering: manual first, then auto, then by name.
+    # Stable ordering: alphabetic by teacher name only. We deliberately
+    # avoid a "manual-first" sort because it would reshuffle existing
+    # rows whenever a manual entry is added/removed — violating
+    # single-cell-edit locality. Manual vs auto is conveyed via the
+    # `source` flag on each cell, not via row order.
     for key in by_day_period:
-        by_day_period[key].sort(
-            key=lambda e: (0 if e["source"] == "manual" else 1, e["teacher_name"])
-        )
+        by_day_period[key].sort(key=lambda e: e["teacher_name"])
 
     # Build day-centric rows
     days_payload: List[dict] = []
@@ -478,27 +491,45 @@ def project_day_centric_roster(
             "rows": rows,
         })
 
-    # Conflict warnings: manual add that lost out to busy (silently dropped).
+    # Conflict warnings: any manual override that was silently dropped
+    # because reality changed underneath it. We surface three classes of
+    # collisions so the principal can act on stale overrides without us
+    # destroying their intent.
     warnings: List[dict] = []
     for (tid, d, p) in manual_add:
         meta = teacher_meta.get(tid)
         if not meta:
             continue
-        # In final_roster?
         if (d, p) in final_roster.get(tid, set()):
             continue
-        # Was it dropped because the teacher is now busy at this slot?
+        code = None
+        message = None
         if (d, p) in busy.get(tid, set()):
+            code = "manual_conflicts_with_busy"
+            message = (
+                f"التعديل اليدوي للمعلم «{meta['name']}» في يوم {d} حصة {p} "
+                "صار يصطدم مع حصة فعلية وتم استبعاده من العرض دون مسحه."
+            )
+        elif (d, p) in unavailable.get(tid, set()):
+            code = "manual_conflicts_with_unavailability"
+            message = (
+                f"التعديل اليدوي للمعلم «{meta['name']}» في يوم {d} حصة {p} "
+                "صار ضمن منع زمني (إجازة/عدم توفر) وتم استبعاده من العرض دون مسحه."
+            )
+        elif d in blocked_by_teacher.get(tid, set()):
+            code = "manual_conflicts_with_blocked_day"
+            message = (
+                f"التعديل اليدوي للمعلم «{meta['name']}» يوم {d} يقع في يوم "
+                "إجازته وتم استبعاده من العرض دون مسحه."
+            )
+        if code:
             warnings.append({
                 "teacher_id": tid,
                 "teacher_name": meta["name"],
                 "day": d,
                 "period": p,
-                "code": "manual_conflicts_with_busy",
-                "message_ar": (
-                    f"التعديل اليدوي للمعلم «{meta['name']}» في يوم {d} حصة {p} "
-                    "صار يصطدم مع حصة فعلية وتم استبعاده من العرض دون مسحه."
-                ),
+                "code": code,
+                "message_ar": message,
             })
 
     return {"days": days_payload, "warnings": warnings}
