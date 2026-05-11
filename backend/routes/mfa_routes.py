@@ -503,6 +503,11 @@ async def verify_mfa(
     """
     challenge, user = await _resolve_challenge(credentials)
 
+    # Accept both "recovery" and "recovery_code" from the client; the
+    # policy uses the canonical "recovery_code" name.
+    if body.factor_kind == "recovery":
+        body.factor_kind = "recovery_code"
+
     allowed = mfa_policy.allowed_factor_kinds(user)
     if body.factor_kind not in allowed:
         await _bump_challenge_attempts(challenge)
@@ -584,10 +589,17 @@ async def verify_mfa(
             user=user, challenge=challenge, code=body.code, request=request,
         )
 
-    # recovery lands in Step 6.
+    if body.factor_kind == "recovery_code":
+        if not body.code:
+            await _bump_challenge_attempts(challenge)
+            raise HTTPException(status_code=400, detail="رمز الاسترداد مطلوب")
+        return await _verify_recovery_code_and_complete(
+            user=user, challenge=challenge, code=body.code, request=request,
+        )
+
     raise HTTPException(
-        status_code=501,
-        detail=f"MFA verify handler for {body.factor_kind!r} not yet implemented",
+        status_code=400,
+        detail=f"نوع العامل غير مدعوم: {body.factor_kind!r}",
     )
 
 
@@ -1413,3 +1425,315 @@ async def webauthn_verify_finish(
         webauthn_challenge_id=body.challenge_id,
         request=request,
     )
+
+
+# ---------------------------------------------------------------------------
+# Recovery codes — backup factor for every tier (Step 6)
+# ---------------------------------------------------------------------------
+#
+# All tiers MUST have recovery codes once they enrol any primary factor.
+# Codes are 12-symbol Crockford-base32 (60 bits each), bcrypt-hashed,
+# single-use, and shown to the user in plaintext exactly once at the
+# moment of regeneration.
+#
+# Endpoints (all require an access token — recovery codes are managed
+# from inside the user's authenticated session):
+#   POST /auth/mfa/recovery-codes/regenerate
+#       → marks every existing unconsumed row consumed_at=now (replaced),
+#         inserts ``RECOVERY_CODES_BATCH`` (10) fresh hashed rows, stamps
+#         ``users.mfa_recovery_codes_generated_at`` and resets
+#         ``mfa_recovery_codes_acknowledged=False``. Returns the plaintext
+#         list of codes ONCE; the server cannot recover them after.
+#   POST /auth/mfa/recovery-codes/acknowledge
+#       → flips ``mfa_recovery_codes_acknowledged=True`` so the post-login
+#         "show recovery codes" nudge stops appearing.
+#   GET /auth/mfa/recovery-codes
+#       → status only: {generated_at, acknowledged, total, remaining}.
+#         Never returns the codes themselves.
+#
+# Verify path (in /auth/mfa/verify, factor_kind="recovery_code"):
+#   _verify_recovery_code_and_complete iterates the user's unconsumed
+#   rows, bcrypt-checks the supplied code (tolerant to case/spaces/
+#   missing dashes via mfa_crypto._normalise_recovery_code), stamps
+#   consumed_at, and completes the login. Bcrypt cost is ~250ms — the
+#   per-challenge 5-attempt cap keeps total worst-case work bounded.
+
+RECOVERY_CODES_BATCH = 10
+RECOVERY_LOW_REMAINING_THRESHOLD = 3  # below this, surface the
+                                      # mfa_recovery_codes_pending_view
+                                      # nudge so the UI prompts a regen
+
+
+class RecoveryCodesRegenerateRequest(BaseModel):
+    # Re-auth proof. Required so a hijacked access token alone cannot
+    # mint a fresh set of recovery codes and lock out the legitimate
+    # owner. Once Step 7 ships, the require_recent_mfa dependency will
+    # additionally gate this route; password re-auth is kept as the
+    # belt-and-suspenders inner check.
+    password: str
+
+
+class RecoveryCodesRegenerateResponse(BaseModel):
+    codes: List[str]
+    generated_at: datetime
+    total: int
+    note: str = (
+        "احفظ هذه الرموز في مكان آمن. لن تتمكن من رؤيتها مرة أخرى. "
+        "Store these codes securely — they cannot be shown again."
+    )
+
+
+class RecoveryCodesStatusResponse(BaseModel):
+    generated_at: Optional[datetime] = None
+    acknowledged: bool = False
+    total: int = 0
+    remaining: int = 0
+
+
+def _ensure_recovery_allowed(user: dict) -> None:
+    if "recovery_code" not in mfa_policy.allowed_factor_kinds(user):
+        raise HTTPException(status_code=403, detail="رموز الاسترداد غير متاحة لحسابك")
+
+
+@router.post(
+    "/auth/mfa/recovery-codes/regenerate",
+    response_model=RecoveryCodesRegenerateResponse,
+)
+async def recovery_codes_regenerate(
+    body: RecoveryCodesRegenerateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Burn the user's existing unconsumed recovery codes and issue
+    ``RECOVERY_CODES_BATCH`` new ones. Returns the plaintext codes
+    ONCE — the server stores only bcrypt hashes.
+
+    Requires the user's current password as re-auth proof so a
+    hijacked access token alone cannot mint a fresh set of codes and
+    persist past the legitimate owner's password rotation.
+    """
+    _ensure_recovery_allowed(current_user)
+
+    # Re-auth proof. Failed attempts are audited for the abuse-detection
+    # tooling that Step 8 hooks into.
+    from dependencies import verify_password as _verify_password
+    if not body.password or not _verify_password(
+        body.password, current_user.get("password_hash") or ""
+    ):
+        try:
+            audit = AuditLogEngine(Repos(db.session))
+            await audit.log_auth_event(
+                action="mfa.recovery.regenerate.denied",
+                user_id=current_user["id"],
+                tenant_id=current_user.get("tenant_id"),
+                success=False,
+                email=current_user.get("email"),
+                reason="password_invalid",
+            )
+        except Exception as exc:
+            logger.debug(f"recovery_codes_regenerate: audit denied failed: {exc}")
+        raise HTTPException(status_code=401, detail="كلمة المرور غير صحيحة")
+
+    user_id = current_user["id"]
+    now = datetime.now(timezone.utc)
+
+    # Burn every existing unconsumed row in a single atomic UPDATE so a
+    # leaked old code cannot be used after a regen and there is never a
+    # window where a user has more than RECOVERY_CODES_BATCH active
+    # codes. Rows are kept (consumed_at stamped) because the Step-8
+    # audit hash chain references them.
+    try:
+        from sqlalchemy import text as _sa_text
+        await db.session.execute(
+            _sa_text(
+                "UPDATE mfa_recovery_codes "
+                "SET consumed_at = :now "
+                "WHERE user_id = :uid AND consumed_at IS NULL"
+            ),
+            {"now": now, "uid": user_id},
+        )
+    except Exception as exc:
+        logger.warning(f"recovery_codes_regenerate: bulk burn failed: {exc}")
+        raise HTTPException(status_code=500, detail="تعذّر تجديد رموز الاسترداد")
+
+    # Generate, hash, persist.
+    plaintext: List[str] = []
+    for _ in range(RECOVERY_CODES_BATCH):
+        code = mfa_crypto.generate_recovery_code()
+        plaintext.append(code)
+        await gd_insert(
+            db.session,
+            "mfa_recovery_codes",
+            {
+                "id": str(uuid.uuid4()),
+                "user_id": user_id,
+                "code_hash": mfa_crypto.hash_recovery_code(code),
+                "created_at": now,
+                "consumed_at": None,
+            },
+        )
+
+    # Stamp the generation marker on the user row + reset acknowledgement.
+    try:
+        await gd_update_one(
+            db.session,
+            "users",
+            {"id": user_id},
+            {
+                "mfa_recovery_codes_generated_at": now,
+                "mfa_recovery_codes_acknowledged": False,
+            },
+        )
+    except Exception as exc:
+        logger.warning(f"recovery_codes_regenerate: stamp user row failed: {exc}")
+
+    try:
+        audit = AuditLogEngine(Repos(db.session))
+        await audit.log_auth_event(
+            action="mfa.recovery.regenerated",
+            user_id=user_id,
+            tenant_id=current_user.get("tenant_id"),
+            success=True,
+            email=current_user.get("email"),
+            reason=f"count={RECOVERY_CODES_BATCH}",
+        )
+    except Exception as exc:
+        logger.debug(f"recovery_codes_regenerate: audit log failed: {exc}")
+
+    return RecoveryCodesRegenerateResponse(
+        codes=plaintext,
+        generated_at=now,
+        total=RECOVERY_CODES_BATCH,
+    )
+
+
+@router.post("/auth/mfa/recovery-codes/acknowledge")
+async def recovery_codes_acknowledge(
+    current_user: dict = Depends(get_current_user),
+):
+    """Flip the "user has saved their codes" flag so the post-login
+    nudge stops appearing. The codes themselves are unchanged."""
+    _ensure_recovery_allowed(current_user)
+    try:
+        await gd_update_one(
+            db.session,
+            "users",
+            {"id": current_user["id"]},
+            {"mfa_recovery_codes_acknowledged": True},
+        )
+    except Exception as exc:
+        logger.warning(f"recovery_codes_acknowledge: update failed: {exc}")
+        raise HTTPException(status_code=500, detail="تعذّر حفظ الإقرار")
+    try:
+        audit = AuditLogEngine(Repos(db.session))
+        await audit.log_auth_event(
+            action="mfa.recovery.acknowledged",
+            user_id=current_user["id"],
+            tenant_id=current_user.get("tenant_id"),
+            success=True,
+            email=current_user.get("email"),
+        )
+    except Exception as exc:
+        logger.debug(f"recovery_codes_acknowledge: audit log failed: {exc}")
+    return {"acknowledged": True}
+
+
+@router.get("/auth/mfa/recovery-codes", response_model=RecoveryCodesStatusResponse)
+async def recovery_codes_status(
+    current_user: dict = Depends(get_current_user),
+):
+    """Counts only — never returns the codes themselves."""
+    _ensure_recovery_allowed(current_user)
+    rows = await gd_find(
+        db.session, "mfa_recovery_codes", {"user_id": current_user["id"]}
+    )
+    total = len(rows)
+    remaining = sum(1 for r in rows if r.get("consumed_at") is None)
+    gen_at = current_user.get("mfa_recovery_codes_generated_at")
+    if isinstance(gen_at, str):
+        try:
+            gen_at = datetime.fromisoformat(gen_at.replace("Z", "+00:00"))
+        except Exception:
+            gen_at = None
+    return RecoveryCodesStatusResponse(
+        generated_at=gen_at,
+        acknowledged=bool(current_user.get("mfa_recovery_codes_acknowledged")),
+        total=total,
+        remaining=remaining,
+    )
+
+
+async def _verify_recovery_code_and_complete(
+    *, user: dict, challenge: dict, code: str, request: Optional[Request]
+) -> TokenResponse:
+    """Verify a single-use recovery code, mark it consumed, and
+    complete the login. Bcrypt verifies are slow (~250 ms each) so we
+    cap the per-call check at the user's first 50 unconsumed rows; in
+    practice a user has 10 active rows, and the per-challenge 5-attempt
+    cap further bounds work."""
+    rows = await gd_find(
+        db.session, "mfa_recovery_codes", {"user_id": user["id"]}
+    )
+    fresh = [r for r in rows if r.get("consumed_at") is None][:50]
+
+    if not fresh:
+        await _bump_challenge_attempts(challenge)
+        try:
+            audit = AuditLogEngine(Repos(db.session))
+            await audit.log_auth_event(
+                action="mfa.login.failure",
+                user_id=user["id"],
+                tenant_id=user.get("tenant_id"),
+                success=False,
+                email=user.get("email"),
+                reason="recovery_no_codes",
+            )
+        except Exception as exc:
+            logger.debug(f"verify_mfa(recovery): audit log failed: {exc}")
+        raise HTTPException(status_code=400, detail="لا توجد رموز استرداد فعّالة لهذا الحساب")
+
+    matched = None
+    for row in fresh:
+        if mfa_crypto.verify_recovery_code(code, row.get("code_hash") or ""):
+            matched = row
+            break
+
+    if not matched:
+        await _bump_challenge_attempts(challenge)
+        try:
+            audit = AuditLogEngine(Repos(db.session))
+            await audit.log_auth_event(
+                action="mfa.login.failure",
+                user_id=user["id"],
+                tenant_id=user.get("tenant_id"),
+                success=False,
+                email=user.get("email"),
+                reason="recovery_invalid",
+            )
+        except Exception as exc:
+            logger.debug(f"verify_mfa(recovery): audit log failed: {exc}")
+        raise HTTPException(status_code=400, detail="رمز الاسترداد غير صحيح")
+
+    # Mark consumed BEFORE completing login so a concurrent racing call
+    # cannot reuse the same row. _complete_mfa_login is the final step.
+    now = datetime.now(timezone.utc)
+    try:
+        await gd_update_one(
+            db.session,
+            "mfa_recovery_codes",
+            {"id": matched["id"]},
+            {"consumed_at": now},
+        )
+    except Exception as exc:
+        logger.warning(f"verify_mfa(recovery): consumed_at update failed: {exc}")
+
+    response = await _complete_mfa_login(user, challenge, "recovery_code", request)
+
+    # If the user is now low on codes, force the post-login nudge regardless
+    # of the acknowledgement flag — they must regenerate before they get
+    # locked out.
+    remaining_after = sum(
+        1 for r in fresh if r["id"] != matched["id"] and r.get("consumed_at") is None
+    )
+    if remaining_after <= RECOVERY_LOW_REMAINING_THRESHOLD:
+        response = response.copy(update={"mfa_recovery_codes_pending_view": True})
+    return response

@@ -271,6 +271,19 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
             # email_otp is always available for Tier B/C even with zero rows.
             if implicit_email_otp and "email_otp" in allowed_for_user:
                 enrolled_kinds.add("email_otp")
+            # recovery_code is available iff the user has at least one
+            # unconsumed row (a Step-6 backup factor).
+            if "recovery_code" in allowed_for_user:
+                try:
+                    rc_rows = await gd_find(
+                        db.session,
+                        "mfa_recovery_codes",
+                        {"user_id": user_id, "consumed_at": None},
+                    ) or []
+                    if rc_rows:
+                        enrolled_kinds.add("recovery_code")
+                except Exception as _rc_err:
+                    logger.debug(f"login: recovery_code availability lookup failed: {_rc_err}")
             available_kinds = sorted(k for k in enrolled_kinds if k)
             return TokenResponse(
                 mfa_required=True,
