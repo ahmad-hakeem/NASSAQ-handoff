@@ -217,21 +217,35 @@ async def test_reset_password_per_identity_returns_429(client, tenant_a):
             JWT_SECRET, algorithm=JWT_ALGORITHM,
         )
 
-    # Each call uses a unique token (unique jti) so the per-token-prefix
-    # bucket (10/hour, keyed on token[:24]) does not trip; the only bucket
-    # that should engage is the per-identity one (10/hour on user_id).
+    # Each call uses a freshly minted token. The per-token bucket is keyed
+    # on the validated jti (or sha256 of the full token), so two distinct
+    # tokens never share that bucket — the only bucket that should engage
+    # across iterations is the per-identity one (10/hour on user_id).
+    tokens = [_mk_token() for _ in range(12)]
+    # Bucket isolation invariant: two distinct tokens must produce two
+    # distinct per-token bucket keys. (Architect v3 caught a regression
+    # where token[:24] aliased every JWT under the constant header.)
+    import jwt as _jwt2
+    jtis = {_jwt2.decode(t, JWT_SECRET, algorithms=[JWT_ALGORITHM])["jti"] for t in tokens}
+    assert len(jtis) == 12, "tokens must yield distinct per-token bucket keys"
+
     statuses = []
-    for _ in range(12):
+    for tok in tokens:
         r = await client.post("/auth/reset-password", json={
-            "token": _mk_token(), "new_password": "NewSecret!2345",
+            "token": tok, "new_password": "NewSecret!2345",
         })
         statuses.append(r.status_code)
-    # First 10 attempts go through identity-bucket validation and fall to
+    # First 10 attempts pass identity-bucket validation and fall to
     # the next check (400 — token hash doesn't match a stored reset).
     # Attempt 11+ must be rejected with 429 by the per-identity bucket.
     assert all(s in (400, 429) for s in statuses), statuses
     assert 429 in statuses[10:], (
         f"per-identity reset-password bucket never tripped: {statuses}"
+    )
+    # And confirm that 1..10 are NOT 429s — proves unrelated tokens did
+    # not collide on a shared (broken) per-token bucket.
+    assert all(s == 400 for s in statuses[:10]), (
+        f"per-token bucket aliased across distinct tokens: {statuses}"
     )
 
 

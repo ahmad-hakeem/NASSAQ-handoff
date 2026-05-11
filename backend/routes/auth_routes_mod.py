@@ -810,16 +810,18 @@ async def forgot_password(request: ForgotPasswordRequest):
 
 @router.post("/auth/reset-password")
 async def reset_password(request: ResetPasswordRequest):
-    # SECURITY (audit H-3): layered limits.
-    #   1) per-token-prefix — caps brute-force against a single JWT signature.
-    #   2) per-identity (user_id from validated payload) — caps total reset
-    #      attempts against any one victim even when an attacker churns
-    #      through multiple tokens. Per-IP middleware bucket sits on top.
+    # SECURITY (audit H-3): layered limits applied AFTER JWT validation so
+    # that no bucket can be moved by an unauthenticated/garbage payload, and
+    # so that the limiter key is derived from a fully-discriminating value
+    # rather than the constant JWT header prefix (which would near-globally
+    # throttle every reset attempt — see architect review v3).
+    #
+    # Final layout:
+    #   per-IP        — middleware bucket (RATE_LIMITS["/api/auth/reset-password"]).
+    #   per-token     — sha256(full token) jti — caps brute-force against a single token.
+    #   per-identity  — user_id from validated payload — caps total attempts
+    #                   against any one victim across many distinct tokens.
     from middleware.rate_limiter import rate_store
-    token_prefix_key = f"reset_password_token:{(request.token or '')[:24]}"
-    limited, _, _ = await rate_store.is_rate_limited(token_prefix_key, 10, 3600)
-    if limited:
-        raise HTTPException(status_code=429, detail="عدد المحاولات تجاوز الحد المسموح. يرجى المحاولة لاحقاً")
     try:
         payload = jwt.decode(request.token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:
@@ -831,8 +833,17 @@ async def reset_password(request: ResetPasswordRequest):
         raise HTTPException(status_code=400, detail="رابط إعادة التعيين غير صالح")
 
     user_id = payload.get("sub")
-    # Per-identity bucket — must come after the payload is validated so that
-    # an attacker cannot pump unrelated counters with junk subs.
+    # Per-token bucket — keyed on the full-token sha256 (or jti when present)
+    # so two distinct tokens never share a bucket. Token-prefix keys would
+    # alias every JWT under a near-constant header and globally throttle
+    # password resets.
+    token_id = payload.get("jti") or _token_hash(request.token)
+    token_key = f"reset_password_token:{token_id}"
+    limited, _, _ = await rate_store.is_rate_limited(token_key, 10, 3600)
+    if limited:
+        raise HTTPException(status_code=429, detail="عدد المحاولات تجاوز الحد المسموح. يرجى المحاولة لاحقاً")
+    # Per-identity bucket — caps total reset traffic per victim across
+    # arbitrarily many distinct tokens.
     identity_key = f"reset_password_user:{user_id}"
     limited, _, _ = await rate_store.is_rate_limited(identity_key, 10, 3600)
     if limited:

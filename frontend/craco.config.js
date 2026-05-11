@@ -55,8 +55,21 @@ let webpackConfig = {
             "message": "Avoid outerHTML — use DOM APIs (audit H-5)."
           },
           {
+            // Match any `*.document.write(...)` form — `document.write(...)`,
+            // `printWindow.document.write(...)`, `iframe.contentDocument.write(...)`
+            // — by selecting on the property name alone. Architect v3 flagged
+            // that the previous `callee.object.name='document'` form only
+            // caught the bare identifier and was bypassable.
+            "selector": "CallExpression[callee.property.name='write'][callee.object.property.name='document']",
+            "message": "Avoid *.document.write — use DOM APIs (audit L-1)."
+          },
+          {
             "selector": "CallExpression[callee.property.name='write'][callee.object.name='document']",
-            "message": "Avoid document.write — use DOM APIs."
+            "message": "Avoid document.write — use DOM APIs (audit L-1)."
+          },
+          {
+            "selector": "CallExpression[callee.property.name='writeln']",
+            "message": "Avoid document.writeln — use DOM APIs (audit L-1)."
           }
         ],
       },
