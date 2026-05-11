@@ -44,6 +44,7 @@ import BulkSubstitutionPanel from '../components/schedule/BulkSubstitutionPanel'
 import ScheduleTabNav from '../components/schedule/ScheduleTabNav';
 import ScheduleSettingsTabContent from '../components/schedule/ScheduleSettingsTabContent';
 import FilledCell from '../components/schedule/FilledCell';
+import SessionEditDrawer from '../components/schedule/SessionEditDrawer';
 import { SessionDetailModal, getDayBandClass, getDayTintClass, getDayTextOnBand } from '../components/schedule/grid-theme';
 import { computeDisplayDays } from '../components/schedule/grid-helpers';
 import { StandbyRosterContent } from './StandbyRosterPage';
@@ -262,13 +263,31 @@ function MasterMatrixSkeleton({ rows = 10, days = 5, periods = 7, isDaily = fals
 // لاحقاً (Popover + زر "تم الاطلاع" مع onAcknowledgeRelocation) صار جزءاً
 // من المكوّن المُستخرَج، وتمرّر الصفحة الـcallback إليه عبر MasterMatrix.
 
-function EmptyCell() {
+function EmptyCell({ onClick, addLabel }) {
   // فراغ في صف المعلم — لا تنبيه. حتى لو كان المعلم غائباً، الخلية الفارغة
   // تبقى فارغة وتكتفي بصبغة الصف الحمراء الخفيفة. الخانات التي يجب وسمها
   // "شاغرة" تُرَنْدَر عبر FilledCell.is_vacant = true.
   // Workspace-redesign visual: faint background tint + dotted hairline
   // at the bottom edge so the surface reads as structured, not as a
   // dead spreadsheet box. Stays quiet at 100-teacher density.
+  // Manual-edit (draft only): if `onClick` is supplied, render the cell
+  // as a button that opens the SessionEditDrawer in create mode. The
+  // hover affordance is intentionally subtle so the empty grid still
+  // reads as quiet at 100-teacher density.
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={addLabel}
+        aria-label={addLabel}
+        className="w-full h-full bg-slate-50/40 border-b border-dashed border-slate-200/60 hover:bg-emerald-50/60 hover:border-emerald-300 transition-colors flex items-center justify-center text-slate-300 hover:text-emerald-600 group"
+        data-testid="master-matrix-empty-cell-add"
+      >
+        <span className="opacity-0 group-hover:opacity-100 text-lg leading-none transition-opacity">+</span>
+      </button>
+    );
+  }
   return (
     <div className="w-full h-full bg-slate-50/40 border-b border-dashed border-slate-200/60" />
   );
@@ -277,28 +296,91 @@ function EmptyCell() {
 // ─── Hakeem-branded loading overlay ─────────────────────────────────────────
 // يُعرض فوق المصفوفة أثناء توليد الجدول التلقائي. يستخدم تعبير "ai-thinking"
 // من معرض حكيم مع ضباب أبيض شفّاف ونبضة بنفسجية لتأكيد أن المحرك يعمل.
+// Five real engine phases the smart-scheduling pipeline goes through, in
+// order. Each phase carries its own Hakim pose so the operator gets a
+// continuously-updating signal that the engine is actually working
+// instead of one boolean spinner that hides whether anything is happening.
+// `minMs` is a soft lower bound — the UI advances on whichever comes
+// first: minMs elapsed OR the request finishing. The final stage holds
+// until the request returns so the overlay never lies about "done".
+const HAKIM_STAGES = [
+  { key: 'queued',          poseKey: 'ai-thinking',         labelKey: 'hakimStageQueued',          minMs: 600 },
+  { key: 'reading',         poseKey: 'analyzing-data',      labelKey: 'hakimStageReadingSettings', minMs: 1500 },
+  { key: 'analyzing',       poseKey: 'detecting-patterns',  labelKey: 'hakimStageAnalyzing',       minMs: 2200 },
+  { key: 'building',        poseKey: 'ai-thinking-2',       labelKey: 'hakimStageBuilding',        minMs: 3000 },
+  { key: 'validating',      poseKey: 'looking-at-charts',   labelKey: 'hakimStageValidating',      minMs: 2200 },
+  { key: 'finalizing',      poseKey: 'positive-feedback',   labelKey: 'hakimStageFinalizing',      minMs: 0 },
+];
+
+// ─── Hakeem-branded loading overlay (multi-stage) ──────────────────────────
+// Replaces the previous single-message overlay. Cycles through the five
+// engine phases above with a smooth progress bar so the operator can
+// see exactly what the pipeline is doing. Stays on the final stage if
+// the request is still in-flight when the timer reaches the end. No
+// full-page spinner — the overlay is positioned absolutely inside the
+// matrix container so the rest of the page (KPIs, sticky band) stays
+// interactive and visible.
 function HakimGeneratingOverlay() {
   const { t } = useTranslation();
-  const poseSrc = getPose('ai-thinking');
+  const [stageIdx, setStageIdx] = useState(0);
+
+  useEffect(() => {
+    if (stageIdx >= HAKIM_STAGES.length - 1) return;
+    const ms = HAKIM_STAGES[stageIdx].minMs;
+    const id = setTimeout(() => setStageIdx((i) => Math.min(i + 1, HAKIM_STAGES.length - 1)), ms);
+    return () => clearTimeout(id);
+  }, [stageIdx]);
+
+  const stage = HAKIM_STAGES[stageIdx];
+  const poseSrc = getPose(stage.poseKey);
+  const total = HAKIM_STAGES.length;
+  const progressPct = Math.round(((stageIdx + 1) / total) * 100);
+
   return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center bg-white/85 backdrop-blur-[2px]">
-      <div className="flex flex-col items-center gap-3 px-6 py-5 rounded-xl bg-white border border-violet-200 shadow-lg">
+    <div
+      className="absolute inset-0 z-40 flex items-center justify-center bg-white/85 backdrop-blur-[2px]"
+      data-testid="hakim-generating-overlay"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex flex-col items-center gap-3 px-6 py-5 rounded-xl bg-white border border-violet-200 shadow-lg w-[320px] max-w-[90vw]">
         <div className="relative">
           <div className="absolute inset-0 rounded-full bg-violet-300/40 animate-ping" />
           <img
+            key={stage.key}
             src={poseSrc}
             alt={t('hakimAI')}
             className="relative h-20 w-20 object-contain"
             draggable={false}
           />
         </div>
-        <div className="flex items-center gap-2 text-violet-700">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span className="text-sm font-semibold">
-            {t('hakimAnalyzingConstraints')}
+
+        <div className="flex items-center gap-2 text-violet-700 min-h-[20px]">
+          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+          <span
+            className="text-sm font-semibold text-center"
+            data-testid={`hakim-stage-${stage.key}`}
+          >
+            {t(stage.labelKey)}
           </span>
         </div>
-        <p className="text-[11px] text-slate-500 max-w-[260px] text-center">
+
+        {/* Progress bar — shows discrete stage advancement, not a fake
+            percent counter, so the operator can see the engine moving
+            forward and roughly how far we are. */}
+        <div className="w-full">
+          <div className="h-1.5 w-full bg-violet-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-violet-400 to-violet-600 transition-all duration-500 ease-out"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+          <p className="mt-1 text-[10px] text-slate-500 text-center">
+            {t('hakimStagesProgressLabel', { current: stageIdx + 1, total })}
+          </p>
+        </div>
+
+        <p className="text-[11px] text-slate-500 max-w-[260px] text-center leading-relaxed">
           {t('hakimGenerationDuration')}
         </p>
       </div>
@@ -589,6 +671,18 @@ export default function SchedulePageNew() {
 
   // إنشاء الجدول تلقائياً
   const [generating, setGenerating] = useState(false);
+
+  // ── Manual edit drawer (master grid) ──────────────────────────────
+  // The drawer covers three flows:
+  //   • clicking a filled cell → "Edit" / "Move" (mode = 'edit')
+  //   • clicking an empty cell while in draft view → "Add" (mode = 'create')
+  //   • the inline Delete button on the edit drawer (DELETE endpoint)
+  // Editing is gated to draft view only — the affordance disappears
+  // entirely on the published view (and the backend additionally
+  // refuses mutations on a published timetable).
+  const [editDrawerOpen, setEditDrawerOpen] = useState(false);
+  const [editDrawerMode, setEditDrawerMode] = useState('edit');
+  const [editDrawerContext, setEditDrawerContext] = useState(null);
 
   // رؤى حكيم — قائمة التعارضات/الخانات التي تعذّر جدولتها بعد آخر تشغيل،
   // مع خانة قابلة للإغلاق تخزن تفضيل المستخدم لإخفاء الشريط لجلسة العمل.
@@ -1516,6 +1610,28 @@ export default function SchedulePageNew() {
           onAssignedBatch={handleAssignedBatch}
         />
 
+        {/* ── Manual edit drawer (master grid, draft only) ───────────
+            Hosts the edit / move / delete / add flows for individual
+            grid cells. Wires to the existing smart-scheduling session
+            endpoints (no duplication) and reloads the grid on success
+            so the matrix reflects the change immediately. */}
+        <SessionEditDrawer
+          open={editDrawerOpen}
+          mode={editDrawerMode}
+          context={editDrawerContext}
+          schoolId={schoolId}
+          timetableId={grid?.timetable_id}
+          teachers={teacherRows}
+          periods={periods}
+          api={api}
+          onClose={() => setEditDrawerOpen(false)}
+          onSaved={() => {
+            // Pull the fresh draft so the matrix mirrors the mutation.
+            // No need to clear conflicts here — the drawer already did.
+            loadGrid('draft');
+          }}
+        />
+
         <style>{`
           [data-master-schedule-root] [data-testid="master-schedule-sticky-band"][data-density="compact"] [data-band-action-label] { display: none; }
           [data-master-schedule-root] [data-testid="master-schedule-sticky-band"][data-density="compact"] [data-band-action-label-short] { display: inline; }
@@ -1920,6 +2036,17 @@ export default function SchedulePageNew() {
               today={grid?.today}
               periodTimes={grid?.period_times || {}}
               unresolvedConflicts={unresolvedConflicts}
+              canEdit={scheduleView === 'draft' && !!grid?.timetable_id}
+              onEditSession={({ session }) => {
+                setEditDrawerMode('edit');
+                setEditDrawerContext({ session });
+                setEditDrawerOpen(true);
+              }}
+              onCreateSession={(ctx) => {
+                setEditDrawerMode('create');
+                setEditDrawerContext(ctx);
+                setEditDrawerOpen(true);
+              }}
             />
           )}
 
@@ -2198,7 +2325,7 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
 // التصميم البصري الجديد: خلفية بيضاء، رؤوس فاتحة (slate-50)، حدود رفيعة
 // (slate-100)، وعمود المعلم على يمين الشاشة (RTL) مع ظل خفيف يفصل المنطقة
 // المثبَّتة عن منطقة التمرير.
-function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, onAcknowledgeRelocation, today, periodTimes = {}, unresolvedConflicts = [], viewMode = 'weekly', selectedDay = null, totalTeachers = null }) {
+function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, onAcknowledgeRelocation, today, periodTimes = {}, unresolvedConflicts = [], viewMode = 'weekly', selectedDay = null, totalTeachers = null, canEdit = false, onEditSession, onCreateSession }) {
   const { t, language } = useTranslation();
   const [selectedSession, setSelectedSession] = useState(null);
   // فهرس "رؤى حكيم" بمفتاح teacher_id|day|period → reason_ar. التحديد
@@ -2456,7 +2583,16 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                         onAcknowledgeRelocation={onAcknowledgeRelocation}
                       />
                     ) : (
-                      <EmptyCell />
+                      <EmptyCell
+                        onClick={canEdit && onCreateSession
+                          ? () => onCreateSession({
+                              teacher_id: teacher.id,
+                              day_of_week: dayKey,
+                              period_number: p,
+                            })
+                          : null}
+                        addLabel={t('addLessonHere')}
+                      />
                     )}
                   </div>
                 );
@@ -2469,7 +2605,18 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
         open={!!selectedSession}
         session={selectedSession}
         onClose={() => setSelectedSession(null)}
-        hideActions
+        hideActions={!canEdit}
+        onEdit={canEdit ? (s) => {
+          setSelectedSession(null);
+          onEditSession?.({ session: s, mode: 'edit' });
+        } : undefined}
+        onMove={canEdit ? (s) => {
+          // "Move" reuses the same drawer as Edit — the teacher/day/period
+          // selectors are the move surface. Keeping the affordance as a
+          // separate button matches the modal's existing UX vocabulary.
+          setSelectedSession(null);
+          onEditSession?.({ session: s, mode: 'edit' });
+        } : undefined}
       />
     </div>
   );

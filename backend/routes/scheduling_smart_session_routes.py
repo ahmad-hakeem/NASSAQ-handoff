@@ -33,6 +33,104 @@ router = APIRouter()
 
 # ============== SMART TIMETABLE SESSION MANAGEMENT APIs ==============
 
+async def _assert_entities_in_school(
+    school_id: str,
+    *,
+    teacher_id: Optional[str] = None,
+    subject_id: Optional[str] = None,
+    class_id: Optional[str] = None,
+) -> None:
+    """
+    Tenant-isolation guard for entity references attached to a session.
+
+    The session-mutator routes (add / update / force) accept teacher,
+    subject and class IDs from the client. Without this check a school
+    admin with API access could bind an entity that belongs to a
+    different tenant — leaking the foreign ID into their timetable and
+    silently violating multi-tenancy. This helper resolves each
+    supplied ID and rejects the request with a safe Arabic message
+    (no raw exception strings) if any entity is missing or scoped to
+    a different school.
+
+    Parallel to ``_assert_session_mutable`` so all mutation paths share
+    the same guarantees and can't drift apart over time.
+
+    Fails closed: if the session/timetable lacks a school_id at all, or
+    if the referenced entity has neither ``school_id`` nor ``tenant_id``,
+    the request is rejected as an integrity error rather than silently
+    accepted. Tenant identity on records may live under either field
+    in this codebase (see ``_verify_teacher_access`` for prior art), so
+    both are honored when comparing.
+    """
+    if not school_id:
+        # The session/timetable itself is missing tenant scope — refuse
+        # to mutate rather than allow an unscoped write.
+        raise HTTPException(status_code=409, detail="الجدول لا يحتوي على معرف المدرسة")
+
+    def _tenant_of(doc: dict) -> Optional[str]:
+        return doc.get("school_id") or doc.get("tenant_id")
+
+    checks = [
+        ("teachers", teacher_id, "المعلم غير موجود", "المعلم لا ينتمي لهذه المدرسة"),
+        ("subjects", subject_id, "المادة غير موجودة", "المادة لا تنتمي لهذه المدرسة"),
+        ("classes",  class_id,   "الفصل غير موجود",   "الفصل لا ينتمي لهذه المدرسة"),
+    ]
+    for collection, ent_id, missing_msg, mismatch_msg in checks:
+        if not ent_id:
+            continue
+        doc = await gd_find_one(db.session, collection, {"id": ent_id})
+        if not doc:
+            raise HTTPException(status_code=404, detail=missing_msg)
+        owner = _tenant_of(doc)
+        if not owner or owner != school_id:
+            raise HTTPException(status_code=403, detail=mismatch_msg)
+
+
+async def _assert_session_mutable(session: dict, current_user: dict) -> dict:
+    """
+    Shared guard for session mutations (edit / force / move / delete).
+
+    Enforces two invariants required by the new master-grid manual-edit
+    flow and demanded by replit.md:
+      • Tenant isolation — non-platform admins may only mutate sessions
+        in their own tenant.
+      • Published timetables are immutable — the principal must edit on
+        the draft and publish explicitly.
+
+    Returns the parent timetable doc for callers that need it. Raises
+    HTTPException with a safe Arabic message on violation (no raw
+    exception strings leaked).
+    """
+    user_tenant = current_user.get("tenant_id") or current_user.get("school_id")
+    user_role = current_user.get("role", "")
+    is_platform_admin = user_role == UserRole.PLATFORM_ADMIN.value
+
+    # Resolve the parent timetable up-front so we can derive tenant scope
+    # from it when the session row itself is missing tenant fields. This
+    # closes the fail-open edge for delete on unscoped sessions.
+    tt_id = session.get("timetable_id")
+    tt = await gd_find_one(db.session, "timetables", {"id": tt_id}) if tt_id else None
+
+    school_id = (
+        session.get("school_id")
+        or session.get("tenant_id")
+        or (tt.get("school_id") if tt else None)
+        or (tt.get("tenant_id") if tt else None)
+    )
+
+    # Fail closed: a non-platform-admin can only mutate when we have a
+    # concrete tenant scope and it matches their own.
+    if not is_platform_admin:
+        if not user_tenant or not school_id:
+            raise HTTPException(status_code=409, detail="تعذر التحقق من نطاق المدرسة")
+        if school_id != user_tenant:
+            raise HTTPException(status_code=403, detail="غير مصرح بالتعديل على هذه المدرسة")
+
+    if tt and tt.get("status") == "published":
+        raise HTTPException(status_code=400, detail="لا يمكن تعديل جدول منشور")
+    return tt or {}
+
+
 class UpdateSmartSessionRequest(BaseModel):
     """طلب تعديل حصة في الجدول الذكي"""
     teacher_id: Optional[str] = None
@@ -61,10 +159,22 @@ async def update_smart_session(
     session = await gd_find_one(db.session, "timetable_sessions", {"id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="الحصة غير موجودة")
-    
+
+    # Tenant + published-state guard (shared with force / delete).
+    await _assert_session_mutable(session, current_user)
+
     timetable_id = session.get("timetable_id")
     school_id = session.get("school_id")
-    
+
+    # Cross-tenant binding guard: any teacher/subject the client supplies
+    # must belong to the same school as the session being edited. Honor
+    # tenant_id as a fallback so behavior matches _assert_session_mutable.
+    await _assert_entities_in_school(
+        school_id or session.get("tenant_id"),
+        teacher_id=request.teacher_id,
+        subject_id=request.subject_id,
+    )
+
     # Build update
     update_data = {"source_type": "hybrid_adjusted", "updated_at": datetime.now(timezone.utc).isoformat()}
     conflicts = []
@@ -168,7 +278,17 @@ async def force_update_smart_session(
     session = await gd_find_one(db.session, "timetable_sessions", {"id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="الحصة غير موجودة")
-    
+
+    # Tenant + published-state guard (force-update is still scoped to draft).
+    await _assert_session_mutable(session, current_user)
+
+    # Cross-tenant binding guard mirrors the standard update path.
+    await _assert_entities_in_school(
+        session.get("school_id") or session.get("tenant_id"),
+        teacher_id=request.teacher_id,
+        subject_id=request.subject_id,
+    )
+
     update_data = {"source_type": "hybrid_adjusted", "updated_at": datetime.now(timezone.utc).isoformat()}
     
     if request.day_of_week:
@@ -390,7 +510,10 @@ async def delete_smart_session(
     session = await gd_find_one(db.session, "timetable_sessions", {"id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="الحصة غير موجودة")
-    
+
+    # Tenant + published-state guard (mirrors edit / force).
+    await _assert_session_mutable(session, current_user)
+
     await gd_delete_one(db.session, "timetable_sessions", {"id": session_id})
     
     return {
@@ -400,30 +523,91 @@ async def delete_smart_session(
     }
 
 
+class AddSmartSessionRequest(BaseModel):
+    """طلب إضافة حصة يدوية للجدول"""
+    timetable_id: str
+    class_id: str
+    subject_id: str
+    teacher_id: str
+    day_of_week: str
+    period_number: int
+    force: bool = False
+
+
 @router.post("/smart-scheduling/session/add")
 async def add_smart_session(
-    timetable_id: str,
-    class_id: str,
-    subject_id: str,
-    teacher_id: str,
-    day_of_week: str,
-    period_number: int,
+    request: Optional[AddSmartSessionRequest] = None,
+    timetable_id: Optional[str] = None,
+    class_id: Optional[str] = None,
+    subject_id: Optional[str] = None,
+    teacher_id: Optional[str] = None,
+    day_of_week: Optional[str] = None,
+    period_number: Optional[int] = None,
+    force: bool = False,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """
     إضافة حصة يدوية للجدول
-    Add a manual session to the timetable
+    Add a manual session to the timetable.
+
+    Accepts either a JSON body (preferred — used by the new master-grid
+    manual-edit drawer) or legacy query-string params for backwards
+    compatibility with any older caller.
     """
     import uuid
-    
+
+    # Resolve inputs from either the JSON body or query params.
+    if request is not None:
+        timetable_id = request.timetable_id
+        class_id = request.class_id
+        subject_id = request.subject_id
+        teacher_id = request.teacher_id
+        day_of_week = request.day_of_week
+        period_number = request.period_number
+        force = request.force
+
+    missing = [k for k, v in {
+        "timetable_id": timetable_id, "class_id": class_id, "subject_id": subject_id,
+        "teacher_id": teacher_id, "day_of_week": day_of_week, "period_number": period_number,
+    }.items() if v in (None, "")]
+    if missing:
+        raise HTTPException(status_code=422, detail=f"حقول مفقودة: {', '.join(missing)}")
+
     # Get timetable
     timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
     if not timetable:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
-    
-    school_id = timetable.get("school_id")
-    
-    # Get class info
+
+    school_id = timetable.get("school_id") or timetable.get("tenant_id")
+
+    # Tenant scope: a school admin can only mutate their own school's
+    # timetable. Platform admin bypasses this gate (e.g. for support).
+    # Fail closed for non-platform users when scope is missing — mirrors
+    # _assert_session_mutable so add/update/force/delete behave identically.
+    user_tenant = current_user.get("tenant_id") or current_user.get("school_id")
+    user_role = current_user.get("role", "")
+    is_platform_admin = user_role == UserRole.PLATFORM_ADMIN.value
+    if not is_platform_admin:
+        if not user_tenant or not school_id:
+            raise HTTPException(status_code=409, detail="تعذر التحقق من نطاق المدرسة")
+        if school_id != user_tenant:
+            raise HTTPException(status_code=403, detail="غير مصرح بالتعديل على هذه المدرسة")
+
+    # Block edits on a published timetable (mirrors swap/move semantics).
+    if timetable.get("status") == "published":
+        raise HTTPException(status_code=400, detail="لا يمكن تعديل جدول منشور")
+
+    # Cross-tenant binding guard: every entity referenced by the new
+    # session must belong to the same school as the target timetable.
+    # tenant_id is honored as a fallback for parity with the other guards.
+    await _assert_entities_in_school(
+        school_id or timetable.get("tenant_id"),
+        teacher_id=teacher_id,
+        subject_id=subject_id,
+        class_id=class_id,
+    )
+
+    # Get class info (already validated above; safe to re-resolve for grade).
     cls = await gd_find_one(db.session, "classes", {"id": class_id})
     grade_id = cls.get("grade_id", "") if cls else ""
     
@@ -458,7 +642,7 @@ async def add_smart_session(
             "message_ar": "الفصل لديه حصة أخرى في هذا الوقت"
         })
     
-    if conflicts:
+    if conflicts and not force:
         return {
             "success": False,
             "conflicts": conflicts,
