@@ -33,6 +33,7 @@ from services.standby_roster_service import (
     apply_overrides_to_roster,
     compute_standby_roster,
     fetch_standby_overrides,
+    project_day_centric_roster,
 )
 from services.substitution_service import (
     assign_bulk_substitutes,
@@ -310,6 +311,10 @@ def _detect_periods(sessions: list[dict]) -> list[int]:
 @router.get("/standby/roster")
 async def get_standby_roster(
     school_id: Optional[str] = Query(None),
+    shape: Optional[str] = Query(
+        None,
+        description="نمط العرض الإضافي: 'day_centric' لإرفاق إسقاط الجدول السعودي.",
+    ),
     x_school_context: Optional[str] = Header(None),
     current_user: dict = Depends(get_current_user),
 ):
@@ -460,7 +465,7 @@ async def get_standby_roster(
             "standby_capacity": standby_count[tid],
         })
 
-    return {
+    payload = {
         "timetable_id": timetable_id,
         "days": DAYS,
         "periods": periods,
@@ -473,6 +478,23 @@ async def get_standby_roster(
             "overrides": len(overrides),
         },
     }
+
+    # Optional Saudi-style day-centric projection (Task #157). Built from the
+    # same atomic records (final_roster + overrides) that drive the legacy
+    # teacher-centric matrix above — no new collection, no migration. Manual
+    # overrides keep their priority because final_roster is already the
+    # output of `apply_overrides_to_roster`.
+    if (shape or "").lower() == "day_centric":
+        payload["day_centric"] = project_day_centric_roster(
+            final_roster=final_roster,
+            teachers=teachers,
+            overrides=overrides,
+            busy=busy,
+            periods=periods,
+            days=DAYS,
+        )
+
+    return payload
 
 
 class StandbyOverrideRequest(BaseModel):

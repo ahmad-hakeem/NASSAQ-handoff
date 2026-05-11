@@ -24,7 +24,7 @@ Standby Roster Service — جدول الانتظار الذكي (Smart Standby R
 from __future__ import annotations
 
 from math import ceil
-from typing import Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from engines.sql_utils import gd_find, gd_find_one
 
@@ -385,10 +385,130 @@ def _normalize_day_key(value) -> str | None:
     return _AR_DAY_KEYS.get(s)
 
 
+def project_day_centric_roster(
+    *,
+    final_roster: Dict[str, Set[Tuple[str, int]]],
+    teachers: List[dict],
+    overrides: List[dict],
+    busy: Dict[str, Set[Tuple[str, int]]],
+    periods: List[int],
+    days: List[str] = DAYS,
+) -> Dict[str, Any]:
+    """يبني عرض «جدول الانتظار» السعودي day-centric من سجلات atomic موجودة.
+
+    لا migration ولا collection جديدة — نقرأ نفس `final_roster` و
+    `standby_overrides` التي تستهلكها الواجهة الـ teacher-centric ونعيد
+    تجميعها بصيغة (يوم → صف منتظر #N → عمود حصة → معلم).
+
+    لكل (يوم، حصة) نأخذ قائمة المعلمين المُسندين للانتظار، نفرز التعديلات
+    اليدوية ("manual") قبل التلقائية ("auto") ثم بالاسم الأبجدي لضمان ترتيب
+    ثابت. عدد صفوف اليوم = أقصى طول لقوائم الحصص في ذلك اليوم.
+
+    يعيد أيضاً قائمة `warnings` لأي override يدوي صار يصطدم مع حصة فعلية
+    للمعلم — لم يتم محوه (محفوظ في `standby_overrides`) لكنه أُسقط من العرض
+    حماية للمستخدم.
+    """
+    teacher_meta = {}
+    for t in teachers:
+        tid = t.get("id")
+        if not tid:
+            continue
+        teacher_meta[tid] = {
+            "id": tid,
+            "name": t.get("full_name") or t.get("name") or "—",
+            "subject": t.get("specialization") or t.get("subject") or "",
+        }
+
+    # Manual-add lookup: (tid, day, period) -> True
+    manual_add: Set[Tuple[str, str, int]] = set()
+    for ov in overrides or []:
+        if (ov.get("action") or "").lower() != "add":
+            continue
+        tid = ov.get("teacher_id")
+        d = (ov.get("day") or "").lower()
+        try:
+            p = int(ov.get("period"))
+        except (TypeError, ValueError):
+            continue
+        if tid and d in days and p in periods:
+            manual_add.add((tid, d, p))
+
+    # (day, period) -> ordered list of teacher entries
+    by_day_period: Dict[Tuple[str, int], List[dict]] = {}
+    for tid, slots in final_roster.items():
+        meta = teacher_meta.get(tid)
+        if not meta:
+            continue
+        for (d, p) in slots:
+            if d not in days or p not in periods:
+                continue
+            source = "manual" if (tid, d, p) in manual_add else "auto"
+            by_day_period.setdefault((d, p), []).append({
+                "teacher_id": tid,
+                "teacher_name": meta["name"],
+                "subject": meta["subject"],
+                "source": source,
+            })
+
+    # Stable ordering: manual first, then auto, then by name.
+    for key in by_day_period:
+        by_day_period[key].sort(
+            key=lambda e: (0 if e["source"] == "manual" else 1, e["teacher_name"])
+        )
+
+    # Build day-centric rows
+    days_payload: List[dict] = []
+    for d in days:
+        # Slot count = max teachers across periods for this day, min 1 row
+        # so the day always renders with at least one (possibly empty) row.
+        max_slots = 0
+        for p in periods:
+            max_slots = max(max_slots, len(by_day_period.get((d, p), [])))
+        slot_count = max(max_slots, 1)
+        rows: List[dict] = []
+        for idx in range(slot_count):
+            cells: Dict[str, Optional[dict]] = {}
+            for p in periods:
+                lst = by_day_period.get((d, p), [])
+                cells[str(p)] = lst[idx] if idx < len(lst) else None
+            rows.append({"slot_index": idx + 1, "cells": cells})
+        days_payload.append({
+            "day": d,
+            "slot_count": slot_count,
+            "rows": rows,
+        })
+
+    # Conflict warnings: manual add that lost out to busy (silently dropped).
+    warnings: List[dict] = []
+    for (tid, d, p) in manual_add:
+        meta = teacher_meta.get(tid)
+        if not meta:
+            continue
+        # In final_roster?
+        if (d, p) in final_roster.get(tid, set()):
+            continue
+        # Was it dropped because the teacher is now busy at this slot?
+        if (d, p) in busy.get(tid, set()):
+            warnings.append({
+                "teacher_id": tid,
+                "teacher_name": meta["name"],
+                "day": d,
+                "period": p,
+                "code": "manual_conflicts_with_busy",
+                "message_ar": (
+                    f"التعديل اليدوي للمعلم «{meta['name']}» في يوم {d} حصة {p} "
+                    "صار يصطدم مع حصة فعلية وتم استبعاده من العرض دون مسحه."
+                ),
+            })
+
+    return {"days": days_payload, "warnings": warnings}
+
+
 __all__ = [
     "compute_standby_roster",
     "fetch_standby_overrides",
     "apply_overrides_to_roster",
+    "project_day_centric_roster",
     "DAYS",
     "PERIODS",
     "DEFAULT_WEEKLY_QUOTA",
