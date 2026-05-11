@@ -63,7 +63,7 @@ def send_password_reset_email(to_email: str, user_name: str, reset_token: str) -
             </div>
             <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
             <p style="color:#aaa;font-size:12px;text-align:center;margin:0;">
-              نسّاق &copy; {2026} — جميع الحقوق محفوظة
+              نَسَّق &copy; {2026} — جميع الحقوق محفوظة
             </p>
           </td>
         </tr>
@@ -75,9 +75,9 @@ def send_password_reset_email(to_email: str, user_name: str, reset_token: str) -
 
     try:
         result = resend.Emails.send({
-            "from": f"نسّاق NASSAQ <{FROM_EMAIL}>",
+            "from": f"نَسَّق NASSAQ <{FROM_EMAIL}>",
             "to": [to_email],
-            "subject": "إعادة تعيين كلمة المرور — نسّاق",
+            "subject": "إعادة تعيين كلمة المرور — نَسَّق",
             "html": html,
         })
         logger.info(f"Password reset email sent to {to_email}, id={result.get('id', 'unknown')}")
@@ -122,7 +122,7 @@ def send_admin_password_reset_notification(to_email: str, user_name: str, admin_
             </div>
             <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
             <p style="color:#aaa;font-size:12px;text-align:center;margin:0;">
-              نسّاق &copy; {2026} — جميع الحقوق محفوظة
+              نَسَّق &copy; {2026} — جميع الحقوق محفوظة
             </p>
           </td>
         </tr>
@@ -134,9 +134,9 @@ def send_admin_password_reset_notification(to_email: str, user_name: str, admin_
 
     try:
         result = resend.Emails.send({
-            "from": f"نسّاق NASSAQ <{FROM_EMAIL}>",
+            "from": f"نَسَّق NASSAQ <{FROM_EMAIL}>",
             "to": [to_email],
-            "subject": "تم تغيير كلمة المرور — نسّاق",
+            "subject": "تم تغيير كلمة المرور — نَسَّق",
             "html": html,
         })
         logger.info(f"Admin reset notification sent to {to_email}, id={result.get('id', 'unknown')}")

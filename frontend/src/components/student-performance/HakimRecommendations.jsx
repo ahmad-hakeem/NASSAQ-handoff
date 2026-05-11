@@ -15,7 +15,12 @@ export default function HakimRecommendations({ recommendations, source }) {
       <div className="flex items-baseline justify-between mb-3">
         <h3 className="text-lg font-cairo text-[#1C3D74]">{t('nassaqSuggestions')}</h3>
         {source === 'fallback' && (
-          <span className="text-xs text-neutral-500">offline</span>
+          <span
+            className="text-[10px] font-cairo px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200"
+            title={t('aiUnavailableShowingGenericGuidance') || 'الذكاء الاصطناعي غير متاح حالياً — يتم عرض إرشادات عامة'}
+          >
+            {t('genericGuidanceFallback') || 'إرشادات عامة'}
+          </span>
         )}
       </div>
       {!recommendations?.length ? (

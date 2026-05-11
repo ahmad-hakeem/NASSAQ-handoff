@@ -1606,7 +1606,7 @@ async def hakim_generate_expected(
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": """أنت حكيم، مساعد ذكاء المنتج في نظام نسّق التعليمي.
+                {"role": "system", "content": """أنت حكيم، مساعد ذكاء المنتج في نظام نَسَّق التعليمي.
 مهمتك: بناءً على وصف الوضع الحالي والمشكلة، اكتب وصفاً واضحاً ودقيقاً للوضع المتوقع (النتيجة المرجوة).
 
 قواعد:
@@ -1672,7 +1672,7 @@ async def hakim_generate_title(
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": """أنت حكيم، مساعد ذكاء المنتج في نظام نسّق التعليمي.
+                {"role": "system", "content": """أنت حكيم، مساعد ذكاء المنتج في نظام نَسَّق التعليمي.
 مهمتك: بناءً على تفاصيل التحدي، أنشئ 3 عناوين احترافية مختلفة.
 
 قواعد صارمة للعنوان:
@@ -1737,7 +1737,7 @@ async def hakim_improve_text(
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": f"""أنت حكيم، مساعد ذكاء المنتج في نظام نسّق. مهمتك: {field_instruction}.
+                {"role": "system", "content": f"""أنت حكيم، مساعد ذكاء المنتج في نظام نَسَّق. مهمتك: {field_instruction}.
 
 قواعد:
 - حافظ على المعنى الأصلي

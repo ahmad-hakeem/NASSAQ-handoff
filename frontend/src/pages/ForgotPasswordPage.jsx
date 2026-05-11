@@ -62,7 +62,7 @@ export default function ForgotPasswordPage() {
         </div>
         <div className="relative z-10 text-center max-w-md">
           <img src={LOGO_WHITE} alt="نَسَّق" className="h-32 lg:h-40 w-auto mx-auto mb-8 rounded-3xl animate-fade-in" />
-          <h2 className="font-cairo text-4xl font-bold text-white mb-4">{isRTL ? 'نسّاق' : 'NASSAQ'}</h2>
+          <h2 className="font-cairo text-4xl font-bold text-white mb-4">{isRTL ? 'نَسَّق' : 'NASSAQ'}</h2>
           <p className="text-2xl text-brand-turquoise font-cairo font-semibold mb-8">
             {isRTL ? 'من البيانات إلى القرارات' : 'From Data to Decisions'}
           </p>

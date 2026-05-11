@@ -110,7 +110,7 @@ export default function ResetPasswordPage() {
         </div>
         <div className="relative z-10 text-center max-w-md">
           <img src={LOGO_WHITE} alt="نَسَّق" className="h-32 lg:h-40 w-auto mx-auto mb-8 rounded-3xl animate-fade-in" />
-          <h2 className="font-cairo text-4xl font-bold text-white mb-4">{isRTL ? 'نسّاق' : 'NASSAQ'}</h2>
+          <h2 className="font-cairo text-4xl font-bold text-white mb-4">{isRTL ? 'نَسَّق' : 'NASSAQ'}</h2>
           <div className="flex items-center gap-4 bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-4 max-w-sm mx-auto">
             <img src={HAKIM_CHARACTER} alt="حكيم" className="w-24 h-24 rounded-2xl object-contain border-2 border-brand-turquoise bg-gradient-to-br from-cyan-50 to-violet-50 p-1" />
             <div className="text-start flex-1">
