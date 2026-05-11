@@ -50,7 +50,6 @@ import {
   Award,
   Lightbulb,
   ChevronDown,
-  Hourglass,
 } from 'lucide-react';
 
 
@@ -375,15 +374,6 @@ export const Sidebar = ({ children }) => {
         icon: MessageSquare,
         label: t('communicationNotifications'),
         href: '/teacher/communication',
-        roles: ['teacher'],
-      },
-      {
-        // Standby Periods is consolidated into the Classes page as a tab,
-        // so the sidebar entry deep-links straight into that tab state to
-        // avoid splitting teaching workflows across separate pages.
-        icon: Hourglass,
-        label: 'حصص الانتظار',
-        href: '/teacher/classes?tab=standby',
         roles: ['teacher'],
       },
       {
