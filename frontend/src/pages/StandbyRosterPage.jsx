@@ -23,6 +23,7 @@ import { Badge } from '../components/ui/badge';
 import {
   Hourglass, Loader2, RefreshCw, Sparkles,
   CheckCircle2, MinusCircle, Lock, CalendarOff, LayoutGrid, Rows3,
+  Users, Bot, Hand, ListChecks,
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -116,6 +117,36 @@ function StandbyCell({ cell, onCycle, busy }) {
         <span className="text-[9px] font-bold opacity-80">{overrideLabel}</span>
       )}
     </button>
+  );
+}
+
+const KPI_ACCENTS = {
+  blue:    { ring: 'ring-blue-100',    bar: 'bg-blue-500',    iconBg: 'bg-blue-50',    iconFg: 'text-blue-600' },
+  emerald: { ring: 'ring-emerald-100', bar: 'bg-emerald-500', iconBg: 'bg-emerald-50', iconFg: 'text-emerald-600' },
+  violet:  { ring: 'ring-violet-100',  bar: 'bg-violet-500',  iconBg: 'bg-violet-50',  iconFg: 'text-violet-600' },
+  amber:   { ring: 'ring-amber-100',   bar: 'bg-amber-500',   iconBg: 'bg-amber-50',   iconFg: 'text-amber-600' },
+};
+
+function KpiCard({ icon: Icon, label, value, accent = 'blue', emphasis = false }) {
+  const a = KPI_ACCENTS[accent] || KPI_ACCENTS.blue;
+  return (
+    <Card
+      dir="rtl"
+      className={`relative overflow-hidden bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow h-full ring-1 ${a.ring}`}
+    >
+      <span className={`absolute top-0 right-0 h-full w-1 ${a.bar}`} aria-hidden="true" />
+      <CardContent className="p-3.5 pr-4 flex items-center gap-3 h-full">
+        <div className={`shrink-0 h-9 w-9 rounded-lg ${a.iconBg} flex items-center justify-center`}>
+          <Icon className={`h-4.5 w-4.5 ${a.iconFg}`} aria-hidden="true" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-medium text-slate-500 mb-0.5 truncate">{label}</p>
+          <p className={`font-bold text-slate-900 leading-none tabular-nums ${emphasis ? 'text-2xl' : 'text-xl'}`}>
+            {value}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -296,12 +327,16 @@ export function StandbyRosterContent() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-md border border-slate-300 overflow-hidden bg-white">
+          {/* Unified toolbar: view toggle + refresh + primary regenerate. */}
+          <div
+            dir="rtl"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white shadow-sm p-1.5"
+          >
+            <div className="inline-flex rounded-lg overflow-hidden bg-slate-50 ring-1 ring-slate-200">
               <button
                 type="button"
                 onClick={() => setViewMode('day')}
-                className={`px-3 py-1.5 text-xs font-semibold flex items-center gap-1 ${viewMode === 'day' ? 'bg-[#1C3D74] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                className={`px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 transition-colors ${viewMode === 'day' ? 'bg-[#1C3D74] text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}
                 title="عرض حسب اليوم (افتراضي)"
               >
                 <Rows3 className="h-3.5 w-3.5" />
@@ -310,19 +345,21 @@ export function StandbyRosterContent() {
               <button
                 type="button"
                 onClick={() => setViewMode('matrix')}
-                className={`px-3 py-1.5 text-xs font-semibold flex items-center gap-1 ${viewMode === 'matrix' ? 'bg-[#1C3D74] text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                className={`px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 transition-colors ${viewMode === 'matrix' ? 'bg-[#1C3D74] text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}
                 title="عرض المصفوفة الكامل (معلم × يوم × حصة)"
               >
                 <LayoutGrid className="h-3.5 w-3.5" />
                 مصفوفة المعلمين
               </button>
             </div>
+            <span className="h-6 w-px bg-slate-200" />
             <Button
               onClick={handleRefresh}
               variant="ghost"
               size="icon"
               disabled={refreshing}
               title="تحديث"
+              className="h-8 w-8 text-slate-600 hover:text-[#1C3D74]"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             </Button>
@@ -332,12 +369,11 @@ export function StandbyRosterContent() {
                 () => regenerateRoster(),
                 { confirmText: 'إعادة التوليد', title: 'إعادة توليد جدول الانتظار' },
               )}
-              variant="outline"
               disabled={refreshing}
-              className="border-[#1C3D74] text-[#1C3D74] hover:bg-[#1C3D74]/5"
+              className="h-8 px-3 bg-[#1C3D74] text-white hover:bg-[#15305c] shadow-sm"
               title="إعادة توليد جدول الانتظار من الجدول الرئيسي مع الحفاظ على التعديلات اليدوية"
             >
-              <Sparkles className="h-4 w-4 ml-2" />
+              <Sparkles className="h-4 w-4 ml-1.5" />
               إعادة التوليد
             </Button>
           </div>
@@ -345,30 +381,31 @@ export function StandbyRosterContent() {
 
         {/* ── Summary strip ───────────────────────────────────────── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
-          <Card className="bg-white shadow-sm rounded-lg border border-slate-200 border-t-4 border-t-blue-400">
-            <CardContent className="p-3">
-              <p className="text-[11px] font-medium text-slate-500 mb-1">معلمون</p>
-              <p className="text-xl font-bold text-slate-900">{totals.teachers}</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-white shadow-sm rounded-lg border border-slate-200 border-t-4 border-t-emerald-400">
-            <CardContent className="p-3">
-              <p className="text-[11px] font-medium text-slate-500 mb-1">خانات تلقائية</p>
-              <p className="text-xl font-bold text-slate-900">{totals.auto_slots}</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-white shadow-sm rounded-lg border border-slate-200 border-t-4 border-t-violet-400">
-            <CardContent className="p-3">
-              <p className="text-[11px] font-medium text-slate-500 mb-1">تعديلات يدوية</p>
-              <p className="text-xl font-bold text-slate-900">{totals.overrides}</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-white shadow-sm rounded-lg border border-slate-200 border-t-4 border-t-amber-400">
-            <CardContent className="p-3">
-              <p className="text-[11px] font-medium text-slate-500 mb-1">إجمالي خانات الانتظار</p>
-              <p className="text-xl font-bold text-slate-900">{totals.final_slots}</p>
-            </CardContent>
-          </Card>
+          <KpiCard
+            icon={Users}
+            label="المعلمون النشطون"
+            value={totals.teachers}
+            accent="blue"
+          />
+          <KpiCard
+            icon={Bot}
+            label="خانات تلقائية"
+            value={totals.auto_slots}
+            accent="emerald"
+          />
+          <KpiCard
+            icon={Hand}
+            label="تعديلات يدوية"
+            value={totals.overrides}
+            accent="violet"
+          />
+          <KpiCard
+            icon={ListChecks}
+            label="إجمالي خانات الانتظار"
+            value={totals.final_slots}
+            accent="amber"
+            emphasis
+          />
         </div>
 
         {/* ── Legend ──────────────────────────────────────────────── */}
