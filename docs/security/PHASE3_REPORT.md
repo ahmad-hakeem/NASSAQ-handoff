@@ -86,7 +86,7 @@ broken out as their own tasks rather than rolled into one super-task:
 
 ```bash
 cd backend && TESTING=1 python -m pytest tests/test_security_phase1.py tests/test_security_phase2.py tests/test_security_phase3.py
-# 44 passed
+# 47 passed
 alembic upgrade head  # w1x2y3z4a5b6 applied cleanly
 ```
 

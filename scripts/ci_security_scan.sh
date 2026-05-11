@@ -10,12 +10,15 @@
 #   1. Token-storage chokepoint (Phase 2 sentinel).
 #   2. Tenant-scoped lookup chokepoint (Phase 1 sentinel).
 #   3. Phase-1, Phase-2, and Phase-3 security pytest suites.
-#   4. Dependency vulnerability audit (pip-audit) — soft-fail on info-only
-#      advisories so transient registry blips do not block deploys.
+#   4. Dependency vulnerability audit — pip-audit AND safety, both
+#      hard-fail when high-severity advisories are reported.
+#   5. SAST scan with bandit, hard-fail on high-severity findings.
 #
-# The full SAST + HoundDog secret-scan steps from the `security_scan` skill
-# are run by the platform via the same skill in the agent loop; this script
-# is the deterministic, repo-local subset suitable for a CI runner.
+# The full HoundDog secret-scan step from the `security_scan` skill is
+# additionally run by the platform in the agent loop; this script is the
+# deterministic, repo-local subset suitable for a CI runner. Tools that
+# are not installed in the CI image FAIL the gate — install them in the
+# image rather than letting the check silently no-op.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -46,14 +49,28 @@ else
     echo "──▶ pytest not installed — skipping security test suites"
 fi
 
-# Dependency audit — soft-fail (warn but do not block) since transient PyPI
-# advisory feed errors must not gate hotfix deploys.
+# Dependency audit — hard-fail. Install pip-audit in the CI image.
 if command -v pip-audit >/dev/null 2>&1; then
-    echo "──▶ pip-audit (warn-only)"
-    pip-audit -r backend/requirements.txt --strict || \
-        echo "   warning: pip-audit reported issues — review before merge"
+    run_step "pip-audit"  pip-audit -r backend/requirements.txt --strict
 else
     echo "──▶ pip-audit not installed — install with: pip install pip-audit"
+    FAIL=1
+fi
+
+# Second-source dependency audit (safety) — hard-fail on high severity.
+if command -v safety >/dev/null 2>&1; then
+    run_step "safety check"  safety check -r backend/requirements.txt --full-report
+else
+    echo "──▶ safety not installed — install with: pip install safety"
+    FAIL=1
+fi
+
+# SAST — bandit, hard-fail on high-severity findings only.
+if command -v bandit >/dev/null 2>&1; then
+    run_step "bandit (high severity)"  bandit -r backend -ll -ii -x backend/tests
+else
+    echo "──▶ bandit not installed — install with: pip install bandit"
+    FAIL=1
 fi
 
 if [ "$FAIL" -ne 0 ]; then
