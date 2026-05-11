@@ -430,9 +430,156 @@ def project_day_centric_roster(
             "subject": t.get("specialization") or t.get("subject") or "",
         }
 
-    # Manual-add lookup: (tid, day, period) -> True
-    manual_add: Set[Tuple[str, str, int]] = set()
+    # ── Walk overrides and split by addressability ──────────────────
+    # Three buckets:
+    #   pinned_add[(d,p,slot)]      = manual add anchored to a specific
+    #                                  day-centric cell. Survives
+    #                                  unrelated edits because we place
+    #                                  it at its slot regardless of
+    #                                  alphabetic order.
+    #   pinned_remove[(d,p,slot)]   = manual remove pinned to a slot.
+    #                                  Holds the slot empty (no
+    #                                  backfill) so a single-cell remove
+    #                                  doesn't shift other rows.
+    #   manual_add_unpinned         = legacy manual adds without a
+    #                                  slot_index. Still respected (via
+    #                                  final_roster), but they get a
+    #                                  position-derived slot in the
+    #                                  alphabetic auto pool.
+    pinned_add: Dict[Tuple[str, int, int], dict] = {}
+    pinned_remove: Dict[Tuple[str, int, int], str] = {}
+    manual_add_unpinned: Set[Tuple[str, str, int]] = set()
+    pinned_teacher_in_dp: Dict[Tuple[str, int], Set[str]] = {}
     for ov in overrides or []:
+        action = (ov.get("action") or "").lower()
+        tid = ov.get("teacher_id")
+        d = (ov.get("day") or "").lower()
+        try:
+            p = int(ov.get("period"))
+        except (TypeError, ValueError):
+            continue
+        if not tid or d not in days or p not in periods:
+            continue
+        slot_raw = ov.get("slot_index")
+        slot = None
+        if isinstance(slot_raw, int) and slot_raw >= 1:
+            slot = slot_raw
+        if action == "add":
+            meta = teacher_meta.get(tid)
+            if not meta:
+                continue
+            if slot is None:
+                manual_add_unpinned.add((tid, d, p))
+                continue
+            entry = {
+                "teacher_id": tid,
+                "teacher_name": meta["name"],
+                "subject": meta["subject"],
+                "source": "manual",
+            }
+            # Drop pinned add if reality conflicts (busy / unavailable /
+            # blocked). The override stays in the DB; the projection
+            # surfaces it via `warnings` so the principal can act on it.
+            if (d, p) in busy.get(tid, set()):
+                continue
+            if (d, p) in unavailable.get(tid, set()):
+                continue
+            if d in blocked_by_teacher.get(tid, set()):
+                continue
+            pinned_add[(d, p, slot)] = entry
+            pinned_teacher_in_dp.setdefault((d, p), set()).add(tid)
+        elif action == "remove" and slot is not None:
+            pinned_remove[(d, p, slot)] = tid
+
+    # ── Auto pool: teachers from final_roster that aren't pinned ────
+    # Excludes teachers already pinned at any slot of the same (d,p)
+    # so they don't appear twice in the same column.
+    auto_pool: Dict[Tuple[str, int], List[dict]] = {}
+    for tid, slots in final_roster.items():
+        meta = teacher_meta.get(tid)
+        if not meta:
+            continue
+        for (d, p) in slots:
+            if d not in days or p not in periods:
+                continue
+            if tid in pinned_teacher_in_dp.get((d, p), set()):
+                continue
+            source = "manual" if (tid, d, p) in manual_add_unpinned else "auto"
+            auto_pool.setdefault((d, p), []).append({
+                "teacher_id": tid,
+                "teacher_name": meta["name"],
+                "subject": meta["subject"],
+                "source": source,
+            })
+    for key in auto_pool:
+        # Alphabetic ordering for stable, deterministic auto placement.
+        auto_pool[key].sort(key=lambda e: e["teacher_name"])
+
+    # ── Place autos into non-pinned slots, lowest slot first ────────
+    auto_slot: Dict[Tuple[str, int, int], dict] = {}
+    auto_max_slot: Dict[Tuple[str, int], int] = {}
+    for (d_key, p_key), pool in auto_pool.items():
+        used = {s for (dd, pp, s) in pinned_add if dd == d_key and pp == p_key}
+        used |= {s for (dd, pp, s) in pinned_remove if dd == d_key and pp == p_key}
+        s = 0
+        idx = 0
+        while idx < len(pool):
+            s += 1
+            if s in used:
+                continue
+            auto_slot[(d_key, p_key, s)] = pool[idx]
+            auto_max_slot[(d_key, p_key)] = s
+            idx += 1
+
+    # ── Determine slot_count per day ────────────────────────────────
+    pinned_max_in_dp: Dict[Tuple[str, int], int] = {}
+    for (dd, pp, s) in list(pinned_add) + list(pinned_remove):
+        cur = pinned_max_in_dp.get((dd, pp), 0)
+        if s > cur:
+            pinned_max_in_dp[(dd, pp)] = s
+
+    # ── Build day-centric rows ──────────────────────────────────────
+    days_payload: List[dict] = []
+    for d in days:
+        max_slots = 0
+        for p in periods:
+            max_slots = max(
+                max_slots,
+                pinned_max_in_dp.get((d, p), 0),
+                auto_max_slot.get((d, p), 0),
+            )
+        slot_count = max(max_slots, 1)
+        rows: List[dict] = []
+        for slot_idx in range(1, slot_count + 1):
+            cells: Dict[str, Optional[dict]] = {}
+            for p in periods:
+                if (d, p, slot_idx) in pinned_add:
+                    cells[str(p)] = pinned_add[(d, p, slot_idx)]
+                elif (d, p, slot_idx) in pinned_remove:
+                    # Slot held empty by a manual remove. Edit-locality
+                    # means we do NOT backfill from the auto pool.
+                    cells[str(p)] = None
+                elif (d, p, slot_idx) in auto_slot:
+                    cells[str(p)] = auto_slot[(d, p, slot_idx)]
+                else:
+                    cells[str(p)] = None
+            rows.append({"slot_index": slot_idx, "cells": cells})
+        days_payload.append({
+            "day": d,
+            "slot_count": slot_count,
+            "rows": rows,
+        })
+
+    # Legacy `manual_add` set used by the warnings block below covers
+    # both pinned and unpinned manual adds.
+    manual_add: Set[Tuple[str, str, int]] = set(manual_add_unpinned)
+    for (d_key, p_key, _s), entry in pinned_add.items():
+        manual_add.add((entry["teacher_id"], d_key, p_key))
+    for ov in overrides or []:
+        # Pinned-add overrides that were dropped above (busy/unavail/
+        # blocked) won't be in pinned_add — but they're still in the DB
+        # and need a warning. Re-add their (tid,d,p) to manual_add so
+        # the warning loop catches them.
         if (ov.get("action") or "").lower() != "add":
             continue
         tid = ov.get("teacher_id")
@@ -443,53 +590,6 @@ def project_day_centric_roster(
             continue
         if tid and d in days and p in periods:
             manual_add.add((tid, d, p))
-
-    # (day, period) -> ordered list of teacher entries
-    by_day_period: Dict[Tuple[str, int], List[dict]] = {}
-    for tid, slots in final_roster.items():
-        meta = teacher_meta.get(tid)
-        if not meta:
-            continue
-        for (d, p) in slots:
-            if d not in days or p not in periods:
-                continue
-            source = "manual" if (tid, d, p) in manual_add else "auto"
-            by_day_period.setdefault((d, p), []).append({
-                "teacher_id": tid,
-                "teacher_name": meta["name"],
-                "subject": meta["subject"],
-                "source": source,
-            })
-
-    # Stable ordering: alphabetic by teacher name only. We deliberately
-    # avoid a "manual-first" sort because it would reshuffle existing
-    # rows whenever a manual entry is added/removed — violating
-    # single-cell-edit locality. Manual vs auto is conveyed via the
-    # `source` flag on each cell, not via row order.
-    for key in by_day_period:
-        by_day_period[key].sort(key=lambda e: e["teacher_name"])
-
-    # Build day-centric rows
-    days_payload: List[dict] = []
-    for d in days:
-        # Slot count = max teachers across periods for this day, min 1 row
-        # so the day always renders with at least one (possibly empty) row.
-        max_slots = 0
-        for p in periods:
-            max_slots = max(max_slots, len(by_day_period.get((d, p), [])))
-        slot_count = max(max_slots, 1)
-        rows: List[dict] = []
-        for idx in range(slot_count):
-            cells: Dict[str, Optional[dict]] = {}
-            for p in periods:
-                lst = by_day_period.get((d, p), [])
-                cells[str(p)] = lst[idx] if idx < len(lst) else None
-            rows.append({"slot_index": idx + 1, "cells": cells})
-        days_payload.append({
-            "day": d,
-            "slot_count": slot_count,
-            "rows": rows,
-        })
 
     # Conflict warnings: any manual override that was silently dropped
     # because reality changed underneath it. We surface three classes of

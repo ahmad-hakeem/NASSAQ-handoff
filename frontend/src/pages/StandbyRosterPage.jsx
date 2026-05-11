@@ -165,14 +165,18 @@ export function StandbyRosterContent() {
 
   useEffect(() => { loadRoster(); }, [loadRoster]);
 
-  const sendOverride = useCallback(async (teacherId, day, period, action) => {
+  const sendOverride = useCallback(async (teacherId, day, period, action, slotIndex = null) => {
     if (!schoolId) return;
-    const cellKey = `${teacherId}:${day}:${period}`;
+    const cellKey = slotIndex != null
+      ? `slot:${day}:${period}:${slotIndex}`
+      : `${teacherId}:${day}:${period}`;
     setBusyCellKey(cellKey);
     try {
+      const body = { teacher_id: teacherId, day, period, action };
+      if (slotIndex != null) body.slot_index = slotIndex;
       await api.put(
         '/standby/roster/cell',
-        { teacher_id: teacherId, day, period, action },
+        body,
         {
           params: { school_id: schoolId },
           headers: { 'X-School-Context': schoolId },
@@ -204,11 +208,13 @@ export function StandbyRosterContent() {
   const onDayCellClick = useCallback(({ cell, day, period, slot_index }) => {
     if (cell) {
       // Filled — confirm remove (or reset for manual-add overrides).
+      // Edits are slot-addressable: server scopes the change to the
+      // exact (day, period, slot_index) so other rows are unaffected.
       const action = cell.source === 'manual' ? 'reset' : 'remove';
       const verb = action === 'reset' ? 'إلغاء الإسناد اليدوي' : 'استثناء المعلم';
       nassaqConfirm(
         `${verb} «${cell.teacher_name}» من خانة الانتظار؟`,
-        () => sendOverride(cell.teacher_id, day, period, action),
+        () => sendOverride(cell.teacher_id, day, period, action, slot_index),
         { title: 'تأكيد التعديل', confirmText: 'تأكيد', cancelText: 'إلغاء' },
       );
     } else {
@@ -425,9 +431,9 @@ export function StandbyRosterContent() {
                       key={t.id}
                       type="button"
                       onClick={async () => {
-                        const { day, period } = picker;
+                        const { day, period, slot_index } = picker;
                         setPicker(null);
-                        await sendOverride(t.id, day, period, 'add');
+                        await sendOverride(t.id, day, period, 'add', slot_index);
                       }}
                       className="w-full text-right px-3 py-2 hover:bg-emerald-50 flex items-center justify-between gap-3"
                     >

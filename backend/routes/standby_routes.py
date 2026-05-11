@@ -526,6 +526,12 @@ class StandbyOverrideRequest(BaseModel):
     day: str = Field(..., min_length=3)
     period: int = Field(..., ge=1, le=12)
     action: str = Field(..., description="add | remove | reset")
+    # Optional 1-based slot_index for day-centric edits. When provided,
+    # the override is anchored to (day, period, slot_index) so a single
+    # cell edit only affects that exact cell. Omit for legacy
+    # teacher-centric edits (server falls back to teacher+day+period
+    # scoping).
+    slot_index: Optional[int] = Field(None, ge=1, le=50)
 
 
 @router.put("/standby/roster/cell")
@@ -581,15 +587,49 @@ async def put_standby_override(
                 detail="لا يمكن إضافة خانة انتظار فوق حصة مجدولة للمعلم نفسه",
             )
 
-    # Always purge any existing override for this exact (teacher, day, period)
-    # tuple to keep the collection idempotent and prevent duplicates.
-    delete_filters = {
-        "school_id": str(sid),
-        "teacher_id": body.teacher_id,
-        "day": day,
-        "period": period,
-    }
-    deleted = await gd_delete_many(db.session, "standby_overrides", delete_filters)
+    slot_index = body.slot_index
+    deleted_total = 0
+
+    if slot_index is not None:
+        # Day-centric, slot-addressable edit. Two layers of cleanup so
+        # the new override is the only one anchored to this cell:
+        #   1. Drop any override pinned to (day, period, slot_index)
+        #      regardless of teacher (covers a different teacher
+        #      previously occupying this slot via a pinned add, or a
+        #      pinned remove being reset).
+        #   2. Drop any override at (teacher, day, period) regardless
+        #      of slot_index (covers legacy unpinned overrides for the
+        #      same teacher in the same column to keep the collection
+        #      idempotent and prevent duplicates).
+        deleted_total += await gd_delete_many(
+            db.session, "standby_overrides",
+            {
+                "school_id": str(sid),
+                "day": day,
+                "period": period,
+                "slot_index": slot_index,
+            },
+        )
+        deleted_total += await gd_delete_many(
+            db.session, "standby_overrides",
+            {
+                "school_id": str(sid),
+                "teacher_id": body.teacher_id,
+                "day": day,
+                "period": period,
+            },
+        )
+    else:
+        # Legacy teacher-centric edit: scope by (teacher, day, period).
+        deleted_total += await gd_delete_many(
+            db.session, "standby_overrides",
+            {
+                "school_id": str(sid),
+                "teacher_id": body.teacher_id,
+                "day": day,
+                "period": period,
+            },
+        )
 
     inserted_id: Optional[str] = None
     if action in ("add", "remove"):
@@ -604,14 +644,17 @@ async def put_standby_override(
             "created_at": now_iso,
             "created_by_user_id": current_user.get("id") if current_user else None,
         }
+        if slot_index is not None:
+            doc["slot_index"] = slot_index
         inserted_id = await gd_insert(db.session, "standby_overrides", doc)
 
     return {
         "success": True,
         "action": action,
-        "removed_previous": deleted,
+        "removed_previous": deleted_total,
         "override_id": inserted_id,
         "teacher_id": body.teacher_id,
         "day": day,
         "period": period,
+        "slot_index": slot_index,
     }
