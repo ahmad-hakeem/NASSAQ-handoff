@@ -68,6 +68,15 @@ def register_middleware(app: FastAPI):
             finally:
                 db.set_session(None)
 
+    _PRIVATE_NOINDEX_PREFIXES = (
+        "/principal/",
+        "/admin/",
+        "/teacher/",
+        "/parent/",
+        "/school/",
+        "/api/",
+    )
+
     @app.middleware("http")
     async def add_security_headers(request: Request, call_next):
         path = request.url.path
@@ -75,6 +84,8 @@ def register_middleware(app: FastAPI):
             return await call_next(request)
         response = await call_next(request)
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        if any(path.startswith(p) for p in _PRIVATE_NOINDEX_PREFIXES):
+            response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         # B-20: X-XSS-Protection is deprecated and can introduce vulnerabilities;
