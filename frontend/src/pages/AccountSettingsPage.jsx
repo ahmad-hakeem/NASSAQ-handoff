@@ -75,6 +75,7 @@ import {
   AlertDialogTitle,
 } from '../components/ui/alert-dialog';
 import { ImageCropModal } from '../components/ui/ImageCropModal';
+import MfaSecuritySection from '../components/mfa/MfaSecuritySection';
 
 const PasswordStrength = ({ password, isRTL }) => {
   const { t } = useTranslation();
@@ -681,6 +682,12 @@ export const AccountSettingsPage = () => {
                     </CardContent>
                   </Card>
 
+                  {/* Task #169 Step 11 — Real MFA management surface (tier badge,
+                      enrolled factors, TOTP enrolment, recovery-code generation
+                      with password re-auth) replaces the previous decorative
+                      "Enable" placeholder. */}
+                  <MfaSecuritySection />
+
                   <Card className="card-nassaq">
                     <CardHeader className="pb-4">
                       <CardTitle className="font-cairo flex items-center gap-2 text-lg">
@@ -700,18 +707,6 @@ export const AccountSettingsPage = () => {
                           </div>
                         </div>
                         <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 border-0 text-xs">{t('verified')}</Badge>
-                      </div>
-                      <div className="flex items-center justify-between p-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-800/30">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-lg bg-amber-500/15 flex items-center justify-center">
-                            <AlertCircle className="h-5 w-5 text-amber-500" />
-                          </div>
-                          <div>
-                            <p className="font-medium text-sm">{t('twofactorAuthentication')}</p>
-                            <p className="text-xs text-muted-foreground">{t('addAnExtraLayerOfSecurity')}</p>
-                          </div>
-                        </div>
-                        <Button variant="outline" size="sm" className="rounded-lg text-xs">{t('enable')}</Button>
                       </div>
                     </CardContent>
                   </Card>
