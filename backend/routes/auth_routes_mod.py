@@ -214,6 +214,69 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
         raise HTTPException(status_code=401, detail="الحساب مقفل. يرجى التواصل مع الإدارة")
     
     user_id = user.get("id") or str(user["_id"])
+
+    # ── MFA challenge gate (Task #169) ──────────────────────────────────────
+    # If the user has any active second factor enrolled, do NOT mint access
+    # tokens here. Instead create a short-lived ``mfa_pending_challenges``
+    # row and return a ``type=mfa_challenge`` JWT. The frontend then calls
+    # ``/auth/mfa/verify`` with a factor proof to exchange the challenge
+    # for real tokens.
+    #
+    # Users without any active factor enrolled keep getting normal tokens
+    # for now — Tier A enforcement (block login if no passkey) ships with
+    # the enrolment wizard in Step 9 of the plan, gated by ``MFA_GRACE_UNTIL``.
+    try:
+        from dependencies import create_mfa_challenge_token
+        from services import mfa_policy
+        from engines.sql_utils import gd_insert
+        active_factors = await gd_find(db.session, "mfa_factors", {"user_id": user_id, "is_active": True}) or []
+        tier = mfa_policy.required_for(user)
+        if active_factors and tier is not None:
+            challenge_token, challenge_jti, challenge_exp = create_mfa_challenge_token(
+                user_id, user["role"], user.get("tenant_id"),
+            )
+            await gd_insert(
+                db.session,
+                "mfa_pending_challenges",
+                {
+                    "user_id": user_id,
+                    "challenge_token_jti": challenge_jti,
+                    "expires_at": challenge_exp,
+                    "attempts": 0,
+                    "ip": request.client.host if request and request.client else None,
+                    "user_agent": (request.headers.get("user-agent") if request else None) or None,
+                    "remember_me": bool(credentials.remember_me),
+                },
+            )
+            await audit_engine.log_auth_event(
+                action="mfa.challenge_issued",
+                user_id=user_id,
+                tenant_id=user.get("tenant_id"),
+                success=True,
+                email=credentials.email,
+            )
+            available_kinds = sorted({
+                f.get("kind") for f in active_factors
+                if f.get("kind") in mfa_policy.allowed_factor_kinds(user)
+            })
+            return TokenResponse(
+                mfa_required=True,
+                mfa_tier=tier.value,
+                mfa_enrollment_required=False,
+                challenge_token=challenge_token,
+                available_factor_kinds=available_kinds,
+                challenge_expires_at=challenge_exp.isoformat(),
+            )
+    except HTTPException:
+        raise
+    except Exception as _mfa_err:
+        # Fail-safe: if the MFA challenge plumbing itself errors (e.g. schema
+        # not migrated in a stale environment), log and fall through to normal
+        # token issuance so the user is never locked out by a half-deployed
+        # rollout. Phase-2 hardening will turn this into a hard failure
+        # behind a feature flag.
+        logger.warning(f"login: MFA challenge gate skipped due to error: {_mfa_err}")
+
     token_payload = {"sub": user_id, "role": user["role"]}
     if user.get("tenant_id"):
         token_payload["tenant_id"] = user["tenant_id"]

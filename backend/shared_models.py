@@ -135,10 +135,22 @@ class UserResponse(BaseModel):
     original_role: Optional[str] = None
 
 class TokenResponse(BaseModel):
-    access_token: str
+    access_token: Optional[str] = None
     refresh_token: Optional[str] = None
     token_type: str = "bearer"
-    user: UserResponse
+    user: Optional[UserResponse] = None
+    # Task #169 — MFA pending-challenge fields. When ``mfa_required`` is
+    # true the response carries ``challenge_token`` (a ``type=mfa_challenge``
+    # JWT) instead of an access/refresh pair. The frontend must POST to
+    # ``/auth/mfa/verify`` with that token + a second-factor proof to get
+    # the real tokens.
+    mfa_required: bool = False
+    mfa_tier: Optional[str] = None  # 'A' | 'B' | 'C'
+    mfa_enrollment_required: bool = False
+    challenge_token: Optional[str] = None
+    available_factor_kinds: Optional[List[str]] = None
+    challenge_expires_at: Optional[str] = None
+    mfa_recovery_codes_pending_view: bool = False
 
 class SchoolBase(BaseModel):
     name: str

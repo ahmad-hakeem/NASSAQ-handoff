@@ -138,6 +138,35 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
+MFA_CHALLENGE_EXPIRE_MINUTES = int(os.environ.get('MFA_CHALLENGE_EXPIRE_MINUTES', 10))
+
+
+def create_mfa_challenge_token(user_id: str, role: str, tenant_id: Optional[str] = None) -> tuple[str, str, datetime]:
+    """Mint a short-lived ``type=mfa_challenge`` JWT for the post-password
+    pre-second-factor state. Returned tuple is ``(token, jti, expires_at)``.
+
+    These tokens MUST NOT be accepted by ``get_current_user`` — they only
+    authorise calls to ``/auth/mfa/*`` verify endpoints. Enforcement is in
+    ``get_current_user``: only ``type == "access"`` is accepted as a normal
+    bearer token. Task #169.
+    """
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(minutes=MFA_CHALLENGE_EXPIRE_MINUTES)
+    jti = str(uuid.uuid4())
+    payload = {
+        "sub": user_id,
+        "role": role,
+        "type": "mfa_challenge",
+        "jti": jti,
+        "iat": now,
+        "exp": expires_at,
+    }
+    if tenant_id:
+        payload["tenant_id"] = tenant_id
+    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return token, jti, expires_at
+
+
 def create_refresh_token(
     data: dict,
     remember_me: bool = False,
@@ -178,7 +207,12 @@ async def get_current_user(
 ) -> dict:
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        if payload.get("type") == "refresh":
+        # Task #169: only true access tokens are accepted as bearer tokens.
+        # Refresh tokens and mfa_challenge tokens both have distinct ``type``
+        # claims and must NOT be usable to call protected APIs. Tokens
+        # without an explicit ``type`` (legacy / pre-Phase 3) are also
+        # rejected because every issuance path now sets ``type=access``.
+        if payload.get("type") != "access":
             raise HTTPException(status_code=401, detail="Invalid token type")
         user_id = payload.get("sub")
         if not user_id:

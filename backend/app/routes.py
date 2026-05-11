@@ -23,6 +23,7 @@ def register_routes(app, api_router: APIRouter):
     api_router.include_router(monitoring_router)
 
     from routes.auth_routes_mod import router as auth_mod_router
+    from routes.mfa_routes import router as mfa_router
     from routes.user_routes_mod import router as user_mod_router
     from routes.school_routes_mod import router as school_mod_router
     from routes.dashboard_routes_mod import router as dashboard_mod_router
@@ -61,6 +62,7 @@ def register_routes(app, api_router: APIRouter):
     from routes.hakeem_plan_routes_mod import router as hakeem_plan_mod_router
 
     api_router.include_router(auth_mod_router)
+    api_router.include_router(mfa_router)
     api_router.include_router(user_mod_router)
     api_router.include_router(school_mod_router)
     api_router.include_router(dashboard_mod_router)

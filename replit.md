@@ -7,7 +7,7 @@ A comprehensive, multi-tenant school management platform with AI-powered feature
 - **Typecheck**: `mypy backend/` (backend), `npm run typecheck` (frontend)
 - **Codegen**: `alembic revision --autogenerate -m "description"` (DB migrations), `python -m src.shared_models` (Pydantic models)
 - **DB Push**: `alembic upgrade head`
-- **Required Env Vars**: `DATABASE_URL`, `SECRET_KEY`, `ALGORITHM`
+- **Required Env Vars**: `DATABASE_URL`, `SECRET_KEY`, `ALGORITHM`, `MFA_ENCRYPTION_KEY` (Fernet key — generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`; rotate via Replit secrets)
 
 ## Stack
 - **Frontend**: React (CRACO), Tailwind CSS, Radix UI, `@dnd-kit`, `react-router-dom`, `recharts`, `framer-motion`

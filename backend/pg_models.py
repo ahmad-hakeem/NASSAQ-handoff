@@ -71,6 +71,22 @@ class User(Base):
     school_name_en = Column(String, nullable=True)
     permissions = Column(JSONB, default=list)
     notification_settings = Column(JSONB, nullable=True)
+
+    # MFA (Task #169) — denormalised flags read by the policy helper and
+    # the recovery-code lifecycle. ``mfa_required`` is a cache of
+    # ``mfa_policy.required_for(user) is not None`` for fast filtering;
+    # ``mfa_policy`` remains the source of truth at request time.
+    mfa_required = Column(Boolean, nullable=False, default=False)
+    mfa_enrolled_at = Column(DateTime(timezone=True), nullable=True)
+    # Set true when a recovery code is consumed; cleared by a successful
+    # passkey/TOTP re-enrolment. Read by ``require_recent_mfa`` to refuse
+    # Tier A sensitive routes with MFA_RESTORE_REQUIRED while true.
+    mfa_must_restore_factor = Column(Boolean, nullable=False, default=False)
+    mfa_recovery_codes_generated_at = Column(DateTime(timezone=True), nullable=True)
+    # Flips true once the user has clicked the "I have saved my recovery
+    # codes in a safe place" checkbox in the forced presentation modal.
+    mfa_recovery_codes_acknowledged = Column(Boolean, nullable=False, default=False)
+
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
@@ -616,6 +632,10 @@ class AuditLog(Base):
     user_agent = Column(String, nullable=True)
     status = Column(String, nullable=True, default="success")
     timestamp = Column(DateTime(timezone=True), default=_utcnow, index=True)
+    # MFA (Task #169) — per-tenant tamper-evident hash chain, scoped to
+    # rows whose action starts with ``mfa.``. NULL for non-MFA rows.
+    prev_hash = Column(String(64), nullable=True)
+    row_hash = Column(String(64), nullable=True)
 
     user = relationship("User", back_populates="audit_logs", foreign_keys=[performed_by], lazy="selectin")
 
@@ -1281,3 +1301,123 @@ class UserSession(Base):
     last_seen_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=True)
     revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+
+# ============================================================================
+# MFA (Task #169) — role-tiered second factor
+# ============================================================================
+
+class MfaFactor(Base):
+    """One enrolled second factor on a user.
+
+    The same user may have many active rows (e.g. one ``webauthn`` row per
+    registered device, plus one ``totp`` row). ``recovery_code`` rows are
+    tracked separately in :class:`MfaRecoveryCode` — this table covers the
+    "interactive" factors only.
+    """
+    __tablename__ = "mfa_factors"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind = Column(String, nullable=False)  # totp | webauthn
+    label = Column(String, nullable=True)
+    is_primary = Column(Boolean, nullable=False, default=False)
+    is_active = Column(Boolean, nullable=False, default=False)
+
+    # TOTP — null for non-TOTP rows
+    totp_secret_encrypted = Column(Text, nullable=True)  # bytea but driver returns bytes/memoryview
+
+    # WebAuthn — null for non-WebAuthn rows
+    webauthn_credential_id = Column(Text, nullable=True)
+    webauthn_public_key = Column(Text, nullable=True)
+    webauthn_sign_count = Column(Integer, nullable=True)
+    webauthn_aaguid = Column(String, nullable=True)
+    webauthn_attachment = Column(String, nullable=True)  # 'platform' | 'cross-platform'
+
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("idx_mfa_factors_user_kind", "user_id", "kind"),
+        Index("idx_mfa_factors_user_active", "user_id", "is_active"),
+        UniqueConstraint("webauthn_credential_id", name="uq_mfa_factors_webauthn_credential_id"),
+    )
+
+
+class MfaRecoveryCode(Base):
+    """One single-use bcrypt-hashed recovery code. ``consumed_at`` is set on
+    use; the row is kept so the hash chain in audit logs remains verifiable."""
+    __tablename__ = "mfa_recovery_codes"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    code_hash = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("idx_mfa_recovery_user_unused", "user_id", "consumed_at"),
+    )
+
+
+class MfaPendingChallenge(Base):
+    """Short-lived row representing the "password OK, waiting for second
+    factor" state. The login route inserts this and returns a JWT whose
+    ``jti`` matches ``challenge_token_jti``; ``/auth/mfa/verify`` consumes
+    it on success and deletes/marks it on completion. Capped TTL ≤ 10 min."""
+    __tablename__ = "mfa_pending_challenges"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    challenge_token_jti = Column(String, nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    attempts = Column(Integer, nullable=False, default=0)
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
+    ip = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+    remember_me = Column(Boolean, nullable=False, default=False)
+
+    __table_args__ = (
+        Index("idx_mfa_pending_expires", "expires_at"),
+    )
+
+
+class MfaEmailOtp(Base):
+    """One emailed 6-digit OTP for Tier B/C login. Stored as salted-sha256;
+    the salt lives on the same row so verify can recompute without
+    decrypting anything."""
+    __tablename__ = "mfa_email_otps"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    code_hash = Column(String, nullable=False)
+    code_salt = Column(String, nullable=False)
+    challenge_id = Column(String, ForeignKey("mfa_pending_challenges.id", ondelete="CASCADE"), nullable=False)
+    sent_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    attempts = Column(Integer, nullable=False, default=0)
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("idx_mfa_email_otps_challenge", "challenge_id"),
+    )
+
+
+class MfaWebauthnChallenge(Base):
+    """Random bytes used as the WebAuthn ceremony challenge for either an
+    enrol (``purpose='enroll'``) or verify (``purpose='verify'``) flow.
+    Short TTL (≤ 5 min)."""
+    __tablename__ = "mfa_webauthn_challenges"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    purpose = Column(String, nullable=False)  # 'enroll' | 'verify'
+    challenge = Column(Text, nullable=False)  # bytea
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        Index("idx_mfa_webauthn_challenges_expires", "expires_at"),
+    )
