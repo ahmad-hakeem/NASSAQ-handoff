@@ -162,7 +162,7 @@ function LegendChip({ color, label }) {
 // ─── Standby content ──────────────────────────────────────────────────
 export function StandbyRosterContent() {
   const { user, api } = useAuth();
-  const { nassaqConfirm, nassaqError } = useNassaqAlert();
+  const { nassaqConfirm, nassaqError, nassaqSuccess, nassaqInfo } = useNassaqAlert();
   const schoolId = user?.tenant_id;
 
   const [loading, setLoading] = useState(true);
@@ -260,6 +260,7 @@ export function StandbyRosterContent() {
   const regenerateRoster = useCallback(async () => {
     if (!schoolId) return;
     setRefreshing(true);
+    const prevSignature = JSON.stringify(data?.day_centric?.days || data?.cells || null);
     try {
       const response = await api.post(
         '/standby/roster/regenerate',
@@ -269,8 +270,31 @@ export function StandbyRosterContent() {
           headers: { 'X-School-Context': schoolId },
         },
       );
-      setData(response.data);
+      const fresh = response.data;
+      setData(fresh);
       setError('');
+
+      const warnings = Array.isArray(fresh?.day_centric?.warnings) ? fresh.day_centric.warnings : [];
+      const overrides = fresh?.totals?.overrides || 0;
+      const newSignature = JSON.stringify(fresh?.day_centric?.days || fresh?.cells || null);
+      const unchanged = prevSignature && prevSignature === newSignature;
+
+      if (warnings.length > 0) {
+        nassaqInfo(
+          `تمت إعادة التوليد. التعديلات اليدوية محفوظة (${overrides})، وظهرت ${warnings.length} تنبيهات تعارض أعلى الجدول.`,
+          { title: 'إعادة توليد جدول الانتظار' },
+        );
+      } else if (unchanged) {
+        nassaqInfo(
+          'تمت إعادة التوليد ولم تتغيّر النتائج لعدم تغيّر المعطيات في الجدول الرئيسي.',
+          { title: 'إعادة توليد جدول الانتظار' },
+        );
+      } else {
+        nassaqSuccess(
+          `تمت إعادة التوليد بنجاح. التعديلات اليدوية محفوظة (${overrides}).`,
+          { title: 'إعادة توليد جدول الانتظار' },
+        );
+      }
     } catch (e) {
       const detail = e?.response?.data?.detail;
       const msg = typeof detail === 'string' ? detail : 'تعذّر إعادة توليد جدول الانتظار';
@@ -278,7 +302,7 @@ export function StandbyRosterContent() {
     } finally {
       setRefreshing(false);
     }
-  }, [api, schoolId, nassaqError]);
+  }, [api, schoolId, data, nassaqError, nassaqSuccess, nassaqInfo]);
 
   const teachers = data?.teachers || [];
   const cells = data?.cells || {};
@@ -323,7 +347,7 @@ export function StandbyRosterContent() {
               جدول حصص الانتظار
             </h1>
             <p className="text-sm text-slate-500 mt-1">
-              عرض وزارة التعليم: لكل يوم صفوف بعدد المعلمين المنتظرين، وأعمدة بالحصص. التعديلات اليدوية محفوظة بين عمليات إعادة التوليد.
+              عرض وزارة التعليم: لكل يوم صفوف بعدد المعلمين المنتظرين، وأعمدة بالحصص. عند إعادة التوليد يُعاد بناء الإسناد التلقائي من الجدول الرئيسي مع الحفاظ على التعديلات اليدوية، وأي تعارض (إجازة/منع زمني/يوم إجازة) يظهر كتنبيه أعلى الجدول.
             </p>
           </div>
 
@@ -365,16 +389,18 @@ export function StandbyRosterContent() {
             </Button>
             <Button
               onClick={() => nassaqConfirm(
-                'سيُعاد توليد جدول الانتظار من الجدول الرئيسي الحالي. التعديلات اليدوية المحفوظة لن تُمسح، وأي تعارضات (إجازات/منع زمني/يوم إجازة) ستظهر في تنبيهات أعلى الجدول.',
+                'سيُعاد بناء الإسناد التلقائي لجدول الانتظار من الجدول الرئيسي الحالي. التعديلات اليدوية المحفوظة لن تُمسح، وأي تعارضات (إجازات/منع زمني/يوم إجازة) ستظهر في تنبيهات أعلى الجدول.',
                 () => regenerateRoster(),
                 { confirmText: 'إعادة التوليد', title: 'إعادة توليد جدول الانتظار' },
               )}
               disabled={refreshing}
-              className="h-8 px-3 bg-[#1C3D74] text-white hover:bg-[#15305c] shadow-sm"
-              title="إعادة توليد جدول الانتظار من الجدول الرئيسي مع الحفاظ على التعديلات اليدوية"
+              className="h-8 px-3 bg-[#1C3D74] text-white hover:bg-[#15305c] shadow-sm disabled:opacity-60"
+              title="إعادة توليد الإسناد التلقائي من الجدول الرئيسي مع الحفاظ على التعديلات اليدوية"
             >
-              <Sparkles className="h-4 w-4 ml-1.5" />
-              إعادة التوليد
+              {refreshing
+                ? <Loader2 className="h-4 w-4 ml-1.5 animate-spin" />
+                : <Sparkles className="h-4 w-4 ml-1.5" />}
+              {refreshing ? 'جارٍ إعادة التوليد…' : 'إعادة التوليد'}
             </Button>
           </div>
         </div>
