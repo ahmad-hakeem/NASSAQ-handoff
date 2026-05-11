@@ -24,9 +24,10 @@ The actual factor verification logic for non-TOTP kinds lands in Steps
 """
 from __future__ import annotations
 
+import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import jwt
@@ -45,7 +46,7 @@ from dependencies import (
 from engines.audit_engine import AuditLogEngine
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_update_one
 from repositories import Repos
-from services import mfa_crypto, mfa_policy
+from services import mfa_crypto, mfa_policy, mfa_webauthn
 from shared_models import TokenResponse, UserResponse, UserRole
 
 logger = logging.getLogger("nassaq.mfa")
@@ -482,6 +483,7 @@ class MfaVerifyRequest(BaseModel):
     factor_kind: str  # 'totp' | 'webauthn' | 'email_otp' | 'recovery'
     code: Optional[str] = None
     webauthn_response: Optional[dict] = None
+    webauthn_challenge_id: Optional[str] = None  # pins the WebAuthn ceremony
 
 
 @router.post("/auth/mfa/verify", response_model=TokenResponse)
@@ -559,8 +561,576 @@ async def verify_mfa(
 
         return await _complete_mfa_login(user, challenge, "totp", request)
 
-    # Other factor kinds land in Steps 4-6.
+    if body.factor_kind == "webauthn":
+        if not body.webauthn_response:
+            await _bump_challenge_attempts(challenge)
+            raise HTTPException(status_code=400, detail="استجابة مفتاح الأمان مطلوبة")
+        return await _verify_webauthn_and_complete(
+            user=user,
+            challenge=challenge,
+            credential=body.webauthn_response,
+            webauthn_challenge_id=body.webauthn_challenge_id,
+            request=request,
+        )
+
+    # email_otp / recovery land in Steps 5-6.
     raise HTTPException(
         status_code=501,
         detail=f"MFA verify handler for {body.factor_kind!r} not yet implemented",
+    )
+
+
+# ---------------------------------------------------------------------------
+# WebAuthn — Tier A passkey factor (Step 4)
+# ---------------------------------------------------------------------------
+#
+# Flow summary
+# ------------
+# Enrol (user already authenticated):
+#   1. POST /auth/mfa/webauthn/register/begin
+#      → server mints a fresh random challenge, stores it in
+#        ``mfa_webauthn_challenges`` (purpose='enroll'), returns the
+#        WebAuthn ``CredentialCreationOptions`` JSON for the browser.
+#   2. Browser calls ``navigator.credentials.create(options)`` and POSTs
+#      the resulting PublicKeyCredential to:
+#      POST /auth/mfa/webauthn/register/finish
+#      → server looks up the most recent unexpired enroll challenge for
+#        this user, verifies the attestation, persists the credential as
+#        an active ``mfa_factors`` row, and DELETES the challenge.
+#
+# Login (user has only the short-lived mfa_challenge token):
+#   1. POST /auth/mfa/webauthn/verify/begin (Authorization: Bearer <chal>)
+#      → server gathers the user's active webauthn credential ids, mints
+#        a fresh challenge with ``purpose='verify'``, and returns the
+#        ``CredentialRequestOptions`` JSON.
+#   2. Browser calls ``navigator.credentials.get(options)`` and POSTs the
+#      resulting PublicKeyCredential to either:
+#         POST /auth/mfa/webauthn/verify/finish, OR
+#         POST /auth/mfa/verify { factor_kind: "webauthn", webauthn_response: ... }
+#      → server verifies the assertion against the matching factor row,
+#        bumps ``webauthn_sign_count``, deletes the challenge, and mints
+#        the final access+refresh tokens via ``_complete_mfa_login``.
+#
+# Both finish endpoints share ``_verify_webauthn_and_complete`` so the
+# unified verify dispatch and the dedicated WebAuthn endpoint cannot
+# diverge.
+
+
+_ENROLL_CHALLENGE_TTL = timedelta(minutes=5)
+_VERIFY_CHALLENGE_TTL = timedelta(minutes=5)
+
+
+def _ensure_webauthn_kind_allowed(user: dict) -> None:
+    if "webauthn" not in mfa_policy.allowed_factor_kinds(user):
+        raise HTTPException(
+            status_code=403,
+            detail="مفتاح الأمان غير متاح لحسابك",
+        )
+
+
+def _bytes(val) -> bytes:
+    """Coerce a stored BYTEA/memoryview/bytes value into ``bytes``."""
+    if val is None:
+        return b""
+    if isinstance(val, (bytes, bytearray)):
+        return bytes(val)
+    if isinstance(val, memoryview):
+        return val.tobytes()
+    # asyncpg occasionally returns Buffer-like objects.
+    return bytes(val)
+
+
+async def _store_webauthn_challenge(
+    *, user_id: str, purpose: str, challenge: bytes, ttl: timedelta
+) -> str:
+    """Insert a row into ``mfa_webauthn_challenges`` and return its id."""
+    chal_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    await gd_insert(
+        db.session,
+        "mfa_webauthn_challenges",
+        {
+            "id": chal_id,
+            "user_id": user_id,
+            "purpose": purpose,
+            "challenge": challenge,
+            "created_at": now,
+            "expires_at": now + ttl,
+        },
+    )
+    return chal_id
+
+
+async def _take_webauthn_challenge(
+    *,
+    user_id: str,
+    purpose: str,
+    challenge_id: Optional[str] = None,
+) -> Optional[dict]:
+    """Return the matching unexpired challenge for the given user.
+
+    When ``challenge_id`` is supplied (preferred path — the ``begin``
+    endpoint always returns one to the client and the ``finish`` body
+    must echo it back), the lookup is keyed by exact id, ruling out
+    concurrent-ceremony confusion entirely. The fallback "latest
+    unexpired" lookup remains for backwards-compat callers but is
+    defence-in-depth only — the WebAuthn signature binds the challenge
+    bytes to the credential, so a wrong match would fail verification
+    anyway.
+    """
+    if challenge_id:
+        row = await gd_find_one(
+            db.session,
+            "mfa_webauthn_challenges",
+            {"id": challenge_id, "user_id": user_id, "purpose": purpose},
+        )
+        if not row:
+            return None
+        rows = [row]
+    else:
+        rows = await gd_find(
+            db.session,
+            "mfa_webauthn_challenges",
+            {"user_id": user_id, "purpose": purpose},
+        )
+        if not rows:
+            return None
+
+    now = datetime.now(timezone.utc)
+
+    def _exp(row):
+        v = row.get("expires_at")
+        if isinstance(v, datetime):
+            return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+        try:
+            dt = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            return datetime.min.replace(tzinfo=timezone.utc)
+
+    fresh = [r for r in rows if _exp(r) >= now]
+    if not fresh:
+        return None
+    fresh.sort(key=lambda r: r.get("created_at") or datetime.min, reverse=True)
+    return fresh[0]
+
+
+async def _delete_webauthn_challenge(chal_id: str) -> None:
+    """Single-use semantics — best-effort delete."""
+    try:
+        from sqlalchemy import text  # local import keeps top-of-file clean
+        await db.session.execute(
+            text("DELETE FROM mfa_webauthn_challenges WHERE id = :id"),
+            {"id": chal_id},
+        )
+    except Exception as exc:
+        logger.debug(f"_delete_webauthn_challenge failed: {exc}")
+
+
+async def _user_active_webauthn_credential_ids(user_id: str) -> List[bytes]:
+    rows = await gd_find(
+        db.session,
+        "mfa_factors",
+        {"user_id": user_id, "kind": "webauthn", "is_active": True},
+    )
+    out: List[bytes] = []
+    for r in rows or []:
+        cid = r.get("webauthn_credential_id")
+        if cid:
+            out.append(_bytes(cid))
+    return out
+
+
+async def _find_webauthn_factor_by_credential_id(
+    *, user_id: str, credential_id: bytes
+) -> Optional[dict]:
+    rows = await gd_find(
+        db.session,
+        "mfa_factors",
+        {"user_id": user_id, "kind": "webauthn", "is_active": True},
+    )
+    target = bytes(credential_id)
+    for r in rows or []:
+        if _bytes(r.get("webauthn_credential_id")) == target:
+            return r
+    return None
+
+
+# ---- request/response models ----------------------------------------------
+
+class WebauthnRegisterBeginResponse(BaseModel):
+    challenge_id: str
+    options: dict  # PublicKeyCredentialCreationOptions, JSON-safe shape
+
+
+class WebauthnRegisterFinishRequest(BaseModel):
+    credential: dict
+    label: Optional[str] = Field(None, max_length=64)
+    challenge_id: Optional[str] = Field(
+        None,
+        description="The challenge_id returned by /webauthn/register/begin. Strongly recommended — pins this finish call to the exact ceremony.",
+    )
+
+
+class WebauthnRegisterFinishResponse(BaseModel):
+    factor_id: str
+    activated_at: str
+    is_primary: bool
+    attachment: Optional[str] = None
+
+
+class WebauthnVerifyBeginResponse(BaseModel):
+    challenge_id: str
+    options: dict  # PublicKeyCredentialRequestOptions
+
+
+class WebauthnVerifyFinishRequest(BaseModel):
+    credential: dict
+    challenge_id: Optional[str] = Field(
+        None,
+        description="The challenge_id returned by /webauthn/verify/begin. Strongly recommended — pins this finish call to the exact ceremony.",
+    )
+
+
+# ---- enrol begin -----------------------------------------------------------
+
+@router.post(
+    "/auth/mfa/webauthn/register/begin",
+    response_model=WebauthnRegisterBeginResponse,
+)
+async def webauthn_register_begin(
+    current_user: dict = Depends(get_current_user),
+):
+    """Build a CredentialCreationOptions challenge for the calling user.
+
+    Existing active credentials are sent back as ``excludeCredentials`` so
+    the browser refuses to register the same authenticator twice on this
+    account.
+    """
+    _ensure_webauthn_kind_allowed(current_user)
+    try:
+        existing = await _user_active_webauthn_credential_ids(current_user["id"])
+        options_json, challenge = mfa_webauthn.make_registration_options(
+            user_id=current_user["id"],
+            user_name=current_user.get("email") or current_user["id"],
+            user_display_name=current_user.get("full_name"),
+            exclude_credential_ids=existing,
+        )
+    except mfa_webauthn.WebauthnUnavailable as exc:
+        logger.error(f"webauthn package missing: {exc}")
+        raise HTTPException(status_code=501, detail="مفاتيح الأمان غير مفعّلة على الخادم")
+
+    chal_id = await _store_webauthn_challenge(
+        user_id=current_user["id"],
+        purpose="enroll",
+        challenge=challenge,
+        ttl=_ENROLL_CHALLENGE_TTL,
+    )
+
+    audit = AuditLogEngine(Repos(db.session))
+    await audit.log(
+        action="mfa.webauthn.register_begin",
+        performed_by=current_user["id"],
+        tenant_id=current_user.get("tenant_id"),
+        entity_type="mfa_webauthn_challenge",
+        entity_id=chal_id,
+        actor_email=current_user.get("email"),
+        actor_role=current_user.get("role"),
+    )
+
+    return WebauthnRegisterBeginResponse(
+        challenge_id=chal_id,
+        options=json.loads(options_json),
+    )
+
+
+# ---- enrol finish ----------------------------------------------------------
+
+def _attachment_from_verified(verified) -> Optional[str]:
+    """Extract a human-friendly 'platform' / 'cross-platform' string from
+    the VerifiedRegistration object. ``credential_device_type`` is the
+    closest field (single_device / multi_device); we prefer the more
+    specific ``aaguid``-derived hint when available, falling back to a
+    safe ``None``."""
+    try:
+        # webauthn>=2 surfaces this as ``credential_device_type``;
+        # there is no official ``authenticator_attachment`` echoed back.
+        ct = getattr(verified, "credential_device_type", None)
+        if ct is None:
+            return None
+        # Map to the UX hint our schema column expects.
+        return "platform" if str(ct).lower().endswith("single_device") else "cross-platform"
+    except Exception:
+        return None
+
+
+@router.post(
+    "/auth/mfa/webauthn/register/finish",
+    response_model=WebauthnRegisterFinishResponse,
+)
+async def webauthn_register_finish(
+    body: WebauthnRegisterFinishRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Verify the attestation produced by ``navigator.credentials.create``
+    and persist the credential as an active ``mfa_factors`` row.
+
+    Refuses gracefully if the underlying ``webauthn`` package is missing,
+    if the challenge has expired, or if the attestation does not verify.
+    """
+    _ensure_webauthn_kind_allowed(current_user)
+
+    chal_row = await _take_webauthn_challenge(
+        user_id=current_user["id"],
+        purpose="enroll",
+        challenge_id=body.challenge_id,
+    )
+    if not chal_row:
+        raise HTTPException(status_code=400, detail="انتهت صلاحية تحدي التسجيل أو لم يبدأ")
+
+    try:
+        verified = mfa_webauthn.verify_registration(
+            credential=body.credential,
+            expected_challenge=_bytes(chal_row.get("challenge")),
+        )
+    except mfa_webauthn.WebauthnUnavailable as exc:
+        logger.error(f"webauthn package missing: {exc}")
+        raise HTTPException(status_code=501, detail="مفاتيح الأمان غير مفعّلة على الخادم")
+    except Exception as exc:
+        logger.info(f"webauthn_register_finish: attestation verify failed: {exc}")
+        audit = AuditLogEngine(Repos(db.session))
+        await audit.log(
+            action="mfa.webauthn.register_failure",
+            performed_by=current_user["id"],
+            tenant_id=current_user.get("tenant_id"),
+            entity_type="mfa_webauthn_challenge",
+            entity_id=chal_row.get("id"),
+            actor_email=current_user.get("email"),
+            actor_role=current_user.get("role"),
+            details={"reason": "attestation_invalid"},
+        )
+        raise HTTPException(status_code=400, detail="فشل التحقق من مفتاح الأمان")
+
+    cred_id = bytes(getattr(verified, "credential_id", b"") or b"")
+    pub_key = bytes(getattr(verified, "credential_public_key", b"") or b"")
+    sign_count = int(getattr(verified, "sign_count", 0) or 0)
+    aaguid_raw = getattr(verified, "aaguid", None)
+    aaguid = str(aaguid_raw) if aaguid_raw else None
+    attachment = _attachment_from_verified(verified)
+
+    if not cred_id or not pub_key:
+        raise HTTPException(status_code=400, detail="فشل التحقق من مفتاح الأمان")
+
+    # Globally-unique credential id — refuse cross-account replay attempts.
+    duplicate_rows = await gd_find(
+        db.session, "mfa_factors", {"webauthn_credential_id": cred_id}
+    )
+    if duplicate_rows:
+        raise HTTPException(status_code=409, detail="مفتاح الأمان مسجّل مسبقاً")
+
+    existing_active = await gd_find(
+        db.session, "mfa_factors", {"user_id": current_user["id"], "is_active": True}
+    )
+    is_primary = not existing_active
+
+    factor_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    await gd_insert(
+        db.session,
+        "mfa_factors",
+        {
+            "id": factor_id,
+            "user_id": current_user["id"],
+            "kind": "webauthn",
+            "label": body.label or "Passkey",
+            "is_primary": is_primary,
+            "is_active": True,
+            "webauthn_credential_id": cred_id,
+            "webauthn_public_key": pub_key,
+            "webauthn_sign_count": sign_count,
+            "webauthn_aaguid": aaguid,
+            "webauthn_attachment": attachment,
+            "created_at": now,
+            "verified_at": now,
+        },
+    )
+
+    if not current_user.get("mfa_enrolled_at"):
+        await gd_update_one(
+            db.session, "users", {"id": current_user["id"]}, {"mfa_enrolled_at": now}
+        )
+
+    await _delete_webauthn_challenge(chal_row["id"])
+
+    audit = AuditLogEngine(Repos(db.session))
+    await audit.log(
+        action="mfa.webauthn.register_success",
+        performed_by=current_user["id"],
+        tenant_id=current_user.get("tenant_id"),
+        entity_type="mfa_factor",
+        entity_id=factor_id,
+        actor_email=current_user.get("email"),
+        actor_role=current_user.get("role"),
+        details={"is_primary": is_primary, "attachment": attachment},
+    )
+
+    return WebauthnRegisterFinishResponse(
+        factor_id=factor_id,
+        activated_at=now.isoformat(),
+        is_primary=is_primary,
+        attachment=attachment,
+    )
+
+
+# ---- verify begin (login challenge token) ---------------------------------
+
+@router.post(
+    "/auth/mfa/webauthn/verify/begin",
+    response_model=WebauthnVerifyBeginResponse,
+)
+async def webauthn_verify_begin(
+    credentials: HTTPAuthorizationCredentials = Depends(_security),
+):
+    """Mint a fresh CredentialRequestOptions challenge tied to this
+    user's pending login challenge. Caller passes the short-lived
+    ``mfa_challenge`` JWT in the ``Authorization`` header."""
+    _challenge, user = await _resolve_challenge(credentials)
+    allow_ids = await _user_active_webauthn_credential_ids(user["id"])
+    if not allow_ids:
+        raise HTTPException(status_code=400, detail="لا يوجد مفتاح أمان مسجّل لهذا الحساب")
+
+    try:
+        options_json, challenge_bytes = mfa_webauthn.make_authentication_options(
+            allow_credential_ids=allow_ids,
+        )
+    except mfa_webauthn.WebauthnUnavailable as exc:
+        logger.error(f"webauthn package missing: {exc}")
+        raise HTTPException(status_code=501, detail="مفاتيح الأمان غير مفعّلة على الخادم")
+
+    chal_id = await _store_webauthn_challenge(
+        user_id=user["id"],
+        purpose="verify",
+        challenge=challenge_bytes,
+        ttl=_VERIFY_CHALLENGE_TTL,
+    )
+
+    return WebauthnVerifyBeginResponse(
+        challenge_id=chal_id,
+        options=json.loads(options_json),
+    )
+
+
+# ---- verify finish (login challenge token) -------------------------------
+
+async def _verify_webauthn_and_complete(
+    *,
+    user: dict,
+    challenge: dict,
+    credential: dict,
+    request: Optional[Request],
+    webauthn_challenge_id: Optional[str] = None,
+) -> TokenResponse:
+    """Shared helper: verify a WebAuthn assertion against a stored
+    credential, bump the sign count, delete the verify challenge, and
+    mint final tokens via ``_complete_mfa_login``.
+
+    The ``challenge`` arg is the *login* challenge row from
+    ``mfa_pending_challenges``. The WebAuthn ceremony challenge is
+    looked up separately from ``mfa_webauthn_challenges`` keyed by
+    user_id + purpose='verify'.
+    """
+    if "webauthn" not in mfa_policy.allowed_factor_kinds(user):
+        await _bump_challenge_attempts(challenge)
+        raise HTTPException(status_code=403, detail="مفتاح الأمان غير متاح لهذا الحساب")
+
+    # Decode the credential.id (base64url) to match the stored bytes.
+    raw_id = credential.get("rawId") or credential.get("id")
+    if not raw_id:
+        await _bump_challenge_attempts(challenge)
+        raise HTTPException(status_code=400, detail="استجابة مفتاح الأمان غير مكتملة")
+    try:
+        from webauthn.helpers import base64url_to_bytes  # type: ignore
+        credential_id_bytes = base64url_to_bytes(raw_id) if isinstance(raw_id, str) else bytes(raw_id)
+    except Exception as exc:
+        await _bump_challenge_attempts(challenge)
+        logger.info(f"webauthn verify: rawId decode failed: {exc}")
+        raise HTTPException(status_code=400, detail="استجابة مفتاح الأمان غير صالحة")
+
+    factor = await _find_webauthn_factor_by_credential_id(
+        user_id=user["id"], credential_id=credential_id_bytes
+    )
+    if not factor:
+        await _bump_challenge_attempts(challenge)
+        raise HTTPException(status_code=400, detail="مفتاح الأمان غير معروف")
+
+    chal_row = await _take_webauthn_challenge(
+        user_id=user["id"],
+        purpose="verify",
+        challenge_id=webauthn_challenge_id,
+    )
+    if not chal_row:
+        await _bump_challenge_attempts(challenge)
+        raise HTTPException(status_code=400, detail="انتهت صلاحية تحدي التحقق")
+
+    try:
+        verified = mfa_webauthn.verify_authentication(
+            credential=credential,
+            expected_challenge=_bytes(chal_row.get("challenge")),
+            stored_public_key=_bytes(factor.get("webauthn_public_key")),
+            stored_sign_count=int(factor.get("webauthn_sign_count") or 0),
+        )
+    except mfa_webauthn.WebauthnUnavailable as exc:
+        logger.error(f"webauthn package missing: {exc}")
+        raise HTTPException(status_code=501, detail="مفاتيح الأمان غير مفعّلة على الخادم")
+    except Exception as exc:
+        await _bump_challenge_attempts(challenge)
+        logger.info(f"webauthn verify: assertion failed: {exc}")
+        audit = AuditLogEngine(Repos(db.session))
+        await audit.log_auth_event(
+            action="mfa.login.failure",
+            user_id=user["id"],
+            tenant_id=user.get("tenant_id"),
+            success=False,
+            email=user.get("email"),
+            reason="webauthn_invalid",
+        )
+        raise HTTPException(status_code=400, detail="فشل التحقق من مفتاح الأمان")
+
+    new_sign_count = int(getattr(verified, "new_sign_count", 0) or 0)
+    try:
+        await gd_update_one(
+            db.session,
+            "mfa_factors",
+            {"id": factor["id"]},
+            {
+                "webauthn_sign_count": new_sign_count,
+                "last_used_at": datetime.now(timezone.utc),
+            },
+        )
+    except Exception as exc:
+        logger.debug(f"webauthn verify: factor update failed: {exc}")
+
+    await _delete_webauthn_challenge(chal_row["id"])
+    return await _complete_mfa_login(user, challenge, "webauthn", request)
+
+
+@router.post(
+    "/auth/mfa/webauthn/verify/finish",
+    response_model=TokenResponse,
+)
+async def webauthn_verify_finish(
+    body: WebauthnVerifyFinishRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(_security),
+):
+    """Verify the assertion produced by ``navigator.credentials.get`` and,
+    on success, mint final access+refresh tokens. Same shape as the
+    unified ``/auth/mfa/verify`` for ``factor_kind='webauthn'``."""
+    challenge, user = await _resolve_challenge(credentials)
+    return await _verify_webauthn_and_complete(
+        user=user,
+        challenge=challenge,
+        credential=body.credential,
+        webauthn_challenge_id=body.challenge_id,
+        request=request,
     )
