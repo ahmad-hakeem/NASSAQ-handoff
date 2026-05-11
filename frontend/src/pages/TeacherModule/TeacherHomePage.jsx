@@ -16,6 +16,7 @@ import {
   Bell, Check, CircleDot, Timer
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
+import { NotificationBell } from '../../components/notifications/NotificationBell';
 import { formatHijriDate, formatFullDate } from '../../utils/hijriDate';
 
 import { useTranslation } from '../../contexts/ThemeContext';
@@ -54,7 +55,6 @@ export default function TeacherHomePage() {
   });
   const [classMetrics, setClassMetrics] = useState(null);
   const [dayStatus, setDayStatus] = useState(null);
-  const [notificationCount, setNotificationCount] = useState(0);
   const [portfolioProgress, setPortfolioProgress] = useState(0);
 
   const teacherId = user?.teacher_id || user?.id;
@@ -69,13 +69,6 @@ export default function TeacherHomePage() {
       const res = await api.get('/school/day-status');
       setDayStatus(res.data);
     } catch (err) { /* silent */ }
-  }, [api]);
-
-  const fetchNotificationCount = useCallback(async () => {
-    try {
-      const res = await api.get('/notifications/unread-count').catch(() => null);
-      if (res?.data) setNotificationCount(res.data.count || 0);
-    } catch (e) { /* silent */ }
   }, [api]);
 
   const fetchPortfolioProgress = useCallback(async () => {
@@ -148,14 +141,13 @@ export default function TeacherHomePage() {
   useEffect(() => {
     fetchTeacherData();
     fetchDayStatus();
-    fetchNotificationCount();
     fetchPortfolioProgress();
     const interval = setInterval(() => {
       fetchTeacherData();
       fetchDayStatus();
     }, 60000);
     return () => clearInterval(interval);
-  }, [fetchTeacherData, fetchDayStatus, fetchNotificationCount, fetchPortfolioProgress]);
+  }, [fetchTeacherData, fetchDayStatus, fetchPortfolioProgress]);
 
   useEffect(() => {
     if (!teacherId) return;
@@ -248,19 +240,7 @@ export default function TeacherHomePage() {
             </div>
             <div className="flex items-center gap-1.5">
               <div className="relative">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="rounded-xl h-9 w-9 hover:bg-muted"
-                  onClick={() => navigate('/notifications')}
-                >
-                  <Bell className="h-4.5 w-4.5" />
-                  {notificationCount > 0 && (
-                    <span className="absolute -top-0.5 -end-0.5 min-w-[16px] h-[16px] rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-0.5 border-2 border-background">
-                      {notificationCount > 9 ? '9+' : notificationCount}
-                    </span>
-                  )}
-                </Button>
+                <NotificationBell />
               </div>
               <Button
                 size="icon"

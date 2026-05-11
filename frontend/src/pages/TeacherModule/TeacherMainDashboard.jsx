@@ -18,6 +18,7 @@ import {
   FolderOpen, ArrowLeft, ArrowRight, Check
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
+import { NotificationBell } from '../../components/notifications/NotificationBell';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 const HAKIM_CHARACTER = '/hakim-poses/teacher-helper.png';
@@ -143,7 +144,6 @@ export default function TeacherMainDashboard() {
   const [riskAlerts, setRiskAlerts] = useState([]);
   const [hakimLoading, setHakimLoading] = useState(false);
   const [dayStatus, setDayStatus] = useState(null);
-  const [notificationCount, setNotificationCount] = useState(0);
   const [portfolioProgress, setPortfolioProgress] = useState(0);
 
   const teacherId = user?.teacher_id || user?.id;
@@ -240,13 +240,6 @@ export default function TeacherMainDashboard() {
     } catch (e) { console.error('Error fetching teacher metrics:', e); }
   }, [teacherId, api]);
 
-  const fetchNotificationCount = useCallback(async () => {
-    try {
-      const res = await api.get('/notifications/unread-count').catch(() => null);
-      if (res?.data) setNotificationCount(res.data.count || 0);
-    } catch (e) { /* silent */ }
-  }, [api]);
-
   const fetchPortfolioProgress = useCallback(async () => {
     if (!teacherId) return;
     try {
@@ -262,7 +255,6 @@ export default function TeacherMainDashboard() {
 
   useEffect(() => { fetchTeacherData(); }, [fetchTeacherData]);
   useEffect(() => { fetchMetrics(); }, [fetchMetrics]);
-  useEffect(() => { fetchNotificationCount(); }, [fetchNotificationCount]);
   useEffect(() => { fetchPortfolioProgress(); }, [fetchPortfolioProgress]);
 
   // Task #145 — silently refresh today's lessons block when the school
@@ -306,7 +298,7 @@ export default function TeacherMainDashboard() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([fetchTeacherData(), fetchMetrics(), fetchDayStatus(), fetchNotificationCount(), fetchPortfolioProgress()]);
+    await Promise.all([fetchTeacherData(), fetchMetrics(), fetchDayStatus(), fetchPortfolioProgress()]);
     setRefreshing(false);
     toast.success(t('dataRefreshed'));
   };
@@ -405,19 +397,7 @@ export default function TeacherMainDashboard() {
               </button>
 
               <div className="relative">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="rounded-xl hover:bg-muted relative"
-                  onClick={() => navigate('/notifications')}
-                >
-                  <Bell className="h-4.5 w-4.5" />
-                  {notificationCount > 0 && (
-                    <span className="absolute -top-0.5 -end-0.5 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1 border-2 border-background">
-                      {notificationCount > 9 ? '9+' : notificationCount}
-                    </span>
-                  )}
-                </Button>
+                <NotificationBell />
               </div>
 
               <Button size="sm" variant="outline" onClick={handleRefresh} disabled={refreshing}
