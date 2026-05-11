@@ -14,10 +14,47 @@ Three test groups:
 import uuid
 import pytest
 import pytest_asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_insert
+
+
+async def _seed_teacher(school_id: str) -> str:
+    tid = str(uuid.uuid4())
+    await gd_insert(db.session, "teachers", {
+        "id": tid, "school_id": school_id, "full_name": f"T-{tid[:6]}",
+    })
+    return tid
+
+
+async def _seed_grade(school_id: str, student_id: str, percentage: float) -> None:
+    """Insert a `student_grades` row keyed by tenant_id (the column the
+    Hakim risk engine reads). Used to seed deterministic academic
+    signals for the principal/admin populated-payload tests."""
+    await gd_insert(db.session, "student_grades", {
+        "id": str(uuid.uuid4()),
+        "tenant_id": school_id,
+        "student_id": student_id,
+        "percentage": percentage,
+        "graded_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+
+async def _seed_low_attendance(school_id: str, student_id: str, days: int = 5) -> None:
+    """Seed `days` consecutive absences for a student so the Hakim risk
+    engine yields a low attendance score and the student lands in the
+    intervention/at-risk list."""
+    today = datetime.now(timezone.utc)
+    for i in range(days):
+        d = (today - timedelta(days=i + 1)).strftime("%Y-%m-%d")
+        await gd_insert(db.session, "attendance", {
+            "id": str(uuid.uuid4()),
+            "school_id": school_id,
+            "student_id": student_id,
+            "date": d,
+            "status": "absent",
+        })
 
 
 AI_INSIGHTS_ENDPOINTS = (
@@ -326,3 +363,206 @@ async def test_school_teachers_in_same_school_are_isolated(
     assert set(ov_b.keys()) == OVERVIEW_TOP_KEYS
     assert ov_a["metrics"]["total_students"] == 1
     assert ov_b["metrics"]["total_students"] == 1
+
+
+# ------------------------------------------------------------------ (d)
+# Task #156 — confirm principals / school admins still see their own
+# tenant's populated, school-scoped data on the same five endpoints
+# the IT/teacher hardening tests cover. Without this, a future tweak to
+# `resolve_ai_insights_scope` could silently drop the admin/principal
+# view (e.g. if the `None` branch were accidentally folded into the
+# fail-closed branch) and the H1 tests would still all pass.
+
+async def _mk_admin_user(role: UserRole, tenant_id: str) -> dict:
+    uid = str(uuid.uuid4())
+    await gd_insert(db.session, "users", {
+        "id": uid, "role": role.value, "tenant_id": tenant_id,
+        "email": f"{role.value}-{uid}@t.test",
+        "full_name": f"{role.value}-{uid[:6]}",
+        "is_active": True, "password_hash": "x",
+    })
+    return {
+        "id": uid,
+        "headers": _headers(uid, role.value, tenant_id),
+    }
+
+
+@pytest.mark.asyncio
+async def test_principal_sees_populated_school_scoped_overview(
+    client, seeded_school
+):
+    """A principal in the seeded tenant must see the school's real
+    student/teacher counts on /ai/insights/overview — never the empty
+    payload (which is reserved for IT/teachers with no resolvable scope)
+    and never the default-zero shape masking a dropped principal path."""
+    # Add a couple of teachers so total_teachers is also populated.
+    await _seed_teacher(seeded_school.id)
+    await _seed_teacher(seeded_school.id)
+    # Seed a grade so the academic signal path is exercised end-to-end
+    # (the task explicitly asks for students/teachers/grades in scope).
+    await _seed_grade(seeded_school.id, seeded_school.students[0]["id"], 88.0)
+
+    principal = await _mk_admin_user(UserRole.SCHOOL_PRINCIPAL, seeded_school.id)
+    r = await client.get("/ai/insights/overview", headers=principal["headers"])
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert set(body.keys()) == OVERVIEW_TOP_KEYS
+    assert set(body["metrics"].keys()) == OVERVIEW_METRIC_KEYS
+    assert body["metrics"]["total_students"] == len(seeded_school.students)
+    assert body["metrics"]["total_teachers"] == 2
+    assert body["has_data"] is True
+
+
+@pytest.mark.asyncio
+async def test_school_admin_sees_populated_school_scoped_overview(
+    client, seeded_school
+):
+    """Same contract as the principal: a school_admin must receive the
+    populated, school-scoped overview, not the empty/zeroed payload."""
+    await _seed_teacher(seeded_school.id)
+    await _seed_grade(seeded_school.id, seeded_school.students[0]["id"], 92.0)
+
+    admin = await _mk_admin_user(UserRole.SCHOOL_ADMIN, seeded_school.id)
+    r = await client.get("/ai/insights/overview", headers=admin["headers"])
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["metrics"]["total_students"] == len(seeded_school.students)
+    assert body["metrics"]["total_teachers"] == 1
+    assert body["has_data"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", [
+    UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN,
+])
+async def test_admin_predictions_recommendations_alerts_populated(
+    client, seeded_school, role
+):
+    """Predictions / recommendations / alerts are list-shaped endpoints.
+    For an admin/principal in a tenant that has data, they must respond
+    200 with a list — and recommendations + alerts always include at
+    least the default fallback entry (so an empty list would indicate
+    the principal path was silently dropped)."""
+    await _seed_teacher(seeded_school.id)
+    await _seed_grade(seeded_school.id, seeded_school.students[0]["id"], 78.0)
+    admin = await _mk_admin_user(role, seeded_school.id)
+
+    # All three list endpoints have at least one guaranteed entry once
+    # the resolver hands the admin/principal the school scope:
+    #   - predictions: always appends one of three attendance branches.
+    #   - recommendations: always appends a default fallback if no rule
+    #     fires.
+    #   - alerts: always appends a default "no urgent alerts" entry if
+    #     no rule fires.
+    # If any returned `[]`, that would mean the admin path was
+    # accidentally routed through the IT empty-scope branch.
+    for path in ("/ai/insights/predictions",
+                 "/ai/insights/recommendations",
+                 "/ai/insights/alerts"):
+        r = await client.get(path, headers=admin["headers"])
+        assert r.status_code == 200, (
+            f"{role.value} {path} -> {r.status_code} {r.text}"
+        )
+        body = r.json()
+        assert isinstance(body, list), (
+            f"{role.value} {path} body not a list: {body!r}"
+        )
+        assert len(body) >= 1, (
+            f"{role.value} {path} unexpectedly empty: {body!r}"
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", [
+    UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN,
+])
+async def test_admin_at_risk_students_returns_school_scoped_list(
+    client, seeded_school, role
+):
+    """At-risk students for an admin/principal must respond 200 with a
+    school-scoped list AND must surface the seeded at-risk signal — a
+    student with chronic absences and a low grade. This guarantees the
+    populated path is exercised, not just the empty-but-200 shape."""
+    target = seeded_school.students[0]
+    await _seed_low_attendance(seeded_school.id, target["id"], days=10)
+    await _seed_grade(seeded_school.id, target["id"], 35.0)
+
+    admin = await _mk_admin_user(role, seeded_school.id)
+    r = await client.get(
+        "/ai/insights/at-risk-students", headers=admin["headers"])
+    assert r.status_code == 200, f"{role.value} -> {r.status_code} {r.text}"
+    body = r.json()
+    assert isinstance(body, list)
+    own_ids = {s["id"] for s in seeded_school.students}
+    for row in body:
+        # Every returned student must belong to the admin's school.
+        assert row["id"] in own_ids, (
+            f"{role.value} saw foreign student id {row['id']!r}; "
+            f"own school student ids = {own_ids}"
+        )
+    # The seeded at-risk student must appear — proves admin/principal
+    # actually receive a populated at-risk payload, not just an empty
+    # 200 that would mask a regression to the no-scope path.
+    assert any(row["id"] == target["id"] for row in body), (
+        f"{role.value} at-risk-students missing seeded at-risk student "
+        f"{target['id']!r}; got {[r['id'] for r in body]}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_principal_in_tenant_a_does_not_see_tenant_b_data(
+    client, seeded_school, tenant_b, tenant_b_students
+):
+    """Cross-tenant isolation for the admin/principal path: a principal
+    in tenant A must see tenant A counts only — never the sum of A+B,
+    and never tenant B's students on at-risk-students."""
+    # Make tenant B distinguishable: add one teacher to B so its counts
+    # are clearly different from A.
+    await _seed_teacher(tenant_b)
+
+    principal_a = await _mk_admin_user(
+        UserRole.SCHOOL_PRINCIPAL, seeded_school.id)
+
+    overview = await client.get(
+        "/ai/insights/overview", headers=principal_a["headers"])
+    assert overview.status_code == 200, overview.text
+    body = overview.json()
+    # Tenant A has 10 seeded students; tenant B has 3. The principal in A
+    # must see exactly A's count, never the global 13.
+    assert body["metrics"]["total_students"] == len(seeded_school.students)
+    assert body["metrics"]["total_students"] != (
+        len(seeded_school.students) + len(tenant_b_students)
+    )
+    # Tenant A has 0 teachers seeded; tenant B has 1. Must NOT leak.
+    assert body["metrics"]["total_teachers"] == 0
+
+    # at-risk-students cross-isolation: no tenant B student id may appear.
+    risks = await client.get(
+        "/ai/insights/at-risk-students", headers=principal_a["headers"])
+    assert risks.status_code == 200
+    b_ids = {s["id"] for s in tenant_b_students}
+    a_returned_ids = {row["id"] for row in risks.json()}
+    assert a_returned_ids.isdisjoint(b_ids), (
+        f"Principal in tenant A leaked tenant B students: "
+        f"{a_returned_ids & b_ids}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_school_admin_in_tenant_a_does_not_see_tenant_b_data(
+    client, seeded_school, tenant_b, tenant_b_students
+):
+    """Same cross-tenant isolation contract for school_admin."""
+    admin_a = await _mk_admin_user(UserRole.SCHOOL_ADMIN, seeded_school.id)
+
+    overview = await client.get(
+        "/ai/insights/overview", headers=admin_a["headers"])
+    assert overview.status_code == 200, overview.text
+    assert overview.json()["metrics"]["total_students"] == len(
+        seeded_school.students)
+
+    risks = await client.get(
+        "/ai/insights/at-risk-students", headers=admin_a["headers"])
+    assert risks.status_code == 200
+    b_ids = {s["id"] for s in tenant_b_students}
+    assert {row["id"] for row in risks.json()}.isdisjoint(b_ids)
