@@ -569,7 +569,7 @@ def project_day_centric_roster(
         if (ov.get("action") or "").lower() != "add":
             continue
         tid = ov.get("teacher_id")
-        d = (ov.get("day") or "").lower()
+        d = _normalize_day_key(ov.get("day")) or (ov.get("day") or "").lower()
         try:
             p = int(ov.get("period"))
         except (TypeError, ValueError):
