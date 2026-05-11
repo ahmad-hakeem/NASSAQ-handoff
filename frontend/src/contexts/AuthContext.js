@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo } 
 import axios from 'axios';
 import { toast } from 'sonner';
 import { createApiService } from '../services/apiClient';
+import { isMfaStepUpHandlerRegistered, requestMfaStepUp } from '../services/mfaStepUpBridge';
 import arLocale from '../locales/ar.json';
 import enLocale from '../locales/en.json';
 
@@ -159,6 +160,39 @@ export const AuthProvider = ({ children }) => {
 
       if (isGet && isTransient && retryCount < MAX_RETRIES) {
         return retryRequest(api, config, retryCount);
+      }
+
+      // Task #169 Step 9 — MFA step-up interceptor.
+      // Backend signals "fresh MFA proof required" with HTTP 401 + a
+      // structured detail dict {code: "MFA_STEPUP_REQUIRED", ...}. We
+      // intercept here, hand off to the React-mounted MfaStepUpProvider
+      // (via a tiny module-level bridge so a non-React interceptor can
+      // wake a React modal), and on a successful step-up replay the
+      // original request with the freshly-stamped access token. The
+      // dialog itself never unmounts the active route.
+      const mfaCode =
+        error.response?.data?.error?.code ||
+        (typeof error.response?.data?.detail === 'object' ? error.response.data.detail.code : null);
+      if (status === 401 && mfaCode === 'MFA_STEPUP_REQUIRED' && !config._mfaStepUpRetried) {
+        if (!isMfaStepUpHandlerRegistered()) {
+          return Promise.reject(error);
+        }
+        try {
+          const newAccess = await requestMfaStepUp({
+            requestUrl: config.url,
+            requestMethod: config.method,
+          });
+          if (!newAccess) return Promise.reject(error);
+          setToken(newAccess);
+          const retryCfg = {
+            ...config,
+            _mfaStepUpRetried: true,
+            headers: { ...config.headers, Authorization: `Bearer ${newAccess}` },
+          };
+          return api.request(retryCfg);
+        } catch {
+          return Promise.reject(error);
+        }
       }
 
       if (status === 401 && !config.url?.includes('/auth/me') && !config.url?.includes('/auth/login') && !config.url?.includes('/auth/refresh')) {

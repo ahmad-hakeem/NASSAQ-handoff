@@ -6,6 +6,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { WebSocketProvider } from "./contexts/WebSocketContext";
 import { ParentActiveStudentProvider } from "./contexts/ParentActiveStudentContext";
 import { NassaqAlertProvider } from "./components/ui/NassaqAlertDialog";
+import { MfaStepUpProvider } from "./contexts/MfaStepUpContext";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { GenericNameGuard } from "./components/GenericNameGuard";
 import AppRoutes from "./routes/appRoutes";
@@ -18,18 +19,20 @@ function App() {
         <AuthProvider>
           <WebSocketProvider>
             <NassaqAlertProvider>
-              <BrowserRouter>
-                {/* ParentActiveStudentProvider lives inside BrowserRouter
-                    so it can read the current URL on mount and resolve
-                    deep links before any page renders. */}
-                <ParentActiveStudentProvider>
-                  <BetaBanner />
-                  <GenericNameGuard>
-                    <AppRoutes />
-                  </GenericNameGuard>
-                  <Toaster />
-                </ParentActiveStudentProvider>
-              </BrowserRouter>
+              <MfaStepUpProvider>
+                <BrowserRouter>
+                  {/* ParentActiveStudentProvider lives inside BrowserRouter
+                      so it can read the current URL on mount and resolve
+                      deep links before any page renders. */}
+                  <ParentActiveStudentProvider>
+                    <BetaBanner />
+                    <GenericNameGuard>
+                      <AppRoutes />
+                    </GenericNameGuard>
+                    <Toaster />
+                  </ParentActiveStudentProvider>
+                </BrowserRouter>
+              </MfaStepUpProvider>
             </NassaqAlertProvider>
           </WebSocketProvider>
         </AuthProvider>
