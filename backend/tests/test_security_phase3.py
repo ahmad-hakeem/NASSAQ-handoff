@@ -229,3 +229,51 @@ async def test_hakim_consent_flag_blocks_outbound_call(monkeypatch):
     assert res["success"] is False
     assert res["reason"] == "AI_DISABLED_BY_TENANT"
     assert called["n"] == 0
+
+
+@pytest.mark.asyncio
+async def test_portfolio_route_propagates_tenant_consent(monkeypatch, client, tenant_a, teacher_headers):
+    """End-to-end: when a teacher's tenant has ai_consent_enabled=False, the
+    portfolio AI endpoint must NOT call the LLM. This proves the route-level
+    wiring of `tenant_id` into hakim_generate (Phase 3 review fix)."""
+    from services import hakim_llm_service as svc
+
+    # Force consent off for tenant_a (the teacher's school)
+    await db.session.execute(
+        _sa_text("UPDATE schools SET ai_consent_enabled = FALSE WHERE id = :i"),
+        {"i": tenant_a},
+    )
+    await db.session.flush()
+
+    called = {"n": 0}
+
+    class _BoomClient:
+        class chat:
+            class completions:
+                @staticmethod
+                def create(*a, **k):
+                    called["n"] += 1
+                    raise RuntimeError("must not be called when consent is off")
+
+    monkeypatch.setattr(svc, "_get_client", lambda: _BoomClient())
+    monkeypatch.setattr(svc, "is_available", lambda: True)
+
+    r = await client.post(
+        "/teacher/portfolio/generate-evidence-text",
+        headers=teacher_headers,
+        json={
+            "mode": "generate",
+            "field": "title",
+            "text": "",
+            "evidence_type": "lesson",
+            "subject": "math",
+            "grade": "5",
+        },
+    )
+    # Whatever the route returns (200 with success=False, or 503), the LLM
+    # client must NOT have been invoked.
+    assert called["n"] == 0
+    if r.status_code == 200:
+        body = r.json()
+        assert body.get("success") is False
+        assert body.get("reason") in ("AI_DISABLED_BY_TENANT", "AI_DISABLED")

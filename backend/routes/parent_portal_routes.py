@@ -745,10 +745,12 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             story_res = await hakim_generate(
                 mode="generate", field="parent_weekly_story",
                 text="", context=ctx, language="ar", tone="educational",
+                tenant_id=school_id,
             )
             tip_res = await hakim_generate(
                 mode="generate", field="parent_weekly_tip",
                 text="", context=ctx, language="ar", tone="educational",
+                tenant_id=school_id,
             )
         except Exception as e:
             logger.warning(f"weekly_insight hakim_generate raised: {e}")

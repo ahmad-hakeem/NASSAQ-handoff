@@ -39,12 +39,19 @@
   AI pipeline (lawful basis, data minimisation, retention, subject rights).
 
 ### 5. Tests
-- `backend/tests/test_security_phase3.py` — 9 tests, all passing:
-  - pseudonymizer round-trip (basic, no-leak of national_id/phone/email).
+- `backend/tests/test_security_phase3.py` — 10 tests, all passing:
+  - pseudonymizer round-trip (basic, no-leak of national_id/phone/email,
+    longest-match ordering, unknown-token passthrough).
   - refresh tokens carry `fid`; rotation preserves family across multiple hops.
   - replay → entire family revoked; subsequent refresh in same family → 401.
   - AI consent flag False → `hakim_generate` short-circuits and never calls LLM.
-- Full security suite: **44 passed** (Phase 1 + Phase 2 + Phase 3, no regressions).
+  - Route-level integration: `/teacher/portfolio/generate-evidence-text`
+    with `ai_consent_enabled=False` proves `tenant_id` is propagated end-to-end
+    and the LLM client is never invoked.
+- All four production call sites updated to forward `tenant_id`:
+  `portfolio_routes_mod.py` (3 sites + helper) and `parent_portal_routes.py`
+  (2 sites — story + tip).
+- Full security suite: **45 passed** (Phase 1 + Phase 2 + Phase 3, no regressions).
 
 ## Drift — explicitly NOT shipped (deferred to Phase 4)
 

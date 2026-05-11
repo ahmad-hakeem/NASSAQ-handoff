@@ -326,6 +326,7 @@ async def hakim_evidence_text(
         from services.hakim_llm_service import hakim_generate
         result = await hakim_generate(
             mode=mode, field=field_key, text=text_in, context=context, language="ar",
+            tenant_id=current_user.get("tenant_id"),
         )
     except Exception as e:
         logger.warning(f"[Hakim] portfolio evidence text {mode}/{field_in} failed: {e}")
@@ -1514,10 +1515,20 @@ async def delete_cv_item(item_id: str, current_user: dict = Depends(get_current_
 
 # ---- AI generators (Hakim) ----
 
-async def _hakim_call(field: str, mode: str, text: str, context: Dict[str, Any]) -> str:
+async def _hakim_call(
+    field: str,
+    mode: str,
+    text: str,
+    context: Dict[str, Any],
+    *,
+    tenant_id: Optional[str] = None,
+) -> str:
     try:
         from services.hakim_llm_service import hakim_generate
-        result = await hakim_generate(mode=mode, field=field, text=text, context=context, language="ar")
+        result = await hakim_generate(
+            mode=mode, field=field, text=text, context=context, language="ar",
+            tenant_id=tenant_id,
+        )
     except Exception as e:
         logger.warning(f"[Hakim] portfolio {field}/{mode} failed: {e}")
         raise HTTPException(status_code=502, detail="HAKIM_FAILED")
@@ -1565,7 +1576,10 @@ async def generate_evidence_description(
         "section": (payload.section_key or "").strip(),
     }
     text_in = (payload.text or "").strip()
-    out = await _hakim_call("evidence_description", mode, text_in, context)
+    out = await _hakim_call(
+        "evidence_description", mode, text_in, context,
+        tenant_id=current_user.get("tenant_id"),
+    )
     return {"success": True, "text": out}
 
 
@@ -1585,7 +1599,10 @@ async def generate_intro(payload: AIGenerateRequest, current_user: dict = Depend
         "qualification": profile.get("qualification"),
     }
     text_in = (payload.text or "").strip()
-    out = await _hakim_call("portfolio_intro", mode, text_in, context)
+    out = await _hakim_call(
+        "portfolio_intro", mode, text_in, context,
+        tenant_id=current_user.get("tenant_id"),
+    )
 
     now = datetime.now(timezone.utc).isoformat()
     await _save_meta(current_user["id"], current_user.get("tenant_id"),
@@ -1622,7 +1639,10 @@ async def generate_vmv(payload: VMVGenerateRequest, current_user: dict = Depends
         text_in = (current_text or "").strip()
         if mode == "improve" and len(text_in) < 5:
             return text_in
-        return await _hakim_call(field, mode, text_in, context)
+        return await _hakim_call(
+            field, mode, text_in, context,
+            tenant_id=current_user.get("tenant_id"),
+        )
 
     vision = await _gen_or_keep("portfolio_vision", payload.vision or "")
     mission = await _gen_or_keep("portfolio_mission", payload.mission or "")
