@@ -810,8 +810,11 @@ async def forgot_password(request: ForgotPasswordRequest):
 
 @router.post("/auth/reset-password")
 async def reset_password(request: ResetPasswordRequest):
-    # SECURITY (audit H-3): per-token-prefix limit so an attacker cannot
-    # silently brute-force the JWT signature space against a single victim.
+    # SECURITY (audit H-3): layered limits.
+    #   1) per-token-prefix — caps brute-force against a single JWT signature.
+    #   2) per-identity (user_id from validated payload) — caps total reset
+    #      attempts against any one victim even when an attacker churns
+    #      through multiple tokens. Per-IP middleware bucket sits on top.
     from middleware.rate_limiter import rate_store
     token_prefix_key = f"reset_password_token:{(request.token or '')[:24]}"
     limited, _, _ = await rate_store.is_rate_limited(token_prefix_key, 10, 3600)
@@ -828,6 +831,12 @@ async def reset_password(request: ResetPasswordRequest):
         raise HTTPException(status_code=400, detail="رابط إعادة التعيين غير صالح")
 
     user_id = payload.get("sub")
+    # Per-identity bucket — must come after the payload is validated so that
+    # an attacker cannot pump unrelated counters with junk subs.
+    identity_key = f"reset_password_user:{user_id}"
+    limited, _, _ = await rate_store.is_rate_limited(identity_key, 10, 3600)
+    if limited:
+        raise HTTPException(status_code=429, detail="عدد المحاولات تجاوز الحد المسموح. يرجى المحاولة لاحقاً")
     user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=400, detail="رابط إعادة التعيين غير صالح")

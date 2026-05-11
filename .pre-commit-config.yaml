@@ -1,0 +1,14 @@
+repos:
+  - repo: local
+    hooks:
+      - id: tenant-scoped-lookups
+        name: Block new unscoped tenant-table lookups (audit C-3)
+        entry: bash scripts/check_tenant_scoped_lookups.sh
+        language: system
+        pass_filenames: false
+        files: '^backend/routes/.*\.py$'
+        description: |
+          Diff-against-baseline gate. Detects new gd_find_one(... "id" ...)
+          and bulk gd_find(...) lookups against tenant-owned tables that
+          omit school_id/tenant_id. The grandfathered baseline lives at
+          scripts/tenant_lookup_baseline.txt and is shrunk in Phase 2.

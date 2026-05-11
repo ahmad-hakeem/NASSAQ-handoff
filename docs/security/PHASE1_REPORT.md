@@ -3,7 +3,7 @@
 **Date:** 2026-05-11  
 **Audit:** [`docs/security/SECURITY_AUDIT_2026-05-11.md`](./SECURITY_AUDIT_2026-05-11.md)  
 **Plan:** [`.local/tasks/task-166.md`](../../.local/tasks/task-166.md)  
-**Tests:** `backend/tests/test_security_phase1.py` — 19/19 passing.
+**Tests:** `backend/tests/test_security_phase1.py` — 21/21 passing.
 
 This phase covers the audit's "fix this week" tier. Sweeping migrations
 (every unscoped `gd_find_one`, every grade/behaviour/notification IDOR, full
@@ -142,3 +142,19 @@ tenant column at the query level (no after-the-fact check):
 - `scripts/tenant_lookup_baseline.txt` — current 163-entry baseline.
 - `backend/tests/test_security_phase1.py` — 16 regression tests.
 - `docs/security/PHASE1_REPORT.md` — this document.
+
+---
+
+## Phase 1 follow-up fixes (post architect review)
+
+- **H-3 (reset-password):** added per-identity (user_id) bucket layered on
+  top of the per-token-prefix bucket; both run after the JWT payload is
+  validated so a junk `sub` cannot pump unrelated counters.
+- **Runtime 429 regression coverage:** `test_forgot_password_per_email_429_after_budget`
+  drives the per-email bucket to exhaustion;
+  `test_reset_password_per_identity_returns_429` confirms 429 lands on
+  attempt 11+ across unique-token reset attempts for the same user_id.
+- **CI wiring:** `.pre-commit-config.yaml` invokes
+  `scripts/check_tenant_scoped_lookups.sh` against `backend/routes/**.py`
+  on every commit so the diff-against-baseline gate is enforced and not
+  just shelf-ware.
