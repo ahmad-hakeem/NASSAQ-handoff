@@ -44,10 +44,13 @@ from dependencies import (
     get_current_user,
 )
 from engines.audit_engine import AuditLogEngine
+from engines.email_service import send_mfa_email_otp
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_update_one
+from middleware.rate_limiter import rate_store
 from repositories import Repos
 from services import mfa_crypto, mfa_policy, mfa_webauthn
 from shared_models import TokenResponse, UserResponse, UserRole
+from utils.trusted_proxy import extract_client_ip
 
 logger = logging.getLogger("nassaq.mfa")
 
@@ -573,11 +576,287 @@ async def verify_mfa(
             request=request,
         )
 
-    # email_otp / recovery land in Steps 5-6.
+    if body.factor_kind == "email_otp":
+        if not body.code:
+            await _bump_challenge_attempts(challenge)
+            raise HTTPException(status_code=400, detail="رمز التحقق مطلوب")
+        return await _verify_email_otp_and_complete(
+            user=user, challenge=challenge, code=body.code, request=request,
+        )
+
+    # recovery lands in Step 6.
     raise HTTPException(
         status_code=501,
         detail=f"MFA verify handler for {body.factor_kind!r} not yet implemented",
     )
+
+
+# ---------------------------------------------------------------------------
+# Email OTP — Tier B/C factor (Step 5)
+# ---------------------------------------------------------------------------
+#
+# Flow summary
+# ------------
+# Login with email OTP (user already holds the short-lived mfa_challenge
+# token from /auth/login):
+#   1. POST /auth/mfa/email-otp/send (Authorization: Bearer <chal>)
+#      → server generates a fresh 6-digit code, persists a salted-sha256
+#        hash + salt in ``mfa_email_otps`` (TTL 10 min), and emails the
+#        code to the user's mailbox. Returns a masked email and the
+#        expiry timestamp; never returns the code itself.
+#   2. POST /auth/mfa/verify { factor_kind: "email_otp", code: "123456" }
+#      → server looks up the most recent unconsumed unexpired row for
+#        the challenge, verifies the hash, marks consumed_at, and mints
+#        the final access+refresh pair via ``_complete_mfa_login``.
+#
+# Throttles (defence in depth — distinct from the per-challenge attempt
+# cap, which is enforced by ``_resolve_challenge`` at 5):
+#   - per-challenge: at most 3 sends per pending-challenge row
+#   - per-user:      5 sends per 600 s
+#   - per-IP:        30 sends per 600 s
+# All three use the in-process ``rate_store``; if the workspace later
+# moves to multiple workers the limits multiply per-worker which is
+# acceptable for a 6-digit code with a 10-minute TTL and a 5-attempt
+# challenge cap.
+
+EMAIL_OTP_TTL_SECONDS = 600  # 10 minutes
+EMAIL_OTP_MAX_PER_CHALLENGE = 3
+EMAIL_OTP_USER_RATE = (5, 600)
+EMAIL_OTP_IP_RATE = (30, 600)
+
+
+class EmailOtpSendResponse(BaseModel):
+    sent: bool
+    masked_email: str
+    expires_at: datetime
+    remaining_sends: int
+
+
+def _mask_email(email: str) -> str:
+    """Return e.g. ``ah***@example.com`` so the UI can confirm the
+    destination without echoing the full address back to anyone holding
+    a stolen challenge token."""
+    if not email or "@" not in email:
+        return "***"
+    local, _, domain = email.partition("@")
+    if len(local) <= 2:
+        keep = local[:1] or "*"
+    else:
+        keep = local[:2]
+    return f"{keep}***@{domain}"
+
+
+@router.post("/auth/mfa/email-otp/send", response_model=EmailOtpSendResponse)
+async def email_otp_send(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(_security),
+):
+    """Mint a fresh 6-digit OTP, store its hash, and email it to the
+    user. Idempotent only in the sense that re-calling burns one of
+    your three allowed sends — each send invalidates nothing, but only
+    the latest unexpired row will be matched on verify."""
+    challenge, user = await _resolve_challenge(credentials)
+
+    if "email_otp" not in mfa_policy.allowed_factor_kinds(user):
+        raise HTTPException(status_code=403, detail="رمز البريد غير متاح لحسابك")
+
+    email = (user.get("email") or "").strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="لا يوجد بريد إلكتروني مسجّل لهذا الحساب")
+
+    # Per-challenge cap (3 sends per pending-challenge row).
+    existing = await gd_find(
+        db.session, "mfa_email_otps", {"challenge_id": challenge["id"]}
+    )
+    if len(existing) >= EMAIL_OTP_MAX_PER_CHALLENGE:
+        raise HTTPException(
+            status_code=429,
+            detail="تجاوزت الحد المسموح من إرسال رمز البريد. ابدأ تسجيل الدخول من جديد",
+        )
+
+    # Per-user + per-IP sliding-window throttles.
+    client_ip = extract_client_ip(request) or "unknown"
+    limited_user, _, retry_user = await rate_store.is_rate_limited(
+        f"mfa_email_otp:user:{user['id']}", *EMAIL_OTP_USER_RATE,
+    )
+    if limited_user:
+        raise HTTPException(
+            status_code=429,
+            detail="عدد طلبات الرمز تجاوز الحد. حاول بعد قليل",
+            headers={"Retry-After": str(retry_user)},
+        )
+    limited_ip, _, retry_ip = await rate_store.is_rate_limited(
+        f"mfa_email_otp:ip:{client_ip}", *EMAIL_OTP_IP_RATE,
+    )
+    if limited_ip:
+        raise HTTPException(
+            status_code=429,
+            detail="عدد طلبات الرمز تجاوز الحد. حاول بعد قليل",
+            headers={"Retry-After": str(retry_ip)},
+        )
+
+    # Mint, hash, persist.
+    code = mfa_crypto.generate_email_otp()
+    salt = mfa_crypto.generate_email_otp_salt()
+    code_hash = mfa_crypto.hash_email_otp(code, salt)
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(seconds=EMAIL_OTP_TTL_SECONDS)
+    row_id = str(uuid.uuid4())
+
+    await gd_insert(
+        db.session,
+        "mfa_email_otps",
+        {
+            "id": row_id,
+            "user_id": user["id"],
+            "challenge_id": challenge["id"],
+            "code_hash": code_hash,
+            "code_salt": salt,
+            "sent_at": now,
+            "expires_at": expires_at,
+            "attempts": 0,
+            "consumed_at": None,
+        },
+    )
+
+    # Best-effort send. We deliberately do NOT fail the request when
+    # Resend is misconfigured in dev — the row is persisted and an ops
+    # operator can read the code from the DB during diagnosis. In prod
+    # the missing-API-key path is already loud (logger.error) and the
+    # masked_email response makes the failure obvious to the UI.
+    user_name = user.get("full_name") or user.get("name") or email
+    try:
+        send_mfa_email_otp(
+            to_email=email,
+            user_name=user_name,
+            code=code,
+            expires_in_minutes=EMAIL_OTP_TTL_SECONDS // 60,
+        )
+    except Exception as exc:
+        logger.warning(f"email_otp_send: provider call failed: {exc}")
+
+    try:
+        audit = AuditLogEngine(Repos(db.session))
+        await audit.log_auth_event(
+            action="mfa.email_otp.sent",
+            user_id=user["id"],
+            tenant_id=user.get("tenant_id"),
+            success=True,
+            email=email,
+        )
+    except Exception as exc:
+        logger.debug(f"email_otp_send: audit log failed: {exc}")
+
+    remaining = max(0, EMAIL_OTP_MAX_PER_CHALLENGE - len(existing) - 1)
+    return EmailOtpSendResponse(
+        sent=True,
+        masked_email=_mask_email(email),
+        expires_at=expires_at,
+        remaining_sends=remaining,
+    )
+
+
+async def _verify_email_otp_and_complete(
+    *, user: dict, challenge: dict, code: str, request: Optional[Request]
+) -> TokenResponse:
+    """Match a user-supplied 6-digit OTP against the latest unconsumed
+    unexpired row for this challenge. On success: stamp consumed_at,
+    delete the row's siblings (defence-in-depth — only one OTP per
+    challenge survives a successful verify), and complete the login."""
+    rows = await gd_find(
+        db.session, "mfa_email_otps", {"challenge_id": challenge["id"]}
+    )
+    now = datetime.now(timezone.utc)
+
+    def _norm_dt(v):
+        if isinstance(v, datetime):
+            return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+        try:
+            dt = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            return datetime.min.replace(tzinfo=timezone.utc)
+
+    fresh = [
+        r for r in rows
+        if r.get("consumed_at") is None and _norm_dt(r.get("expires_at")) >= now
+    ]
+    if not fresh:
+        await _bump_challenge_attempts(challenge)
+        try:
+            audit = AuditLogEngine(Repos(db.session))
+            await audit.log_auth_event(
+                action="mfa.login.failure",
+                user_id=user["id"],
+                tenant_id=user.get("tenant_id"),
+                success=False,
+                email=user.get("email"),
+                reason="email_otp_missing_or_expired",
+            )
+        except Exception as exc:
+            logger.debug(f"verify_mfa(email_otp): audit log failed: {exc}")
+        raise HTTPException(status_code=400, detail="انتهت صلاحية الرمز أو لم يتم إرساله")
+
+    fresh.sort(key=lambda r: _norm_dt(r.get("sent_at")), reverse=True)
+
+    # Verify against any fresh row — supports the "I requested a second
+    # code while the first was still valid, then typed the first" UX
+    # without leaking which row matched.
+    matched = None
+    for row in fresh:
+        if mfa_crypto.verify_email_otp(code, row.get("code_salt") or "", row.get("code_hash") or ""):
+            matched = row
+            break
+
+    if not matched:
+        # Bump per-row attempts on the newest row + the global challenge
+        # attempt counter. Don't disclose which row failed.
+        try:
+            await gd_update_one(
+                db.session,
+                "mfa_email_otps",
+                {"id": fresh[0]["id"]},
+                {"attempts": int(fresh[0].get("attempts") or 0) + 1},
+            )
+        except Exception as exc:
+            logger.debug(f"verify_mfa(email_otp): attempts bump failed: {exc}")
+        await _bump_challenge_attempts(challenge)
+        try:
+            audit = AuditLogEngine(Repos(db.session))
+            await audit.log_auth_event(
+                action="mfa.login.failure",
+                user_id=user["id"],
+                tenant_id=user.get("tenant_id"),
+                success=False,
+                email=user.get("email"),
+                reason="email_otp_invalid",
+            )
+        except Exception as exc:
+            logger.debug(f"verify_mfa(email_otp): audit log failed: {exc}")
+        raise HTTPException(status_code=400, detail="رمز التحقق غير صحيح")
+
+    # Mark this row consumed and burn the rest so a leaked sibling code
+    # cannot be replayed against the same challenge later.
+    try:
+        await gd_update_one(
+            db.session,
+            "mfa_email_otps",
+            {"id": matched["id"]},
+            {"consumed_at": now, "attempts": int(matched.get("attempts") or 0) + 1},
+        )
+        for sibling in fresh:
+            if sibling["id"] == matched["id"]:
+                continue
+            await gd_update_one(
+                db.session,
+                "mfa_email_otps",
+                {"id": sibling["id"]},
+                {"consumed_at": now},
+            )
+    except Exception as exc:
+        logger.debug(f"verify_mfa(email_otp): consumed_at update failed: {exc}")
+
+    return await _complete_mfa_login(user, challenge, "email_otp", request)
 
 
 # ---------------------------------------------------------------------------

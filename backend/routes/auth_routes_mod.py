@@ -231,7 +231,15 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
         from engines.sql_utils import gd_insert
         active_factors = await gd_find(db.session, "mfa_factors", {"user_id": user_id, "is_active": True}) or []
         tier = mfa_policy.required_for(user)
-        if active_factors and tier is not None:
+        # Tier B (teacher) and Tier C (parent) always get a challenge — their
+        # email_otp factor is implicit (the user record's email IS the factor)
+        # so a missing mfa_factors row is the expected normal case. Tier A
+        # users still require an explicitly enrolled factor row here; the
+        # "force enrolment if Tier A and zero factors" gate ships with the
+        # login UI in Step 10 (gated by MFA_GRACE_UNTIL).
+        from services.mfa_policy import MfaTier as _MfaTier
+        implicit_email_otp = tier in (_MfaTier.B, _MfaTier.C)
+        if tier is not None and (active_factors or implicit_email_otp):
             challenge_token, challenge_jti, challenge_exp = create_mfa_challenge_token(
                 user_id, user["role"], user.get("tenant_id"),
             )
@@ -255,10 +263,15 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
                 success=True,
                 email=credentials.email,
             )
-            available_kinds = sorted({
+            allowed_for_user = mfa_policy.allowed_factor_kinds(user)
+            enrolled_kinds = {
                 f.get("kind") for f in active_factors
-                if f.get("kind") in mfa_policy.allowed_factor_kinds(user)
-            })
+                if f.get("kind") in allowed_for_user
+            }
+            # email_otp is always available for Tier B/C even with zero rows.
+            if implicit_email_otp and "email_otp" in allowed_for_user:
+                enrolled_kinds.add("email_otp")
+            available_kinds = sorted(k for k in enrolled_kinds if k)
             return TokenResponse(
                 mfa_required=True,
                 mfa_tier=tier.value,
