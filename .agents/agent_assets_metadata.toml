@@ -48,3 +48,9 @@ id = "aH_JtqV2NtMhM63D5bC9G"
 uri = "file://docs/security/SECURITY_AUDIT_2026-05-11.md"
 type = "text"
 title = "NASSAQ Security Audit — 2026-05-11"
+
+[[outputs]]
+id = "jE2SwL-rpffC2-0ikG7WL"
+uri = "file://docs/audits/2026-05-12-platform-status-report.md"
+type = "text"
+title = "NASSAQ — Platform Status Report (2026-05-12)"
