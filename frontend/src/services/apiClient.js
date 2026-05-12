@@ -74,8 +74,6 @@ export function createApiService(api) {
       updateContact: (data) => api.put('/settings/contact', data),
       getSecurity: () => api.get('/settings/security'),
       updateSecurity: (data) => api.put('/settings/security', data),
-      getAccount: () => api.get('/settings/account'),
-      updateAccount: (data) => api.put('/settings/account', data),
     },
 
     platform: {

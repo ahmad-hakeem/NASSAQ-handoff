@@ -78,7 +78,7 @@ function NameUpdateModal({ currentName, onClose, onSuccess }) {
     setSaving(true);
     setError('');
     try {
-      await axios.put('/api/settings/account', { name: name.trim() }, { headers: authHeaders() });
+      await axios.put('/api/users/me/profile', { full_name: name.trim() }, { headers: authHeaders() });
       toast.success('تم تحديث اسمك بنجاح');
       onSuccess(name.trim());
     } catch (e) {

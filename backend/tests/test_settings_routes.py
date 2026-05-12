@@ -282,63 +282,33 @@ class TestSecuritySettings:
         print(f"✓ PUT /api/settings/security - Success")
 
 
-class TestAccountSettings:
-    """Test /api/settings/account endpoints"""
-    
-    def test_get_account_settings(self, auth_token):
-        """Test GET /api/settings/account"""
-        response = requests.get(
-            f"{BASE_URL}/api/settings/account",
-            headers={"Authorization": f"Bearer {auth_token}"}
-        )
-        assert response.status_code == 200, f"Failed: {response.text}"
-        data = response.json()
-        
-        # Verify structure
-        print(f"✓ GET /api/settings/account - Success")
-        print(f"  - Name: {data.get('name', 'N/A')}")
-        print(f"  - Language: {data.get('language', 'N/A')}")
-    
-    def test_put_account_settings(self, auth_token):
-        """Test PUT /api/settings/account"""
-        payload = {
-            "name": "مدير المنصة",
-            "title": "",
-            "phone": "+966500000000",
-            "language": "ar"
-        }
-        
-        response = requests.put(
-            f"{BASE_URL}/api/settings/account",
+# NOTE: Task #174 retired the duplicate `/api/settings/account*` and
+# `/api/settings/titles` handlers. Personal profile/avatar writes now go
+# through `/api/users/me/profile` and `/api/users/me/avatar` exclusively, so
+# the dedicated test classes for those routes were removed with them.
+
+
+class TestRetiredAccountEndpoints:
+    """Regression tests confirming Task #174 endpoints stay gone."""
+
+    @pytest.mark.parametrize("method,path", [
+        ("get", "/api/settings/account"),
+        ("put", "/api/settings/account"),
+        ("post", "/api/settings/account/upload-picture"),
+        ("delete", "/api/settings/account/profile-picture"),
+        ("get", "/api/settings/titles"),
+    ])
+    def test_retired_endpoint_unavailable(self, auth_token, method, path):
+        """Each legacy account/titles route should be unreachable (404 or 410)."""
+        resp = requests.request(
+            method,
+            f"{BASE_URL}{path}",
             headers={"Authorization": f"Bearer {auth_token}"},
-            json=payload
         )
-        assert response.status_code == 200, f"Failed: {response.text}"
-        data = response.json()
-        assert data.get("success") == True or "message" in data
-        print(f"✓ PUT /api/settings/account - Success")
-
-
-class TestTitlesEndpoint:
-    """Test /api/settings/titles endpoint"""
-    
-    def test_get_titles(self, auth_token):
-        """Test GET /api/settings/titles"""
-        response = requests.get(
-            f"{BASE_URL}/api/settings/titles",
-            headers={"Authorization": f"Bearer {auth_token}"}
+        assert resp.status_code in (404, 405, 410), (
+            f"{method.upper()} {path} unexpectedly returned {resp.status_code}: {resp.text}"
         )
-        assert response.status_code == 200, f"Failed: {response.text}"
-        data = response.json()
-        
-        # Verify structure
-        assert "ar" in data
-        assert "en" in data
-        assert isinstance(data["ar"], list)
-        assert isinstance(data["en"], list)
-        print(f"✓ GET /api/settings/titles - Success")
-        print(f"  - Arabic titles: {len(data['ar'])}")
-        print(f"  - English titles: {len(data['en'])}")
+        print(f"✓ {method.upper()} {path} -> {resp.status_code} (retired)")
 
 
 class TestActiveSessionsEndpoint:

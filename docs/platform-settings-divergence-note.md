@@ -33,11 +33,11 @@ The Platform Settings page has **two** parallel backend surfaces. Today the Reac
 | `PUT  /settings/security` | same (now `extra='forbid'`, manual validation, Arabic 422) | same | `handleSaveSecuritySettings` |
 | `GET/POST /settings/terms[/...]` | `TermsVersion` | `terms_versions` (versioned rows) | `fetchSettings`, `handleSaveTermsVersion` |
 | `GET/POST /settings/privacy[/...]` | `PrivacyVersion` | `privacy_versions` | `fetchSettings`, `handleSavePrivacyVersion` |
-| `GET/PUT /settings/account`, `POST /settings/account/upload-picture`, `DELETE /settings/account/profile-picture` | `UserAccountSettings` | `users` (current user row) | account tab handlers |
+| ~~`GET/PUT /settings/account`, `POST /settings/account/upload-picture`, `DELETE /settings/account/profile-picture`~~ | ~~`UserAccountSettings`~~ | ~~`users` (current user row)~~ | **Retired in Task #174.** Personal profile/avatar writes go through `PUT /users/me/profile` and `POST /users/me/avatar` (`routes/user_routes_mod.py`) exclusively. |
 | `GET    /settings/sessions` | — | `user_sessions` | account tab session list |
 | `DELETE /settings/sessions/{id}` | — | `user_sessions` + `revoked_tokens` | account tab "end this session" (now MFA-step-up gated) |
 | `POST   /settings/sessions/end-all` | — | `user_sessions` + `revoked_tokens` | account tab "end all others" (now MFA-step-up gated, refuses on missing `jti`) |
-| `GET    /settings/titles` | — | static dictionary | account tab title picker |
+| ~~`GET    /settings/titles`~~ | — | ~~static dictionary~~ | **Retired in Task #174** alongside `/settings/account*`. |
 
 ### Parallel surface — `platform_routes_mod.py` (NOT called by PlatformSettingsPage today)
 

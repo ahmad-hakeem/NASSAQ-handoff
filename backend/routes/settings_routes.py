@@ -3,7 +3,7 @@ System Settings Routes - مسارات إعدادات النظام
 APIs for system settings, maintenance mode, terms & conditions, etc.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, ValidationError
 from typing import Optional, List
@@ -25,7 +25,6 @@ def _jti_from_creds(creds: Optional[HTTPAuthorizationCredentials]) -> Optional[s
         return None
 
 import os
-import base64
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 
@@ -110,15 +109,6 @@ class SecuritySettings(BaseModel):
     require_lowercase: int = 1
     require_numbers: int = 1
     require_special_chars: int = 1
-
-
-class UserAccountSettings(BaseModel):
-    """إعدادات حساب المستخدم"""
-    name: str
-    title: str = ""  # السيد، الدكتور، إلخ
-    phone: str = ""
-    language: str = "ar"
-    profile_picture: Optional[str] = None
 
 
 def setup_settings_routes(db, get_current_user, require_roles, UserRole, require_recent_mfa=None):
@@ -628,122 +618,12 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole, require
         return {"success": True, "message": "تم حفظ إعدادات الأمان", "changes": changes}
     
     # ============= USER ACCOUNT SETTINGS =============
-    
-    @router.get("/account")
-    async def get_account_settings(
-        current_user: dict = Depends(get_current_user)
-    ):
-        """جلب إعدادات حساب المستخدم"""
-        try:
-            user = await gd_find_one(db.session, "users", {"id": current_user.get("id")})
-            if user:
-                return {
-                    "name": user.get("full_name", user.get("name", "")),
-                    "title": user.get("title", ""),
-                    "phone": user.get("phone", ""),
-                    "language": user.get("preferred_language", user.get("language", "ar")),
-                    "profile_picture": user.get("profile_picture", user.get("avatar_url")),
-                }
-            return {}
-        except Exception as e:
-            return {}
-    
-    @router.put("/account")
-    async def update_account_settings(
-        settings: UserAccountSettings,
-        current_user: dict = Depends(get_current_user)
-    ):
-        """تحديث إعدادات حساب المستخدم مع تسجيل التغييرات"""
-        user_id = current_user.get("id")
-        now = datetime.now(timezone.utc).isoformat()
-
-        existing = await gd_find_one(db.session, "users", {"id": user_id})
-        if not existing:
-            raise HTTPException(status_code=404, detail="المستخدم غير موجود")
-
-        if settings.name:
-            from engines.name_validation import validate_personal_name
-            valid, err_msg = validate_personal_name(settings.name)
-            if not valid:
-                raise HTTPException(status_code=400, detail=err_msg)
-
-        field_map = {
-            "name": {"old_key": "full_name", "new_val": settings.name, "label": "الاسم"},
-            "title": {"old_key": "title", "new_val": settings.title, "label": "اللقب"},
-            "phone": {"old_key": "phone", "new_val": settings.phone, "label": "رقم الهاتف"},
-            "language": {"old_key": "preferred_language", "new_val": settings.language, "label": "اللغة"},
-        }
-
-        changes = []
-        update_fields = {"updated_at": now}
-        for field_key, info in field_map.items():
-            old_val = existing.get(info["old_key"], "")
-            new_val = info["new_val"] or ""
-            if str(old_val) != str(new_val):
-                changes.append({
-                    "field": field_key,
-                    "field_label": info["label"],
-                    "old_value": str(old_val),
-                    "new_value": str(new_val),
-                })
-                update_fields[info["old_key"]] = new_val
-
-        if not changes:
-            return {"success": True, "message": "لا توجد تغييرات لحفظها", "changes": []}
-
-        await gd_update_one(db.session, "users", {"id": user_id}, update_fields)
-
-        await gd_insert(db.session, "audit_logs", {
-            "id": str(uuid.uuid4()),
-            "action": "account_settings_updated",
-            "target_type": "user_account",
-            "target_id": user_id,
-            "performed_by": user_id,
-            "performed_by_name": current_user.get("full_name", current_user.get("name", "")),
-            "performed_by_email": current_user.get("email", ""),
-            "timestamp": now,
-            "changes": changes,
-        })
-
-        return {"success": True, "message": "تم حفظ إعدادات الحساب بنجاح", "changes": changes}
-    
-    @router.post("/account/upload-picture")
-    async def upload_profile_picture(
-        file: UploadFile = File(...),
-        current_user: dict = Depends(get_current_user)
-    ):
-        """رفع صورة شخصية"""
-        try:
-            MAX_SIZE = 5 * 1024 * 1024  # 5 MB
-            ALLOWED_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
-
-            if file.content_type not in ALLOWED_TYPES:
-                raise HTTPException(status_code=400, detail="صيغة الملف غير مدعومة. يرجى رفع صورة (JPEG, PNG, GIF, WebP)")
-
-            content = await file.read()
-
-            if len(content) > MAX_SIZE:
-                raise HTTPException(status_code=400, detail="حجم الصورة يتجاوز الحد المسموح (5 ميغابايت)")
-
-            encoded = base64.b64encode(content).decode('utf-8')
-            data_url = f"data:{file.content_type};base64,{encoded}"
-            
-            await gd_update_one(db.session, "users", {"id": current_user.get("id")}, {"profile_picture": data_url, "avatar_url": data_url})
-            
-            return {"success": True, "profile_picture": data_url}
-        except HTTPException:
-            raise
-        except Exception as e:
-            import logging as _log
-            _log.getLogger("nassaq").error(f"upload_profile_picture error: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="حدث خطأ داخلي في الخادم")
-    
-    @router.delete("/account/profile-picture")
-    async def delete_profile_picture(
-        current_user: dict = Depends(get_current_user)
-    ):
-        await gd_update_one(db.session, "users", {"id": current_user.get("id")}, {"profile_picture": None, "avatar_url": None})
-        return {"success": True}
+    # Task #174: Retired. Personal profile + avatar writes are now handled
+    # exclusively by `PUT /users/me/profile` and `POST /users/me/avatar` in
+    # `routes/user_routes_mod.py`. The previous `/settings/account*` and
+    # `/settings/titles` handlers (and the `UserAccountSettings` model) were
+    # removed to keep a single canonical handler/audit-log shape for personal
+    # account mutations.
 
     # ============= ACTIVE SESSIONS =============
 
@@ -873,37 +753,9 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole, require
         return {"success": True, "ended": ended, "message": f"تم إنهاء {ended} جلسة أخرى"}
     
     # ============= TITLES (الألقاب) =============
-    
-    @router.get("/titles")
-    async def get_available_titles():
-        """جلب قائمة الألقاب المتاحة"""
-        return {
-            "ar": [
-                {"id": "mr", "label": "السيد"},
-                {"id": "mrs", "label": "السيدة"},
-                {"id": "miss", "label": "الآنسة"},
-                {"id": "ms", "label": "الأستاذة / السيدة"},
-                {"id": "dr", "label": "دكتور"},
-                {"id": "prof", "label": "أستاذ"},
-                {"id": "eng", "label": "مهندس"},
-                {"id": "consultant", "label": "مستشار"},
-                {"id": "excellency", "label": "معالي"},
-                {"id": "honor", "label": "سعادة"},
-                {"id": "sheikh", "label": "الشيخ"},
-            ],
-            "en": [
-                {"id": "mr", "label": "Mr."},
-                {"id": "mrs", "label": "Mrs."},
-                {"id": "miss", "label": "Miss"},
-                {"id": "ms", "label": "Ms."},
-                {"id": "dr", "label": "Dr."},
-                {"id": "prof", "label": "Prof."},
-                {"id": "eng", "label": "Eng."},
-                {"id": "consultant", "label": "Consultant"},
-                {"id": "excellency", "label": "His/Her Excellency"},
-                {"id": "honor", "label": "His/Her Excellency"},
-                {"id": "sheikh", "label": "Sheikh"},
-            ]
-        }
-    
+    # Task #174: Retired. The static title dictionary was only consumed by the
+    # legacy account-settings UI; the active profile UI ships its own title
+    # list. Removed alongside `/settings/account*` to drop the duplicate
+    # personal-account surface.
+
     return router
