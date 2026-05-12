@@ -142,8 +142,12 @@ export default function WorkspaceSettingsPage() {
     <div dir={dir} className="min-h-screen bg-slate-50 py-6 px-4">
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-emerald-800">إعدادات مساحتي</h1>
+          {/* Task #200 §5.8 — Sub-brand header confirmed on workspace-accent token. */}
+          <div data-testid="workspace-settings-header">
+            <p className="text-xs font-semibold text-workspace-accent uppercase tracking-wide">
+              مساحتك التعليمية الخاصة
+            </p>
+            <h1 className="text-2xl font-bold text-workspace-accent-fg">إعدادات مساحتي</h1>
             <p className="text-sm text-slate-500 mt-1">
               النسخة المختصرة من إعدادات المساحة الخاصة بحساب المعلم المستقل.
             </p>
@@ -151,7 +155,7 @@ export default function WorkspaceSettingsPage() {
           <Button
             onClick={handleSave}
             disabled={loading || saving}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 h-11"
+            className="bg-workspace-accent hover:bg-workspace-accent-fg text-white px-6 h-11"
             data-testid="save-workspace-settings-btn"
           >
             {saving ? (

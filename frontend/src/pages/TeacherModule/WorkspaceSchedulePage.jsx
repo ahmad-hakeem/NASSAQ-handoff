@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, CalendarDays, Trash2, Check, Printer } from 'lucide-react';
+import { Loader2, CalendarDays, Trash2, Check, Printer, Plus } from 'lucide-react';
 
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -19,6 +19,7 @@ export default function WorkspaceSchedulePage() {
   const navigate = useNavigate();
   const { api, user } = useAuth();
   const { isRTL } = useTheme();
+  const { t } = useTranslation();
   const { nassaqError, nassaqSuccess, nassaqConfirm } = useNassaqAlert();
 
   const [loading, setLoading] = useState(true);
@@ -220,6 +221,44 @@ export default function WorkspaceSchedulePage() {
           <div className="flex items-center justify-center py-24">
             <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
           </div>
+        ) : (grid.sessions.length === 0) ? (
+          // Task #200 §5.8 — IT zero-slots empty state for the schedule
+          // editor. Trigger condition is "no scheduled sessions" (NOT
+          // "no classes") so the surface also covers the case where the
+          // IT has classes but the weekly grid is still blank. The CTA
+          // routes to the classes page when no classes exist yet,
+          // otherwise it scrolls into the existing grid by reloading the
+          // editor. Copy is locale-driven for both languages.
+          <Card
+            className="bg-workspace-accent-light/30 border-workspace-accent-border"
+            data-testid="workspace-schedule-empty-state"
+          >
+            <CardContent className="text-center py-16">
+              <CalendarDays className="h-16 w-16 mx-auto mb-4 text-workspace-accent" />
+              <h3 className="font-bold text-lg mb-2 font-cairo text-workspace-accent-fg">
+                {grid.classes.length === 0
+                  ? t('itEmptySlotsNoClassesTitle')
+                  : t('itEmptySlotsTitle')}
+              </h3>
+              <p className="text-muted-foreground text-sm font-tajawal mb-5 max-w-md mx-auto">
+                {grid.classes.length === 0
+                  ? t('itEmptySlotsNoClassesDescription')
+                  : t('itEmptySlotsDescription')}
+              </p>
+              <Button
+                onClick={() => grid.classes.length === 0
+                  ? navigate('/teacher/classes')
+                  : openEditor(grid.working_days[0] || 'sun', 1)}
+                className="bg-workspace-accent hover:bg-workspace-accent-fg text-white rounded-xl gap-2 px-5"
+                data-testid="workspace-schedule-empty-state-cta"
+              >
+                <Plus className="h-4 w-4" />
+                {grid.classes.length === 0
+                  ? t('itEmptySlotsNoClassesCta')
+                  : t('itEmptySlotsCta')}
+              </Button>
+            </CardContent>
+          </Card>
         ) : (
           <Card className="bg-white shadow-sm border-emerald-100">
             <CardHeader className="pb-3">
@@ -261,10 +300,10 @@ export default function WorkspaceSchedulePage() {
                               <button
                                 type="button"
                                 onClick={() => openEditor(d, slot)}
-                                data-testid={`slot-${d}-${slot}`}
+                                data-testid={cell ? `slot-${d}-${slot}` : `workspace-schedule-empty-slot-${d}-${slot}`}
                                 className={`w-full min-h-[64px] rounded-lg p-2 text-right transition ${cell
                                   ? 'bg-emerald-50 border border-emerald-300 text-emerald-900 hover:bg-emerald-100'
-                                  : 'bg-white border border-dashed border-slate-200 text-slate-400 hover:border-emerald-300 hover:text-emerald-700'
+                                  : 'bg-white border border-dashed border-workspace-accent-border/60 text-workspace-accent/60 hover:border-workspace-accent hover:text-workspace-accent-fg hover:bg-workspace-accent-light/40'
                                 }`}
                               >
                                 {cell ? (

@@ -713,6 +713,11 @@ class UserPreferencesUpdate(BaseModel):
     time_format: Optional[str] = None
     date_format: Optional[str] = None
     first_day_of_week: Optional[str] = None
+    # Task #200 §5.8 — Independent-teacher communication preferences
+    # (default channel + quiet hours). Persisted as a JSONB blob inside
+    # the existing `users.notification_preferences` column under the key
+    # `it_communication`. No new persistence layer is introduced.
+    it_communication: Optional[Dict[str, Any]] = None
 
 class UserNotificationSettings(BaseModel):
     email_notifications: Optional[bool] = None
@@ -765,12 +770,23 @@ async def get_current_user_preferences(
     current_user: dict = Depends(get_current_user)
 ):
     """Get current user's preferences"""
+    notif_prefs = current_user.get("notification_preferences") or {}
+    if not isinstance(notif_prefs, dict):
+        notif_prefs = {}
+    it_comm = notif_prefs.get("it_communication") or {}
+    if not isinstance(it_comm, dict):
+        it_comm = {}
     return {
         "language": current_user.get("preferred_language", "ar"),
         "theme": current_user.get("preferred_theme", "light"),
         "time_format": current_user.get("time_format", "12h"),
         "date_format": current_user.get("date_format", "dd/mm/yyyy"),
         "first_day_of_week": current_user.get("first_day_of_week", "sunday"),
+        "it_communication": {
+            "default_channel": it_comm.get("default_channel", "email"),
+            "quiet_hours_start": it_comm.get("quiet_hours_start", "21:00"),
+            "quiet_hours_end": it_comm.get("quiet_hours_end", "07:00"),
+        },
     }
 
 @router.put("/users/me/preferences")
@@ -791,9 +807,18 @@ async def update_current_user_preferences(
         update_data["date_format"] = data.date_format
     if data.first_day_of_week is not None:
         update_data["first_day_of_week"] = data.first_day_of_week
-    
+    # Task #200 §5.8 — merge IT communication prefs into existing
+    # `users.notification_preferences` JSONB blob without touching other keys.
+    if data.it_communication is not None:
+        existing = current_user.get("notification_preferences") or {}
+        if not isinstance(existing, dict):
+            existing = {}
+        prior_it = existing.get("it_communication") if isinstance(existing.get("it_communication"), dict) else {}
+        merged_it = {**prior_it, **{k: v for k, v in data.it_communication.items() if v is not None}}
+        update_data["notification_preferences"] = {**existing, "it_communication": merged_it}
+
     await gd_update_one(db.session, "users", {"id": current_user["id"]}, update_data)
-    
+
     return {"message": "تم تحديث التفضيلات بنجاح", "success": True}
 
 @router.get("/users/me/notifications")

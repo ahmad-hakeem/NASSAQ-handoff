@@ -242,15 +242,22 @@ export default function IndependentTeacherOnboardingWizard() {
   return (
     <div
       dir={isRTL ? 'rtl' : 'ltr'}
-      className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-4 sm:p-8"
+      className="min-h-screen bg-gradient-to-br from-workspace-accent-light via-white to-sky-50 p-4 sm:p-8"
       data-testid="it-onboarding-wizard"
     >
       <div className="max-w-3xl mx-auto">
-        <div className="mb-6 flex items-center gap-3">
-          <Sparkles className="w-6 h-6 text-emerald-600" />
+        {/* Task #200 §5.8 — Sub-brand header. Canonical IT label per spec:
+            "مساحتك التعليمية الخاصة". Workspace-accent token applied. */}
+        <div className="mb-6 flex items-center gap-3" data-testid="it-onboarding-header">
+          <div className="w-11 h-11 rounded-2xl bg-workspace-accent flex items-center justify-center shadow-sm">
+            <Sparkles className="w-5 h-5 text-white" />
+          </div>
           <div>
-            <h1 className="text-2xl font-bold">مرحبًا بك في نَسَّق</h1>
-            <p className="text-sm text-slate-600">
+            <h1 className="text-2xl font-bold text-workspace-accent-fg">مرحبًا بك في نَسَّق</h1>
+            <p className="text-xs font-semibold text-workspace-accent uppercase tracking-wide">
+              مساحتك التعليمية الخاصة
+            </p>
+            <p className="text-sm text-slate-600 mt-0.5">
               {formatHijriDate(new Date(), { locale: 'ar', includeWeekday: true })}
             </p>
           </div>

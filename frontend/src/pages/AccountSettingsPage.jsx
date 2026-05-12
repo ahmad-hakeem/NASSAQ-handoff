@@ -45,6 +45,10 @@ import {
   Check,
   X,
   AlertTriangle,
+  Briefcase,
+  MessageSquare,
+  Download,
+  ImageIcon,
 } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -175,6 +179,12 @@ export const AccountSettingsPage = () => {
   const { t } = useTranslation();
   const { user, api, logout, refreshUser, updateToken } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark, language, setLanguage, theme, setTheme } = useTheme();
+  const { nassaqError, nassaqInfo, nassaqSuccess } = useNassaqAlert();
+  const nassaqErrorTop = nassaqError;
+
+  // Task #200 §5.8 — Independent-Teacher (IT) gate for the three IT-only
+  // sections (workspace, communication preferences, planned data export).
+  const isIndependentTeacher = (user?.role || '').toLowerCase() === 'independent_teacher';
 
   const [saving, setSaving] = useState(false);
   // Task #172 P0 (review fix): honor a deep-link hash so other pages
@@ -184,7 +194,7 @@ export const AccountSettingsPage = () => {
   const _initialSection = (() => {
     if (typeof window === 'undefined') return 'profile';
     const raw = (window.location.hash || '').replace(/^#/, '').toLowerCase();
-    return ['profile', 'security', 'notifications', 'preferences'].includes(raw)
+    return ['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export'].includes(raw)
       ? raw
       : 'profile';
   })();
@@ -198,7 +208,7 @@ export const AccountSettingsPage = () => {
   useEffect(() => {
     const onHash = () => {
       const raw = (window.location.hash || '').replace(/^#/, '').toLowerCase();
-      if (['profile', 'security', 'notifications', 'preferences'].includes(raw)) {
+      if (['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export'].includes(raw)) {
         setActiveSection(raw);
       }
     };
@@ -242,6 +252,21 @@ export const AccountSettingsPage = () => {
     language: 'ar', theme: 'light', time_format: '12h', date_format: 'dd/mm/yyyy', first_day_of_week: 'sunday',
   });
 
+  // Task #200 §5.8 — IT workspace identity (mirrors WorkspaceSettingsPage,
+  // same source of truth at /independent-teacher/workspace/settings).
+  const [workspace, setWorkspace] = useState({ name_ar: '', name_en: '', logo_url: '' });
+  const [workspaceLoaded, setWorkspaceLoaded] = useState(false);
+  const [workspaceLogoCropOpen, setWorkspaceLogoCropOpen] = useState(false);
+
+  // Task #200 §5.8 — IT communication preferences (default channel +
+  // quiet hours). Persisted via the existing /users/me/preferences endpoint
+  // under an `it_communication` blob.
+  const [itCommunication, setItCommunication] = useState({
+    default_channel: 'email',
+    quiet_hours_start: '21:00',
+    quiet_hours_end: '07:00',
+  });
+
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [showRoleSwitchDialog, setShowRoleSwitchDialog] = useState(false);
   const [userRoles, setUserRoles] = useState([]);
@@ -279,7 +304,14 @@ export const AccountSettingsPage = () => {
         ]);
         if (rolesRes.data?.roles) setUserRoles(rolesRes.data.roles);
         if (notifRes.data) setNotifications(prev => ({ ...prev, ...notifRes.data }));
-        if (prefRes.data) setPreferences(prev => ({ ...prev, ...prefRes.data }));
+        if (prefRes.data) {
+          setPreferences(prev => ({ ...prev, ...prefRes.data }));
+          // Task #200 §5.8 — IT communication blob lives under
+          // `it_communication` on the same endpoint payload.
+          if (prefRes.data.it_communication) {
+            setItCommunication(prev => ({ ...prev, ...prefRes.data.it_communication }));
+          }
+        }
         const sessArray = Array.isArray(sessRes.data) ? sessRes.data : sessRes.data?.sessions || [];
         setSessions(sessArray.slice(0, 5));
       } catch (e) {
@@ -288,6 +320,30 @@ export const AccountSettingsPage = () => {
     };
     fetchExtras();
   }, [api]);
+
+  // Task #200 §5.8 — load workspace identity for IT users only. Re-uses the
+  // existing /independent-teacher/workspace/settings endpoint so this section
+  // and WorkspaceSettingsPage stay in sync without a second source of truth.
+  useEffect(() => {
+    if (!api || !isIndependentTeacher) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get('/independent-teacher/workspace/settings');
+        if (cancelled || !data) return;
+        setWorkspace({
+          name_ar: data.name_ar || '',
+          name_en: data.name_en || '',
+          logo_url: data.logo_url || '',
+        });
+        setWorkspaceLoaded(true);
+      } catch (err) {
+        // Pre-bootstrap users won't have a workspace yet; leave defaults.
+        setWorkspaceLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [api, isIndependentTeacher]);
 
   const profileChanged = originalProfile && JSON.stringify(profile) !== JSON.stringify(originalProfile);
 
@@ -387,6 +443,86 @@ export const AccountSettingsPage = () => {
     }
   };
 
+  // Task #200 §5.8 — IT-only workspace identity save (name + logo). Mirrors
+  // the same payload contract as WorkspaceSettingsPage so they stay aligned.
+  // Per spec §5.8 + replit.md, success and recoverable errors must use
+  // NassaqAlertDialog (never `toast.error()` / native browser dialogs).
+  // 403/409 responses additionally re-fetch the workspace row so the form
+  // recovers to server truth before surfacing the dialog.
+  const handleSaveWorkspace = async () => {
+    if (!workspace.name_ar?.trim()) {
+      nassaqErrorTop(t('workspaceNameArRequired'));
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.put('/independent-teacher/workspace/settings', {
+        name_ar: workspace.name_ar.trim(),
+        name_en: workspace.name_en?.trim() || null,
+        logo_url: workspace.logo_url || null,
+      });
+      setSaveSuccess('workspace');
+      nassaqSuccess(t('workspaceSettingsSaved'));
+      setTimeout(() => setSaveSuccess(null), 3000);
+    } catch (error) {
+      const status = error?.response?.status;
+      const detail = error?.response?.data?.detail;
+      // 403/409: workspace state drifted (forbidden / conflict). Reload the
+      // workspace row from the canonical endpoint so the form recovers to
+      // server truth, then surface a NassaqAlertDialog instead of a toast.
+      if (status === 403 || status === 409) {
+        try {
+          const { data } = await api.get('/independent-teacher/workspace/settings');
+          if (data) {
+            setWorkspace({
+              name_ar: data.name_ar || '',
+              name_en: data.name_en || '',
+              logo_url: data.logo_url || '',
+            });
+          }
+        } catch (_reloadErr) {
+          // Ignore reload failures — we still surface the original error.
+        }
+        nassaqErrorTop(detail || t('failedToSaveWorkspaceSettings'));
+      } else {
+        nassaqErrorTop(detail || t('failedToSaveWorkspaceSettings'));
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleWorkspaceLogoCropSave = async (base64Data) => {
+    setWorkspace(prev => ({ ...prev, logo_url: base64Data }));
+  };
+
+  // Task #200 §5.8 — IT-only communication preferences save. Persisted
+  // through the existing /users/me/preferences endpoint with an
+  // `it_communication` blob (no new route, no new table). Success and
+  // failure both surface through NassaqAlertDialog per spec.
+  const handleSaveCommunication = async () => {
+    setSaving(true);
+    try {
+      await api.put('/users/me/preferences', { it_communication: itCommunication });
+      setSaveSuccess('communication');
+      nassaqSuccess(t('communicationPreferencesSaved'));
+      setTimeout(() => setSaveSuccess(null), 3000);
+    } catch (error) {
+      nassaqErrorTop(t('failedToSaveCommunicationPreferences'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Task #200 §5.8 — Phase-1 placeholder for the workspace data export
+  // surface. Per spec it must use `nassaqInfo` (NassaqAlertDialog), never a
+  // native browser alert or `toast.error`.
+  const handleExportComingSoon = () => {
+    nassaqInfo(t('dataExportComingSoonMessage'), {
+      title: t('dataExportComingSoonTitle'),
+    });
+  };
+
   const handleSavePreferences = async () => {
     setSaving(true);
     try {
@@ -446,6 +582,12 @@ export const AccountSettingsPage = () => {
     { id: 'security', icon: Shield, label: t('security'), desc: t('passwordSessions') },
     { id: 'notifications', icon: Bell, label: t('notifications'), desc: t('emailSmsAlerts') },
     { id: 'preferences', icon: Palette, label: t('preferences'), desc: t('languageThemeTime') },
+    // Task #200 §5.8 — IT-only sections appended at the end of the nav.
+    ...(isIndependentTeacher ? [
+      { id: 'workspace', icon: Briefcase, label: t('itWorkspaceSection'), desc: t('itWorkspaceSectionDesc') },
+      { id: 'communication', icon: MessageSquare, label: t('itCommunicationSection'), desc: t('itCommunicationSectionDesc') },
+      { id: 'export', icon: Download, label: t('itDataExportSection'), desc: t('itDataExportSectionDesc') },
+    ] : []),
   ];
 
   const SaveButton = ({ onClick, sectionKey, label }) => (
@@ -874,6 +1016,198 @@ export const AccountSettingsPage = () => {
                   </CardContent>
                 </Card>
               )}
+
+              {/* Task #200 §5.8 — IT-only: Workspace identity (name + logo). */}
+              {activeSection === 'workspace' && isIndependentTeacher && (
+                <Card className="card-nassaq border-workspace-accent-border" data-testid="it-workspace-section">
+                  <CardHeader className="pb-4 border-b border-workspace-accent-border bg-workspace-accent-light/40">
+                    <CardTitle className="font-cairo flex items-center gap-2 text-lg text-workspace-accent-fg">
+                      <Briefcase className="h-5 w-5 text-workspace-accent" />
+                      {t('itWorkspaceSection')}
+                    </CardTitle>
+                    <p className="text-xs text-workspace-accent-fg/70 font-tajawal mt-1">
+                      {t('itWorkspaceSectionHint')}
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-5 pt-5">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-workspace-accent-border bg-workspace-accent-light flex items-center justify-center flex-shrink-0">
+                        {workspace.logo_url ? (
+                          <img src={workspace.logo_url} alt="workspace logo" className="w-full h-full object-cover" />
+                        ) : (
+                          <ImageIcon className="h-7 w-7 text-workspace-accent" />
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setWorkspaceLogoCropOpen(true)}
+                        className="rounded-xl border-workspace-accent-border text-workspace-accent-fg hover:bg-workspace-accent-light"
+                        data-testid="it-workspace-logo-upload-btn"
+                      >
+                        <Camera className="h-4 w-4 me-2" />
+                        {workspace.logo_url ? t('changeImage') : t('uploadWorkspaceLogo')}
+                      </Button>
+                      {workspace.logo_url && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => setWorkspace(prev => ({ ...prev, logo_url: '' }))}
+                          className="text-muted-foreground"
+                        >
+                          <X className="h-4 w-4 me-1" />
+                          {t('removeLogo')}
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <FieldGroup label={t('workspaceNameAr')} icon={Building2}>
+                        <Input
+                          value={workspace.name_ar}
+                          onChange={(e) => setWorkspace({ ...workspace, name_ar: e.target.value })}
+                          className="rounded-xl"
+                          dir="rtl"
+                          data-testid="it-workspace-name-ar"
+                          disabled={!workspaceLoaded}
+                        />
+                      </FieldGroup>
+                      <FieldGroup label={t('workspaceNameEn')} icon={Building2}>
+                        <Input
+                          value={workspace.name_en}
+                          onChange={(e) => setWorkspace({ ...workspace, name_en: e.target.value })}
+                          className="rounded-xl"
+                          dir="ltr"
+                          data-testid="it-workspace-name-en"
+                          disabled={!workspaceLoaded}
+                        />
+                      </FieldGroup>
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t border-border/30">
+                      <p className="text-xs text-muted-foreground font-tajawal">
+                        {t('itWorkspaceSyncHint')}
+                      </p>
+                      {/* Task #200 §5.8 — workspace primary action uses the
+                          sub-brand workspace-accent token instead of the
+                          generic brand-navy SaveButton, matching the §5.8
+                          visual identity for IT-only surfaces. */}
+                      <Button
+                        onClick={handleSaveWorkspace}
+                        disabled={saving}
+                        className="bg-workspace-accent hover:bg-workspace-accent-fg text-white rounded-xl gap-2 min-w-[140px]"
+                        data-testid="save-workspace"
+                      >
+                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saveSuccess === 'workspace' ? <CheckCircle className="h-4 w-4 text-emerald-200" /> : <Save className="h-4 w-4" />}
+                        {saveSuccess === 'workspace' ? (t('saved')) : (t('saveChanges2'))}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Task #200 §5.8 — IT-only: Communication preferences (default channel + quiet hours). */}
+              {activeSection === 'communication' && isIndependentTeacher && (
+                <Card className="card-nassaq border-workspace-accent-border" data-testid="it-communication-section">
+                  <CardHeader className="pb-4 border-b border-workspace-accent-border bg-workspace-accent-light/40">
+                    <CardTitle className="font-cairo flex items-center gap-2 text-lg text-workspace-accent-fg">
+                      <MessageSquare className="h-5 w-5 text-workspace-accent" />
+                      {t('itCommunicationSection')}
+                    </CardTitle>
+                    <p className="text-xs text-workspace-accent-fg/70 font-tajawal mt-1">
+                      {t('itCommunicationSectionHint')}
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-5 pt-5">
+                    <FieldGroup label={t('itDefaultChannel')} icon={MessageSquare}>
+                      <Select
+                        value={itCommunication.default_channel}
+                        onValueChange={(v) => setItCommunication({ ...itCommunication, default_channel: v })}
+                      >
+                        <SelectTrigger className="rounded-xl" data-testid="it-default-channel"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="email">{t('emailChannel')}</SelectItem>
+                          <SelectItem value="sms">{t('smsChannel')}</SelectItem>
+                          <SelectItem value="in_app">{t('inAppChannel')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </FieldGroup>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <FieldGroup label={t('quietHoursStart')} icon={Clock}>
+                        <Input
+                          type="time"
+                          value={itCommunication.quiet_hours_start}
+                          onChange={(e) => setItCommunication({ ...itCommunication, quiet_hours_start: e.target.value })}
+                          className="rounded-xl"
+                          dir="ltr"
+                          data-testid="it-quiet-start"
+                        />
+                      </FieldGroup>
+                      <FieldGroup label={t('quietHoursEnd')} icon={Clock}>
+                        <Input
+                          type="time"
+                          value={itCommunication.quiet_hours_end}
+                          onChange={(e) => setItCommunication({ ...itCommunication, quiet_hours_end: e.target.value })}
+                          className="rounded-xl"
+                          dir="ltr"
+                          data-testid="it-quiet-end"
+                        />
+                      </FieldGroup>
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t border-border/30">
+                      <p className="text-xs text-muted-foreground font-tajawal">
+                        {t('itCommunicationFutureHint')}
+                      </p>
+                      <SaveButton onClick={handleSaveCommunication} sectionKey="communication" label={t('saveSettings')} />
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Task #200 §5.8 — IT-only: Data export (planned, Phase 2).
+                  Per spec this is a de-emphasised "coming soon" card, NOT
+                  a primary surface; it intentionally does NOT use the
+                  workspace-accent token so it reads as a placeholder.
+                  Slate/muted styling keeps the active workspace +
+                  communication sections visually dominant. */}
+              {activeSection === 'export' && isIndependentTeacher && (
+                <Card className="card-nassaq border-slate-200 dark:border-slate-700" data-testid="it-export-section">
+                  <CardHeader className="pb-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40">
+                    <CardTitle className="font-cairo flex items-center gap-2 text-lg text-slate-700 dark:text-slate-200">
+                      <Download className="h-5 w-5 text-slate-500" />
+                      {t('itDataExportSection')}
+                    </CardTitle>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-tajawal mt-1">
+                      {t('itDataExportSectionHint')}
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-4 pt-5">
+                    <div className="rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 p-5 flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
+                        <Download className="h-5 w-5 text-slate-500 dark:text-slate-300" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-cairo font-semibold text-slate-700 dark:text-slate-200">
+                          {t('dataExportComingSoonTitle')}
+                        </p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 font-tajawal mt-1">
+                          {t('dataExportComingSoonMessage')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-end pt-2 border-t border-border/30">
+                      <Button
+                        type="button"
+                        onClick={handleExportComingSoon}
+                        variant="outline"
+                        className="rounded-xl border-slate-300 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 gap-2"
+                        data-testid="it-export-coming-soon-btn"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        {t('itDataExportLearnMore')}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </div>
         </div>
@@ -949,6 +1283,16 @@ export const AccountSettingsPage = () => {
         onSave={handleAvatarCropSave}
         isRTL={isRTL}
       />
+      {/* Task #200 §5.8 — IT-only workspace logo cropper. Reuses the same
+          ImageCropModal as the personal avatar so the UX matches. */}
+      {isIndependentTeacher && (
+        <ImageCropModal
+          open={workspaceLogoCropOpen}
+          onOpenChange={setWorkspaceLogoCropOpen}
+          onSave={handleWorkspaceLogoCropSave}
+          isRTL={isRTL}
+        />
+      )}
     </Sidebar>
   );
 };

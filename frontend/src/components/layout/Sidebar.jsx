@@ -715,7 +715,22 @@ export const Sidebar = ({ children }) => {
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{user.full_name}</p>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{user.full_name}</p>
+                  {/* Task #200 §5.8 — Sub-brand role badge for the
+                      Independent-Teacher persona. Uses the workspace-accent
+                      design token so it stays consistent with the wizard
+                      header, workspace settings header, and IT empty states. */}
+                  {((getEffectiveRole ? getEffectiveRole() : user.role) === 'independent_teacher') && (
+                    <span
+                      className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-workspace-accent-light text-workspace-accent-fg border border-workspace-accent-border flex-shrink-0"
+                      data-testid="sidebar-it-role-badge"
+                      title={isRTL ? 'معلم مستقل' : 'Independent Teacher'}
+                    >
+                      {isRTL ? 'معلم مستقل' : 'IT'}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-white/50 truncate">
                   {(() => {
                     const effectiveRole = getEffectiveRole ? getEffectiveRole() : user.role;
@@ -726,6 +741,8 @@ export const Sidebar = ({ children }) => {
                         ? 'مدير المدرسة'
                         : effectiveRole === 'teacher'
                         ? 'معلم'
+                        : effectiveRole === 'independent_teacher'
+                        ? 'مساحتك التعليمية الخاصة'
                         : effectiveRole;
                     }
                     return effectiveRole?.replace('_', ' ');

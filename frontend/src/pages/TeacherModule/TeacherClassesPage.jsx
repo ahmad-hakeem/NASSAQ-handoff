@@ -1165,21 +1165,50 @@ export default function TeacherClassesPage() {
               <p className="text-sm text-muted-foreground font-tajawal">{t('loadingClasses')}</p>
             </div>
           ) : filteredClasses.length === 0 ? (
-            <Card className="border-dashed">
-              <CardContent className="text-center py-16">
-                <GraduationCap className="h-16 w-16 mx-auto mb-4 text-muted-foreground/20" />
-                <h3 className="font-bold text-lg mb-2 font-cairo">
-                  {searchQuery || gradeFilter !== 'all'
-                    ? (t('noResults'))
-                    : (t('noClassesFound2'))}
-                </h3>
-                <p className="text-muted-foreground text-sm font-tajawal">
-                  {searchQuery || gradeFilter !== 'all'
-                    ? (t('tryChangingSearchCriteria'))
-                    : (t('noClassesAssignedToYouYet'))}
-                </p>
-              </CardContent>
-            </Card>
+            // Task #200 §5.8 — IT-focused empty state: sub-brand workspace
+            // accent + IT-targeted Arabic copy + a primary CTA that opens
+            // the create-class flow. Other roles keep the existing neutral
+            // empty state untouched.
+            user?.role === 'independent_teacher' && !(searchQuery || gradeFilter !== 'all') ? (
+              <Card
+                className="border-dashed border-workspace-accent-border bg-workspace-accent-light/30"
+                data-testid="teacher-classes-empty-state-it"
+              >
+                <CardContent className="text-center py-16">
+                  <GraduationCap className="h-16 w-16 mx-auto mb-4 text-workspace-accent" />
+                  <h3 className="font-bold text-lg mb-2 font-cairo text-workspace-accent-fg">
+                    {t('itEmptyClassesTitle')}
+                  </h3>
+                  <p className="text-muted-foreground text-sm font-tajawal mb-5 max-w-md mx-auto">
+                    {t('itEmptyClassesDescription')}
+                  </p>
+                  <Button
+                    onClick={() => setShowAddClassDialog(true)}
+                    className="bg-workspace-accent hover:bg-workspace-accent-fg text-white rounded-xl gap-2 px-5"
+                    data-testid="teacher-classes-empty-state-cta"
+                  >
+                    <Plus className="h-4 w-4" />
+                    {t('itEmptyClassesCta')}
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="border-dashed" data-testid="teacher-classes-empty-state">
+                <CardContent className="text-center py-16">
+                  <GraduationCap className="h-16 w-16 mx-auto mb-4 text-muted-foreground/20" />
+                  <h3 className="font-bold text-lg mb-2 font-cairo">
+                    {searchQuery || gradeFilter !== 'all'
+                      ? (t('noResults'))
+                      : (t('noClassesFound2'))}
+                  </h3>
+                  <p className="text-muted-foreground text-sm font-tajawal">
+                    {searchQuery || gradeFilter !== 'all'
+                      ? (t('tryChangingSearchCriteria'))
+                      : (t('noClassesAssignedToYouYet'))}
+                  </p>
+                </CardContent>
+              </Card>
+            )
           ) : (
             <>
               <div className="flex items-center justify-between">

@@ -44,6 +44,12 @@ module.exports = {
                     sage: '#7AA169',
                     'sage-light': '#E8F1E4',
                 },
+                'workspace-accent': {
+                    DEFAULT: '#059669',
+                    light: '#ECFDF5',
+                    border: '#A7F3D0',
+                    fg: '#065F46',
+                },
                 card: {
                     DEFAULT: 'hsl(var(--card))',
                     foreground: 'hsl(var(--card-foreground))'
