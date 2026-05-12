@@ -92,7 +92,10 @@ const readChildIdFromLocation = (location) => {
   if (m && m[1]) return m[1];
   try {
     const params = new URLSearchParams(location.search || '');
-    const c = params.get('child');
+    // Task #206 — accept ?student_id= as an alias for ?child= so the
+    // public parent-invitation accept landing can deep-link straight
+    // into the portal without having to know the legacy query name.
+    const c = params.get('child') || params.get('student_id');
     if (c) return c;
   } catch {
     /* ignore malformed query strings */

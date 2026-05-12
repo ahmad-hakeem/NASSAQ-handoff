@@ -58,7 +58,7 @@ from dependencies import (
     get_current_user,
     require_recent_mfa_403,
 )
-from engines.sql_utils import gd_count, gd_find_one, gd_insert, gd_update_one
+from engines.sql_utils import gd_count, gd_find, gd_find_one, gd_insert, gd_update_one
 from middleware.rate_limiter import rate_store
 from utils.tokens import (
     mint_invitation_token,
@@ -289,6 +289,74 @@ def _iso(v: Any) -> Optional[str]:
     if isinstance(v, datetime):
         return v.isoformat()
     return str(v)
+
+
+# -- Endpoint: GET latest invitation by student id ------------------------
+#
+# Tiny read surface added in #206 (IT-P2 §6.2c) so the IT student-detail
+# UI can render the chip (pending / accepted / expired / cancelled)
+# without bolting onto the create-idempotency path. Returns the most
+# recent row for the (workspace, student) pair, regardless of status,
+# or 204 when no invitation exists. Cross-workspace student ids 404
+# per §8 inv. 3 (the workspace pin on `parent_invitations` enforces it).
+
+@router.get("/independent-teacher/students/{student_id}/parent-invitation")
+async def get_latest_parent_invitation(
+    student_id: str,
+    current_user: dict = Depends(_require_independent_teacher),
+):
+    school_id = require_request_school_id(current_user)
+    workspace_id = independent_workspace_id(current_user) or school_id
+
+    # 404 the cross-tenant case before reading invitations.
+    await _load_workspace_student(student_id, school_id)
+
+    rows = await gd_find(
+        db.session, "parent_invitations",
+        {"workspace_school_id": workspace_id, "student_id": student_id},
+        order_by="created_at", desc_order=True, limit=1,
+    )
+    if not rows:
+        return {"invitation": None}
+    row = rows[0]
+    # Surface the derived "expired" view to the FE without touching the
+    # stored status (cancellation/acceptance always win over expiry).
+    derived_status = row.get("status")
+    if derived_status == "pending":
+        try:
+            exp = row.get("expires_at")
+            if isinstance(exp, str):
+                exp_dt = datetime.fromisoformat(exp.replace("Z", "+00:00"))
+            else:
+                exp_dt = exp
+            if exp_dt and exp_dt.tzinfo is None:
+                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+            if exp_dt and exp_dt < _utcnow():
+                derived_status = "expired"
+        except (ValueError, TypeError):
+            pass
+    out = _serialise_invitation(row, channels=_channels(row), reused=False)
+    out["status"] = derived_status
+    # When the invitation is accepted, surface the linked parent's name
+    # so the FE chip tooltip can read like "Linked to <parent name>".
+    # Falls back silently when the linked parent_id is missing.
+    if derived_status == "accepted":
+        try:
+            student_row = await gd_find_one(
+                db.session, "students",
+                {"id": student_id, "school_id": school_id},
+            )
+            parent_id = (student_row or {}).get("parent_id")
+            if parent_id:
+                parent_row = await gd_find_one(
+                    db.session, "parents",
+                    {"id": parent_id, "school_id": workspace_id},
+                )
+                if parent_row and parent_row.get("full_name"):
+                    out["parent_name"] = parent_row.get("full_name")
+        except Exception:  # noqa: BLE001
+            logger.debug("get_latest_parent_invitation: parent name lookup failed")
+    return {"invitation": out}
 
 
 # -- Endpoint: POST cancel ------------------------------------------------

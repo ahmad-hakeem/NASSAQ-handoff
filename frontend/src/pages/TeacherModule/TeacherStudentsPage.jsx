@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 import { Progress } from '../../components/ui/progress';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
+import { formatHijriDate } from '../../utils/hijriDate';
 import { Textarea } from '../../components/ui/textarea';
 import { DialogFooter } from '../../components/ui/dialog';
 import {
@@ -82,7 +83,13 @@ export default function TeacherStudentsPage() {
   });
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
 
-  const { nassaqError, nassaqWarning, nassaqInfo } = useNassaqAlert();
+  // Task #206 — IT §6.2c parent-invitation status chip.
+  // Maps `student.id → { id, status, expires_at, sent_at, accepted_at }`
+  // (or `null` when no invitation exists). Populated lazily after the
+  // student list loads so a class with no IT students still renders.
+  const [invitationByStudent, setInvitationByStudent] = useState({});
+
+  const { nassaqError, nassaqWarning, nassaqInfo, nassaqConfirm } = useNassaqAlert();
   const teacherId = user?.teacher_id || user?.id;
 
   // Workspace count + dropdown options for the IT inline-create wizard
@@ -192,6 +199,79 @@ export default function TeacherStudentsPage() {
       fetchStudents();
     }
   }, [selectedClass, fetchStudents]);
+
+  // Task #206 — fetch the latest parent-invitation row for every
+  // IT-workspace student so the chip renders alongside the Invite-
+  // Parent / Message-Parent CTA. We deliberately fetch for linked
+  // students too: once a parent accepts, `student.parent_id` is set
+  // and the chip transitions to the `accepted` state (with the
+  // tooltip carrying `accepted_at` + `parent_name`) — gating on
+  // `!parent_id` would hide that state entirely.
+  const refreshInvitationsForStudents = useCallback(async (studentList) => {
+    if (!isIndependentTeacher || !studentList?.length) return;
+    const candidates = studentList;
+    if (!candidates.length) return;
+    const results = await Promise.all(candidates.map(async (s) => {
+      try {
+        const res = await api.get(
+          `/independent-teacher/students/${s.id}/parent-invitation`,
+        );
+        return [s.id, res?.data?.invitation || null];
+      } catch (_e) {
+        return [s.id, null];
+      }
+    }));
+    setInvitationByStudent((prev) => {
+      const next = { ...prev };
+      for (const [sid, inv] of results) next[sid] = inv;
+      return next;
+    });
+  }, [api, isIndependentTeacher]);
+
+  useEffect(() => {
+    if (isIndependentTeacher && students.length) {
+      refreshInvitationsForStudents(students);
+    }
+  }, [isIndependentTeacher, students, refreshInvitationsForStudents]);
+
+  const cancelInvitationForStudent = useCallback(async (student) => {
+    const inv = invitationByStudent[student.id];
+    if (!inv?.id) return;
+    nassaqConfirm(
+      isRTL
+        ? (t('cancelInvitationConfirm') || 'هل تريد إلغاء دعوة ولي الأمر؟ سيتعذّر استخدام الرابط بعد ذلك.')
+        : (t('cancelInvitationConfirm') || 'Cancel this parent invitation? The link will stop working.'),
+      async () => {
+        try {
+          await api.post(
+            `/independent-teacher/parent-invitations/${inv.id}/cancel`,
+          );
+          nassaqInfo(t('invitationCancelled') || (isRTL ? 'تم إلغاء الدعوة بنجاح.' : 'Invitation cancelled.'));
+          await refreshInvitationsForStudents([student]);
+        } catch (err) {
+          const status = err?.response?.status;
+          const detail = err?.response?.data?.detail;
+          // §5.7 step-up envelope is replayed by the global axios
+          // interceptor — only surface other errors.
+          const stepUpCodes = new Set([
+            'MFA_STEPUP_REQUIRED', 'MFA_PASSKEY_REQUIRED', 'MFA_RESTORE_REQUIRED',
+          ]);
+          const isStepUp = (status === 401 || status === 403)
+            && (typeof detail === 'object' && stepUpCodes.has(detail?.code));
+          if (!isStepUp) {
+            nassaqError(t('invitationCancelFailed')
+              || (isRTL ? 'تعذّر إلغاء الدعوة — حاول لاحقًا.' : 'Could not cancel the invitation. Please try again.'));
+          }
+        }
+      },
+      {
+        title: t('invitationConfirmCancelTitle') || (isRTL ? 'تأكيد الإلغاء' : 'Confirm cancellation'),
+        confirmText: t('cancelInvitation') || (isRTL ? 'إلغاء الدعوة' : 'Cancel invitation'),
+        cancelText: t('back') || (isRTL ? 'تراجع' : 'Back'),
+        type: 'warning',
+      },
+    );
+  }, [api, invitationByStudent, isRTL, nassaqConfirm, nassaqError, nassaqInfo, refreshInvitationsForStudents, t]);
 
   const handleAddStudentSuccess = useCallback(() => {
     fetchWorkspaceStudentCount();
@@ -520,24 +600,138 @@ export default function TeacherStudentsPage() {
                     {(() => {
                       const pd = getStudentParentDisplay(student);
                       const hasPending = !pd.isLinked && (pd.name || pd.phone || pd.email);
+                      // §6.2c: render the invitation status chip for IT
+                      // students whenever an invitation row exists — even
+                      // after `parent_id` is set on accept — so the
+                      // `accepted` state with tooltip ("Linked to <name>")
+                      // is reachable per spec. Falls through to the
+                      // existing linked / pending UI underneath.
+                      const invForChip = isIndependentTeacher ? invitationByStudent[student.id] : null;
+                      const chipStatus = invForChip?.status || null;
+                      let chipNode = null;
+                      if (chipStatus) {
+                        const STATUS_STYLES_TOP = {
+                          pending: 'text-amber-700 border-amber-300 bg-amber-50',
+                          accepted: 'text-emerald-700 border-emerald-300 bg-emerald-50',
+                          expired: 'text-gray-600 border-gray-300 bg-gray-50',
+                          cancelled: 'text-gray-600 border-gray-300 bg-gray-50',
+                        };
+                        const STATUS_LABELS_AR_TOP = {
+                          pending: 'دعوة معلّقة', accepted: 'تم القبول',
+                          expired: 'انتهت صلاحية الدعوة', cancelled: 'تم إلغاء الدعوة',
+                        };
+                        const STATUS_LABELS_EN_TOP = {
+                          pending: 'Invitation pending', accepted: 'Parent linked',
+                          expired: 'Invitation expired', cancelled: 'Invitation cancelled',
+                        };
+                        const lk = `parentInvitationStatus${chipStatus.charAt(0).toUpperCase()}${chipStatus.slice(1)}`;
+                        const lbl = t(lk) || (isRTL ? STATUS_LABELS_AR_TOP[chipStatus] : STATUS_LABELS_EN_TOP[chipStatus]);
+                        const locale = isRTL ? 'ar' : 'en';
+                        const fmt = (iso) => {
+                          if (!iso) return '';
+                          const d = new Date(iso);
+                          if (Number.isNaN(d.getTime())) return '';
+                          return formatHijriDate(d, { locale, includeWeekday: false });
+                        };
+                        const parts = [];
+                        if (invForChip?.sent_at) parts.push(`${(t('invitationSentOn') || (isRTL ? 'أُرسلت في' : 'Sent on'))}: ${fmt(invForChip.sent_at)}`);
+                        if (invForChip?.expires_at && chipStatus === 'pending') parts.push(`${(t('invitationExpiresOn') || (isRTL ? 'تنتهي في' : 'Expires on'))}: ${fmt(invForChip.expires_at)}`);
+                        if (invForChip?.accepted_at) parts.push(`${(t('invitationAcceptedOn') || (isRTL ? 'قُبلت في' : 'Accepted on'))}: ${fmt(invForChip.accepted_at)}`);
+                        if (chipStatus === 'accepted' && invForChip?.parent_name) {
+                          const tmpl = t('invitationLinkedToParent') || (isRTL ? 'مرتبط بـ {0}' : 'Linked to {0}');
+                          parts.push(tmpl.replace('{0}', invForChip.parent_name));
+                        }
+                        chipNode = (
+                          <Badge
+                            variant="outline"
+                            className={`w-full justify-center text-[10px] mt-3 ${STATUS_STYLES_TOP[chipStatus]}`}
+                            data-testid={`invite-status-${student.id}`}
+                            title={parts.join('\n')}
+                          >
+                            {lbl}
+                          </Badge>
+                        );
+                      }
                       if (pd.isLinked) {
                         return (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full mt-3 text-xs gap-1.5 border-brand-turquoise/30 text-brand-navy hover:bg-brand-turquoise/10 hover:border-brand-turquoise"
-                            onClick={(e) => openMessageParent(e, student)}
-                          >
-                            <MessageSquare className="h-3.5 w-3.5" />
-                            {t('messageParent')}
-                          </Button>
+                          <>
+                            {chipNode}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full mt-3 text-xs gap-1.5 border-brand-turquoise/30 text-brand-navy hover:bg-brand-turquoise/10 hover:border-brand-turquoise"
+                              onClick={(e) => openMessageParent(e, student)}
+                            >
+                              <MessageSquare className="h-3.5 w-3.5" />
+                              {t('messageParent')}
+                            </Button>
+                          </>
                         );
                       }
                       if (isIndependentTeacher && hasPending) {
+                        // Task #206 — §6.2c invitation status chip. Shown
+                        // when the IT_PARENT_INVITATIONS_ENABLED flow has
+                        // produced a parent_invitations row for this
+                        // student. Falls back to the legacy badge when no
+                        // invitation exists (the §5.6 immediate Pending
+                        // → Linked path or pre-invitation state).
+                        const inv = invitationByStudent[student.id];
+                        const status = inv?.status || null;
+                        const STATUS_STYLES = {
+                          pending: 'text-amber-700 border-amber-300 bg-amber-50',
+                          accepted: 'text-emerald-700 border-emerald-300 bg-emerald-50',
+                          expired: 'text-gray-600 border-gray-300 bg-gray-50',
+                          cancelled: 'text-gray-600 border-gray-300 bg-gray-50',
+                        };
+                        const STATUS_LABELS_AR = {
+                          pending: 'دعوة معلّقة',
+                          accepted: 'تم القبول',
+                          expired: 'انتهت صلاحية الدعوة',
+                          cancelled: 'تم إلغاء الدعوة',
+                        };
+                        const STATUS_LABELS_EN = {
+                          pending: 'Invitation pending',
+                          accepted: 'Parent linked',
+                          expired: 'Invitation expired',
+                          cancelled: 'Invitation cancelled',
+                        };
+                        const labelKey = status ? `parentInvitationStatus${status.charAt(0).toUpperCase()}${status.slice(1)}` : null;
+                        const chipLabel = labelKey ? (t(labelKey) || (isRTL ? STATUS_LABELS_AR[status] : STATUS_LABELS_EN[status])) : null;
+                        const chipClass = status
+                          ? STATUS_STYLES[status]
+                          : 'text-amber-700 border-amber-300 bg-amber-50';
+                        const fallbackChip = isRTL ? 'لم يتم الربط بعد' : 'Not linked yet';
+                        const showCancel = status === 'pending' && inv?.id;
                         return (
                           <div className="mt-3 space-y-2">
-                            <Badge variant="outline" className="w-full justify-center text-[10px] text-amber-700 border-amber-300 bg-amber-50">
-                              {isRTL ? 'لم يتم الربط بعد' : 'Not linked yet'}
+                            <Badge
+                              variant="outline"
+                              className={`w-full justify-center text-[10px] ${chipClass}`}
+                              data-testid={`invite-status-${student.id}`}
+                              title={(() => {
+                                // Tooltip is built from i18n labels and
+                                // hijri-formatted dates — never the
+                                // browser `Intl` islamic calendar (per
+                                // user-preferences in replit.md).
+                                const locale = isRTL ? 'ar' : 'en';
+                                const fmt = (iso) => {
+                                  if (!iso) return '';
+                                  const d = new Date(iso);
+                                  if (Number.isNaN(d.getTime())) return '';
+                                  return formatHijriDate(d, { locale, includeWeekday: false });
+                                };
+                                const parts = [];
+                                if (inv?.sent_at) parts.push(`${(t('invitationSentOn') || (isRTL ? 'أُرسلت في' : 'Sent on'))}: ${fmt(inv.sent_at)}`);
+                                if (inv?.expires_at && status === 'pending') parts.push(`${(t('invitationExpiresOn') || (isRTL ? 'تنتهي في' : 'Expires on'))}: ${fmt(inv.expires_at)}`);
+                                if (inv?.accepted_at) parts.push(`${(t('invitationAcceptedOn') || (isRTL ? 'قُبلت في' : 'Accepted on'))}: ${fmt(inv.accepted_at)}`);
+                                if (status === 'accepted' && inv?.parent_name) {
+                                  const tmpl = t('invitationLinkedToParent') || (isRTL ? 'مرتبط بـ {0}' : 'Linked to {0}');
+                                  parts.push(tmpl.replace('{0}', inv.parent_name));
+                                }
+                                return parts.join('\n');
+                              })()}
+                            >
+                              {chipLabel || fallbackChip}
                             </Badge>
                             <Button
                               variant="outline"
@@ -549,6 +743,17 @@ export default function TeacherStudentsPage() {
                               <UserPlus className="h-3.5 w-3.5" />
                               {isRTL ? 'ربط ولي الأمر' : 'Invite parent'}
                             </Button>
+                            {showCancel && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="w-full text-xs gap-1.5 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                onClick={(e) => { e.stopPropagation(); cancelInvitationForStudent(student); }}
+                                data-testid={`invite-cancel-${student.id}`}
+                              >
+                                {t('cancelInvitation') || (isRTL ? 'إلغاء الدعوة' : 'Cancel invitation')}
+                              </Button>
+                            )}
                           </div>
                         );
                       }

@@ -25,6 +25,8 @@ const RegistrationConfirmationPage = lazy(() => import("../pages/RegistrationCon
 const ForgotPasswordPage = lazy(() => import("../pages/ForgotPasswordPage"));
 const ResetPasswordPage = lazy(() => import("../pages/ResetPasswordPage"));
 const ForcePasswordChange = lazy(() => import("../pages/ForcePasswordChange"));
+// Task #206 — public parent-invitation accept landing (IT §6.2c).
+const ParentInvitationAcceptPage = lazy(() => import("../pages/ParentInvitationAcceptPage"));
 
 // Heavy: AdminDashboard pulls recharts
 const AdminDashboard = lazy(() => import("../pages/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
@@ -169,6 +171,11 @@ export default function AppRoutes() {
         <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/teacher-register" element={<TeacherSelfRegistration />} />
+        {/* Task #206 — IT §6.2c public parent-invitation landing. The
+            page swaps the one-shot bearer for an authenticated session
+            and deep-links into /parent?student_id=…. Unauthenticated
+            access is intentional — the token in the URL is the auth. */}
+        <Route path="/parent-invitations/accept" element={<ParentInvitationAcceptPage />} />
 
         {/* Force Password Change */}
         <Route path="/change-password" element={
