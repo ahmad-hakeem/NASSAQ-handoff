@@ -20,7 +20,8 @@ from dependencies import (
     smart_scheduling_engine, TimetableRunStatus, TimetableStatus,
     ConflictType, ConflictSeverity, PreValidationResult, GenerationResult,
     hakim_engine, reporting_engine, export_engine, session_engine,
-    REPORT_TYPES, generate_student_qr_code
+    REPORT_TYPES, generate_student_qr_code,
+    require_recent_mfa_403_if_independent_teacher,
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc, _gd_pull, _gd_push, _gd_addtoset
 from auth_scope import require_request_school_id
@@ -31,6 +32,11 @@ from shared_models import (
 )
 
 router = APIRouter()
+
+# Task #201 — IT §5.7 step-up backfill on student contact-field
+# mutations. Conditional on caller role so principal/admin/sub-admin
+# behaviour on PUT /students/{id} is preserved.
+_REQUIRE_RECENT_MFA_403_IT = require_recent_mfa_403_if_independent_teacher()
 
 
 async def get_school_id_from_context(current_user: dict, x_school_context: str = None) -> str:
@@ -374,10 +380,20 @@ async def get_student(student_id: str, current_user: dict = Depends(get_current_
 async def update_student(
     student_id: str,
     student_data: StudentUpdate,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
+    # Task #201 — IT §5.7 widens this allow-list to include
+    # INDEPENDENT_TEACHER so IT callers can manage students inside their
+    # own workspace. Non-IT roles see exactly the same allow-list as
+    # before. The MFA step-up gate below is IT-conditional, so non-IT
+    # behaviour is byte-for-byte unchanged.
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER])),
+    _mfa: dict = Depends(_REQUIRE_RECENT_MFA_403_IT),
 ):
     """Update student"""
-    school_id = current_user.get("tenant_id")
+    # Task #201 — fall back to the synthetic IT workspace id so the
+    # tenant filter scopes correctly for Independent-Teacher callers
+    # (their `users.tenant_id` is NULL by design).
+    from auth_scope import independent_workspace_id as _itw_id
+    school_id = current_user.get("tenant_id") or _itw_id(current_user)
     query = {"id": student_id}
     if school_id:
         query["school_id"] = school_id

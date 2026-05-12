@@ -43,7 +43,7 @@ from auth_scope import (
     is_independent_teacher,
     require_request_school_id,
 )
-from dependencies import db, get_current_user
+from dependencies import db, get_current_user, require_recent_mfa_403
 from engines.audit_engine import AuditLogEngine
 from engines.sql_utils import gd_find, gd_find_one, model_to_dict
 from pg_models import ScheduleSession
@@ -52,6 +52,12 @@ from repositories import Repos
 logger = logging.getLogger("nassaq.it_schedule")
 
 router = APIRouter()
+
+# Task #201 — IT §5.7 step-up backfill on the workspace schedule PDF
+# export. This router is already gated to IT callers (every endpoint
+# uses `_require_independent_teacher`), so the unconditional 403
+# wrapper is appropriate here.
+_REQUIRE_RECENT_MFA_403 = require_recent_mfa_403()
 
 
 # -- Safe Arabic copy -----------------------------------------------------
@@ -341,6 +347,7 @@ def _render_schedule_pdf(
 @router.get("/independent-teacher/schedule/export.pdf")
 async def export_schedule_pdf(
     current_user: dict = Depends(_require_independent_teacher),
+    _mfa: dict = Depends(_REQUIRE_RECENT_MFA_403),
 ):
     school_id = require_request_school_id(current_user)
     teacher_id = await _resolve_workspace_teacher_id(

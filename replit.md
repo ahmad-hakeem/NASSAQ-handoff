@@ -46,6 +46,7 @@ A comprehensive, multi-tenant school management platform with AI-powered feature
 - **Standardized Alerting**: All critical user-facing warnings, errors, and confirmations must use `NassaqAlertDialog` to ensure a consistent and branded user experience.
 - **API Schema as Source of Truth**: Pydantic models in `shared_models.py` define API request/response schemas, ensuring strict data contracts between frontend and backend.
 - **Robust Deployment Safety**: Destructive database operations are strictly blocked in non-development environments, and schema changes are exclusively managed via Alembic to prevent data loss.
+- **IT §5.7 MFA step-up envelope**: All Independent-Teacher write/export surfaces emit the canonical step-up envelope as **HTTP 403** (`code` ∈ `{MFA_STEPUP_REQUIRED, MFA_PASSKEY_REQUIRED, MFA_RESTORE_REQUIRED}`) so the frontend axios interceptor (`frontend/src/contexts/AuthContext.js`) replays the request after passkey assertion. Use `require_recent_mfa_403()` (unconditional, IT-only routers) or `require_recent_mfa_403_if_independent_teacher()` (shared routes; no-op for non-IT) from `backend/dependencies.py`. Do not call bare `require_recent_mfa` on shared routes — its 401 status is treated as a hard logout by the FE.
 
 ## Product
 - Smart timetable scheduling with drag-and-drop.

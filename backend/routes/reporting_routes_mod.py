@@ -19,12 +19,18 @@ from dependencies import (
     smart_scheduling_engine, TimetableRunStatus, TimetableStatus,
     ConflictType, ConflictSeverity, PreValidationResult, GenerationResult,
     hakim_engine, reporting_engine, export_engine, session_engine,
-    REPORT_TYPES, generate_student_qr_code
+    REPORT_TYPES, generate_student_qr_code,
+    require_recent_mfa_403_if_independent_teacher,
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
 
 
 router = APIRouter()
+
+# Task #201 — IT §5.7 step-up backfill on the workspace-reachable export
+# surfaces (generic report export + legacy attendance export). Non-IT
+# callers (admins, principals, school teachers) pass through unchanged.
+_REQUIRE_RECENT_MFA_403_IT = require_recent_mfa_403_if_independent_teacher()
 
 ADMIN_ROLES_SET = {
     UserRole.PLATFORM_ADMIN.value, UserRole.SCHOOL_ADMIN.value,
@@ -554,6 +560,8 @@ async def export_report_file(
     student_id: Optional[str] = Query(None),
     school_id: Optional[str] = Query(None, description="School ID (platform admins can specify)"),
     current_user: dict = Depends(get_current_user),
+    # Task #201 — IT §5.7 step-up backfill (no-op for non-IT callers).
+    _mfa: dict = Depends(_REQUIRE_RECENT_MFA_403_IT),
 ):
     if report_type not in REPORT_TYPES:
         raise HTTPException(400, f"نوع التقرير غير معروف. الأنواع المتاحة: {', '.join(REPORT_TYPES)}")
@@ -642,11 +650,18 @@ async def export_attendance(
     end_date: str = Query(...),
     fmt: str = Query("csv", pattern="^(csv|json)$"),
     class_id: Optional[str] = Query(None),
+    # Task #201 — IT §5.7 widens this allow-list to include
+    # INDEPENDENT_TEACHER so IT callers can export their own workspace
+    # attendance. Non-IT roles see exactly the same allow-list.
     current_user: dict = Depends(require_roles([
-        UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER
+        UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER
     ])),
+    _mfa: dict = Depends(_REQUIRE_RECENT_MFA_403_IT),
 ):
-    school_id = current_user.get("tenant_id")
+    # Task #201 — fall back to the synthetic IT workspace id for IT
+    # callers (their `users.tenant_id` is NULL by design).
+    from auth_scope import independent_workspace_id as _itw_id
+    school_id = current_user.get("tenant_id") or _itw_id(current_user)
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
     result = await export_engine.export_attendance(school_id, start_date, end_date, class_id, fmt)

@@ -19,7 +19,8 @@ from dependencies import (
     smart_scheduling_engine, TimetableRunStatus, TimetableStatus,
     ConflictType, ConflictSeverity, PreValidationResult, GenerationResult,
     hakim_engine, reporting_engine, export_engine, session_engine,
-    REPORT_TYPES, generate_student_qr_code
+    REPORT_TYPES, generate_student_qr_code,
+    require_recent_mfa_403_if_independent_teacher,
 )
 
 from shared_models import (
@@ -27,6 +28,10 @@ from shared_models import (
 )
 
 router = APIRouter()
+
+# Task #201 — IT §5.7 step-up backfill: a single shared dependency
+# instance so FastAPI can dedupe it across replays.
+_REQUIRE_RECENT_MFA_403_IT = require_recent_mfa_403_if_independent_teacher()
 
 
 
@@ -933,7 +938,11 @@ class UserProfileUpdateExtended(BaseModel):
 @router.put("/users/me/profile")
 async def update_user_profile_extended(
     data: UserProfileUpdateExtended,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    # Task #201 — IT §5.7 step-up backfill. IT-conditional so non-IT
+    # roles (principal, school admin, teacher, parent, platform admin)
+    # keep their existing MFA posture and outcomes unchanged.
+    _mfa: dict = Depends(_REQUIRE_RECENT_MFA_403_IT),
 ):
     """Update current user's profile including title and language"""
     update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}

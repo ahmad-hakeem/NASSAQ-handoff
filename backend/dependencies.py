@@ -504,3 +504,83 @@ def require_recent_mfa(max_age_seconds: int = 300):
         return current_user
 
     return _dep
+
+
+# ---------------------------------------------------------------------------
+# Task #201 — IT §5.7 MFA step-up backfill
+# ---------------------------------------------------------------------------
+#
+# The frontend axios interceptor (frontend/src/contexts/AuthContext.js)
+# replays a request after step-up only when the canonical step-up envelope
+# (``code = MFA_STEPUP_REQUIRED`` / ``MFA_PASSKEY_REQUIRED`` /
+# ``MFA_RESTORE_REQUIRED``) arrives as **HTTP 403**. ``require_recent_mfa``
+# itself emits the same payload but with status 401, which the interceptor
+# does NOT replay (401 is treated as a hard logout). The two helpers below
+# wrap ``require_recent_mfa`` to convert 401 → 403 verbatim, mirroring the
+# pattern Task #199 introduced inline in
+# ``routes/independent_teacher_invite_parent_routes.py``.
+#
+#   * ``require_recent_mfa_403`` — unconditional wrapper. Use on routes
+#     that are already gated to a single role (e.g. an IT-only router).
+#   * ``require_recent_mfa_403_if_independent_teacher`` — IT-conditional.
+#     Non-IT callers (principal, school admin, regular teacher, parent,
+#     platform admin) pass through unchanged so their existing MFA posture
+#     is not regressed. Use on shared routes that an IT user happens to
+#     reach (profile updates, generic exports, student/parent CRUD).
+
+
+def require_recent_mfa_403(max_age_seconds: int = 300):
+    """Return a FastAPI dependency that mirrors ``require_recent_mfa`` but
+    emits the canonical step-up envelope as **HTTP 403** instead of 401.
+    """
+    base = require_recent_mfa(max_age_seconds=max_age_seconds)
+
+    async def _dep(
+        credentials: HTTPAuthorizationCredentials = Depends(security),
+        current_user: dict = Depends(get_current_user),
+    ) -> dict:
+        try:
+            return await base(
+                credentials=credentials, current_user=current_user,
+            )
+        except HTTPException as exc:
+            if (
+                exc.status_code == 401
+                and isinstance(exc.detail, dict)
+                and exc.detail.get("code") in {
+                    "MFA_STEPUP_REQUIRED",
+                    "MFA_PASSKEY_REQUIRED",
+                    "MFA_RESTORE_REQUIRED",
+                }
+            ):
+                raise HTTPException(
+                    status_code=403, detail=exc.detail,
+                ) from exc
+            raise
+
+    return _dep
+
+
+def require_recent_mfa_403_if_independent_teacher(max_age_seconds: int = 300):
+    """Return a FastAPI dependency that enforces ``require_recent_mfa_403``
+    **only** when the caller is an Independent-Teacher account. Non-IT
+    callers pass through untouched so their existing MFA posture, success
+    codes, and 4xx outcomes on the underlying route are unchanged.
+    """
+    base_403 = require_recent_mfa_403(max_age_seconds=max_age_seconds)
+
+    async def _dep(
+        credentials: HTTPAuthorizationCredentials = Depends(security),
+        current_user: dict = Depends(get_current_user),
+    ) -> dict:
+        # Lazy import to avoid a module-load cycle with auth_scope, which
+        # itself imports symbols from dependencies.
+        from auth_scope import is_independent_teacher
+
+        if not is_independent_teacher(current_user):
+            return current_user
+        return await base_403(
+            credentials=credentials, current_user=current_user,
+        )
+
+    return _dep
