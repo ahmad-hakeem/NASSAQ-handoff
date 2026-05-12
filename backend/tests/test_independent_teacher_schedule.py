@@ -12,6 +12,21 @@ from auth_scope import (
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_find, gd_find_one, gd_insert
 
+from tests._it_fixtures import seed_active_passkey, now_ts as _now_ts
+
+
+def _headers_mfa(user_id: str, role: str, tenant_id) -> dict:
+    """Headers carrying a recent webauthn assertion — required by the
+    §5.7 step-up gate on `/independent-teacher/schedule/export.pdf`
+    (Task #201). The caller must also have a real passkey factor
+    seeded via `seed_active_passkey(user_id)`."""
+    token = create_access_token(
+        {"sub": user_id, "role": role, "tenant_id": tenant_id},
+        mfa_recent_at=_now_ts(),
+        mfa_kind="webauthn",
+    )
+    return {"Authorization": f"Bearer {token}"}
+
 
 GRID_PATH = "/independent-teacher/schedule/grid"
 SLOT_PATH = "/independent-teacher/schedule/slot"
@@ -153,8 +168,13 @@ async def test_export_pdf_returns_pdf_bytes(client):
         "day_of_week": "sun", "slot_number": 1, "expected_version": 0,
         "class_id": ctx["class_id"], "subject_id": ctx["subject_id"],
     })
+    # `/independent-teacher/schedule/export.pdf` is gated by the §5.7
+    # IT MFA step-up envelope (Task #201). Seed an active passkey and
+    # mint passkey-backed headers for the export call.
+    await seed_active_passkey(ctx["user"]["id"])
+    h_mfa = _headers_mfa(ctx["user"]["id"], ctx["user"]["role"], ctx["wsid"])
     resp = await client.get(
-        "/independent-teacher/schedule/export.pdf", headers=h,
+        "/independent-teacher/schedule/export.pdf", headers=h_mfa,
     )
     assert resp.status_code == 200, resp.text
     assert resp.headers["content-type"].startswith("application/pdf")

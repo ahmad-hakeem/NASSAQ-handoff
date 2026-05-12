@@ -105,3 +105,4 @@ A comprehensive, multi-tenant school management platform with AI-powered feature
 - **Alembic Docs**: `https://alembic.sqlalchemy.org/en/latest/`
 - **Replit Secrets**: `https://docs.replit.com/misc/secrets`
 - **Hakeem Engine Audit Report**: `docs/superpowers/specs/2026-05-03-hakeem-engine-audit-report.md`
+- **IT Phase 1 §5.9 Exit-Criteria Coverage**: `docs/qa/2026-05-12-it-phase1-exit-criteria.md`

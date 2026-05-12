@@ -18,6 +18,25 @@ from auth_scope import independent_workspace_id
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_insert, gd_find_one, gd_find
 
+from tests._it_fixtures import seed_active_passkey, now_ts as _now_ts
+
+
+def _it_headers_mfa(user: dict) -> dict:
+    """Headers minted with a recent webauthn MFA assertion. Used by the
+    §5.7 step-up-protected smoke rows added in Task #201; the caller
+    must also have a real passkey factor seeded via
+    `seed_active_passkey(user['id'])`."""
+    token = create_access_token(
+        {
+            "sub": user["id"],
+            "role": user["role"],
+            "tenant_id": independent_workspace_id(user),
+        },
+        mfa_recent_at=_now_ts(),
+        mfa_kind="webauthn",
+    )
+    return {"Authorization": f"Bearer {token}"}
+
 
 def _it_headers(user: dict) -> dict:
     token = create_access_token({
@@ -367,9 +386,14 @@ async def test_smoke_row11_personal_scope_attendance_export_xlsx(client):
     )
     assert resp.status_code == 200, resp.text
 
+    # `/export/report/...` is protected by the §5.7 IT MFA step-up
+    # gate (Task #201). Mint a passkey-backed header for the export
+    # call; the un-stepped header still drives `/reports/...` above so
+    # the no-MFA path remains exercised.
+    await seed_active_passkey(ctx["user"]["id"])
     xlsx = await client.get(
         "/export/report/school_attendance?format=xlsx",
-        headers=ctx["headers"],
+        headers=_it_headers_mfa(ctx["user"]),
     )
     assert xlsx.status_code == 200, xlsx.text
     assert xlsx.headers.get("content-type", "").startswith(
