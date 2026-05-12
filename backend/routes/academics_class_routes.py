@@ -210,7 +210,8 @@ async def get_classes(
     if school_id:
         query["school_id"] = school_id
     elif current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
-        query["school_id"] = current_user.get("tenant_id")
+        from auth_scope import independent_workspace_id as _itw_id
+        query["school_id"] = current_user.get("tenant_id") or _itw_id(current_user)
     
     if grade_level:
         query["grade_level"] = grade_level

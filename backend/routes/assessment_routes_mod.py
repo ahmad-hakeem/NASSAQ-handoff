@@ -153,7 +153,7 @@ async def create_assessment(
     current_user: dict = Depends(get_current_user)
 ):
     """Create a new assessment"""
-    if current_user['role'] not in ['teacher', 'school_principal', 'school_sub_admin']:
+    if current_user['role'] not in ['teacher', 'school_principal', 'school_sub_admin', 'independent_teacher']:
         raise HTTPException(status_code=403, detail="Not authorized to create assessments")
     
     # Verify class exists
@@ -168,10 +168,13 @@ async def create_assessment(
     
     assessment_id = str(uuid.uuid4())
     is_pub = getattr(assessment, 'is_published', False)
+    # IT callers: tenant_id is on the JWT but not on the DB users row.
+    from auth_scope import independent_workspace_id as _itw_id
+    effective_tenant = current_user.get('tenant_id') or _itw_id(current_user)
     teacher_id = current_user.get('teacher_id') or current_user['id']
     teacher_in_db = await gd_find_one(db.session, "teachers", {"id": teacher_id})
     if not teacher_in_db:
-        teacher_in_db = await gd_find_one(db.session, "teachers", {"school_id": current_user.get('tenant_id')})
+        teacher_in_db = await gd_find_one(db.session, "teachers", {"school_id": effective_tenant})
         if teacher_in_db:
             teacher_id = teacher_in_db['id']
         else:
@@ -189,7 +192,7 @@ async def create_assessment(
         "due_date": assessment.date,
         "description": assessment.description,
         "status": "published" if is_pub else "draft",
-        "school_id": current_user.get('tenant_id') or class_info.get('school_id'),
+        "school_id": effective_tenant or class_info.get('school_id'),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
@@ -344,13 +347,16 @@ async def update_assessment(
     if not assessment:
         raise HTTPException(status_code=404, detail="Assessment not found")
 
-    tenant_id = current_user.get("tenant_id")
+    # IT callers: derive tenant from itw_* workspace; tenant check is the auth gate.
+    from auth_scope import independent_workspace_id as _itw_id
+    is_it_caller = current_user['role'] == UserRole.INDEPENDENT_TEACHER.value
+    tenant_id = current_user.get("tenant_id") or (_itw_id(current_user) if is_it_caller else None)
     if tenant_id and current_user["role"] != UserRole.PLATFORM_ADMIN.value:
         assess_tenant = assessment.get("tenant_id") or assessment.get("school_id")
         if assess_tenant and assess_tenant != tenant_id:
             raise HTTPException(status_code=404, detail="Assessment not found")
 
-    if current_user['role'] not in ['school_principal', 'school_sub_admin'] and assessment['teacher_id'] != current_user['id']:
+    if not is_it_caller and current_user['role'] not in ['school_principal', 'school_sub_admin'] and assessment['teacher_id'] != current_user['id']:
         raise HTTPException(status_code=403, detail="Not authorized to update this assessment")
     
     update_data = {k: v for k, v in update.model_dump().items() if v is not None}
@@ -358,6 +364,9 @@ async def update_assessment(
     
     await gd_update_one(db.session, "assessments", {"id": assessment_id}, update_data)
     
+    # Propagate IT-derived tenant_id into the follow-up scoped read.
+    if is_it_caller and not current_user.get("tenant_id") and tenant_id:
+        current_user = {**current_user, "tenant_id": tenant_id}
     return await get_assessment(assessment_id, current_user)
 
 @router.delete("/assessments/{assessment_id}")
@@ -394,14 +403,16 @@ async def create_bulk_grades(
     current_user: dict = Depends(get_current_user)
 ):
     """Create or update multiple grades at once for an assessment"""
-    if current_user['role'] not in ['teacher', 'school_principal', 'school_sub_admin']:
+    if current_user['role'] not in ['teacher', 'school_principal', 'school_sub_admin', 'independent_teacher']:
         raise HTTPException(status_code=403, detail="Not authorized to enter grades")
 
     assessment = await gd_find_one(db.session, "assessments", {"id": data.assessment_id})
     if not assessment:
         raise HTTPException(status_code=404, detail="Assessment not found")
 
-    tenant_id = current_user.get("tenant_id")
+    # IT callers: tenant_id is on the JWT but not on the DB users row.
+    from auth_scope import independent_workspace_id as _itw_id
+    tenant_id = current_user.get("tenant_id") or _itw_id(current_user)
     if tenant_id and current_user["role"] != UserRole.PLATFORM_ADMIN.value:
         assess_tenant = assessment.get("tenant_id") or assessment.get("school_id")
         if assess_tenant and assess_tenant != tenant_id:

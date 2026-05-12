@@ -314,7 +314,16 @@ async def test_auth_me_permissions_returns_independent_teacher_set(client):
     assert "schedule.view" in perms
     assert "attendance.record" in perms
     assert "assessments.grade" in perms
+    assert "assessments.edit" in perms  # Task #194 — IT Phase 1 grant
     assert "notifications.view" in perms
+
+
+@pytest.mark.asyncio
+async def test_independent_teacher_slice_grants_assessments_edit():
+    """Task #194 — spec §5.5: IT slice must include ASSESSMENTS_EDIT so an
+    IT can fix a typo / due date / rubric on an assessment they created."""
+    from middleware.rbac import ROLE_PERMISSIONS, Permission
+    assert Permission.ASSESSMENTS_EDIT.value in ROLE_PERMISSIONS["independent_teacher"]
 
 
 @pytest.mark.asyncio

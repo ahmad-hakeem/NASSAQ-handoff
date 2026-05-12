@@ -125,8 +125,11 @@ async def create_attendance(
     current_user: dict = Depends(get_current_user)
 ):
     """Create a single attendance record"""
-    if current_user['role'] not in ['teacher', 'school_principal', 'school_sub_admin', 'platform_admin']:
+    if current_user['role'] not in ['teacher', 'school_principal', 'school_sub_admin', 'platform_admin', 'independent_teacher']:
         raise HTTPException(status_code=403, detail="Not authorized to record attendance")
+    # IT callers carry tenant_id only on the JWT, not on the DB users row.
+    from auth_scope import independent_workspace_id as _itw_id
+    _eff_tenant = current_user.get('tenant_id') or _itw_id(current_user)
     
     # Get student info
     student = await gd_find_one(db.session, "students", {"id": attendance.student_id})
@@ -164,7 +167,7 @@ async def create_attendance(
         await audit_engine.log(
             action=AuditAction.ATTENDANCE_RECORDED.value,
             performed_by=current_user['id'],
-            tenant_id=current_user.get('tenant_id'),
+            tenant_id=_eff_tenant,
             entity_type="attendance",
             entity_id=existing['id'],
             details={
@@ -200,7 +203,7 @@ async def create_attendance(
         "notes": attendance.notes,
         "recorded_by": current_user['id'],
         "recorded_at": datetime.now(timezone.utc).isoformat(),
-        "tenant_id": current_user.get('tenant_id')
+        "tenant_id": _eff_tenant
     }
     
     await gd_insert(db.session, "attendance", attendance_doc)
@@ -215,14 +218,14 @@ async def create_attendance(
         "recorded_by": current_user['id'],
         "date": today,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "tenant_id": current_user.get('tenant_id')
+        "tenant_id": _eff_tenant
     }
     await gd_insert(db.session, "events", event_doc)
     
     await audit_engine.log(
         action=AuditAction.ATTENDANCE_RECORDED.value,
         performed_by=current_user['id'],
-        tenant_id=current_user.get('tenant_id'),
+        tenant_id=_eff_tenant,
         entity_type="attendance",
         entity_id=attendance_id,
         details={
@@ -261,10 +264,11 @@ async def create_bulk_attendance(
     current_user: dict = Depends(get_current_user)
 ):
     """Create multiple attendance records at once (for a whole class)"""
-    if current_user['role'] not in ['teacher', 'school_principal', 'school_sub_admin', 'platform_admin']:
+    if current_user['role'] not in ['teacher', 'school_principal', 'school_sub_admin', 'platform_admin', 'independent_teacher']:
         raise HTTPException(status_code=403, detail="Not authorized to record attendance")
 
-    t_id = current_user.get('tenant_id')
+    from auth_scope import independent_workspace_id as _itw_id
+    t_id = current_user.get('tenant_id') or _itw_id(current_user)
 
     result = await _attendance_engine.create_bulk_class_attendance(
         tenant_id=t_id,

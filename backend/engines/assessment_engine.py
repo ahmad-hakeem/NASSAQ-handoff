@@ -442,7 +442,7 @@ class AssessmentEngine:
                 await self._audit_engine.log(
                     action=AuditAction.GRADES_BULK_RECORDED.value,
                     performed_by=graded_by,
-                    tenant_id=assessment.get("tenant_id", ""),
+                    tenant_id=(assessment.get("tenant_id") or assessment.get("school_id") or tenant_id or ""),
                     entity_type="assessment",
                     entity_id=assessment_id,
                     details={

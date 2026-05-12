@@ -184,7 +184,7 @@ async def seed_default_behaviour_types(
 async def create_behaviour_record(
     data: BehaviourRecordCreate,
     school_id: str,
-    current_user: dict = Depends(require_roles([UserRole.TEACHER, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.TEACHER, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
     """Record a new behaviour incident"""
     record_id = str(uuid.uuid4())
@@ -204,6 +204,9 @@ async def create_behaviour_record(
     from datetime import timedelta
     edit_until = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
     
+    # `behaviour_records.type` is NOT-NULL in the schema; mirror the
+    # behaviour_type's category/name as the legacy `type` value.
+    _legacy_type = (behaviour_type.get("category") or behaviour_type.get("name_en") or "incident")
     record_doc = {
         "id": record_id,
         "tenant_id": school_id,
@@ -212,6 +215,7 @@ async def create_behaviour_record(
         "class_id": data.class_id or student.get("class_id"),
         "behaviour_type_id": data.behaviour_type_id,
         "behaviour_type_name": behaviour_type.get("name_ar"),
+        "type": _legacy_type,
         "category": (data.category.value if data.category else behaviour_type.get("category")),
         "severity": (data.severity.value if data.severity else behaviour_type.get("default_severity")),
         "title": data.title,

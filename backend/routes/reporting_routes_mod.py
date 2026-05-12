@@ -91,7 +91,8 @@ async def get_school_attendance_report(
     current_user: dict = Depends(get_current_user)
 ):
     """Get detailed attendance report by class"""
-    school_id = current_user.get("tenant_id")
+    from auth_scope import independent_workspace_id as _itw_id
+    school_id = current_user.get("tenant_id") or _itw_id(current_user)
     if not school_id:
         raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
     
@@ -558,7 +559,8 @@ async def export_report_file(
         raise HTTPException(400, f"نوع التقرير غير معروف. الأنواع المتاحة: {', '.join(REPORT_TYPES)}")
 
     role = current_user.get("role", "")
-    resolved_school_id = current_user.get("tenant_id")
+    from auth_scope import independent_workspace_id as _itw_id
+    resolved_school_id = current_user.get("tenant_id") or _itw_id(current_user)
 
     if school_id and role == UserRole.PLATFORM_ADMIN.value:
         resolved_school_id = school_id
@@ -568,7 +570,7 @@ async def export_report_file(
     school_id = resolved_school_id
 
     if report_type.startswith("school_") or report_type in ("class_report", "timetable"):
-        allowed_roles = ADMIN_ROLES_SET | {UserRole.TEACHER.value}
+        allowed_roles = ADMIN_ROLES_SET | {UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value}
         if role not in allowed_roles:
             raise HTTPException(403, "ليس لديك صلاحية لتصدير تقارير المدرسة")
 

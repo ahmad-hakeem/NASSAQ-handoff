@@ -206,6 +206,7 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
         Permission.ATTENDANCE_RECORD.value,
         Permission.ASSESSMENTS_VIEW.value,
         Permission.ASSESSMENTS_CREATE.value,
+        Permission.ASSESSMENTS_EDIT.value,
         Permission.ASSESSMENTS_GRADE.value,
         Permission.BEHAVIOUR_VIEW.value,
         Permission.BEHAVIOUR_RECORD.value,

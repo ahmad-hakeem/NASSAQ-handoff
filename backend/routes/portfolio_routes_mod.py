@@ -66,7 +66,7 @@ class EvidenceUpdate(BaseModel):
 
 @router.get("/teacher/portfolio")
 async def get_teacher_portfolio(current_user: dict = Depends(get_current_user)):
-    if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin"):
+    if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin", "independent_teacher"):
         raise HTTPException(status_code=403, detail="غير مصرح")
     teacher_id = current_user["id"]
     school_id = current_user.get("tenant_id")
@@ -85,7 +85,7 @@ async def list_evidence(
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user),
 ):
-    if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin"):
+    if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin", "independent_teacher"):
         raise HTTPException(status_code=403, detail="غير مصرح")
     teacher_id = current_user["id"]
     school_id = current_user.get("tenant_id")
@@ -266,7 +266,7 @@ async def delete_evidence(
 
 @router.get("/teacher/portfolio/progress")
 async def get_portfolio_progress(current_user: dict = Depends(get_current_user)):
-    if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin"):
+    if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin", "independent_teacher"):
         raise HTTPException(status_code=403, detail="غير مصرح")
     teacher_id = current_user["id"]
     school_id = current_user.get("tenant_id")
@@ -276,7 +276,7 @@ async def get_portfolio_progress(current_user: dict = Depends(get_current_user))
 
 @router.get("/teacher/portfolio/evidence-types")
 async def get_evidence_types(current_user: dict = Depends(get_current_user)):
-    if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin"):
+    if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin", "independent_teacher"):
         raise HTTPException(status_code=403, detail="غير مصرح")
     result = {}
     for section_key, type_keys in EVIDENCE_SECTIONS.items():
@@ -299,7 +299,7 @@ async def hakim_evidence_text(
     payload: HakimEvidenceTextRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin"):
+    if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin", "independent_teacher"):
         raise HTTPException(status_code=403, detail="غير مصرح")
 
     mode = (payload.mode or "").strip().lower()
@@ -965,7 +965,7 @@ async def export_portfolio_pdf(
     if fmt not in ("pdf", "docx", "html"):
         raise HTTPException(status_code=400, detail="format must be one of: pdf, docx, html")
 
-    if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin"):
+    if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin", "independent_teacher"):
         raise HTTPException(status_code=403, detail="غير مصرح")
 
     teacher_id = current_user["id"]
@@ -1461,7 +1461,7 @@ class CVItemCreate(BaseModel):
 
 @router.post("/teacher/portfolio/cv-item")
 async def add_cv_item(payload: CVItemCreate, current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "teacher":
+    if current_user["role"] not in ("teacher", "independent_teacher"):
         raise HTTPException(status_code=403, detail="غير مصرح")
     if payload.kind not in CV_KINDS:
         raise HTTPException(status_code=422, detail="invalid_kind")
@@ -1501,7 +1501,7 @@ async def add_cv_item(payload: CVItemCreate, current_user: dict = Depends(get_cu
 
 @router.delete("/teacher/portfolio/cv-item/{item_id}")
 async def delete_cv_item(item_id: str, current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "teacher":
+    if current_user["role"] not in ("teacher", "independent_teacher"):
         raise HTTPException(status_code=403, detail="غير مصرح")
     await _lock_teacher_meta(current_user["id"])
     meta = await _load_meta(current_user["id"])
