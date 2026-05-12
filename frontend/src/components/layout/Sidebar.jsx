@@ -361,42 +361,54 @@ export const Sidebar = ({ children }) => {
     ];
 
     // Teacher Menu Items — Task #79: schedule, portfolio/achievements, notifications nav
+    // Task #189 §5.2: shared items also visible to `independent_teacher`;
+    // the IT-only workspace-settings entry is added below.
     const teacherItems = [
       {
         icon: Home,
         label: t('dashboard'),
         href: '/teacher',
-        roles: ['teacher'],
+        roles: ['teacher', 'independent_teacher'],
       },
       {
         icon: BookOpen,
         label: t('myClasses'),
         href: '/teacher/classes',
-        roles: ['teacher'],
+        roles: ['teacher', 'independent_teacher'],
       },
       {
         icon: Award,
         label: t('myAchievements'),
         href: '/teacher/achievements',
-        roles: ['teacher'],
+        roles: ['teacher', 'independent_teacher'],
       },
       {
         icon: MessageSquare,
         label: t('communicationNotifications'),
         href: '/teacher/communication',
-        roles: ['teacher'],
+        roles: ['teacher', 'independent_teacher'],
       },
       {
         icon: Network,
         label: t('aiInsights'),
         href: '/ai-insights',
-        roles: ['teacher'],
+        roles: ['teacher', 'independent_teacher'],
       },
       {
         icon: Settings,
         label: t('profileSettings'),
         href: '/teacher/settings',
-        roles: ['teacher'],
+        roles: ['teacher', 'independent_teacher'],
+      },
+      // Task #189 §5.2 — Independent-Teacher only: reduced workspace
+      // settings (identity + schedule baseline + active year/term).
+      // Restricted to `independent_teacher` so regular teachers (whose
+      // workspace is the school tenant) never see this entry.
+      {
+        icon: Building2,
+        label: 'إعدادات مساحتي',
+        href: '/teacher/workspace-settings',
+        roles: ['independent_teacher'],
       },
     ];
 

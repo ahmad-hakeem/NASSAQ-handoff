@@ -92,6 +92,15 @@ def register_routes(app, api_router: APIRouter):
     # rather than load-bearing.
     from routes.independent_teacher_bootstrap_routes import router as it_bootstrap_router
     api_router.include_router(it_bootstrap_router)
+    # Phase 2 §5.2 (#189) — IT-only workspace settings (reduced surface).
+    # Mounted WITHOUT _full_tenant_dep so IT callers can reach it; the
+    # router itself enforces an IT role gate per-endpoint and a deny-by-
+    # default allow-list on writes. Principal `/school/settings` paths
+    # stay gated by `_full_tenant_dep` and continue to deny IT (Phase 0).
+    from routes.independent_teacher_workspace_settings_routes import (
+        router as it_workspace_settings_router,
+    )
+    api_router.include_router(it_workspace_settings_router)
     api_router.include_router(scheduling_smart_router, dependencies=_full_tenant_dep)
     api_router.include_router(scheduling_smart_sess_router, dependencies=_full_tenant_dep)
     api_router.include_router(schedule_candidates_router, dependencies=_full_tenant_dep)

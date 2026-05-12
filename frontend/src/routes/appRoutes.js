@@ -66,6 +66,7 @@ const TeacherAchievementsPage = lazy(() => import("../pages/TeacherModule").then
 const TeacherCommunicationPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherCommunicationPage })));
 const TeacherResourcesPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherResourcesPage })));
 const TeacherSettingsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherSettingsPage })));
+const WorkspaceSettingsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.WorkspaceSettingsPage })));
 
 const ProductHubPage = lazy(() => import("../pages/ProductHubPage").then(m => ({ default: m.ProductHubPage })));
 const ProductHubSubmitPage = lazy(() => import("../pages/ProductHubSubmitPage").then(m => ({ default: m.ProductHubSubmitPage })));
@@ -300,6 +301,11 @@ export default function AppRoutes() {
         } />
         <Route path="/teacher/settings" element={
           <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherSettingsPage /></ProtectedRoute>
+        } />
+        {/* Task #189 §5.2 — Independent-Teacher only: reduced workspace
+            settings page. Backend enforces a deny-by-default allow-list. */}
+        <Route path="/teacher/workspace-settings" element={
+          <ProtectedRoute allowedRoles={['independent_teacher']}><WorkspaceSettingsPage /></ProtectedRoute>
         } />
 
         {/* Student Portal Routes */}

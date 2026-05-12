@@ -21,3 +21,5 @@ export { default as TeacherAchievementsPage } from './TeacherAchievementsPage';
 export { default as TeacherCommunicationPage } from './TeacherCommunicationPage';
 export { default as TeacherResourcesPage } from './TeacherResourcesPage';
 export { default as TeacherSettingsPage } from './TeacherSettingsPage';
+// Independent-Teacher only: reduced workspace settings (Task #189 §5.2).
+export { default as WorkspaceSettingsPage } from './WorkspaceSettingsPage';
