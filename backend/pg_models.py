@@ -402,6 +402,7 @@ class ScheduleSession(Base):
     time_slot_name = Column(String, nullable=True)
     start_time = Column(String, nullable=True)
     end_time = Column(String, nullable=True)
+    version = Column(Integer, nullable=False, server_default=text("1"))
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     teacher = relationship("Teacher", foreign_keys=[teacher_id], lazy="selectin")
