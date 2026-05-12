@@ -305,30 +305,34 @@ async def invite_parent(
                     "is_active": True,
                 },
             )
-            # Task #203 (§5.9 #7): on the new-parent path, materialise a
-            # workspace-scoped `users` row so the cohort resolver in
-            # `/notifications/bulk` can find the recipient. We deliberately
-            # SKIP this when:
-            #   (a) parent matched an existing `parents` row (dedupe paths) —
-            #       Phase-2 will introduce a proper portal-onboarding flow;
-            #   (b) payload has no email (`users.email` is NOT NULL globally) —
-            #       phone-only / national_id-only invites stay on the legacy
-            #       parent_ref=parent_id path until Phase-2;
-            #   (c) the email collides with an existing global `users` row —
-            #       a cross-workspace collision would fail the unique index
-            #       and roll back the entire link.
-            parent_user_id_for_ref = parent_id  # fallback: legacy behaviour
-            can_materialise_user = (
-                not existing_parent
-                and bool(payload.email)
-            )
-            if can_materialise_user:
-                email_collision = await gd_find_one(
-                    db.session, "users", {"email": payload.email}
-                )
-                if email_collision:
-                    can_materialise_user = False
-            if can_materialise_user:
+            # Task #203 (§5.9 #7): on EVERY new-parent path, materialise
+            # a workspace-scoped `users` row so the cohort resolver in
+            # `/notifications/bulk` can find the recipient. Dedupe paths
+            # (existing parent reused) keep the legacy parent_ref=parent_id
+            # behaviour and will gain portal accounts via Phase-2 onboarding.
+            #
+            # `users.email` is NOT NULL + globally UNIQUE. To honour both:
+            #   - When the payload has no email, OR a global users row
+            #     already owns that email (cross-workspace collision),
+            #     synthesise a deterministic non-deliverable placeholder
+            #     keyed off the freshly minted parent_id (uuid4 → unique).
+            #     The `.invalid` TLD is reserved (RFC 6761) so this can
+            #     never collide with a real address. The sentinel
+            #     password_hash also blocks any login attempt.
+            parent_user_id_for_ref = parent_id  # legacy fallback (dedupe paths)
+            parent_user_materialised = False
+            user_email_for_insert: Optional[str] = None
+            if not existing_parent:
+                if payload.email:
+                    email_collision = await gd_find_one(
+                        db.session, "users", {"email": payload.email}
+                    )
+                    if not email_collision:
+                        user_email_for_insert = payload.email
+                if user_email_for_insert is None:
+                    user_email_for_insert = (
+                        f"invite+{parent_id}@invite.nassaq.invalid"
+                    )
                 parent_user_id_for_ref = str(uuid.uuid4())
                 now_iso = _utcnow_iso()
                 # `users.password_hash` is NOT NULL. The parent has no
@@ -340,7 +344,7 @@ async def invite_parent(
                     "id": parent_user_id_for_ref,
                     "role": "parent",
                     "tenant_id": workspace_id,
-                    "email": payload.email,
+                    "email": user_email_for_insert,
                     "phone": payload.phone,
                     "full_name": payload.full_name
                         or student.get("pending_parent_name")
@@ -353,6 +357,7 @@ async def invite_parent(
                     "created_at": now_iso,
                     "updated_at": now_iso,
                 })
+                parent_user_materialised = True
 
             link_id = str(uuid.uuid4())
             now = _utcnow_iso()
@@ -411,6 +416,8 @@ async def invite_parent(
                     "student_id": student_id,
                     "parent_id": parent_id,
                     "matched_by": matched_by,
+                    "parent_user_materialised": parent_user_materialised,
+                    "parent_user_id": parent_user_id_for_ref,
                 },
                 actor_name=current_user.get("full_name"),
                 actor_role=current_user.get("role"),

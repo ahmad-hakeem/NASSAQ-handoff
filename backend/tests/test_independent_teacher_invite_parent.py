@@ -174,12 +174,13 @@ async def test_invite_parent_new_creates_atomic_link(client):
 
 # ----------------------------------------------------------------------
 # (a.1) New-parent path with phone only (no email) — Task #203 regression
-# `users.email` is NOT NULL globally, so phone-only invites must NOT
-# attempt to materialise a workspace `users` row. The link still
-# succeeds; `guardian_links.parent_ref` falls back to the parent row id.
+# `users.email` is NOT NULL globally, so phone-only invites synthesise a
+# deterministic non-deliverable placeholder address (.invalid TLD) so
+# the workspace `users` row is always materialised and cohort resolution
+# in `/notifications/bulk` works on every successful new-parent path.
 # ----------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_invite_parent_new_phone_only_no_email_does_not_500(client):
+async def test_invite_parent_new_phone_only_materialises_workspace_user(client):
     user = await _mk_it()
     wsid = independent_workspace_id(user)
     h = _it_headers(user)
@@ -198,27 +199,37 @@ async def test_invite_parent_new_phone_only_no_email_does_not_500(client):
     assert data["matched_by"] == "new"
     parent_id = data["parent"]["id"]
 
-    # No workspace `users` row should have been created (no email).
-    parent_users = await gd_find(
-        db.session, "users",
-        {"role": "parent", "tenant_id": wsid},
-    )
-    assert all(u.get("email") != None for u in parent_users) or \
-        all(u["id"] != parent_id for u in parent_users)
-
-    # Link still wired with parent_ref falling back to parent_id.
+    # Workspace `users` row must exist for the new parent and be
+    # tenant-pinned; placeholder email lives on the .invalid TLD.
     links = await gd_find(db.session, "guardian_links",
                           {"student_id": sid, "is_active": True})
     assert len(links) == 1
     assert links[0]["parent_id"] == parent_id
-    assert links[0]["parent_ref"] == parent_id
+    parent_user_id = links[0]["parent_ref"]
+    assert parent_user_id != parent_id  # synthetic users.id, not parents.id
+    parent_user = await gd_find_one(db.session, "users", {"id": parent_user_id})
+    assert parent_user is not None
+    assert parent_user["role"] == "parent"
+    assert parent_user["tenant_id"] == wsid
+    assert parent_user["password_hash"] == "!invite-pending"
+    assert parent_user["email"].endswith("@invite.nassaq.invalid")
+    assert parent_id in parent_user["email"]
+
+    # Audit row carries the materialisation flag.
+    audits = await gd_find(db.session, "audit_logs", {
+        "action": "INDEPENDENT_TEACHER_PARENT_LINK",
+        "entity_id": sid,
+    })
+    assert len(audits) == 1
+    assert audits[0]["details"]["parent_user_materialised"] is True
+    assert audits[0]["details"]["parent_user_id"] == parent_user_id
 
 
 # ----------------------------------------------------------------------
 # (a.2) New-parent path with national_id only — Task #203 regression
 # ----------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_invite_parent_new_national_id_only_no_email_does_not_500(client):
+async def test_invite_parent_new_national_id_only_materialises_workspace_user(client):
     user = await _mk_it()
     wsid = independent_workspace_id(user)
     h = _it_headers(user)
@@ -241,7 +252,19 @@ async def test_invite_parent_new_national_id_only_no_email_does_not_500(client):
                           {"student_id": sid, "is_active": True})
     assert len(links) == 1
     assert links[0]["parent_id"] == parent_id
-    assert links[0]["parent_ref"] == parent_id
+    parent_user_id = links[0]["parent_ref"]
+    assert parent_user_id != parent_id
+    parent_user = await gd_find_one(db.session, "users", {"id": parent_user_id})
+    assert parent_user is not None
+    assert parent_user["tenant_id"] == wsid
+    assert parent_user["email"].endswith("@invite.nassaq.invalid")
+
+    audits = await gd_find(db.session, "audit_logs", {
+        "action": "INDEPENDENT_TEACHER_PARENT_LINK",
+        "entity_id": sid,
+    })
+    assert len(audits) == 1
+    assert audits[0]["details"]["parent_user_materialised"] is True
 
 
 # ----------------------------------------------------------------------
