@@ -79,13 +79,18 @@ pytest backend/tests/test_independent_teacher_phase1_exit.py -v
 The suite is hermetic: it uses the standard `conftest.py`
 `_db_session` autouse fixture and rolls back at the end of each
 test. No production data is touched. Expected result after
-Task #203: **56 passed, 0 xfailed** — all four prod gaps from
-#202 closed.
+Task #203: **57 passed, 0 xfailed** (56 baseline + 1 new focused
+behaviour-record owner-vs-intruder by-id test added in review) —
+all four prod gaps from #202 closed.
+
+The companion `test_independent_teacher_invite_parent.py` suite
+gained three regression tests (a.1 phone-only, a.2 national-id-only,
+a.3 email-collision fallback) and now reports **15 passed**.
 
 Across the full IT test surface
 (`pytest backend/tests/test_independent_teacher_*.py
 backend/tests/test_it_*.py -q`) the expected result is
-**179 passed, 0 xfailed**. Two legacy tests
+**183 passed, 0 xfailed**. Two legacy tests
 (`test_smoke_row11_personal_scope_attendance_export_xlsx` in
 `test_independent_teacher_phase1_smoke.py` and
 `test_export_pdf_returns_pdf_bytes` in
