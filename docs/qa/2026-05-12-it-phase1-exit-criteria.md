@@ -129,3 +129,16 @@ own the long tail:
   envelope conversion.
 - `test_independent_teacher_phase1_smoke.py` — Phase 1 reuse smoke
   pass across the §7 capability table.
+
+## Phase 2 §6.2b addendum (Task #205)
+
+- `test_independent_teacher_phase2_invitations.py` covers the new
+  three-route envelope: create (happy / idempotent / cross-workspace
+  404 / 422 / step-up envelope), cancel (happy / 409 illegal-state /
+  cross-workspace 404), public accept (new-parent + each of the four
+  §5.6 dedupe paths + global-email collision `.invalid` fallback +
+  tampered/expired/replay token rejection + per-IP rate-limit trip),
+  and §5.6 feature-flag delegation (`IT_PARENT_INVITATIONS_ENABLED=1`).
+- The accept-handler `.invalid` placeholder fallback closes the
+  Task #203 carryover for the four §5.6 dedupe paths
+  (national_id / phone+email / phone / email).

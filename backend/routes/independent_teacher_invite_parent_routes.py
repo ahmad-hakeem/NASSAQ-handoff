@@ -42,6 +42,7 @@ links never rewrite it. Tenant scoping ALWAYS flows through
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -237,6 +238,21 @@ def _conservative_fill(existing: Dict[str, Any], payload: InviteParentRequest) -
 
 # -- Endpoint: POST invite-parent -----------------------------------------
 
+def _parent_invitations_enabled() -> bool:
+    """Phase-2 §6.2 feature flag.
+
+    Default OFF in dev/test so every existing §5.6 test stays green and
+    the v1 "credentials out-of-band" contract is preserved until the
+    §6.2c FE lands. When ON, this route delegates to the §6.2b create
+    endpoint instead of performing the immediate Pending → Linked
+    transition. Read at request time so tests can flip the env var
+    without re-importing.
+    """
+    return os.getenv("IT_PARENT_INVITATIONS_ENABLED", "0").lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 @router.post("/independent-teacher/students/{student_id}/invite-parent")
 async def invite_parent(
     student_id: str,
@@ -248,6 +264,29 @@ async def invite_parent(
     # Require at least one identifier (spec: 422 with safe Arabic).
     if not (payload.phone or payload.email or payload.national_id):
         raise HTTPException(status_code=422, detail=_MSG_NEED_IDENTIFIER)
+
+    # Phase-2 §6.2 — when the invitation envelope is enabled, route the
+    # legacy v1 endpoint through the §6.2b create surface. The same
+    # IT-role + Tier-A MFA gates already cleared above are sufficient
+    # for the create call (we are inlining, not re-dispatching).
+    if _parent_invitations_enabled():
+        if not (payload.phone or payload.email):
+            # The invitation envelope requires a deliverable channel.
+            raise HTTPException(status_code=422, detail=_MSG_NEED_IDENTIFIER)
+        from routes.independent_teacher_invitation_routes import (
+            CreateInvitationRequest, create_parent_invitation,
+        )
+        # Delegate; create_parent_invitation re-runs the workspace
+        # student lookup so cross-tenant ids still 404.
+        return await create_parent_invitation(
+            student_id=student_id,
+            payload=CreateInvitationRequest(
+                parent_email=payload.email,
+                parent_phone=payload.phone,
+            ),
+            current_user=current_user,
+            _mfa=current_user,
+        )
 
     school_id = require_request_school_id(current_user)
     workspace_id = independent_workspace_id(current_user) or school_id

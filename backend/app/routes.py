@@ -128,6 +128,14 @@ def register_routes(app, api_router: APIRouter):
         router as it_invite_parent_router,
     )
     api_router.include_router(it_invite_parent_router)
+    # Phase 2 §6.2b (#205) — IT parent-invitation envelope (create /
+    # cancel / public accept). Router has no global gate; the IT-only
+    # endpoints enforce the role + Tier-A MFA via per-route deps and
+    # the public accept endpoint is unauthenticated + IP rate-limited.
+    from routes.independent_teacher_invitation_routes import (
+        router as it_invitation_router,
+    )
+    api_router.include_router(it_invitation_router)
     api_router.include_router(scheduling_smart_router, dependencies=_full_tenant_dep)
     api_router.include_router(scheduling_smart_sess_router, dependencies=_full_tenant_dep)
     api_router.include_router(schedule_candidates_router, dependencies=_full_tenant_dep)
