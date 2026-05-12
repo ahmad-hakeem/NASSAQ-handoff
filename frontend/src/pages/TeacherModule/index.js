@@ -23,3 +23,5 @@ export { default as TeacherResourcesPage } from './TeacherResourcesPage';
 export { default as TeacherSettingsPage } from './TeacherSettingsPage';
 // Independent-Teacher only: reduced workspace settings (Task #189 §5.2).
 export { default as WorkspaceSettingsPage } from './WorkspaceSettingsPage';
+// Independent-Teacher only: manual schedule editor (Task #193 §5.4).
+export { default as WorkspaceSchedulePage } from './WorkspaceSchedulePage';

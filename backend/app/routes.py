@@ -101,6 +101,14 @@ def register_routes(app, api_router: APIRouter):
         router as it_workspace_settings_router,
     )
     api_router.include_router(it_workspace_settings_router)
+    # Phase 1 §5.4 (#193) — IT-only manual schedule editor (upsert-by-
+    # natural-key with optimistic concurrency on schedule_sessions.version).
+    # Mounted WITHOUT _full_tenant_dep; the router itself enforces the IT
+    # role gate per-endpoint and pins school_id to the caller's workspace.
+    from routes.independent_teacher_schedule_routes import (
+        router as it_schedule_router,
+    )
+    api_router.include_router(it_schedule_router)
     api_router.include_router(scheduling_smart_router, dependencies=_full_tenant_dep)
     api_router.include_router(scheduling_smart_sess_router, dependencies=_full_tenant_dep)
     api_router.include_router(schedule_candidates_router, dependencies=_full_tenant_dep)

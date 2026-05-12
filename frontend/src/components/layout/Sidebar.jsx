@@ -22,6 +22,7 @@ import {
   UserCheck,
   BookOpen,
   Calendar,
+  CalendarDays,
   CalendarCheck,
   ClipboardList,
   BarChart3,
@@ -408,6 +409,13 @@ export const Sidebar = ({ children }) => {
         icon: Building2,
         label: 'إعدادات مساحتي',
         href: '/teacher/workspace-settings',
+        roles: ['independent_teacher'],
+      },
+      // Task #193 §5.4 — Independent-Teacher only: manual schedule editor.
+      {
+        icon: CalendarDays,
+        label: 'جدولي',
+        href: '/teacher/workspace-schedule',
         roles: ['independent_teacher'],
       },
     ];

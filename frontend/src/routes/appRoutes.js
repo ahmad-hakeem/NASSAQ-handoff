@@ -67,6 +67,7 @@ const TeacherCommunicationPage = lazy(() => import("../pages/TeacherModule").the
 const TeacherResourcesPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherResourcesPage })));
 const TeacherSettingsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherSettingsPage })));
 const WorkspaceSettingsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.WorkspaceSettingsPage })));
+const WorkspaceSchedulePage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.WorkspaceSchedulePage })));
 
 const ProductHubPage = lazy(() => import("../pages/ProductHubPage").then(m => ({ default: m.ProductHubPage })));
 const ProductHubSubmitPage = lazy(() => import("../pages/ProductHubSubmitPage").then(m => ({ default: m.ProductHubSubmitPage })));
@@ -306,6 +307,12 @@ export default function AppRoutes() {
             settings page. Backend enforces a deny-by-default allow-list. */}
         <Route path="/teacher/workspace-settings" element={
           <ProtectedRoute allowedRoles={['independent_teacher']}><WorkspaceSettingsPage /></ProtectedRoute>
+        } />
+        {/* Task #193 §5.4 — Independent-Teacher only: manual schedule editor.
+            Backend enforces IT role + workspace scope per-endpoint and uses
+            optimistic concurrency on schedule_sessions.version. */}
+        <Route path="/teacher/workspace-schedule" element={
+          <ProtectedRoute allowedRoles={['independent_teacher']}><WorkspaceSchedulePage /></ProtectedRoute>
         } />
 
         {/* Student Portal Routes */}
