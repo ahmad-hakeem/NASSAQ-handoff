@@ -494,9 +494,12 @@ export const PlatformSettingsPage = () => {
     }
   };
   
-  // Save brand settings (disabled as per requirements)
+  // Task #172 P1: Visual Identity tab is preview-only — there is no
+  // backend endpoint and no transient UI feedback fires from the global
+  // Save button. The Save action is also disabled at the header level
+  // when activeTab === 'brand', so this handler is a defensive no-op.
   const handleSaveBrandSettings = async () => {
-    toast.info(t('brandIdentitySectionDisabled'));
+    return;
   };
   
   // Save contact settings using new API
@@ -834,17 +837,25 @@ export const PlatformSettingsPage = () => {
                 <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-xl">
                   {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
                 </Button>
-                <Button 
-                  className={`rounded-xl ${hasUnsavedChanges ? 'bg-brand-turquoise hover:bg-brand-turquoise/90 animate-pulse' : 'bg-brand-navy hover:bg-brand-navy/90'}`}
+                {/* Task #172 P1: hard-disable the global Save action while
+                    on the Visual Identity tab — that section is preview-only
+                    and has no backend endpoint to write to. */}
+                <Button
+                  className={`rounded-xl ${activeTab === 'brand' ? 'bg-muted text-muted-foreground' : hasUnsavedChanges ? 'bg-brand-turquoise hover:bg-brand-turquoise/90 animate-pulse' : 'bg-brand-navy hover:bg-brand-navy/90'}`}
                   onClick={handleSave}
-                  disabled={loading}
+                  disabled={loading || activeTab === 'brand'}
+                  aria-disabled={loading || activeTab === 'brand'}
+                  title={activeTab === 'brand' ? (isRTL ? 'الهوية البصرية: معاينة فقط' : 'Visual Identity: preview only') : undefined}
+                  data-testid="platform-settings-save-button"
                 >
                   {loading ? (
                     <Loader2 className="h-4 w-4 animate-spin me-2" />
                   ) : (
                     <Save className="h-4 w-4 me-2" />
                   )}
-                  {loading ? t('saving') : hasUnsavedChanges ? (t('saveChanges3')) : t('saveChanges')}
+                  {activeTab === 'brand'
+                    ? (isRTL ? 'معاينة فقط' : 'Preview only')
+                    : (loading ? t('saving') : hasUnsavedChanges ? (t('saveChanges3')) : t('saveChanges'))}
                 </Button>
               </div>
             </div>
@@ -1847,10 +1858,13 @@ export const PlatformSettingsPage = () => {
                         <Button
                           variant="outline"
                           className="rounded-xl"
-                          onClick={() => navigate('/account/settings')}
+                          // Task #172 P0 (review fix): deep-link to the
+                          // Security section. AccountSettingsPage reads the
+                          // URL hash on mount to set activeSection.
+                          onClick={() => navigate('/account/settings#security')}
                           data-testid="goto-account-mfa"
                         >
-                          {isRTL ? 'فتح إعدادات الحساب' : 'Open Account Settings'}
+                          {isRTL ? 'فتح إعدادات الأمان' : 'Open Security Settings'}
                         </Button>
                       </div>
                       

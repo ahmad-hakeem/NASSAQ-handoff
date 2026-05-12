@@ -177,9 +177,34 @@ export const AccountSettingsPage = () => {
   const { isRTL, toggleTheme, toggleLanguage, isDark, language, setLanguage, theme, setTheme } = useTheme();
 
   const [saving, setSaving] = useState(false);
-  const [activeSection, setActiveSection] = useState('profile');
+  // Task #172 P0 (review fix): honor a deep-link hash so other pages
+  // (notably PlatformSettingsPage's MFA CTA → '/account/settings#security')
+  // can land directly on the Security/MFA section. We read window.location
+  // once on mount and validate against the known section ids below.
+  const _initialSection = (() => {
+    if (typeof window === 'undefined') return 'profile';
+    const raw = (window.location.hash || '').replace(/^#/, '').toLowerCase();
+    return ['profile', 'security', 'notifications', 'preferences'].includes(raw)
+      ? raw
+      : 'profile';
+  })();
+  const [activeSection, setActiveSection] = useState(_initialSection);
   const [saveSuccess, setSaveSuccess] = useState(null);
   const [cropModalOpen, setCropModalOpen] = useState(false);
+
+  // Task #172 P0 (review fix): also react to in-app hash changes so a user
+  // already on /account/settings who clicks the deep-link is taken to the
+  // requested section without a full reload.
+  useEffect(() => {
+    const onHash = () => {
+      const raw = (window.location.hash || '').replace(/^#/, '').toLowerCase();
+      if (['profile', 'security', 'notifications', 'preferences'].includes(raw)) {
+        setActiveSection(raw);
+      }
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
 
   const [profile, setProfile] = useState({
     title: 'none', full_name: '', full_name_en: '', email: '', phone: '', avatar_url: '',
