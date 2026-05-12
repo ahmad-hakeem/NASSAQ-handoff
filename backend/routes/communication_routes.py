@@ -9,8 +9,26 @@ from pydantic import BaseModel
 import uuid
 import logging
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
+from auth_scope import independent_workspace_id, AI_INSIGHTS_SCOPE_DENIED_AR
 
 logger = logging.getLogger("nassaq.communication_routes")
+
+
+def _resolve_caller_workspace(current_user: dict) -> Optional[str]:
+    """Resolve the caller's tenant/workspace id for messaging cohort scoping.
+
+    Returns the persisted ``tenant_id`` for school-affiliated users, the
+    synthetic ``itw_{user_id}`` workspace id for independent teachers
+    (covering both pre- and post-bootstrap states), or ``None`` for
+    platform admins who may legitimately broadcast cross-tenant.
+
+    Non-platform callers MUST always resolve to a non-empty workspace; the
+    ``send_message`` route enforces that with a 403 to avoid the
+    "tenant_id is None -> unscoped recipient query" leak that previously
+    let an Independent Teacher's broadcast reach every other independent
+    teacher's students/parents (Task #177, B-3).
+    """
+    return current_user.get("tenant_id") or independent_workspace_id(current_user)
 
 
 class MessageCreate(BaseModel):
@@ -34,13 +52,33 @@ class MessageResponse(BaseModel):
     sent_at: Optional[str] = None
 
 
-async def _resolve_recipient_ids(db, audience: str, school_id: Optional[str], audience_ids: List[str]) -> List[str]:
+async def _resolve_recipient_ids(
+    db,
+    audience: str,
+    school_id: Optional[str],
+    audience_ids: List[str],
+    *,
+    allow_platform_wide: bool = False,
+) -> List[str]:
     """Resolve target user_ids for a given audience scope.
 
     For the ``custom`` audience the supplied IDs are validated against the
     sender's tenant scope so a school principal/admin cannot inject
     notifications into other tenants.
+
+    When ``allow_platform_wide`` is False (the default), a missing
+    ``school_id`` is treated as a fail-closed authorization error and the
+    helper returns an empty recipient list. This prevents an Independent
+    Teacher (or any school-scoped role whose tenant cannot be resolved)
+    from broadcasting cross-tenant via an unscoped recipient query — the
+    leak that motivated Task #177 / B-3. Only PLATFORM_ADMIN-driven
+    broadcasts pass ``allow_platform_wide=True``.
     """
+    if not school_id and not allow_platform_wide:
+        # Fail-closed: never fall through to a tenant-unscoped users query
+        # for a non-platform caller.
+        return []
+
     if audience == "custom":
         clean_ids = [uid for uid in (audience_ids or []) if uid]
         if not clean_ids:
@@ -118,17 +156,29 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
     ):
         """Send or schedule a message"""
-        school_id = current_user.get("tenant_id")
-        
+        is_platform_admin = current_user.get("role") == UserRole.PLATFORM_ADMIN.value
+        school_id = _resolve_caller_workspace(current_user)
+
+        # Fail-closed: any non-platform caller (school principal/admin and,
+        # in the future, an Independent Teacher granted NOTIFICATIONS_SEND)
+        # must resolve to a concrete workspace id. Otherwise the audience
+        # cohort below would fall through to a tenant-unscoped query and
+        # leak across tenants — exactly the B-3 hotfix this task closes.
+        if not school_id and not is_platform_admin:
+            raise HTTPException(status_code=403, detail=AI_INSIGHTS_SCOPE_DENIED_AR)
+
         now = datetime.now(timezone.utc).isoformat()
         message_id = str(uuid.uuid4())
-        
+
         # Determine status
         status = "sent"
         if message.scheduled_at:
             status = "scheduled"
-        
-        # Count recipients
+
+        # Count recipients. We always pass the resolved school_id when the
+        # caller is non-platform; the `if school_id else <unscoped>` ternary
+        # used to silently broaden these counts when tenant resolution
+        # failed.
         recipient_count = 0
         if message.audience == "all":
             recipient_count = await gd_count(db.session, "users", {"tenant_id": school_id}) if school_id else await gd_count(db.session, "users", {})
@@ -163,7 +213,8 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         # Create per-user in-app notifications if sent immediately
         if status == "sent":
             recipient_ids = await _resolve_recipient_ids(
-                db, message.audience, school_id, message.audience_ids or []
+                db, message.audience, school_id, message.audience_ids or [],
+                allow_platform_wide=is_platform_admin,
             )
             for uid in recipient_ids:
                 await gd_insert(db.session, "notifications", {
@@ -418,8 +469,13 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         
         await gd_insert(db.session, "messages", message_doc)
         
-        # Fan-out per-user notifications (platform-wide broadcast)
-        recipient_ids = await _resolve_recipient_ids(db, message.audience, None, message.audience_ids or [])
+        # Fan-out per-user notifications (platform-wide broadcast).
+        # PLATFORM_ADMIN explicitly opts into the cross-tenant cohort here;
+        # every other entry point passes a concrete workspace id.
+        recipient_ids = await _resolve_recipient_ids(
+            db, message.audience, None, message.audience_ids or [],
+            allow_platform_wide=True,
+        )
         for uid in recipient_ids:
             await gd_insert(db.session, "notifications", {
                 "id": str(uuid.uuid4()),

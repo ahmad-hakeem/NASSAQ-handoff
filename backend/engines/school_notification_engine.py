@@ -195,8 +195,19 @@ class SchoolNotificationEngine:
         Every entry in the returned list carries ``user_id`` (the FK target on
         ``notifications.user_id``) so the caller can insert per-user rows that
         the inbox query (``WHERE user_id = current_user.id``) actually reads.
+
+        Fail-closed on missing ``tenant_id``: every cohort below is a
+        ``users``/``students``/``parents`` lookup that joins on tenant. If a
+        caller (or upstream route) ever forgets to pass a tenant id, the
+        SQLAlchemy ``== None`` comparison would silently match either nothing
+        or the wrong rows depending on the column nullability — neither of
+        which is acceptable for a multi-tenant cohort builder. Returning an
+        empty list keeps the cross-tenant leak from B-3 closed regardless of
+        what the route layer does. (Task #177.)
         """
         recipients: List[Dict[str, Any]] = []
+        if not tenant_id:
+            return recipients
 
         async def _users_for_role(roles: List[str]) -> List[Dict[str, Any]]:
             stmt = select(User).where(
