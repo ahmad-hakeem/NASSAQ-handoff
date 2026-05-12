@@ -113,7 +113,7 @@ except Exception:  # pragma: no cover
 
 try:
     import qrcode as _qrcode  # type: ignore
-    from qrcode.image.svg import SvgImage as _SvgImage  # type: ignore
+    from qrcode.image.svg import SvgPathImage as _SvgImage  # type: ignore
 except Exception:  # pragma: no cover
     _qrcode = None  # type: ignore
     _SvgImage = None  # type: ignore
