@@ -211,6 +211,12 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
         Permission.BEHAVIOUR_VIEW.value,
         Permission.BEHAVIOUR_RECORD.value,
         Permission.NOTIFICATIONS_VIEW.value,
+        # Phase 1 §5.6 (Task #198) — IT may send notifications, but only
+        # to the two cohorts exposed by /independent-teacher/communication
+        # /recipients. The send paths in notification_routes_mod.py
+        # enforce per-recipient tenant validation; recipient_role is
+        # rejected outright for IT callers.
+        Permission.NOTIFICATIONS_SEND.value,
     ],
     
     "student": [

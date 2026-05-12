@@ -109,6 +109,15 @@ def register_routes(app, api_router: APIRouter):
         router as it_schedule_router,
     )
     api_router.include_router(it_schedule_router)
+    # Phase 1 §5.6 (Task #198) — IT-only communication recipients router.
+    # Mounted WITHOUT _full_tenant_dep; the router itself enforces an IT
+    # role gate per-endpoint and pins every join by school_id ==
+    # itw_{user_id}. Send paths still go through notification_routes_mod
+    # (with IT-specific hardening added in the same ticket).
+    from routes.independent_teacher_communication_routes import (
+        router as it_communication_router,
+    )
+    api_router.include_router(it_communication_router)
     api_router.include_router(scheduling_smart_router, dependencies=_full_tenant_dep)
     api_router.include_router(scheduling_smart_sess_router, dependencies=_full_tenant_dep)
     api_router.include_router(schedule_candidates_router, dependencies=_full_tenant_dep)

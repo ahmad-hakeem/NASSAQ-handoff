@@ -24,6 +24,7 @@ import {
   UserCog, HeartHandshake, Sparkles, Info
 } from 'lucide-react';
 import { useTranslation } from '../../contexts/ThemeContext';
+import IndependentTeacherCommunicationPage from './IndependentTeacherCommunicationPage';
 
 const TEMPLATES = [
   { id: 'homework', icon: BookOpen, color: 'bg-blue-500', titleKey: 'homeworkReminder', bodyKey: 'homeworkReminderBody' },
@@ -49,7 +50,20 @@ const STAFF_ROLES = [
   { id: 'gifted_coordinator', icon: Sparkles, i18nKey: 'giftedCoordinator' },
 ];
 
+// Phase 1 §5.6 (Task #198) IT dispatcher wrapper — Independent-Teacher accounts get the
+// reduced two-cohort communication surface. The full principal-style
+// wizard below (TeacherCommunicationPageInner) stays untouched for
+// regular teachers. Routing is done via a wrapper so the inner
+// component never has hooks called conditionally.
 export default function TeacherCommunicationPage() {
+  const { user } = useAuth();
+  if ((user?.role || '').toLowerCase() === 'independent_teacher') {
+    return <IndependentTeacherCommunicationPage />;
+  }
+  return <TeacherCommunicationPageInner />;
+}
+
+function TeacherCommunicationPageInner() {
   const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const location = useLocation();
@@ -1255,3 +1269,4 @@ function NotificationCard({ notif, isRTL, onRead, t, variant }) {
     </div>
   );
 }
+

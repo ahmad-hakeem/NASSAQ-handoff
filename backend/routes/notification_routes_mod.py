@@ -197,15 +197,73 @@ async def create_notification_internal(
 
 # Notification APIs
 
+# --- IT send hardening (Task #198 §5.6) -------------------------------
+# Independent-Teacher callers may send notifications, but ONLY to the
+# two cohorts surfaced by /independent-teacher/communication/recipients.
+# Server-side enforcement (the frontend's reduced UI is convenience):
+#   * `recipient_role` is rejected outright (no role-broadcast allowed).
+#   * Every `recipient_id` must resolve to a user inside the IT's
+#     workspace via either students.user_id == uid (cohort: my_students)
+#     or guardian_links(parent_ref=uid, tenant_id=workspace, is_active).
+# Mismatches return 403 — writes must surface the rejection.
+_IT_RECIPIENT_ROLE_BLOCKED_AR = "لا يمكن للمعلم المستقل البث حسب الدور."
+_IT_RECIPIENT_OUT_OF_SCOPE_AR = "المستلم غير ضمن مساحتك."
+
+
+async def _it_validate_recipients_or_403(current_user: dict, recipient_ids: List[str]) -> None:
+    """Reject any recipient that is not a student/parent in the IT's workspace.
+
+    Canonical IT membership = ``users.tenant_id == itw_{user_id}`` AND
+    ``role in {student, parent}`` AND ``is_active``. The IT student
+    creation flow always materialises the backing user with this exact
+    shape (`backend/routes/student_creation_routes.py`), so a single
+    `users` lookup is both sufficient and tamper-resistant. 403 (not
+    404) — writes must surface the rejection per spec §5.6.
+    """
+    from auth_scope import is_independent_teacher, independent_workspace_id
+    if not is_independent_teacher(current_user):
+        return
+    cleaned = [rid for rid in (recipient_ids or []) if rid]
+    if not cleaned:
+        return
+    school_id = independent_workspace_id(current_user)
+    if not school_id:
+        raise HTTPException(status_code=403, detail=_IT_RECIPIENT_OUT_OF_SCOPE_AR)
+    users = await gd_find(
+        db.session, "users",
+        {
+            "id": {"$in": cleaned},
+            "tenant_id": school_id,
+            "role": {"$in": ["student", "parent"]},
+            "is_active": True,
+        },
+        limit=2000,
+    )
+    allowed = {
+        u["id"] for u in users
+        if u.get("id") and u.get("tenant_id") == school_id
+    }
+    for rid in cleaned:
+        if rid not in allowed:
+            raise HTTPException(status_code=403, detail=_IT_RECIPIENT_OUT_OF_SCOPE_AR)
+
+
 @router.post("/notifications")
 async def create_notification(
     notification: NotificationCreate,
     current_user: dict = Depends(get_current_user)
 ):
     """Create a single notification"""
-    if current_user['role'] not in ['platform_admin', 'school_principal', 'school_sub_admin', 'school_admin', 'teacher']:
+    if current_user['role'] not in ['platform_admin', 'school_principal', 'school_sub_admin', 'school_admin', 'teacher', 'independent_teacher']:
         raise HTTPException(status_code=403, detail="Not authorized to create notifications")
-    
+
+    # IT hardening — Task #198 §5.6.
+    if current_user.get('role') == 'independent_teacher':
+        if notification.recipient_role:
+            raise HTTPException(status_code=403, detail=_IT_RECIPIENT_ROLE_BLOCKED_AR)
+        if notification.recipient_id:
+            await _it_validate_recipients_or_403(current_user, [notification.recipient_id])
+
     if notification.recipient_role and not notification.recipient_id:
         query = {"role": notification.recipient_role}
         tenant_id = current_user.get('tenant_id')
@@ -293,9 +351,22 @@ async def create_bulk_notifications(
     current_user: dict = Depends(get_current_user)
 ):
     """Create notifications for multiple recipients or role-based"""
-    if current_user['role'] not in ['platform_admin', 'school_principal', 'school_sub_admin', 'school_admin']:
+    if current_user['role'] not in ['platform_admin', 'school_principal', 'school_sub_admin', 'school_admin', 'independent_teacher']:
         raise HTTPException(status_code=403, detail="Not authorized to create bulk notifications")
-    
+
+    # IT hardening — Task #198 §5.6.
+    if current_user.get('role') == 'independent_teacher':
+        if data.recipient_role:
+            raise HTTPException(status_code=403, detail=_IT_RECIPIENT_ROLE_BLOCKED_AR)
+        await _it_validate_recipients_or_403(current_user, data.recipient_ids)
+        # Tag the persisted rows with the IT workspace id even when the
+        # caller's `users.tenant_id` has not yet been backfilled — keeps
+        # downstream tenant scoping (notification list, audit) honest.
+        from auth_scope import independent_workspace_id as _itw
+        _wsid = _itw(current_user)
+        if _wsid:
+            current_user = {**current_user, 'tenant_id': _wsid}
+
     recipient_ids = data.recipient_ids.copy()
     
     # If role-based, find all users with that role
