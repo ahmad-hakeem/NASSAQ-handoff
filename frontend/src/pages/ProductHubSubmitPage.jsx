@@ -15,6 +15,7 @@ import {
   Send, ArrowRight, Monitor, Loader2, CheckCircle2,
   User, FileText, Sparkles, Wand2, MessageCircle, Zap,
   Eye, Shield, Lightbulb, ArrowLeft, PenLine, RefreshCw, Calendar, Clock,
+  ImagePlus, X, Image as ImageIcon, Camera,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -24,6 +25,10 @@ const authHeaders = () => {
 
 const HAKIM_FALLBACK = '/hakim-poses/friendly-greeting.png';
 const hakimImgError = (e) => { if (e.target.src !== HAKIM_FALLBACK) e.target.src = HAKIM_FALLBACK; };
+
+const MAX_EVIDENCE_IMAGES = 3;
+const MAX_EVIDENCE_SIZE_MB = 5;
+const ALLOWED_EVIDENCE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
 const STEPS = [
   { key: 'reporter', label: 'المُبلِّغ', icon: User },
@@ -171,6 +176,8 @@ export function ProductHubSubmitPage() {
   const [generatingExpected, setGeneratingExpected] = useState(false);
   const [generatingTitle, setGeneratingTitle] = useState(false);
   const [titleSuggestions, setTitleSuggestions] = useState([]);
+  const [uploadingEvidence, setUploadingEvidence] = useState(false);
+  const [evidencePreview, setEvidencePreview] = useState(null);
   const [hakimMsgIndex, setHakimMsgIndex] = useState(0);
   const [hakimVisible, setHakimVisible] = useState(true);
   const [hakimTyping, setHakimTyping] = useState(false);
@@ -346,6 +353,63 @@ export function ProductHubSubmitPage() {
       setGeneratingTitle(false);
     }
   }, [form, triggerHakimReaction]);
+
+  const handleEvidenceUpload = useCallback(async (files) => {
+    if (!files || files.length === 0) return;
+    const current = form.attachments || [];
+    const remaining = MAX_EVIDENCE_IMAGES - current.length;
+    if (remaining <= 0) {
+      toast.error(`الحد الأقصى ${MAX_EVIDENCE_IMAGES} لقطات شاشة`);
+      return;
+    }
+    const toUpload = Array.from(files).slice(0, remaining);
+    if (files.length > remaining) {
+      toast.error(`تم تجاهل ${files.length - remaining} ملف — الحد الأقصى ${MAX_EVIDENCE_IMAGES}`);
+    }
+
+    setUploadingEvidence(true);
+    try {
+      const uploaded = [];
+      for (const file of toUpload) {
+        if (!ALLOWED_EVIDENCE_TYPES.includes(file.type)) {
+          toast.error(`نوع الملف غير مدعوم: ${file.name} — استخدم PNG أو JPG أو WEBP`);
+          continue;
+        }
+        if (file.size > MAX_EVIDENCE_SIZE_MB * 1024 * 1024) {
+          toast.error(`حجم ${file.name} يتجاوز ${MAX_EVIDENCE_SIZE_MB} ميغابايت`);
+          continue;
+        }
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+          const res = await axios.post('/api/product-hub/upload-evidence', fd, {
+            headers: { ...authHeaders(), 'Content-Type': 'multipart/form-data' },
+          });
+          if (res.data?.file_url) uploaded.push(res.data.file_url);
+        } catch (err) {
+          const detail = err.response?.data?.detail;
+          const msg = (typeof detail === 'object' && detail?.message)
+            ? detail.message
+            : (typeof detail === 'string' ? detail : `فشل رفع ${file.name}`);
+          toast.error(msg);
+        }
+      }
+      if (uploaded.length > 0) {
+        setForm(f => ({ ...f, attachments: [...(f.attachments || []), ...uploaded] }));
+        toast.success(`تم رفع ${uploaded.length} لقطة شاشة`);
+        triggerHakimReaction('improved');
+      }
+    } finally {
+      setUploadingEvidence(false);
+    }
+  }, [form.attachments, triggerHakimReaction]);
+
+  const removeEvidence = useCallback((idx) => {
+    setForm(f => ({
+      ...f,
+      attachments: (f.attachments || []).filter((_, i) => i !== idx),
+    }));
+  }, []);
 
   const validateStep = (stepIdx) => {
     if (stepIdx === 0) {
@@ -658,6 +722,16 @@ export function ProductHubSubmitPage() {
                   improving={improvingField === 'title'}
                   onImprove={() => improveWithHakim('title')}
                 />
+
+                <Separator className="my-2" />
+
+                <EvidenceUploader
+                  attachments={form.attachments || []}
+                  uploading={uploadingEvidence}
+                  onUpload={handleEvidenceUpload}
+                  onRemove={removeEvidence}
+                  onPreview={setEvidencePreview}
+                />
               </CardContent>
             </Card>
           )}
@@ -694,6 +768,29 @@ export function ProductHubSubmitPage() {
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">معلومات إضافية</p>
                       <p className="text-sm bg-slate-50 p-3 rounded-lg border border-slate-200">{form.additional_info}</p>
+                    </div>
+                  )}
+                  {(form.attachments || []).length > 0 && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1.5">
+                        <ImageIcon className="h-3.5 w-3.5 text-brand-turquoise" />
+                        لقطات الشاشة المرفقة ({form.attachments.length})
+                      </p>
+                      <div className="grid grid-cols-3 gap-3">
+                        {form.attachments.map((url, idx) => (
+                          <button
+                            type="button"
+                            key={idx}
+                            onClick={() => setEvidencePreview(url)}
+                            className="group relative aspect-video rounded-lg overflow-hidden border border-slate-200 bg-slate-50 hover:border-brand-turquoise hover:shadow-md transition-all"
+                          >
+                            <img src={url} alt={`دليل ${idx + 1}`} className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                              <Eye className="h-5 w-5 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
+                            </div>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </CardContent>
@@ -750,8 +847,128 @@ export function ProductHubSubmitPage() {
             </div>
           </div>
         </div>
+
+        {evidencePreview && (
+          <div
+            className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-6"
+            onClick={() => setEvidencePreview(null)}
+          >
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setEvidencePreview(null); }}
+              className="absolute top-6 left-6 w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition"
+              aria-label="إغلاق"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <img
+              src={evidencePreview}
+              alt="معاينة"
+              className="max-w-full max-h-full rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        )}
       </div>
     </Sidebar>
+  );
+}
+
+function EvidenceUploader({ attachments, uploading, onUpload, onRemove, onPreview }) {
+  const fileInputRef = React.useRef(null);
+  const canAdd = attachments.length < MAX_EVIDENCE_IMAGES && !uploading;
+
+  return (
+    <div className="rounded-xl border border-brand-turquoise/20 bg-gradient-to-l from-brand-turquoise/5 via-white to-brand-purple/5 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-brand-turquoise/10 flex items-center justify-center">
+            <Camera className="h-4 w-4 text-brand-turquoise" />
+          </div>
+          <div>
+            <Label className="text-sm font-medium">لقطات شاشة كدليل</Label>
+            <p className="text-[10px] text-muted-foreground">
+              اختياري — حتى {MAX_EVIDENCE_IMAGES} صور (PNG / JPG / WEBP) بحد أقصى {MAX_EVIDENCE_SIZE_MB} ميغابايت لكل صورة
+            </p>
+          </div>
+        </div>
+        <span className="text-[11px] font-medium text-brand-navy/70">
+          {attachments.length}/{MAX_EVIDENCE_IMAGES}
+        </span>
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          onUpload(e.target.files);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }}
+      />
+
+      <div className="grid grid-cols-3 gap-3">
+        {attachments.map((url, idx) => (
+          <div
+            key={idx}
+            className="group relative aspect-video rounded-lg overflow-hidden border border-slate-200 bg-slate-50"
+          >
+            <img
+              src={url}
+              alt={`دليل ${idx + 1}`}
+              className="w-full h-full object-cover cursor-zoom-in"
+              onClick={() => onPreview(url)}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                e.currentTarget.parentElement.classList.add('flex', 'items-center', 'justify-center');
+                const fallback = document.createElement('span');
+                fallback.className = 'text-[11px] text-muted-foreground';
+                fallback.textContent = 'تعذّر عرض الصورة';
+                e.currentTarget.parentElement.appendChild(fallback);
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => onRemove(idx)}
+              className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-red-500/90 hover:bg-red-600 text-white flex items-center justify-center shadow-md opacity-90 group-hover:opacity-100 transition"
+              aria-label="حذف"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+            <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent text-white text-[10px] px-2 py-1">
+              لقطة {idx + 1}
+            </div>
+          </div>
+        ))}
+
+        {canAdd && (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="aspect-video rounded-lg border-2 border-dashed border-brand-turquoise/40 hover:border-brand-turquoise hover:bg-brand-turquoise/5 transition flex flex-col items-center justify-center gap-1.5 text-brand-turquoise"
+          >
+            <ImagePlus className="h-5 w-5" />
+            <span className="text-[11px] font-medium">إضافة لقطة</span>
+          </button>
+        )}
+
+        {uploading && (
+          <div className="aspect-video rounded-lg border border-brand-turquoise/30 bg-brand-turquoise/5 flex flex-col items-center justify-center gap-1.5 text-brand-turquoise">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span className="text-[11px] font-medium">جارٍ الرفع...</span>
+          </div>
+        )}
+      </div>
+
+      {attachments.length === 0 && !uploading && (
+        <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+          <Lightbulb className="h-3 w-3 text-brand-turquoise" />
+          إرفاق لقطة شاشة يساعد الفريق على فهم المشكلة بشكل أسرع
+        </p>
+      )}
+    </div>
   );
 }
 

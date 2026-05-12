@@ -29,7 +29,7 @@ Collections:
 - issue_duplicates_map: Duplicate detection results
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Body
+from fastapi import APIRouter, HTTPException, Depends, Query, Body, UploadFile, File
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 import uuid
@@ -76,6 +76,7 @@ from models.product_hub_models import (
     VALID_ISSUE_TYPES, VALID_ACCOUNT_TYPES, VALID_SECTIONS, VALID_TEAMS,
     IssueType, IssuePriority, IssueStatus,
     CommentType, AuditRole,
+    ALLOWED_EVIDENCE_IMAGE_TYPES, MAX_EVIDENCE_IMAGE_SIZE_MB,
 )
 
 logger = logging.getLogger("nassaq.product_hub")
@@ -419,6 +420,85 @@ async def get_hub_config(current_user: dict = Depends(get_current_user)):
             "can_view_hakim_insights": main_admin,
             "can_view_duplicates": main_admin,
         },
+    }
+
+
+@router.post("/upload-evidence")
+async def upload_evidence(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Upload an image evidence (screenshot) for a Create Challenge submission.
+
+    Returns a base64 data URL the client stores in `attachments[]` on the
+    challenge payload. Authorization mirrors challenge-creation rights via the
+    MANAGE_ATTACHMENTS hub action. v1 accepts PNG/JPEG/WEBP only and enforces a
+    server-side size cap of MAX_EVIDENCE_IMAGE_SIZE_MB.
+    """
+    enforce_permission(current_user, HubAction.MANAGE_ATTACHMENTS)
+
+    import base64
+    max_bytes = MAX_EVIDENCE_IMAGE_SIZE_MB * 1024 * 1024
+
+    fname = (file.filename or "").lower()
+    ext = fname[fname.rfind("."):] if "." in fname else ""
+    ext_to_type = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+    }
+    inferred = ext_to_type.get(ext)
+    ctype = (file.content_type or "").lower()
+    if ctype in ("", "application/octet-stream") and inferred:
+        ctype = inferred
+    if ctype not in ALLOWED_EVIDENCE_IMAGE_TYPES:
+        _hub_error(400, "INVALID_FILE_TYPE", "صيغة الملف غير مدعومة — استخدم PNG أو JPG أو WEBP")
+    final_ctype = inferred or ctype
+
+    chunks: list[bytes] = []
+    total = 0
+    CHUNK = 64 * 1024
+    while True:
+        chunk = await file.read(CHUNK)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            _hub_error(
+                400,
+                "FILE_TOO_LARGE",
+                f"حجم لقطة الشاشة يتجاوز {MAX_EVIDENCE_IMAGE_SIZE_MB} ميغابايت",
+            )
+        chunks.append(chunk)
+    content = b"".join(chunks)
+    if not content:
+        _hub_error(400, "EMPTY_FILE", "الملف فارغ")
+
+    # Verify the bytes are actually a real image of an allowed format.
+    # This blocks MIME-spoofing where a renamed binary is uploaded as .png.
+    try:
+        from PIL import Image, UnidentifiedImageError
+        from io import BytesIO
+        with Image.open(BytesIO(content)) as img:
+            img.verify()
+        pil_format_to_mime = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}
+        with Image.open(BytesIO(content)) as img2:
+            actual_mime = pil_format_to_mime.get((img2.format or "").upper())
+    except (UnidentifiedImageError, Exception):
+        _hub_error(400, "INVALID_IMAGE", "الملف ليس صورة صالحة")
+    if not actual_mime or actual_mime not in ALLOWED_EVIDENCE_IMAGE_TYPES:
+        _hub_error(400, "INVALID_IMAGE", "الملف ليس صورة بصيغة مدعومة")
+    # Trust the verified format over any client-supplied or extension-inferred type.
+    final_ctype = actual_mime
+
+    encoded = base64.b64encode(content).decode("utf-8")
+    return {
+        "success": True,
+        "file_url": f"data:{final_ctype};base64,{encoded}",
+        "file_name": file.filename,
+        "content_type": final_ctype,
+        "size": len(content),
     }
 
 

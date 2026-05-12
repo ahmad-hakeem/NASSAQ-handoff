@@ -184,6 +184,13 @@ ALLOWED_ATTACHMENT_EXTENSIONS = {
 MAX_ATTACHMENT_SIZE_MB = 10
 MAX_ATTACHMENTS_PER_ISSUE = 10
 
+# Evidence (image-only) constraints used by the Create Challenge upload endpoint
+ALLOWED_EVIDENCE_IMAGE_TYPES = {
+    "image/png", "image/jpeg", "image/webp",
+}
+MAX_EVIDENCE_IMAGE_SIZE_MB = 5
+MAX_EVIDENCE_IMAGES_PER_ISSUE = 3
+
 
 class AttachmentModel(BaseModel):
     name: str
@@ -338,6 +345,30 @@ ACCOUNT_SECTION_MAP = {
     "website_user": "الموقع الإلكتروني",
 }
 
+def _attachment_record(entry: str, idx: int) -> dict:
+    """Normalize an attachment string (filename or data URL) into a stored record."""
+    if isinstance(entry, str) and entry.startswith("data:"):
+        try:
+            header = entry.split(",", 1)[0]
+            mime = header[5:].split(";", 1)[0].strip().lower()
+        except Exception:
+            mime = ""
+        ext_map = {
+            "image/png": ".png",
+            "image/jpeg": ".jpg",
+            "image/webp": ".webp",
+        }
+        name = f"evidence-{idx + 1}{ext_map.get(mime, '')}"
+        return {
+            "name": name,
+            "url": entry,
+            "type": mime,
+            "kind": "image",
+            "order": idx,
+        }
+    return {"name": entry, "url": entry, "type": "", "order": idx}
+
+
 class IssueCreate(BaseModel):
     issue_type: str
     employee_name: str
@@ -477,10 +508,55 @@ class IssueCreate(BaseModel):
             if len(v) > MAX_ATTACHMENTS_PER_ISSUE:
                 raise ValueError(f"الحد الأقصى للمرفقات هو {MAX_ATTACHMENTS_PER_ISSUE}")
             import os
-            for filename in v:
-                ext = os.path.splitext(filename.lower())[1]
-                if ext and ext not in ALLOWED_ATTACHMENT_EXTENSIONS:
-                    raise ValueError(f"نوع الملف غير مسموح: {ext}")
+            # Cap raw size of data URLs defensively (base64 of 5 MB ≈ 6.7 MB)
+            MAX_DATA_URL = 7 * 1024 * 1024
+            image_count = 0
+            for entry in v:
+                if not isinstance(entry, str) or not entry.strip():
+                    raise ValueError("مرفق غير صالح")
+                if entry.startswith("data:"):
+                    try:
+                        header, b64data = entry.split(",", 1)
+                        mime = header[5:].split(";", 1)[0].strip().lower()
+                    except Exception:
+                        raise ValueError("صيغة المرفق غير مدعومة")
+                    if mime not in ALLOWED_EVIDENCE_IMAGE_TYPES:
+                        raise ValueError(f"نوع الملف غير مسموح: {mime}")
+                    if len(entry) > MAX_DATA_URL:
+                        raise ValueError(
+                            f"حجم لقطة الشاشة يتجاوز {MAX_EVIDENCE_IMAGE_SIZE_MB} ميغابايت"
+                        )
+                    # Defense-in-depth: verify the base64 payload is actually a
+                    # real image of the declared format (blocks payload spoofing).
+                    try:
+                        import base64 as _b64
+                        from io import BytesIO as _BIO
+                        from PIL import Image as _Img
+                        raw = _b64.b64decode(b64data, validate=True)
+                        if len(raw) > MAX_EVIDENCE_IMAGE_SIZE_MB * 1024 * 1024:
+                            raise ValueError(
+                                f"حجم لقطة الشاشة يتجاوز {MAX_EVIDENCE_IMAGE_SIZE_MB} ميغابايت"
+                            )
+                        with _Img.open(_BIO(raw)) as _im:
+                            _im.verify()
+                        with _Img.open(_BIO(raw)) as _im2:
+                            fmt = (_im2.format or "").upper()
+                        fmt_to_mime = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}
+                        if fmt_to_mime.get(fmt) != mime:
+                            raise ValueError("محتوى الصورة لا يطابق النوع المعلن")
+                    except ValueError:
+                        raise
+                    except Exception:
+                        raise ValueError("الملف ليس صورة صالحة")
+                    image_count += 1
+                else:
+                    ext = os.path.splitext(entry.lower())[1]
+                    if ext and ext not in ALLOWED_ATTACHMENT_EXTENSIONS:
+                        raise ValueError(f"نوع الملف غير مسموح: {ext}")
+            if image_count > MAX_EVIDENCE_IMAGES_PER_ISSUE:
+                raise ValueError(
+                    f"الحد الأقصى للقطات الشاشة هو {MAX_EVIDENCE_IMAGES_PER_ISSUE}"
+                )
         return v
 
     def to_issue_document(self, user_id: str, user: dict) -> dict:
@@ -547,7 +623,8 @@ class IssueCreate(BaseModel):
             },
 
             "attachments": [
-                {"name": a, "url": a, "type": ""} for a in (self.attachments or [])
+                _attachment_record(a, idx)
+                for idx, a in enumerate(self.attachments or [])
             ],
 
             "submission_metadata": {
