@@ -129,10 +129,10 @@ Phase 0 contains the work that **must land before any Phase 1 implementation tic
 ### 4.4 B-4 — Teach `TenantIsolation` about synthetic ids
 
 - **Goal.** No reuse path silently broadens results because middleware did not recognise `itw_*`.
-- **Touch:** `backend/middleware/tenant_isolation.py` — `TenantIsolation.get_user_tenant_id`, `get_accessible_tenant_ids`, `apply_tenant_filter`, and `TenantAwareQuery.build_query` must treat an IT user with `tenant_id == None` and a derivable workspace id as having `accessible_tenants == [itw_{user_id}]`.
-- **Equivalent fallback (acceptable):** every reuse path explicitly calls `require_request_school_id` and never depends on middleware-only filtering. Pick one and apply it consistently.
+- **Decision (frozen — not "either/or").** Middleware is taught about workspace ids. `backend/middleware/tenant_isolation.py` becomes the single source of truth for tenant scoping. `require_request_school_id` is retained as the canonical *route-level* dependency for explicit `school_id` usage (queries, write defaults, audit-log tagging) and as a defensive belt-and-suspenders, but routes do **not** ship their own ad-hoc `itw_{user_id}` derivation.
+- **Touch:** `backend/middleware/tenant_isolation.py` — `TenantIsolation.get_user_tenant_id`, `get_accessible_tenant_ids`, `apply_tenant_filter`, and `TenantAwareQuery.build_query` must compute `accessible_tenants == [itw_{user_id}]` for any user with `role == 'independent_teacher'` whose `users.tenant_id` is either `itw_{user_id}` (post-bootstrap) **or** `None` (pre-bootstrap, see tenant_id contract in §5.1). The derivation is centralised in a single helper `_resolve_independent_teacher_workspace_id(user)` shared with `auth_scope`.
 - **Add:** `'student_grades', 'student_daily_scores', 'portfolio_*', 'assessments', 'behaviour_records', 'communication_*'` to `TENANT_SCOPED_COLLECTIONS` if they are not already covered, so the `warn_missing_tenant_filter` heuristic flags new regressions.
-- **Acceptance:** an IT user calling each reuse-path endpoint returns only `school_id == itw_{user_id}` rows in dev fixtures with two co-existing IT workspaces.
+- **Acceptance:** (a) an IT user calling each reuse-path endpoint returns only `school_id == itw_{user_id}` rows in dev fixtures with two co-existing IT workspaces; (b) ripgrep across `backend/routes/` finds zero copies of the `itw_{user_id}` derivation logic — the only call sites are `auth_scope` and the middleware.
 
 ### 4.5 B-5 — v1 quotas
 
@@ -174,8 +174,25 @@ Phase 1 ships the user-visible Independent Teacher account. Every item below ass
 
 **Net-new.** This is the only legitimate workspace creation path.
 
+#### `tenant_id` lifecycle contract (frozen)
+
+This contract is the single source of truth for what `users.tenant_id` means at every phase, and is what middleware (B-4), routes, and frontend guards rely on.
+
+| Phase | `users.tenant_id` | `auth_scope.independent_workspace_id(user)` | `users.role` | What is allowed |
+|---|---|---|---|---|
+| **Pre-registration** | n/a | n/a | n/a | nothing (anonymous) |
+| **Pre-bootstrap** (account exists, workspace does not) | `NULL` | returns `itw_{user_id}` (derived deterministically) | `independent_teacher` | only: `/auth/*`, MFA enrolment, `GET /auth/me`, `GET /auth/me/permissions`, `POST /independent-teacher/bootstrap`. Every other authenticated route returns 409 with the safe Arabic message `"يجب إكمال إنشاء مساحتك أولًا."` via a new `require_workspace_materialised` dependency. |
+| **Post-bootstrap** | `itw_{user_id}` | returns `itw_{user_id}` (read from `users.tenant_id`) | `independent_teacher` | full IT slice per §5.2–§5.8 |
+
+Implications:
+- Middleware (B-4) treats `tenant_id == NULL` for an `independent_teacher` as `accessible_tenants == [itw_{user_id}]` — but **only** the bootstrap endpoint and MFA flows accept that pre-bootstrap state. Every other route blocks on `require_workspace_materialised`. This eliminates the contradiction the reviewer flagged between B-4's "tenant_id == None" and §5.1's "tenant_id is set after bootstrap".
+- The bootstrap transaction is the only writer of `users.tenant_id` for IT users. No login flow, no migration, and no admin tool sets it elsewhere.
+- The pre-bootstrap derivation (`itw_{user_id}` synthesised from `users.id`) lives in exactly one helper (`_resolve_independent_teacher_workspace_id`) per §4.4. Any other call site is a bug.
+
+#### Endpoint contract
+
 - **Endpoint:** `POST /independent-teacher/bootstrap` — owned by `backend/routes/teacher_registration_routes.py` (or a new `independent_teacher_routes.py`; the spec is neutral on file placement).
-- **Auth:** authenticated IT user whose workspace row does not yet exist. Idempotent — replaying the call against an already-bootstrapped workspace returns the existing workspace summary, never duplicates rows.
+- **Auth:** authenticated IT user, MFA-enrolled, **with a recent MFA assertion** (see ordering below). Workspace row does not yet exist. Idempotent — replaying the call against an already-bootstrapped workspace returns the existing workspace summary, never duplicates rows.
 - **Atomic transaction inserts:**
   1. `schools` — `id = itw_{user_id}`, `school_type = 'independent_teacher_workspace'`, `tenant_type = 'production'`, `name` = wizard input, `language='ar'`, `country='SA'`, `status='active'`, `setup_completed=True`.
   2. `school_settings` — defaults derived from wizard step 2 (`working_days`, `periods_per_day`, optional `period_minutes`).
@@ -189,12 +206,28 @@ Phase 1 ships the user-visible Independent Teacher account. Every item below ass
 
 **Frontend — `IndependentTeacherOnboardingWizard` (new).**
 
-- **Trigger.** First successful login when `current_user.role == 'independent_teacher'` and `tenant_id` is null. `LoginPage` and `RegisterPage` redirect to `/teacher/onboarding` (new route under `appRoutes.js`) instead of `/teacher`.
-- **Three steps, each `NassaqAlertDialog` for confirm-and-continue:**
+- **Trigger.** First successful login when `current_user.role == 'independent_teacher'` and `tenant_id` is null. `LoginPage` and `RegisterPage` route through the **first-login orchestration** below before reaching the wizard.
+- **Three wizard steps, each `NassaqAlertDialog` for confirm-and-continue:**
   1. **Workspace identity.** Workspace name (Arabic, required), optional avatar upload (reuses existing avatar uploader). Sub-brand header reads "مساحتك التعليمية الخاصة".
   2. **Schedule baseline.** School year window (Hijri picker via `frontend/src/utils/hijriDate.js` — never `Intl.DateTimeFormat('ar-SA-u-ca-islamic')`), working days (multi-select), periods per day (numeric).
   3. **Optional first class.** Class name, grade (free-text in v1; reuse `grade_levels` table as empty), subject (reuses `subjects`). May be skipped.
 - **Submit.** Single call to `POST /independent-teacher/bootstrap`. On success, redirect to `/teacher`. The wizard is only shown once per workspace; the post-bootstrap state is detected by the presence of `users.tenant_id`.
+
+#### First-login orchestration: MFA enrolment → recent assertion → bootstrap (frozen order)
+
+Both Tier A MFA enrolment and the bootstrap call are mandatory for an unbootstrapped IT user. The order is deterministic and is enforced server-side by gates on each route — the frontend cannot reorder them.
+
+1. **Login completes** (password + any platform-wide step) and issues a JWT scoped to a pre-bootstrap IT user.
+2. **Frontend detects** `mfa_required == True && mfa_enrolled_at IS NULL` from `GET /auth/me` and routes to `/auth/mfa/enroll`. The `/teacher/onboarding` route is **gated** server-side: `POST /independent-teacher/bootstrap` returns `403 mfa_enrollment_required` until enrolment completes. (Client-side guard is convenience only; server gate is authoritative.)
+3. **MFA enrolment** — user picks WebAuthn passkey or TOTP. Recovery codes are presented once; `mfa_recovery_codes_acknowledged` and `mfa_enrolled_at` are persisted. Successful enrolment counts as a fresh assertion, satisfying `require_recent_mfa` for the next ≤ N minutes (existing platform window).
+4. **Frontend redirects** to `/teacher/onboarding` and renders the three-step wizard above. The wizard does not re-prompt for MFA unless the assertion has expired; if it has, the bootstrap call returns `403 mfa_step_up_required` and the frontend pops the standard step-up modal before retrying.
+5. **`POST /independent-teacher/bootstrap`** — server re-checks: (a) MFA enrolled, (b) `require_recent_mfa` satisfied, (c) workspace not yet materialised. Atomic insert per the contract above. On success, returns the workspace summary; the frontend redirects to `/teacher`.
+6. **Subsequent logins** skip steps 2–4 (already enrolled, already bootstrapped). Sensitive actions (§5.7) re-trigger `require_recent_mfa` independently.
+
+Failure modes:
+- MFA enrolment abandoned → user remains pre-bootstrap on next login; same flow re-runs from step 2. No partial workspace exists.
+- Bootstrap transaction fails → no workspace row, no `users.tenant_id` write; user is back at step 4 with the safe Arabic error from §5.1.
+- Recovery-code consumed → `mfa_must_restore_factor=True` is set; the next sensitive action (including a re-bootstrap attempt) forces factor restoration before proceeding.
 
 ### 5.2 Workspace Settings Page
 
@@ -239,6 +272,17 @@ Phase 1 ships the user-visible Independent Teacher account. Every item below ass
   - Inline "clear slot" action confirmed via `NassaqAlertDialog`.
   - Read-only print/export to PDF reuses `export_engine`.
 - **Backend.** A small endpoint surface that wraps `time_slots` + `schedule_sessions` writes scoped by `require_request_school_id`. Per-slot uniqueness invariant: at most one assignment per `(school_id, day_of_week, slot_number)` and that assignment's `teacher_id` must equal the IT's teacher row.
+- **Concurrency, overwrite & idempotency semantics (frozen).**
+  - **Single endpoint shape.** Writes go through `PUT /independent-teacher/schedule/slot` — an **upsert by natural key** `(school_id, day_of_week, slot_number)`. There is no separate "create" vs "update" endpoint; this makes every write idempotent at the slot level.
+  - **Optimistic concurrency.** Each `schedule_sessions` row carries a monotonically increasing `version` integer (Alembic-managed default 1). Every `PUT` request body must include the `expected_version` of the slot the client last read (or `0` for an empty slot). The server SQL is `UPDATE ... SET ..., version = version + 1 WHERE school_id = :sid AND day = :d AND slot = :s AND version = :expected_version`. If `rowcount == 0`:
+    - and the slot row is missing → insert with `version = 1` (handles the `expected_version = 0` empty-slot case).
+    - and the slot row exists with a different version → return `409 schedule_slot_conflict` with the safe Arabic message `"تم تعديل هذه الحصة من جلسة أخرى. حدِّث الجدول وحاول مجددًا."` and a payload containing the current row so the client can re-render.
+  - **Overwrite policy.** A non-empty slot **may be overwritten** by an explicit `PUT` whose body sets a new `(class_id, subject_id)`. The server logs an `audit_logs` entry `INDEPENDENT_TEACHER_SCHEDULE_OVERWRITE` with old + new values. The frontend confirms via `NassaqAlertDialog` before issuing the overwrite write.
+  - **Clear policy.** Clearing a slot is `DELETE /independent-teacher/schedule/slot` with the same `expected_version` check; same conflict semantics. The row is hard-deleted (no soft-delete) since `schedule_sessions` is workspace-scoped and reproducible from the editor at any time.
+  - **No batch writes in v1.** Multi-slot saves are issued as N independent upserts client-side. This avoids partial-batch ambiguity and keeps the conflict story per-slot. A batch endpoint may be added in Phase 2 if needed; it is out of scope here.
+  - **Race against quotas.** When an overwrite or insert would push the workspace over §4.5 caps (e.g., a `(class_id)` referenced by the slot does not exist or is over capacity), the route returns `409` with the matching Arabic quota message; no slot row is written.
+  - **Cross-tenant impossibility.** The upsert SQL pins `school_id = require_request_school_id`, the `class_id` lookup re-asserts `class.school_id == school_id`, and the implicit `teacher_id` is derived from the caller. There is no body field that can re-target another workspace; any attempt returns `404` per the §8 invariant.
+  - **Frontend resilience.** On `409 schedule_slot_conflict`, the editor (a) re-renders the slot from the conflict payload, (b) shows the Arabic message in `NassaqAlertDialog`, (c) requires a fresh user action before re-submitting. No silent retries.
 - **Explicit denial.** Smart engine routes (`scheduling_smart_engine_routes`, `scheduling_smart_session_routes` write paths, Hakeem Plans) stay 403 via `require_full_school_tenant` (Phase 0). The sidebar entries for those features are not rendered for IT — confirmed by a guard test.
 - **Constraint.** Per `replit.md`, "do not re-introduce the old scheduling system" — the manual editor is not a scheduling engine. It writes literal user choices into `schedule_sessions` and runs no solver.
 
@@ -265,23 +309,46 @@ All endpoints in this section are scoped by `school_id == itw_{user_id}` and the
   - "Parents of my students" — parents linked to those students via `students.parent_id` and `guardian_links` (`parent_ref`, active, `tenant_id == itw_{user_id}`).
 - **Forbidden cohorts.** No "all teachers", no "all students", no "all parents", no school-wide broadcast. The principal-only cohort builders in `school_notification_engine.py` are gated by `require_full_school_tenant`.
 - **Frontend.** `frontend/src/pages/TeacherModule/TeacherCommunicationPage.jsx` — variant of the existing Communication Center where the cohort selector is restricted to the two allowed cohorts above and the broadcast option is hidden.
-- **Parent capture.** During student create (§5.3) the IT may capture parent name/phone/email inline. The spec does not auto-create a `parents` row in v1 — it stores the contact strings on the `students` row and defers true `parents` row creation + linking to the optional **"Invite Parent"** action in §5.6 below.
-- **Invite Parent (Phase 1, behind `require_recent_mfa`).** Authenticated IT clicks "Invite Parent" from a student detail. Backend dedupes by national id (preferred) or by phone+email pair, creating or updating a `parents` row whose `school_id` is set to the workspace if no other school owns the parent yet (parents are intentionally cross-school nullable). A `guardian_links` row is created with `parent_ref`, `student_id`, `tenant_id = itw_{user_id}`, `is_active=True`. The audit notes `_resolve_parent_linked_children` already enforces the `tenant_id` filter (`backend/routes/ai_routes_mod.py` lines 404–436) — that pattern is the reference implementation for the link enforcement.
+
+#### Canonical parent-contact ownership (frozen)
+
+The reviewer flagged that storing inline parent contact on `students` and later creating a `parents` row via "Invite Parent" risks data drift and dedupe bugs. This subsection makes the canonical source explicit and unambiguous.
+
+| State | Where parent contact lives | Authoritative for messaging? | Authoritative for portal access? |
+|---|---|---|---|
+| **Pending** (manual student create, no invite sent yet) | `students.pending_parent_name`, `students.pending_parent_phone`, `students.pending_parent_email` (Phase 1 Alembic-managed nullable columns; **not** the existing `students.parent_id`) | **No** — the IT may DM the parent contact strings via SMS/email out-of-band, but the platform never treats them as a verified identity. They never appear in any cohort builder. | No — no portal access until a `parents` row exists and a `guardian_links` row is active. |
+| **Invited** (Invite Parent action issued) | `parent_invitations` row (Phase 2, §6.2) holds the in-flight contact; `students.pending_*` is unchanged until acceptance | No | No |
+| **Linked** (parent acceptance OR direct backend dedupe-link) | `parents` table is the **single source of truth** for parent name/phone/email/national_id. `guardian_links(parent_ref, student_id, tenant_id, is_active)` is the single source of truth for the relationship. `students.pending_*` is **cleared** in the same transaction. `students.parent_id` (legacy nullable FK) is set to the linked `parents.id` for back-compat readers. | **Yes** | **Yes** |
+
+Rules that follow from this contract:
+- **Single writer per state transition.** The Invite Parent action (and only it) moves a row from Pending → Linked atomically: it inserts/updates `parents`, inserts `guardian_links` with `tenant_id == itw_{user_id}`, sets `students.parent_id`, and clears `students.pending_*` — all in one transaction.
+- **Dedupe rule (deterministic).** When linking, the backend looks up an existing `parents` row by, in order: (1) `national_id` if provided, (2) `(phone, email)` exact pair, (3) `phone` alone if email is absent, (4) `email` alone if phone is absent. First match wins. No fuzzy matching in v1. If a match is found, the existing `parents` row is reused; the IT-supplied contact strings update the `parents` row only if those fields are currently `NULL` (never overwrite an established parent's data).
+- **Cross-workspace linking.** A `parents` row may be linked to students across multiple workspaces or real schools — that is by design (one parent, many children). `parents.school_id` is set on first creation only; subsequent links from other tenants do **not** rewrite it. Tenant scoping always flows through `guardian_links.tenant_id`, never through `parents.school_id`.
+- **Read precedence in the IT UI.** Anywhere the IT views a student's parent (student detail, attendance excuse note, behaviour notification target), the read is: `if students.parent_id IS NOT NULL → join parents` else → `students.pending_*`. The UI labels the pending case explicitly (Arabic chip "لم يتم الربط بعد") so the IT never assumes the parent is reachable through the platform.
+- **Read precedence in the parent portal.** The parent portal **only** reads from `parents` + `guardian_links`. It never sees `students.pending_*`. A pending parent literally has no platform identity yet.
+- **Edit conflict.** If the IT edits inline contact strings while a `parents` row already exists for the student (`students.parent_id IS NOT NULL`), the API returns `409` with the safe Arabic message `"بيانات ولي الأمر مرتبطة بحساب — عدّلها من ملف ولي الأمر."`. Inline editing is enabled only in the Pending state.
+- **Migration boundary.** Existing `students` rows in real schools are unaffected by the new `pending_*` columns (NULL by default). The Alembic revision adds three nullable columns and one back-compat trigger that clears them on any update where `parent_id` becomes non-NULL.
+
+#### Linking endpoints
+
+- **Parent capture.** During student create (§5.3) the IT may capture parent name/phone/email inline; these land in `students.pending_*` per the table above. No `parents` row is created at this point.
+- **Invite Parent (Phase 1, behind `require_recent_mfa`).** Authenticated IT clicks "Invite Parent" from a student detail. Backend executes the dedupe rule above, atomically transitions the row Pending → Linked, sets `guardian_links(tenant_id == itw_{user_id})`, and emits the Phase 2 `parent_invitations` row (§6.2) only if email-based invite delivery is enabled — otherwise the link is created immediately and the parent receives credentials out-of-band. The audit-log entry `INDEPENDENT_TEACHER_PARENT_LINK` records the dedupe path taken (`matched_by=national_id|phone_email|phone|email|new`) so future merges are explainable.
+- **Reference implementation for read scoping.** `_resolve_parent_linked_children` in `backend/routes/ai_routes_mod.py` lines 404–436 is the canonical pattern — `tenant_id` is always re-asserted on the lookup, even when the link table claims otherwise.
 - **Parent portal scoping invariant.** When a parent's children include both a workspace-owned and a real-school-owned student, every parent-portal query is scoped by `(student_id IN allow_list) AND (school_id == student.school_id)`. The existing `_build_parent_child_context` (`ai_routes_mod.py` lines 439–473) already pins to `school_id`; reuse that pattern everywhere.
 
 ### 5.7 Security & MFA (Tier A)
 
 The audit mentions MFA implicitly (via `replit.md` and `backend/pg_models.py` columns); this spec makes it explicit.
 
-- **Enrolment.** IT users are enrolled in Tier A on first login: WebAuthn passkey OR TOTP, with recovery codes presented once and `mfa_recovery_codes_acknowledged` recorded. `mfa_required` is true by default for `role == 'independent_teacher'`.
-- **Lockout / restore.** Existing `mfa_must_restore_factor` flag continues to work — a successful recovery-code use forces restore on the next sensitive action.
+- **Enrolment.** IT users are enrolled in Tier A on first login: WebAuthn passkey OR TOTP, with recovery codes presented once and `mfa_recovery_codes_acknowledged` recorded. `mfa_required` is true by default for `role == 'independent_teacher'`. The deterministic order with bootstrap is specified in §5.1 "First-login orchestration" — that subsection is the authoritative source for the enrolment-then-bootstrap sequence; this section only enumerates the step-up surface.
+- **Lockout / restore.** Existing `mfa_must_restore_factor` flag continues to work — a successful recovery-code use forces restore on the next sensitive action (including the bootstrap retry path in §5.1).
 - **`require_recent_mfa` step-up routes (apply to IT users specifically):**
-  - `POST /independent-teacher/bootstrap` (idempotent re-bootstrap or "reset workspace" Phase 2)
+  - `POST /independent-teacher/bootstrap` (initial materialisation per §5.1, plus any future "reset workspace" Phase 2 action).
   - Any account-settings change that touches email, phone, password, MFA factors.
-  - Any contact change on `students` or `parents`.
+  - Any contact change on `students` or `parents` (including the canonical Invite Parent transition in §5.6).
   - Any data export endpoint (`reporting_routes_mod` exports, student-list CSV/PDF).
   - The "Invite Parent" action (§5.6).
-  - Workspace deletion / soft-delete (Phase 2).
+  - Workspace deletion / soft-delete (Phase 2 §6.8).
 - **Login policy hardening.** IT users keep the standard rate limiting + account-lockout path (`failed_login_attempts`, `locked_until`). No relaxation. The login redirect must not skip MFA enrolment for an IT user with `mfa_required=True` and `mfa_enrolled_at IS NULL`.
 - **Audit log.** Every Tier A step-up issuance and consumption emits `audit_logs` entries already produced by the auth module — no new code, but isolation tests in this phase verify the IT user's audit trail is scoped to their workspace.
 
@@ -488,4 +555,4 @@ Inherited verbatim from the 2026-05-11 audit §11 — answers are required befor
 2. Should the synthetic workspace appear in the platform-admin schools list? Recommend filtering by `school_type` in admin UI.
 3. Confirm v1 caps: proposal frozen as 5 classes / 200 students / 1 active year (§4.5).
 4. May an IT also be invited to a real school as a regular teacher (dual-tenant)? The role-switcher already supports multi-role users; in-scope decision deferred.
-5. Workspace data export on closure for compliance — required before "delete workspace" surfaces (Phase 2 §6.6 covers).
+5. Workspace data export on closure for compliance — required before "delete workspace" surfaces (Phase 2 §6.8 covers).
