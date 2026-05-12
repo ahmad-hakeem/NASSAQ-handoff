@@ -25,6 +25,7 @@ A comprehensive, multi-tenant school management platform with AI-powered feature
   - `backend/alembic/versions/`: Database migration scripts.
   - `backend/engines/smart_scheduling_engine.py`: Core scheduling logic.
   - `backend/name_validation.py`: Real personal name enforcement.
+  - `students.pending_parent_{name,phone,email}` (Alembic `z1a2b3c4d5e6`): canonical pre-link parent contact for the IT inline-create flow per spec §5.6; trigger `students_clear_pending_parent_on_link_trg` clears them when `parent_id` transitions NULL → non-NULL.
 - `/frontend`: React application, UI components, pages, API clients.
   - `frontend/src/App.js`: Main React app and routing.
   - `frontend/src/appRoutes.js`: Frontend route definitions with RBAC.
