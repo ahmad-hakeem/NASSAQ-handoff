@@ -305,6 +305,55 @@ async def invite_parent(
                     "is_active": True,
                 },
             )
+            # Task #203 (§5.9 #7): on the new-parent path, materialise a
+            # workspace-scoped `users` row so the cohort resolver in
+            # `/notifications/bulk` can find the recipient. We deliberately
+            # SKIP this when:
+            #   (a) parent matched an existing `parents` row (dedupe paths) —
+            #       Phase-2 will introduce a proper portal-onboarding flow;
+            #   (b) payload has no email (`users.email` is NOT NULL globally) —
+            #       phone-only / national_id-only invites stay on the legacy
+            #       parent_ref=parent_id path until Phase-2;
+            #   (c) the email collides with an existing global `users` row —
+            #       a cross-workspace collision would fail the unique index
+            #       and roll back the entire link.
+            parent_user_id_for_ref = parent_id  # fallback: legacy behaviour
+            can_materialise_user = (
+                not existing_parent
+                and bool(payload.email)
+            )
+            if can_materialise_user:
+                email_collision = await gd_find_one(
+                    db.session, "users", {"email": payload.email}
+                )
+                if email_collision:
+                    can_materialise_user = False
+            if can_materialise_user:
+                parent_user_id_for_ref = str(uuid.uuid4())
+                now_iso = _utcnow_iso()
+                # `users.password_hash` is NOT NULL. The parent has no
+                # portal credentials at invite time — Phase-2 will issue
+                # them via a proper onboarding flow. Use a non-bcrypt
+                # sentinel that can never verify so the row exists for
+                # cohort resolution but cannot authenticate.
+                await gd_insert(db.session, "users", {
+                    "id": parent_user_id_for_ref,
+                    "role": "parent",
+                    "tenant_id": workspace_id,
+                    "email": payload.email,
+                    "phone": payload.phone,
+                    "full_name": payload.full_name
+                        or student.get("pending_parent_name")
+                        or "ولي الأمر",
+                    "password_hash": "!invite-pending",
+                    "must_change_password": True,
+                    "is_active": True,
+                    "preferred_language": "ar",
+                    "preferred_theme": "light",
+                    "created_at": now_iso,
+                    "updated_at": now_iso,
+                })
+
             link_id = str(uuid.uuid4())
             now = _utcnow_iso()
             await gd_insert(db.session, "guardian_links", {
@@ -313,7 +362,7 @@ async def invite_parent(
                 "student_id": student_id,
                 "student_name": student.get("full_name"),
                 "parent_id": parent_id,
-                "parent_ref": parent_id,
+                "parent_ref": parent_user_id_for_ref,
                 "parent_name": (
                     payload.full_name
                     or (existing_parent or {}).get("full_name")

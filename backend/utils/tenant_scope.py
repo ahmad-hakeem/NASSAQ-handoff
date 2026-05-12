@@ -110,6 +110,13 @@ async def tenant_scoped_find_one(
 
     tenant_id = current_user.get("tenant_id") or current_user.get("school_id")
     if not tenant_id:
+        # Task #203: Independent-Teacher callers carry no tenant_id;
+        # resolve to their synthetic per-user workspace `itw_{user_id}`
+        # so cross-workspace by-id lookups return None (→ route 404)
+        # instead of 403 (spec §8 invariant 3).
+        from auth_scope import independent_workspace_id  # local: avoid cycle
+        tenant_id = independent_workspace_id(current_user)
+    if not tenant_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="تعذّر التحقق من صلاحياتك للوصول إلى هذه البيانات",

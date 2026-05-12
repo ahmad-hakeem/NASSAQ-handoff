@@ -126,39 +126,18 @@ _ISOLATION_MATRIX = [
     # to xpass the day the fix lands and the contract tightens.
     ("students",         "/students",          "/students/{id}",                    "404"),
     ("classes",          "/classes",           "/classes/{id}",                     "404"),
-    # `/attendance/student/{id}` returns 403 for cross-workspace lookups
-    # (tenant_scoped_find_one wrapper) instead of the §8 404 invariant.
-    pytest.param(
-        "attendance", None, "/attendance/student/{student_id}", "404",
-        id="attendance",
-        marks=pytest.mark.xfail(
-            reason="v1 prod gap: attendance by-id returns 403 not 404",
-            strict=True,
-        ),
-    ),
-    # `/assessments/{id}` (assessment_routes_mod.py:297) routes through
-    # tenant_scoped_find_one which yields 403 not the §8 404 invariant.
-    pytest.param(
-        "assessments", "/assessments", "/assessments/{id}", "404",
-        id="assessments",
-        marks=pytest.mark.xfail(
-            reason="v1 prod gap: assessments by-id returns 403 not 404",
-            strict=True,
-        ),
-    ),
-    # `/behaviour-records/{id}` (behaviour_routes_mod.py:424) does NOT
-    # pin tenant on the by-id read in v1 and returns A's row to IT-B
-    # with HTTP 200 — a real cross-tenant leak on this single by-id
-    # surface. The list/student/{id} and /class/{id} surfaces ARE
-    # tenant-scoped so the IT FE flow does not exercise the leak.
-    pytest.param(
-        "behaviour_records", None, "/behaviour-records/{id}", "404",
-        id="behaviour_records",
-        marks=pytest.mark.xfail(
-            reason="v1 prod gap: behaviour_routes_mod.py:424 lacks tenant pin",
-            strict=True,
-        ),
-    ),
+    # Task #203 closed the prod gap: `/attendance/student/{id}` now
+    # tenant-pins the student lookup before the relationship check, so
+    # cross-workspace returns 404 (spec §8 invariant 3).
+    ("attendance", None, "/attendance/student/{student_id}", "404"),
+    # Task #203 closed the prod gap: `tenant_scoped_find_one` now falls
+    # back to the IT synthetic workspace, so `/assessments/{id}` returns
+    # 404 (not 403) cross-workspace.
+    ("assessments", "/assessments", "/assessments/{id}", "404"),
+    # Task #203 closed the prod gap: `/behaviour-records/{id}` now
+    # tenant-pins via `require_request_school_id` and returns 404
+    # cross-workspace instead of leaking A's row.
+    ("behaviour_records", None, "/behaviour-records/{id}", "404"),
     ("notifications",    "/notifications",     None,                                None),
 ]
 
@@ -783,23 +762,18 @@ async def test_5_9_7_end_to_end_independent_teacher_loop(client):  # §5.9 #7
     parent_user_id = link_row.get("parent_ref")
     assert parent_user_id, link_row
 
-    # `/notifications/bulk` expects recipients to be real `users` rows
-    # inside the workspace tenant. The Invite Parent route MUST
-    # materialise that user for the §5.9 #7 loop to be real-route
-    # driven end-to-end. If a Phase-1 invite leaves portal access
-    # deferred (a documented spec gap, not a security bug), we xfail
-    # rather than rewire DB rows in the test — the launch-gate signal
-    # has to flip on the real product, not on test fixtures.
+    # Task #203 closed the prod gap: invite-parent now materialises a
+    # workspace-scoped `users` row for the new parent on the new-parent
+    # dedupe path, so the §5.9 #7 loop is fully real-route end-to-end.
     parent_user = await gd_find_one(
         db.session, "users",
         {"id": parent_user_id, "tenant_id": wsid},
     )
-    if parent_user is None:
-        pytest.xfail(
-            "Phase-1 invite-parent does not materialise a workspace-scoped "
-            "users row for the new parent — see "
-            "docs/qa/2026-05-12-it-phase1-exit-criteria.md §5.9 #7 deviations."
-        )
+    assert parent_user is not None, (
+        "invite-parent must materialise a workspace-scoped users row "
+        "for the new parent (Task #203)"
+    )
+    assert parent_user.get("role") == "parent"
 
     msg = await client.post(
         "/notifications/bulk",

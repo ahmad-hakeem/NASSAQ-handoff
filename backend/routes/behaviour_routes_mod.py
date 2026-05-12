@@ -23,6 +23,7 @@ from dependencies import (
     REPORT_TYPES, generate_student_qr_code
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+from auth_scope import require_request_school_id
 
 
 router = APIRouter()
@@ -427,7 +428,15 @@ async def get_behaviour_record(
     current_user: dict = Depends(get_current_user)
 ):
     """Get a single behaviour record"""
-    record = await gd_find_one(db.session, "behaviour_records", {"id": record_id})
+    # SECURITY (Task #203): tenant pin at the query level. Cross-workspace
+    # by-id lookups MUST 404 (spec §8 invariant 3). Resolves the IT
+    # workspace via auth_scope.require_request_school_id when the caller
+    # has no tenant_id.
+    tenant_id = require_request_school_id(current_user)
+    record = await gd_find_one(
+        db.session, "behaviour_records",
+        {"id": record_id, "tenant_id": tenant_id},
+    )
     if not record:
         raise HTTPException(status_code=404, detail="سجل السلوك غير موجود")
     return record
@@ -442,8 +451,14 @@ async def update_behaviour_record(
 ):
     """Update a behaviour record"""
     now = datetime.now(timezone.utc).isoformat()
-    
-    record = await gd_find_one(db.session, "behaviour_records", {"id": record_id})
+
+    # SECURITY (Task #203): tenant pin on the read so cross-workspace
+    # PUTs 404 like the GET (spec §8 invariant 3).
+    tenant_id = require_request_school_id(current_user)
+    record = await gd_find_one(
+        db.session, "behaviour_records",
+        {"id": record_id, "tenant_id": tenant_id},
+    )
     if not record:
         raise HTTPException(status_code=404, detail="سجل السلوك غير موجود")
     
@@ -459,10 +474,16 @@ async def update_behaviour_record(
     
     updates["updated_at"] = now
     updates["updated_by"] = current_user["id"]
-    
-    await gd_update_one(db.session, "behaviour_records", {"id": record_id}, updates)
-    
-    return await gd_find_one(db.session, "behaviour_records", {"id": record_id})
+
+    await gd_update_one(
+        db.session, "behaviour_records",
+        {"id": record_id, "tenant_id": tenant_id}, updates,
+    )
+
+    return await gd_find_one(
+        db.session, "behaviour_records",
+        {"id": record_id, "tenant_id": tenant_id},
+    )
 
 
 @router.delete("/behaviour-records/{record_id}")

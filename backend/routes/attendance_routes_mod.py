@@ -464,16 +464,31 @@ async def get_student_attendance_history(
     current_user: dict = Depends(get_current_user)
 ):
     """Get attendance history for a specific student"""
-    # SECURITY (audit H-1): same-tenant alone is not sufficient — require
-    # an explicit guardian/teacher/admin/self relationship before exposing
-    # this student's attendance history.
+    # SECURITY (Task #203 + audit H-1):
+    # 1) Tenant pin FIRST — cross-workspace lookups MUST 404 (spec §8
+    #    invariant 3), never 403, so we don't confirm the existence of
+    #    a student in another tenant.
+    # 2) Same-tenant alone is not sufficient — also require an explicit
+    #    guardian/teacher/admin/self relationship before exposing this
+    #    student's attendance history.
+    from auth_scope import require_request_school_id
     from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+    tenant_id = require_request_school_id(current_user)
+    student = await gd_find_one(
+        db.session, "students",
+        {"id": student_id, "school_id": tenant_id},
+    )
+    if not student:
+        # Fallback for legacy rows that pin tenant on the alternate column.
+        student = await gd_find_one(
+            db.session, "students",
+            {"id": student_id, "tenant_id": tenant_id},
+        )
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
     require_can_view_student_sync_check(
         await can_view_student(db.session, current_user, student_id)
     )
-    student = await gd_find_one(db.session, "students", {"id": student_id})
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
     
     query = {"student_id": student_id}
     if start_date:

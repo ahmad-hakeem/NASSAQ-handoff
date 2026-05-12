@@ -13,12 +13,12 @@ marker so the mapping below stays mechanically searchable
 | §5.9 | Criterion | Test(s) | Notes |
 |---|---|---|---|
 | 1 | B-1..B-6 fixes are in main with passing tests | `test_5_9_1_phase0_b_marker_symbols_present` | Sanity import of the canonical RBAC slice, quota constants, perimeter helpers, and MFA dependency factories. The deeper B-N coverage lives in `test_independent_teacher_phase0.py` (B-2/B-4/B-5/B-6), `test_independent_teacher_bootstrap.py` (B-3 perimeter), and `test_independent_teacher_communication.py` (B-1 NOTIFICATIONS_SEND grant). |
-| 2 | Cross-workspace isolation for `students`, `classes`, `attendance`, `assessments`, `behaviour_records`, `notifications` | `test_5_9_2_cross_workspace_isolation_list_and_by_id` (parametrized over the six collections, covering BOTH list and by-id surfaces in one test) | Pattern from `test_ai_insights_security.py`. List surfaces are asserted absent of A's row id and A's `school_id`. BY-ID surfaces split into two modes: strict `404` (students, classes — §8 invariant 3) and `no_leak` (attendance, assessments — prod returns 403 for tenant violations, also a no-leak signal). See **Deviations** below for the `behaviour_records` xfail. |
+| 2 | Cross-workspace isolation for `students`, `classes`, `attendance`, `assessments`, `behaviour_records`, `notifications` | `test_5_9_2_cross_workspace_isolation_list_and_by_id` (parametrized over the six collections, covering BOTH list and by-id surfaces in one test) | Pattern from `test_ai_insights_security.py`. List surfaces are asserted absent of A's row id and A's `school_id`. ALL by-id surfaces (students, classes, attendance, assessments, behaviour_records) now strictly assert §8 invariant 3 `404` after Task #203 closed the prod gaps. |
 | 3 | Capability-gate negatives — every §4.2 deny-list router class | `test_5_9_3_capability_gate_denies_independent_teacher` (IT → 403 IT-deny envelope) **and** `test_5_9_3_capability_gate_does_not_block_school_principal` (principal MUST NOT see the IT-deny envelope) | Both tests parametrize over the same matrix. The matrix now spans the full §4.2 deny-list backbone — read surfaces (smart-scheduling versions, standby candidates, teacher-attendance, bulk students template/export, Hakeem tasks, principal user search) **and** representative WRITE surfaces from each gated router: `POST /timetable/generate-smart` (smart engine), `POST /smart-scheduling/sessions/swap` + `POST /smart-scheduling/session/add` (smart-session writes incl. master-grid mutation paths), `POST /substitutions` + `POST /standby/roster/regenerate` (standby writes), `PUT /principal/teacher/{id}/basic-info` + `POST /principal/generate-password` (principal-management writes), `POST /teachers/bulk/parse` (bulk-teacher), `POST /v1/hakeem-plan/tasks` (hakeem-plan write), `PUT /school/settings` + `POST /school/settings/holidays` (school_settings_mod gated writes), and `POST /communication/broadcast` (school-wide broadcast). The principal-positive companion catches over-broad blocks that would silently break real schools — a fail there means the capability gate widened past the IT slice. |
 | 4 | Bootstrap idempotency (replay returns existing workspace, never duplicates) | `test_5_9_4_bootstrap_replay_is_idempotent` | Asserts second call returns `already_materialised=True` and that `schools` / `academic_years` / `teachers` row counts are unchanged. |
 | 5 | Communication cohort-scoping (IT-A → only IT-A's students/parents) | `test_5_9_5_cohorts_scope_to_caller_workspace_only` | Two IT workspaces, A queries `my_students` + `my_parents`, B's user ids must not appear. Also pins the response shape: every `my_students` item carries `user_id` + `student_id`; every `my_parents` item additionally carries `parent_id` per `independent_teacher_communication_routes.py:_resolve_my_parents_recipients`. |
 | 6 | MFA Tier A enforced on every §5.7 route | `test_5_9_6_mfa_required_routes_emit_stepup_envelope` (parametrized over 8 surfaces: bootstrap, `PUT /users/me/profile`, `GET /export/report/...`, `GET /export/attendance`, `GET /independent-teacher/schedule/export.pdf`, **`PUT /students/{id}`**, **`DELETE /parents/{id}`**, `POST /independent-teacher/students/{id}/invite-parent`) | Every surface emits the canonical step-up envelope (`MFA_STEPUP_REQUIRED` / `MFA_PASSKEY_REQUIRED` / `MFA_RESTORE_REQUIRED`). Bootstrap is the only documented 401 (per `replit.md` IT §5.7); all other IT-facing surfaces are 403 so the FE axios interceptor replays. The §5.7 backfilled paths (Task #201) for any contact change on `students`/`parents` are now part of this consolidated suite, in addition to their dedicated coverage in `test_it_mfa_stepup_backfill.py`. |
-| 7 | The `independentTeacherCreateClassComingSoon` block is gone; the IT can complete the end-to-end loop bootstrap → create class → create student → assign schedule slot → record attendance → grade an assessment → message a parent | `test_5_9_7_end_to_end_independent_teacher_loop` | Single test that drives the full happy path through real backend routes: `POST /independent-teacher/bootstrap`, `POST /classes/create` (homeroom_teacher_id pinned in the request body), `POST /student-wizard/create`, `PUT /independent-teacher/schedule/slot`, `POST /attendance`, `POST /grades/bulk`, `POST /independent-teacher/students/{id}/invite-parent`, `POST /notifications/bulk`. Every persisted row is asserted to carry `school_id == itw_{user_id}`; the final notification is asserted to be tenant-pinned to the IT workspace. The `subjects` row is the only direct-DB seed (no IT public subject-create endpoint exists in v1) — flagged as an unavoidable fixture prerequisite. **Deviation:** if invite-parent does not materialise a workspace-scoped `users` row for the new parent (a Phase-1 portal-access gap, not a security bug), the test calls `pytest.xfail(...)` instead of synthesising a parent user via direct DB writes — the launch-gate signal must flip on real product behaviour, not on test fixtures. |
+| 7 | The `independentTeacherCreateClassComingSoon` block is gone; the IT can complete the end-to-end loop bootstrap → create class → create student → assign schedule slot → record attendance → grade an assessment → message a parent | `test_5_9_7_end_to_end_independent_teacher_loop` | Single test that drives the full happy path through real backend routes: `POST /independent-teacher/bootstrap`, `POST /classes/create` (homeroom_teacher_id pinned in the request body), `POST /student-wizard/create`, `PUT /independent-teacher/schedule/slot`, `POST /attendance`, `POST /grades/bulk`, `POST /independent-teacher/students/{id}/invite-parent`, `POST /notifications/bulk`. Every persisted row is asserted to carry `school_id == itw_{user_id}`; the final notification is asserted to be tenant-pinned to the IT workspace. The `subjects` row is the only direct-DB seed (no IT public subject-create endpoint exists in v1) — flagged as an unavoidable fixture prerequisite. After Task #203, invite-parent now materialises a workspace-scoped `users` row on the new-parent dedupe path, so the §5.9 #7 loop is fully real-route end-to-end with no test-side `xfail`. |
 
 ## Shared fixtures
 
@@ -33,41 +33,42 @@ incrementally; nothing in this task changes their behaviour.
 
 ## Deviations from the spec invariants
 
-Three §8 by-id invariants are not yet met by v1 production code.
-Per the tests-only scope of Task #202, the deviating routes are
-pinned as `pytest.xfail(strict=True)` with the exact prod gap and
-file/line so the suite flips to xpass the day the fix lands and the
-contract auto-tightens. There is **no** "permissive pass" mode in
-the suite — every BY-ID assertion is the strict §8 404 invariant:
+**Resolved in Task #203 (2026-05-12).** All four xfail rows that
+shipped with #202 have been closed by minimal production fixes; the
+suite now passes 56/56 with zero `xfail` and the §8 by-id 404
+invariant is enforced uniformly across the six §5.9 #2 collections.
 
-- **`/attendance/student/{id}`** — the cross-workspace lookup
-  routes through `tenant_scoped_find_one`, which returns the
-  wrapped 403 envelope, not the §8 invariant 3 404. Marked
-  `xfail(strict=True)`.
-- **`/assessments/{id}`** — `assessment_routes_mod.py:297` resolves
-  cross-tenant lookups through `tenant_scoped_find_one`, which
-  returns the wrapped 403 envelope, not the §8 invariant 3 404.
-  Marked `xfail(strict=True)`.
-- **`/behaviour-records/{id}`** — `behaviour_routes_mod.py:424`
-  performs an unscoped `gd_find_one` and returns A's row to IT-B
-  with HTTP 200. This is a real cross-tenant gap on a single
-  by-id surface; the cohort-driving paths
-  (`/behaviour-records/student/{id}`, `/behaviour-records/class/{id}`,
-  list filters) are tenant-scoped, so the IT FE flow does not
-  exercise the leaky path. The test is `xfail(strict=True)` so the
-  day a tenant pin is added the suite flips to xpass and we tighten
-  the contract back to the strict 404. Tracking: follow-up.
+Closed gaps:
+
+- **`/attendance/student/{id}`** — `attendance_routes_mod.py:459`
+  now resolves the workspace via
+  `auth_scope.require_request_school_id` and tenant-pins the
+  student lookup BEFORE the `can_view_student` relationship check,
+  so cross-workspace returns 404 (spec §8 invariant 3). The H-1
+  audit guarantee (relationship still required for same-tenant
+  access) is preserved.
+- **`/assessments/{id}`** — `utils/tenant_scope.py:tenant_scoped_find_one`
+  now falls back to `auth_scope.independent_workspace_id`
+  (`itw_{user_id}`) when the caller has neither `tenant_id` nor
+  `school_id` set, so IT callers tenant-pin into their own
+  workspace and cross-workspace lookups return None → 404.
+- **`/behaviour-records/{id}`** — `behaviour_routes_mod.py:427` (GET)
+  and `:447` (PUT) now both pin `tenant_id` via
+  `require_request_school_id`, closing the IT-only HTTP-200
+  cross-tenant leak that shipped in v1.
 - **`/independent-teacher/students/{id}/invite-parent` portal user
-  materialisation** — §5.9 #7 expects the invite path to create a
-  workspace-scoped `users` row for the new parent so the cohort
-  resolver in `/notifications/bulk` accepts the recipient. v1 leaves
-  portal-account creation to a Phase-2 follow-up. Rather than
-  rewriting `guardian_links.parent_ref` or inserting a synthetic
-  `users` row from the test (which would fake a green light), the
-  e2e loop calls `pytest.xfail(...)` if no workspace user is found
-  for the freshly-linked parent. The day the invite path
-  materialises the user, the test flips to xpass and the §5.9 #7
-  signal becomes fully real-route end-to-end. Tracking: follow-up.
+  materialisation** — `independent_teacher_invite_parent_routes.py:311`
+  now inserts a workspace-scoped `users` row (role=`parent`,
+  `tenant_id=workspace_id`, `password_hash="!invite-pending"`
+  sentinel that cannot verify) on the **new-parent** dedupe path
+  inside the same SAVEPOINT as the `parents` / `guardian_links`
+  inserts, and points `guardian_links.parent_ref` at the new
+  user id. The §5.9 #7 loop is now fully real-route end-to-end.
+  Dedupe paths (national_id / phone+email / phone / email) deliberately
+  skip user materialisation because `users.email` is globally unique
+  and a cross-workspace email collision would fail the insert and
+  roll back the entire link — Phase-2 will introduce a proper
+  portal-onboarding flow for those paths.
 
 ## Running the suite
 
@@ -77,16 +78,14 @@ pytest backend/tests/test_independent_teacher_phase1_exit.py -v
 
 The suite is hermetic: it uses the standard `conftest.py`
 `_db_session` autouse fixture and rolls back at the end of each
-test. No production data is touched. Expected result: **52 passed,
-4 xfailed** (the three documented BY-ID prod gaps —
-`/attendance/student/{id}`, `/assessments/{id}`,
-`/behaviour-records/{id}` — and the invite-parent portal-user
-materialisation gap above).
+test. No production data is touched. Expected result after
+Task #203: **56 passed, 0 xfailed** — all four prod gaps from
+#202 closed.
 
 Across the full IT test surface
 (`pytest backend/tests/test_independent_teacher_*.py
 backend/tests/test_it_*.py -q`) the expected result is
-**175 passed, 4 xfailed**. Two legacy tests
+**179 passed, 0 xfailed**. Two legacy tests
 (`test_smoke_row11_personal_scope_attendance_export_xlsx` in
 `test_independent_teacher_phase1_smoke.py` and
 `test_export_pdf_returns_pdf_bytes` in

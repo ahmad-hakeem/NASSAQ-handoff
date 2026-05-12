@@ -173,6 +173,78 @@ async def test_invite_parent_new_creates_atomic_link(client):
 
 
 # ----------------------------------------------------------------------
+# (a.1) New-parent path with phone only (no email) — Task #203 regression
+# `users.email` is NOT NULL globally, so phone-only invites must NOT
+# attempt to materialise a workspace `users` row. The link still
+# succeeds; `guardian_links.parent_ref` falls back to the parent row id.
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_invite_parent_new_phone_only_no_email_does_not_500(client):
+    user = await _mk_it()
+    wsid = independent_workspace_id(user)
+    h = _it_headers(user)
+    sid = await _mk_pending_student(wsid)
+
+    resp = await client.post(
+        f"/independent-teacher/students/{sid}/invite-parent",
+        json={
+            "full_name": "ولي بدون بريد",
+            "phone": "+966500202020",
+        },
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["matched_by"] == "new"
+    parent_id = data["parent"]["id"]
+
+    # No workspace `users` row should have been created (no email).
+    parent_users = await gd_find(
+        db.session, "users",
+        {"role": "parent", "tenant_id": wsid},
+    )
+    assert all(u.get("email") != None for u in parent_users) or \
+        all(u["id"] != parent_id for u in parent_users)
+
+    # Link still wired with parent_ref falling back to parent_id.
+    links = await gd_find(db.session, "guardian_links",
+                          {"student_id": sid, "is_active": True})
+    assert len(links) == 1
+    assert links[0]["parent_id"] == parent_id
+    assert links[0]["parent_ref"] == parent_id
+
+
+# ----------------------------------------------------------------------
+# (a.2) New-parent path with national_id only — Task #203 regression
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_invite_parent_new_national_id_only_no_email_does_not_500(client):
+    user = await _mk_it()
+    wsid = independent_workspace_id(user)
+    h = _it_headers(user)
+    sid = await _mk_pending_student(wsid)
+
+    resp = await client.post(
+        f"/independent-teacher/students/{sid}/invite-parent",
+        json={
+            "full_name": "ولي بهوية",
+            "national_id": "9876543210",
+        },
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["matched_by"] == "new"
+    parent_id = data["parent"]["id"]
+
+    links = await gd_find(db.session, "guardian_links",
+                          {"student_id": sid, "is_active": True})
+    assert len(links) == 1
+    assert links[0]["parent_id"] == parent_id
+    assert links[0]["parent_ref"] == parent_id
+
+
+# ----------------------------------------------------------------------
 # (b) Dedupe by national_id wins over everything else
 # ----------------------------------------------------------------------
 @pytest.mark.asyncio
