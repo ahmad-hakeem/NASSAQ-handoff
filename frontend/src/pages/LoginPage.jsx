@@ -33,14 +33,35 @@ export const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  const [loading, setLoading] = useState(false);
+  // Task #195 — single login state machine. Replaces the ad-hoc
+  // loading/error/mfaChallenge flags so we can never end up with a
+  // success toast and an error surface for the same attempt.
+  //   idle           — accepting input
+  //   submitting     — POST /auth/login in flight
+  //   awaiting_mfa   — backend asked for a second factor
+  //   bootstrapping  — login OK; resolving /auth/me + redirect target
+  //   redirecting    — redirect committed; final UI = success toast
+  //   failed         — surfaced exactly one error; back to accepting input
+  const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
   const passwordRef = useRef(null);
+  const submittingRef = useRef(false); // double-submit guard
+  const mountedRef = useRef(true);
 
-  const { login, refreshUser } = useAuth();
+  const { login, refreshUser, clearAuthState } = useAuth();
   const { isRTL, toggleLanguage } = useTheme();
   const { nassaqError } = useNassaqAlert();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  // The submit button (and the inputs) stay disabled for the entire
+  // orchestration — not just the raw API call — so a second click can
+  // never fire a parallel /auth/login.
+  const isBusy = status === 'submitting' || status === 'bootstrapping' || status === 'redirecting' || status === 'awaiting_mfa';
 
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
@@ -94,8 +115,94 @@ export const LoginPage = () => {
     return true;
   };
 
+  // Resolve a target route for the authenticated user. Returns the path
+  // string when one was found, or null when the role/tenant combination
+  // can't be mapped — fail-closed so we never silently dump the user on a
+  // generic /dashboard they may not have permission to load.
+  const resolveRedirectTarget = (role, userData) => {
+    if (role === 'independent_teacher') {
+      if (!userData?.mfa_enrolled_at) return '/auth/mfa/enroll';
+      if (!userData?.tenant_id) return '/teacher/onboarding';
+      return '/teacher';
+    }
+    switch (role) {
+      case 'platform_admin': return '/admin';
+      case 'school_principal': return '/principal';
+      case 'school_sub_admin': return '/school';
+      case 'school_admin': return '/principal';
+      case 'platform_operations_manager': return '/admin';
+      case 'teacher': return '/teacher';
+      case 'student': return '/student';
+      case 'parent': return '/parent';
+      default: return null;
+    }
+  };
+
+  // Surface a single failure for the login attempt and reset to `failed`.
+  // `kind` picks the surface so we never double-fire:
+  //   credentials → inline banner only (validation / 401 / 404)
+  //   system      → NassaqAlertDialog only (network, 5xx, bootstrap)
+  const failLoginAttempt = (msg, kind = 'credentials') => {
+    if (!mountedRef.current) return;
+    submittingRef.current = false;
+    setStatus('failed');
+    if (kind === 'system') {
+      setError('');
+      nassaqError(msg);
+    } else {
+      setError(msg);
+    }
+  };
+
+  // Bootstrap = /auth/me + role/redirect resolution. Treated as part of
+  // the login transition: if any step fails we abandon the freshly-issued
+  // session locally, leave the user on /login, and surface exactly one
+  // safe Arabic error. The success toast only fires after the redirect
+  // has been committed.
+  const bootstrapAndRedirect = async (fallbackUser) => {
+    setStatus('bootstrapping');
+    let fresh = null;
+    try {
+      // /auth/me is the canonical truth (esp. for IT first-login orchestration
+      // where mfa_enrolled_at / tenant_id may have just been stamped). If the
+      // hook isn't present at all we fall back to the snapshot from /auth/login;
+      // a present-but-failing refreshUser is treated as a hard failure.
+      if (typeof refreshUser === 'function') {
+        fresh = await refreshUser();
+      } else {
+        fresh = fallbackUser;
+      }
+    } catch (err) {
+      console.error('Login bootstrap: refreshUser threw', err);
+      fresh = null;
+    }
+    if (!mountedRef.current) return;
+
+    if (!fresh || !fresh.role) {
+      console.error('Login bootstrap failed at step: me');
+      try { clearAuthState?.(); } catch {}
+      failLoginAttempt(t('anErrorOccurredDuringLogin'), 'system');
+      return;
+    }
+
+    const target = resolveRedirectTarget(fresh.role, fresh);
+    if (!target) {
+      console.error('Login bootstrap failed at step: redirect (unresolved role)', fresh.role);
+      try { clearAuthState?.(); } catch {}
+      failLoginAttempt(t('anErrorOccurredDuringLogin'), 'system');
+      return;
+    }
+
+    setStatus('redirecting');
+    toast.success(t('loginSuccessful'));
+    navigate(target);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    if (status !== 'idle' && status !== 'failed') return;
+
     setError('');
 
     const isEmailValid = validateEmail(email);
@@ -105,102 +212,51 @@ export const LoginPage = () => {
       return;
     }
 
-    setLoading(true);
+    submittingRef.current = true;
+    setStatus('submitting');
 
+    let result;
     try {
-      const result = await login(email, password, rememberMe);
-
-      if (result.success) {
-        toast.success(t('loginSuccessful'));
-        // Resolve the freshest user state from /auth/me before routing.
-        // This matters for IT first-login orchestration: the routing
-        // decision must reflect the canonical mfa_enrolled_at /
-        // tenant_id seen by the backend, not the snapshot in the login
-        // response (which may lag a recently-set claim).
-        const fresh = (typeof refreshUser === 'function'
-          ? await refreshUser()
-          : null) || result.user;
-        navigateForRole(fresh.role, fresh);
-      } else if (result.mfaChallenge) {
-        // Switch the card into MFA-challenge mode. The password form is
-        // hidden; the inline picker calls verifyMfaLogin and on success
-        // routes the user via navigateForRole below.
-        setMfaChallenge(result.mfaChallenge);
-        setError('');
-      } else {
-        setError(result.error || (t('invalidCredentials')));
-        nassaqError(result.error || (t('invalidCredentials')));
-      }
+      result = await login(email, password, rememberMe);
     } catch (err) {
-      setError(t('anErrorOccurredDuringLogin'));
-      nassaqError(t('anErrorOccurredDuringLogin'));
-    } finally {
-      setLoading(false);
+      console.error('Login: unexpected throw from auth.login', err);
+      failLoginAttempt(t('anErrorOccurredDuringLogin'), 'system');
+      return;
     }
-  };
+    if (!mountedRef.current) return;
 
-  const navigateForRole = (role, userData) => {
-    // Task #183 — Independent-Teacher first-login orchestration:
-    //   no MFA enrolment   → MFA enrolment surface
-    //   no workspace yet   → onboarding wizard
-    //   otherwise          → /teacher
-    if (role === 'independent_teacher') {
-      if (!userData?.mfa_enrolled_at) {
-        navigate('/auth/mfa/enroll');
-        return;
-      }
-      if (!userData?.tenant_id) {
-        navigate('/teacher/onboarding');
-        return;
-      }
-      navigate('/teacher');
+    if (result?.mfaChallenge) {
+      // Switch the card into MFA-challenge mode. No success toast yet —
+      // it must wait until /auth/mfa/verify + /auth/me succeed and the
+      // redirect commits.
+      submittingRef.current = false;
+      setMfaChallenge(result.mfaChallenge);
+      setStatus('awaiting_mfa');
+      setError('');
       return;
     }
 
-    switch (role) {
-      case 'platform_admin':
-        navigate('/admin');
-        break;
-      case 'school_principal':
-        navigate('/principal');
-        break;
-      case 'school_sub_admin':
-        navigate('/school');
-        break;
-      case 'school_admin':
-        navigate('/principal');
-        break;
-      case 'platform_operations_manager':
-        navigate('/admin');
-        break;
-      case 'teacher':
-        navigate('/teacher');
-        break;
-      case 'student':
-        navigate('/student');
-        break;
-      case 'parent':
-        navigate('/parent');
-        break;
-      default:
-        navigate('/dashboard');
+    if (!result?.success) {
+      const msg = result?.error || t('invalidCredentials');
+      const kind = result?.kind === 'system' ? 'system' : 'credentials';
+      failLoginAttempt(msg, kind);
+      return;
     }
+
+    await bootstrapAndRedirect(result.user);
   };
 
   const handleMfaSuccess = async (userData) => {
-    toast.success(t('loginSuccessful'));
     setMfaChallenge(null);
-    // Same /auth/me freshness contract as the password path above.
-    const fresh = (typeof refreshUser === 'function'
-      ? await refreshUser()
-      : null) || userData;
-    navigateForRole(fresh?.role, fresh);
+    await bootstrapAndRedirect(userData);
   };
 
   const handleMfaCancel = () => {
+    submittingRef.current = false;
     setMfaChallenge(null);
     setPassword('');
     setError('');
+    setStatus('idle');
   };
 
   return (
@@ -343,7 +399,7 @@ export const LoginPage = () => {
                       }}
                       onBlur={() => validateEmail(email)}
                       className={`ps-10 h-12 rounded-xl font-tajawal ${emailError ? 'border-destructive' : ''}`}
-                      disabled={loading}
+                      disabled={isBusy}
                       data-testid="login-email-input"
                     />
                   </div>
@@ -380,7 +436,7 @@ export const LoginPage = () => {
                       }}
                       onBlur={() => validatePassword(password)}
                       className={`ps-10 pe-10 h-12 rounded-xl font-tajawal ${passwordError ? 'border-destructive' : ''}`}
-                      disabled={loading}
+                      disabled={isBusy}
                       data-testid="login-password-input"
                     />
                     <button
@@ -414,10 +470,10 @@ export const LoginPage = () => {
                 <Button
                   type="submit"
                   className="w-full h-12 rounded-xl bg-brand-navy hover:bg-brand-navy-light font-cairo text-base shadow-lg hover:shadow-xl transition-all active:scale-[0.98]"
-                  disabled={loading}
+                  disabled={isBusy}
                   data-testid="login-submit-btn"
                 >
-                  {loading ? (
+                  {isBusy ? (
                     <span className="flex items-center gap-2">
                       <Loader2 className="h-5 w-5 animate-spin" />
                       {t('signingIn')}

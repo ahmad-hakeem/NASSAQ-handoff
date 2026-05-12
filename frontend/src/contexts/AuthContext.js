@@ -219,10 +219,20 @@ export const AuthProvider = ({ children }) => {
       }
 
       if (status === 429) {
-        const retryAfter = error.response?.headers?.['retry-after'];
-        const parsed = retryAfter ? parseInt(retryAfter, 10) : NaN;
-        const secs = Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
-        toast.error(translateToast('tooManyRequestsWaitSeconds', { seconds: secs }));
+        // Task #195 — the login page owns its own error surface for
+        // rate-limit failures; suppress the global 429 toast for
+        // /auth/login (and the immediately-following /auth/me) so it
+        // can't double-fire alongside the inline banner.
+        const url429 = config.url || '';
+        const isLoginRateLimit =
+          url429.includes('/auth/login') ||
+          url429.includes('/auth/me');
+        if (!isLoginRateLimit) {
+          const retryAfter = error.response?.headers?.['retry-after'];
+          const parsed = retryAfter ? parseInt(retryAfter, 10) : NaN;
+          const secs = Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
+          toast.error(translateToast('tooManyRequestsWaitSeconds', { seconds: secs }));
+        }
         return Promise.reject(error);
       }
 
@@ -240,8 +250,15 @@ export const AuthProvider = ({ children }) => {
       if (isMutation && (status >= 500 || isRealNetworkError)) {
         const PUBLIC_PATHS = ['/', '/login', '/register', '/about', '/contact', '/pricing', '/forgot-password'];
         const isPublicPath = PUBLIC_PATHS.includes(window.location.pathname);
-        const isAuthMe = (config.url || '').includes('/auth/me');
-        if (!(isPublicPath && isAuthMe)) {
+        const url = config.url || '';
+        const isAuthMe = url.includes('/auth/me');
+        // Task #195 — the login page owns its own error surface for the
+        // /auth/login call and the immediately-following /auth/me bootstrap.
+        // Suppress the global server-error toast for those two endpoints so
+        // it cannot double-fire alongside the login card's banner / dialog.
+        const isAuthLogin = url.includes('/auth/login');
+        const isLoginOrPostLoginAuthMe = isAuthLogin || (isPublicPath && isAuthMe);
+        if (!isLoginOrPostLoginAuthMe) {
           const msg = isRealNetworkError
             ? translateToast('serverConnectionFailed')
             : translateToast('serverErrorWithCode', { code: status });
@@ -384,19 +401,51 @@ export const AuthProvider = ({ children }) => {
       return { success: true, user: userData };
     } catch (error) {
       console.error('Login error:', error);
+      const httpStatus = error.response?.status;
+      // Task #195 — never forward raw backend strings (`error.response.data.detail`,
+      // `str(e)`, etc.) to the user. Map every login failure to a safe,
+      // pre-translated Arabic message. `kind` tells the login page which
+      // surface to use (inline banner vs alert dialog).
       let message = 'فشل تسجيل الدخول';
-      if (error.response?.data?.detail) {
-        message = error.response.data.detail;
-      } else if (error.response?.status === 401) {
+      let kind = 'system';
+      if (httpStatus === 401) {
         message = 'بيانات الدخول غير صحيحة';
-      } else if (error.response?.status === 404) {
+        kind = 'credentials';
+      } else if (httpStatus === 404) {
         message = 'الحساب غير موجود';
+        kind = 'credentials';
+      } else if (httpStatus === 429) {
+        message = 'محاولات كثيرة جداً، يرجى المحاولة لاحقاً';
+        kind = 'credentials';
+      } else if (httpStatus && httpStatus >= 400 && httpStatus < 500) {
+        message = 'بيانات الدخول غير صحيحة';
+        kind = 'credentials';
+      } else if (httpStatus && httpStatus >= 500) {
+        message = 'خطأ في الاتصال بالخادم';
+        kind = 'system';
       } else if (!error.response) {
         message = 'خطأ في الاتصال بالخادم';
+        kind = 'system';
       }
-      return { success: false, error: message };
+      return { success: false, error: message, httpStatus, kind };
     }
   };
+
+  // Task #195 — local-only auth state reset used when /auth/login succeeded
+  // (so tokens were just persisted) but a downstream bootstrap step
+  // (/auth/me, role resolution, redirect target) failed. We must NOT call
+  // the server-side /auth/logout here — the issued session is fine; we
+  // simply abandon it on the client so the user is left in a clean
+  // signed-out state on /login.
+  const clearAuthState = useCallback(() => {
+    clearAllAuthTokens();
+    sessionStorage.removeItem('nassaq_school_context');
+    sessionStorage.removeItem('nassaq_impersonating');
+    setToken(null);
+    setUser(null);
+    setSchoolContext(null);
+    setIsImpersonating(false);
+  }, []);
 
   const register = async (userData) => {
     try {
@@ -637,9 +686,14 @@ export const AuthProvider = ({ children }) => {
     setUser((prev) => ({ ...prev, ...updatedData }));
   };
 
-  // Refresh user data from server
+  // Refresh user data from server.
+  // Task #195 — also accept the token from localStorage as a fallback so
+  // a refresh issued immediately after login() (before the React state
+  // has flushed) doesn't return a false-negative null. The login page
+  // relies on a null return value to mean "/auth/me genuinely failed".
   const refreshUser = async () => {
-    if (!token) return;
+    const effectiveToken = token || (typeof window !== 'undefined' ? localStorage.getItem('nassaq_token') : null);
+    if (!effectiveToken) return null;
     try {
       const response = await api.get('/auth/me');
       setUser(response.data);
@@ -709,6 +763,7 @@ export const AuthProvider = ({ children }) => {
     updatePreferences,
     updateUser,
     refreshUser,
+    clearAuthState,
     permissions,
     fetchPermissions,
     api,
