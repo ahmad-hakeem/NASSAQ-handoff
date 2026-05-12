@@ -2,6 +2,8 @@ export function createApiService(api) {
   return {
     auth: {
       me: () => api.get('/auth/me'),
+      myPermissions: () => api.get('/auth/me/permissions'),
+      rolePermissions: (role) => api.get(`/auth/permissions/role/${role}`),
       login: (email, password) => api.post('/auth/login', { email, password }),
       register: (data) => api.post('/auth/register', data),
       updatePreferences: (prefs) => api.put('/auth/preferences', null, { params: prefs }),

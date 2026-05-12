@@ -51,13 +51,16 @@ class ClassWizardCreate(BaseModel):
 @router.post("/classes/create")
 async def create_class_wizard(
     data: ClassWizardCreate,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
     """Create a new class via wizard"""
-    school_id = current_user.get("tenant_id") or current_user.get("school_id")
-    
-    if not school_id:
-        raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
+    # Phase 0 §4.B-1 — canonical workspace-id resolver; IT accounts land
+    # in their synthetic `itw_{user_id}` workspace.
+    from auth_scope import require_request_school_id
+    from quotas.independent_teacher import enforce_class_quota
+    school_id = require_request_school_id(current_user)
+    # Phase 0 §4.B-5 — IT v1 class quota.
+    await enforce_class_quota(db.session, current_user)
     
     class_id = str(uuid.uuid4())
 

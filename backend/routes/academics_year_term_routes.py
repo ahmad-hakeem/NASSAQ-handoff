@@ -89,15 +89,19 @@ def normalize_academic_year(doc: dict) -> dict:
 @router.post("/academic-years", response_model=AcademicYearResponse)
 async def create_academic_year(
     data: AcademicYearBase,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
     """Create a new academic year"""
     academic_year_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
-    
-    school_id = current_user.get("tenant_id") or data.school_id
+
+    from auth_scope import independent_workspace_id
+    from quotas.independent_teacher import enforce_academic_year_quota
+    school_id = current_user.get("tenant_id") or independent_workspace_id(current_user) or data.school_id
     if not school_id:
         raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
+    # Phase 0 §4.B-5 — IT v1 academic-year quota (single year).
+    await enforce_academic_year_quota(db.session, current_user)
     
     if data.is_current:
         await gd_update_many(db.session, "academic_years", {"school_id": school_id, "is_current": True}, {"is_current": False})
@@ -226,15 +230,19 @@ class TermResponse(BaseModel):
 @router.post("/terms", response_model=TermResponse)
 async def create_term(
     data: TermBase,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
     """Create a new term/semester"""
     term_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
 
-    effective_school_id = current_user.get("tenant_id") or current_user.get("school_id") or data.school_id
+    from auth_scope import independent_workspace_id
+    from quotas.independent_teacher import enforce_term_quota
+    effective_school_id = current_user.get("tenant_id") or current_user.get("school_id") or independent_workspace_id(current_user) or data.school_id
     if not effective_school_id:
         raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
+    # Phase 0 §4.B-5 — IT v1 term quota (max 2).
+    await enforce_term_quota(db.session, current_user)
 
     # If setting as current, unset other current terms for this school
     if data.is_current:

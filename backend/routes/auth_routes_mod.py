@@ -748,6 +748,40 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         original_role=current_user.get("original_role")
     )
 
+@router.get("/auth/me/permissions")
+async def get_my_permissions(current_user: dict = Depends(get_current_user)):
+    """Phase 0 §4.B-6 — backend is the source of truth for the caller's
+    permission set. The frontend uses this to seed role-aware UI without
+    hardcoding role→permission mappings."""
+    from middleware.rbac import RBACMiddleware, ROLE_PERMISSIONS
+    role = current_user.get("role") or ""
+    custom = current_user.get("permissions") or []
+    permissions = RBACMiddleware.get_user_permissions(role, custom)
+    return {
+        "role": role,
+        "permissions": permissions,
+        "base_permissions": list(ROLE_PERMISSIONS.get(role, [])),
+        "custom_permissions": list(custom),
+    }
+
+
+@router.get("/auth/permissions/role/{role}")
+async def get_role_permissions(
+    role: str,
+    current_user: dict = Depends(require_roles([
+        UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL,
+        UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN,
+    ]))
+):
+    """Phase 0 §4.B-6 — return the canonical permission set for a role so
+    user-creation wizards can render the assignable permissions without
+    hardcoding role→permission mappings on the client."""
+    from middleware.rbac import ROLE_PERMISSIONS
+    if role not in ROLE_PERMISSIONS:
+        raise HTTPException(status_code=404, detail="الدور غير معروف")
+    return {"role": role, "permissions": list(ROLE_PERMISSIONS[role])}
+
+
 @router.put("/auth/preferences")
 async def update_preferences(
     preferred_language: Optional[str] = None,

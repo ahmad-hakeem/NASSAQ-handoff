@@ -233,6 +233,12 @@ async def get_assessments(
     if current_user['role'] in ['school_principal', 'school_sub_admin', 'teacher']:
         if current_user.get('tenant_id'):
             query['school_id'] = current_user['tenant_id']
+    # Phase 0 §4.B-4 — IT accounts have tenant_id=None on the token; pin
+    # them to their synthetic workspace so /assessments cannot leak across
+    # independent-teacher tenants.
+    if current_user.get('role') == 'independent_teacher':
+        from auth_scope import independent_workspace_id
+        query['school_id'] = independent_workspace_id(current_user)
     
     if class_id:
         query['class_id'] = class_id

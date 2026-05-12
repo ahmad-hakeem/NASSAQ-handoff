@@ -650,6 +650,28 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Phase 0 §4.B-6 — backend-sourced permission set, lazily fetched and
+  // cached for the lifetime of this context. The wizard and any other
+  // role-aware UI should read from here instead of hardcoding role →
+  // permission mappings.
+  const [permissions, setPermissions] = useState(null);
+  const [permissionsLoading, setPermissionsLoading] = useState(false);
+  const fetchPermissions = useCallback(async () => {
+    if (!token) return null;
+    if (permissions) return permissions;
+    if (permissionsLoading) return null;
+    setPermissionsLoading(true);
+    try {
+      const response = await api.get('/auth/me/permissions');
+      setPermissions(response.data);
+      return response.data;
+    } catch (error) {
+      return null;
+    } finally {
+      setPermissionsLoading(false);
+    }
+  }, [token, api, permissions, permissionsLoading]);
+
   // Listen for user-updated events
   useEffect(() => {
     const handleUserUpdate = (event) => {
@@ -679,6 +701,8 @@ export const AuthProvider = ({ children }) => {
     updatePreferences,
     updateUser,
     refreshUser,
+    permissions,
+    fetchPermissions,
     api,
     isAuthenticated: !!user,
     isPlatformAdmin: user?.role === 'platform_admin',

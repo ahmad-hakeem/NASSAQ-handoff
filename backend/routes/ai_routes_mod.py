@@ -955,11 +955,10 @@ async def resolve_ai_insights_scope(current_user: dict):
 
     try:
         if role == UserRole.INDEPENDENT_TEACHER.value:
-            user_id = current_user.get("id") or current_user.get("_id")
-            if not user_id:
+            from auth_scope import independent_workspace_id as _itw_id
+            workspace_id = _itw_id(current_user)
+            if not workspace_id:
                 raise HTTPException(403, _AI_INSIGHTS_SCOPE_DENIED_AR)
-
-            workspace_id = f"itw_{user_id}"
             workspace = await gd_find_one(db.session, "schools", {"id": workspace_id})
             if not workspace:
                 # Authorization-resolution failure: the caller's workspace
@@ -987,7 +986,7 @@ async def resolve_ai_insights_scope(current_user: dict):
                 return NO_AUTHORIZED_SCOPE
 
             return {
-                "teacher_id": current_user.get("teacher_id") or str(user_id),
+                "teacher_id": current_user.get("teacher_id") or current_user.get("id"),
                 "school_id": workspace_id,
                 "class_ids": class_ids,
                 "student_ids": student_ids,

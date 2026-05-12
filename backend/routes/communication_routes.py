@@ -433,10 +433,15 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
             "total": len(messages)
         }
     
-    @router.post("/broadcast")
+    from auth_scope import require_full_school_tenant as _require_full_school_tenant
+
+    @router.post("/broadcast", dependencies=[Depends(_require_full_school_tenant)])
     async def send_broadcast_message(
         message: MessageCreate,
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        # Phase 0 §4.B-2 — IT gate runs first via router dep above so the
+        # canonical Arabic 403 is returned instead of "Insufficient
+        # permissions" from the role check.
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
     ):
         """Send broadcast message to all users"""
         now = datetime.now(timezone.utc).isoformat()

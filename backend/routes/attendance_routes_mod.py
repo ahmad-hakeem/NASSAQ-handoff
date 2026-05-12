@@ -405,7 +405,13 @@ async def get_class_attendance(
         query["date"] = date
     else:
         query["date"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    if current_user.get('tenant_id'):
+    # Phase 0 §4.B-4 — IT users carry tenant_id=None on the JWT; scope to
+    # their synthetic workspace via the canonical resolver so cross-IT
+    # attendance never leaks even when a class id is guessed/shared.
+    from auth_scope import independent_workspace_id, is_independent_teacher
+    if is_independent_teacher(current_user):
+        query['tenant_id'] = independent_workspace_id(current_user)
+    elif current_user.get('tenant_id'):
         query['tenant_id'] = current_user['tenant_id']
     
     limit = 10000 if (start_date or end_date) else 1000

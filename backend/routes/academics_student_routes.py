@@ -44,28 +44,9 @@ async def get_school_id_from_context(current_user: dict, x_school_context: str =
     return resolve_school_id(current_user, x_school_context)
 
 
-def _independent_workspace_id(current_user: dict) -> Optional[str]:
-    """DEPRECATED (Task #155): use `auth_scope.independent_workspace_id`.
-    Retained only for transitional compatibility with any out-of-tree caller.
-    Do NOT use in new code; do NOT call from inside this module — every
-    in-module call site has been migrated to `require_request_school_id`."""
-    role = current_user.get("role")
-    account_type = current_user.get("account_type") or (current_user.get("data") or {}).get("account_type")
-    if role != "independent_teacher" and account_type != "independent_teacher":
-        return None
-    user_id = current_user.get("id") or current_user.get("_id")
-    if not user_id:
-        return None
-    return f"itw_{user_id}"
-
-
-def _scoped_school_id(current_user: dict) -> Optional[str]:
-    """DEPRECATED (Task #155): tri-state resolver — returns None on failure
-    and is therefore unsafe in the broad-fallback pattern this audit was
-    written to eliminate. Use `auth_scope.require_request_school_id` instead,
-    which raises a fail-closed 403 with the safe Arabic message. Retained
-    only for transitional compatibility; no in-module callers remain."""
-    return current_user.get("tenant_id") or _independent_workspace_id(current_user)
+# Local `_independent_workspace_id` / `_scoped_school_id` helpers were
+# removed in Phase 0 §4.B-1 of the Independent-Teacher spec. Use
+# `auth_scope.independent_workspace_id` / `require_request_school_id`.
 
 # ============== STUDENTS ROUTES ==============
 @router.post("/students", response_model=StudentResponse)

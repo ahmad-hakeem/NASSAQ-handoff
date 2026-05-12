@@ -35,8 +35,21 @@ class TenantIsolation:
     
     @staticmethod
     def get_user_tenant_id(user: Dict[str, Any]) -> Optional[str]:
-        """Extract tenant ID from user"""
-        return user.get("tenant_id") or user.get("primary_tenant_id")
+        """Extract tenant ID from user.
+
+        For Independent-Teacher accounts (no real tenant_id) we synthesise
+        the canonical `itw_{user_id}` workspace id (Phase 0 §4.B-4) so
+        every helper that funnels through `get_user_tenant_id` —
+        `get_accessible_tenant_ids`, `apply_tenant_filter`,
+        `validate_tenant_access`, `enforce_tenant_on_create` — naturally
+        scopes IT workspaces in isolation, with no IT-1 ↔ IT-2 leakage.
+        """
+        explicit = user.get("tenant_id") or user.get("primary_tenant_id")
+        if explicit:
+            return explicit
+        # Avoid an import cycle: auth_scope only depends on dependencies.
+        from auth_scope import independent_workspace_id
+        return independent_workspace_id(user)
     
     @staticmethod
     def is_platform_user(user: Dict[str, Any]) -> bool:
@@ -289,6 +302,15 @@ TENANT_SCOPED_COLLECTIONS = frozenset({
     "administrative_constraints",
     "admin_constraints",
     "constraint_patterns",
+    # Phase 0 §4.B-4: keep IT workspaces sealed across the rest of the
+    # academic surface so cross-IT access is impossible by construction.
+    "academic_years",
+    "terms",
+    "assessments",
+    "assessment_results",
+    "messages",
+    "guardian_links",
+    "audit_logs",
 })
 
 

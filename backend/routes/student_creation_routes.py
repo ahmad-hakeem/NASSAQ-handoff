@@ -276,7 +276,7 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
     @router.post("/create")
     async def create_student_with_parent(
         request: StudentCreateRequest,
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER]))
     ):
         """
         إنشاء طالب جديد مع ولي أمره
@@ -285,9 +285,13 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         - توليد Student ID
         - توليد QR Code
         """
-        school_id = current_user.get("tenant_id")
-        if not school_id:
-            raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
+        # Phase 0 §4.B-1 — canonical workspace-id resolution; IT accounts
+        # land in the synthetic `itw_{user_id}` workspace.
+        from auth_scope import require_request_school_id
+        from quotas.independent_teacher import enforce_student_quota
+        school_id = require_request_school_id(current_user)
+        # Phase 0 §4.B-5 — IT v1 student quota.
+        await enforce_student_quota(db.session, current_user)
 
         # Defense-in-depth: normalize blank/whitespace-only optional
         # identifier fields to None so they reach the DB as NULL instead

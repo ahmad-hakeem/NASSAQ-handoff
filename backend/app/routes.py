@@ -78,11 +78,17 @@ def register_routes(app, api_router: APIRouter):
 
     from routes.academic_structure_routes import router as academic_structure_router
     api_router.include_router(academic_structure_router)
-    api_router.include_router(scheduling_smart_router)
-    api_router.include_router(scheduling_smart_sess_router)
-    api_router.include_router(schedule_candidates_router)
-    api_router.include_router(schedule_master_grid_router)
-    api_router.include_router(standby_router)
+    # Phase 0 §4.B-2 — capability gate for routers reserved to full
+    # school tenants. Independent-Teacher accounts get a friendly Arabic
+    # 403 instead of a misleading "Permission denied" or 500.
+    from auth_scope import require_full_school_tenant
+    from fastapi import Depends as _Depends
+    _full_tenant_dep = [_Depends(require_full_school_tenant)]
+    api_router.include_router(scheduling_smart_router, dependencies=_full_tenant_dep)
+    api_router.include_router(scheduling_smart_sess_router, dependencies=_full_tenant_dep)
+    api_router.include_router(schedule_candidates_router, dependencies=_full_tenant_dep)
+    api_router.include_router(schedule_master_grid_router, dependencies=_full_tenant_dep)
+    api_router.include_router(standby_router, dependencies=_full_tenant_dep)
     api_router.include_router(attendance_mod_router)
     api_router.include_router(assessment_mod_router)
     api_router.include_router(behaviour_mod_router)
@@ -92,7 +98,7 @@ def register_routes(app, api_router: APIRouter):
     api_router.include_router(reporting_mod_router)
     api_router.include_router(role_dashboards_mod_router)
     api_router.include_router(admin_mod_router)
-    api_router.include_router(school_settings_mod_router)
+    api_router.include_router(school_settings_mod_router, dependencies=_full_tenant_dep)
     api_router.include_router(search_directory_mod_router)
     api_router.include_router(event_workflow_mod_router)
     api_router.include_router(relationship_mod_router)
@@ -101,10 +107,10 @@ def register_routes(app, api_router: APIRouter):
     api_router.include_router(product_hub_router)
     api_router.include_router(portfolio_mod_router)
     api_router.include_router(calendar_mod_router)
-    api_router.include_router(hakeem_plan_mod_router)
+    api_router.include_router(hakeem_plan_mod_router, dependencies=_full_tenant_dep)
 
     from routes.principal_management_routes import router as principal_mgmt_router
-    api_router.include_router(principal_mgmt_router)
+    api_router.include_router(principal_mgmt_router, dependencies=_full_tenant_dep)
 
     from routes.timetable_readiness_routes import router as timetable_readiness_router, set_database as set_readiness_db
     set_readiness_db(db)
@@ -225,17 +231,17 @@ def register_routes(app, api_router: APIRouter):
     api_router.include_router(teacher_management_routes)
     api_router.include_router(class_management_routes)
     api_router.include_router(notification_routes)
-    api_router.include_router(teacher_attendance_router)
+    api_router.include_router(teacher_attendance_router, dependencies=_full_tenant_dep)
     api_router.include_router(communication_router)
-    api_router.include_router(bulk_teacher_router)
+    api_router.include_router(bulk_teacher_router, dependencies=_full_tenant_dep)
     api_router.include_router(student_creation_router)
     api_router.include_router(admin_dashboard_router)
     api_router.include_router(security_router)
     api_router.include_router(settings_router)
     api_router.include_router(user_roles_router)
     api_router.include_router(websocket_router)
-    api_router.include_router(bulk_routes)
-    api_router.include_router(import_tracking_routes)
+    api_router.include_router(bulk_routes, dependencies=_full_tenant_dep)
+    api_router.include_router(import_tracking_routes, dependencies=_full_tenant_dep)
     api_router.include_router(student_portal_routes)
     api_router.include_router(parent_portal_routes)
 

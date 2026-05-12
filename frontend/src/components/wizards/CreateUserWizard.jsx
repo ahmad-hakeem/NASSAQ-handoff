@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 
 import { useTranslation } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
 // =============================================================
 // مناطق ومدن المملكة العربية السعودية
 // =============================================================
@@ -381,14 +382,25 @@ const PLATFORM_SUB_ADMIN_PERMISSIONS = [
   { id: 'manage_teacher_requests', name: 'إدارة طلبات المعلمين', name_en: 'Manage Teacher Requests', icon: UserCheck },
 ];
 
-// صلاحيات المعلم المستقل
-const INDEPENDENT_TEACHER_PERMISSIONS = [
-  { id: 'view_schools', name: 'عرض المدارس المتاحة', name_en: 'View Available Schools', icon: Building2 },
-  { id: 'apply_to_schools', name: 'التقدم للمدارس', name_en: 'Apply to Schools', icon: FileText },
-  { id: 'manage_profile', name: 'إدارة الملف الشخصي', name_en: 'Manage Profile', icon: User },
-  { id: 'view_own_schedule', name: 'عرض الجدول الشخصي', name_en: 'View Own Schedule', icon: CalendarCheck },
-  { id: 'use_ai_assistant', name: 'استخدام مساعد AI', name_en: 'Use AI Assistant', icon: Brain },
-];
+// Phase 0 §4.B-6 — Independent-Teacher permissions are NOT defined in
+// the frontend. The backend `middleware/rbac.py::ROLE_PERMISSIONS` is
+// the single source of truth; the wizard fetches the assignable set
+// from `GET /auth/permissions/role/independent_teacher` and renders
+// only what the backend returned. There is no local fallback array,
+// so the UI cannot drift from server-side enforcement. Pretty
+// labels/icons for known permission ids are looked up from
+// IT_PERMISSION_LABELS below at render time.
+const IT_PERMISSION_LABELS = {
+  'schedule.view':       { name: 'عرض الجدول', name_en: 'View Schedule', icon: CalendarCheck },
+  'attendance.view':     { name: 'عرض الحضور', name_en: 'View Attendance', icon: CalendarCheck },
+  'attendance.record':   { name: 'تسجيل الحضور', name_en: 'Record Attendance', icon: CalendarCheck },
+  'assessments.view':    { name: 'عرض التقييمات', name_en: 'View Assessments', icon: FileText },
+  'assessments.create':  { name: 'إنشاء التقييمات', name_en: 'Create Assessments', icon: FileText },
+  'assessments.grade':   { name: 'تصحيح التقييمات', name_en: 'Grade Assessments', icon: CheckCircle2 },
+  'behaviour.view':      { name: 'عرض السلوك', name_en: 'View Behaviour', icon: Activity },
+  'behaviour.record':    { name: 'تسجيل السلوك', name_en: 'Record Behaviour', icon: Activity },
+  'notifications.view':  { name: 'عرض الإشعارات', name_en: 'View Notifications', icon: Bell },
+};
 
 // صلاحيات مدير العمليات
 const OPERATIONS_MANAGER_PERMISSIONS = [
@@ -450,7 +462,10 @@ const getPermissionsByRole = (roleId) => {
     case 'platform_sub_admin':
       return PLATFORM_SUB_ADMIN_PERMISSIONS;
     case 'independent_teacher':
-      return INDEPENDENT_TEACHER_PERMISSIONS;
+      // Phase 0 §4.B-6 — IT permissions are backend-sourced; this
+      // function returns an empty list and the wizard renders only
+      // what `/auth/permissions/role/independent_teacher` returns.
+      return [];
     case 'platform_operations_manager':
       return OPERATIONS_MANAGER_PERMISSIONS;
     case 'platform_technical_admin':
@@ -505,6 +520,34 @@ export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, i
   
   // الصلاحيات
   const [selectedPermissions, setSelectedPermissions] = useState([]);
+  // Phase 0 §4.B-6 — backend-sourced permission ids per role.
+  // The wizard fetches `/auth/permissions/role/:role` via apiClient and uses
+  // the returned ids as the source of truth (no local fallback for IT).
+  const { api: authApi } = useAuth();
+  const [backendRolePermissions, setBackendRolePermissions] = useState({});
+  const [permissionsFetchError, setPermissionsFetchError] = useState(null);
+
+  // Build the displayed permission objects for `formData.role`.
+  // For IT, we render strictly the backend-returned ids (decorated with
+  // labels/icons from IT_PERMISSION_LABELS). For all other roles we fall
+  // back to the local hardcoded arrays. If the backend call fails for IT,
+  // we render an empty list (fail-closed) so the UI cannot advertise
+  // permissions the backend would reject.
+  const displayedPermissions = React.useMemo(() => {
+    if (formData.role === 'independent_teacher') {
+      const ids = backendRolePermissions[formData.role] || [];
+      return ids.map((id) => {
+        const meta = IT_PERMISSION_LABELS[id] || {};
+        return {
+          id,
+          name: meta.name || id,
+          name_en: meta.name_en || id,
+          icon: meta.icon || Shield,
+        };
+      });
+    }
+    return getPermissionsByRole(formData.role);
+  }, [formData.role, backendRolePermissions]);
   
   // كلمة المرور المؤقتة
   const [tempPassword, setTempPassword] = useState('');
@@ -522,12 +565,48 @@ export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, i
   const availableEducationalDepts = selectedRegion?.educationalDepartments || [];
   
   // عند اختيار دور، تحميل الصلاحيات الافتراضية
+  // Phase 0 §4.B-6 — for IT (and any other role we already have backend
+  // mapping for), the assignable permission ids come from the backend so
+  // the wizard cannot drift from server-side enforcement.
   useEffect(() => {
-    if (formData.role) {
-      const rolePermissions = getPermissionsByRole(formData.role);
-      setSelectedPermissions(rolePermissions.map(p => p.id));
-    }
-  }, [formData.role]);
+    if (!formData.role) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!backendRolePermissions[formData.role] && authApi) {
+          const resp = await authApi.get(`/auth/permissions/role/${formData.role}`);
+          if (cancelled) return;
+          const ids = Array.isArray(resp?.data?.permissions) ? resp.data.permissions : [];
+          setBackendRolePermissions((prev) => ({ ...prev, [formData.role]: ids }));
+          setPermissionsFetchError(null);
+          // Default-select everything the backend says is assignable.
+          setSelectedPermissions(ids);
+          return;
+        }
+        const cached = backendRolePermissions[formData.role];
+        if (cached !== undefined) {
+          setSelectedPermissions(cached);
+        } else {
+          // Non-IT roles still seed from the local arrays (those roles
+          // are not in scope for Phase 0 §4.B-6 backend sourcing).
+          setSelectedPermissions(getPermissionsByRole(formData.role).map(p => p.id));
+        }
+      } catch (e) {
+        if (cancelled) return;
+        // Phase 0 §4.B-6 — fail CLOSED for IT: never fall back to a
+        // hardcoded list, since that risks advertising a permission
+        // the backend would reject.
+        if (formData.role === 'independent_teacher') {
+          setBackendRolePermissions((prev) => ({ ...prev, [formData.role]: [] }));
+          setSelectedPermissions([]);
+          setPermissionsFetchError(e?.message || 'fetch_failed');
+        } else {
+          setSelectedPermissions(getPermissionsByRole(formData.role).map(p => p.id));
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [formData.role, authApi]);  // eslint-disable-line react-hooks/exhaustive-deps
   
   // إعادة تعيين المدينة والإدارة عند تغيير المنطقة
   useEffect(() => {
@@ -1015,7 +1094,7 @@ ${loginUrl}
                                 : `${selectedRole?.name_en || 'Role'} Permissions`}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {selectedPermissions.length} / {getPermissionsByRole(formData.role).length} {t('selected')}
+                              {selectedPermissions.length} / {displayedPermissions.length} {t('selected')}
                             </p>
                           </div>
                         </div>
@@ -1024,8 +1103,7 @@ ${loginUrl}
                           size="sm"
                           className="h-7 text-xs"
                           onClick={() => {
-                            const rolePerms = getPermissionsByRole(formData.role);
-                            const allIds = rolePerms.map(p => p.id);
+                            const allIds = displayedPermissions.map(p => p.id);
                             const allSelected = allIds.every(id => selectedPermissions.includes(id));
                             if (allSelected) {
                               setSelectedPermissions([]);
@@ -1034,15 +1112,22 @@ ${loginUrl}
                             }
                           }}
                         >
-                          {selectedPermissions.length === getPermissionsByRole(formData.role).length 
+                          {selectedPermissions.length === displayedPermissions.length 
                             ? (isRTL ? 'إلغاء الكل' : 'Deselect All')
                             : (t('selectAll'))
                           }
                         </Button>
                       </div>
                       
+                      {formData.role === 'independent_teacher' && permissionsFetchError && (
+                        <div className="p-2 mb-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+                          {isRTL
+                            ? 'تعذر تحميل صلاحيات المعلم المستقل من الخادم. لا يمكن المتابعة دون الصلاحيات المعتمدة من الخادم.'
+                            : 'Could not load Independent Teacher permissions from the server. Cannot proceed without server-approved permissions.'}
+                        </div>
+                      )}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {getPermissionsByRole(formData.role).map((perm) => {
+                        {displayedPermissions.map((perm) => {
                           const isSelected = selectedPermissions.includes(perm.id);
                           const IconComp = perm.icon;
                           return (

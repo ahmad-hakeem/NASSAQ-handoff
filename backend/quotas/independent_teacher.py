@@ -1,0 +1,117 @@
+"""
+Independent-Teacher v1 workspace quotas (Phase 0 §4.B-5).
+
+Enforced at the create-resource boundary so an IT account can never
+materialise more than the allowed number of classes / students /
+academic years per workspace. All errors are 409 with safe Arabic
+messages; callers MUST NOT downgrade them to 200/500.
+"""
+from typing import Optional
+
+from fastapi import HTTPException
+
+from auth_scope import independent_workspace_id
+from engines.sql_utils import gd_count
+
+# v1 limits. Intentionally conservative — Phase 1 will revisit.
+MAX_CLASSES = 5
+MAX_STUDENTS = 200
+MAX_ACADEMIC_YEARS = 1
+MAX_TERMS = 2
+
+_MSG_CLASSES = (
+    "بلغت الحد الأقصى لعدد الفصول في حسابك المستقل (٥). "
+    "احذف فصلاً قبل إنشاء فصل جديد."
+)
+_MSG_STUDENTS = (
+    "بلغت الحد الأقصى لعدد الطلاب في حسابك المستقل (٢٠٠). "
+    "أرشف طالباً قبل إضافة طالب جديد."
+)
+_MSG_YEARS = (
+    "حسابك المستقل يدعم عاماً دراسياً واحداً فقط. "
+    "احذف العام الحالي قبل إنشاء عام جديد."
+)
+_MSG_TERMS = (
+    "حسابك المستقل يدعم فصلين دراسيين كحد أقصى. "
+    "احذف فصلاً قبل إنشاء فصل جديد."
+)
+
+
+def _workspace_id(current_user: dict) -> Optional[str]:
+    """Return the IT workspace id, or None if the caller is not an IT."""
+    return independent_workspace_id(current_user)
+
+
+async def enforce_class_quota(session, current_user: dict) -> None:
+    wsid = _workspace_id(current_user)
+    if not wsid:
+        return  # not an IT — quotas don't apply
+    count = await gd_count(session, "classes", {"school_id": wsid})
+    if count >= MAX_CLASSES:
+        raise HTTPException(status_code=409, detail=_MSG_CLASSES)
+
+
+async def enforce_student_quota(session, current_user: dict) -> None:
+    wsid = _workspace_id(current_user)
+    if not wsid:
+        return
+    count = await gd_count(
+        session, "students", {"school_id": wsid, "is_active": {"$ne": False}}
+    )
+    if count >= MAX_STUDENTS:
+        raise HTTPException(status_code=409, detail=_MSG_STUDENTS)
+
+
+async def enforce_academic_year_quota(session, current_user: dict) -> None:
+    """Cap on currently-active academic years only — historical/closed
+    rows do not count against the IT workspace limit."""
+    wsid = _workspace_id(current_user)
+    if not wsid:
+        return
+    count = await gd_count(
+        session,
+        "academic_years",
+        {
+            "school_id": wsid,
+            "$or": [
+                {"is_current": True},
+                {"status": {"$in": ["active", "published"]}},
+            ],
+        },
+    )
+    if count >= MAX_ACADEMIC_YEARS:
+        raise HTTPException(status_code=409, detail=_MSG_YEARS)
+
+
+async def enforce_term_quota(session, current_user: dict) -> None:
+    """Cap on currently-active terms only — archived/closed terms are
+    not counted."""
+    wsid = _workspace_id(current_user)
+    if not wsid:
+        return
+    count = await gd_count(
+        session,
+        "terms",
+        {
+            "school_id": wsid,
+            "$or": [
+                {"is_active": True},
+                {"is_current": True},
+                {"status": {"$in": ["active", "published"]}},
+            ],
+        },
+    )
+    if count >= MAX_TERMS:
+        raise HTTPException(status_code=409, detail=_MSG_TERMS)
+
+
+__all__ = [
+    "MAX_CLASSES",
+    "MAX_STUDENTS",
+    "MAX_ACADEMIC_YEARS",
+    "MAX_TERMS",
+    "enforce_class_quota",
+    "enforce_student_quota",
+    "enforce_academic_year_quota",
+    "enforce_term_quota",
+]
