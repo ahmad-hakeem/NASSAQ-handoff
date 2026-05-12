@@ -347,10 +347,15 @@ async def get_student(student_id: str, current_user: dict = Depends(get_current_
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
     if current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
-        user_school = current_user.get("tenant_id")
+        # Resolve the caller's effective workspace id; for IT this is
+        # the synthetic `itw_{user_id}`. Cross-tenant lookups MUST 404
+        # (not 403) so the route never confirms the existence of a
+        # student in another tenant — see #192 spec §5.6.
+        from auth_scope import independent_workspace_id
+        user_school = current_user.get("tenant_id") or independent_workspace_id(current_user)
         student_school = student.get("school_id")
         if user_school and student_school and student_school != user_school:
-            raise HTTPException(status_code=403, detail="غير مصرح لك بعرض بيانات هذا الطالب")
+            raise HTTPException(status_code=404, detail="الطالب غير موجود")
     
     class_name = None
     if student.get("class_id"):
@@ -695,18 +700,52 @@ async def search_parents(
 @router.post("/student-wizard/create")
 async def create_student_with_wizard(
     data: StudentWizardCreate,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
-    """Create student with parent and health info via wizard"""
-    school_id = current_user.get("tenant_id")
-    
+    """Create student with parent and health info via wizard.
+
+    IT workspace mode (#192 spec §5.6):
+      * `school_id` is pinned to the synthetic `itw_{user_id}` workspace
+        regardless of any client-supplied tenant/school id.
+      * Parent payload is fully optional. When absent (or partial), no
+        `parents` row is materialised — the partial fragments land in
+        `students.pending_parent_{name,phone,email}` until a real parent
+        is later linked via the IT inline-link flow.
+      * The Phase-0 student quota (MAX_STUDENTS=200) is enforced.
+    """
+    from auth_scope import (
+        require_request_school_id,
+        is_independent_teacher,
+        independent_workspace_id,
+    )
+    from quotas.independent_teacher import enforce_student_quota
+
+    is_it = is_independent_teacher(current_user)
+    if is_it:
+        # Defensive tenant pin — JWT-derived workspace id is the ONLY
+        # acceptable tenant; any client-supplied id is ignored.
+        school_id = independent_workspace_id(current_user)
+        await enforce_student_quota(db.session, current_user)
+    else:
+        school_id = require_request_school_id(current_user)
+
     if not school_id:
         raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
-    
+
     # Get school info
     school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
+
+    # School-admin contract (unchanged): a parent payload (with at least
+    # full_name + phone) is required. IT workspace mode skips this.
+    if not is_it and not data.link_to_parent_id:
+        p = data.parent or {}
+        if not (p.get("full_name") and p.get("phone")):
+            raise HTTPException(
+                status_code=422,
+                detail="بيانات ولي الأمر مطلوبة (الاسم والهاتف)",
+            )
 
     # Validate student email uniqueness if provided
     if data.email:
@@ -722,6 +761,15 @@ async def create_student_with_wizard(
         )
         if not existing_parent:
             raise HTTPException(status_code=404, detail="ولي الأمر غير موجود في هذه المدرسة")
+
+    # Workspace-mode parent gate (#192 spec §5.6): in IT workspace mode
+    # the parent payload is FULLY OPTIONAL — any parent fragments
+    # supplied through the inline-create flow (including phone-only,
+    # name-only, or no parent at all) land in `pending_parent_*` and
+    # never materialise a `parents` row. Only an explicit
+    # `link_to_parent_id` opts into linking.
+    p = data.parent or {}
+    skip_parent_materialise = is_it and not data.link_to_parent_id
 
     # Generate student number: NSS-CODE-GRADE-XXXX using actual grade number
     school_code = school.get("code", "NSS")
@@ -776,13 +824,26 @@ async def create_student_with_wizard(
         student_doc["special_needs"] = data.health.get("special_needs")
         student_doc["health_notes"] = data.health.get("notes")
     
+    # Workspace-mode (#192 spec §5.6): persist partial parent fragments
+    # into the canonical pending_parent_* columns so a real parent can
+    # be linked later by the IT inline-link flow. The DB trigger
+    # `students_clear_pending_parent_on_link_trg` clears these on
+    # parent_id NULL→non-NULL transitions.
+    if skip_parent_materialise:
+        student_doc["pending_parent_name"] = (p.get("full_name") or None)
+        student_doc["pending_parent_phone"] = (p.get("phone") or None)
+        student_doc["pending_parent_email"] = (p.get("email") or None)
+
     await gd_insert(db.session, "students", student_doc)
-    
+
     # Handle parent
     parent_doc = None
     parent_password = None
-    
-    if data.link_to_parent_id:
+
+    if skip_parent_materialise:
+        # No parents row, no parent user, no guardian_link. Done.
+        pass
+    elif data.link_to_parent_id:
         # Link to existing parent
         await _gd_push(db.session, "parents", {"id": data.link_to_parent_id}, {"student_ids": student_id})
         parent_doc = await gd_find_one(db.session, "parents", {"id": data.link_to_parent_id})

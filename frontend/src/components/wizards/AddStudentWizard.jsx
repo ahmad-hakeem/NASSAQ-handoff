@@ -149,7 +149,13 @@ export default function AddStudentWizard({
   isRTL = true,
   grades = [],
   classes = [],
+  // #192 spec §5.6 — `workspace` mode is the IT inline-create variant.
+  // It hides the parent-directory search, drops `check-parent`, makes
+  // every parent field optional, and skips the school-only relationship
+  // requirement so the wizard can submit a student with zero parent data.
+  mode = 'school',
 }) {
+  const isWorkspaceMode = mode === 'workspace';
   const { t } = useTranslation();
   const { nassaqError } = useNassaqAlert();
   const [step, setStep] = useState(1);
@@ -190,7 +196,9 @@ export default function AddStudentWizard({
   const [checkingParent, setCheckingParent] = useState(false);
   const [linkToExisting, setLinkToExisting] = useState(false);
 
-  const [parentMode, setParentMode] = useState('new');
+  // Workspace mode (#192) hides the parent-directory toggle entirely
+  // and locks the wizard into the "new parent (optional)" flow.
+  const [parentMode, setParentMode] = useState(isWorkspaceMode ? 'new' : 'new');
   const [parentSearchQuery, setParentSearchQuery] = useState('');
   const [parentSearchResults, setParentSearchResults] = useState([]);
   const [searchingParents, setSearchingParents] = useState(false);
@@ -200,6 +208,10 @@ export default function AddStudentWizard({
   const [createdParent, setCreatedParent] = useState(null);
 
   const checkParentExists = useCallback(async () => {
+    // Workspace mode (#192) intentionally skips the parent-directory probe:
+    // IT operators rarely have other parents in their workspace and the
+    // endpoint is school-scoped.
+    if (isWorkspaceMode) return;
     if (!parentData.phone && !parentData.email && !parentData.national_id) return;
     setCheckingParent(true);
     try {
@@ -263,6 +275,9 @@ export default function AddStudentWizard({
       case 1:
         return studentData.full_name && studentData.gender && studentData.date_of_birth && studentData.education_level && studentData.grade_id;
       case 2:
+        // Workspace mode (#192 spec §5.6) — parent step is fully optional;
+        // the user can leave every field blank and still advance.
+        if (isWorkspaceMode) return true;
         if (parentMode === 'search' && selectedExistingParent) return true;
         if (linkToExisting && existingParent) return true;
         return parentData.full_name && parentData.phone && parentData.relationship;
@@ -308,14 +323,24 @@ export default function AddStudentWizard({
 
       const sanitizedParent = {
         ...parentData,
+        full_name: _blankToNull(parentData.full_name),
+        phone: _blankToNull(parentData.phone),
         national_id: _blankToNull(parentData.national_id),
         email: _blankToNull(parentData.email),
         address: _blankToNull(parentData.address),
       };
 
+      // Workspace mode (#192 spec §5.6): when EVERY parent field is blank
+      // we omit the `parent` payload entirely so the backend writes
+      // pending_parent_* as NULLs instead of materialising an empty
+      // parents row. When a partial payload is supplied (e.g. just a
+      // name or just a phone) we still send it and the backend persists
+      // it into the pending_parent_* columns.
+      const parentIsEmpty = isWorkspaceMode && !parentIdToLink && !sanitizedParent.full_name && !sanitizedParent.phone && !sanitizedParent.email && !sanitizedParent.national_id && !sanitizedParent.address;
+
       const requestData = {
         ...sanitizedStudent,
-        parent: sanitizedParent,
+        parent: parentIsEmpty ? null : sanitizedParent,
         health: healthData.health_status || healthData.allergies || healthData.medications ? {
           health_status: healthData.health_status || null,
           allergies: healthData.allergies ? healthData.allergies.split(',').map(a => a.trim()) : [],
@@ -542,8 +567,16 @@ export default function AddStudentWizard({
 
           {step === 2 && (
             <div className="space-y-5">
-              <SectionHeader icon={Users} title={isRTL ? 'بيانات ولي الأمر' : 'Parent Information'} subtitle={t('addNewOrLinkExistingParent')} color="green" />
+              <SectionHeader
+                icon={Users}
+                title={isRTL ? 'بيانات ولي الأمر' : 'Parent Information'}
+                subtitle={isWorkspaceMode
+                  ? (isRTL ? 'اختياري — يمكنك تخطّي هذه الخطوة وربط ولي الأمر لاحقاً' : 'Optional — you can skip and link a parent later')
+                  : t('addNewOrLinkExistingParent')}
+                color="green"
+              />
 
+              {!isWorkspaceMode && (
               <div className="grid grid-cols-2 gap-2 p-1 bg-muted/50 rounded-xl">
                 <button
                   type="button"
@@ -566,8 +599,9 @@ export default function AddStudentWizard({
                   {t('linkExisting')}
                 </button>
               </div>
+              )}
 
-              {parentMode === 'search' && (
+              {!isWorkspaceMode && parentMode === 'search' && (
                 <div className="space-y-4">
                   <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20">
                     <p className="text-xs text-blue-600 dark:text-blue-400 mb-2.5">
@@ -648,7 +682,7 @@ export default function AddStudentWizard({
                 </div>
               )}
 
-              {parentMode === 'new' && existingParent && (
+              {!isWorkspaceMode && parentMode === 'new' && existingParent && (
                 <div className="p-4 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/20">
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
@@ -669,16 +703,16 @@ export default function AddStudentWizard({
 
               {parentMode === 'new' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField label={isRTL ? 'اسم ولي الأمر' : 'Parent Name'} required>
+                  <FormField label={isRTL ? 'اسم ولي الأمر' : 'Parent Name'} required={!isWorkspaceMode}>
                     <Input value={parentData.full_name} onChange={(e) => setParentData({...parentData, full_name: e.target.value})} className="h-10 rounded-lg" />
                   </FormField>
-                  <FormField label={t('relationship')} required>
+                  <FormField label={t('relationship')} required={!isWorkspaceMode}>
                     <Select value={parentData.relationship} onValueChange={(val) => setParentData({...parentData, relationship: val})}>
                       <SelectTrigger className="h-10 rounded-lg"><SelectValue /></SelectTrigger>
                       <SelectContent>{RELATIONSHIPS.map(rel => (<SelectItem key={rel.id} value={rel.id}>{isRTL ? rel.name_ar : rel.name_en}</SelectItem>))}</SelectContent>
                     </Select>
                   </FormField>
-                  <FormField label={t('phone3')} required>
+                  <FormField label={t('phone3')} required={!isWorkspaceMode}>
                     <Input value={parentData.phone} onChange={(e) => setParentData({...parentData, phone: e.target.value})} onBlur={checkParentExists} placeholder="05xxxxxxxx" className="h-10 rounded-lg" dir="ltr" />
                   </FormField>
                   <FormField label={t('email2')}>

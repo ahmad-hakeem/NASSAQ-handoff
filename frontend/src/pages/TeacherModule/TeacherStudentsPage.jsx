@@ -19,14 +19,23 @@ import {
   Phone, Mail, ClipboardCheck, FileText, TrendingUp, Star,
   BookOpen, Calendar, ChevronLeft, BarChart3, Brain, Target,
   CheckCircle, AlertTriangle, Sparkles, ArrowUpCircle, ArrowDownCircle,
-  Lightbulb, Activity, MessageSquare, Send
+  Lightbulb, Activity, MessageSquare, Send, Plus
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
+import AddStudentWizard from '../../components/wizards/AddStudentWizard';
+
+// Phase 1 IT — server-side cap (#192 spec §5.6).
+const WORKSPACE_STUDENTS_MAX = 200;
 
 import { useTranslation } from '../../contexts/ThemeContext';
 export default function TeacherStudentsPage() {
   const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
+  const isIndependentTeacher = user?.role === 'independent_teacher';
+  const [showAddStudent, setShowAddStudent] = useState(false);
+  const [workspaceStudentCount, setWorkspaceStudentCount] = useState(null);
+  const [workspaceGrades, setWorkspaceGrades] = useState([]);
+  const [workspaceClasses, setWorkspaceClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
@@ -46,6 +55,56 @@ export default function TeacherStudentsPage() {
 
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const teacherId = user?.teacher_id || user?.id;
+
+  // Workspace count + dropdown options for the IT inline-create wizard
+  // (#192 spec §5.6). Read-only, mirrors the chip pattern from
+  // TeacherClassesPage. Authoritative cap is enforced server-side via
+  // the 409 from `enforce_student_quota`.
+  const fetchWorkspaceStudentCount = useCallback(async () => {
+    if (!isIndependentTeacher) return;
+    try {
+      const res = await api.get('/students');
+      const list = Array.isArray(res.data) ? res.data : (res.data?.students || []);
+      setWorkspaceStudentCount(list.length);
+    } catch (_e) {
+      // Soft-fail — chip falls back to the locally-known students.length.
+    }
+  }, [api, isIndependentTeacher]);
+
+  const fetchWorkspaceWizardOptions = useCallback(async () => {
+    if (!isIndependentTeacher) return;
+    try {
+      const [gradesRes, classesRes] = await Promise.all([
+        api.get('/grade-levels').catch(() => ({ data: [] })),
+        api.get('/classes').catch(() => ({ data: [] })),
+      ]);
+      const grades = Array.isArray(gradesRes.data) ? gradesRes.data : (gradesRes.data?.items || []);
+      const cls = Array.isArray(classesRes.data) ? classesRes.data : (classesRes.data?.items || []);
+      setWorkspaceGrades(grades);
+      setWorkspaceClasses(cls);
+    } catch (_e) {
+      // Wizard handles empty arrays gracefully.
+    }
+  }, [api, isIndependentTeacher]);
+
+  useEffect(() => {
+    if (isIndependentTeacher) {
+      fetchWorkspaceStudentCount();
+      fetchWorkspaceWizardOptions();
+    }
+  }, [isIndependentTeacher, fetchWorkspaceStudentCount, fetchWorkspaceWizardOptions]);
+
+  const handleOpenAddStudent = useCallback(() => {
+    if (workspaceStudentCount != null && workspaceStudentCount >= WORKSPACE_STUDENTS_MAX) {
+      nassaqWarning(
+        isRTL
+          ? `بلغت الحد الأقصى للطلاب في مساحة عملك (${WORKSPACE_STUDENTS_MAX}). لا يمكن إضافة المزيد.`
+          : `You have reached your workspace student limit (${WORKSPACE_STUDENTS_MAX}). Cannot add more.`
+      );
+      return;
+    }
+    setShowAddStudent(true);
+  }, [workspaceStudentCount, nassaqWarning, isRTL]);
 
   const fetchClasses = useCallback(async () => {
     if (!teacherId) return;
@@ -104,6 +163,11 @@ export default function TeacherStudentsPage() {
       fetchStudents();
     }
   }, [selectedClass, fetchStudents]);
+
+  const handleAddStudentSuccess = useCallback(() => {
+    fetchWorkspaceStudentCount();
+    fetchStudents();
+  }, [fetchWorkspaceStudentCount, fetchStudents]);
 
   const fetchAIInsights = async (studentId) => {
     setLoadingAI(true);
@@ -206,7 +270,30 @@ export default function TeacherStudentsPage() {
                 {t('viewAndTrackStudentData')}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {isIndependentTeacher && (
+                <>
+                  <Badge
+                    variant="outline"
+                    className="h-9 px-3 font-cairo text-xs flex items-center"
+                    data-testid="workspace-students-usage-chip"
+                  >
+                    {(t('workspaceStudentsUsageChip') || '{0} / {1}')
+                      .replace('{0}', workspaceStudentCount ?? students.length)
+                      .replace('{1}', WORKSPACE_STUDENTS_MAX)}
+                  </Badge>
+                  <Button
+                    size="sm"
+                    className="h-9 gap-1.5 bg-brand-navy hover:bg-brand-navy/90 text-white"
+                    onClick={handleOpenAddStudent}
+                    data-testid="workspace-add-student-cta"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span className="hidden sm:inline">{t('addStudent')}</span>
+                  </Button>
+                  <div className="hidden sm:block h-6 w-px bg-border" />
+                </>
+              )}
               <Select value={selectedClass} onValueChange={setSelectedClass}>
                 <SelectTrigger className="w-full sm:w-[180px]" data-testid="class-select">
                   <SelectValue placeholder={t('selectClass')} />
@@ -908,6 +995,19 @@ export default function TeacherStudentsPage() {
             )}
           </DialogContent>
         </Dialog>
+
+        {isIndependentTeacher && (
+          <AddStudentWizard
+            open={showAddStudent}
+            onOpenChange={setShowAddStudent}
+            onSuccess={handleAddStudentSuccess}
+            api={api}
+            isRTL={isRTL}
+            grades={workspaceGrades}
+            classes={workspaceClasses}
+            mode="workspace"
+          />
+        )}
       </div>
       <HakimAssistant />
     </Sidebar>

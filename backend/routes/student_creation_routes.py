@@ -24,11 +24,16 @@ logger = logging.getLogger("nassaq.student_creation_routes")
 # ============== Pydantic Models ==============
 
 class ParentData(BaseModel):
-    full_name: str
+    # Phase 1 IT workspace mode (#192, spec §5.6) — every parent field is
+    # optional so the IT inline-create flow can submit a student with zero
+    # or partial parent contact info. The school-admin school-mode path
+    # still validates that a phone is present at the route level so the
+    # legacy contract is preserved.
+    full_name: Optional[str] = None
     national_id: Optional[str] = None
-    phone: str
+    phone: Optional[str] = None
     email: Optional[EmailStr] = None
-    relationship: str  # father, mother, guardian
+    relationship: Optional[str] = "guardian"  # father, mother, guardian
     address: Optional[str] = None
 
 
@@ -58,9 +63,11 @@ class StudentCreateRequest(BaseModel):
     grade_id: str
     class_id: Optional[str] = None
     
-    # Parent Info
-    parent: ParentData
-    
+    # Parent Info — Optional in IT workspace mode (#192, spec §5.6).
+    # The route handler enforces presence for school-admin callers so the
+    # legacy contract is unchanged.
+    parent: Optional[ParentData] = None
+
     # Health Info (Optional)
     health: Optional[HealthData] = None
     
@@ -287,11 +294,39 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         """
         # Phase 0 §4.B-1 — canonical workspace-id resolution; IT accounts
         # land in the synthetic `itw_{user_id}` workspace.
-        from auth_scope import require_request_school_id
+        from auth_scope import (
+            require_request_school_id,
+            is_independent_teacher,
+            independent_workspace_id,
+        )
         from quotas.independent_teacher import enforce_student_quota
         school_id = require_request_school_id(current_user)
+        # Defensive tenant pin (#192 spec §5.3 step 6 / §5.6) — even though
+        # the resolver above already returns the IT workspace id from JWT,
+        # double-check here so any future regression that lets the client
+        # supply `school_id` cannot smuggle an IT account into another tenant.
+        is_it = is_independent_teacher(current_user)
+        if is_it:
+            expected = independent_workspace_id(current_user)
+            if school_id != expected:
+                raise HTTPException(
+                    status_code=403,
+                    detail="غير مصرح لك بإنشاء طالب خارج مساحة عملك",
+                )
+            school_id = expected
         # Phase 0 §4.B-5 — IT v1 student quota.
         await enforce_student_quota(db.session, current_user)
+
+        # Workspace-mode (IT) accepts a fully-optional parent payload
+        # (spec §5.6). For school-admin callers the pre-existing contract
+        # still requires a parent record (with at least a phone) so the
+        # downstream materialisation path stays intact.
+        if not is_it:
+            if request.parent is None or not (request.parent.phone and request.parent.full_name):
+                raise HTTPException(
+                    status_code=422,
+                    detail="بيانات ولي الأمر مطلوبة (الاسم والهاتف)",
+                )
 
         # Defense-in-depth: normalize blank/whitespace-only optional
         # identifier fields to None so they reach the DB as NULL instead
@@ -309,7 +344,37 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
 
         request.national_id = _blank_to_none(request.national_id)
         if request.parent is not None:
+            request.parent.full_name = _blank_to_none(request.parent.full_name)
             request.parent.national_id = _blank_to_none(request.parent.national_id)
+            request.parent.phone = _blank_to_none(request.parent.phone)
+            request.parent.address = _blank_to_none(request.parent.address)
+            # Pydantic EmailStr rejects blank, but defensively coerce.
+            if isinstance(request.parent.email, str) and not request.parent.email.strip():
+                request.parent.email = None
+
+        # Workspace-mode (IT) parent materialisation gate (spec §5.6).
+        # If the caller provided no usable parent identifier (no phone),
+        # we DO NOT create an empty parents row — instead we record
+        # whatever fragments were supplied in the canonical
+        # `students.pending_parent_{name,phone,email}` columns so a real
+        # parent can be linked later via the IT inline-link flow. The
+        # `students_clear_pending_parent_on_link_trg` trigger clears the
+        # pending fields on parent_id NULL→non-NULL transitions.
+        # Workspace-mode (#192 spec §5.6): in IT workspace mode the
+        # parent payload is FULLY OPTIONAL — any parent fragments
+        # supplied through the inline-create flow land in
+        # `pending_parent_*` and never materialise a `parents` row.
+        # Only an explicit `link_to_parent_id` opts into linking.
+        skip_parent_materialise = is_it and request.link_to_parent_id is None
+        pending_parent_payload = None
+        if skip_parent_materialise and request.parent is not None:
+            pending_parent_payload = {
+                "name": request.parent.full_name,
+                "phone": request.parent.phone,
+                "email": request.parent.email,
+            }
+        elif skip_parent_materialise:
+            pending_parent_payload = {"name": None, "phone": None, "email": None}
 
         # Backfill any previously-poisoned rows where national_id was
         # written as "" so the unique constraint stops matching them.
@@ -355,8 +420,18 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                     detail="البريد الإلكتروني للطالب مستخدم مسبقاً",
                 )
 
+        # Workspace-mode short-circuit: skip parent materialisation entirely
+        # and surface a synthetic parent_result so the downstream code path
+        # (audit log, response shape) stays unified. The actual pending_*
+        # columns are written when we build student_doc below.
+        if skip_parent_materialise:
+            parent_result = {
+                "parent": {},
+                "is_new": False,
+                "linked_students": [],
+            }
         # Check if linking to existing parent
-        if request.link_to_parent_id:
+        elif request.link_to_parent_id:
             existing_parent = await gd_find_one(db.session, "parents", {"id": request.link_to_parent_id, "school_id": school_id})
             if existing_parent:
                 student_ids = existing_parent.get("student_ids", [])
@@ -462,6 +537,20 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             "created_at": now,
             "created_by": current_user.get("id"),
         }
+        # Workspace-mode (#192 spec §5.6): write the partial parent payload
+        # into the canonical pending_parent_* columns and leave parent_id
+        # / parent_user_id NULL. The clear-on-link DB trigger wipes these
+        # when a real parent is later attached.
+        if skip_parent_materialise:
+            student_doc["parent_id"] = None
+            student_doc["parent_user_id"] = None
+            student_doc["parent_name"] = None
+            student_doc["parent_phone"] = None
+            student_doc["parent_email"] = None
+            if pending_parent_payload:
+                student_doc["pending_parent_name"] = pending_parent_payload.get("name")
+                student_doc["pending_parent_phone"] = pending_parent_payload.get("phone")
+                student_doc["pending_parent_email"] = pending_parent_payload.get("email")
 
         # Generate QR Code
         qr_code = generate_qr_code(student_doc)
@@ -493,16 +582,21 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                 _, user_msg = describe_integrity_error(msg)
                 raise HTTPException(status_code=409, detail=user_msg)
         
-        # Link student to parent. Scope by both id AND school_id so we can
-        # never accidentally mutate a parent record owned by another tenant.
-        await _gd_addtoset(
-            db.session, "parents",
-            {"id": parent.get("id"), "school_id": school_id},
-            {"student_ids": student_id},
-        )
+        # Workspace-mode (#192): no parents row was materialised, so we
+        # skip both the parent.student_ids backfill and the guardian_link
+        # write. The student row carries the partial contact in the
+        # pending_parent_* columns until the IT operator links a real parent.
+        if not skip_parent_materialise and parent.get("id"):
+            # Link student to parent. Scope by both id AND school_id so we can
+            # never accidentally mutate a parent record owned by another tenant.
+            await _gd_addtoset(
+                db.session, "parents",
+                {"id": parent.get("id"), "school_id": school_id},
+                {"student_ids": student_id},
+            )
 
         # Create canonical guardian_link record so downstream queries work (idempotent)
-        parent_user_id = parent.get("user_id")
+        parent_user_id = parent.get("user_id") if not skip_parent_materialise else None
         if parent_user_id:
             existing_link = await gd_find_one(db.session, "guardian_links", {
                 "parent_ref": parent_user_id,

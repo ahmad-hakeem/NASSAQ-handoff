@@ -1091,6 +1091,7 @@
   "errorAddingClass": "Error adding class",
   "teacherCreateClassNotAvailable": "Adding classes isn't available from the teacher account yet. Classes, schedules and students are managed automatically by your school administration.",
   "workspaceClassesUsageChip": "{0} of {1} classes",
+  "workspaceStudentsUsageChip": "{0} of {1} students",
   "workspaceClassSubject": "Subject",
   "workspaceClassSubjectPlaceholder": "Select subject",
   "workspaceClassGradeLabel": "Grade level",

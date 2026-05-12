@@ -1,7 +1,7 @@
 """independent teacher phase 1 — schedule_sessions.version optimistic concurrency token
 
-Revision ID: z1a2b3c4d5e6
-Revises: y1z2a3b4c5d6
+Revision ID: a2b3c4d5e6f7
+Revises: z1a2b3c4d5e6
 Create Date: 2026-05-12
 
 Adds a monotonically increasing ``version`` integer to ``schedule_sessions``
