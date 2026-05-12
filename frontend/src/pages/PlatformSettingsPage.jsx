@@ -195,8 +195,11 @@ export const PlatformSettingsPage = () => {
     },
   });
 
+  // Task #172 P0: dropped the `twoFactorEnabled` field entirely. The toggle
+  // it backed never reached the server — the `/settings/security` PUT handler
+  // doesn't accept it and would now reject it (extra='forbid' on the schema).
+  // Per-account MFA lives in Account Settings → Security (MfaSecuritySection).
   const [securitySettings, setSecuritySettings] = useState({
-    twoFactorEnabled: false,
     sessionTimeout: 30,
     maxSessions: 5,
     passwordMinLength: 8,
@@ -266,7 +269,6 @@ export const PlatformSettingsPage = () => {
         if (securityResponse.data) {
           const data = securityResponse.data;
           setSecuritySettings({
-            twoFactorEnabled: false,
             sessionTimeout: data.session_duration_minutes || 60,
             maxSessions: data.max_concurrent_sessions || 3,
             passwordMinLength: data.min_password_length || 8,
@@ -1337,15 +1339,32 @@ export const PlatformSettingsPage = () => {
                     </CardHeader>
                     <CardContent className="space-y-6">
                       {/* Logo & Favicon */}
+                      {/* Task #172 P1: Visual Identity is preview-only — no
+                          backend wiring exists for logo/favicon upload or
+                          color persistence. The controls remain visible so
+                          the existing layout is preserved, but every
+                          mutating affordance is disabled and labelled. */}
+                      <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200/60 text-amber-800" dir={isRTL ? 'rtl' : 'ltr'} data-testid="visual-identity-preview-badge">
+                        <Shield className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <div className="text-xs font-tajawal">
+                          <span className="font-semibold">
+                            {isRTL ? 'معاينة فقط' : 'Preview only'}
+                          </span>
+                          {' — '}
+                          {isRTL
+                            ? 'تخصيص الهوية البصرية (الشعار، الأيقونة، الألوان) قيد التطوير ولا يتم حفظ التغييرات بعد.'
+                            : 'Visual identity customisation (logo, favicon, colours) is a work-in-progress and changes are not persisted yet.'}
+                        </div>
+                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-3">
                           <Label>{t('logo')}</Label>
-                          <div className="border-2 border-dashed rounded-xl p-8 text-center hover:border-brand-navy/50 transition-colors cursor-pointer">
+                          <div className="border-2 border-dashed rounded-xl p-8 text-center opacity-60 cursor-not-allowed">
                             <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-brand-navy/10 flex items-center justify-center">
                               <Building2 className="h-10 w-10 text-brand-navy" />
                             </div>
                             <p className="text-sm text-muted-foreground">{t('dragDrop')}</p>
-                            <Button variant="outline" size="sm" className="mt-3 rounded-xl">
+                            <Button variant="outline" size="sm" className="mt-3 rounded-xl" disabled aria-disabled="true">
                               <Upload className="h-4 w-4 me-2" />
                               {t('uploadLogo')}
                             </Button>
@@ -1353,12 +1372,12 @@ export const PlatformSettingsPage = () => {
                         </div>
                         <div className="space-y-3">
                           <Label>{t('favicon')}</Label>
-                          <div className="border-2 border-dashed rounded-xl p-8 text-center hover:border-brand-navy/50 transition-colors cursor-pointer">
+                          <div className="border-2 border-dashed rounded-xl p-8 text-center opacity-60 cursor-not-allowed">
                             <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-brand-navy/10 flex items-center justify-center">
                               <Hash className="h-8 w-8 text-brand-navy" />
                             </div>
                             <p className="text-sm text-muted-foreground">32x32 px</p>
-                            <Button variant="outline" size="sm" className="mt-3 rounded-xl">
+                            <Button variant="outline" size="sm" className="mt-3 rounded-xl" disabled aria-disabled="true">
                               <Upload className="h-4 w-4 me-2" />
                               {t('uploadFavicon')}
                             </Button>
@@ -1381,8 +1400,10 @@ export const PlatformSettingsPage = () => {
                               />
                               <Input
                                 value={brandSettings.primaryColor}
-                                onChange={(e) => setBrandSettings({ ...brandSettings, primaryColor: e.target.value })}
-                                className="rounded-xl font-mono"
+                                readOnly
+                                disabled
+                                aria-disabled="true"
+                                className="rounded-xl font-mono opacity-70 cursor-not-allowed"
                                 dir="ltr"
                               />
                             </div>
@@ -1396,8 +1417,10 @@ export const PlatformSettingsPage = () => {
                               />
                               <Input
                                 value={brandSettings.secondaryColor}
-                                onChange={(e) => setBrandSettings({ ...brandSettings, secondaryColor: e.target.value })}
-                                className="rounded-xl font-mono"
+                                readOnly
+                                disabled
+                                aria-disabled="true"
+                                className="rounded-xl font-mono opacity-70 cursor-not-allowed"
                                 dir="ltr"
                               />
                             </div>
@@ -1411,8 +1434,10 @@ export const PlatformSettingsPage = () => {
                               />
                               <Input
                                 value={brandSettings.accentColor}
-                                onChange={(e) => setBrandSettings({ ...brandSettings, accentColor: e.target.value })}
-                                className="rounded-xl font-mono"
+                                readOnly
+                                disabled
+                                aria-disabled="true"
+                                className="rounded-xl font-mono opacity-70 cursor-not-allowed"
                                 dir="ltr"
                               />
                             </div>
@@ -1797,23 +1822,36 @@ export const PlatformSettingsPage = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
-                      {/* 2FA */}
+                      {/* Task #172 P0: replaced the fake platform-wide 2FA
+                          toggle (it was UI-only — the value was dropped on
+                          save, see SecuritySettings schema). MFA is a
+                          per-account setting; deep-link to Account Settings
+                          → Security where MfaSecuritySection actually wires
+                          the factors. */}
                       <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
                             <Shield className="h-5 w-5 text-purple-600" />
                           </div>
                           <div>
-                            <h4 className="font-medium">{t('twoFactorAuth')}</h4>
+                            <h4 className="font-medium">
+                              {isRTL ? 'التحقق بخطوتين (MFA)' : 'Two-step verification (MFA)'}
+                            </h4>
                             <p className="text-sm text-muted-foreground">
-                              {t('extraLayerOfSecurityForYourAccount')}
+                              {isRTL
+                                ? 'يُدار التحقق بخطوتين لكل حساب على حدة من إعدادات حسابك.'
+                                : 'Two-step verification is managed per account in your Account Settings.'}
                             </p>
                           </div>
                         </div>
-                        <Switch
-                          checked={securitySettings.twoFactorEnabled}
-                          onCheckedChange={(v) => setSecuritySettings({ ...securitySettings, twoFactorEnabled: v })}
-                        />
+                        <Button
+                          variant="outline"
+                          className="rounded-xl"
+                          onClick={() => navigate('/account/settings')}
+                          data-testid="goto-account-mfa"
+                        >
+                          {isRTL ? 'فتح إعدادات الحساب' : 'Open Account Settings'}
+                        </Button>
                       </div>
                       
                       {/* Session Settings */}

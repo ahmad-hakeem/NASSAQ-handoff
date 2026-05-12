@@ -3,9 +3,9 @@ System Settings Routes - مسارات إعدادات النظام
 APIs for system settings, maintenance mode, terms & conditions, etc.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, ValidationError
 from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
@@ -92,7 +92,17 @@ class ContactInfo(BaseModel):
 
 
 class SecuritySettings(BaseModel):
-    """إعدادات الأمان"""
+    """إعدادات الأمان
+
+    Task #172 P0: ``extra='forbid'`` rejects any client-supplied field that
+    isn't actually persisted on this endpoint (notably the legacy
+    ``twoFactorEnabled`` toggle on the Platform Settings page that used to be
+    silently dropped). The wrapper route below converts the resulting
+    ValidationError into a safe Arabic HTTP 422 the frontend can show via
+    NassaqAlertDialog.
+    """
+    model_config = ConfigDict(extra="forbid")
+
     session_duration_minutes: int = 60
     max_concurrent_sessions: int = 3
     min_password_length: int = 8
@@ -538,12 +548,42 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole, require
     
     @router.put("/security")
     async def update_security_settings(
-        settings: SecuritySettings,
+        request: Request,
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
         # Task #169 Step 7: editing platform-wide security policy → fresh MFA.
         _stepup: dict = Depends(require_recent_mfa()),
     ):
-        """تحديث إعدادات الأمان مع تتبع التغييرات"""
+        """تحديث إعدادات الأمان مع تتبع التغييرات
+
+        Task #172 P0: validate manually so a payload with unexpected fields
+        (e.g. the now-removed ``twoFactorEnabled`` toggle) returns a safe
+        Arabic 422 instead of FastAPI's default verbose error array.
+        """
+        try:
+            raw = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="نص الطلب غير صالح")
+        if not isinstance(raw, dict):
+            raise HTTPException(status_code=422, detail="تنسيق إعدادات الأمان غير صحيح")
+        try:
+            settings = SecuritySettings(**raw)
+        except ValidationError as ve:
+            extras = sorted({
+                str(err.get("loc", [""])[-1])
+                for err in ve.errors()
+                if err.get("type") == "extra_forbidden"
+            })
+            if extras:
+                joined = "، ".join(extras)
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"حقول غير مدعومة في إعدادات الأمان: {joined}",
+                )
+            raise HTTPException(
+                status_code=422,
+                detail="إعدادات الأمان المُرسلة غير صحيحة",
+            )
+
         now = datetime.now(timezone.utc).isoformat()
         new_data = settings.dict()
 
@@ -763,6 +803,9 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole, require
         session_id: str,
         current_user: dict = Depends(get_current_user),
         creds: Optional[HTTPAuthorizationCredentials] = Depends(_session_security),
+        # Task #172 P0: revoking a session is sensitive — require fresh MFA
+        # for users on a tier with MFA policy (no-op for student/driver/etc).
+        _stepup: dict = Depends(require_recent_mfa()),
     ):
         """Revoke a single session belonging to the current user."""
         from datetime import datetime as _dt, timezone as _tz
@@ -789,11 +832,22 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole, require
     async def end_all_other_sessions(
         current_user: dict = Depends(get_current_user),
         creds: Optional[HTTPAuthorizationCredentials] = Depends(_session_security),
+        # Task #172 P0: bulk-revoke is even more sensitive than single-session
+        # revoke — same step-up gate.
+        _stepup: dict = Depends(require_recent_mfa()),
     ):
         """Revoke all of the current user's sessions except the current one."""
         from datetime import datetime as _dt, timezone as _tz
         now = _dt.now(_tz.utc)
         current_jti = _jti_from_creds(creds)
+        # Task #172 P0: refuse to "end all OTHERS" when we cannot identify the
+        # current session — otherwise we'd silently revoke EVERY session
+        # including the caller's. Safer to fail closed with a clear message.
+        if not current_jti:
+            raise HTTPException(
+                status_code=400,
+                detail="تعذر تحديد الجلسة الحالية؛ يرجى تسجيل الدخول مرة أخرى ثم إعادة المحاولة",
+            )
         rows = await gd_find(
             db.session, "user_sessions",
             {"user_id": current_user["id"], "revoked_at": None},
