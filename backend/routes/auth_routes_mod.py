@@ -996,8 +996,11 @@ def _create_reset_token(user_id: str) -> str:
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
-def _token_hash(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
+# Canonical sha256 single-use token hash lives in ``backend/utils/tokens``
+# so password-reset and parent-invitation flows share one scheme. The
+# local alias is kept to minimise diff churn against the rest of this
+# module's call sites.
+from utils.tokens import token_hash as _token_hash  # noqa: E402
 
 @router.post("/auth/forgot-password")
 async def forgot_password(request: ForgotPasswordRequest):

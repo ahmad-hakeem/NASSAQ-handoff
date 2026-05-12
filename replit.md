@@ -26,6 +26,7 @@ A comprehensive, multi-tenant school management platform with AI-powered feature
   - `backend/engines/smart_scheduling_engine.py`: Core scheduling logic.
   - `backend/name_validation.py`: Real personal name enforcement.
   - `students.pending_parent_{name,phone,email}` (Alembic `z1a2b3c4d5e6`): canonical pre-link parent contact for the IT inline-create flow per spec §5.6; trigger `students_clear_pending_parent_on_link_trg` clears them when `parent_id` transitions NULL → non-NULL.
+  - `parent_invitations` table (Alembic `a3b4c5d6e7f8`) + `backend/utils/tokens.py` (`mint_invitation_token` / `verify_invitation_token`, shared `token_hash`): IT Phase-2 §6.2 parent-invitation token contract — JWT signed with `JWT_SECRET`, 7-day TTL, bound to `(workspace_school_id, student_id)` to block cross-row replay. Same sha256 hash scheme as `users.reset_token_hash`.
 - `/frontend`: React application, UI components, pages, API clients.
   - `frontend/src/App.js`: Main React app and routing.
   - `frontend/src/appRoutes.js`: Frontend route definitions with RBAC.
