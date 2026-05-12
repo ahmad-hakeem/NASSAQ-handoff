@@ -186,6 +186,45 @@ async def _seed_isolation_row(collection: str, a: dict, seeded_id: str) -> None:
 
 
 @pytest.mark.asyncio
+async def test_5_9_2_behaviour_record_by_id_owner_200_intruder_404(client):
+    """Focused behaviour-record by-id contract (Task #203 review):
+    - IT-A (owner) reads its own row → 200 (no regression: the legacy
+      `behaviour_records` shape carries `school_id` only, no
+      `tenant_id`; the gd_find_one TENANT_ALIAS must keep this readable
+      when the route filters on `tenant_id`).
+    - IT-B (intruder) reads the same row → 404 (§8 invariant 3).
+    """
+    a = await mk_it_workspace(with_passkey=False)
+    b = await mk_it_workspace(with_passkey=False)
+    seeded_id = str(uuid.uuid4())
+    await gd_insert(db.session, "behaviour_records", {
+        "id": seeded_id,
+        "school_id": a["wsid"],  # legacy shape: school_id only
+        "class_id": a["class_id"],
+        "student_id": a["student_id"],
+        "teacher_id": a["teacher_id"],
+        "type": "positive",
+        "category": "participation",
+        "severity": "minor",
+        "points": 0,
+        "description": "owner-read",
+        "date": datetime.now(timezone.utc).isoformat(),
+    })
+    await db.session.flush()
+
+    r_owner = await client.get(
+        f"/behaviour-records/{seeded_id}", headers=it_headers(a),
+    )
+    assert r_owner.status_code == 200, r_owner.text
+    assert r_owner.json()["id"] == seeded_id
+
+    r_intruder = await client.get(
+        f"/behaviour-records/{seeded_id}", headers=it_headers(b),
+    )
+    assert r_intruder.status_code == 404, r_intruder.text
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "collection,list_path,by_id_tpl,by_id_mode",
     _ISOLATION_MATRIX,
