@@ -211,16 +211,22 @@ _IT_RECIPIENT_OUT_OF_SCOPE_AR = "المستلم غير ضمن مساحتك."
 
 
 async def _it_validate_recipients_or_403(current_user: dict, recipient_ids: List[str]) -> None:
-    """Reject any recipient that is not a student/parent in the IT's workspace.
+    """Reject any recipient that is not in the IT's spec §5.6 cohorts.
 
-    Canonical IT membership = ``users.tenant_id == itw_{user_id}`` AND
-    ``role in {student, parent}`` AND ``is_active``. The IT student
-    creation flow always materialises the backing user with this exact
-    shape (`backend/routes/student_creation_routes.py`), so a single
-    `users` lookup is both sufficient and tamper-resistant. 403 (not
-    404) — writes must surface the rejection per spec §5.6.
+    Allow-set is computed exactly like
+    ``GET /independent-teacher/communication/recipients`` — i.e. via
+    teacher → classes (homeroom UNION teacher_assignments) → students,
+    then for parents via ``guardian_links`` (and the legacy
+    ``students.parent_id`` fallback). Reusing the same builder keeps the
+    picker and the send path in lock-step. 403 (not 404) — writes must
+    surface the rejection per spec §5.6.
     """
     from auth_scope import is_independent_teacher, independent_workspace_id
+    from routes.independent_teacher_communication_routes import (
+        _resolve_workspace_teacher_id,
+        _resolve_my_students_recipients,
+        _resolve_my_parents_recipients,
+    )
     if not is_independent_teacher(current_user):
         return
     cleaned = [rid for rid in (recipient_ids or []) if rid]
@@ -229,20 +235,15 @@ async def _it_validate_recipients_or_403(current_user: dict, recipient_ids: List
     school_id = independent_workspace_id(current_user)
     if not school_id:
         raise HTTPException(status_code=403, detail=_IT_RECIPIENT_OUT_OF_SCOPE_AR)
-    users = await gd_find(
-        db.session, "users",
-        {
-            "id": {"$in": cleaned},
-            "tenant_id": school_id,
-            "role": {"$in": ["student", "parent"]},
-            "is_active": True,
-        },
-        limit=2000,
-    )
-    allowed = {
-        u["id"] for u in users
-        if u.get("id") and u.get("tenant_id") == school_id
-    }
+    try:
+        teacher_id = await _resolve_workspace_teacher_id(
+            current_user["id"], school_id,
+        )
+    except HTTPException:
+        raise HTTPException(status_code=403, detail=_IT_RECIPIENT_OUT_OF_SCOPE_AR)
+    students = await _resolve_my_students_recipients(school_id, teacher_id)
+    parents = await _resolve_my_parents_recipients(school_id, teacher_id)
+    allowed = {item["user_id"] for item in students} | {item["user_id"] for item in parents}
     for rid in cleaned:
         if rid not in allowed:
             raise HTTPException(status_code=403, detail=_IT_RECIPIENT_OUT_OF_SCOPE_AR)
@@ -263,6 +264,13 @@ async def create_notification(
             raise HTTPException(status_code=403, detail=_IT_RECIPIENT_ROLE_BLOCKED_AR)
         if notification.recipient_id:
             await _it_validate_recipients_or_403(current_user, [notification.recipient_id])
+        # Pin persisted tenant_id to itw_{user_id} even when the caller's
+        # users.tenant_id is stale/null. Mirrors the bulk path so single
+        # and bulk send paths agree on workspace tagging.
+        from auth_scope import independent_workspace_id as _itw
+        _wsid = _itw(current_user)
+        if _wsid:
+            current_user = {**current_user, 'tenant_id': _wsid}
 
     if notification.recipient_role and not notification.recipient_id:
         query = {"role": notification.recipient_role}

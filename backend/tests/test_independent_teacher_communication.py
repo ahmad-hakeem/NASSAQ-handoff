@@ -31,7 +31,7 @@ def _headers(user_id: str, role: str, tenant_id=None) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-async def _mk_workspace(*, with_parent: bool = True) -> dict:
+async def _mk_workspace(*, with_parent: bool = True, with_class: bool = True) -> dict:
     """Bootstrap a complete IT workspace: schools, teachers, classes,
     students, student-user, optional parent-user + guardian_links.
     Returns a dict of all the ids the tests need.
@@ -68,21 +68,23 @@ async def _mk_workspace(*, with_parent: bool = True) -> dict:
         "email": user["email"],
         "is_active": True,
     })
-    class_id = str(uuid.uuid4())
-    await gd_insert(db.session, "classes", {
-        "id": class_id,
-        "name": "فصل أ",
-        "school_id": wsid,
-        "tenant_id": wsid,
-        "homeroom_teacher_id": teacher_id,
-        "is_active": True,
-    })
+    class_id = None
+    if with_class:
+        class_id = str(uuid.uuid4())
+        await gd_insert(db.session, "classes", {
+            "id": class_id,
+            "name": "فصل أ",
+            "school_id": wsid,
+            "homeroom_teacher_id": teacher_id,
+            "is_active": True,
+        })
     student_user_id = str(uuid.uuid4())
+    student_email = f"stud-{student_user_id}@t.test"
     await gd_insert(db.session, "users", {
         "id": student_user_id,
         "role": UserRole.STUDENT.value,
         "tenant_id": wsid,
-        "email": f"stud-{student_user_id}@t.test",
+        "email": student_email,
         "full_name": "طالب التجربة",
         "is_active": True,
         "password_hash": "x",
@@ -91,10 +93,9 @@ async def _mk_workspace(*, with_parent: bool = True) -> dict:
     await gd_insert(db.session, "students", {
         "id": student_id,
         "school_id": wsid,
-        "tenant_id": wsid,
         "class_id": class_id,
         "full_name": "طالب التجربة",
-        "user_id": student_user_id,
+        "email": student_email,
         "is_active": True,
     })
 
@@ -262,6 +263,108 @@ async def test_it_bulk_send_succeeds_for_in_scope_recipient(client):
     persisted = await gd_find_one(
         db.session, "notifications",
         {"user_id": ws["student_user_id"], "title": "اختبار"},
+    )
+    assert persisted is not None
+    assert persisted.get("tenant_id") == ws["wsid"]
+
+
+# (h) ----------------------------------------------------------------
+# Spec §5.6 response shape: my_students MUST include student_id.
+@pytest.mark.asyncio
+async def test_it_my_students_response_includes_student_id(client):
+    ws = await _mk_workspace()
+    h = _headers(ws["uid"], ws["user"]["role"], ws["wsid"])
+    resp = await client.get(
+        "/independent-teacher/communication/recipients?cohort=my_students",
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+    items = resp.json().get("items") or []
+    assert items, items
+    by_uid = {i["user_id"]: i for i in items}
+    row = by_uid.get(ws["student_user_id"])
+    assert row is not None, by_uid
+    assert row.get("student_id") == ws["student_id"]
+    assert "full_name" in row
+
+
+# (i) ----------------------------------------------------------------
+# Spec §5.6 response shape: my_parents MUST include student_id + parent_id.
+@pytest.mark.asyncio
+async def test_it_my_parents_response_includes_parent_and_student_ids(client):
+    ws = await _mk_workspace()
+    h = _headers(ws["uid"], ws["user"]["role"], ws["wsid"])
+    resp = await client.get(
+        "/independent-teacher/communication/recipients?cohort=my_parents",
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+    items = resp.json().get("items") or []
+    assert items, items
+    row = next((i for i in items if i["user_id"] == ws["parent_user_id"]), None)
+    assert row is not None, items
+    assert row.get("student_id") == ws["student_id"]
+    assert row.get("parent_id") == ws["parent_id"]
+
+
+# (j) ----------------------------------------------------------------
+# Spec §5.6: a workspace student that is NOT in any of the IT's classes
+# must NOT appear in my_students (the IT teacher has no classes here).
+@pytest.mark.asyncio
+async def test_it_my_students_excludes_students_outside_teacher_classes(client):
+    ws = await _mk_workspace(with_class=False, with_parent=False)
+    h = _headers(ws["uid"], ws["user"]["role"], ws["wsid"])
+    resp = await client.get(
+        "/independent-teacher/communication/recipients?cohort=my_students",
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+    items = resp.json().get("items") or []
+    user_ids = {i["user_id"] for i in items}
+    assert ws["student_user_id"] not in user_ids
+
+
+# (k) ----------------------------------------------------------------
+# Spec §5.6: the same out-of-class student must be rejected (403) by the
+# send-side validator — the picker and the send path must agree.
+@pytest.mark.asyncio
+async def test_it_bulk_send_rejects_recipient_outside_teacher_classes(client):
+    ws = await _mk_workspace(with_class=False, with_parent=False)
+    h = _headers(ws["uid"], ws["user"]["role"], ws["wsid"])
+    resp = await client.post(
+        "/notifications/bulk",
+        headers=h,
+        json={
+            "title": "x",
+            "message": "y",
+            "recipient_ids": [ws["student_user_id"]],
+        },
+    )
+    assert resp.status_code == 403, resp.text
+
+
+# (l) ----------------------------------------------------------------
+# Spec §5.6: single POST /notifications must also pin tenant_id to the
+# IT workspace id (not a stale users.tenant_id).
+@pytest.mark.asyncio
+async def test_it_single_send_pins_tenant_id_to_workspace(client):
+    ws = await _mk_workspace()
+    h = _headers(ws["uid"], ws["user"]["role"], ws["wsid"])
+    resp = await client.post(
+        "/notifications",
+        headers=h,
+        json={
+            "title": "single-it",
+            "message": "single-body",
+            "recipient_id": ws["student_user_id"],
+            "notification_type": "communication",
+            "priority": "medium",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    persisted = await gd_find_one(
+        db.session, "notifications",
+        {"user_id": ws["student_user_id"], "title": "single-it"},
     )
     assert persisted is not None
     assert persisted.get("tenant_id") == ws["wsid"]
