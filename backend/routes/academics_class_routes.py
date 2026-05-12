@@ -56,9 +56,17 @@ async def create_class_wizard(
     """Create a new class via wizard"""
     # Phase 0 §4.B-1 — canonical workspace-id resolver; IT accounts land
     # in their synthetic `itw_{user_id}` workspace.
-    from auth_scope import require_request_school_id
+    from auth_scope import require_request_school_id, is_independent_teacher, independent_workspace_id
     from quotas.independent_teacher import enforce_class_quota
     school_id = require_request_school_id(current_user)
+    # Defensive tenant pin (spec §5.3 step 6): even though the canonical
+    # resolver above already returns the IT workspace id from JWT, we
+    # double-check here so a future regression that lets the client supply
+    # `school_id` cannot smuggle an IT account into another tenant.
+    if is_independent_teacher(current_user):
+        expected = independent_workspace_id(current_user)
+        if school_id != expected:
+            raise HTTPException(status_code=403, detail="غير مصرح لك بإنشاء فصل خارج مساحة عملك")
     # Phase 0 §4.B-5 — IT v1 class quota.
     await enforce_class_quota(db.session, current_user)
     
@@ -269,7 +277,16 @@ async def get_classes(
 @router.get("/classes/{class_id}", response_model=ClassResponse)
 async def get_class(class_id: str, current_user: dict = Depends(get_current_user)):
     """Get class by ID"""
-    class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
+    # Tenant scoping (Task #188 security fix): non-platform callers must
+    # only be able to read classes inside their own resolved workspace
+    # (regular school for affiliated users, `itw_{user_id}` for IT). Any
+    # other class id resolves to a clean Arabic 404 — never 200 — so an
+    # IT cannot enumerate another tenant's class ids.
+    query: Dict[str, Any] = {"id": class_id}
+    if current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
+        from auth_scope import require_request_school_id
+        query["school_id"] = require_request_school_id(current_user)
+    class_doc = await gd_find_one(db.session, "classes", query)
     if not class_doc:
         raise HTTPException(status_code=404, detail="الفصل غير موجود")
     

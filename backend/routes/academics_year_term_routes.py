@@ -375,9 +375,18 @@ class GradeLevelResponse(BaseModel):
 @router.post("/grade-levels", response_model=GradeLevelResponse)
 async def create_grade_level(
     data: GradeLevelBase,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
     """Create a new grade level"""
+    # Workspace-mode pin (Task #188 / spec §5.3 step 3): IT accounts can
+    # auto-create a grade row when they enter a free-text grade label in
+    # the create-class dialog. Force the row into their synthetic
+    # workspace regardless of any client-supplied `school_id`.
+    from auth_scope import is_independent_teacher, independent_workspace_id
+    target_school_id = data.school_id
+    if is_independent_teacher(current_user):
+        target_school_id = independent_workspace_id(current_user)
+
     grade_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     
@@ -387,7 +396,7 @@ async def create_grade_level(
         "name_en": data.name_en,
         "order": data.order,
         "is_active": data.is_active,
-        "school_id": data.school_id,
+        "school_id": target_school_id,
         "created_at": now,
         "updated_at": now,
         "created_by": current_user.get("id")

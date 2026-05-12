@@ -87,23 +87,36 @@ export default function TeacherClassesPage() {
 
   const [showAddClassDialog, setShowAddClassDialog] = useState(false);
   const [addClassForm, setAddClassForm] = useState({ name: '', grade: '', section: '', weekly_count: 5 });
+  // Workspace-mode (Independent-Teacher) form state. Mirrors spec
+  // §5.3: Arabic name + free-text grade label + subject (from
+  // workspace's existing subjects) + capacity (≤ 50, default 30).
+  const [workspaceClassForm, setWorkspaceClassForm] = useState({
+    name_ar: '', grade_label: '', subject_id: '', capacity: 30,
+  });
   const [addingClass, setAddingClass] = useState(false);
   const [gradeOptions, setGradeOptions] = useState([]);
+  // Subject options for the IT workspace dialog. Sourced from /subjects
+  // which is already tenant-scoped server-side via `current_user.tenant_id`.
+  const [workspaceSubjects, setWorkspaceSubjects] = useState([]);
+  // Authoritative tenant-scoped class count for the "X من 5 فصول" chip
+  // (spec §5.3 step 4). Sourced from /classes (tenant-scoped server-side
+  // via require_request_school_id) rather than the teacher-assignment
+  // listing, so the chip never disagrees with the server-enforced quota.
+  const [workspaceClassCount, setWorkspaceClassCount] = useState(null);
 
   const [showImportDialog, setShowImportDialog] = useState(false);
   const fileInputRef = useRef(null);
   const [importType, setImportType] = useState('');
 
   const { t } = useTranslation();
-  const { nassaqError } = useNassaqAlert();
+  const { nassaqError, nassaqWarning } = useNassaqAlert();
   const teacherId = user?.teacher_id || user?.id;
   const isIndependentTeacher = user?.role === 'independent_teacher';
 
-  const friendlyTeacherWriteMessage = (fallbackKey = 'teacherActionNotAllowed') => (
-    isIndependentTeacher
-      ? t('independentTeacherCreateClassComingSoon')
-      : t(fallbackKey)
-  );
+  // Non-IT teachers fall through to the existing "managed by school admin"
+  // copy. The Independent-Teacher branch was removed when class creation
+  // was enabled in workspace mode (Task #188 / spec §5.3).
+  const friendlyTeacherWriteMessage = (fallbackKey = 'teacherActionNotAllowed') => t(fallbackKey);
 
   const isPermissionError = (err) => {
     const status = err?.response?.status;
@@ -258,14 +271,135 @@ export default function TeacherClassesPage() {
     }
   }, [api]);
 
+  // Workspace-mode subject loader. Independent-Teacher accounts have no
+  // school directory to pick from, so we list the subjects already
+  // provisioned in their workspace (typically the optional first-class
+  // subject seeded at bootstrap, plus anything added later).
+  const fetchWorkspaceSubjects = useCallback(async () => {
+    if (!isIndependentTeacher) return;
+    try {
+      const res = await api.get('/subjects').catch(() => ({ data: [] }));
+      const subjects = Array.isArray(res.data) ? res.data : (res.data?.subjects || []);
+      setWorkspaceSubjects(subjects);
+    } catch (err) {
+      console.error('Error fetching subjects:', err);
+    }
+  }, [api, isIndependentTeacher]);
+
+  // Authoritative tenant-scoped class count from /classes for the IT
+  // usage chip. Independent of the per-teacher assignment listing.
+  const fetchWorkspaceClassCount = useCallback(async () => {
+    if (!isIndependentTeacher) return;
+    try {
+      const res = await api.get('/classes').catch(() => ({ data: [] }));
+      const list = Array.isArray(res.data) ? res.data : (res.data?.classes || []);
+      setWorkspaceClassCount(list.length);
+    } catch (err) {
+      console.error('Error fetching workspace class count:', err);
+    }
+  }, [api, isIndependentTeacher]);
+
+  useEffect(() => {
+    if (isIndependentTeacher) {
+      fetchWorkspaceSubjects();
+      fetchGradeOptions();
+      fetchWorkspaceClassCount();
+    }
+  }, [isIndependentTeacher, fetchWorkspaceSubjects, fetchGradeOptions, fetchWorkspaceClassCount]);
+
   const handleOpenAddClassDialog = () => {
-    // Class creation is currently a school-admin (or future independent-teacher) capability.
-    // For school-affiliated teachers, classes are provisioned by the school, so we surface
-    // a friendly explanation instead of opening a dialog whose POST will be rejected.
+    // Independent-Teacher (workspace mode): open the simplified create-class
+    // dialog wired to /classes/create with server-side tenant pinning. For
+    // non-IT teachers, classes are still provisioned by the school admin so
+    // we keep the friendly toast explanation.
+    if (isIndependentTeacher) {
+      setWorkspaceClassForm({ name_ar: '', grade_label: '', subject_id: '', capacity: 30 });
+      fetchWorkspaceSubjects();
+      fetchGradeOptions();
+      setShowAddClassDialog(true);
+      return;
+    }
     toast.info(friendlyTeacherWriteMessage('teacherCreateClassNotAvailable'), { duration: 6000 });
   };
 
   const handleAddClass = async () => {
+    // ---- Workspace-mode (Independent-Teacher) submit ----
+    if (isIndependentTeacher) {
+      const f = workspaceClassForm;
+      if (!f.name_ar?.trim() || !f.grade_label?.trim() || !f.subject_id) {
+        nassaqError(t('pleaseFillAllFields'));
+        return;
+      }
+      const cap = parseInt(f.capacity, 10);
+      if (!Number.isFinite(cap) || cap < 1 || cap > 50) {
+        nassaqError(t('pleaseFillAllFields'));
+        return;
+      }
+      setAddingClass(true);
+      try {
+        // Free-text grade label handling (spec §5.3 step 3): try to reuse
+        // an existing grade row in this workspace whose label matches the
+        // user's input; if none exists, auto-create one via the existing
+        // grade-create surface (`POST /grade-levels`, now permitted for
+        // IT and tenant-pinned server-side) and use the returned id.
+        const label = f.grade_label.trim();
+        const labelLc = label.toLowerCase();
+        const matched = gradeOptions.find(g =>
+          (g.name_ar || '').trim().toLowerCase() === labelLc
+          || (g.name_en || '').trim().toLowerCase() === labelLc
+          || (g.name || '').trim().toLowerCase() === labelLc
+        );
+        let gradeId;
+        if (matched) {
+          gradeId = matched.id;
+        } else {
+          // Auto-create. school_id is required by the schema but the
+          // server overrides it with the IT workspace id, so any
+          // placeholder is fine — we send the label as a sentinel.
+          const createGradeRes = await api.post('/grade-levels', {
+            name: label,
+            name_en: label,
+            order: (gradeOptions?.length || 0) + 1,
+            is_active: true,
+            school_id: 'workspace',
+          });
+          gradeId = createGradeRes.data?.id;
+          // Refresh local cache so the next submit reuses this row.
+          fetchGradeOptions();
+        }
+
+        // NOTE: school_id / tenant_id are intentionally never sent —
+        // server resolves them from the JWT via require_request_school_id
+        // (spec §5.3 architectural invariant).
+        await api.post('/classes/create', {
+          name_ar: f.name_ar.trim(),
+          grade_id: gradeId,
+          subject_id: f.subject_id,
+          capacity: cap,
+        });
+        toast.success(t('classAddedSuccessfully'));
+        setShowAddClassDialog(false);
+        setWorkspaceClassForm({ name_ar: '', grade_label: '', subject_id: '', capacity: 30 });
+        fetchClasses();
+        fetchWorkspaceClassCount();
+      } catch (err) {
+        const status = err?.response?.status;
+        const detail = err?.response?.data?.detail;
+        if (status === 409 && typeof detail === 'string') {
+          // Surface the backend's safe Arabic quota message verbatim —
+          // never replace it client-side (spec §5.3 step 5).
+          nassaqWarning(detail, { title: t('error') });
+        } else {
+          const msg = typeof detail === 'string' ? detail : t('errorAddingClass');
+          nassaqError(msg);
+        }
+      } finally {
+        setAddingClass(false);
+      }
+      return;
+    }
+
+    // ---- Legacy (school-affiliated teacher) submit — unchanged ----
     if (!addClassForm.name || !addClassForm.grade || !addClassForm.section) {
       nassaqError(t('pleaseFillAllFields'));
       return;
@@ -688,59 +822,116 @@ export default function TeacherClassesPage() {
             {t('addClassForm')}
           </DialogTitle>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label className="font-cairo text-sm">{t('courseName')}</Label>
-            <Input
-              value={addClassForm.name}
-              onChange={(e) => setAddClassForm(p => ({ ...p, name: e.target.value }))}
-              placeholder={t('courseName')}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+        {isIndependentTeacher ? (
+          // Workspace-mode dialog body (spec §5.3): minimal fields only —
+          // Arabic name, free-text grade label, subject from workspace,
+          // capacity. NO section / weekly_count — those are not part of
+          // the IT v1 contract.
+          <div className="space-y-4">
             <div className="space-y-2">
-              <Label className="font-cairo text-sm">{t('gradeLevel')}</Label>
-              <Select value={addClassForm.grade} onValueChange={(v) => setAddClassForm(p => ({ ...p, grade: v }))}>
+              <Label className="font-cairo text-sm">{t('courseName')}</Label>
+              <Input
+                value={workspaceClassForm.name_ar}
+                onChange={(e) => setWorkspaceClassForm(p => ({ ...p, name_ar: e.target.value }))}
+                placeholder={t('courseName')}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-cairo text-sm">{t('workspaceClassGradeLabel')}</Label>
+              <Input
+                value={workspaceClassForm.grade_label}
+                onChange={(e) => setWorkspaceClassForm(p => ({ ...p, grade_label: e.target.value }))}
+                placeholder={t('workspaceClassGradeLabelPlaceholder')}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-cairo text-sm">{t('workspaceClassSubject')}</Label>
+              <Select
+                value={workspaceClassForm.subject_id}
+                onValueChange={(v) => setWorkspaceClassForm(p => ({ ...p, subject_id: v }))}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder={t('gradeLevel')} />
+                  <SelectValue placeholder={t('workspaceClassSubjectPlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  {gradeOptions.length > 0 ? gradeOptions.map(g => (
-                    <SelectItem key={g.id} value={g.id}>
-                      {isRTL ? (g.name_ar || g.name) : (g.name_en || g.name)}
+                  {workspaceSubjects.length > 0 ? workspaceSubjects.map(s => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {isRTL ? (s.name_ar || s.name) : (s.name_en || s.name || s.name_ar)}
                     </SelectItem>
-                  )) : [1,2,3,4,5,6].map(g => (
-                    <SelectItem key={g} value={String(g)}>
-                      {t('gradeLevel')} {g}
-                    </SelectItem>
-                  ))}
+                  )) : (
+                    <div className="px-3 py-2 text-xs text-muted-foreground font-tajawal">
+                      {t('workspaceClassNoSubjects')}
+                    </div>
+                  )}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label className="font-cairo text-sm">{t('sectionName')}</Label>
+              <Label className="font-cairo text-sm">{t('capacity') || 'السعة'}</Label>
               <Input
-                value={addClassForm.section}
-                onChange={(e) => setAddClassForm(p => ({ ...p, section: e.target.value }))}
-                placeholder={t('sectionName')}
+                type="number"
+                min={1}
+                max={50}
+                value={workspaceClassForm.capacity}
+                onChange={(e) => setWorkspaceClassForm(p => ({ ...p, capacity: parseInt(e.target.value) || 30 }))}
               />
             </div>
           </div>
-          <div className="space-y-2">
-            <Label className="font-cairo text-sm">{t('weeklyClassCount')}</Label>
-            <Input
-              type="number"
-              min={1}
-              max={20}
-              value={addClassForm.weekly_count}
-              onChange={(e) => setAddClassForm(p => ({ ...p, weekly_count: parseInt(e.target.value) || 5 }))}
-            />
+        ) : (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="font-cairo text-sm">{t('courseName')}</Label>
+              <Input
+                value={addClassForm.name}
+                onChange={(e) => setAddClassForm(p => ({ ...p, name: e.target.value }))}
+                placeholder={t('courseName')}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="font-cairo text-sm">{t('gradeLevel')}</Label>
+                <Select value={addClassForm.grade} onValueChange={(v) => setAddClassForm(p => ({ ...p, grade: v }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={t('gradeLevel')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {gradeOptions.length > 0 ? gradeOptions.map(g => (
+                      <SelectItem key={g.id} value={g.id}>
+                        {isRTL ? (g.name_ar || g.name) : (g.name_en || g.name)}
+                      </SelectItem>
+                    )) : [1,2,3,4,5,6].map(g => (
+                      <SelectItem key={g} value={String(g)}>
+                        {t('gradeLevel')} {g}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="font-cairo text-sm">{t('sectionName')}</Label>
+                <Input
+                  value={addClassForm.section}
+                  onChange={(e) => setAddClassForm(p => ({ ...p, section: e.target.value }))}
+                  placeholder={t('sectionName')}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="font-cairo text-sm">{t('weeklyClassCount')}</Label>
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                value={addClassForm.weekly_count}
+                onChange={(e) => setAddClassForm(p => ({ ...p, weekly_count: parseInt(e.target.value) || 5 }))}
+              />
+            </div>
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+              <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-blue-700 dark:text-blue-300 font-tajawal">{t('classDataLinkedToAdmin')}</p>
+            </div>
           </div>
-          <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
-            <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-blue-700 dark:text-blue-300 font-tajawal">{t('classDataLinkedToAdmin')}</p>
-          </div>
-        </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => setShowAddClassDialog(false)}>{t('cancel')}</Button>
           <Button
@@ -804,6 +995,30 @@ export default function TeacherClassesPage() {
               </div>
               {activeTab === 'classes' && (
                 <div className="flex items-center gap-2 flex-wrap">
+                  {isIndependentTeacher && (
+                    <>
+                      {/* Quota usage chip — informational; the authoritative
+                          limit is enforced server-side via the 409 returned by
+                          enforce_class_quota. (Spec §5.3 step 4.) */}
+                      <Badge
+                        variant="outline"
+                        className="h-9 px-3 font-cairo text-xs flex items-center"
+                      >
+                        {(t('workspaceClassesUsageChip') || '{0} / {1}')
+                          .replace('{0}', workspaceClassCount ?? classes.length)
+                          .replace('{1}', 5)}
+                      </Badge>
+                      <Button
+                        size="sm"
+                        className="h-9 gap-1.5 bg-brand-navy hover:bg-brand-navy-dark text-white"
+                        onClick={handleOpenAddClassDialog}
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span className="hidden sm:inline">{t('addClass')}</span>
+                      </Button>
+                      <div className="hidden sm:block h-6 w-px bg-border" />
+                    </>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
