@@ -37,7 +37,7 @@ export const LoginPage = () => {
   const [error, setError] = useState('');
   const passwordRef = useRef(null);
 
-  const { login } = useAuth();
+  const { login, refreshUser } = useAuth();
   const { isRTL, toggleLanguage } = useTheme();
   const { nassaqError } = useNassaqAlert();
   const navigate = useNavigate();
@@ -112,7 +112,15 @@ export const LoginPage = () => {
 
       if (result.success) {
         toast.success(t('loginSuccessful'));
-        navigateForRole(result.user.role);
+        // Resolve the freshest user state from /auth/me before routing.
+        // This matters for IT first-login orchestration: the routing
+        // decision must reflect the canonical mfa_enrolled_at /
+        // tenant_id seen by the backend, not the snapshot in the login
+        // response (which may lag a recently-set claim).
+        const fresh = (typeof refreshUser === 'function'
+          ? await refreshUser()
+          : null) || result.user;
+        navigateForRole(fresh.role, fresh);
       } else if (result.mfaChallenge) {
         // Switch the card into MFA-challenge mode. The password form is
         // hidden; the inline picker calls verifyMfaLogin and on success
@@ -131,7 +139,24 @@ export const LoginPage = () => {
     }
   };
 
-  const navigateForRole = (role) => {
+  const navigateForRole = (role, userData) => {
+    // Task #183 — Independent-Teacher first-login orchestration:
+    //   no MFA enrolment   → MFA enrolment surface
+    //   no workspace yet   → onboarding wizard
+    //   otherwise          → /teacher
+    if (role === 'independent_teacher') {
+      if (!userData?.mfa_enrolled_at) {
+        navigate('/auth/mfa/enroll');
+        return;
+      }
+      if (!userData?.tenant_id) {
+        navigate('/teacher/onboarding');
+        return;
+      }
+      navigate('/teacher');
+      return;
+    }
+
     switch (role) {
       case 'platform_admin':
         navigate('/admin');
@@ -149,7 +174,6 @@ export const LoginPage = () => {
         navigate('/admin');
         break;
       case 'teacher':
-      case 'independent_teacher':
         navigate('/teacher');
         break;
       case 'student':
@@ -163,10 +187,14 @@ export const LoginPage = () => {
     }
   };
 
-  const handleMfaSuccess = (userData) => {
+  const handleMfaSuccess = async (userData) => {
     toast.success(t('loginSuccessful'));
     setMfaChallenge(null);
-    navigateForRole(userData?.role);
+    // Same /auth/me freshness contract as the password path above.
+    const fresh = (typeof refreshUser === 'function'
+      ? await refreshUser()
+      : null) || userData;
+    navigateForRole(fresh?.role, fresh);
   };
 
   const handleMfaCancel = () => {

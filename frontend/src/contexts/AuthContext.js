@@ -656,9 +656,17 @@ export const AuthProvider = ({ children }) => {
   // permission mappings.
   const [permissions, setPermissions] = useState(null);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
-  const fetchPermissions = useCallback(async () => {
+  const fetchPermissions = useCallback(async ({ force = false } = {}) => {
     if (!token) return null;
-    if (permissions) return permissions;
+    // Pass `force: true` after a tenant_id change (e.g. IT bootstrap)
+    // so the cached permission set is discarded and rebuilt against the
+    // freshly-set tenant. Without `force`, we keep the cached value to
+    // avoid hammering /auth/me/permissions on every UI gate read.
+    if (force) {
+      setPermissions(null);
+    } else if (permissions) {
+      return permissions;
+    }
     if (permissionsLoading) return null;
     setPermissionsLoading(true);
     try {

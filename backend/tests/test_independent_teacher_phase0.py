@@ -81,7 +81,10 @@ async def _mk_independent_teacher() -> dict:
 ])
 async def test_full_school_tenant_gate_denies_independent_teacher(client, method, path):
     user = await _mk_independent_teacher()
-    h = _headers(user["id"], user["role"], None)
+    # Phase 1 (#183): pass the synthetic workspace id so the perimeter
+    # workspace-materialised gate is a no-op and the phase-0 router gate
+    # under test (`require_full_school_tenant`) is exercised.
+    h = _headers(user["id"], user["role"], independent_workspace_id(user))
     resp = await client.request(method, path, headers=h)
     # Anything reserved for full school tenants must be a clean 403 with
     # the canonical Arabic message — never a 404 / 500 / 405.
@@ -94,7 +97,7 @@ async def test_full_school_tenant_gate_denies_independent_teacher(client, method
 @pytest.mark.asyncio
 async def test_communication_broadcast_denies_independent_teacher(client):
     user = await _mk_independent_teacher()
-    h = _headers(user["id"], user["role"], None)
+    h = _headers(user["id"], user["role"], independent_workspace_id(user))
     resp = await client.post(
         "/communication/broadcast",
         headers=h,
@@ -142,8 +145,8 @@ async def _seed_assessment(wsid: str, class_id: str) -> str:
 async def test_two_independent_teachers_cannot_see_each_others_classes(client):
     a = await _mk_independent_teacher()
     b = await _mk_independent_teacher()
-    h_a = _headers(a["id"], a["role"], None)
-    h_b = _headers(b["id"], b["role"], None)
+    h_a = _headers(a["id"], a["role"], independent_workspace_id(a))
+    h_b = _headers(b["id"], b["role"], independent_workspace_id(b))
 
     payload = {
         "name_ar": "فصل أ",
@@ -176,7 +179,7 @@ async def test_independent_teachers_cannot_see_each_others_students(client):
     cid_a = await _seed_class(wsid_a)
     sid_a = await _seed_student(wsid_a, cid_a)
 
-    h_b = _headers(b["id"], b["role"], None)
+    h_b = _headers(b["id"], b["role"], wsid_b)
     resp = await client.get("/students", headers=h_b)
     assert resp.status_code == 200, resp.text
     items = resp.json() if isinstance(resp.json(), list) else resp.json().get("items", [])
@@ -193,7 +196,7 @@ async def test_independent_teachers_cannot_see_each_others_assessments(client):
     cid_a = await _seed_class(wsid_a)
     aid_a = await _seed_assessment(wsid_a, cid_a)
 
-    h_b = _headers(b["id"], b["role"], None)
+    h_b = _headers(b["id"], b["role"], independent_workspace_id(b))
     resp = await client.get("/assessments", headers=h_b)
     assert resp.status_code == 200, resp.text
     items = resp.json() if isinstance(resp.json(), list) else resp.json().get("items", [])
@@ -215,7 +218,7 @@ async def test_independent_teachers_cannot_see_each_others_attendance(client):
         "date": "2026-05-12", "status": "present",
     })
 
-    h_b = _headers(b["id"], b["role"], None)
+    h_b = _headers(b["id"], b["role"], independent_workspace_id(b))
     # B querying A's class must NOT receive A's attendance row even if
     # the class id were guessed; cross-IT isolation must hold at the
     # tenant-scope level rather than relying on path obscurity.
@@ -234,8 +237,8 @@ async def test_independent_teachers_cannot_see_each_others_attendance(client):
 @pytest.mark.asyncio
 async def test_class_quota_blocks_sixth_class_with_arabic_409(client):
     user = await _mk_independent_teacher()
-    h = _headers(user["id"], user["role"], None)
     wsid = independent_workspace_id(user)
+    h = _headers(user["id"], user["role"], wsid)
 
     # Pre-seed MAX_CLASSES rows directly to keep the test fast.
     for _ in range(MAX_CLASSES):
@@ -265,8 +268,8 @@ async def test_class_quota_blocks_sixth_class_with_arabic_409(client):
 @pytest.mark.asyncio
 async def test_academic_year_quota_blocks_second_year(client):
     user = await _mk_independent_teacher()
-    h = _headers(user["id"], user["role"], None)
     wsid = independent_workspace_id(user)
+    h = _headers(user["id"], user["role"], wsid)
 
     await gd_insert(db.session, "academic_years", {
         "id": str(uuid.uuid4()),

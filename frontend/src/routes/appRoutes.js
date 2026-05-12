@@ -86,6 +86,7 @@ const CommunicationNotificationsPage = lazy(() => import("../pages/Communication
 const CommunicationCenterPage = lazy(() => import("../pages/CommunicationCenterPage").then(m => ({ default: m.CommunicationCenterPage })));
 const TenantsManagement = lazy(() => import("../pages/TenantsManagement"));
 const TeacherClassAssignmentPage = lazy(() => import("../pages/TeacherClassAssignmentPage"));
+const IndependentTeacherOnboardingWizard = lazy(() => import("../pages/IndependentTeacherOnboardingWizard"));
 
 const SchoolSettingsPagePro = lazy(() => import("../pages/SchoolSettingsPagePro"));
 const AIInsightsPage = lazy(() => import("../pages/AIInsightsPage").then(m => ({ default: m.AIInsightsPage })));
@@ -237,6 +238,14 @@ export default function AppRoutes() {
         } />
 
         {/* Teacher Routes */}
+        {/* Task #183 — Independent-Teacher first-login wizard. Allowed
+            for IT only; the page itself bounces materialised users back
+            to /teacher and non-IT roles to /dashboard. */}
+        <Route path="/teacher/onboarding" element={
+          <ProtectedRoute allowedRoles={['independent_teacher']}>
+            <IndependentTeacherOnboardingWizard />
+          </ProtectedRoute>
+        } />
         <Route path="/teacher" element={
           <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherResponsiveDashboard /></ProtectedRoute>
         } />

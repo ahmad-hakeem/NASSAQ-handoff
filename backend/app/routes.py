@@ -81,9 +81,17 @@ def register_routes(app, api_router: APIRouter):
     # Phase 0 §4.B-2 — capability gate for routers reserved to full
     # school tenants. Independent-Teacher accounts get a friendly Arabic
     # 403 instead of a misleading "Permission denied" or 500.
-    from auth_scope import require_full_school_tenant
+    from auth_scope import require_full_school_tenant, require_workspace_materialised
     from fastapi import Depends as _Depends
     _full_tenant_dep = [_Depends(require_full_school_tenant)]
+
+    # Phase 1 (#183) — Independent-Teacher workspace bootstrap router.
+    # Registered BEFORE the global ``require_workspace_materialised``
+    # dependency is attached at the api_router level, but the bootstrap
+    # path is itself in the allow-list so this ordering is informational
+    # rather than load-bearing.
+    from routes.independent_teacher_bootstrap_routes import router as it_bootstrap_router
+    api_router.include_router(it_bootstrap_router)
     api_router.include_router(scheduling_smart_router, dependencies=_full_tenant_dep)
     api_router.include_router(scheduling_smart_sess_router, dependencies=_full_tenant_dep)
     api_router.include_router(schedule_candidates_router, dependencies=_full_tenant_dep)
@@ -245,7 +253,12 @@ def register_routes(app, api_router: APIRouter):
     api_router.include_router(student_portal_routes)
     api_router.include_router(parent_portal_routes)
 
-    app.include_router(api_router)
+    # Phase 1 (#183) — fail-closed gate: every authenticated /api route
+    # is checked. The dep is a no-op for non-IT callers and for the
+    # explicit allow-list (auth surface, MFA enrolment, bootstrap).
+    from auth_scope import require_workspace_materialised as _wm_dep
+    from fastapi import Depends as _Depends2
+    app.include_router(api_router, dependencies=[_Depends2(_wm_dep)])
 
     from engines.session_engine import session_router
     app.include_router(session_router)
