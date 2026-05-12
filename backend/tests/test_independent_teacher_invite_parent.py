@@ -268,6 +268,65 @@ async def test_invite_parent_new_national_id_only_materialises_workspace_user(cl
 
 
 # ----------------------------------------------------------------------
+# (a.3) New-parent path with email that collides with another global
+# `users` row — Task #203 review follow-up. Materialisation must still
+# succeed by falling back to the deterministic .invalid placeholder
+# instead of failing the whole link with a unique-index violation.
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_invite_parent_new_email_collision_falls_back_to_placeholder(client):
+    user = await _mk_it()
+    wsid = independent_workspace_id(user)
+    h = _it_headers(user)
+    sid = await _mk_pending_student(wsid)
+
+    # Stand up a SECOND, real IT workspace and seed a `users` row in it
+    # whose email will collide with the invite payload below. The
+    # collision is on `users.email` (globally unique) but the email is
+    # NOT in this caller's workspace `parents` table, so the parent
+    # dedupe stays on the new-parent path and must hit the collision
+    # fallback to the .invalid placeholder.
+    other = await _mk_it()
+    other_wsid = independent_workspace_id(other)
+    colliding_email = f"collide-{uuid.uuid4()}@example.com"
+    from engines.sql_utils import gd_insert
+    await gd_insert(db.session, "users", {
+        "id": str(uuid.uuid4()),
+        "role": "parent",
+        "tenant_id": other_wsid,
+        "email": colliding_email,
+        "full_name": "آخر",
+        "password_hash": "!seed",
+        "is_active": True,
+        "preferred_language": "ar",
+        "preferred_theme": "light",
+    })
+    await db.session.flush()
+
+    resp = await client.post(
+        f"/independent-teacher/students/{sid}/invite-parent",
+        json={
+            "full_name": "ولي بإيميل متعارض",
+            "email": colliding_email,
+        },
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["matched_by"] == "new"
+    parent_id = data["parent"]["id"]
+
+    links = await gd_find(db.session, "guardian_links",
+                          {"student_id": sid, "is_active": True})
+    parent_user_id = links[0]["parent_ref"]
+    parent_user = await gd_find_one(db.session, "users", {"id": parent_user_id})
+    assert parent_user is not None
+    assert parent_user["tenant_id"] == wsid
+    assert parent_user["email"].endswith("@invite.nassaq.invalid")
+    assert parent_user["email"] != colliding_email
+
+
+# ----------------------------------------------------------------------
 # (b) Dedupe by national_id wins over everything else
 # ----------------------------------------------------------------------
 @pytest.mark.asyncio
