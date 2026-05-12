@@ -16,7 +16,6 @@ import { ScrollArea } from '../components/ui/scroll-area';
 import { Separator } from '../components/ui/separator';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
-import { ImageCropModal } from '../components/ui/ImageCropModal';
 import {
   Select,
   SelectContent,
@@ -100,14 +99,19 @@ import {
 
 // Translations
 // Navigation tabs
+// Task #173: the personal "Account" tab has been removed from Platform
+// Settings — every personal field (profile photo, name, phone, email,
+// language, password, MFA, sessions, notifications, preferences) is owned
+// exclusively by `/account/settings` (AccountSettingsPage). Platform
+// admins reach it via the new sidebar entry. Platform Settings is now
+// platform/system configuration only.
 const SETTINGS_TABS = [
-  { id: 'account', icon: User, label_ar: 'إعدادات الحساب', label_en: 'Account' },
   { id: 'general', icon: Settings, label_ar: 'الإعدادات العامة', label_en: 'General' },
   { id: 'brand', icon: Palette, label_ar: 'الهوية البصرية', label_en: 'Branding' },
   { id: 'terms', icon: FileText, label_ar: 'الشروط والأحكام', label_en: 'Terms' },
   { id: 'privacy', icon: Shield, label_ar: 'سياسة الخصوصية', label_en: 'Privacy' },
   { id: 'contact', icon: Mail, label_ar: 'بيانات التواصل', label_en: 'Contact' },
-  { id: 'security', icon: Lock, label_ar: 'الأمان والجلسات', label_en: 'Security' },
+  { id: 'security', icon: Lock, label_ar: 'سياسات الأمان والجلسات', label_en: 'Security & Sessions Policy' },
 ];
 
 // Active sessions - fetched from API (empty by default)
@@ -124,41 +128,27 @@ export const PlatformSettingsPage = () => {
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   
   // States
-  const [activeTab, setActiveTab] = useState('account');
+  // Task #173: default landing tab is now General (was 'account', which no
+  // longer exists on this surface).
+  const [activeTab, setActiveTab] = useState('general');
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [showSwitchUserDialog, setShowSwitchUserDialog] = useState(false);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
   const [showVersionHistoryDialog, setShowVersionHistoryDialog] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [copiedField, setCopiedField] = useState(null);
   const [versionHistory, setVersionHistory] = useState([]);
-  const [activeSessions, setActiveSessions] = useState([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [initialSnapshots, setInitialSnapshots] = useState({});
   const [systemInfo, setSystemInfo] = useState(null);
   const [systemInfoLoading, setSystemInfoLoading] = useState(false);
   const [systemInfoError, setSystemInfoError] = useState(false);
   
-  // Account settings - using user data only
-  const [accountData, setAccountData] = useState({
-    name: user?.full_name || '',
-    email: user?.email || '',
-    phone: user?.phone || '',
-    language: user?.preferred_language || 'ar',
-    profilePicture: user?.avatar_url || null,
-    title: user?.title || '',
-  });
-  
-  // Password form
-  const [passwordForm, setPasswordForm] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: '',
-  });
-  
+  // Task #173: account/profile data and password form moved to
+  // AccountSettingsPage. PlatformSettingsPage no longer owns any personal
+  // identity state.
+
   // General settings
   const [generalSettings, setGeneralSettings] = useState({
     platformNameAr: 'نَسَّق | NASSAQ',
@@ -175,8 +165,6 @@ export const PlatformSettingsPage = () => {
     maintenanceMode: false,
   });
   
-  const [availableTitles, setAvailableTitles] = useState({ ar: [], en: [] });
-
   const [contactInfo, setContactInfo] = useState({
     primaryEmail: 'info@nassaqapp.com',
     supportEmail: 'support@nassaqapp.com',
@@ -278,25 +266,7 @@ export const PlatformSettingsPage = () => {
           });
         }
         
-        // Fetch account settings
-        const accountResponse = await api.get('/settings/account');
-        if (accountResponse.data) {
-          const data = accountResponse.data;
-          setAccountData(prev => ({
-            ...prev,
-            name: data.name || prev.name,
-            phone: data.phone || prev.phone,
-            language: data.language || prev.language,
-            profilePicture: data.profile_picture || prev.profilePicture,
-            title: data.title || '',
-          }));
-        }
-        
-        // Fetch titles
-        const titlesResponse = await api.get('/settings/titles');
-        if (titlesResponse.data) {
-          setAvailableTitles(titlesResponse.data);
-        }
+        // Task #173: account/title fetches moved to AccountSettingsPage.
         
         // Fetch terms versions
         const termsResponse = await api.get('/settings/terms/versions');
@@ -345,10 +315,11 @@ export const PlatformSettingsPage = () => {
 
   useEffect(() => {
     if (!initialSnapshots._loaded) return;
-    if (!initialSnapshots.account) {
+    // Task #173: dropped the "account" snapshot key — personal data is no
+    // longer tracked here. Dirty-state now reflects platform-config tabs only.
+    if (!initialSnapshots.general) {
       setInitialSnapshots(prev => ({
         ...prev,
-        account: JSON.stringify(accountData),
         general: JSON.stringify(generalSettings),
         contact: JSON.stringify(contactInfo),
         security: JSON.stringify(securitySettings),
@@ -356,14 +327,13 @@ export const PlatformSettingsPage = () => {
       return;
     }
     const currentMap = {
-      account: JSON.stringify(accountData),
       general: JSON.stringify(generalSettings),
       contact: JSON.stringify(contactInfo),
       security: JSON.stringify(securitySettings),
     };
     const changed = Object.keys(currentMap).some(k => initialSnapshots[k] && currentMap[k] !== initialSnapshots[k]);
     setHasUnsavedChanges(changed);
-  }, [accountData, generalSettings, contactInfo, securitySettings, initialSnapshots]);
+  }, [generalSettings, contactInfo, securitySettings, initialSnapshots]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -552,60 +522,11 @@ export const PlatformSettingsPage = () => {
     }
   };
   
-  const handleSaveAccountSettings = async () => {
-    if (!accountData.name?.trim()) {
-      nassaqError(t('nameIsRequired'));
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await api.put('/settings/account', {
-        name: accountData.name,
-        title: accountData.title || '',
-        phone: accountData.phone,
-        language: accountData.language,
-      });
-      toast.success(res.data?.message || t('savedSuccessfully'));
-      if (refreshUser) await refreshUser();
-      await fetchSettings();
-    } catch (error) {
-      console.error('Error saving account settings:', error);
-      nassaqError(error.response?.data?.detail || (t('saveFailed2')));
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // Upload profile picture (cropped base64 from ImageCropModal)
-  const [profilePicCropOpen, setProfilePicCropOpen] = React.useState(false);
-  const handleUploadProfilePicture = async (base64) => {
-    if (!base64 || typeof base64 !== 'string' || !base64.startsWith('data:image/')) return;
-    setLoading(true);
-    try {
-      const [meta, payload] = base64.split(',');
-      const mime = meta.match(/data:(.*?);base64/)?.[1] || 'image/jpeg';
-      const binary = atob(payload);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      const blob = new Blob([bytes], { type: mime });
-      const file = new File([blob], 'avatar.jpg', { type: mime });
-      const formData = new FormData();
-      formData.append('file', file);
-      const response = await api.post('/settings/account/upload-picture', formData);
-      if (response.data?.profile_picture) {
-        setAccountData(prev => ({ ...prev, profilePicture: response.data.profile_picture }));
-        toast.success(t('pictureUploadedSuccessfully'));
-        if (refreshUser) await refreshUser();
-      }
-    } catch (error) {
-      console.error('Error uploading picture:', error);
-      nassaqError(isRTL ? 'فشل رفع الصورة' : 'Failed to upload picture');
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  };
-  
+  // Task #173: handleSaveAccountSettings and handleUploadProfilePicture
+  // were removed. Personal profile/photo writes are now done exclusively
+  // from AccountSettingsPage via /users/me/profile and /users/me/avatar
+  // (self-scoped). This page no longer mutates any user-owned data.
+
   // Save terms version
   const handleSaveTermsVersion = async () => {
     setLoading(true);
@@ -647,9 +568,6 @@ export const PlatformSettingsPage = () => {
   // Save handler - based on active tab
   const handleSave = async () => {
     switch(activeTab) {
-      case 'account':
-        await handleSaveAccountSettings();
-        break;
       case 'general':
         await handleSaveGeneralSettings();
         break;
@@ -673,46 +591,13 @@ export const PlatformSettingsPage = () => {
     }
   };
   
-  // Change password
-  const handleChangePassword = async () => {
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      nassaqError(t('passwordsDoNotMatch3'));
-      return;
-    }
-    setLoading(true);
-    try {
-      await api.post('/auth/change-password', {
-        current_password: passwordForm.currentPassword,
-        new_password: passwordForm.newPassword,
-      });
-      toast.success(t('passwordChangedSuccessfully'));
-      setShowPasswordDialog(false);
-      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    } catch (error) {
-      console.error('Error changing password:', error);
-      nassaqError(t('failedToChangePassword'));
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // Load active sessions for current user
-  const loadActiveSessions = async () => {
-    try {
-      const res = await api.get('/settings/sessions');
-      setActiveSessions(res?.data?.sessions || []);
-    } catch (error) {
-      console.error('Error loading sessions:', error);
-      setActiveSessions([]);
-    }
-  };
+  // Task #173: handleChangePassword removed — password changes now happen
+  // exclusively from AccountSettingsPage → Security.
 
-  useEffect(() => {
-    if (token && activeTab === 'security') {
-      loadActiveSessions();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, activeTab]);
+  // Task #173: personal "Active Sessions" listing/end/end-all flows
+  // moved to AccountSettingsPage. Platform Settings no longer reads or
+  // mutates the caller's own sessions; the Security tab here is
+  // strictly platform-wide session/password policy.
 
   const loadSystemInfo = async () => {
     setSystemInfoLoading(true);
@@ -736,33 +621,9 @@ export const PlatformSettingsPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, activeTab]);
 
-  // End session
-  const handleEndSession = async (sessionId) => {
-    try {
-      const res = await api.delete(`/settings/sessions/${sessionId}`);
-      if (res?.data?.was_current) {
-        toast.success(t('currentDeviceSessionEnded'));
-        setTimeout(() => { if (logout) logout(); navigate('/login'); }, 600);
-        return;
-      }
-      toast.success(t('authSessionEnded'));
-      await loadActiveSessions();
-    } catch (error) {
-      nassaqError(t('failedToEndSession'));
-    }
-  };
-  
-  // End all sessions
-  const handleEndAllSessions = async () => {
-    try {
-      await api.post('/settings/sessions/end-all', {});
-      toast.success(t('allOtherSessionsEnded'));
-      await loadActiveSessions();
-    } catch (error) {
-      nassaqError(t('failedToEndSessions'));
-    }
-  };
-  
+  // Task #173: handleEndSession / handleEndAllSessions removed —
+  // personal session revocation lives in AccountSettingsPage.
+
   // Logout
   const handleLogout = (type) => {
     toast.success(t('loggedOut'));
@@ -953,151 +814,9 @@ export const PlatformSettingsPage = () => {
                 </div>
               </div>
               
-              {/* Account Settings */}
-              {activeTab === 'account' && (
-                <div className="space-y-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <User className="h-5 w-5 text-brand-navy" />
-                        {t('accountSettings')}
-                      </CardTitle>
-                      <CardDescription>
-                        {t('manageYourPersonalAccountInformation')}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                      {/* Profile Picture */}
-                      <div className="flex items-center gap-6">
-                        <div className="w-24 h-24 rounded-2xl overflow-hidden bg-gradient-to-br from-brand-navy to-brand-navy/70 flex items-center justify-center text-white text-3xl font-bold shadow-lg flex-shrink-0">
-                          {accountData.profilePicture ? (
-                            <img
-                              src={accountData.profilePicture}
-                              alt={accountData.name || ''}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            accountData.name?.charAt(0) || 'م'
-                          )}
-                        </div>
-                        <div>
-                          <h4 className="font-medium mb-2">{t('profilePicture')}</h4>
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="rounded-xl"
-                              disabled={loading}
-                              onClick={() => setProfilePicCropOpen(true)}
-                            >
-                              <Upload className="h-4 w-4 me-2" />
-                              {t('uploadImage')}
-                            </Button>
-                            {accountData.profilePicture && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="rounded-xl text-red-500 hover:text-red-600"
-                                disabled={loading}
-                                onClick={async () => {
-                                  setLoading(true);
-                                  try {
-                                    await api.delete('/settings/account/profile-picture');
-                                    setAccountData(prev => ({ ...prev, profilePicture: null }));
-                                    toast.success(t('pictureRemoved'));
-                                    if (refreshUser) await refreshUser();
-                                  } catch (err) {
-                                    nassaqError(t('failedToRemovePicture'));
-                                  } finally {
-                                    setLoading(false);
-                                  }
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4 me-2" />
-                                {isRTL ? 'حذف' : 'Remove'}
-                              </Button>
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {t('pngJpgOrWebpMax5mb')}
-                          </p>
-                        </div>
-                      </div>
-                      
-                      <Separator />
-                      
-                      {/* Account Info */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                          <Label>{t('name')}</Label>
-                          <Input
-                            value={accountData.name}
-                            onChange={(e) => setAccountData({ ...accountData, name: e.target.value })}
-                            className="rounded-xl"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>{t('email')}</Label>
-                          <Input
-                            type="email"
-                            value={accountData.email}
-                            onChange={(e) => setAccountData({ ...accountData, email: e.target.value })}
-                            className="rounded-xl"
-                            dir="ltr"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>{t('phone')}</Label>
-                          <Input
-                            type="tel"
-                            value={accountData.phone}
-                            onChange={(e) => setAccountData({ ...accountData, phone: e.target.value })}
-                            className="rounded-xl"
-                            dir="ltr"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>{t('language')}</Label>
-                          <Select 
-                            value={accountData.language} 
-                            onValueChange={(v) => setAccountData({ ...accountData, language: v })}
-                          >
-                            <SelectTrigger className="rounded-xl">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="ar">{t('arabic')}</SelectItem>
-                              <SelectItem value="en">{t('english')}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      
-                      <Separator />
-                      
-                      {/* Change Password */}
-                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center">
-                            <Key className="h-5 w-5 text-orange-600" />
-                          </div>
-                          <div>
-                            <h4 className="font-medium">{t('changePassword')}</h4>
-                            <p className="text-sm text-muted-foreground">
-                              {t('changeYourAccountPassword')}
-                            </p>
-                          </div>
-                        </div>
-                        <Button variant="outline" className="rounded-xl" onClick={() => setShowPasswordDialog(true)}>
-                          <Edit className="h-4 w-4 me-2" />
-                          {t('change')}
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              )}
-              
+              {/* Task #173: personal "Account Settings" tab removed —
+                  see AccountSettingsPage (`/account/settings`). */}
+
               {/* General Settings */}
               {activeTab === 'general' && (
                 <div className="space-y-6">
@@ -1751,79 +1470,12 @@ export const PlatformSettingsPage = () => {
               {/* Security & Sessions */}
               {activeTab === 'security' && (
                 <div className="space-y-6">
-                  {/* Active Sessions */}
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between">
-                      <div>
-                        <CardTitle className="flex items-center gap-2">
-                          <Monitor className="h-5 w-5 text-brand-navy" />
-                          {t('activeSessions')}
-                        </CardTitle>
-                        <CardDescription>
-                          {t('yourActiveSessionsOnDifferentDevices')}
-                        </CardDescription>
-                      </div>
-                      <Button variant="outline" className="rounded-xl" onClick={handleEndAllSessions}>
-                        {t('endOtherSessions')}
-                      </Button>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        {activeSessions.length === 0 ? (
-                          <div className="text-center py-8 text-muted-foreground">
-                            <Monitor className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                            <p>{t('noActiveSessions')}</p>
-                          </div>
-                        ) : (
-                          activeSessions.map(session => (
-                          <div 
-                            key={session.id}
-                            className={`flex items-center justify-between p-4 rounded-xl ${
-                              session.current ? 'bg-green-50 border border-green-200' : 'bg-muted/30'
-                            }`}
-                          >
-                            <div className="flex items-center gap-4">
-                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                                session.current ? 'bg-green-100' : 'bg-muted'
-                              }`}>
-                                <Monitor className={`h-5 w-5 ${session.current ? 'text-green-600' : 'text-muted-foreground'}`} />
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <p className="font-medium">{session.device}</p>
-                                  {session.current && (
-                                    <Badge className="bg-green-500">
-                                      {t('current4')}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <p className="text-sm text-muted-foreground">
-                                  {session.ip} • {session.location}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <p className="text-sm text-muted-foreground">
-                                {formatDateTime(session.lastActive)}
-                              </p>
-                              {!session.current && (
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm"
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                  onClick={() => handleEndSession(session.id)}
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        ))
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                  
+                  {/* Task #173: personal "Active Sessions" card removed.
+                      Personal session listing/revocation lives in
+                      AccountSettingsPage → Security. This tab now
+                      contains only platform-wide session/password
+                      policy. */}
+
                   {/* Security Settings */}
                   <Card>
                     <CardHeader>
@@ -1833,41 +1485,13 @@ export const PlatformSettingsPage = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
-                      {/* Task #172 P0: replaced the fake platform-wide 2FA
-                          toggle (it was UI-only — the value was dropped on
-                          save, see SecuritySettings schema). MFA is a
-                          per-account setting; deep-link to Account Settings
-                          → Security where MfaSecuritySection actually wires
-                          the factors. */}
-                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
-                            <Shield className="h-5 w-5 text-purple-600" />
-                          </div>
-                          <div>
-                            <h4 className="font-medium">
-                              {isRTL ? 'التحقق بخطوتين (MFA)' : 'Two-step verification (MFA)'}
-                            </h4>
-                            <p className="text-sm text-muted-foreground">
-                              {isRTL
-                                ? 'يُدار التحقق بخطوتين لكل حساب على حدة من إعدادات حسابك.'
-                                : 'Two-step verification is managed per account in your Account Settings.'}
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          variant="outline"
-                          className="rounded-xl"
-                          // Task #172 P0 (review fix): deep-link to the
-                          // Security section. AccountSettingsPage reads the
-                          // URL hash on mount to set activeSection.
-                          onClick={() => navigate('/account/settings#security')}
-                          data-testid="goto-account-mfa"
-                        >
-                          {isRTL ? 'فتح إعدادات الأمان' : 'Open Security Settings'}
-                        </Button>
-                      </div>
-                      
+                      {/* Task #173: the per-account MFA CTA was removed
+                          from Platform Settings. Personal MFA is reached
+                          directly from the sidebar entry → Account
+                          Settings (`/account/settings`) → Security. This
+                          tab is now strictly platform-wide policy
+                          (session/password rules). */}
+
                       {/* Session Settings */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
@@ -1948,64 +1572,8 @@ export const PlatformSettingsPage = () => {
           </div>
         </main>
         
-        {/* Change Password Dialog */}
-        <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Key className="h-5 w-5 text-brand-navy" />
-                {t('changePassword')}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>{t('currentPassword')}</Label>
-                <div className="relative">
-                  <Input
-                    type={showPassword ? 'text' : 'password'}
-                    value={passwordForm.currentPassword}
-                    onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
-                    className="rounded-xl pe-10"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute end-0 top-0"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>{t('newPassword')}</Label>
-                <Input
-                  type={showPassword ? 'text' : 'password'}
-                  value={passwordForm.newPassword}
-                  onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                  className="rounded-xl"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>{t('confirmPassword')}</Label>
-                <Input
-                  type={showPassword ? 'text' : 'password'}
-                  value={passwordForm.confirmPassword}
-                  onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-                  className="rounded-xl"
-                />
-              </div>
-            </div>
-            <DialogFooter className="flex-row-reverse gap-2">
-              <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>{t('cancel')}</Button>
-              <Button onClick={handleChangePassword} disabled={loading} className="bg-brand-navy">
-                {loading ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Key className="h-4 w-4 me-2" />}
-                {t('save')}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        
+        {/* Task #173: change-password dialog moved to AccountSettingsPage. */}
+
         {/* Logout Dialog */}
         <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
           <AlertDialogContent>
@@ -2173,12 +1741,8 @@ export const PlatformSettingsPage = () => {
           </DialogContent>
         </Dialog>
       </div>
-      <ImageCropModal
-        open={profilePicCropOpen}
-        onOpenChange={setProfilePicCropOpen}
-        onSave={handleUploadProfilePicture}
-        isRTL={isRTL}
-      />
+      {/* Task #173: ImageCropModal usage removed — profile photo upload
+          lives in AccountSettingsPage. */}
     </Sidebar>
   );
 };

@@ -274,6 +274,16 @@ export const Sidebar = ({ children }) => {
         href: '/admin/product-hub',
         roles: ['platform_admin'],
       },
+      // Task #173: first-class entry to the platform admin's personal
+      // settings page. Without this, the only way to reach
+      // `/account/settings` was a buried MFA deep-link inside Platform
+      // Settings. Platform Settings (gear icon) stays where it is.
+      {
+        icon: UserCog,
+        label: t('myAccount'),
+        href: '/account/settings',
+        roles: ['platform_admin'],
+      },
     ];
 
     // School Principal & Sub Admin Menu Items
@@ -657,37 +667,52 @@ export const Sidebar = ({ children }) => {
           )}
           
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-brand-turquoise flex items-center justify-center overflow-hidden flex-shrink-0">
-              {user.avatar_url ? (
-                <img 
-                  src={user.avatar_url} 
-                  alt={user.full_name} 
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <span className="text-white font-semibold">
-                  {user.full_name?.charAt(0)}
-                </span>
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{user.full_name}</p>
-              <p className="text-xs text-white/50 truncate">
-                {(() => {
-                  const effectiveRole = getEffectiveRole ? getEffectiveRole() : user.role;
-                  if (isRTL) {
-                    return effectiveRole === 'platform_admin'
-                      ? 'مدير المنصة'
-                      : effectiveRole === 'school_principal' || effectiveRole === 'school_admin'
-                      ? 'مدير المدرسة'
-                      : effectiveRole === 'teacher'
-                      ? 'معلم'
-                      : effectiveRole;
-                  }
-                  return effectiveRole?.replace('_', ' ');
-                })()}
-              </p>
-            </div>
+            {/* Task #173: footer identity area is now a one-click
+                affordance to /account/settings for every authenticated
+                role (including platform_admin). The avatar+name block is
+                a real button so keyboard and screen-reader users get the
+                same shortcut. The trailing logout icon stays as its own
+                button. No full reload — react-router navigate(). */}
+            <button
+              type="button"
+              onClick={() => { navigate('/account/settings'); setMobileOpen(false); }}
+              className="flex items-center gap-3 flex-1 min-w-0 text-start rounded-xl p-1 -m-1 hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-brand-turquoise/60 transition-colors"
+              title={t('accountSettings')}
+              aria-label={t('accountSettings')}
+              data-testid="sidebar-footer-account"
+            >
+              <div className="w-10 h-10 rounded-xl bg-brand-turquoise flex items-center justify-center overflow-hidden flex-shrink-0">
+                {user.avatar_url ? (
+                  <img
+                    src={user.avatar_url}
+                    alt={user.full_name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-white font-semibold">
+                    {user.full_name?.charAt(0)}
+                  </span>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white truncate">{user.full_name}</p>
+                <p className="text-xs text-white/50 truncate">
+                  {(() => {
+                    const effectiveRole = getEffectiveRole ? getEffectiveRole() : user.role;
+                    if (isRTL) {
+                      return effectiveRole === 'platform_admin'
+                        ? 'مدير المنصة'
+                        : effectiveRole === 'school_principal' || effectiveRole === 'school_admin'
+                        ? 'مدير المدرسة'
+                        : effectiveRole === 'teacher'
+                        ? 'معلم'
+                        : effectiveRole;
+                    }
+                    return effectiveRole?.replace('_', ' ');
+                  })()}
+                </p>
+              </div>
+            </button>
             <Button
               variant="ghost"
               size="icon"
@@ -715,7 +740,16 @@ export const Sidebar = ({ children }) => {
               <div className="w-3 h-3 rounded-full bg-brand-turquoise animate-pulse" title={t('switchedRole')} />
             </div>
           )}
-          <div className="w-full flex justify-center">
+          {/* Task #173: collapsed-sidebar avatar is also clickable —
+              same /account/settings shortcut as the expanded footer. */}
+          <button
+            type="button"
+            onClick={() => { navigate('/account/settings'); setMobileOpen(false); }}
+            className="w-full flex justify-center rounded-lg p-1 hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-brand-turquoise/60 transition-colors"
+            title={t('accountSettings')}
+            aria-label={t('accountSettings')}
+            data-testid="sidebar-footer-account-collapsed"
+          >
             <div className="w-8 h-8 rounded-lg bg-brand-turquoise flex items-center justify-center overflow-hidden">
               {user.avatar_url ? (
                 <img src={user.avatar_url} alt={user.full_name} className="w-full h-full object-cover" />
@@ -723,7 +757,7 @@ export const Sidebar = ({ children }) => {
                 <span className="text-white text-xs font-semibold">{user.full_name?.charAt(0)}</span>
               )}
             </div>
-          </div>
+          </button>
           <Button
             variant="ghost"
             size="icon"
