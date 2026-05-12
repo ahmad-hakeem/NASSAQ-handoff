@@ -19,13 +19,34 @@ import {
   Phone, Mail, ClipboardCheck, FileText, TrendingUp, Star,
   BookOpen, Calendar, ChevronLeft, BarChart3, Brain, Target,
   CheckCircle, AlertTriangle, Sparkles, ArrowUpCircle, ArrowDownCircle,
-  Lightbulb, Activity, MessageSquare, Send, Plus
+  Lightbulb, Activity, MessageSquare, Send, Plus, UserPlus, Link2
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import AddStudentWizard from '../../components/wizards/AddStudentWizard';
 
 // Phase 1 IT — server-side cap (#192 spec §5.6).
 const WORKSPACE_STUDENTS_MAX = 200;
+
+// Spec §5.6 — canonical parent-contact ownership. Read precedence:
+// linked parent fields when `parent_id` is set, otherwise the inline
+// `pending_parent_*` strings captured at student-create time.
+function getStudentParentDisplay(student) {
+  if (!student) return { name: '', phone: '', email: '', isLinked: false };
+  if (student.parent_id) {
+    return {
+      name: student.parent_name || '',
+      phone: student.parent_phone || '',
+      email: student.parent_email || '',
+      isLinked: true,
+    };
+  }
+  return {
+    name: student.pending_parent_name || '',
+    phone: student.pending_parent_phone || '',
+    email: student.pending_parent_email || '',
+    isLinked: false,
+  };
+}
 
 import { useTranslation } from '../../contexts/ThemeContext';
 export default function TeacherStudentsPage() {
@@ -53,7 +74,15 @@ export default function TeacherStudentsPage() {
   const [messageBody, setMessageBody] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
 
-  const { nassaqError, nassaqWarning } = useNassaqAlert();
+  // Invite-Parent dialog state (#199 spec §5.6 — atomic Pending → Linked).
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteTarget, setInviteTarget] = useState(null);
+  const [inviteForm, setInviteForm] = useState({
+    full_name: '', phone: '', email: '', national_id: '', relationship: 'guardian',
+  });
+  const [inviteSubmitting, setInviteSubmitting] = useState(false);
+
+  const { nassaqError, nassaqWarning, nassaqInfo } = useNassaqAlert();
   const teacherId = user?.teacher_id || user?.id;
 
   // Workspace count + dropdown options for the IT inline-create wizard
@@ -244,6 +273,72 @@ export default function TeacherStudentsPage() {
     }
   };
 
+  const openInviteParent = (e, student) => {
+    e.stopPropagation();
+    setInviteTarget(student);
+    setInviteForm({
+      full_name: student.pending_parent_name || '',
+      phone: student.pending_parent_phone || '',
+      email: student.pending_parent_email || '',
+      national_id: '',
+      relationship: 'guardian',
+    });
+    setInviteOpen(true);
+  };
+
+  const handleInviteParent = async () => {
+    if (!inviteTarget) return;
+    const f = inviteForm;
+    if (!f.phone?.trim() && !f.email?.trim() && !f.national_id?.trim()) {
+      nassaqError(isRTL
+        ? 'يلزم إدخال رقم الجوال أو البريد الإلكتروني أو رقم الهوية'
+        : 'Phone, email, or national ID is required');
+      return;
+    }
+    setInviteSubmitting(true);
+    try {
+      const body = {
+        full_name: f.full_name?.trim() || null,
+        phone: f.phone?.trim() || null,
+        email: f.email?.trim() || null,
+        national_id: f.national_id?.trim() || null,
+        relationship: f.relationship || 'guardian',
+      };
+      const res = await api.post(
+        `/independent-teacher/students/${inviteTarget.id}/invite-parent`,
+        body,
+      );
+      const matched = res.data?.matched_by;
+      const matchedAr = matched === 'new'
+        ? 'تم إنشاء حساب جديد'
+        : 'تم الربط بحساب موجود';
+      setInviteOpen(false);
+      setInviteTarget(null);
+      await fetchStudents();
+      nassaqInfo(isRTL
+        ? `تم ربط ولي الأمر بنجاح — ${matchedAr}`
+        : 'Parent linked successfully');
+    } catch (err) {
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail
+        || err?.response?.data?.error?.message;
+      const msg = typeof detail === 'string'
+        ? detail
+        : (isRTL ? 'تعذّر ربط ولي الأمر — حاول لاحقًا.' : 'Failed to link parent.');
+      // 401/403 with MFA_STEPUP_REQUIRED is intercepted globally and
+      // replayed by the AuthContext axios interceptor (Task #199 surfaces
+      // 403 specifically) — only surface other errors here.
+      const stepUpCodes = new Set([
+        'MFA_STEPUP_REQUIRED', 'MFA_PASSKEY_REQUIRED', 'MFA_RESTORE_REQUIRED',
+      ]);
+      const stepUp = (status === 401 || status === 403)
+        && (typeof detail === 'object' && stepUpCodes.has(detail?.code));
+      if (!stepUp) nassaqError(msg);
+    } finally {
+      setInviteSubmitting(false);
+    }
+  };
+
   const filteredStudents = students.filter(s =>
     s.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     s.student_id?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -422,17 +517,43 @@ export default function TeacherStudentsPage() {
                       <Progress value={student.average_grade || 0} className="h-2" />
                     </div>
 
-                    {student.parent_id && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full mt-3 text-xs gap-1.5 border-brand-turquoise/30 text-brand-navy hover:bg-brand-turquoise/10 hover:border-brand-turquoise"
-                        onClick={(e) => openMessageParent(e, student)}
-                      >
-                        <MessageSquare className="h-3.5 w-3.5" />
-                        {t('messageParent')}
-                      </Button>
-                    )}
+                    {(() => {
+                      const pd = getStudentParentDisplay(student);
+                      const hasPending = !pd.isLinked && (pd.name || pd.phone || pd.email);
+                      if (pd.isLinked) {
+                        return (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full mt-3 text-xs gap-1.5 border-brand-turquoise/30 text-brand-navy hover:bg-brand-turquoise/10 hover:border-brand-turquoise"
+                            onClick={(e) => openMessageParent(e, student)}
+                          >
+                            <MessageSquare className="h-3.5 w-3.5" />
+                            {t('messageParent')}
+                          </Button>
+                        );
+                      }
+                      if (isIndependentTeacher && hasPending) {
+                        return (
+                          <div className="mt-3 space-y-2">
+                            <Badge variant="outline" className="w-full justify-center text-[10px] text-amber-700 border-amber-300 bg-amber-50">
+                              {isRTL ? 'لم يتم الربط بعد' : 'Not linked yet'}
+                            </Badge>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full text-xs gap-1.5 border-brand-navy/30 text-brand-navy hover:bg-brand-navy/10 hover:border-brand-navy"
+                              onClick={(e) => openInviteParent(e, student)}
+                              data-testid={`invite-parent-${student.id}`}
+                            >
+                              <UserPlus className="h-3.5 w-3.5" />
+                              {isRTL ? 'ربط ولي الأمر' : 'Invite parent'}
+                            </Button>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                   </CardContent>
                 </Card>
               ))}
@@ -504,6 +625,113 @@ export default function TeacherStudentsPage() {
                   <Send className="h-4 w-4" />
                 )}
                 {t('send')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Invite Parent Dialog (#199 spec §5.6 — atomic Pending → Linked) */}
+        <Dialog open={inviteOpen} onOpenChange={(o) => { if (!inviteSubmitting) setInviteOpen(o); }}>
+          <DialogContent className="w-[95vw] max-w-lg" data-testid="invite-parent-dialog">
+            <DialogHeader>
+              <DialogTitle className="font-cairo flex items-center gap-2">
+                <Link2 className="h-5 w-5 text-brand-navy" />
+                {isRTL ? 'ربط ولي الأمر' : 'Invite parent'}
+              </DialogTitle>
+            </DialogHeader>
+            {inviteTarget && (
+              <div className="space-y-3">
+                <div className="text-xs text-muted-foreground">
+                  {isRTL
+                    ? 'يلزم رقم الجوال أو البريد الإلكتروني أو رقم الهوية على الأقل.'
+                    : 'At least phone, email, or national ID is required.'}
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block">
+                    {isRTL ? 'الاسم الكامل' : 'Full name'}
+                  </label>
+                  <Input
+                    value={inviteForm.full_name}
+                    onChange={(e) => setInviteForm({ ...inviteForm, full_name: e.target.value })}
+                    placeholder={isRTL ? 'اسم ولي الأمر' : 'Parent name'}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">
+                      {isRTL ? 'رقم الجوال' : 'Phone'}
+                    </label>
+                    <Input
+                      value={inviteForm.phone}
+                      onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
+                      placeholder="+9665XXXXXXXX"
+                      data-testid="invite-parent-phone"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">
+                      {isRTL ? 'البريد الإلكتروني' : 'Email'}
+                    </label>
+                    <Input
+                      type="email"
+                      value={inviteForm.email}
+                      onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                      placeholder="parent@example.com"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">
+                      {isRTL ? 'رقم الهوية' : 'National ID'}
+                    </label>
+                    <Input
+                      value={inviteForm.national_id}
+                      onChange={(e) => setInviteForm({ ...inviteForm, national_id: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1.5 block">
+                      {isRTL ? 'صلة القرابة' : 'Relationship'}
+                    </label>
+                    <Select
+                      value={inviteForm.relationship}
+                      onValueChange={(v) => setInviteForm({ ...inviteForm, relationship: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="father">{isRTL ? 'الأب' : 'Father'}</SelectItem>
+                        <SelectItem value="mother">{isRTL ? 'الأم' : 'Mother'}</SelectItem>
+                        <SelectItem value="guardian">{isRTL ? 'ولي أمر' : 'Guardian'}</SelectItem>
+                        <SelectItem value="other">{isRTL ? 'أخرى' : 'Other'}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            )}
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setInviteOpen(false)}
+                disabled={inviteSubmitting}
+              >
+                {t('cancel')}
+              </Button>
+              <Button
+                className="bg-brand-navy hover:bg-brand-navy/90 gap-1.5 text-white"
+                onClick={handleInviteParent}
+                disabled={inviteSubmitting}
+                data-testid="invite-parent-submit"
+              >
+                {inviteSubmitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <UserPlus className="h-4 w-4" />
+                )}
+                {isRTL ? 'ربط' : 'Link'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -607,25 +835,45 @@ export default function TeacherStudentsPage() {
                     </Card>
                   )}
 
-                  {selectedStudent?.parent_phone && (
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">{t('contactInfo')}</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <Phone className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm">{selectedStudent.parent_phone}</span>
-                        </div>
-                        {selectedStudent.parent_email && (
-                          <div className="flex items-center gap-2">
-                            <Mail className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">{selectedStudent.parent_email}</span>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  )}
+                  {(() => {
+                    // Task #199 §5.6 read-precedence: linked parent
+                    // fields when ``parent_id`` is set, else
+                    // ``pending_parent_*`` for IT-workspace students.
+                    const pd = getStudentParentDisplay(selectedStudent);
+                    if (!pd.phone && !pd.email && !pd.name) return null;
+                    return (
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm flex items-center gap-2">
+                            {t('contactInfo')}
+                            {pd.isLinked ? (
+                              <Badge variant="outline" className="text-[10px] border-green-300 text-green-700">
+                                {isRTL ? 'مرتبط' : 'Linked'}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
+                                {isRTL ? 'لم يتم الربط بعد' : 'Not yet linked'}
+                              </Badge>
+                            )}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-2">
+                          {pd.phone && (
+                            <div className="flex items-center gap-2">
+                              <Phone className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm">{pd.phone}</span>
+                            </div>
+                          )}
+                          {pd.email && (
+                            <div className="flex items-center gap-2">
+                              <Mail className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm">{pd.email}</span>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
                 </TabsContent>
 
                 <TabsContent value="attendance" className="mt-4 space-y-4">

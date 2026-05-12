@@ -173,7 +173,19 @@ export const AuthProvider = ({ children }) => {
       const mfaCode =
         error.response?.data?.error?.code ||
         (typeof error.response?.data?.detail === 'object' ? error.response.data.detail.code : null);
-      if (status === 401 && mfaCode === 'MFA_STEPUP_REQUIRED' && !config._mfaStepUpRetried) {
+      // Task #199: sensitive-action surfaces (e.g. IT Invite Parent)
+      // return 403 + canonical step-up payload instead of 401, so the
+      // step-up modal can drive a Tier-A re-auth from a non-auth
+      // context. Both status codes funnel through the same replay,
+      // and we honour every canonical step-up code (passkey/restore
+      // included) so Tier-A users never get a generic toast when the
+      // server is asking for a specific factor.
+      const mfaStepUpCodes = new Set([
+        'MFA_STEPUP_REQUIRED',
+        'MFA_PASSKEY_REQUIRED',
+        'MFA_RESTORE_REQUIRED',
+      ]);
+      if ((status === 401 || status === 403) && mfaStepUpCodes.has(mfaCode) && !config._mfaStepUpRetried) {
         if (!isMfaStepUpHandlerRegistered()) {
           return Promise.reject(error);
         }

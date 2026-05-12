@@ -118,6 +118,16 @@ def register_routes(app, api_router: APIRouter):
         router as it_communication_router,
     )
     api_router.include_router(it_communication_router)
+    # Phase 1 §5.6 (#199) — IT-only Invite-Parent (atomic Pending →
+    # Linked) + pending-parent editor. Mounted WITHOUT
+    # _full_tenant_dep; the router enforces the IT role gate per-
+    # endpoint, requires fresh MFA via require_recent_mfa, and is
+    # the SOLE backend writer that flips students.parent_id NULL →
+    # non-NULL for an IT user.
+    from routes.independent_teacher_invite_parent_routes import (
+        router as it_invite_parent_router,
+    )
+    api_router.include_router(it_invite_parent_router)
     api_router.include_router(scheduling_smart_router, dependencies=_full_tenant_dep)
     api_router.include_router(scheduling_smart_sess_router, dependencies=_full_tenant_dep)
     api_router.include_router(schedule_candidates_router, dependencies=_full_tenant_dep)
