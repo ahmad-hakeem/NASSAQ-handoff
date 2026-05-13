@@ -7,6 +7,7 @@ A comprehensive, multi-tenant school management platform with AI-powered feature
 - **Typecheck**: `mypy backend/` (backend), `npm run typecheck` (frontend)
 - **Codegen**: `alembic revision --autogenerate -m "description"` (DB migrations), `python -m src.shared_models` (Pydantic models)
 - **DB Push**: `alembic upgrade head`
+- **Schema drift check**: `cd backend && alembic upgrade head && pytest tests/test_schema_orm_drift.py -v` — fails when a column/table is in `pg_models.py` but not in Postgres (missing migration), or vice versa. Update the allowlist in the test only when a divergence is intentional.
 - **Required Env Vars**: `DATABASE_URL`, `SECRET_KEY`, `ALGORITHM`, `MFA_ENCRYPTION_KEY` (Fernet key — generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`; rotate via Replit secrets)
 
 ## Stack

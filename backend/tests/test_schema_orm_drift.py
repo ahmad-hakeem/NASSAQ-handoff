@@ -1,0 +1,146 @@
+"""Guard against drift between the live Postgres schema and the ORM models.
+
+This test catches the class of bug from Task #218 (duplicate migration), where
+``pg_models.School`` was missing ``reactivation_reminder_sent_at`` and the
+schools archive columns weren't reachable on a fresh DB.
+
+Run locally with:
+
+    cd backend && alembic upgrade head
+    pytest tests/test_schema_orm_drift.py -v
+
+It uses Alembic's ``compare_metadata`` to diff ``Base.metadata`` (the declared
+ORM in ``backend/pg_models.py``) against the live database, and fails on any
+column or table that is in one but not the other.
+
+If you intentionally add/drop a table or column outside the ORM (e.g. a raw
+SQL-managed bookkeeping table), update ``KNOWN_DB_ONLY_TABLES`` /
+``KNOWN_DB_ONLY_COLUMNS`` below with a comment explaining why.
+"""
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+from alembic.autogenerate import compare_metadata
+from alembic.migration import MigrationContext
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import NullPool
+
+from db import Base, _get_async_url
+import pg_models  # noqa: F401  ensure all ORM tables are registered on Base.metadata
+
+
+# Tables present in the live DB that are intentionally not modeled in
+# ``pg_models.py`` (managed via raw SQL / migrations / framework bookkeeping).
+# Each entry is technical debt: prefer adding the ORM model over extending
+# this list.
+KNOWN_DB_ONLY_TABLES: frozenset[str] = frozenset({
+    "alembic_version",          # alembic bookkeeping
+    "_deployment_markers",      # deploy-time marker rows, raw-SQL managed
+    "impersonation_sessions",   # legacy table, accessed only via raw SQL
+    "revoked_token_families",   # legacy table, accessed only via raw SQL
+    # IT Phase-2 tables managed via raw SQL / gd_* helpers (no ORM model yet).
+    "parent_invitations",       # IT §6.2 — Alembic a3b4c5d6e7f8
+    "workspace_collaborators",  # IT §6.7 — Alembic b1d2e3f4a5b7
+    "workspace_quota",          # IT §6.1 — Alembic b4d5e6f7a8b0
+})
+
+# Columns present in the live DB but intentionally absent from the ORM model
+# (keyed by ``(table_name, column_name)``).
+KNOWN_DB_ONLY_COLUMNS: frozenset[tuple[str, str]] = frozenset({
+    ("schools", "ai_consent_enabled"),  # legacy column, no longer surfaced via ORM
+    ("teachers", "created_by"),         # legacy column, no longer surfaced via ORM
+})
+
+
+async def _collect_diffs_async():
+    engine = create_async_engine(_get_async_url(), poolclass=NullPool)
+    try:
+        async with engine.connect() as conn:
+            return await conn.run_sync(
+                lambda sc: compare_metadata(
+                    MigrationContext.configure(sc), Base.metadata
+                )
+            )
+    finally:
+        await engine.dispose()
+
+
+def _collect_diffs():
+    return asyncio.run(_collect_diffs_async())
+
+
+def _structural_diffs():
+    """Return only diffs that change the table-or-column shape."""
+    raw = _collect_diffs()
+    structural = []
+    for entry in raw:
+        # compare_metadata yields either a tuple op or a list of tuple ops.
+        items = entry if isinstance(entry, list) else [entry]
+        for op in items:
+            if not isinstance(op, tuple) or not op:
+                continue
+            if op[0] in ("add_table", "remove_table", "add_column", "remove_column"):
+                structural.append(op)
+    return structural
+
+
+def test_no_orm_db_schema_drift():
+    """Fail if any column/table is in the ORM but missing from Postgres,
+    or in Postgres but missing from the ORM (outside the known allowlist).
+    """
+    missing_in_db_tables: list[str] = []      # ORM has it, DB doesn't (migration missing)
+    missing_in_orm_tables: list[str] = []     # DB has it, ORM doesn't
+    missing_in_db_columns: list[str] = []     # ORM has it, DB doesn't
+    missing_in_orm_columns: list[str] = []    # DB has it, ORM doesn't
+
+    for op in _structural_diffs():
+        kind = op[0]
+        if kind == "add_table":
+            tbl = op[1]
+            missing_in_db_tables.append(tbl.name)
+        elif kind == "remove_table":
+            tbl = op[1]
+            if tbl.name not in KNOWN_DB_ONLY_TABLES:
+                missing_in_orm_tables.append(tbl.name)
+        elif kind == "add_column":
+            _, _schema, table_name, column = op
+            missing_in_db_columns.append(f"{table_name}.{column.name}")
+        elif kind == "remove_column":
+            _, _schema, table_name, column = op
+            if (table_name, column.name) not in KNOWN_DB_ONLY_COLUMNS:
+                missing_in_orm_columns.append(f"{table_name}.{column.name}")
+
+    problems: list[str] = []
+    if missing_in_db_tables:
+        problems.append(
+            "Tables declared in pg_models.py but missing from the database "
+            "(missing migration?): " + ", ".join(sorted(missing_in_db_tables))
+        )
+    if missing_in_db_columns:
+        problems.append(
+            "Columns declared in pg_models.py but missing from the database "
+            "(missing migration?): " + ", ".join(sorted(missing_in_db_columns))
+        )
+    if missing_in_orm_tables:
+        problems.append(
+            "Tables present in the database but not in pg_models.py "
+            "(add an ORM model or extend KNOWN_DB_ONLY_TABLES): "
+            + ", ".join(sorted(missing_in_orm_tables))
+        )
+    if missing_in_orm_columns:
+        problems.append(
+            "Columns present in the database but not in pg_models.py "
+            "(add to the ORM model or extend KNOWN_DB_ONLY_COLUMNS): "
+            + ", ".join(sorted(missing_in_orm_columns))
+        )
+
+    if problems:
+        pytest.fail(
+            "ORM <-> database schema drift detected. Run "
+            "`cd backend && alembic upgrade head` first; if drift remains, "
+            "either add the missing migration / ORM column or update the "
+            "allowlist in tests/test_schema_orm_drift.py.\n\n  - "
+            + "\n  - ".join(problems)
+        )
