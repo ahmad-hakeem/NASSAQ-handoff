@@ -466,3 +466,181 @@ async def test_reactivate_requires_recent_mfa(client):
     )
     assert resp.status_code == 403
     assert resp.json().get("error", {}).get("code") in STEP_UP_CODES
+
+
+# ---------------------------------------------------------------------------
+# Reactivation banner gate + dismissal (Task #232)
+#
+# Covers the GET /independent-teacher/workspace/lifecycle banner field
+# and the POST .../lifecycle/reactivation-banner/dismiss endpoint.
+# Spec: §6.8 reactivation UX — banner re-arms on every fresh
+# archive→reactivate cycle, dismiss compares timestamps, dismiss is
+# IT-only and respects the cross-workspace 404 invariant (§8 inv. 3).
+# ---------------------------------------------------------------------------
+
+from dependencies import UserRole  # noqa: E402
+from engines.sql_utils import gd_delete_one  # noqa: E402
+
+from tests._it_fixtures import headers as _mk_headers  # noqa: E402
+
+
+_DISMISS_PATH = "/independent-teacher/workspace/lifecycle/reactivation-banner/dismiss"
+_LIFECYCLE_PATH = "/independent-teacher/workspace/lifecycle"
+
+
+async def _archive_and_reactivate(client, ctx: dict, *, days_archived: int = 2):
+    """Drive a real archive→reactivate cycle so the lifecycle row
+    carries the same column state production sees post-reactivate
+    (last_reactivated_at + last_archive_cycle_archived_at stamped)."""
+    h = _it_headers(ctx)
+    archived_at = (datetime.now(timezone.utc) - timedelta(days=days_archived)).isoformat()
+    await gd_update_one(
+        db.session, "schools", {"id": ctx["wsid"]},
+        {"status": "archived", "archived_at": archived_at},
+    )
+    resp = await client.post(
+        "/independent-teacher/workspace/reactivate", headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.asyncio
+async def test_banner_appears_after_reactivate(client):
+    """After a real archive→reactivate cycle the lifecycle GET must
+    surface a populated reactivation_banner with the cycle's archive
+    timestamp + computed days-remaining-at-reactivation."""
+    ctx = await mk_it_workspace()
+    await _archive_and_reactivate(client, ctx, days_archived=2)
+
+    resp = await client.get(_LIFECYCLE_PATH, headers=_it_headers(ctx))
+    assert resp.status_code == 200, resp.text
+    banner = resp.json()["reactivation_banner"]
+    assert banner is not None
+    assert banner["reactivated_at"]
+    assert banner["archived_at"]
+    assert banner["reactivation_window_days"] == 30
+    # 30-day window minus ~2 days archived ⇒ ~28 days remaining.
+    assert banner["days_remaining_at_reactivation"] in (27, 28)
+
+
+@pytest.mark.asyncio
+async def test_banner_hides_after_dismiss(client):
+    """POST .../dismiss must stamp reactivation_banner_dismissed_at
+    so the next lifecycle GET returns banner=None for the same cycle."""
+    ctx = await mk_it_workspace()
+    await _archive_and_reactivate(client, ctx)
+    h = _it_headers(ctx)
+
+    pre = await client.get(_LIFECYCLE_PATH, headers=h)
+    assert pre.json()["reactivation_banner"] is not None
+
+    dismiss = await client.post(_DISMISS_PATH, headers=h)
+    assert dismiss.status_code == 200, dismiss.text
+    assert dismiss.json()["ok"] is True
+    assert dismiss.json()["dismissed_at"]
+
+    post = await client.get(_LIFECYCLE_PATH, headers=h)
+    assert post.status_code == 200
+    assert post.json()["reactivation_banner"] is None
+
+
+@pytest.mark.asyncio
+async def test_banner_rearms_after_second_archive_reactivate_cycle(client):
+    """Once dismissed, a SECOND archive→reactivate cycle must re-arm
+    the banner because last_reactivated_at moves forward past the
+    earlier dismissed_at stamp."""
+    ctx = await mk_it_workspace()
+    h = _it_headers(ctx)
+
+    # Cycle 1: reactivate, then dismiss.
+    await _archive_and_reactivate(client, ctx, days_archived=2)
+    assert (await client.post(_DISMISS_PATH, headers=h)).status_code == 200
+    assert (await client.get(_LIFECYCLE_PATH, headers=h)).json()["reactivation_banner"] is None
+
+    # Cycle 2: archive again and reactivate. The dismiss stamp from
+    # cycle 1 is now older than the new last_reactivated_at so the
+    # banner must surface again.
+    await _archive_and_reactivate(client, ctx, days_archived=1)
+    second = await client.get(_LIFECYCLE_PATH, headers=h)
+    assert second.status_code == 200
+    banner = second.json()["reactivation_banner"]
+    assert banner is not None, "banner must re-arm on second cycle"
+    assert banner["days_remaining_at_reactivation"] in (28, 29)
+
+
+@pytest.mark.asyncio
+async def test_dismiss_rejects_non_independent_teacher_caller(client):
+    """The dismiss endpoint sits behind _require_independent_teacher,
+    so a principal/admin token must be rejected with 403."""
+    from engines.sql_utils import gd_insert as _gd_insert
+
+    fake_school = str(uuid.uuid4())
+    await _gd_insert(db.session, "schools", {
+        "id": fake_school,
+        "name": f"School-{fake_school[:6]}",
+        "code": f"S{fake_school[:8]}",
+        "status": "active",
+        "country": "SA",
+        "language": "ar",
+    })
+    fake_uid = str(uuid.uuid4())
+    await _gd_insert(db.session, "users", {
+        "id": fake_uid,
+        "role": UserRole.SCHOOL_PRINCIPAL.value,
+        "tenant_id": fake_school,
+        "email": f"princ-{fake_uid}@t.test",
+        "full_name": "Principal Test",
+        "is_active": True,
+        "password_hash": "x",
+    })
+    h = _mk_headers(
+        fake_uid, UserRole.SCHOOL_PRINCIPAL.value, fake_school,
+        mfa_recent_at=now_ts(),
+    )
+    resp = await client.post(_DISMISS_PATH, headers=h)
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_dismiss_with_forged_tenant_claim_cannot_touch_foreign_workspace(client):
+    """Explicit cross-workspace invariant (§8 inv. 3): if IT user A
+    forges their JWT tenant_id to point at IT workspace B, the dismiss
+    endpoint must NOT stamp B's reactivation_banner_dismissed_at — the
+    lifecycle resolver derives workspace_id from the caller's own user
+    id (independent_workspace_id), so the forged claim is ignored and
+    only A's workspace is ever touched. After driving an archive→
+    reactivate cycle on B (so B's banner is armed), a forged-claim
+    dismiss request from A must leave B's banner intact on B's own
+    lifecycle GET."""
+    a = await mk_it_workspace()
+    b = await mk_it_workspace()
+    # Arm B's banner via a real archive→reactivate cycle.
+    await _archive_and_reactivate(client, b, days_archived=2)
+    pre = await client.get(_LIFECYCLE_PATH, headers=_it_headers(b))
+    assert pre.json()["reactivation_banner"] is not None
+
+    # Forge: caller A's user id, but tenant claim points at B's wsid.
+    forged = headers(
+        a["uid"], a["user"]["role"], b["wsid"],
+        mfa_recent_at=now_ts(),
+    )
+    await client.post(_DISMISS_PATH, headers=forged)
+
+    # B's banner must still be armed — the forged claim was ignored.
+    post = await client.get(_LIFECYCLE_PATH, headers=_it_headers(b))
+    assert post.json()["reactivation_banner"] is not None, (
+        "forged tenant_id claim must NOT dismiss a foreign workspace's banner"
+    )
+
+
+@pytest.mark.asyncio
+async def test_dismiss_returns_404_when_workspace_row_missing(client):
+    """Cross-workspace / orphaned-claim safety: if the IT user's
+    workspace row no longer exists, dismiss must 404 (never 200/500),
+    matching the §8 invariant 3 by-id read posture."""
+    ctx = await mk_it_workspace()
+    # Drop the schools row out from under the caller.
+    await gd_delete_one(db.session, "schools", {"id": ctx["wsid"]})
+
+    resp = await client.post(_DISMISS_PATH, headers=_it_headers(ctx))
+    assert resp.status_code == 404
