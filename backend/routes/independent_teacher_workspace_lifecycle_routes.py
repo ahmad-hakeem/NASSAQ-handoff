@@ -90,6 +90,7 @@ from middleware.rbac import Permission, RBACMiddleware
 from utils.trusted_proxy import extract_client_ip
 from engines.email_service import (
     send_workspace_archived_email,
+    send_workspace_auto_export_email,
     send_workspace_reactivation_reminder_email,
 )
 
@@ -942,6 +943,131 @@ async def maybe_flip_pending_hard_delete(workspace_id: str) -> bool:
     except Exception as exc:  # noqa: BLE001
         logger.debug("maybe_flip_pending_hard_delete: %s", exc)
         return False
+
+
+# -- Endpoints: GET/PUT /independent-teacher/workspace/auto-export/settings -
+
+# Task #275 — opt-in weekly auto-export. The toggle lives on the IT
+# §6.8 hub. Intentionally NOT MFA-gated: this is a configuration toggle,
+# not a destructive action; the user already authorised the resulting
+# scheduled export by enabling it. The actual sweep that mints the
+# token + sends the email lives in ``app/lifecycle.py`` so a single
+# hourly loop covers all workspaces.
+#
+# Day-of-week convention: ``0=Sunday`` … ``6=Saturday`` (matches JS
+# ``Date.getDay()`` so the FE doesn't have to translate). Hour is
+# 0-23 in **UTC**.
+
+_DOW_MIN, _DOW_MAX = 0, 6
+_HOUR_MIN, _HOUR_MAX = 0, 23
+_MSG_AUTO_EXPORT_BAD_DOW = "يوم الأسبوع غير صالح."
+_MSG_AUTO_EXPORT_BAD_HOUR = "الساعة غير صالحة."
+
+_DEFAULT_AUTO_EXPORT_DOW = 0   # Sunday
+_DEFAULT_AUTO_EXPORT_HOUR = 2  # 02:00 UTC
+
+
+class AutoExportSettingsRequest(BaseModel):
+    enabled: bool
+    day_of_week: Optional[int] = Field(default=None, ge=_DOW_MIN, le=_DOW_MAX)
+    hour: Optional[int] = Field(default=None, ge=_HOUR_MIN, le=_HOUR_MAX)
+
+
+def _next_run_at(
+    now: datetime, dow: int, hour: int,
+) -> datetime:
+    """Return the next UTC datetime matching ``dow`` (0=Sun) at ``hour:00``.
+    If today matches ``dow`` and ``now.hour < hour``, returns today; else
+    the next matching weekday at the top of ``hour``.
+    """
+    # Python: Monday=0..Sunday=6; convert to our 0=Sunday convention.
+    today_dow = (now.weekday() + 1) % 7
+    days_ahead = (dow - today_dow) % 7
+    candidate = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+    if days_ahead == 0 and candidate <= now:
+        days_ahead = 7
+    return candidate + timedelta(days=days_ahead)
+
+
+def _serialise_auto_export(quota: Dict[str, Any]) -> Dict[str, Any]:
+    enabled = bool(quota.get("auto_export_enabled"))
+    dow_raw = quota.get("auto_export_dow")
+    hr_raw = quota.get("auto_export_hour")
+    dow = int(dow_raw) if dow_raw is not None else _DEFAULT_AUTO_EXPORT_DOW
+    hour = int(hr_raw) if hr_raw is not None else _DEFAULT_AUTO_EXPORT_HOUR
+    last_run = _coerce_dt(quota.get("auto_export_last_run_at"))
+    next_run = _next_run_at(_utcnow(), dow, hour) if enabled else None
+    return {
+        "enabled": enabled,
+        "day_of_week": dow,
+        "hour": hour,
+        "last_run_at": last_run.isoformat() if last_run else None,
+        "last_status": quota.get("auto_export_last_status"),
+        "next_run_at": next_run.isoformat() if next_run else None,
+    }
+
+
+@router.get("/independent-teacher/workspace/auto-export/settings")
+async def read_auto_export_settings(
+    current_user: dict = Depends(_require_independent_teacher),
+):
+    workspace_id = independent_workspace_id(current_user) or require_request_school_id(current_user)
+    quota = await gd_find_one(
+        db.session, "workspace_quota", {"workspace_school_id": workspace_id},
+    )
+    if not quota:
+        # No quota row yet (legacy bootstrap): return defaults.
+        quota = {}
+    return _serialise_auto_export(quota)
+
+
+@router.put("/independent-teacher/workspace/auto-export/settings")
+async def update_auto_export_settings(
+    payload: AutoExportSettingsRequest,
+    current_user: dict = Depends(_require_independent_teacher),
+):
+    workspace_id = independent_workspace_id(current_user) or require_request_school_id(current_user)
+    dow = payload.day_of_week if payload.day_of_week is not None else _DEFAULT_AUTO_EXPORT_DOW
+    hour = payload.hour if payload.hour is not None else _DEFAULT_AUTO_EXPORT_HOUR
+    if not (_DOW_MIN <= dow <= _DOW_MAX):
+        raise HTTPException(status_code=422, detail=_MSG_AUTO_EXPORT_BAD_DOW)
+    if not (_HOUR_MIN <= hour <= _HOUR_MAX):
+        raise HTTPException(status_code=422, detail=_MSG_AUTO_EXPORT_BAD_HOUR)
+
+    quota = await gd_find_one(
+        db.session, "workspace_quota", {"workspace_school_id": workspace_id},
+    )
+    updates = {
+        "auto_export_enabled": bool(payload.enabled),
+        "auto_export_dow": dow,
+        "auto_export_hour": hour,
+        "updated_at": _utcnow_iso(),
+    }
+    try:
+        async with db.session.begin_nested():
+            if quota:
+                await gd_update_one(
+                    db.session, "workspace_quota",
+                    {"workspace_school_id": workspace_id}, updates,
+                )
+            else:
+                # Defensive insert: bootstrap should always seed the row,
+                # but legacy workspaces predate the quota table.
+                from engines.sql_utils import gd_insert as _gd_insert
+                await _gd_insert(
+                    db.session, "workspace_quota",
+                    {"workspace_school_id": workspace_id, **updates},
+                )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("update_auto_export_settings failed: %s", exc)
+        raise HTTPException(status_code=500, detail=_MSG_INTERNAL)
+
+    fresh = await gd_find_one(
+        db.session, "workspace_quota", {"workspace_school_id": workspace_id},
+    ) or {}
+    return _serialise_auto_export(fresh)
 
 
 __all__ = ["router", "maybe_flip_pending_hard_delete"]

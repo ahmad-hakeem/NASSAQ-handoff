@@ -4,7 +4,7 @@ NASSAQ — Application startup and shutdown hooks.
 import os
 import uuid
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta as _td
 
 from dependencies import db, hash_password
 from db import async_session_factory, init_pg_tables, close_pg_engine
@@ -218,9 +218,38 @@ async def startup_tasks():
     except Exception as e:
         logger.warning(f"Could not schedule reactivation reminder loop: {e}")
 
+    # Background task: hourly sweep that mints a fresh single-use 24h
+    # workspace export URL for every IT workspace whose
+    # ``auto_export_enabled=TRUE`` AND whose chosen day-of-week + hour
+    # matches the current UTC tick. Idempotent within 6h via
+    # ``workspace_quota.auto_export_last_run_at``. See Task #275.
+    async def _auto_export_loop():
+        try:
+            await _asyncio.sleep(90)
+            while True:
+                try:
+                    await _run_with_session(
+                        "Workspace auto-export sweep",
+                        _sweep_auto_exports,
+                    )
+                except Exception as e:
+                    logger.warning(f"Auto-export loop: {e}")
+                await _asyncio.sleep(60 * 60)
+        except _asyncio.CancelledError:
+            logger.info("Auto-export loop cancelled (shutdown)")
+            raise
+
+    try:
+        global _auto_export_task
+        _auto_export_task = _asyncio.create_task(_auto_export_loop())
+        logger.info("Workspace auto-export loop scheduled (hourly)")
+    except Exception as e:
+        logger.warning(f"Could not schedule auto-export loop: {e}")
+
 
 _revoked_token_cleanup_task = None
 _reactivation_reminder_task = None
+_auto_export_task = None
 
 
 # Reminder copy is sent once when the remaining reactivation window is
@@ -228,6 +257,166 @@ _reactivation_reminder_task = None
 # that's already past the deadline — the on-login sweep flips it to
 # pending_hard_delete and platform-admin tooling takes it from there).
 _REMINDER_THRESHOLD_DAYS = 3
+
+# Auto-export sweep idempotency guard: skip workspaces whose
+# auto_export_last_run_at is within this window of "now". This is a
+# safety net beyond the (dow, hour) match — it guarantees that if the
+# loop ticks twice within the same hour (e.g. because of a backend
+# restart) we never double-mint a token + double-email the teacher.
+_AUTO_EXPORT_MIN_INTERVAL = _td(hours=6)
+
+
+async def _sweep_auto_exports():
+    """Hourly sweep — see Task #275.
+
+    For every IT workspace where ``auto_export_enabled=TRUE`` AND the
+    user-chosen day-of-week + hour matches ``now``, mint a fresh single
+    use 24h export URL, stamp the school export columns (same as the
+    manual ``POST /workspace/export`` path) and email the teacher a
+    link-only notification. Status is recorded back on
+    ``workspace_quota`` so the FE hub can render last-run + status.
+    """
+    from engines.sql_utils import gd_find as _gd_find, gd_find_one as _gd_find_one, gd_update_one as _gd_update_one
+    from engines.email_service import send_workspace_auto_export_email
+    from utils.tokens import mint_workspace_export_token, WORKSPACE_EXPORT_TOKEN_TTL
+    from dependencies import audit_engine
+
+    now = datetime.now(timezone.utc)
+    today_dow = (now.weekday() + 1) % 7  # 0=Sunday convention
+    current_hour = now.hour
+
+    rows = await _gd_find(db.session, "workspace_quota", {"auto_export_enabled": True})
+    if not rows:
+        return
+    swept = 0
+    for row in rows:
+        try:
+            dow = row.get("auto_export_dow")
+            hour = row.get("auto_export_hour")
+            if dow is None or hour is None:
+                continue
+            if int(dow) != today_dow or int(hour) != current_hour:
+                continue
+            last_run_raw = row.get("auto_export_last_run_at")
+            if last_run_raw:
+                if isinstance(last_run_raw, datetime):
+                    last_run = last_run_raw
+                else:
+                    try:
+                        last_run = datetime.fromisoformat(str(last_run_raw).replace("Z", "+00:00"))
+                    except (ValueError, TypeError):
+                        last_run = None
+                if last_run and last_run.tzinfo is None:
+                    last_run = last_run.replace(tzinfo=timezone.utc)
+                if last_run and (now - last_run) < _AUTO_EXPORT_MIN_INTERVAL:
+                    continue
+
+            workspace_id = row.get("workspace_school_id")
+            school = await _gd_find_one(db.session, "schools", {"id": workspace_id})
+            if not school:
+                await _gd_update_one(
+                    db.session, "workspace_quota",
+                    {"workspace_school_id": workspace_id},
+                    {"auto_export_last_run_at": now.isoformat(),
+                     "auto_export_last_status": "failed_no_workspace"},
+                )
+                continue
+            # Skip archived/pending-hard-delete — manual export is also
+            # blocked there, and emailing them a backup link is noise.
+            if (school.get("status") or "").lower() == "archived" or school.get("pending_hard_delete"):
+                await _gd_update_one(
+                    db.session, "workspace_quota",
+                    {"workspace_school_id": workspace_id},
+                    {"auto_export_last_run_at": now.isoformat(),
+                     "auto_export_last_status": "skipped_archived"},
+                )
+                continue
+
+            # Resolve the workspace owner (the IT user) so we know who
+            # to email + who to bind the token to.
+            owner_id = workspace_id.replace("itw_", "") if str(workspace_id).startswith("itw_") else None
+            owner = None
+            if owner_id:
+                owner = await _gd_find_one(db.session, "users", {"id": owner_id})
+            if not owner:
+                # Fall back to any IT user pinned to this tenant.
+                owners = await _gd_find(db.session, "users",
+                                        {"tenant_id": workspace_id, "role": "independent_teacher"})
+                owner = owners[0] if owners else None
+            if not owner:
+                await _gd_update_one(
+                    db.session, "workspace_quota",
+                    {"workspace_school_id": workspace_id},
+                    {"auto_export_last_run_at": now.isoformat(),
+                     "auto_export_last_status": "failed_no_owner"},
+                )
+                continue
+
+            raw_token, raw_hash, expires_at = mint_workspace_export_token(
+                workspace_id, owner["id"],
+            )
+            await _gd_update_one(
+                db.session, "schools", {"id": workspace_id},
+                {
+                    "last_export_at": now.isoformat(),
+                    "last_export_token_hash": raw_hash,
+                    "last_export_consumed_at": None,
+                },
+            )
+
+            email = (owner.get("email") or "").strip()
+            is_placeholder = email.endswith("@invite.nassaq.invalid") or not email
+            sent = False
+            if not is_placeholder:
+                base = (os.getenv("APP_URL") or os.getenv("PUBLIC_BASE_URL") or "").rstrip("/")
+                download_url = f"{base}/api/public/workspace-export/{raw_token}" if base else f"/api/public/workspace-export/{raw_token}"
+                try:
+                    sent = send_workspace_auto_export_email(
+                        to_email=email,
+                        user_name=owner.get("full_name") or "",
+                        workspace_name=school.get("name") or "",
+                        download_url=download_url,
+                        download_expires_at=expires_at.isoformat(),
+                    )
+                except Exception as email_exc:  # noqa: BLE001
+                    logger.warning("Auto-export email send failed: %s", email_exc)
+                    sent = False
+            status = "success" if sent else ("email_skipped_placeholder" if is_placeholder else "email_failed")
+
+            await _gd_update_one(
+                db.session, "workspace_quota",
+                {"workspace_school_id": workspace_id},
+                {"auto_export_last_run_at": now.isoformat(),
+                 "auto_export_last_status": status},
+            )
+            try:
+                await audit_engine.log(
+                    action="INDEPENDENT_TEACHER_AUTO_EXPORT",
+                    performed_by=owner["id"],
+                    tenant_id=workspace_id,
+                    entity_type="school",
+                    entity_id=workspace_id,
+                    details={
+                        "user_id": owner["id"],
+                        "school_id": workspace_id,
+                        "expires_at": expires_at.isoformat(),
+                        "ttl_hours": int(WORKSPACE_EXPORT_TOKEN_TTL.total_seconds() // 3600),
+                        "status": status,
+                        "scheduled": True,
+                    },
+                    actor_name=owner.get("full_name"),
+                    actor_role=owner.get("role"),
+                    actor_email=owner.get("email"),
+                )
+            except Exception as audit_exc:  # noqa: BLE001
+                logger.debug("auto-export audit failed: %s", audit_exc)
+            swept += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("auto-export sweep row failed: %s", exc)
+            continue
+    if swept:
+        logger.info("Workspace auto-export sweep: minted %d export(s)", swept)
+
 _REACTIVATION_WINDOW_DAYS = 30
 
 

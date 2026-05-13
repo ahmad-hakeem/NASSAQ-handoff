@@ -774,6 +774,54 @@ export const AccountSettingsPage = () => {
   const hubEnabled = isIndependentTeacher && activeSection === 'workspace-hub';
   const hub = useWorkspaceHubData(api, hubEnabled);
 
+  // Task #275 — opt-in weekly auto-export. Local state mirrors the
+  // GET /workspace/auto-export/settings response; PUT optimistically
+  // applies the change and rolls back on error via NassaqAlertDialog.
+  const [autoExport, setAutoExport] = useState({
+    enabled: false,
+    day_of_week: 0,
+    hour: 2,
+    last_run_at: null,
+    last_status: null,
+    next_run_at: null,
+  });
+  const [autoExportSaving, setAutoExportSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!api || !hubEnabled) return;
+      try {
+        const { data } = await api.get('/independent-teacher/workspace/auto-export/settings');
+        if (!cancelled && data) setAutoExport(data);
+      } catch (_e) { /* hub-card silent — error surfaces on save */ }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [api, hubEnabled]);
+
+  const _saveAutoExport = async (next) => {
+    setAutoExportSaving(true);
+    const prev = autoExport;
+    setAutoExport((s) => ({ ...s, ...next }));
+    try {
+      const { data } = await api.put('/independent-teacher/workspace/auto-export/settings', {
+        enabled: next.enabled !== undefined ? next.enabled : autoExport.enabled,
+        day_of_week: next.day_of_week !== undefined ? next.day_of_week : autoExport.day_of_week,
+        hour: next.hour !== undefined ? next.hour : autoExport.hour,
+      });
+      if (data) setAutoExport(data);
+    } catch (error) {
+      setAutoExport(prev);
+      nassaqError(error?.response?.data?.detail || t('itHubAutoExportSaveFailed'));
+    } finally {
+      setAutoExportSaving(false);
+    }
+  };
+
+  const handleAutoExportToggle = (v) => _saveAutoExport({ enabled: !!v });
+  const handleAutoExportField = (patch) => _saveAutoExport(patch);
+
   // Task #252 — hub-specific export. Unlike handleExportWorkspace (which
   // also auto-opens the download in a new tab for the dedicated Export
   // section's UX), this one surfaces the one-shot signed URL exactly
@@ -1642,6 +1690,80 @@ export const AccountSettingsPage = () => {
                           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                           {t('itHubExportRunOneShot')}
                         </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Sub-card 2b: Auto-export weekly schedule (Task #275) */}
+                  <Card className="card-nassaq" data-testid="it-hub-auto-export-card">
+                    <CardHeader className="pb-4 border-b border-border/40">
+                      <CardTitle className="font-cairo flex items-center gap-2 text-base">
+                        <Clock className="h-4 w-4 text-brand-turquoise" />
+                        {t('itHubAutoExportTitle')}
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground font-tajawal mt-1">
+                        {t('itHubAutoExportHint')}
+                      </p>
+                    </CardHeader>
+                    <CardContent className="pt-5 space-y-4">
+                      <ToggleRow
+                        title={t('itHubAutoExportEnableTitle')}
+                        desc={t('itHubAutoExportEnableDesc')}
+                        checked={!!autoExport.enabled}
+                        onChange={(v) => handleAutoExportToggle(v)}
+                      />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" data-testid="it-hub-auto-export-schedule">
+                        <div>
+                          <Label className="text-xs font-cairo">{t('itHubAutoExportDow')}</Label>
+                          <Select
+                            value={String(autoExport.day_of_week ?? 0)}
+                            onValueChange={(v) => handleAutoExportField({ day_of_week: Number(v) })}
+                            disabled={!autoExport.enabled || autoExportSaving}
+                          >
+                            <SelectTrigger data-testid="it-hub-auto-export-dow-select">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {[0,1,2,3,4,5,6].map((d) => (
+                                <SelectItem key={d} value={String(d)}>{t(`weekday_${d}`)}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs font-cairo">{t('itHubAutoExportHour')}</Label>
+                          <Select
+                            value={String(autoExport.hour ?? 2)}
+                            onValueChange={(v) => handleAutoExportField({ hour: Number(v) })}
+                            disabled={!autoExport.enabled || autoExportSaving}
+                          >
+                            <SelectTrigger data-testid="it-hub-auto-export-hour-select">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Array.from({ length: 24 }, (_, h) => (
+                                <SelectItem key={h} value={String(h)}>
+                                  {String(h).padStart(2, '0')}:00 UTC
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="text-xs font-tajawal text-muted-foreground space-y-1 border-t border-border/30 pt-3">
+                        {autoExport.last_run_at ? (
+                          <p data-testid="it-hub-auto-export-last">
+                            {t('itHubAutoExportLastRun')}: {formatHijriDate(new Date(autoExport.last_run_at))}
+                            {autoExport.last_status ? ` — ${t(`itHubAutoExportStatus_${autoExport.last_status}`, { defaultValue: autoExport.last_status })}` : ''}
+                          </p>
+                        ) : (
+                          <p data-testid="it-hub-auto-export-never">{t('itHubAutoExportNeverRun')}</p>
+                        )}
+                        {autoExport.enabled && autoExport.next_run_at ? (
+                          <p data-testid="it-hub-auto-export-next">
+                            {t('itHubAutoExportNextRun')}: {formatHijriDate(new Date(autoExport.next_run_at))}
+                          </p>
+                        ) : null}
                       </div>
                     </CardContent>
                   </Card>
