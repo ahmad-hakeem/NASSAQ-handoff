@@ -191,6 +191,15 @@ def register_routes(app, api_router: APIRouter):
         router as it_onboarding_router,
     )
     api_router.include_router(it_onboarding_router)
+    # Task #248 — IT-only workspace audit-log view. Mounted WITHOUT
+    # _full_tenant_dep; the router enforces the IT role gate per-
+    # endpoint and pins school_id == itw_{user_id} on every read.
+    # Cross-workspace ids return 404 per spec §8 inv. 3. Read-only;
+    # no MFA step-up.
+    from routes.independent_teacher_audit_routes import (
+        router as it_audit_router,
+    )
+    api_router.include_router(it_audit_router)
     # Task #217 — Platform-admin hard-delete tooling for workspaces
     # whose 30-day reactivation window has lapsed
     # (`schools.pending_hard_delete = TRUE`). Lives behind

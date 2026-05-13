@@ -53,6 +53,7 @@ import {
   ChevronDown,
   Upload,
   Sparkles,
+  History,
   Trash2,
   Search,
 } from 'lucide-react';
@@ -492,6 +493,16 @@ export const Sidebar = ({ children }) => {
         roles: ['independent_teacher'],
         permission: 'ai.lesson_plans',
         dataTour: 'sidebar-lesson-planner',
+      },
+      // Task #248 — IT-only workspace audit-log view. Permission-gated
+      // on `audit.read_own_workspace` so the link mirrors the backend
+      // RBAC slice exactly.
+      {
+        icon: History,
+        label: 'سجل النشاط',
+        href: '/teacher/audit-log',
+        roles: ['independent_teacher'],
+        permission: 'audit.read_own_workspace',
       },
     ];
 

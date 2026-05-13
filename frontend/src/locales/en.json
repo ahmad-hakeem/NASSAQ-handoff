@@ -4562,5 +4562,16 @@
   "cmdkCategoryClasses": "Classes",
   "cmdkCategorySubjects": "Subjects",
   "cmdkCategoryLessonPlans": "Lesson plans",
-  "cmdkCategoryCalendarEvents": "Calendar"
+  "cmdkCategoryCalendarEvents": "Calendar",
+  "teacherAuditLogTitle": "Activity Log",
+  "teacherAuditLogIntro": "A read-only log of important events in your workspace (logins, exports, archive, invitations, data edits). Sensitive fields are hidden automatically.",
+  "teacherAuditLogEmpty": "No events yet.",
+  "auditLogLoadFailed": "Failed to load activity log — try again later.",
+  "fromDate": "From date",
+  "toDate": "To date",
+  "clearDates": "Clear dates",
+  "showDetails": "Show details",
+  "hideDetails": "Hide details",
+  "loadMore": "Load more",
+  "events": "Events"
 }

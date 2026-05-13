@@ -92,6 +92,11 @@ class Permission(str, Enum):
     # Audit
     AUDIT_VIEW = "audit.view"
     AUDIT_EXPORT = "audit.export"
+    # Task #248 — IT workspace audit-log view. Granted to
+    # `independent_teacher` only; the route layer pins
+    # ``school_id == itw_{user_id}`` on every read and strips
+    # sensitive keys from ``details`` before serialisation.
+    AUDIT_READ_OWN_WORKSPACE = "audit.read_own_workspace"
     
     # Students (workspace-scoped capabilities)
     STUDENTS_BULK_IMPORT_WORKSPACE = "students.bulk_import_workspace"
@@ -255,6 +260,10 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
         # Phase 2 §6.4 (#209) — light AI lesson-planning assistant.
         # No MFA step-up (low-sensitivity); daily quota enforced server-side.
         Permission.AI_LESSON_PLANS.value,
+        # Task #248 — IT workspace audit-log view. Read-only; the route
+        # pins school_id == itw_{user_id} and strips sensitive keys from
+        # details before serialisation.
+        Permission.AUDIT_READ_OWN_WORKSPACE.value,
     ],
     
     "student": [

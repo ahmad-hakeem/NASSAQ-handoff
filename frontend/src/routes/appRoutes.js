@@ -75,6 +75,7 @@ const WorkspaceSettingsPage = lazy(() => import("../pages/TeacherModule").then(m
 const WorkspaceSchedulePage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.WorkspaceSchedulePage })));
 const TeacherPersonalCalendarPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherPersonalCalendarPage })));
 const LessonPlannerPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.LessonPlannerPage })));
+const TeacherAuditLogPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAuditLogPage })));
 
 const ProductHubPage = lazy(() => import("../pages/ProductHubPage").then(m => ({ default: m.ProductHubPage })));
 const ProductHubSubmitPage = lazy(() => import("../pages/ProductHubSubmitPage").then(m => ({ default: m.ProductHubSubmitPage })));
@@ -361,6 +362,16 @@ export default function AppRoutes() {
             allowedRoles={['independent_teacher']}
             requiredPermission="ai.lesson_plans"
           ><LessonPlannerPage /></ProtectedRoute>
+        } />
+        {/* Task #248 — IT-only workspace audit-log view. Backend pins
+            school_id == itw_{user_id} on every read, strips sensitive
+            keys from details, and returns 404 for cross-workspace ids
+            per spec §8 inv. 3. Read-only, no MFA step-up. */}
+        <Route path="/teacher/audit-log" element={
+          <ProtectedRoute
+            allowedRoles={['independent_teacher']}
+            requiredPermission="audit.read_own_workspace"
+          ><TeacherAuditLogPage /></ProtectedRoute>
         } />
 
         {/* Student Portal Routes */}

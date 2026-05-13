@@ -4562,5 +4562,16 @@
   "cmdkCategoryClasses": "الفصول",
   "cmdkCategorySubjects": "المواد",
   "cmdkCategoryLessonPlans": "خطط الدروس",
-  "cmdkCategoryCalendarEvents": "التقويم"
+  "cmdkCategoryCalendarEvents": "التقويم",
+  "teacherAuditLogTitle": "سجل النشاط",
+  "teacherAuditLogIntro": "سجلّ مرئي للأحداث المهمة في مساحتك (دخول، تصدير، أرشفة، دعوات، تعديلات بيانات). الحقول الحساسة مُخفاة تلقائيًا.",
+  "teacherAuditLogEmpty": "لا توجد أحداث بعد.",
+  "auditLogLoadFailed": "تعذّر تحميل سجل النشاط — حاول لاحقًا.",
+  "fromDate": "من تاريخ",
+  "toDate": "إلى تاريخ",
+  "clearDates": "مسح التواريخ",
+  "showDetails": "عرض التفاصيل",
+  "hideDetails": "إخفاء التفاصيل",
+  "loadMore": "تحميل المزيد",
+  "events": "الأحداث"
 }
