@@ -21,7 +21,7 @@ import {
   Phone, Mail, ClipboardCheck, FileText, TrendingUp, Star,
   BookOpen, Calendar, ChevronLeft, BarChart3, Brain, Target,
   CheckCircle, AlertTriangle, Sparkles, ArrowUpCircle, ArrowDownCircle,
-  Lightbulb, Activity, MessageSquare, Send, Plus, UserPlus, Link2,
+  Lightbulb, Activity, MessageSquare, Send, Plus, UserPlus, Link2, Upload,
   Pencil, Trash2
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
@@ -618,15 +618,57 @@ export default function TeacherStudentsPage() {
               <Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" />
             </div>
           ) : filteredStudents.length === 0 ? (
-            <Card>
-              <CardContent className="text-center py-16">
-                <Users className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
-                <h3 className="font-bold mb-2">{t('noStudents')}</h3>
-                <p className="text-muted-foreground">
-                  {t('selectAClassToViewStudents')}
-                </p>
-              </CardContent>
-            </Card>
+            // Task #287 — IT-focused empty state when the workspace has
+            // zero students. Mirrors the §5.8 classes empty state: same
+            // workspace-accent tokens, dashed card, primary "Add your
+            // first student" CTA + secondary "Import from CSV" CTA.
+            // Non-IT teachers and search-narrowed empty results keep
+            // the existing neutral copy.
+            isIndependentTeacher && (workspaceStudentCount ?? 0) === 0 && !searchQuery ? (
+              <Card
+                className="border-dashed border-workspace-accent-border bg-workspace-accent-light/30"
+                data-testid="teacher-students-empty-state-it"
+              >
+                <CardContent className="text-center py-16">
+                  <Users className="h-16 w-16 mx-auto mb-4 text-workspace-accent" />
+                  <h3 className="font-bold text-lg mb-2 font-cairo text-workspace-accent-fg">
+                    {t('itEmptyStudentsTitle')}
+                  </h3>
+                  <p className="text-muted-foreground text-sm font-tajawal mb-5 max-w-md mx-auto">
+                    {t('itEmptyStudentsDescription')}
+                  </p>
+                  <div className="flex items-center justify-center gap-2 flex-wrap">
+                    <Button
+                      onClick={handleOpenAddStudent}
+                      className="bg-workspace-accent hover:bg-workspace-accent-fg text-white rounded-xl gap-2 px-5"
+                      data-testid="teacher-students-empty-state-cta"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {t('itEmptyStudentsCta')}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => _navigate('/teacher/import-students')}
+                      className="rounded-xl gap-2 px-5 border-workspace-accent-border text-workspace-accent-fg hover:bg-workspace-accent-light/60"
+                      data-testid="teacher-students-empty-state-import-cta"
+                    >
+                      <Upload className="h-4 w-4" />
+                      {t('itEmptyStudentsImportCta')}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="text-center py-16">
+                  <Users className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
+                  <h3 className="font-bold mb-2">{t('noStudents')}</h3>
+                  <p className="text-muted-foreground">
+                    {t('selectAClassToViewStudents')}
+                  </p>
+                </CardContent>
+              </Card>
+            )
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filteredStudents.map((student, idx) => (
