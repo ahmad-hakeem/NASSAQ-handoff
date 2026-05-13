@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme, useTranslation } from '../contexts/ThemeContext';
@@ -24,9 +24,30 @@ export default function MfaEnrollPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
+  // Local "did the section just enroll a factor" flag. We can't rely
+  // solely on `user.mfa_enrolled_at` for the Continue-button gate
+  // because some browsers/contexts can race the /auth/me refresh after
+  // a successful TOTP confirm — without this, the button stays disabled
+  // even though enrolment succeeded server-side and the section shows
+  // the factor as enabled. The ProtectedRoute check downstream still
+  // re-validates against authoritative state, so this only affects
+  // when the button becomes clickable.
+  const [sectionEnrolled, setSectionEnrolled] = useState(false);
+
   // Re-pull /auth/me on mount in case the user just enrolled in another
   // tab; this lets us short-circuit the page if they're already done.
   useEffect(() => {
+    if (typeof refreshUser === 'function') {
+      refreshUser().catch(() => {});
+    }
+  }, [refreshUser]);
+
+  // Called by MfaSecuritySection after a successful enrol / regen /
+  // acknowledge. Pull /auth/me so the AuthContext user (and therefore
+  // every downstream guard) sees the new mfa_enrolled_at stamp, and
+  // flip the local fast-path flag for the Continue button.
+  const handleSectionChange = useCallback(() => {
+    setSectionEnrolled(true);
     if (typeof refreshUser === 'function') {
       refreshUser().catch(() => {});
     }
@@ -78,21 +99,27 @@ export default function MfaEnrollPage() {
           </CardContent>
         </Card>
 
-        <MfaSecuritySection />
+        <MfaSecuritySection onChange={handleSectionChange} />
 
         <div className="flex justify-end">
           <Button
             onClick={async () => {
-              try { await refreshUser?.(); } catch {}
-              if (user?.role === 'independent_teacher') {
-                navigate(user?.tenant_id ? '/teacher' : '/teacher/onboarding', { replace: true });
+              // Re-pull /auth/me so we get the authoritative
+              // mfa_enrolled_at + tenant_id before deciding the route.
+              let fresh = user;
+              try {
+                const updated = await refreshUser?.();
+                if (updated) fresh = updated;
+              } catch { /* fall back to whatever we have */ }
+              if (fresh?.role === 'independent_teacher') {
+                navigate(fresh?.tenant_id ? '/teacher' : '/teacher/onboarding', { replace: true });
               } else {
                 navigate('/', { replace: true });
               }
             }}
             className="rounded-xl"
             data-testid="mfa-enroll-continue-btn"
-            disabled={!user?.mfa_enrolled_at}
+            disabled={!user?.mfa_enrolled_at && !sectionEnrolled}
           >
             <span className="font-tajawal">
               {isRTL ? 'متابعة' : 'Continue'}

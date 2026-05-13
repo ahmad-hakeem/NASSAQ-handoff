@@ -58,7 +58,7 @@ function formatDate(value, lang) {
   }
 }
 
-export default function MfaSecuritySection() {
+export default function MfaSecuritySection({ onChange } = {}) {
   const { api } = useAuth();
   const { isRTL } = useTheme();
   const { t } = useTranslation();
@@ -81,7 +81,12 @@ export default function MfaSecuritySection() {
   const [recoveryError, setRecoveryError] = useState('');
   const [recoveryNewCodes, setRecoveryNewCodes] = useState(null);
 
-  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+  const refresh = useCallback(() => {
+    setRefreshKey((k) => k + 1);
+    if (typeof onChange === 'function') {
+      try { onChange(); } catch { /* parent handles its own errors */ }
+    }
+  }, [onChange]);
 
   useEffect(() => {
     let cancel = false;
