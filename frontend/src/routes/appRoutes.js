@@ -68,6 +68,7 @@ const TeacherAssessmentsPage = lazy(() => import("../pages/TeacherModule").then(
 const TeacherBehaviorPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherBehaviorPage })));
 const TeacherStudentsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherStudentsPage })));
 const ImportStudentsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.ImportStudentsPage })));
+const BulkImportPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.BulkImportPage })));
 const TeacherAchievementsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAchievementsPage })));
 const TeacherCommunicationPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherCommunicationPage })));
 const TeacherResourcesPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherResourcesPage })));
@@ -330,6 +331,16 @@ export default function AppRoutes() {
             allowedRoles={['independent_teacher']}
             requiredPermission="students.bulk_import_workspace"
           ><ImportStudentsPage /></ProtectedRoute>
+        } />
+        {/* Task #278 — IT-only bulk import hub (students / classes /
+            subjects / duplicate-week). Permission-gated on the new
+            `classes.bulk_import_workspace` slice so the link only shows
+            when the user has at least one of the new bulk capabilities. */}
+        <Route path="/teacher/bulk-import" element={
+          <ProtectedRoute
+            allowedRoles={['independent_teacher']}
+            requiredPermission="classes.bulk_import_workspace"
+          ><BulkImportPage /></ProtectedRoute>
         } />
         <Route path="/teacher/sessions" element={<Navigate to="/teacher/classes?tab=sessions" replace />} />
         <Route path="/teacher/achievements" element={

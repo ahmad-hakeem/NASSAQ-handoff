@@ -104,6 +104,13 @@ class Permission(str, Enum):
     
     # Students (workspace-scoped capabilities)
     STUDENTS_BULK_IMPORT_WORKSPACE = "students.bulk_import_workspace"
+    # Task #278 — Bulk import extensions (classes / subjects / duplicate-week).
+    # Workspace-scoped only; granted to `independent_teacher`. The route
+    # layer pins `school_id == itw_{user_id}` and shares the daily
+    # `workspace_quota.imports_today` counter with the student-import path.
+    CLASSES_BULK_IMPORT_WORKSPACE = "classes.bulk_import_workspace"
+    SUBJECTS_BULK_IMPORT_WORKSPACE = "subjects.bulk_import_workspace"
+    SCHEDULE_DUPLICATE_WORKSPACE = "schedule.duplicate_workspace"
 
     # System
     SYSTEM_MONITOR = "system.monitor"
@@ -259,6 +266,12 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
         # Phase 2 §6.1 (#207) — workspace-aware bulk student import.
         # Backend gates the actual /commit path with require_recent_mfa_403.
         Permission.STUDENTS_BULK_IMPORT_WORKSPACE.value,
+        # Task #278 — bulk-import extensions (classes / subjects /
+        # duplicate-week). Same workspace pin + daily-quota envelope as
+        # the student-import path; route layer enforces require_recent_mfa_403.
+        Permission.CLASSES_BULK_IMPORT_WORKSPACE.value,
+        Permission.SUBJECTS_BULK_IMPORT_WORKSPACE.value,
+        Permission.SCHEDULE_DUPLICATE_WORKSPACE.value,
         # §6.7 — host IT may invite/revoke a single collaborator per class.
         Permission.WORKSPACE_COLLAB_MANAGE.value,
         # Phase 2 §6.4 (#209) — light AI lesson-planning assistant.

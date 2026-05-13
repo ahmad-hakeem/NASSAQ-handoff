@@ -18,6 +18,8 @@ export { default as TeacherAssessmentsPage } from './TeacherAssessmentsPage';
 export { default as TeacherBehaviorPage } from './TeacherBehaviorPage';
 export { default as TeacherStudentsPage } from './TeacherStudentsPage';
 export { default as ImportStudentsPage } from './ImportStudentsPage';
+// Task #278 — IT bulk-import hub (students / classes / subjects / duplicate-week).
+export { default as BulkImportPage } from './BulkImportPage';
 export { default as TeacherAchievementsPage } from './TeacherAchievementsPage';
 export { default as TeacherCommunicationPage } from './TeacherCommunicationPage';
 export { default as TeacherResourcesPage } from './TeacherResourcesPage';

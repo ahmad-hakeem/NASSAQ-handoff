@@ -153,6 +153,15 @@ def register_routes(app, api_router: APIRouter):
         router as it_bulk_import_router,
     )
     api_router.include_router(it_bulk_import_router)
+    # Task #278 — bulk-import extensions (classes / subjects / duplicate-week).
+    # Same envelope as the student-import router: IT-only, workspace-pinned,
+    # /commit + /duplicate-week gated behind require_recent_mfa_403, and the
+    # daily counter on workspace_quota.imports_today is shared across all
+    # four bulk paths.
+    from routes.independent_teacher_bulk_extensions_routes import (
+        router as it_bulk_ext_router,
+    )
+    api_router.include_router(it_bulk_ext_router)
     # Phase 2 §6.7 (#210) — IT cross-workspace co-teaching envelope.
     # The ONLY sanctioned cross-tenant data path for IT workspaces;
     # single-tenant invariant (§8) is intentionally relaxed for the

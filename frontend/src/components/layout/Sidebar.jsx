@@ -483,6 +483,17 @@ export const Sidebar = ({ children }) => {
         permission: 'students.bulk_import_workspace',
         dataTour: 'sidebar-import-students',
       },
+      // Task #278 — IT-only bulk-import hub (students / classes /
+      // subjects / duplicate-week). Permission-gated on the new
+      // `classes.bulk_import_workspace` slice.
+      {
+        icon: Upload,
+        label: 'الاستيراد الجماعي',
+        href: '/teacher/bulk-import',
+        roles: ['independent_teacher'],
+        permission: 'classes.bulk_import_workspace',
+        dataTour: 'sidebar-bulk-import',
+      },
       // Task #209 §6.4 — IT-only light AI lesson-planning assistant.
       // Permission-gated on `ai.lesson_plans` so the link only appears
       // when the backend RBAC slice exposes the route to this user.
