@@ -17,7 +17,7 @@ import {
 } from '../components/ui/table';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
-import { RefreshCw, Trash2, AlertTriangle, ShieldAlert, X, History, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { RefreshCw, Trash2, AlertTriangle, ShieldAlert, X, History, ChevronLeft, ChevronRight, Search, Download } from 'lucide-react';
 
 const ARABIC = {
   pageTitle: 'مساحات العمل الجاهزة للحذف النهائي',
@@ -90,6 +90,8 @@ const ARABIC = {
   applyFilters: 'تطبيق',
   clearFilters: 'مسح',
   activeFilters: 'المرشّحات النشطة',
+  downloadCsv: 'تنزيل CSV',
+  downloadCsvFailed: 'تعذّر تنزيل ملف CSV.',
 };
 
 const PAGE_SIZE = 25;
@@ -139,6 +141,7 @@ export const PlatformWorkspacePurgePage = () => {
   const [fromDraft, setFromDraft] = useState('');
   const [toDraft, setToDraft] = useState('');
   const [appliedFilters, setAppliedFilters] = useState({ q: '', from: '', to: '' });
+  const [csvDownloading, setCsvDownloading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -242,6 +245,40 @@ export const PlatformWorkspacePurgePage = () => {
       setSubmittingId(null);
     }
   }, [api, nassaqError, nassaqSuccess, load]);
+
+  const downloadHistoryCsv = useCallback(async () => {
+    if (csvDownloading) return;
+    setCsvDownloading(true);
+    try {
+      // Pass the same q/from/to filters the table is showing so the
+      // downloaded CSV always matches what's on screen.
+      const params = {};
+      if (appliedFilters.q) params.q = appliedFilters.q;
+      if (appliedFilters.from) params.from = appliedFilters.from;
+      if (appliedFilters.to) params.to = appliedFilters.to;
+      const res = await api.get('/platform/workspaces/recent-purges.csv', {
+        params,
+        responseType: 'blob',
+      });
+      const blob = res?.data instanceof Blob
+        ? res.data
+        : new Blob([res?.data ?? ''], { type: 'text/csv;charset=utf-8' });
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `workspace-purges-${stamp}.csv`;
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(href), 0);
+    } catch (err) {
+      nassaqError(safeArabicError(err, ARABIC.downloadCsvFailed));
+    } finally {
+      setCsvDownloading(false);
+    }
+  }, [api, csvDownloading, nassaqError, appliedFilters]);
 
   // The destructive confirm surface is `nassaqConfirm` (NassaqAlertDialog),
   // which is opened only after the admin has typed the workspace id
@@ -480,13 +517,32 @@ export const PlatformWorkspacePurgePage = () => {
             <TabsContent value="history" className="mt-4">
               <Card className="rounded-2xl border-0 shadow-sm">
                 <CardHeader className="pb-3">
-                  <CardTitle className="font-cairo text-base flex items-center gap-2">
-                    <History className="h-4 w-4 text-gray-500" />
-                    {ARABIC.historyTitle}
-                  </CardTitle>
-                  <CardDescription className="font-cairo">
-                    {ARABIC.historySubtitle}
-                  </CardDescription>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <CardTitle className="font-cairo text-base flex items-center gap-2">
+                        <History className="h-4 w-4 text-gray-500" />
+                        {ARABIC.historyTitle}
+                      </CardTitle>
+                      <CardDescription className="font-cairo mt-1">
+                        {ARABIC.historySubtitle}
+                      </CardDescription>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl gap-2 font-cairo"
+                      onClick={downloadHistoryCsv}
+                      disabled={csvDownloading}
+                      data-testid="download-purge-history-csv"
+                    >
+                      {csvDownloading ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                      {ARABIC.downloadCsv}
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div
