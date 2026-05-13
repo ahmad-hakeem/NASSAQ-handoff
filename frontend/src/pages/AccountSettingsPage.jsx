@@ -297,7 +297,7 @@ export const AccountSettingsPage = () => {
   const _initialSection = (() => {
     if (typeof window === 'undefined') return 'profile';
     const raw = (window.location.hash || '').replace(/^#/, '').toLowerCase();
-    return ['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export', 'workspace-hub'].includes(raw)
+    return ['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'inbox_prefs', 'export', 'workspace-hub'].includes(raw)
       ? raw
       : 'profile';
   })();
@@ -311,7 +311,7 @@ export const AccountSettingsPage = () => {
   useEffect(() => {
     const onHash = () => {
       const raw = (window.location.hash || '').replace(/^#/, '').toLowerCase();
-      if (['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export', 'workspace-hub'].includes(raw)) {
+      if (['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'inbox_prefs', 'export', 'workspace-hub'].includes(raw)) {
         setActiveSection(raw);
       }
     };
@@ -1154,7 +1154,7 @@ export const AccountSettingsPage = () => {
             <div className="space-y-6">
               {activeSection === 'profile' && (
                 <>
-                  <Card className="card-nassaq">
+                  <Card className="card-nassaq" data-testid="account-section-profile">
                     <CardHeader className="pb-4">
                       <CardTitle className="font-cairo flex items-center gap-2 text-lg">
                         <User className="h-5 w-5 text-brand-turquoise" />
@@ -1207,7 +1207,7 @@ export const AccountSettingsPage = () => {
 
               {activeSection === 'security' && (
                 <>
-                  <Card className="card-nassaq">
+                  <Card className="card-nassaq" data-testid="account-section-security">
                     <CardHeader className="pb-4">
                       <CardTitle className="font-cairo flex items-center gap-2 text-lg">
                         <Key className="h-5 w-5 text-brand-turquoise" />
@@ -1349,7 +1349,7 @@ export const AccountSettingsPage = () => {
               )}
 
               {activeSection === 'notifications' && (
-                <Card className="card-nassaq">
+                <Card className="card-nassaq" data-testid="account-section-notifications">
                   <CardHeader className="pb-4">
                     <CardTitle className="font-cairo flex items-center gap-2 text-lg">
                       <Bell className="h-5 w-5 text-brand-turquoise" />
@@ -1386,7 +1386,7 @@ export const AccountSettingsPage = () => {
               )}
 
               {activeSection === 'preferences' && (
-                <Card className="card-nassaq">
+                <Card className="card-nassaq" data-testid="account-section-preferences">
                   <CardHeader className="pb-4">
                     <CardTitle className="font-cairo flex items-center gap-2 text-lg">
                       <Palette className="h-5 w-5 text-brand-turquoise" />
