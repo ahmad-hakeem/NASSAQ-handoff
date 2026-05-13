@@ -35,6 +35,12 @@ DEFAULT_WEEKLY_QUOTA = 24
 DEFAULT_MAX_STANDBY_PER_WEEK = 5
 MAX_STANDBY_CAP_HARD_LIMIT = 20  # absolute upper bound regardless of setting
 
+# Per-(day, period) cap on auto-assigned standby teachers. Prevents the
+# generator from front-loading every teacher into the earliest periods of
+# the day. Mirrored by `school_settings.custom_settings.max_standby_per_period`.
+DEFAULT_MAX_STANDBY_PER_PERIOD = 5
+MAX_STANDBY_PER_PERIOD_HARD_LIMIT = 50
+
 
 async def _fetch_school_standby_cap(session, school_id: str) -> int:
     """Returns the school's `max_standby_per_teacher_per_week` setting.
@@ -52,6 +58,25 @@ async def _fetch_school_standby_cap(session, school_id: str) -> int:
     if val < 1:
         return DEFAULT_MAX_STANDBY_PER_WEEK
     return min(val, MAX_STANDBY_CAP_HARD_LIMIT)
+
+
+async def _fetch_school_per_period_cap(session, school_id: str) -> int:
+    """Returns the school's `max_standby_per_period` setting (hard ceiling
+    on auto-assigned standby teachers per (day, period)).
+
+    Reads from `school_settings.custom_settings.max_standby_per_period`.
+    Falls back to DEFAULT_MAX_STANDBY_PER_PERIOD (5) when missing/invalid.
+    Clamped to [1, MAX_STANDBY_PER_PERIOD_HARD_LIMIT].
+    """
+    row = await gd_find_one(session, "school_settings", {"school_id": school_id})
+    if not row:
+        return DEFAULT_MAX_STANDBY_PER_PERIOD
+    cs = row.get("custom_settings") or {}
+    raw = cs.get("max_standby_per_period")
+    val = _safe_int(raw, DEFAULT_MAX_STANDBY_PER_PERIOD)
+    if val < 1:
+        return DEFAULT_MAX_STANDBY_PER_PERIOD
+    return min(val, MAX_STANDBY_PER_PERIOD_HARD_LIMIT)
 
 
 async def _fetch_active_timetable(session, school_id: str) -> dict | None:
@@ -78,6 +103,69 @@ def _safe_int(value, default: int = 0) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _select_slots_for_teacher(
+    *,
+    eligible_days: List[str],
+    eligible_by_day: Dict[str, List[int]],
+    capacity: int,
+    per_day: int,
+    extras: int,
+    period_load: Dict[Tuple[str, int], int],
+    per_period_cap: int,
+) -> Set[Tuple[str, int]]:
+    """Pure helper: pick up to `capacity` (day, period) slots for a single
+    teacher in a fairness-first manner.
+
+    Within each working day:
+      - The teacher is asked to take up to `target = per_day (+1 if early-day)`
+        slots from `eligible_by_day[day]`.
+      - Eligible periods are ordered by current global `period_load` ascending,
+        then by period number — so the *least-filled* period of the day is
+        picked first. This is the fix for the front-loading regression
+        (Pasted-Objective-…1778715035001.txt) where every teacher was being
+        stacked into period 1, 2, 3 because the previous algorithm took
+        `day_periods[:take]` in raw period order.
+      - Periods already at `per_period_cap` are skipped entirely. The cap is
+        a hard upper bound; we under-fill the day rather than overflow it.
+      - Skipped capacity (because every remaining eligible period is capped)
+        is forfeit for that day — we do NOT spill over into another day,
+        because that would re-introduce uneven per-teacher load.
+
+    `period_load` is mutated in place so the next teacher sees fresh counts
+    and naturally fills the now-emptier periods first. Determinism is
+    preserved by the (load, period_number) tiebreak.
+    """
+    chosen: Set[Tuple[str, int]] = set()
+    remaining = capacity
+    cap = max(int(per_period_cap), 1)
+    for idx, day in enumerate(eligible_days):
+        if remaining <= 0:
+            break
+        target = per_day + (1 if idx < extras else 0)
+        if target <= 0:
+            continue
+        day_periods = eligible_by_day.get(day, [])
+        if not day_periods:
+            continue
+        # Fairness-first ordering: least-loaded period of the day first.
+        day_periods_ordered = sorted(
+            day_periods, key=lambda p: (period_load.get((day, p), 0), p),
+        )
+        take_budget = min(target, remaining)
+        taken = 0
+        for p in day_periods_ordered:
+            if taken >= take_budget:
+                break
+            if period_load.get((day, p), 0) >= cap:
+                # Period is saturated — skip and try the next least-loaded.
+                continue
+            chosen.add((day, p))
+            period_load[(day, p)] = period_load.get((day, p), 0) + 1
+            taken += 1
+        remaining -= taken
+    return chosen
 
 
 async def compute_standby_roster(
@@ -162,8 +250,57 @@ async def compute_standby_roster(
     # School-wide cap: hard upper bound on standby slots per teacher per week.
     # See spec docs/superpowers/specs/2026-05-03-standby-engine-refactor-design.md.
     school_cap = await _fetch_school_standby_cap(session, school_id)
+    # Per-(day, period) hard ceiling — prevents the auto pass from
+    # front-loading every teacher into the earliest periods of the day.
+    per_period_cap = await _fetch_school_per_period_cap(session, school_id)
 
-    # 2) Distribute capacity, prioritizing teachers with the most free
+    # 2a) Seed period_load with pinned manual `add` overrides so the auto
+    # pass treats them as already-occupying their slot for cap purposes.
+    # This keeps "manual + auto" combined load under the cap whenever the
+    # cap can still be honoured. (Manual edits themselves are authoritative
+    # and may exceed the cap — they're applied below in apply_overrides_to_roster.)
+    #
+    # CRITICAL: only seed overrides that would actually SURVIVE
+    # `apply_overrides_to_roster` — i.e. not collide with the teacher's
+    # busy/unavailable/blocked-day state. Otherwise stale `add` rows would
+    # consume cap during auto allocation but get dropped later, leaving
+    # the final roster with phantom under-allocation. Mirrors the filter
+    # in apply_overrides_to_roster (lines below).
+    period_load: Dict[Tuple[str, int], int] = {}
+    if apply_overrides:
+        try:
+            seed_overrides = await fetch_standby_overrides(
+                session, school_id=school_id, timetable_id=timetable_id,
+            )
+        except Exception:  # noqa: BLE001 — degrade gracefully
+            seed_overrides = []
+        blocked_by_teacher_seed: Dict[str, Set[str]] = {
+            t["id"]: _resolve_blocked_days(t)
+            for t in teachers if t.get("id")
+        }
+        seen_pin: Set[Tuple[str, str, int]] = set()
+        for ov in seed_overrides or []:
+            if (ov.get("action") or "").lower() != "add":
+                continue
+            tid = ov.get("teacher_id")
+            day = _normalize_day_key(ov.get("day"))
+            period = _safe_int(ov.get("period"), 0)
+            if not tid or day not in DAYS or period not in PERIODS:
+                continue
+            # Skip stale adds — they will be dropped by apply_overrides_to_roster.
+            if (day, period) in busy.get(tid, set()):
+                continue
+            if (day, period) in unavailable.get(tid, set()):
+                continue
+            if day in blocked_by_teacher_seed.get(tid, set()):
+                continue
+            key = (tid, day, period)
+            if key in seen_pin:
+                continue
+            seen_pin.add(key)
+            period_load[(day, period)] = period_load.get((day, period), 0) + 1
+
+    # 2b) Distribute capacity, prioritizing teachers with the most free
     # headroom (max remaining_capacity first). Stable secondary key on
     # full_name keeps the result deterministic across runs.
     def _priority(t: dict) -> tuple:
@@ -218,22 +355,18 @@ async def compute_standby_roster(
 
         # Even split per spec: per_day = N // D, extras = N % D.
         # First `extras` working days (in DAYS order) get +1 slot.
-        D = len(eligible_days)
+        D = len(eligible_days) or 1
         per_day = capacity // D
         extras = capacity % D
-        chosen: Set[Tuple[str, int]] = set()
-        remaining = capacity
-        for idx, day in enumerate(eligible_days):
-            if remaining <= 0:
-                break
-            target = per_day + (1 if idx < extras else 0)
-            if target <= 0:
-                continue
-            day_periods = eligible_by_day.get(day, [])
-            take = min(target, len(day_periods), remaining)
-            for p in day_periods[:take]:
-                chosen.add((day, p))
-            remaining -= take
+        chosen = _select_slots_for_teacher(
+            eligible_days=eligible_days,
+            eligible_by_day=eligible_by_day,
+            capacity=capacity,
+            per_day=per_day,
+            extras=extras,
+            period_load=period_load,
+            per_period_cap=per_period_cap,
+        )
 
         if chosen:
             roster[tid] = chosen
