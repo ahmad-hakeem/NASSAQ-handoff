@@ -37,6 +37,13 @@ _WORKSPACE_ALLOWLIST_PREFIXES = (
     # setup" signal and bounces the wizard back to step 1.
     "/public/",
     "/healthz",
+    # Read-only reference data used by the unauthenticated registration
+    # forms (subjects, education-levels, teacher-ranks, etc.). Same
+    # rationale as /public/: the FE registration page may have a stale
+    # IT bearer in localStorage, and a 409 here trips the global axios
+    # perimeter handler and pops the "finish setup" dialog on top of
+    # the public landing/register surfaces.
+    "/teacher-registration/options/",
 )
 
 
