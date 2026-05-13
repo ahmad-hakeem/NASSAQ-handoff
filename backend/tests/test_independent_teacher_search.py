@@ -295,3 +295,53 @@ async def test_exact_match_ranked_first(client):
     body = r.json()
     names = [c["primary"] for c in body["classes"]]
     assert names[0] == "رياضيات"
+
+
+# ----------------------------------------------------------------------
+# (g) Per-user rate limit — burst → 429 with safe Arabic message
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_per_user_rate_limit_returns_429_on_burst(client):
+    from routes import independent_teacher_search_routes as search_mod
+    from middleware.rate_limiter import rate_store
+
+    user = await _mk_it_workspace()
+    h = _headers(user["id"], user["role"], user["tenant_id"])
+
+    # Wipe any prior counter for this user so the test is deterministic.
+    async with rate_store._lock:
+        rate_store._store.pop(f"it_search:{user['id']}", None)
+
+    max_req = search_mod._SEARCH_RATE_MAX
+    last_status = None
+    for _ in range(max_req):
+        r = await client.get(
+            "/independent-teacher/search",
+            headers=h,
+            params={"q": "x"},
+        )
+        last_status = r.status_code
+    assert last_status == 200
+
+    r = await client.get(
+        "/independent-teacher/search",
+        headers=h,
+        params={"q": "x"},
+    )
+    assert r.status_code == 429, r.text
+    assert "Retry-After" in r.headers
+    body = r.json()
+    # The global StarletteHTTPException handler wraps string detail under
+    # ``error.message``; the safe Arabic message must round-trip verbatim
+    # so the FE NassaqAlertDialog renders it unchanged.
+    assert body["error"]["message"] == search_mod._MSG_RATE_LIMITED_AR
+
+    # Independent across users — sibling IT account is unaffected.
+    other = await _mk_it_workspace()
+    h2 = _headers(other["id"], other["role"], other["tenant_id"])
+    r2 = await client.get(
+        "/independent-teacher/search",
+        headers=h2,
+        params={"q": "x"},
+    )
+    assert r2.status_code == 200, r2.text

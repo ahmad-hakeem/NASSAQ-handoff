@@ -27,6 +27,7 @@ from auth_scope import (
 )
 from dependencies import db, get_current_user
 from engines.sql_utils import gd_find
+from middleware.rate_limiter import rate_store
 
 
 logger = logging.getLogger("nassaq.it_search")
@@ -40,6 +41,13 @@ router = APIRouter(
 _MIN_Q = 2
 _DEFAULT_LIMIT = 8
 _MAX_LIMIT = 20
+
+# Per-user token bucket — same in-memory store the public parent-invitation
+# accept route uses. Keyed on the authenticated user.id (NOT the workspace
+# tenant) so a noisy keypress in one IT account can't fan out to siblings.
+_SEARCH_RATE_MAX = 30
+_SEARCH_RATE_WINDOW = 10
+_MSG_RATE_LIMITED_AR = "تم تجاوز عدد محاولات البحث المسموح بها. يرجى الانتظار قليلاً ثم المحاولة مرة أخرى."
 
 
 def _workspace_id(current_user: dict) -> str:
@@ -275,13 +283,29 @@ async def workspace_search(
         "lesson_plans": [],
         "calendar_events": [],
     }
+
+    user_id = current_user.get("id")
+    if not user_id:
+        raise HTTPException(status_code=403, detail=INDEPENDENT_TEACHER_DENIED_AR)
+
+    # Per-user rate limit — applied BEFORE the empty-q short-circuit so a
+    # client spamming empty queries also gets throttled.
+    limited, _, retry_after = await rate_store.is_rate_limited(
+        f"it_search:{user_id}",
+        _SEARCH_RATE_MAX,
+        _SEARCH_RATE_WINDOW,
+    )
+    if limited:
+        raise HTTPException(
+            status_code=429,
+            detail=_MSG_RATE_LIMITED_AR,
+            headers={"Retry-After": str(retry_after)},
+        )
+
     if len(q_clean) < _MIN_Q:
         return empty
 
     workspace_id = _workspace_id(current_user)
-    user_id = current_user.get("id")
-    if not user_id:
-        raise HTTPException(status_code=403, detail=INDEPENDENT_TEACHER_DENIED_AR)
 
     try:
         students, classes, subjects, plans, events = await asyncio.gather(
