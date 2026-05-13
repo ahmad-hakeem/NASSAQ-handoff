@@ -70,6 +70,7 @@ const TeacherResourcesPage = lazy(() => import("../pages/TeacherModule").then(m 
 const TeacherSettingsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherSettingsPage })));
 const WorkspaceSettingsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.WorkspaceSettingsPage })));
 const WorkspaceSchedulePage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.WorkspaceSchedulePage })));
+const TeacherPersonalCalendarPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherPersonalCalendarPage })));
 
 const ProductHubPage = lazy(() => import("../pages/ProductHubPage").then(m => ({ default: m.ProductHubPage })));
 const ProductHubSubmitPage = lazy(() => import("../pages/ProductHubSubmitPage").then(m => ({ default: m.ProductHubSubmitPage })));
@@ -320,6 +321,12 @@ export default function AppRoutes() {
             optimistic concurrency on schedule_sessions.version. */}
         <Route path="/teacher/workspace-schedule" element={
           <ProtectedRoute allowedRoles={['independent_teacher']}><WorkspaceSchedulePage /></ProtectedRoute>
+        } />
+        {/* Task #208 §6.3 — Independent-Teacher only: personal calendar.
+            Backend pins tenant_id=itw_{user_id} + created_by=user.id +
+            is_personal=True on every read/write. */}
+        <Route path="/teacher/calendar" element={
+          <ProtectedRoute allowedRoles={['independent_teacher']}><TeacherPersonalCalendarPage /></ProtectedRoute>
         } />
 
         {/* Student Portal Routes */}

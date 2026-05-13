@@ -79,7 +79,31 @@ export const Sidebar = ({ children }) => {
   const [switchingRole, setSwitchingRole] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({});
-  const { user, logout, isImpersonating, schoolContext, getEffectiveRole, exitSchoolContext, token, updateToken, isSwitchedRole, originalRole, api } = useAuth();
+  const { user, logout, isImpersonating, schoolContext, getEffectiveRole, exitSchoolContext, token, updateToken, isSwitchedRole, originalRole, api, fetchPermissions } = useAuth();
+  // Phase 0 §4.B-6 backed sidebar permission gate. Items that declare a
+  // `permission` field are only shown once the backend confirms the
+  // current user actually carries it. Until the lazy fetch resolves we
+  // hide gated items (fail-closed) — never the other way round.
+  const [perms, setPerms] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!token || !fetchPermissions) return undefined;
+    (async () => {
+      try {
+        const data = await fetchPermissions();
+        if (cancelled) return;
+        const list = Array.isArray(data?.permissions)
+          ? data.permissions
+          : Array.isArray(data?.effective_permissions)
+            ? data.effective_permissions
+            : Array.isArray(data) ? data : [];
+        setPerms(new Set(list.map((p) => String(p))));
+      } catch {
+        if (!cancelled) setPerms(new Set());
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token, fetchPermissions]);
   const { isRTL } = useTheme();
   const { t } = useTranslation();
   const location = useLocation();
@@ -418,6 +442,17 @@ export const Sidebar = ({ children }) => {
         href: '/teacher/workspace-schedule',
         roles: ['independent_teacher'],
       },
+      // Task #208 §6.3 — Independent-Teacher only: personal calendar.
+      // Role-gated AND permission-gated on the new `events.author_own`
+      // permission so the link is only shown when the backend RBAC
+      // slice actually exposes the route to this user.
+      {
+        icon: CalendarDays,
+        label: 'تقويمي الشخصي',
+        href: '/teacher/calendar',
+        roles: ['independent_teacher'],
+        permission: 'events.author_own',
+      },
     ];
 
     // Parent Menu Items — mirrors the historical Parent Portal navigation so
@@ -463,7 +498,12 @@ export const Sidebar = ({ children }) => {
     
     // Filter by effective role (supports impersonation)
     // effectiveRole is already defined at the start of this function
-    const filteredItems = allItems.filter((item) => item.roles.includes(effectiveRole));
+    const filteredItems = allItems.filter((item) => {
+      if (!item.roles.includes(effectiveRole)) return false;
+      if (!item.permission) return true;
+      // fail-closed while permissions are still loading
+      return !!(perms && perms.has(item.permission));
+    });
     
     // Remove duplicates by href
     const uniqueItems = filteredItems.reduce((acc, current) => {

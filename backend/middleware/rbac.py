@@ -98,6 +98,12 @@ class Permission(str, Enum):
     SYSTEM_CONFIGURE = "system.configure"
     SYSTEM_INTEGRATIONS = "system.integrations"
 
+    # Calendar / Events — IT Phase 2 §6.3 personal events.
+    # `events.author_own` lets the holder create/read/update/delete only the
+    # events they own inside their own workspace. It is intentionally NOT a
+    # superset of school-wide calendar permissions used by principals.
+    EVENTS_AUTHOR_OWN = "events.author_own"
+
 
 # Role to Permissions Mapping
 ROLE_PERMISSIONS: Dict[str, List[str]] = {
@@ -217,6 +223,10 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
         # enforce per-recipient tenant validation; recipient_role is
         # rejected outright for IT callers.
         Permission.NOTIFICATIONS_SEND.value,
+        # Phase 2 §6.3 (Task #208) — IT personal calendar events. Scope
+        # is enforced at the route layer (workspace tenant + caller as
+        # author); the permission only signals UI eligibility.
+        Permission.EVENTS_AUTHOR_OWN.value,
     ],
     
     "student": [

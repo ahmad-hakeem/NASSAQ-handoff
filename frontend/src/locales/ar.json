@@ -4381,5 +4381,13 @@
   "invitationAcceptExpiredLong": "رابط الدعوة منتهي الصلاحية أو تم استخدامه. اطلب رابطًا جديدًا من المعلّم.",
   "goToSignIn": "الذهاب إلى تسجيل الدخول",
   "invitationConfirmCancelTitle": "تأكيد الإلغاء",
-  "invitationLinkedToParent": "مرتبط بـ {0}"
+  "invitationLinkedToParent": "مرتبط بـ {0}",
+  "myPersonalCalendar": "تقويمي الشخصي",
+  "personalCalendarSubtitle": "أحداث شخصية لمعلمك المستقل — لا تظهر لأي معلم آخر.",
+  "personalCalendarWorkspaceLabel": "مساحتك التعليمية الخاصة",
+  "confirmDeletion": "تأكيد الحذف",
+  "confirmDeleteEvent": "هل تريد حذف هذا الحدث؟",
+  "confirmDeleteEventNamed": "هل تريد حذف الحدث \"{0}\"؟",
+  "eventDeleted": "تم حذف الحدث",
+  "eventDeleteFailed": "تعذر حذف الحدث"
 }

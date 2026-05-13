@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import { useTranslation, useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -64,10 +65,19 @@ const isToday = (iso) => {
   } catch { return false; }
 };
 
-export const AdminCalendar = () => {
+export const AdminCalendar = ({
+  // Task #208 §6.3 — optional personal-mode reuse for the IT calendar.
+  // Defaults preserve the legacy school-wide /v1/calendar surface so
+  // the principal page is byte-identical to before.
+  basePath = '/v1/calendar',
+  importEnabled = true,
+  titleAr = 'الروزنامة الإدارية',
+  titleEn = 'Administrative Calendar',
+} = {}) => {
   const { t } = useTranslation();
   const { isRTL } = useTheme();
   const { api } = useAuth();
+  const { nassaqConfirm, nassaqError } = useNassaqAlert();
   const lang = isRTL ? 'ar' : 'en';
 
   const [events, setEvents] = useState([]);
@@ -83,7 +93,7 @@ export const AdminCalendar = () => {
 
   const fetchEvents = useCallback(async () => {
     try {
-      const res = await api.get('/v1/calendar/events');
+      const res = await api.get(`${basePath}/events`);
       const data = Array.isArray(res?.data) ? res.data : (res?.data?.events || []);
       setEvents(data);
     } catch (err) {
@@ -94,7 +104,7 @@ export const AdminCalendar = () => {
     } finally {
       setLoading(false);
     }
-  }, [api, isRTL]);
+  }, [api, isRTL, basePath]);
 
   useEffect(() => { fetchEvents(); }, [fetchEvents]);
 
@@ -134,14 +144,14 @@ export const AdminCalendar = () => {
         date: form.date,
       };
       if (editing?.id) {
-        const res = await api.put(`/v1/calendar/events/${editing.id}`, payload);
+        const res = await api.put(`${basePath}/events/${editing.id}`, payload);
         const updated = res?.data?.event;
         if (updated) {
           setEvents((prev) => prev.map((e) => (e.id === editing.id ? updated : e)));
         }
         toast.success(isRTL ? 'تم تحديث الحدث' : 'Event updated');
       } else {
-        const res = await api.post('/v1/calendar/events', payload);
+        const res = await api.post(`${basePath}/events`, payload);
         const created = res?.data?.event;
         if (created) {
           setEvents((prev) => [...prev, created]);
@@ -191,7 +201,7 @@ export const AdminCalendar = () => {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const res = await api.post('/v1/calendar/import', formData, {
+      const res = await api.post(`${basePath}/import`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       const data = Array.isArray(res?.data) ? res.data : (res?.data?.events || []);
@@ -213,19 +223,39 @@ export const AdminCalendar = () => {
     }
   };
 
-  const deleteEvent = async (id) => {
+  const performDelete = async (id) => {
     const snapshot = events;
     setEvents((prev) => prev.filter((e) => e.id !== id));
     try {
-      await api.delete(`/v1/calendar/events/${id}`);
+      await api.delete(`${basePath}/events/${id}`);
       toast.success(isRTL ? 'تم حذف الحدث' : 'Event deleted');
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[AdminCalendar] delete error:', err);
       setEvents(snapshot);
       const detail = err?.response?.data?.error?.message || err?.response?.data?.detail;
-      toast.error(detail || (isRTL ? 'تعذر حذف الحدث' : 'Failed to delete event'));
+      nassaqError(detail || (isRTL ? 'تعذر حذف الحدث' : 'Failed to delete event'));
     }
+  };
+
+  // Per `replit.md` user prefs + `NassaqAlertDialog` standard, all
+  // destructive confirmations route through the branded modal — never
+  // `window.confirm`, never a bare optimistic delete.
+  const deleteEvent = (event) => {
+    const id = event?.id || event;
+    const title = event?.title_ar || event?.title_en || '';
+    nassaqConfirm(
+      isRTL
+        ? (title ? `هل تريد حذف الحدث "${title}"؟` : 'هل تريد حذف هذا الحدث؟')
+        : (title ? `Delete event "${title}"?` : 'Delete this event?'),
+      () => performDelete(id),
+      {
+        title: isRTL ? 'تأكيد الحذف' : 'Confirm deletion',
+        confirmText: isRTL ? 'حذف' : 'Delete',
+        cancelText: isRTL ? 'إلغاء' : 'Cancel',
+        type: 'warning',
+      },
+    );
   };
 
   return (
@@ -236,7 +266,7 @@ export const AdminCalendar = () => {
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-purple to-brand-navy flex items-center justify-center shadow-sm shadow-brand-purple/30">
               <CalendarDays className="h-4.5 w-4.5 text-white" />
             </div>
-            {isRTL ? 'الروزنامة الإدارية' : 'Administrative Calendar'}
+            {isRTL ? titleAr : titleEn}
           </CardTitle>
           <div className="flex items-center gap-2 flex-wrap">
             <Badge className="bg-brand-turquoise text-white border-0 font-cairo text-[11px] px-2 py-0.5 shadow-sm shadow-brand-turquoise/30 animate-pulse" data-testid="admin-calendar-today-badge">
@@ -267,27 +297,31 @@ export const AdminCalendar = () => {
                   <Plus className="h-3.5 w-3.5 text-brand-turquoise" />
                   {isRTL ? 'إضافة يدوية' : 'Manual Add'}
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={triggerImport}
-                  className="gap-2"
-                  disabled={busy || isImporting}
-                  data-testid="admin-calendar-import"
-                >
-                  {isImporting ? (
-                    <Loader2 className="h-3.5 w-3.5 text-brand-purple animate-spin" />
-                  ) : (
-                    <Upload className="h-3.5 w-3.5 text-brand-purple" />
-                  )}
-                  {isRTL ? 'استيراد' : 'Import'}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={handleDownloadTemplate}
-                  className="gap-2"
-                  data-testid="admin-calendar-download-template"
-                >
-                  <Download className="h-3.5 w-3.5 text-brand-navy" />
-                  {isRTL ? 'تحميل القالب' : 'Download Template'}
-                </DropdownMenuItem>
+                {importEnabled && (
+                  <>
+                    <DropdownMenuItem
+                      onClick={triggerImport}
+                      className="gap-2"
+                      disabled={busy || isImporting}
+                      data-testid="admin-calendar-import"
+                    >
+                      {isImporting ? (
+                        <Loader2 className="h-3.5 w-3.5 text-brand-purple animate-spin" />
+                      ) : (
+                        <Upload className="h-3.5 w-3.5 text-brand-purple" />
+                      )}
+                      {isRTL ? 'استيراد' : 'Import'}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={handleDownloadTemplate}
+                      className="gap-2"
+                      data-testid="admin-calendar-download-template"
+                    >
+                      <Download className="h-3.5 w-3.5 text-brand-navy" />
+                      {isRTL ? 'تحميل القالب' : 'Download Template'}
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
             <input
@@ -363,7 +397,7 @@ export const AdminCalendar = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); deleteEvent(event.id); }}
+                      onClick={(e) => { e.stopPropagation(); deleteEvent(event); }}
                       className="w-7 h-7 rounded-lg hover:bg-red-500/10 text-red-500 flex items-center justify-center"
                       aria-label={t('delete')}
                       data-testid={`delete-event-${event.id}`}

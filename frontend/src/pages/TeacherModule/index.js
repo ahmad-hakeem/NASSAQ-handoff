@@ -25,3 +25,5 @@ export { default as TeacherSettingsPage } from './TeacherSettingsPage';
 export { default as WorkspaceSettingsPage } from './WorkspaceSettingsPage';
 // Independent-Teacher only: manual schedule editor (Task #193 §5.4).
 export { default as WorkspaceSchedulePage } from './WorkspaceSchedulePage';
+// Independent-Teacher only: personal calendar (Task #208 §6.3).
+export { default as TeacherPersonalCalendarPage } from './TeacherPersonalCalendarPage';

@@ -4381,5 +4381,13 @@
   "invitationAcceptExpiredLong": "This invitation link has expired or was already used. Ask the teacher for a fresh link.",
   "goToSignIn": "Go to sign-in",
   "invitationConfirmCancelTitle": "Confirm cancellation",
-  "invitationLinkedToParent": "Linked to {0}"
+  "invitationLinkedToParent": "Linked to {0}",
+  "myPersonalCalendar": "My Personal Calendar",
+  "personalCalendarSubtitle": "Personal events for your independent-teacher workspace — invisible to any other teacher.",
+  "personalCalendarWorkspaceLabel": "Your private teaching workspace",
+  "confirmDeletion": "Confirm deletion",
+  "confirmDeleteEvent": "Delete this event?",
+  "confirmDeleteEventNamed": "Delete event \"{0}\"?",
+  "eventDeleted": "Event deleted",
+  "eventDeleteFailed": "Failed to delete event"
 }

@@ -1218,11 +1218,15 @@ class CalendarEvent(Base):
     details_ar = Column(Text, nullable=True)
     details_en = Column(Text, nullable=True)
     created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # IT Phase 2 §6.3 (Task #208) — personal-event flag. NULL/false on
+    # legacy school-wide rows; true only for IT-authored personal events.
+    is_personal = Column(Boolean, nullable=True, default=False, server_default=text("false"))
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     __table_args__ = (
         Index("idx_calendar_events_tenant_date", "tenant_id", "date"),
+        Index("ix_calendar_events_tenant_personal_creator", "tenant_id", "is_personal", "created_by"),
     )
 
 
