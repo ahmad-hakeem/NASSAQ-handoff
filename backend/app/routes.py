@@ -153,6 +153,16 @@ def register_routes(app, api_router: APIRouter):
         router as it_bulk_import_router,
     )
     api_router.include_router(it_bulk_import_router)
+    # Phase 2 §6.7 (#210) — IT cross-workspace co-teaching envelope.
+    # The ONLY sanctioned cross-tenant data path for IT workspaces;
+    # single-tenant invariant (§8) is intentionally relaxed for the
+    # named class. Mounted WITHOUT _full_tenant_dep; the router enforces
+    # the IT role gate per-endpoint, requires fresh MFA on every write
+    # surface, and gates host-side writes on `workspace.collab_manage`.
+    from routes.independent_teacher_collab_routes import (
+        router as it_collab_router,
+    )
+    api_router.include_router(it_collab_router)
     api_router.include_router(scheduling_smart_router, dependencies=_full_tenant_dep)
     api_router.include_router(scheduling_smart_sess_router, dependencies=_full_tenant_dep)
     api_router.include_router(schedule_candidates_router, dependencies=_full_tenant_dep)

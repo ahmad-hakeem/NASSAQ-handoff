@@ -288,6 +288,14 @@ async def get_class(class_id: str, current_user: dict = Depends(get_current_user
         from auth_scope import require_request_school_id
         query["school_id"] = require_request_school_id(current_user)
     class_doc = await gd_find_one(db.session, "classes", query)
+    # IT §6.7 (Task #210) — collaborator widening for the named class
+    # only. Falls through to a strict 404 if the caller is not a
+    # collaborator either, so cross-workspace ids never leak.
+    if not class_doc and current_user.get("role") == UserRole.INDEPENDENT_TEACHER.value:
+        from utils.collab_access import caller_collab_row_for_class
+        row = await caller_collab_row_for_class(db.session, current_user, class_id)
+        if row:
+            class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
     if not class_doc:
         raise HTTPException(status_code=404, detail="الفصل غير موجود")
     

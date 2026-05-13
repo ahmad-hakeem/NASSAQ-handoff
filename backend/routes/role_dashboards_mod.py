@@ -1306,7 +1306,11 @@ async def get_class_student_stats(
         if not assignment:
             class_session = await gd_find_one(db.session, "class_sessions", {"teacher_id": teacher_id, "class_id": class_id})
             if not class_session:
-                raise HTTPException(status_code=403, detail="ليس لديك صلاحية لعرض هذا الفصل")
+                # IT §6.7 (Task #210) — accepted cross-workspace collab
+                # widens read access to this single class.
+                from utils.collab_access import caller_can_access_class
+                if not await caller_can_access_class(db.session, current_user, class_id):
+                    raise HTTPException(status_code=403, detail="ليس لديك صلاحية لعرض هذا الفصل")
 
     students = await gd_find(db.session, "students", {"class_id": class_id}, limit=100)
 

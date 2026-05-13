@@ -800,7 +800,7 @@ class LessonUpdate(BaseModel):
     notes: Optional[str] = Field(default=None, max_length=500)
 
 
-async def _verify_class_access(class_id: str, current_user: dict):
+async def _verify_class_access(class_id: str, current_user: dict, *, write: bool = False):
     role = current_user.get("role", "")
     if role == UserRole.PLATFORM_ADMIN.value:
         return
@@ -808,6 +808,17 @@ async def _verify_class_access(class_id: str, current_user: dict):
     if not cls:
         raise HTTPException(status_code=404, detail="Class not found")
     class_school = cls.get("school_id") or cls.get("tenant_id")
+    # IT §6.7 (Task #210) — cross-workspace co-teaching widening for the
+    # named class only. The single-tenant invariant is intentionally
+    # relaxed here, but only for the exact class the row points at, and
+    # write surfaces additionally require scope.mode == 'write'.
+    if role == UserRole.INDEPENDENT_TEACHER.value:
+        from utils.collab_access import caller_collab_mode_for_class
+        mode = await caller_collab_mode_for_class(db.session, current_user, class_id)
+        if mode is not None:
+            if write and mode != "write":
+                raise HTTPException(status_code=403, detail="هذا التعاون مخصّص للقراءة فقط")
+            return
     if role in ("teacher",):
         tid = current_user.get("teacher_id") or current_user.get("id")
         if cls.get("homeroom_teacher_id") and tid and cls.get("homeroom_teacher_id") == tid:
@@ -860,7 +871,7 @@ async def add_lesson(
     subject_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
-    await _verify_class_access(class_id, current_user)
+    await _verify_class_access(class_id, current_user, write=True)
     doc_id = str(uuid.uuid4())
     doc = {
         "id": doc_id,
@@ -960,7 +971,7 @@ async def add_grade_column(
     col: GradeColumnCreate,
     current_user: dict = Depends(get_current_user),
 ):
-    await _verify_class_access(class_id, current_user)
+    await _verify_class_access(class_id, current_user, write=True)
     doc_id = str(uuid.uuid4())
     doc = {
         "id": doc_id,

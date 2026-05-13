@@ -269,10 +269,32 @@ async def get_class_students(
 ):
     """Get all students in a specific class"""
     query = {"class_id": class_id, "is_active": True}
+    # IT §6.7 (Task #210) — for an Independent-Teacher caller who holds
+    # an accepted cross-workspace collab row on this class, scope the
+    # students lookup by the *host* school_id (the class's owner) so the
+    # roster comes back; otherwise fall back to the caller's tenant.
+    widened_for_collab = False
     if current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
-        tenant = current_user.get("tenant_id")
-        if tenant:
-            query["school_id"] = tenant
+        if current_user.get("role") == UserRole.INDEPENDENT_TEACHER.value:
+            from utils.collab_access import caller_collab_row_for_class
+            from auth_scope import independent_workspace_id
+            row = await caller_collab_row_for_class(db.session, current_user, class_id)
+            if row:
+                query["school_id"] = row["host_school_id"]
+                widened_for_collab = True
+            else:
+                # Fail-closed for IT: always pin to the caller's
+                # workspace even when the JWT didn't carry tenant_id, so
+                # a non-collaborator can never receive a foreign-tenant
+                # roster (§8 inv. 3).
+                query["school_id"] = (
+                    current_user.get("tenant_id")
+                    or independent_workspace_id(current_user)
+                )
+        if not widened_for_collab and current_user.get("role") != UserRole.INDEPENDENT_TEACHER.value:
+            tenant = current_user.get("tenant_id")
+            if tenant:
+                query["school_id"] = tenant
 
     students = await gd_find(db.session, "students", query, limit=1000)
 

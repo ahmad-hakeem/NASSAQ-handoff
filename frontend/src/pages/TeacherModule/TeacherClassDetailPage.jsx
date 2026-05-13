@@ -33,6 +33,7 @@ import HakimPresence from '../../components/hakim/HakimPresence';
 import FollowupGradesTable from '../../components/teacher/FollowupGradesTable';
 import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialog';
 import InlineAttendanceTable from '../../components/teacher/InlineAttendanceTable';
+import CollaboratorsTab from '../../components/teacher/CollaboratorsTab';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 
@@ -57,7 +58,13 @@ export default function TeacherClassDetailPage() {
   const [students, setStudents] = useState([]);
   const [schedule, setSchedule] = useState([]);
 
-  const VALID_TABS = ['curriculum', 'records', 'attendance'];
+  // IT §6.7 host-only gate: the "collaborators" tab is only meaningful
+  // for the workspace that *owns* the class. A collaborator viewing the
+  // shared class must not see the management surface.
+  const isHostOfClass = !!(classData?.school_id && user?.tenant_id && classData.school_id === user.tenant_id);
+  const VALID_TABS = isHostOfClass
+    ? ['curriculum', 'records', 'attendance', 'collaborators']
+    : ['curriculum', 'records', 'attendance'];
   const tabFromUrl = searchParams.get('tab');
   // Map legacy 'absence' tab key to the new unified 'attendance' tab
   const normalizedTabFromUrl = tabFromUrl === 'absence' ? 'attendance' : tabFromUrl;
@@ -976,6 +983,9 @@ export default function TeacherClassDetailPage() {
               { key: 'curriculum', label: t('curriculumPlan'), icon: BookOpen },
               { key: 'records', label: t('studentRecords'), icon: ClipboardCheck },
               { key: 'attendance', label: t('attendanceLog') || 'الحضور والغياب', icon: Calendar },
+              ...(isHostOfClass
+                ? [{ key: 'collaborators', label: t('collabTabTitle'), icon: Users }]
+                : []),
             ].map(tab => (
               <button
                 key={tab.key}
@@ -1035,6 +1045,7 @@ export default function TeacherClassDetailPage() {
             {activeTab === 'curriculum' && renderCurriculumTab()}
             {activeTab === 'records' && renderRecordsTab()}
             {activeTab === 'attendance' && renderAttendanceTab()}
+            {activeTab === 'collaborators' && isHostOfClass && <CollaboratorsTab classId={classId} />}
           </div>
         )}
       </div>

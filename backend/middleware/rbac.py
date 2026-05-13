@@ -107,6 +107,13 @@ class Permission(str, Enum):
     # superset of school-wide calendar permissions used by principals.
     EVENTS_AUTHOR_OWN = "events.author_own"
 
+    # IT §6.7 — Cross-workspace co-teaching (Task #210). The ONLY
+    # sanctioned cross-tenant data path. Granted to the host IT so they
+    # can invite/revoke a collaborator on a per-class basis. The receiving
+    # IT is gated by their own role + the row's collaborator_school_id;
+    # they do not need this permission to accept or to read shared data.
+    WORKSPACE_COLLAB_MANAGE = "workspace.collab_manage"
+
 
 # Role to Permissions Mapping
 ROLE_PERMISSIONS: Dict[str, List[str]] = {
@@ -233,6 +240,8 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
         # Phase 2 §6.1 (#207) — workspace-aware bulk student import.
         # Backend gates the actual /commit path with require_recent_mfa_403.
         Permission.STUDENTS_BULK_IMPORT_WORKSPACE.value,
+        # §6.7 — host IT may invite/revoke a single collaborator per class.
+        Permission.WORKSPACE_COLLAB_MANAGE.value,
     ],
     
     "student": [

@@ -27,6 +27,8 @@ const ResetPasswordPage = lazy(() => import("../pages/ResetPasswordPage"));
 const ForcePasswordChange = lazy(() => import("../pages/ForcePasswordChange"));
 // Task #206 — public parent-invitation accept landing (IT §6.2c).
 const ParentInvitationAcceptPage = lazy(() => import("../pages/ParentInvitationAcceptPage"));
+// Task #210 — IT §6.7 cross-workspace collaborator accept landing.
+const CollabInvitationAcceptPage = lazy(() => import("../pages/CollabInvitationAcceptPage"));
 
 // Heavy: AdminDashboard pulls recharts
 const AdminDashboard = lazy(() => import("../pages/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
@@ -178,6 +180,8 @@ export default function AppRoutes() {
             and deep-links into /parent?student_id=…. Unauthenticated
             access is intentional — the token in the URL is the auth. */}
         <Route path="/parent-invitations/accept" element={<ParentInvitationAcceptPage />} />
+        <Route path="/teacher/collab-accept" element={<CollabInvitationAcceptPage />} />
+        <Route path="/workspace-collaborators/accept" element={<CollabInvitationAcceptPage />} />
 
         {/* Force Password Change */}
         <Route path="/change-password" element={

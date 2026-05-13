@@ -145,12 +145,20 @@ export default function TeacherClassesPage() {
     if (!teacherId) return;
     setLoading(true);
     try {
-      const [classesRes, metricsRes] = await Promise.all([
+      // IT §6.7 (Task #210): an Independent-Teacher caller may also be
+      // an accepted *collaborator* on classes owned by another IT
+      // workspace. Surface those alongside their own classes with a
+      // "shared with <host>" badge so the entry point exists.
+      const [classesRes, metricsRes, sharedRes] = await Promise.all([
         api.get(`/teacher/classes/${teacherId}`),
-        api.get(`/teacher/${teacherId}/class-metrics`).catch(() => ({ data: {} }))
+        api.get(`/teacher/${teacherId}/class-metrics`).catch(() => ({ data: {} })),
+        isIndependentTeacher
+          ? api.get('/independent-teacher/workspace-collaborators/shared-with-me').catch(() => ({ data: { items: [] } }))
+          : Promise.resolve({ data: { items: [] } }),
       ]);
       const classesData = classesRes.data || [];
       const metricsData = metricsRes.data || {};
+      const sharedItems = (sharedRes.data?.items) || [];
 
       const enriched = classesData.map(cls => {
         const m = metricsData[cls.id] || {};
@@ -162,6 +170,19 @@ export default function TeacherClassesPage() {
           total_sessions: m.total_sessions ?? 0,
         };
       });
+      // Append shared classes that aren't already in the list, tagged
+      // with `_collab` so the card can render the badge from
+      // `t('collabSharedWithBadge')` and route to the read-only view.
+      const existingIds = new Set(enriched.map(c => c.id));
+      for (const it of sharedItems) {
+        if (!it?.class_id || existingIds.has(it.class_id)) continue;
+        enriched.push({
+          id: it.class_id,
+          name: it.class_name || it.class_id,
+          _collab: { mode: it.scope?.mode || 'read', host_school_id: it.host_school_id, host_workspace_name: it.host_workspace_name || '' },
+          attendance_rate: 0, participation_rate: 0, avg_performance: 0, total_sessions: 0,
+        });
+      }
       setClasses(enriched);
     } catch (error) {
       console.error('Error fetching classes:', error);

@@ -51,6 +51,8 @@ from dependencies import JWT_SECRET, JWT_ALGORITHM
 
 INVITATION_TOKEN_TTL = timedelta(days=7)
 _INVITATION_PURPOSE = "parent_invitation"
+_COLLAB_INVITATION_PURPOSE = "workspace_collab_invitation"
+COLLAB_INVITATION_TOKEN_TTL = timedelta(days=7)
 
 
 def token_hash(raw_token: str) -> str:
@@ -123,5 +125,57 @@ def verify_invitation_token(
     if payload.get("ws") != workspace_school_id:
         return False
     if payload.get("stu") != student_id:
+        return False
+    return hmac.compare_digest(token_hash(raw_token), stored_hash)
+
+
+def mint_collab_invitation_token(
+    host_school_id: str,
+    class_id: str,
+    collaborator_email: str,
+) -> Tuple[str, str, datetime]:
+    """Mint a one-shot signed workspace-collaborator invitation token (§6.7).
+
+    Bound to the ``(host_school_id, class_id, collaborator_email)`` triple
+    so a leaked token cannot be replayed against a different class, host,
+    or invitee.
+    """
+    now = datetime.now(timezone.utc)
+    expires_at = now + COLLAB_INVITATION_TOKEN_TTL
+    payload = {
+        "purpose": _COLLAB_INVITATION_PURPOSE,
+        "host": host_school_id,
+        "cls": class_id,
+        "email": collaborator_email.lower(),
+        "jti": str(uuid.uuid4()),
+        "iat": now,
+        "exp": expires_at,
+    }
+    raw = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return raw, token_hash(raw), expires_at
+
+
+def verify_collab_invitation_token(
+    raw_token: str,
+    stored_hash: str,
+    *,
+    host_school_id: str,
+    class_id: str,
+    collaborator_email: str,
+) -> bool:
+    """Verify a collab-invitation token in constant time."""
+    if not raw_token or not stored_hash:
+        return False
+    try:
+        payload = jwt.decode(raw_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        return False
+    if payload.get("purpose") != _COLLAB_INVITATION_PURPOSE:
+        return False
+    if payload.get("host") != host_school_id:
+        return False
+    if payload.get("cls") != class_id:
+        return False
+    if (payload.get("email") or "").lower() != (collaborator_email or "").lower():
         return False
     return hmac.compare_digest(token_hash(raw_token), stored_hash)
