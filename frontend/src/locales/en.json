@@ -4660,5 +4660,8 @@
   "accountErasedBody": "Your request to permanently delete your NASSAQ workspace has been recorded.\nAll data will be permanently deleted within the configured grace window and cannot be recovered.",
   "accountErasedNoticeTitle": "Important",
   "accountErasedNoticeBody": "A final copy of your data has been emailed to you. The link is valid for 24 hours and can be used only once.",
-  "accountErasedHome": "Back to home"
+  "accountErasedHome": "Back to home",
+  "itPerimeterFinishSetupTitle": "Finish setting up your workspace",
+  "itPerimeterFinishSetupBody": "Your teaching workspace isn't fully set up yet. Complete the setup steps now to access your teacher dashboard.",
+  "itPerimeterFinishSetupCta": "Continue setup"
 }
