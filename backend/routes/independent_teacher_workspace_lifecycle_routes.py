@@ -83,6 +83,10 @@ from utils.tokens import (
 )
 from middleware.rbac import Permission, RBACMiddleware
 from utils.trusted_proxy import extract_client_ip
+from engines.email_service import (
+    send_workspace_archived_email,
+    send_workspace_reactivation_reminder_email,
+)
 
 
 logger = logging.getLogger("nassaq.it_workspace_lifecycle")
@@ -492,6 +496,15 @@ async def soft_delete_workspace(
         raise HTTPException(status_code=422, detail=_MSG_NAME_MISMATCH)
 
     now = _utcnow()
+    # Mint a fresh export token at archive time so the email link works
+    # even if the user already consumed the original download. Replacing
+    # the prior hash + clearing consumed_at matches the documented
+    # "minting a new token invalidates any prior outstanding URL"
+    # contract; the workspace stays downloadable until pending_hard_delete
+    # flips, which only happens after the 30-day reactivation window.
+    fresh_token, fresh_hash, fresh_expires_at = mint_workspace_export_token(
+        workspace_id, current_user["id"],
+    )
     try:
         async with db.session.begin_nested():
             await gd_update_one(
@@ -500,6 +513,10 @@ async def soft_delete_workspace(
                     "status": "archived",
                     "archived_at": now.isoformat(),
                     "updated_at": now.isoformat(),
+                    "last_export_at": now.isoformat(),
+                    "last_export_token_hash": fresh_hash,
+                    "last_export_consumed_at": None,
+                    "reactivation_reminder_sent_at": None,
                 },
             )
             await audit_engine.log(
@@ -531,12 +548,35 @@ async def soft_delete_workspace(
         )
         raise HTTPException(status_code=500, detail=_MSG_INTERNAL)
 
+    reactivation_deadline = now + _REACTIVATE_WINDOW
+    download_url = f"/api/public/workspace-export/{fresh_token}"
+
+    # Best-effort archive notification email. Failure must NOT undo the
+    # archive — the workspace is already in the 'archived' state and
+    # the in-app dialog has surfaced the deadline. We log + continue.
+    try:
+        recipient = (current_user.get("email") or "").strip()
+        if recipient and "@" in recipient and "@invite.nassaq.invalid" not in recipient:
+            send_workspace_archived_email(
+                to_email=recipient,
+                user_name=current_user.get("full_name") or recipient,
+                workspace_name=(school.get("name") or "").strip() or workspace_id,
+                download_url=download_url,
+                download_expires_at=fresh_expires_at.isoformat(),
+                reactivation_deadline=reactivation_deadline.isoformat(),
+                reactivation_window_days=_REACTIVATE_WINDOW.days,
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("workspace archived email dispatch failed: %s", exc)
+
     return {
         "ok": True,
         "status": "archived",
         "archived_at": now.isoformat(),
         "reactivation_window_days": _REACTIVATE_WINDOW.days,
-        "reactivation_deadline": (now + _REACTIVATE_WINDOW).isoformat(),
+        "reactivation_deadline": reactivation_deadline.isoformat(),
+        "download_url": download_url,
+        "download_expires_at": fresh_expires_at.isoformat(),
     }
 
 
@@ -574,6 +614,7 @@ async def reactivate_workspace(
                     "status": "active",
                     "archived_at": None,
                     "updated_at": now.isoformat(),
+                    "reactivation_reminder_sent_at": None,
                 },
             )
             await audit_engine.log(

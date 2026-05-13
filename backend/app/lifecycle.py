@@ -188,8 +188,130 @@ async def startup_tasks():
     except Exception as e:
         logger.warning(f"Could not schedule revoked-token cleanup: {e}")
 
+    # Background task: daily sweep that emails archived IT workspaces a
+    # reminder ~3 days before their 30-day reactivation window closes.
+    # Idempotent via schools.reactivation_reminder_sent_at — once stamped
+    # we never re-send for the same archive cycle. Safe to run on every
+    # backend instance: the row update + null-guard makes a duplicate
+    # send vanishingly unlikely even with multiple workers (and a
+    # duplicate email is still a non-event).
+    async def _reactivation_reminder_loop():
+        try:
+            await _asyncio.sleep(60)
+            while True:
+                try:
+                    await _run_with_session(
+                        "Workspace reactivation reminder sweep",
+                        _sweep_reactivation_reminders,
+                    )
+                except Exception as e:
+                    logger.warning(f"Reactivation reminder loop: {e}")
+                await _asyncio.sleep(24 * 60 * 60)
+        except _asyncio.CancelledError:
+            logger.info("Reactivation reminder loop cancelled (shutdown)")
+            raise
+
+    try:
+        global _reactivation_reminder_task
+        _reactivation_reminder_task = _asyncio.create_task(_reactivation_reminder_loop())
+        logger.info("Workspace reactivation reminder loop scheduled (daily)")
+    except Exception as e:
+        logger.warning(f"Could not schedule reactivation reminder loop: {e}")
+
 
 _revoked_token_cleanup_task = None
+_reactivation_reminder_task = None
+
+
+# Reminder copy is sent once when the remaining reactivation window is
+# <= REMINDER_THRESHOLD_DAYS and > 0 (we never reminder-spam a workspace
+# that's already past the deadline — the on-login sweep flips it to
+# pending_hard_delete and platform-admin tooling takes it from there).
+_REMINDER_THRESHOLD_DAYS = 3
+_REACTIVATION_WINDOW_DAYS = 30
+
+
+async def _sweep_reactivation_reminders():
+    """Find every archived IT workspace whose reactivation deadline is
+    within the threshold window AND has not yet received a reminder,
+    then email the workspace owner. Best-effort per row.
+    """
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    from engines.email_service import send_workspace_reactivation_reminder_email
+
+    now = _dt.now(_tz.utc)
+    window = _td(days=_REACTIVATION_WINDOW_DAYS)
+    threshold = _td(days=_REMINDER_THRESHOLD_DAYS)
+
+    candidates = await gd_find(db.session, "schools", {"status": "archived"})
+    sent = 0
+    for school in candidates or []:
+        try:
+            if school.get("pending_hard_delete"):
+                continue
+            if school.get("reactivation_reminder_sent_at"):
+                continue
+            archived_at = school.get("archived_at")
+            if isinstance(archived_at, str):
+                try:
+                    archived_at = _dt.fromisoformat(archived_at.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+            if archived_at is None:
+                continue
+            if archived_at.tzinfo is None:
+                archived_at = archived_at.replace(tzinfo=_tz.utc)
+            deadline = archived_at + window
+            remaining = deadline - now
+            if remaining <= _td(0) or remaining > threshold:
+                continue
+
+            workspace_id = school.get("id")
+            owner_email = None
+            owner_name = None
+            if isinstance(workspace_id, str) and workspace_id.startswith("itw_"):
+                user_id = workspace_id[len("itw_"):]
+                owner = await gd_find_one(db.session, "users", {"id": user_id})
+                if owner:
+                    owner_email = (owner.get("email") or "").strip()
+                    owner_name = owner.get("full_name")
+            if not owner_email or "@" not in owner_email or "@invite.nassaq.invalid" in owner_email:
+                # Stamp anyway so we don't re-scan this row every day for
+                # a recipient we can't reach.
+                await gd_update_one(
+                    db.session, "schools", {"id": workspace_id},
+                    {"reactivation_reminder_sent_at": now.isoformat()},
+                )
+                continue
+
+            days_left = max(1, int(remaining.total_seconds() // 86400) or 1)
+            ok = send_workspace_reactivation_reminder_email(
+                to_email=owner_email,
+                user_name=owner_name or owner_email,
+                workspace_name=(school.get("name") or "").strip() or workspace_id,
+                reactivation_deadline=deadline.isoformat(),
+                days_left=days_left,
+            )
+            if not ok:
+                # Provider outage / Resend unconfigured. Leave the stamp
+                # NULL so the next daily sweep retries — better to risk a
+                # second email than to silently swallow the only warning
+                # the user gets before hard-deletion.
+                logger.warning(
+                    "Reactivation reminder send failed for school=%s; will retry next sweep",
+                    workspace_id,
+                )
+                continue
+            await gd_update_one(
+                db.session, "schools", {"id": workspace_id},
+                {"reactivation_reminder_sent_at": now.isoformat()},
+            )
+            sent += 1
+        except Exception as exc:
+            logger.warning(f"Reactivation reminder skip for school={school.get('id')}: {exc}")
+    if sent:
+        logger.info(f"Workspace reactivation reminders sent: {sent}")
+    return sent
 
 
 async def shutdown_tasks():
@@ -205,6 +327,19 @@ async def shutdown_tasks():
             _revoked_token_cleanup_task = None
     except Exception as e:
         logger.debug(f"Cleanup loop cancellation: {e}")
+
+    # Cancel the reactivation-reminder loop cleanly.
+    try:
+        global _reactivation_reminder_task
+        if _reactivation_reminder_task is not None and not _reactivation_reminder_task.done():
+            _reactivation_reminder_task.cancel()
+            try:
+                await _reactivation_reminder_task
+            except Exception:
+                pass
+            _reactivation_reminder_task = None
+    except Exception as e:
+        logger.debug(f"Reminder loop cancellation: {e}")
 
     try:
         from routes.websocket_routes import get_connection_manager
