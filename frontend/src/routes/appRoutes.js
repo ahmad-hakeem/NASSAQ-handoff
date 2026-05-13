@@ -76,6 +76,7 @@ const WorkspaceSchedulePage = lazy(() => import("../pages/TeacherModule").then(m
 const TeacherPersonalCalendarPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherPersonalCalendarPage })));
 const LessonPlannerPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.LessonPlannerPage })));
 const TeacherAuditLogPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAuditLogPage })));
+const TeacherNotificationsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherNotificationsPage })));
 
 const ProductHubPage = lazy(() => import("../pages/ProductHubPage").then(m => ({ default: m.ProductHubPage })));
 const ProductHubSubmitPage = lazy(() => import("../pages/ProductHubSubmitPage").then(m => ({ default: m.ProductHubSubmitPage })));
@@ -372,6 +373,10 @@ export default function AppRoutes() {
             allowedRoles={['independent_teacher']}
             requiredPermission="audit.read_own_workspace"
           ><TeacherAuditLogPage /></ProtectedRoute>
+        } />
+        {/* Task #249 — IT-only notifications inbox. */}
+        <Route path="/teacher/notifications" element={
+          <ProtectedRoute allowedRoles={['independent_teacher']}><TeacherNotificationsPage /></ProtectedRoute>
         } />
 
         {/* Student Portal Routes */}

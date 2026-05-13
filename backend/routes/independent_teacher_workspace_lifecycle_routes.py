@@ -746,8 +746,17 @@ async def soft_delete_workspace(
     # archive — the workspace is already in the 'archived' state and
     # the in-app dialog has surfaced the deadline. We log + continue.
     try:
+        from routes.independent_teacher_notifications_routes import should_send_channel
         recipient = (current_user.get("email") or "").strip()
-        if recipient and "@" in recipient and "@invite.nassaq.invalid" not in recipient:
+        email_allowed = await should_send_channel(
+            current_user, "workspace_lifecycle", "email",
+        )
+        if (
+            email_allowed
+            and recipient
+            and "@" in recipient
+            and "@invite.nassaq.invalid" not in recipient
+        ):
             send_workspace_archived_email(
                 to_email=recipient,
                 user_name=current_user.get("full_name") or recipient,
@@ -759,6 +768,40 @@ async def soft_delete_workspace(
             )
     except Exception as exc:  # noqa: BLE001
         logger.warning("workspace archived email dispatch failed: %s", exc)
+
+    # Task #249 — also surface the lifecycle event in the IT inbox so
+    # the user has an in-app trail of archive/reactivate events even
+    # when their email channel is suppressed.
+    try:
+        from routes.notification_routes_mod import create_notification_internal
+        from routes.independent_teacher_notifications_routes import should_send_channel
+        if await should_send_channel(current_user, "workspace_lifecycle", "in_app"):
+            await create_notification_internal(
+                title="تم أرشفة مساحة العمل",
+                message=(
+                    "تم أرشفة مساحة عملك. يمكنك إعادة التفعيل خلال "
+                    f"{_REACTIVATE_WINDOW.days} يومًا."
+                ),
+                title_en="Workspace archived",
+                message_en=(
+                    "Your workspace was archived. "
+                    f"You can reactivate within {_REACTIVATE_WINDOW.days} days."
+                ),
+                recipient_id=current_user["id"],
+                notification_type="workspace_archived",
+                priority="high",
+                related_entity="school",
+                related_entity_id=workspace_id,
+                school_id=workspace_id,
+                category="workspace_lifecycle",
+                cta_url="/account-settings",
+                extra_data={
+                    "archived_at": now.isoformat(),
+                    "reactivation_deadline": reactivation_deadline.isoformat(),
+                },
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("workspace archived inbox notify failed: %s", exc)
 
     return {
         "ok": True,

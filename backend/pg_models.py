@@ -682,6 +682,11 @@ class Notification(Base):
     action_url = Column(String, nullable=True)
     extra_data = Column("metadata", JSONB, nullable=True)
     data = Column(JSONB, nullable=True, default=dict)
+    # Task #249 — coarse-grained bucket for the IT inbox + per-category
+    # channel preferences. Defaults to 'general' so legacy callsites
+    # that don't pass a category still render in the catch-all bucket.
+    category = Column(String, nullable=False, default="general", server_default="general")
+    cta_url = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     user = relationship("User", back_populates="notifications", foreign_keys=[user_id], lazy="selectin")
@@ -689,6 +694,28 @@ class Notification(Base):
     __table_args__ = (
         Index("idx_pg_notifications_user_read_date", "user_id", "is_read", "created_at"),
         Index("idx_pg_notifications_tenant_date", "tenant_id", "created_at"),
+        Index("idx_pg_notifications_user_category_date", "user_id", "category", "created_at"),
+    )
+
+
+class NotificationPreference(Base):
+    """Task #249 — per-user, per-category channel preferences for the
+    Independent-Teacher inbox. One row per (user_id, category)."""
+    __tablename__ = "notifications_preferences"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    category = Column(String(64), nullable=False)
+    in_app = Column(Boolean, nullable=False, default=True, server_default="true")
+    email = Column(Boolean, nullable=False, default=True, server_default="true")
+    created_at = Column(DateTime(timezone=True), default=_utcnow,
+                        server_default=text("CURRENT_TIMESTAMP"), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow,
+                        server_default=text("CURRENT_TIMESTAMP"), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "category", name="uq_notif_prefs_user_category"),
     )
 
 

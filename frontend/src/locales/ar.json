@@ -4573,5 +4573,15 @@
   "showDetails": "عرض التفاصيل",
   "hideDetails": "إخفاء التفاصيل",
   "loadMore": "تحميل المزيد",
-  "events": "الأحداث"
+  "events": "الأحداث",
+  "itInboxPrefsSection": "تفضيلات صندوق الإشعارات",
+  "itInboxPrefsSectionDesc": "تحكّم في القنوات التي تستلم عبرها كل نوع من الإشعارات.",
+  "itInboxPrefsHint": "إشعارات داخل التطبيق مفعّلة دائمًا. يمكنك إيقاف البريد الإلكتروني لكل نوع.",
+  "itInboxPrefsSaved": "تم حفظ تفضيلات الإشعارات.",
+  "itInboxPrefsSaveFailed": "تعذّر حفظ التفضيلات. حاول مجددًا.",
+  "itInboxCat_collab_invite": "دعوات التعاون",
+  "itInboxCat_parent_accept": "قبول أولياء الأمور",
+  "itInboxCat_workspace_lifecycle": "أحداث مساحة العمل",
+  "itInboxCat_quota": "تنبيهات الحصص",
+  "itInboxCat_lesson_plan": "اكتمال خطط الدروس"
 }

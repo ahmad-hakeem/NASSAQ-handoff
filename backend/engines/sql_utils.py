@@ -49,6 +49,7 @@ def _get_orm_model(collection: str):
         MfaFactor, MfaRecoveryCode, MfaPendingChallenge,
         MfaEmailOtp, MfaWebauthnChallenge,
         LessonPlan,
+        NotificationPreference,
     )
     _ORM_REGISTRY = {
         "users": User,
@@ -72,6 +73,7 @@ def _get_orm_model(collection: str):
         "bulk_action_history": BulkActionHistory,
         "audit_logs": AuditLog,
         "notifications": Notification,
+        "notifications_preferences": NotificationPreference,
         "assessments": Assessment,
         "assessment_submissions": AssessmentSubmission,
         "behaviour_records": BehaviourRecord,

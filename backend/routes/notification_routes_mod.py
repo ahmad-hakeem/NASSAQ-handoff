@@ -117,6 +117,8 @@ async def create_notification_internal(
     message_en: Optional[str] = None,
     school_id: Optional[str] = None,
     extra_data: Optional[Dict[str, Any]] = None,
+    category: Optional[str] = None,
+    cta_url: Optional[str] = None,
 ):
     """Internal helper to create notifications from other engines.
 
@@ -124,7 +126,13 @@ async def create_notification_internal(
     ``unavailability_id`` for relocation notifications) without growing the
     function signature for every new use case. The fields are merged into
     the notification document and end up in the JSONB ``data`` column, so
-    they're transparently available on read via ``gd_find``."""
+    they're transparently available on read via ``gd_find``.
+
+    ``category`` (Task #249) buckets rows for the IT inbox and the
+    per-category channel-preferences matrix. Defaults to ``general``.
+    ``cta_url`` is the workspace-relative deep-link the inbox uses for
+    "open" navigation; distinct from ``action_url`` so school-tenant
+    flows aren't disturbed."""
     notification_id = str(uuid.uuid4())
     sender_name_resolved = None
     if sender_id:
@@ -154,6 +162,8 @@ async def create_notification_internal(
         # fields untouched.
         "is_acknowledged": False,
         "acknowledged_at": None,
+        "category": (category or "general"),
+        "cta_url": cta_url,
         "created_at": datetime.now(timezone.utc),
     }
     if extra_data:

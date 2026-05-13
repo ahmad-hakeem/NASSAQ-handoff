@@ -683,6 +683,39 @@ async def accept_parent_invitation(
         )
         raise HTTPException(status_code=500, detail=_MSG_INTERNAL_ACCEPT)
 
+    # Task #249 — surface the accepted invitation in the IT inbox so
+    # the host teacher sees real-time progress on outstanding invites.
+    try:
+        from routes.notification_routes_mod import create_notification_internal
+        from routes.independent_teacher_notifications_routes import should_send_channel
+        host_user_id = inv.get("created_by")
+        if host_user_id:
+            host_user = await gd_find_one(db.session, "users", {"id": host_user_id})
+            if host_user and await should_send_channel(host_user, "parent_accept", "in_app"):
+                parent_label = (payload.full_name or "ولي الأمر").strip() or "ولي الأمر"
+                student_label = (student.get("full_name") or "").strip() or "الطالب"
+                await create_notification_internal(
+                    title="تم قبول دعوة ولي الأمر",
+                    message=f"قَبِل {parent_label} الدعوة لربط الحساب بالطالب {student_label}.",
+                    title_en="Parent invitation accepted",
+                    message_en=f"{parent_label} accepted the invitation linking the parent account to {student_label}.",
+                    recipient_id=host_user_id,
+                    notification_type="parent_invitation_accepted",
+                    priority="medium",
+                    related_entity="parent_invitation",
+                    related_entity_id=invitation_id,
+                    school_id=workspace_id,
+                    category="parent_accept",
+                    cta_url=f"/teacher/students?student_id={student_id}",
+                    extra_data={
+                        "student_id": student_id,
+                        "parent_id": parent_id,
+                        "parent_user_id": parent_user_id,
+                    },
+                )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("parent invite accept inbox notify failed: %s", exc)
+
     bearer = create_access_token({
         "sub": parent_user_id,
         "role": "parent",

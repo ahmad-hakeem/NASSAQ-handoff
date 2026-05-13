@@ -504,6 +504,14 @@ export const Sidebar = ({ children }) => {
         roles: ['independent_teacher'],
         permission: 'audit.read_own_workspace',
       },
+      // Task #249 — IT-only inbox for collaborator invites, parent
+      // accepts, workspace lifecycle, quota and lesson-plan events.
+      {
+        icon: Bell,
+        label: 'الإشعارات',
+        href: '/teacher/notifications',
+        roles: ['independent_teacher'],
+      },
     ];
 
     // Parent Menu Items — mirrors the historical Parent Portal navigation so

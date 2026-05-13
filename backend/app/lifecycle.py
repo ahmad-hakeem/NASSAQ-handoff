@@ -285,6 +285,46 @@ async def _sweep_reactivation_reminders():
                 continue
 
             days_left = max(1, int(remaining.total_seconds() // 86400) or 1)
+
+            # Task #249 — also surface the deadline reminder in the IT
+            # inbox (in_app channel is non-suppressible) so a user with
+            # email muted still sees the warning.
+            try:
+                from routes.notification_routes_mod import create_notification_internal
+                from routes.independent_teacher_notifications_routes import should_send_channel
+                if owner and await should_send_channel(owner, "workspace_lifecycle", "in_app"):
+                    await create_notification_internal(
+                        title="تذكير: اقتراب موعد إعادة تفعيل مساحة العمل",
+                        message=f"تبقّى {days_left} يومًا لإعادة تفعيل مساحة عملك.",
+                        title_en="Reminder: workspace reactivation deadline approaching",
+                        message_en=f"{days_left} day(s) left to reactivate your workspace.",
+                        recipient_id=owner["id"],
+                        notification_type="workspace_reactivation_reminder",
+                        priority="high",
+                        related_entity="school",
+                        related_entity_id=workspace_id,
+                        school_id=workspace_id,
+                        category="workspace_lifecycle",
+                        cta_url="/account-settings",
+                        extra_data={
+                            "days_left": days_left,
+                            "reactivation_deadline": deadline.isoformat(),
+                        },
+                    )
+            except Exception as exc:
+                logger.debug(f"reactivation reminder inbox notify failed: {exc}")
+
+            from routes.independent_teacher_notifications_routes import should_send_channel
+            email_allowed = await should_send_channel(
+                owner, "workspace_lifecycle", "email",
+            ) if owner else True
+            if not email_allowed:
+                # Stamp the row so we don't re-evaluate every sweep.
+                await gd_update_one(
+                    db.session, "schools", {"id": workspace_id},
+                    {"reactivation_reminder_sent_at": now.isoformat()},
+                )
+                continue
             ok = send_workspace_reactivation_reminder_email(
                 to_email=owner_email,
                 user_name=owner_name or owner_email,

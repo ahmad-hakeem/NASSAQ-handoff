@@ -32,3 +32,5 @@ export { default as TeacherPersonalCalendarPage } from './TeacherPersonalCalenda
 export { default as LessonPlannerPage } from './LessonPlannerPage';
 // Independent-Teacher only: workspace audit-log view (Task #248).
 export { default as TeacherAuditLogPage } from './TeacherAuditLogPage';
+// Independent-Teacher only: notifications inbox (Task #249).
+export { default as TeacherNotificationsPage } from './TeacherNotificationsPage';

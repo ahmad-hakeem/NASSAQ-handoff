@@ -310,6 +310,39 @@ async def create_collab_invitation(
     except Exception as exc:  # noqa: BLE001
         logger.warning("create_collab_invitation failed: %s", exc)
         raise HTTPException(status_code=500, detail=_MSG_INTERNAL)
+    # Task #249 — fan out an inbox notification to the invited
+    # collaborator (when they exist as a user) so they see the invite
+    # without scraping email. In-app channel is non-suppressible; email
+    # remains best-effort and gated on the per-category preference. The
+    # inbox row is purely informational — the cryptographic accept
+    # gate stays the one-shot signed token bound to the row.
+    try:
+        from routes.notification_routes_mod import create_notification_internal
+        from routes.independent_teacher_notifications_routes import should_send_channel
+        if invited_user and invited_user.get("id") and await should_send_channel(
+            invited_user, "collab_invite", "in_app",
+        ):
+            cls = await gd_find_one(db.session, "classes", {"id": payload.class_id})
+            cls_name = (cls or {}).get("name") or payload.class_id
+            await create_notification_internal(
+                title="دعوة تعاون جديدة",
+                message=f"تمت دعوتك للتعاون على فصل {cls_name}.",
+                title_en="New collaboration invitation",
+                message_en=f"You've been invited to collaborate on class {cls_name}.",
+                recipient_id=invited_user["id"],
+                notification_type="collab_invite",
+                priority="medium",
+                sender_id=current_user["id"],
+                related_entity="workspace_collaborator",
+                related_entity_id=row["id"],
+                school_id=independent_workspace_id(invited_user),
+                category="collab_invite",
+                cta_url="/teacher/classes",
+                extra_data={"host_school_id": host_school_id, "class_id": payload.class_id},
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("collab invite inbox notify failed: %s", exc)
+
     return {**_serialise(row, raw_token=raw_token), "reused": False}
 
 
@@ -604,6 +637,38 @@ async def accept_collab_invitation(
     except Exception as exc:  # noqa: BLE001
         logger.warning("accept_collab_invitation failed: %s", exc)
         raise HTTPException(status_code=500, detail=_MSG_INTERNAL)
+
+    # Task #249 — notify the host that the invitation was accepted.
+    try:
+        from routes.notification_routes_mod import create_notification_internal
+        from routes.independent_teacher_notifications_routes import should_send_channel
+        host_user_id = row.get("created_by")
+        if host_user_id:
+            host_user = await gd_find_one(db.session, "users", {"id": host_user_id})
+            if host_user and await should_send_channel(host_user, "collab_invite", "in_app"):
+                accepter_name = current_user.get("full_name") or current_user.get("email") or ""
+                await create_notification_internal(
+                    title="تم قبول دعوة التعاون",
+                    message=f"قَبِل {accepter_name} دعوتك للتعاون.",
+                    title_en="Collaboration invitation accepted",
+                    message_en=f"{accepter_name} accepted your collaboration invitation.",
+                    recipient_id=host_user_id,
+                    notification_type="collab_accepted",
+                    priority="medium",
+                    sender_id=current_user["id"],
+                    related_entity="workspace_collaborator",
+                    related_entity_id=row["id"],
+                    school_id=host_school_id,
+                    category="collab_invite",
+                    cta_url="/teacher/classes",
+                    extra_data={
+                        "host_school_id": host_school_id,
+                        "collaborator_school_id": caller_ws,
+                        "class_id": class_id,
+                    },
+                )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("collab accept inbox notify failed: %s", exc)
 
     refreshed = await gd_find_one(db.session, "workspace_collaborators", {"id": row["id"]})
     return _serialise(refreshed or row)

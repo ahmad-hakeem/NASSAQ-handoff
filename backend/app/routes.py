@@ -200,6 +200,15 @@ def register_routes(app, api_router: APIRouter):
         router as it_audit_router,
     )
     api_router.include_router(it_audit_router)
+    # Task #249 — IT Notifications Inbox + per-category preferences.
+    # Mounted WITHOUT _full_tenant_dep; the router enforces the IT role
+    # gate per-endpoint and pins user_id + tenant_id == itw_{user_id}
+    # on every read/write. Cross-workspace by-id reads return 404
+    # per spec §8 inv. 3.
+    from routes.independent_teacher_notifications_routes import (
+        router as it_notifications_router,
+    )
+    api_router.include_router(it_notifications_router)
     # Task #217 — Platform-admin hard-delete tooling for workspaces
     # whose 30-day reactivation window has lapsed
     # (`schools.pending_hard_delete = TRUE`). Lives behind

@@ -413,6 +413,50 @@ async def generate_lesson_plan(
         },
     )
 
+    # Task #249 — surface the completion in the IT inbox so the user
+    # sees a persistent record (and can deep-link to the saved plan).
+    # In-app channel is non-suppressible; suppression is only for email.
+    try:
+        from routes.notification_routes_mod import create_notification_internal
+        from routes.independent_teacher_notifications_routes import should_send_channel
+        if await should_send_channel(current_user, "lesson_plan", "in_app"):
+            topic_label = (payload.topic or "").strip() or "—"
+            await create_notification_internal(
+                title="اكتملت خطة الدرس",
+                message=f"تم إنشاء خطة الدرس: {topic_label}.",
+                title_en="Lesson plan ready",
+                message_en=f"Lesson plan generated: {topic_label}.",
+                recipient_id=current_user["id"],
+                notification_type="lesson_plan_complete",
+                priority="low",
+                related_entity="lesson_plan",
+                related_entity_id=doc["id"],
+                school_id=workspace_id,
+                category="lesson_plan",
+                cta_url="/teacher/lesson-planner",
+                extra_data={"lesson_plan_id": doc["id"]},
+            )
+        # Quota near-limit warning at 80% so the user sees a heads-up
+        # instead of a hard 429 next time.
+        if MAX_LESSON_PLANS_PER_DAY and new_count >= int(MAX_LESSON_PLANS_PER_DAY * 0.8) \
+                and new_count < MAX_LESSON_PLANS_PER_DAY \
+                and await should_send_channel(current_user, "quota", "in_app"):
+            await create_notification_internal(
+                title="اقتراب الحد اليومي لخطط الدروس",
+                message=f"استخدمت {new_count} من {MAX_LESSON_PLANS_PER_DAY} خططًا اليوم.",
+                title_en="Daily lesson-plan quota nearly reached",
+                message_en=f"Used {new_count} of {MAX_LESSON_PLANS_PER_DAY} lesson plans today.",
+                recipient_id=current_user["id"],
+                notification_type="quota_warning",
+                priority="medium",
+                school_id=workspace_id,
+                category="quota",
+                cta_url="/teacher/lesson-planner",
+                extra_data={"used_today": new_count, "max_per_day": MAX_LESSON_PLANS_PER_DAY},
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("lesson plan inbox notify failed: %s", exc)
+
     return {
         "lesson_plan": _serialize(doc),
         "quota": {

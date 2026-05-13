@@ -57,10 +57,21 @@ export const NotificationBell = () => {
   const fetchUnreadCount = useCallback(async () => {
     if (!user) return;
     try {
-      const response = await api.get('/notifications/unread-count');
-      setUnreadCount(response.data.unread_count);
+      // Task #249 — for Independent Teachers the workspace-pinned IT
+      // inbox IS the source of truth; the global /notifications stream
+      // already counts the same rows by user_id, so we'd double-count
+      // if we summed both. Use only the IT endpoint for IT users.
+      let total = 0;
+      if (user.role === 'independent_teacher') {
+        const itRes = await api.get('/independent-teacher/notifications/unread-count');
+        total = Number(itRes.data?.unread_count) || 0;
+      } else {
+        const response = await api.get('/notifications/unread-count');
+        total = Number(response.data?.unread_count) || 0;
+      }
+      setUnreadCount(total);
     } catch (error) {
-      console.error('Failed to fetch unread count:', error);
+      // Soft-fail; the badge simply won't update on this tick.
     }
   }, [api, user]);
 

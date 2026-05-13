@@ -4573,5 +4573,15 @@
   "showDetails": "Show details",
   "hideDetails": "Hide details",
   "loadMore": "Load more",
-  "events": "Events"
+  "events": "Events",
+  "itInboxPrefsSection": "Notification inbox preferences",
+  "itInboxPrefsSectionDesc": "Choose which channels deliver each kind of notification.",
+  "itInboxPrefsHint": "In-app notifications are always on. You can disable email per category.",
+  "itInboxPrefsSaved": "Notification preferences saved.",
+  "itInboxPrefsSaveFailed": "Failed to save preferences. Please try again.",
+  "itInboxCat_collab_invite": "Collaboration invites",
+  "itInboxCat_parent_accept": "Parent invitation accepts",
+  "itInboxCat_workspace_lifecycle": "Workspace lifecycle events",
+  "itInboxCat_quota": "Quota alerts",
+  "itInboxCat_lesson_plan": "Lesson plan completion"
 }
