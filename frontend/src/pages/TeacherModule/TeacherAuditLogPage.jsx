@@ -43,6 +43,36 @@ const CSV_COLUMN_PRESETS = {
   ],
 };
 
+// Task #269 — persist the teacher's last-selected CSV preset in
+// localStorage so the column picker doesn't reset to "full" on every
+// page load. First-time visitors still see "full" (no behavioural
+// surprise). Cross-tab sync is handled via the `storage` event so two
+// open tabs don't drift apart. The storage key is scoped to the
+// authenticated user id so a shared browser profile (multiple teachers
+// signing in turn-by-turn) never leaks one teacher's preference into
+// another teacher's session.
+const CSV_PRESET_STORAGE_PREFIX = 'nassaq.teacherAuditLog.csvPreset';
+
+function csvPresetStorageKey(userId) {
+  if (!userId) return null;
+  return `${CSV_PRESET_STORAGE_PREFIX}.${userId}`;
+}
+
+function readStoredCsvPreset(userId) {
+  if (typeof window === 'undefined') return 'full';
+  const key = csvPresetStorageKey(userId);
+  if (!key) return 'full';
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw && Object.prototype.hasOwnProperty.call(CSV_COLUMN_PRESETS, raw)) {
+      return raw;
+    }
+  } catch {
+    // localStorage may be unavailable (private mode / quota); fall through.
+  }
+  return 'full';
+}
+
 function severityClass(sev) {
   switch ((sev || '').toLowerCase()) {
     case 'critical': return 'bg-red-100 text-red-800 border-red-200';
@@ -119,9 +149,10 @@ function DetailsBlock({ details }) {
 }
 
 export default function TeacherAuditLogPage() {
-  const { api } = useAuth();
+  const { api, user } = useAuth();
   const { nassaqError } = useNassaqAlert();
   const { t } = useTranslation();
+  const userId = user?.id || null;
   const [logs, setLogs] = useState([]);
   const [categories, setCategories] = useState([]);
   const [activeCategory, setActiveCategory] = useState('');
@@ -133,8 +164,49 @@ export default function TeacherAuditLogPage() {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [csvPreset, setCsvPreset] = useState('full');
+  const [csvPreset, setCsvPresetState] = useState(() => readStoredCsvPreset(userId));
   const [expanded, setExpanded] = useState({});
+
+  // If the authenticated identity changes (e.g. a different teacher
+  // signs into the same browser profile), re-read the per-user
+  // preference so we never display the previous teacher's choice.
+  useEffect(() => {
+    setCsvPresetState(readStoredCsvPreset(userId));
+  }, [userId]);
+
+  const setCsvPreset = useCallback((next) => {
+    setCsvPresetState(next);
+    if (typeof window === 'undefined') return;
+    const key = csvPresetStorageKey(userId);
+    if (!key) return;
+    try {
+      if (next && Object.prototype.hasOwnProperty.call(CSV_COLUMN_PRESETS, next)) {
+        window.localStorage.setItem(key, next);
+      }
+    } catch {
+      // localStorage may be unavailable or full; preference simply
+      // won't persist this session.
+    }
+  }, [userId]);
+
+  // Cross-tab sync — if the teacher flips the preset in another tab,
+  // mirror it here so the two tabs don't show conflicting selections.
+  // Scoped to this user's key so a different teacher signed into a
+  // sibling tab can't overwrite our state.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const myKey = csvPresetStorageKey(userId);
+    if (!myKey) return undefined;
+    const onStorage = (e) => {
+      if (e.key !== myKey) return;
+      const next = e.newValue;
+      if (next && Object.prototype.hasOwnProperty.call(CSV_COLUMN_PRESETS, next)) {
+        setCsvPresetState(next);
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [userId]);
 
   const errMsg = useMemo(
     () => t('auditLogLoadFailed') || 'تعذّر تحميل سجل النشاط — حاول لاحقًا.',
