@@ -16,6 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../../components/ui/dropdown-menu';
+import { Checkbox } from '../../components/ui/checkbox';
 import { formatHijriDate } from '../../utils/hijriDate';
 import { useTranslation } from '../../contexts/ThemeContext';
 
@@ -30,47 +31,111 @@ const PAGE_LIMIT = 25;
 // "standard" matches the historical default minus the bulky JSON
 // ``details`` blob; "minimal" is the share-with-parent slice the
 // task brief calls out; "full" is the original fixed column set.
+// Order inside each preset matches ``_CSV_FIELDS`` so the FE-side
+// equality check against ``CSV_ALL_COLUMNS`` is order-stable.
+const CSV_ALL_COLUMNS = [
+  'id', 'timestamp', 'category', 'category_label_ar', 'action',
+  'action_label_ar', 'severity', 'actor_name', 'actor_role',
+  'performed_by', 'entity_type', 'entity_id', 'details',
+];
 const CSV_COLUMN_PRESETS = {
   minimal: ['timestamp', 'action_label_ar', 'actor_name'],
   standard: [
     'id', 'timestamp', 'category_label_ar', 'action_label_ar',
     'severity', 'actor_name', 'actor_role', 'entity_type', 'entity_id',
   ],
-  full: [
-    'id', 'timestamp', 'category', 'category_label_ar', 'action',
-    'action_label_ar', 'severity', 'actor_name', 'actor_role',
-    'performed_by', 'entity_type', 'entity_id', 'details',
-  ],
+  full: CSV_ALL_COLUMNS,
 };
 
-// Task #269 — persist the teacher's last-selected CSV preset in
-// localStorage so the column picker doesn't reset to "full" on every
-// page load. First-time visitors still see "full" (no behavioural
-// surprise). Cross-tab sync is handled via the `storage` event so two
-// open tabs don't drift apart. The storage key is scoped to the
-// authenticated user id so a shared browser profile (multiple teachers
-// signing in turn-by-turn) never leaks one teacher's preference into
-// another teacher's session.
-const CSV_PRESET_STORAGE_PREFIX = 'nassaq.teacherAuditLog.csvPreset';
+// Per-column Arabic labels for the checklist. Keys mirror
+// ``_CSV_FIELDS`` exactly; unknown keys fall back to the raw key.
+const CSV_COLUMN_LABELS_AR = {
+  id: 'المعرّف',
+  timestamp: 'الوقت',
+  category: 'التصنيف (مفتاح)',
+  category_label_ar: 'التصنيف',
+  action: 'الحدث (مفتاح)',
+  action_label_ar: 'الحدث',
+  severity: 'الخطورة',
+  actor_name: 'اسم المنفّذ',
+  actor_role: 'دور المنفّذ',
+  performed_by: 'معرّف المنفّذ',
+  entity_type: 'نوع العنصر',
+  entity_id: 'معرّف العنصر',
+  details: 'التفاصيل (JSON)',
+};
 
-function csvPresetStorageKey(userId) {
-  if (!userId) return null;
-  return `${CSV_PRESET_STORAGE_PREFIX}.${userId}`;
+// Order-stable equality between two column lists. Both sides are
+// already constrained to the ``_CSV_FIELDS`` order on the FE so a
+// shallow comparison is enough.
+function sameColumns(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }
 
-function readStoredCsvPreset(userId) {
-  if (typeof window === 'undefined') return 'full';
-  const key = csvPresetStorageKey(userId);
-  if (!key) return 'full';
+// Detect which preset (if any) the current selection matches so the
+// radio group reflects the live state when the checklist is toggled.
+function presetMatching(cols) {
+  if (sameColumns(cols, CSV_COLUMN_PRESETS.full)) return 'full';
+  if (sameColumns(cols, CSV_COLUMN_PRESETS.standard)) return 'standard';
+  if (sameColumns(cols, CSV_COLUMN_PRESETS.minimal)) return 'minimal';
+  return 'custom';
+}
+
+// Task #269 + #270 — persist the teacher's last-selected CSV columns
+// in localStorage so the picker doesn't reset on every page load.
+// First-time visitors still see "full" (no behavioural surprise).
+// Cross-tab sync is handled via the `storage` event so two open tabs
+// don't drift apart. The storage key is scoped to the authenticated
+// user id so a shared browser profile (multiple teachers signing in
+// turn-by-turn) never leaks one teacher's preference into another
+// teacher's session. The stored value is the JSON-encoded ordered
+// column array (Task #270 widened the picker from a 3-preset radio to
+// a per-column checklist, so a preset name is no longer expressive
+// enough to round-trip the user's selection).
+const CSV_COLUMNS_STORAGE_PREFIX = 'nassaq.teacherAuditLog.csvColumns';
+
+function csvColumnsStorageKey(userId) {
+  if (!userId) return null;
+  return `${CSV_COLUMNS_STORAGE_PREFIX}.${userId}`;
+}
+
+// Validate a candidate stored payload: must parse to an array of
+// known column keys; we re-order against CSV_ALL_COLUMNS so the
+// downstream preset detection stays stable. Returns null on any
+// problem so callers can fall back to the default "full" set.
+function parseStoredCsvColumns(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  let parsed;
   try {
-    const raw = window.localStorage.getItem(key);
-    if (raw && Object.prototype.hasOwnProperty.call(CSV_COLUMN_PRESETS, raw)) {
-      return raw;
-    }
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+  const allowed = new Set(CSV_ALL_COLUMNS);
+  const seen = new Set();
+  for (const v of parsed) {
+    if (typeof v !== 'string' || !allowed.has(v)) return null;
+    seen.add(v);
+  }
+  return CSV_ALL_COLUMNS.filter(k => seen.has(k));
+}
+
+function readStoredCsvColumns(userId) {
+  if (typeof window === 'undefined') return CSV_COLUMN_PRESETS.full;
+  const key = csvColumnsStorageKey(userId);
+  if (!key) return CSV_COLUMN_PRESETS.full;
+  try {
+    const cols = parseStoredCsvColumns(window.localStorage.getItem(key));
+    if (cols && cols.length) return cols;
   } catch {
     // localStorage may be unavailable (private mode / quota); fall through.
   }
-  return 'full';
+  return CSV_COLUMN_PRESETS.full;
 }
 
 function severityClass(sev) {
@@ -164,49 +229,72 @@ export default function TeacherAuditLogPage() {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [csvPreset, setCsvPresetState] = useState(() => readStoredCsvPreset(userId));
+  const [csvColumns, setCsvColumnsState] = useState(() => readStoredCsvColumns(userId));
   const [expanded, setExpanded] = useState({});
+
+  const csvPreset = useMemo(() => presetMatching(csvColumns), [csvColumns]);
 
   // If the authenticated identity changes (e.g. a different teacher
   // signs into the same browser profile), re-read the per-user
   // preference so we never display the previous teacher's choice.
   useEffect(() => {
-    setCsvPresetState(readStoredCsvPreset(userId));
+    setCsvColumnsState(readStoredCsvColumns(userId));
   }, [userId]);
 
-  const setCsvPreset = useCallback((next) => {
-    setCsvPresetState(next);
-    if (typeof window === 'undefined') return;
-    const key = csvPresetStorageKey(userId);
-    if (!key) return;
-    try {
-      if (next && Object.prototype.hasOwnProperty.call(CSV_COLUMN_PRESETS, next)) {
-        window.localStorage.setItem(key, next);
+  // Wrapper around setCsvColumns that also persists the new selection
+  // for this user. Empty arrays are intentionally NOT persisted — the
+  // export button is disabled in that state and there's no value in
+  // resurrecting an empty selection on the next visit.
+  const setCsvColumns = useCallback((next) => {
+    setCsvColumnsState(prev => {
+      const value = typeof next === 'function' ? next(prev) : next;
+      if (typeof window !== 'undefined' && Array.isArray(value) && value.length) {
+        const key = csvColumnsStorageKey(userId);
+        if (key) {
+          try {
+            window.localStorage.setItem(key, JSON.stringify(value));
+          } catch {
+            // localStorage may be unavailable or full; preference simply
+            // won't persist this session.
+          }
+        }
       }
-    } catch {
-      // localStorage may be unavailable or full; preference simply
-      // won't persist this session.
-    }
+      return value;
+    });
   }, [userId]);
 
-  // Cross-tab sync — if the teacher flips the preset in another tab,
-  // mirror it here so the two tabs don't show conflicting selections.
-  // Scoped to this user's key so a different teacher signed into a
-  // sibling tab can't overwrite our state.
+  // Cross-tab sync — if the teacher edits the column selection in
+  // another tab, mirror it here so the two tabs don't show conflicting
+  // selections. Scoped to this user's key so a different teacher
+  // signed into a sibling tab can't overwrite our state.
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
-    const myKey = csvPresetStorageKey(userId);
+    const myKey = csvColumnsStorageKey(userId);
     if (!myKey) return undefined;
     const onStorage = (e) => {
       if (e.key !== myKey) return;
-      const next = e.newValue;
-      if (next && Object.prototype.hasOwnProperty.call(CSV_COLUMN_PRESETS, next)) {
-        setCsvPresetState(next);
-      }
+      const cols = parseStoredCsvColumns(e.newValue);
+      if (cols && cols.length) setCsvColumnsState(cols);
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, [userId]);
+
+  const onPickPreset = useCallback((value) => {
+    if (value === 'custom') return; // custom is read-only; checkboxes drive it
+    const next = CSV_COLUMN_PRESETS[value];
+    if (next) setCsvColumns(next);
+  }, [setCsvColumns]);
+
+  const onToggleColumn = useCallback((key, checked) => {
+    setCsvColumns(prev => {
+      const set = new Set(prev);
+      if (checked) set.add(key); else set.delete(key);
+      // Re-order to match _CSV_FIELDS so the FE-side preset match
+      // stays stable regardless of toggle order.
+      return CSV_ALL_COLUMNS.filter(f => set.has(f));
+    });
+  }, [setCsvColumns]);
 
   const errMsg = useMemo(
     () => t('auditLogLoadFailed') || 'تعذّر تحميل سجل النشاط — حاول لاحقًا.',
@@ -228,10 +316,11 @@ export default function TeacherAuditLogPage() {
       if (fromIso) params.from = fromIso;
       if (toIso) params.to = toIso;
       // Only attach `columns` when narrowing the set; omitting the
-      // param keeps the legacy default behaviour intact.
-      const cols = CSV_COLUMN_PRESETS[csvPreset];
-      if (cols && csvPreset !== 'full') {
-        params.columns = cols.join(',');
+      // param keeps the legacy default behaviour intact. The backend
+      // also falls back to the full set on an empty selection, but
+      // the FE blocks the export button in that case.
+      if (csvColumns.length && !sameColumns(csvColumns, CSV_COLUMN_PRESETS.full)) {
+        params.columns = csvColumns.join(',');
       }
       const res = await api.get('/independent-teacher/audit-logs/export.csv', {
         params,
@@ -255,7 +344,7 @@ export default function TeacherAuditLogPage() {
     } finally {
       setExporting(false);
     }
-  }, [api, activeCategory, fromDate, toDate, csvPreset, exporting, nassaqError, exportErrMsg]);
+  }, [api, activeCategory, fromDate, toDate, csvColumns, exporting, nassaqError, exportErrMsg]);
 
   const fetchPage = useCallback(async (opts = {}) => {
     setLoading(true);
@@ -349,7 +438,7 @@ export default function TeacherAuditLogPage() {
                   size="sm"
                   className="rounded-none border-0"
                   onClick={onDownloadCsv}
-                  disabled={exporting || loading}
+                  disabled={exporting || loading || !csvColumns.length}
                   title={t('downloadCsv') || 'تنزيل CSV'}
                 >
                   {exporting
@@ -378,9 +467,9 @@ export default function TeacherAuditLogPage() {
                     <DropdownMenuSeparator />
                     <DropdownMenuRadioGroup
                       value={csvPreset}
-                      onValueChange={setCsvPreset}
+                      onValueChange={onPickPreset}
                     >
-                      <DropdownMenuRadioItem value="minimal">
+                      <DropdownMenuRadioItem value="minimal" onSelect={(e) => e.preventDefault()}>
                         <div className="flex flex-col">
                           <span className="text-sm">
                             {t('csvColumnsMinimal') || 'مختصر — وقت + الحدث + المنفّذ'}
@@ -390,7 +479,7 @@ export default function TeacherAuditLogPage() {
                           </span>
                         </div>
                       </DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="standard">
+                      <DropdownMenuRadioItem value="standard" onSelect={(e) => e.preventDefault()}>
                         <div className="flex flex-col">
                           <span className="text-sm">
                             {t('csvColumnsStandard') || 'قياسي — بدون تفاصيل JSON'}
@@ -400,7 +489,7 @@ export default function TeacherAuditLogPage() {
                           </span>
                         </div>
                       </DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="full">
+                      <DropdownMenuRadioItem value="full" onSelect={(e) => e.preventDefault()}>
                         <div className="flex flex-col">
                           <span className="text-sm">
                             {t('csvColumnsFull') || 'كامل — جميع الأعمدة'}
@@ -410,7 +499,63 @@ export default function TeacherAuditLogPage() {
                           </span>
                         </div>
                       </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem
+                        value="custom"
+                        disabled
+                        onSelect={(e) => e.preventDefault()}
+                        className="data-[disabled]:opacity-100"
+                      >
+                        <div className="flex flex-col">
+                          <span className="text-sm">
+                            {t('csvColumnsCustom') || 'مخصّص — اختيار يدوي'}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {t('csvColumnsCustomHint') || 'يتفعّل تلقائيًا عند تعديل القائمة أدناه'}
+                          </span>
+                        </div>
+                      </DropdownMenuRadioItem>
                     </DropdownMenuRadioGroup>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel className="flex items-center justify-between gap-2">
+                      <span>{t('csvColumnsListTitle') || 'الأعمدة'}</span>
+                      <span className="text-xs font-normal text-gray-500">
+                        {csvColumns.length}/{CSV_ALL_COLUMNS.length}
+                      </span>
+                    </DropdownMenuLabel>
+                    <div
+                      className="max-h-64 overflow-y-auto px-2 pb-2 space-y-1"
+                      role="group"
+                      aria-label={t('csvColumnsListTitle') || 'الأعمدة'}
+                    >
+                      {CSV_ALL_COLUMNS.map((key) => {
+                        const checked = csvColumns.includes(key);
+                        const id = `csv-col-${key}`;
+                        return (
+                          <label
+                            key={key}
+                            htmlFor={id}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded text-sm cursor-pointer hover:bg-gray-50"
+                          >
+                            <Checkbox
+                              id={id}
+                              checked={checked}
+                              onCheckedChange={(v) => onToggleColumn(key, v === true)}
+                            />
+                            <span className="flex-1">
+                              {CSV_COLUMN_LABELS_AR[key] || key}
+                            </span>
+                            <span className="text-[10px] text-gray-400 font-mono" dir="ltr">
+                              {key}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {!csvColumns.length && (
+                      <div className="px-3 pb-2 text-xs text-amber-700">
+                        {t('csvColumnsEmpty') || 'اختر عمودًا واحدًا على الأقل لتفعيل التنزيل.'}
+                      </div>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
