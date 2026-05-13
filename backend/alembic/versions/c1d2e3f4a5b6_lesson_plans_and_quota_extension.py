@@ -1,7 +1,7 @@
 """IT Phase 2 §6.4 — lesson_plans table + workspace_quota counter columns (Task #209)
 
 Revision ID: c1d2e3f4a5b6
-Revises: ('b1c2d3e4f5a6', 'b4c5d6e7f8a9')
+Revises: ('b1d2e3f4a5b7', 'b4d5e6f7a8b0')
 Create Date: 2026-05-13
 
 Merges the two open §6.x heads (calendar `is_personal` and
@@ -32,7 +32,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision: str = "c1d2e3f4a5b6"
-down_revision: Union[str, Sequence[str], None] = ("b1c2d3e4f5a6", "b4c5d6e7f8a9")
+down_revision: Union[str, Sequence[str], None] = ("b1d2e3f4a5b7", "b4d5e6f7a8b0")
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

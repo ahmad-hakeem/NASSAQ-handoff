@@ -1,7 +1,7 @@
 """IT Phase 2 §6.1 — workspace_quota table (Task #207)
 
-Revision ID: b4c5d6e7f8a9
-Revises: a3b4c5d6e7f8
+Revision ID: b4d5e6f7a8b0
+Revises: b4c5d6e7f8a9
 Create Date: 2026-05-12
 
 Adds the ``workspace_quota`` row that backs the workspace-aware bulk
@@ -15,8 +15,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "b4c5d6e7f8a9"
-down_revision: Union[str, Sequence[str], None] = "a3b4c5d6e7f8"
+revision: str = "b4d5e6f7a8b0"
+down_revision: Union[str, Sequence[str], None] = "b4c5d6e7f8a9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

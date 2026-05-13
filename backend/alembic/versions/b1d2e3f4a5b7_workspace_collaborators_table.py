@@ -1,7 +1,7 @@
 """IT Phase 2 §6.7 — workspace_collaborators table
 
-Revision ID: b1c2d3e4f5a6
-Revises: a3b4c5d6e7f8
+Revision ID: b1d2e3f4a5b7
+Revises: b1c2d3e4f5a6
 Create Date: 2026-05-12
 
 Backs the IT §6.7 cross-workspace co-teaching envelope (Task #210).
@@ -30,8 +30,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 
-revision: str = "b1c2d3e4f5a6"
-down_revision: Union[str, Sequence[str], None] = "a3b4c5d6e7f8"
+revision: str = "b1d2e3f4a5b7"
+down_revision: Union[str, Sequence[str], None] = "b1c2d3e4f5a6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
