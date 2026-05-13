@@ -21,3 +21,9 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# e2e (Playwright)
+/playwright-report
+/test-results
+/e2e/playwright.local.env
+playwright.local.env
