@@ -305,6 +305,58 @@ async def test_purge_happy_path_cascades_and_preserves_sibling_workspace(
 
 
 @pytest.mark.asyncio
+async def test_recent_purges_listing_returns_purged_workspace(
+    client, platform_admin_headers,
+):
+    """After a successful purge, the audit-backed history endpoint
+    must surface the row with snapshot + per-table counts so a
+    platform admin can answer 'did we already purge X?' without
+    leaving the page."""
+    ctx = await mk_it_workspace()
+    await _seed_extra_rows(ctx["wsid"])
+    await _flip_pending_hard_delete(ctx["wsid"])
+
+    purge = await client.post(
+        f"/platform/workspaces/{ctx['wsid']}/hard-delete",
+        json={"confirm_workspace_id": ctx["wsid"]},
+        headers=platform_admin_headers,
+    )
+    assert purge.status_code == 200, purge.text
+
+    resp = await client.get(
+        "/platform/workspaces/recent-purges",
+        headers=platform_admin_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "purges" in body
+    match = next(
+        (p for p in body["purges"] if p.get("workspace_id") == ctx["wsid"]),
+        None,
+    )
+    assert match is not None, body
+    assert isinstance(match.get("snapshot"), dict)
+    assert match["snapshot"].get("status") == "archived"
+    assert match.get("deleted_counts", {}).get("schools.id") == 1
+    assert match.get("purged_at")
+
+
+@pytest.mark.asyncio
+async def test_recent_purges_403_for_independent_teacher_caller(client):
+    """The history endpoint shares the platform-admin trust boundary;
+    an IT bearer must not be able to enumerate purged workspaces."""
+    ctx = await mk_it_workspace()
+    h = headers(
+        ctx["uid"], ctx["user"]["role"], ctx["wsid"],
+        mfa_recent_at=now_ts(),
+    )
+    resp = await client.get(
+        "/platform/workspaces/recent-purges", headers=h,
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_purge_idempotent_404_after_first_success(
     client, platform_admin_headers,
 ):

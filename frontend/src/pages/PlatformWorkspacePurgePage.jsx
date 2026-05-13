@@ -15,8 +15,9 @@ import {
   TableHeader,
   TableRow,
 } from '../components/ui/table';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
-import { RefreshCw, Trash2, AlertTriangle, ShieldAlert, X } from 'lucide-react';
+import { RefreshCw, Trash2, AlertTriangle, ShieldAlert, X, History, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const ARABIC = {
   pageTitle: 'مساحات العمل الجاهزة للحذف النهائي',
@@ -64,7 +65,27 @@ const ARABIC = {
   deleteFailed: 'تعذّر تنفيذ الحذف النهائي.',
   pendingBadge: 'بانتظار الحذف',
   notSet: '—',
+  tabPending: 'الجاهزة للحذف',
+  tabHistory: 'الحذف السابقة',
+  historyTitle: 'سجل عمليات الحذف الأخيرة',
+  historySubtitle:
+    'مساحات العمل التي تم حذفها نهائيًا، مأخوذة من سجل التدقيق.',
+  historyEmpty: 'لا توجد عمليات حذف سابقة مسجّلة.',
+  historyLoadFailed: 'تعذّر تحميل سجل عمليات الحذف.',
+  thPurgedAt: 'تاريخ الحذف',
+  thActor: 'المنفّذ',
+  thCounts: 'الصفوف المحذوفة',
+  totalRows: 'الإجمالي',
+  perTable: 'حسب الجدول',
+  showDetails: 'عرض التفاصيل',
+  hideDetails: 'إخفاء التفاصيل',
+  prevPage: 'السابق',
+  nextPage: 'التالي',
+  page: 'صفحة',
+  skippedTablesLabel: 'جداول تم تخطّيها',
 };
+
+const PAGE_SIZE = 25;
 
 const formatDate = (iso) => {
   if (!iso) return ARABIC.notSet;
@@ -99,6 +120,12 @@ export const PlatformWorkspacePurgePage = () => {
   const [confirmInput, setConfirmInput] = useState('');
   const [submittingId, setSubmittingId] = useState(null);
 
+  const [tab, setTab] = useState('pending');
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPage, setHistoryPage] = useState(0);
+  const [historyExpanded, setHistoryExpanded] = useState(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -111,9 +138,34 @@ export const PlatformWorkspacePurgePage = () => {
     }
   }, [api, nassaqError]);
 
+  const loadHistory = useCallback(async (page = 0) => {
+    setHistoryLoading(true);
+    try {
+      const resp = await api.get('/platform/workspaces/recent-purges', {
+        params: { limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+      });
+      setHistory(resp?.data?.purges || []);
+      setHistoryPage(page);
+    } catch (err) {
+      nassaqError(safeArabicError(err, ARABIC.historyLoadFailed));
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [api, nassaqError]);
+
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    // Refetch on every tab activation so a freshly-completed purge
+    // shows up without forcing a manual refresh click.
+    if (tab === 'history' && !historyLoading) {
+      loadHistory(historyPage);
+    }
+    // Only fire on tab switch — page changes call loadHistory directly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   const closePanel = () => {
     if (submittingId) return;
@@ -180,15 +232,30 @@ export const PlatformWorkspacePurgePage = () => {
             </div>
             <Button
               variant="outline"
-              onClick={load}
-              disabled={loading}
+              onClick={() => (tab === 'history' ? loadHistory(historyPage) : load())}
+              disabled={tab === 'history' ? historyLoading : loading}
               className="rounded-xl gap-2"
               data-testid="refresh-purge-list"
             >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-4 w-4 ${(tab === 'history' ? historyLoading : loading) ? 'animate-spin' : ''}`} />
               {ARABIC.refresh}
             </Button>
           </div>
+
+          <Tabs value={tab} onValueChange={setTab} className="mb-4">
+            <TabsList className="rounded-xl">
+              <TabsTrigger value="pending" className="font-cairo gap-2" data-testid="tab-pending-purges">
+                <AlertTriangle className="h-4 w-4" />
+                {ARABIC.tabPending}
+                <Badge variant="secondary" className="ml-1 font-cairo">{rows.length}</Badge>
+              </TabsTrigger>
+              <TabsTrigger value="history" className="font-cairo gap-2" data-testid="tab-purge-history">
+                <History className="h-4 w-4" />
+                {ARABIC.tabHistory}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="pending" className="mt-4">
 
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardHeader className="pb-3">
@@ -360,6 +427,170 @@ export const PlatformWorkspacePurgePage = () => {
               )}
             </CardContent>
           </Card>
+            </TabsContent>
+
+            <TabsContent value="history" className="mt-4">
+              <Card className="rounded-2xl border-0 shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="font-cairo text-base flex items-center gap-2">
+                    <History className="h-4 w-4 text-gray-500" />
+                    {ARABIC.historyTitle}
+                  </CardTitle>
+                  <CardDescription className="font-cairo">
+                    {ARABIC.historySubtitle}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {historyLoading && history.length === 0 ? (
+                    <div className="py-10 text-center text-sm text-gray-500 font-cairo">
+                      <RefreshCw className="h-5 w-5 animate-spin inline-block ml-2" />
+                    </div>
+                  ) : history.length === 0 ? (
+                    <div className="py-10 text-center text-sm text-gray-500 font-cairo" data-testid="purge-history-empty">
+                      {ARABIC.historyEmpty}
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="font-cairo text-right">{ARABIC.thId}</TableHead>
+                            <TableHead className="font-cairo text-right">{ARABIC.thName}</TableHead>
+                            <TableHead className="font-cairo text-right">{ARABIC.thPurgedAt}</TableHead>
+                            <TableHead className="font-cairo text-right">{ARABIC.thActor}</TableHead>
+                            <TableHead className="font-cairo text-right">{ARABIC.thCounts}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {history.map((p) => {
+                            const totalRows = Object.values(p.deleted_counts || {}).reduce(
+                              (s, n) => s + (Number(n) || 0), 0,
+                            );
+                            const isOpen = historyExpanded === p.id;
+                            const snap = p.snapshot || {};
+                            return (
+                              <Fragment key={p.id}>
+                                <TableRow data-testid={`purge-history-row-${p.id}`}>
+                                  <TableCell className="font-mono text-xs break-all">
+                                    {p.workspace_id || ARABIC.notSet}
+                                  </TableCell>
+                                  <TableCell className="font-cairo">
+                                    <div className="flex flex-col">
+                                      <span>{snap.name_ar || snap.name || ARABIC.notSet}</span>
+                                      {snap.name_en && (
+                                        <span className="text-xs text-gray-500">{snap.name_en}</span>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="font-mono text-xs text-gray-600">
+                                    {formatDate(p.purged_at)}
+                                  </TableCell>
+                                  <TableCell className="font-cairo text-sm">
+                                    <div className="flex flex-col">
+                                      <span>{p.actor_name || ARABIC.notSet}</span>
+                                      {p.actor_email && (
+                                        <span className="text-xs text-gray-500 font-mono">{p.actor_email}</span>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="secondary" className="font-cairo">
+                                        {ARABIC.totalRows}: {totalRows}
+                                      </Badge>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="rounded-xl font-cairo text-xs"
+                                        onClick={() => setHistoryExpanded(isOpen ? null : p.id)}
+                                        data-testid={`toggle-purge-details-${p.id}`}
+                                      >
+                                        {isOpen ? ARABIC.hideDetails : ARABIC.showDetails}
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                                {isOpen && (
+                                  <TableRow className="bg-gray-50/70">
+                                    <TableCell colSpan={5} className="p-4">
+                                      <div className="rounded-xl border border-gray-200 bg-white p-4" dir="rtl">
+                                        <div className="font-bold font-cairo text-sm mb-2">
+                                          {ARABIC.perTable}
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-sm">
+                                          {Object.entries(p.deleted_counts || {})
+                                            .sort(([a], [b]) => a.localeCompare(b))
+                                            .map(([k, v]) => (
+                                              <div
+                                                key={k}
+                                                className="flex justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-1.5 font-mono text-xs"
+                                              >
+                                                <span className="truncate">{k}</span>
+                                                <span className="font-bold text-gray-800">{v}</span>
+                                              </div>
+                                            ))}
+                                        </div>
+                                        {p.skipped_tables && p.skipped_tables.length > 0 && (
+                                          <div className="mt-3">
+                                            <div className="font-bold font-cairo text-xs text-amber-700 mb-1">
+                                              {ARABIC.skippedTablesLabel}
+                                            </div>
+                                            <div className="flex flex-wrap gap-1">
+                                              {p.skipped_tables.map((s) => (
+                                                <Badge
+                                                  key={s}
+                                                  variant="outline"
+                                                  className="font-mono text-[10px] border-amber-200 text-amber-700 bg-amber-50"
+                                                >
+                                                  {s}
+                                                </Badge>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                              </Fragment>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+
+                      <div className="flex items-center justify-between mt-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl gap-2 font-cairo"
+                          disabled={historyLoading || historyPage === 0}
+                          onClick={() => loadHistory(historyPage - 1)}
+                          data-testid="purge-history-prev"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                          {ARABIC.prevPage}
+                        </Button>
+                        <div className="font-cairo text-sm text-gray-600">
+                          {ARABIC.page} {historyPage + 1}
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl gap-2 font-cairo"
+                          disabled={historyLoading || history.length < PAGE_SIZE}
+                          onClick={() => loadHistory(historyPage + 1)}
+                          data-testid="purge-history-next"
+                        >
+                          {ARABIC.nextPage}
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </main>
       </div>
     </div>

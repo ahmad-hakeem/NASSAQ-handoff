@@ -149,6 +149,68 @@ async def list_pending_hard_delete(
     }
 
 
+@router.get("/platform/workspaces/recent-purges")
+async def list_recent_purges(
+    limit: int = 50,
+    offset: int = 0,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+):
+    # Clamp pagination params so a buggy/abusive client can't pull the
+    # entire audit table in one call. Audit rows for hard-delete are
+    # rare in practice, so a tight default page size is fine.
+    if limit is None or limit < 1:
+        limit = 50
+    if limit > 200:
+        limit = 200
+    if offset is None or offset < 0:
+        offset = 0
+
+    rows = await gd_find(
+        db.session,
+        "audit_logs",
+        {"action": AUDIT_HARD_DELETED},
+        order_by="timestamp",
+        desc_order=True,
+        limit=limit,
+        offset=offset,
+    )
+
+    items: List[Dict[str, Any]] = []
+    for r in rows:
+        details = r.get("details") or {}
+        snapshot = details.get("snapshot") or {}
+        items.append({
+            "id": r.get("id"),
+            "workspace_id": (
+                details.get("school_id")
+                or details.get("tenant_id")
+                or r.get("entity_id")
+                or r.get("school_id")
+            ),
+            "snapshot": {
+                "name": snapshot.get("name"),
+                "name_ar": snapshot.get("name_ar"),
+                "name_en": snapshot.get("name_en"),
+                "status": snapshot.get("status"),
+                "archived_at": snapshot.get("archived_at"),
+                "last_export_at": snapshot.get("last_export_at"),
+            },
+            "deleted_counts": details.get("deleted_counts") or {},
+            "skipped_tables": details.get("skipped_tables") or [],
+            "purged_at": _iso(r.get("timestamp")) or details.get("purged_at"),
+            "performed_by": r.get("performed_by"),
+            "actor_name": r.get("actor_name"),
+            "actor_email": r.get("actor_email"),
+        })
+
+    return {
+        "count": len(items),
+        "limit": limit,
+        "offset": offset,
+        "purges": items,
+    }
+
+
 @router.post("/platform/workspaces/{workspace_id}/hard-delete")
 async def hard_delete_workspace(
     workspace_id: str,
