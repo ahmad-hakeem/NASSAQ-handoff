@@ -1,6 +1,6 @@
 import React, { useEffect, useCallback, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useTranslation } from '../../contexts/ThemeContext';
+import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { useParentActiveStudent } from '../../contexts/ParentActiveStudentContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent } from '../../components/ui/card';
@@ -20,6 +20,7 @@ const VALID_TABS = ['details', 'schedule', 'homework', 'behavior'];
 
 const ParentChildrenPage = () => {
   const { t } = useTranslation();
+  const { isRTL } = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   // Task #146 — children + active student come from the global parent
   // context (mounted at App root). This page only owns the URL `?child=` /
@@ -147,7 +148,14 @@ const ParentChildrenPage = () => {
                       <p className="text-sm text-muted-foreground truncate">
                         {activeChild.grade} - {activeChild.class_name}
                       </p>
-                      <p className="text-xs text-muted-foreground truncate">{activeChild.school_name}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {activeChild.is_independent_teacher_workspace
+                          ? (activeChild.teacher_display_name
+                              ? (t('teacherWorkspaceLabel') || (isRTL ? 'مساحة الأستاذ/ة {name}' : "{name}'s workspace"))
+                                  .replace('{name}', activeChild.teacher_display_name)
+                              : (t('independentTeacherWorkspace') || (isRTL ? 'مساحة معلّم مستقل' : 'Independent teacher workspace')))
+                          : activeChild.school_name}
+                      </p>
                     </div>
                   </div>
                 </div>

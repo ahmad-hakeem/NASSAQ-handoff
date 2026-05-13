@@ -721,14 +721,39 @@ async def accept_parent_invitation(
         "role": "parent",
         "tenant_id": workspace_id,
     })
+
+    # Task #277 — surface the inviting teacher's display name + the
+    # workspace name so the parent-side accept landing can render a
+    # branded welcome card ("تمت إضافتك من قِبل الأستاذ/ة …"). Both
+    # fields are best-effort and fall back to None silently so a
+    # missing schools/users row never breaks the accept flow itself.
+    inviter_teacher_name = None
+    workspace_name = None
+    try:
+        host_user_id = inv.get("created_by")
+        if host_user_id:
+            host_row = await gd_find_one(db.session, "users", {"id": host_user_id})
+            if host_row:
+                inviter_teacher_name = (host_row.get("full_name") or "").strip() or None
+        ws_row = await gd_find_one(db.session, "schools", {"id": workspace_id})
+        if ws_row:
+            workspace_name = (ws_row.get("name") or "").strip() or None
+    except Exception:  # noqa: BLE001
+        logger.debug("accept invitation: inviter/workspace name lookup failed")
+
+    student_name = (student.get("full_name") or "").strip() or None
+
     return {
         "ok": True,
         "invitation_id": invitation_id,
         "workspace_school_id": workspace_id,
         "student_id": student_id,
+        "student_name": student_name,
         "parent_id": parent_id,
         "parent_user_id": parent_user_id,
         "matched_by": matched_by,
+        "inviter_teacher_name": inviter_teacher_name,
+        "workspace_name": workspace_name,
         "access_token": bearer,
         "token_type": "bearer",
     }

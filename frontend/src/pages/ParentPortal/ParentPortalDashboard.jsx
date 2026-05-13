@@ -16,9 +16,91 @@ import {
   Users, GraduationCap, Calendar, MessageSquare,
   Building, RefreshCw, AlertCircle,
   Clock, CheckCircle2, Star, Sparkles, CalendarDays,
-  ArrowLeft, ArrowRight, Award,
+  ArrowLeft, ArrowRight, Award, UserCheck, X,
 } from 'lucide-react';
 import { formatFullDate } from '../../utils/hijriDate';
+
+/* -------------------------------------------------------------------------- */
+/* Task #277 — one-shot welcome card for IT-invited parents                    */
+/*                                                                            */
+/* Reads the localStorage flag seeded by ParentInvitationAcceptPage on a      */
+/* successful accept, renders a dismissible welcome banner that names the     */
+/* inviting teacher and the workspace, and clears the flag after dismissal    */
+/* (or after 14 days, whichever comes first) so it never re-appears.          */
+/* -------------------------------------------------------------------------- */
+const INVITE_WELCOME_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
+const InviteWelcomeCard = ({ studentId, t, isRTL }) => {
+  const storageKey = studentId ? `nassaq_invite_welcome_${studentId}` : null;
+  const [payload, setPayload] = useState(() => {
+    if (!storageKey) return null;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed?.seeded_at && Date.now() - parsed.seeded_at > INVITE_WELCOME_TTL_MS) {
+        localStorage.removeItem(storageKey);
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
+  });
+
+  if (!payload) return null;
+
+  const dismiss = () => {
+    try { if (storageKey) localStorage.removeItem(storageKey); } catch { /* noop */ }
+    setPayload(null);
+  };
+
+  return (
+    <div
+      className="relative rounded-2xl bg-gradient-to-br from-emerald-500/15 via-brand-turquoise/10 to-transparent border border-emerald-400/40 p-4 md:p-5 text-foreground"
+      data-testid="parent-invite-welcome-card"
+    >
+      <button
+        type="button"
+        onClick={dismiss}
+        className={`absolute top-2 ${isRTL ? 'left-2' : 'right-2'} p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/5`}
+        aria-label={t('dismiss') || 'Dismiss'}
+        data-testid="invite-welcome-dismiss"
+      >
+        <X className="h-4 w-4" />
+      </button>
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center shrink-0">
+          <UserCheck className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-tajawal font-bold uppercase tracking-wide text-emerald-600">
+            {t('invitationWelcomeBadge') || (isRTL ? 'مرحبًا بك' : 'Welcome')}
+          </p>
+          <h3 className="text-base md:text-lg font-cairo font-bold mt-0.5">
+            {payload.student_name
+              ? (t('invitationWelcomeTitleNamed')
+                  || (isRTL ? 'تم ربط حسابك بالطالب {name}' : 'Your account is linked to {name}'))
+                  .replace('{name}', payload.student_name)
+              : (t('invitationWelcomeTitle') || (isRTL ? 'تم تفعيل حسابك بنجاح' : 'Your account is active'))}
+          </h3>
+          {(payload.inviter_teacher_name || payload.workspace_name) && (
+            <p className="text-sm font-tajawal text-muted-foreground mt-1">
+              {payload.inviter_teacher_name && (
+                (t('invitedByTeacherInline') || (isRTL ? 'تمت إضافتك من قِبل الأستاذ/ة {teacher}' : 'You were invited by {teacher}'))
+                  .replace('{teacher}', payload.inviter_teacher_name)
+              )}
+              {payload.inviter_teacher_name && payload.workspace_name && ' — '}
+              {payload.workspace_name && (
+                <span className="text-foreground/80">{payload.workspace_name}</span>
+              )}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 /* -------------------------------------------------------------------------- */
 /* Hero school-day strip (RTL-safe, compact, on dark navy)                    */
@@ -293,6 +375,13 @@ const ParentPortalDashboard = () => {
           </Card>
         )}
 
+        {/* Task #277 — one-shot welcome card for IT-invited parents.
+            Renders only while the localStorage flag set on accept is
+            present; clears itself on dismiss or after 14 days. */}
+        {selectedChildId && (
+          <InviteWelcomeCard studentId={selectedChildId} t={t} isRTL={isRTL} />
+        )}
+
         {selectedChild && liveData && (
           <>
             {/* ============================================================= */}
@@ -345,11 +434,26 @@ const ParentPortalDashboard = () => {
                             </span>
                           </span>
                         )}
-                        {liveData.student?.school_name && (
-                          <span className="flex items-center gap-1.5 text-xs font-tajawal text-white/65 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1">
-                            <Building className="w-3.5 h-3.5 shrink-0" />
-                            <span className="truncate max-w-[220px]">{liveData.student?.school_name}</span>
+                        {liveData.student?.is_independent_teacher_workspace ? (
+                          <span
+                            className="flex items-center gap-1.5 text-xs font-tajawal text-brand-turquoise bg-brand-turquoise/10 border border-brand-turquoise/40 rounded-lg px-2.5 py-1"
+                            data-testid="hero-it-badge"
+                          >
+                            <UserCheck className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate max-w-[220px]">
+                              {liveData.student?.teacher_display_name
+                                ? (t('teacherWorkspaceLabel') || (isRTL ? 'مساحة الأستاذ/ة {name}' : "{name}'s workspace"))
+                                    .replace('{name}', liveData.student.teacher_display_name)
+                                : (t('independentTeacherWorkspace') || (isRTL ? 'مساحة معلّم مستقل' : 'Independent teacher workspace'))}
+                            </span>
                           </span>
+                        ) : (
+                          liveData.student?.school_name && (
+                            <span className="flex items-center gap-1.5 text-xs font-tajawal text-white/65 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1">
+                              <Building className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate max-w-[220px]">{liveData.student?.school_name}</span>
+                            </span>
+                          )
                         )}
                       </div>
                     </div>

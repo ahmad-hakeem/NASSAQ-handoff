@@ -233,7 +233,12 @@ const ChildDetailsPage = () => {
                 <h1 className="text-2xl font-bold font-cairo">{child.name}</h1>
                 <p className="text-white/80 flex items-center gap-2 mt-1">
                   <MapPin className="h-4 w-4" />
-                  {child.school_name}
+                  {child.is_independent_teacher_workspace
+                    ? (child.teacher_display_name
+                        ? (t('teacherWorkspaceLabel') || (isRTL ? 'مساحة الأستاذ/ة {name}' : "{name}'s workspace"))
+                            .replace('{name}', child.teacher_display_name)
+                        : (t('independentTeacherWorkspace') || (isRTL ? 'مساحة معلّم مستقل' : 'Independent teacher workspace')))
+                    : child.school_name}
                 </p>
                 <div className="flex items-center gap-3 mt-2">
                   <Badge className="bg-white/20 text-white border-0">
@@ -444,22 +449,29 @@ const ChildDetailsPage = () => {
           </TabsContent>
         </Tabs>
 
-        {/* Contact Teachers */}
-        <Card className="rounded-2xl border-0 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-brand-navy" />
-              {t('contactTeachers')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Link to={`/parent/child/${childId}/teachers`}>
-              <Button className="w-full bg-brand-navy hover:bg-brand-navy-dark">
-                {t('viewTeachersList')}
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
+        {/* Contact Teachers — hidden for IT-invited parents (Task #277):
+            the teacher-list page is a school-only roster surface that does
+            not apply to a single-teacher workspace. */}
+        {!child.is_independent_teacher_workspace && (
+          <Card
+            data-testid="contact-teachers-card"
+            className="rounded-2xl border-0 shadow-sm"
+          >
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <MessageSquare className="h-5 w-5 text-brand-navy" />
+                {t('contactTeachers')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Link to={`/parent/child/${childId}/teachers`}>
+                <Button className="w-full bg-brand-navy hover:bg-brand-navy-dark">
+                  {t('viewTeachersList')}
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </PortalLayout>
   );

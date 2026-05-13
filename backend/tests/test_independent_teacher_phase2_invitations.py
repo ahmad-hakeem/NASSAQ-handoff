@@ -506,3 +506,105 @@ async def test_legacy_invite_parent_delegates_when_flag_enabled(client):
     # Student MUST NOT have been linked — the envelope is async.
     student = await gd_find_one(db.session, "students", {"id": sid})
     assert student.get("parent_id") is None
+
+
+# ---------------------------------------------------------------------------
+# Task #277 — accept response surfaces inviter teacher + workspace name
+# (purely additive — preserves existing keys).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_accept_response_includes_inviter_and_workspace_names(client):
+    """The §6.2b accept route must additively expose `inviter_teacher_name`,
+    `workspace_name` and `student_name` so the parent landing can render
+    a branded welcome card after a successful accept (Task #277). The
+    legacy keys (`access_token`, `student_id`, `parent_user_id`, …) MUST
+    keep flowing unchanged so older clients are not broken.
+    """
+    # Reset the per-IP accept rate-limit bucket so prior tests in the
+    # same module don't push us over the burst cap.
+    from middleware.rate_limiter import rate_store
+    rate_store._store.clear()
+
+    ctx = await mk_it_workspace(with_student=False, with_parent=False, with_passkey=False)
+    sid = await _mk_pending_student(ctx["wsid"])
+
+    # Backfill `created_by` on the invitation row so the accept handler
+    # can resolve the inviting teacher's display name.
+    inv_id, token = await _seed_invitation(
+        ctx["wsid"], sid,
+        parent_email=f"polish-{uuid.uuid4()}@example.com",
+        parent_phone="+966500111222",
+    )
+    await gd_update_one(
+        db.session, "parent_invitations", {"id": inv_id},
+        {"$set": {"created_by": ctx["uid"]}},
+    )
+    # Give the student a recognisable display name to verify the new
+    # `student_name` field on the response.
+    await gd_update_one(
+        db.session, "students", {"id": sid},
+        {"$set": {"full_name": "طالب الترحيب"}},
+    )
+
+    resp = await client.post(
+        "/public/parent-invitations/accept",
+        json={"token": token, "full_name": "أب جديد"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    # Legacy contract — unchanged.
+    assert body["ok"] is True
+    assert body["student_id"] == sid
+    assert body["workspace_school_id"] == ctx["wsid"]
+    assert body["access_token"]
+    assert body["matched_by"] == "new"
+
+    # New additive fields.
+    assert body["student_name"] == "طالب الترحيب"
+    assert body["inviter_teacher_name"] == ctx["user"]["full_name"]
+    # mk_it_workspace seeds `schools.name = IT-Workspace-<uid prefix>`.
+    assert body["workspace_name"] and body["workspace_name"].startswith("IT-Workspace-")
+
+
+# ---------------------------------------------------------------------------
+# Task #277 — parent-portal endpoints surface IT context
+# (so the FE can swap the school chip for the inviting teacher's name and
+# hide school-only surfaces). Purely additive — legacy keys must keep
+# flowing unchanged.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_child_details_endpoint_includes_it_context(client):
+    ctx = await mk_it_workspace(with_passkey=False)
+    parent_h = headers(ctx["parent_user_id"], UserRole.PARENT.value, ctx["wsid"])
+
+    resp = await client.get(
+        f"/parent-portal/child/{ctx['student_id']}", headers=parent_h
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # Legacy keys preserved.
+    assert body["id"] == ctx["student_id"]
+    assert body["name"] == "طالب التجربة"
+    # New IT context fields.
+    assert body["school_id"] == ctx["wsid"]
+    assert body["is_independent_teacher_workspace"] is True
+    assert body["teacher_display_name"] == ctx["user"]["full_name"]
+
+
+@pytest.mark.asyncio
+async def test_child_profile_endpoint_includes_it_context(client):
+    ctx = await mk_it_workspace(with_passkey=False)
+    parent_h = headers(ctx["parent_user_id"], UserRole.PARENT.value, ctx["wsid"])
+
+    resp = await client.get(
+        f"/parent-portal/child/{ctx['student_id']}/profile", headers=parent_h
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["id"] == ctx["student_id"]
+    assert body["school_id"] == ctx["wsid"]
+    assert body["is_independent_teacher_workspace"] is True
+    assert body["teacher_display_name"] == ctx["user"]["full_name"]

@@ -221,6 +221,19 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                     school_name_cache[sid] = s_doc.get("name") if s_doc else sid
                 child_school_name = school_name_cache.get(sid, "")
 
+            # Task #277 — Independent-Teacher workspace context. When the
+            # student lives in an `itw_{user_id}` workspace, surface the
+            # owning teacher's display name + a flag so the parent FE can
+            # swap school metadata for IT-context affordances. Falls back
+            # silently if the user lookup misses.
+            child_sid = s.get("school_id") or school_id
+            is_it_ws = isinstance(child_sid, str) and child_sid.startswith("itw_")
+            teacher_display_name = None
+            if is_it_ws:
+                owner_uid = child_sid[len("itw_"):]
+                owner = await gd_find_one(db.session, "users", {"id": owner_uid}) if owner_uid else None
+                teacher_display_name = (owner or {}).get("full_name") or None
+
             children.append({
                 "id": child_id,
                 "name": s.get("full_name", s.get("name", "")),
@@ -229,7 +242,10 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 "class_name": s.get("class_name", ""),
                 "grade_id": s.get("grade_id"),
                 "class_id": s.get("class_id"),
+                "school_id": child_sid,
                 "school_name": child_school_name,
+                "is_independent_teacher_workspace": bool(is_it_ws),
+                "teacher_display_name": teacher_display_name,
                 "photo_url": s.get("photo_url", ""),
                 "profile_picture": s.get("photo_url", s.get("profile_picture", "")),
                 "attendance_rate": att_rate,
@@ -289,12 +305,21 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
 
+        child_sid = child.get("school_id") or current_user.get("tenant_id")
         child_school_name = child.get("school_name")
-        if not child_school_name:
-            sid = child.get("school_id") or current_user.get("tenant_id")
-            if sid:
-                s_doc = await gd_find_one(db.session, "schools", {"id": sid})
-                child_school_name = s_doc.get("name") if s_doc else None
+        if not child_school_name and child_sid:
+            s_doc = await gd_find_one(db.session, "schools", {"id": child_sid})
+            child_school_name = s_doc.get("name") if s_doc else None
+
+        # Task #277 — surface IT context so the parent FE swaps the school
+        # label for the inviting teacher's workspace and hides school-only
+        # surfaces (peer roster, principal contact, school events).
+        is_it_ws = isinstance(child_sid, str) and child_sid.startswith("itw_")
+        teacher_display_name = None
+        if is_it_ws:
+            owner_uid = child_sid[len("itw_"):]
+            owner = await gd_find_one(db.session, "users", {"id": owner_uid})
+            teacher_display_name = (owner or {}).get("full_name") or None
 
         return {
             "id": child.get("id"),
@@ -305,7 +330,10 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "grade": child.get("grade_level"),
             "class_name": child.get("class_name"),
             "class_id": child.get("class_id"),
+            "school_id": child_sid,
             "school_name": child_school_name,
+            "is_independent_teacher_workspace": bool(is_it_ws),
+            "teacher_display_name": teacher_display_name,
             "student_number": child.get("student_number"),
             "enrollment_date": child.get("enrollment_date"),
             "profile_picture": child.get("profile_picture"),
@@ -608,12 +636,24 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 s_doc = await gd_find_one(db.session, "schools", {"id": sid})
                 child_school_name = s_doc.get("name") if s_doc else ""
 
+        # Task #277 — IT-workspace context for the parent home hero.
+        child_sid = child.get("school_id") or school_id
+        is_it_ws = isinstance(child_sid, str) and child_sid.startswith("itw_")
+        teacher_display_name = None
+        if is_it_ws:
+            owner_uid = child_sid[len("itw_"):]
+            owner = await gd_find_one(db.session, "users", {"id": owner_uid}) if owner_uid else None
+            teacher_display_name = (owner or {}).get("full_name") or None
+
         return {
             "student": {
                 "name": child.get("full_name"),
+                "school_id": child_sid,
                 "school_name": child_school_name,
                 "grade_level": child.get("grade_level", child.get("grade", "")),
                 "class_name": child.get("class_name", ""),
+                "is_independent_teacher_workspace": bool(is_it_ws),
+                "teacher_display_name": teacher_display_name,
             },
             "school_day": {
                 "today": today_en,
@@ -981,19 +1021,29 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح")
 
+        sid = child.get("school_id") or current_user.get("tenant_id")
         school_name = child.get("school_name", "")
-        if not school_name:
-            sid = child.get("school_id") or current_user.get("tenant_id")
-            if sid:
-                s_doc = await gd_find_one(db.session, "schools", {"id": sid})
-                school_name = s_doc.get("name") if s_doc else ""
+        if not school_name and sid:
+            s_doc = await gd_find_one(db.session, "schools", {"id": sid})
+            school_name = s_doc.get("name") if s_doc else ""
+
+        # Task #277 — IT context for the parent profile page header.
+        is_it_ws = isinstance(sid, str) and sid.startswith("itw_")
+        teacher_display_name = None
+        if is_it_ws:
+            owner_uid = sid[len("itw_"):]
+            owner = await gd_find_one(db.session, "users", {"id": owner_uid})
+            teacher_display_name = (owner or {}).get("full_name") or None
 
         return {
             "id": child.get("id"),
             "name": child.get("full_name"),
             "grade_level": child.get("grade_level", child.get("grade", "")),
             "class_name": child.get("class_name", ""),
+            "school_id": sid,
             "school_name": school_name,
+            "is_independent_teacher_workspace": bool(is_it_ws),
+            "teacher_display_name": teacher_display_name,
             "emoji": child.get("emoji", "👦"),
             "profile_picture": child.get("profile_picture", ""),
             "gender": child.get("gender", ""),

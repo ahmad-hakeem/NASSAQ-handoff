@@ -321,11 +321,25 @@ async def create_bulk_attendance(
                         "phone": si['parent_phone'], "role": "parent"
                     })
                     if parent_user:
+                        # Task #277 — IT-aware copy: when the student lives in
+                        # an `itw_{user_id}` workspace, the parent does not
+                        # have a school context, so reference the inviting
+                        # teacher by name instead of "في المدرسة".
+                        _venue_ar = "في المدرسة"
+                        _venue_en = "at school"
+                        if isinstance(t_id, str) and t_id.startswith("itw_"):
+                            _owner = await gd_find_one(
+                                db.session, "users", {"id": t_id[len("itw_"):]}
+                            )
+                            _tname = (_owner or {}).get("full_name")
+                            if _tname:
+                                _venue_ar = f"لدى الأستاذ/ة {_tname}"
+                                _venue_en = f"with {_tname}"
                         await create_notification_internal(
                             title=f"تنبيه حضور ابنك/ابنتك",
                             title_en=f"Attendance Alert for Your Child",
-                            message=f"تم تسجيل {student_name} {status_ar} في المدرسة اليوم {bulk_data.date}",
-                            message_en=f"{student_name} was marked {status_en} at school on {bulk_data.date}",
+                            message=f"تم تسجيل {student_name} {status_ar} {_venue_ar} اليوم {bulk_data.date}",
+                            message_en=f"{student_name} was marked {status_en} {_venue_en} on {bulk_data.date}",
                             recipient_id=parent_user['id'],
                             notification_type="attendance",
                             priority="high" if att_status == 'absent' else "medium",

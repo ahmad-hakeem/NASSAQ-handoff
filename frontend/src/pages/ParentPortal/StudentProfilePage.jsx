@@ -175,7 +175,14 @@ const StudentProfilePage = () => {
                   </div>
                   <div className="flex items-center gap-2 mt-0.5 text-sm opacity-80">
                     <Building className="w-3.5 h-3.5" />
-                    <span>{profile?.school_name}</span>
+                    <span>
+                      {profile?.is_independent_teacher_workspace
+                        ? (profile?.teacher_display_name
+                            ? (t('teacherWorkspaceLabel') || (isRTL ? 'مساحة الأستاذ/ة {name}' : "{name}'s workspace"))
+                                .replace('{name}', profile.teacher_display_name)
+                            : (t('independentTeacherWorkspace') || (isRTL ? 'مساحة معلّم مستقل' : 'Independent teacher workspace')))
+                        : profile?.school_name}
+                    </span>
                   </div>
                 </div>
               </div>
