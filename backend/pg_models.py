@@ -150,6 +150,11 @@ class School(Base):
     # IT §6.8 single-use export token state.
     last_export_token_hash = Column(String, nullable=True)
     last_export_consumed_at = Column(DateTime(timezone=True), nullable=True)
+    # IT §6.8 reactivation reminder + banner state.
+    reactivation_reminder_sent_at = Column(DateTime(timezone=True), nullable=True)
+    last_reactivated_at = Column(DateTime(timezone=True), nullable=True)
+    last_archive_cycle_archived_at = Column(DateTime(timezone=True), nullable=True)
+    reactivation_banner_dismissed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 

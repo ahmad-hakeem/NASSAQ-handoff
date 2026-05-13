@@ -1,0 +1,123 @@
+import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { useTranslation } from '../../contexts/ThemeContext';
+import { formatHijriDate } from '../../utils/hijriDate';
+import { Button } from '../ui/button';
+import { CheckCircle2, X, ArrowRight } from 'lucide-react';
+
+/**
+ * Task #222 — IT post-login reactivation banner.
+ *
+ * Renders ONLY for `independent_teacher` users whose lifecycle row
+ * carries a `reactivation_banner` block (server gate: caller has
+ * reactivated since their last dismissal). Dismiss POSTs to the
+ * dedicated dismiss endpoint and removes the banner locally so the
+ * card disappears without a refresh.
+ *
+ * Safe to mount on every dashboard: when the gate is closed the
+ * single GET resolves to `reactivation_banner === null` and the
+ * component renders nothing.
+ */
+export default function ReactivationBanner() {
+  const { t } = useTranslation();
+  const { user, api } = useAuth();
+  const navigate = useNavigate();
+  const [banner, setBanner] = useState(null);
+  const [dismissing, setDismissing] = useState(false);
+
+  const isIndependentTeacher = (user?.role || '').toLowerCase() === 'independent_teacher';
+
+  useEffect(() => {
+    if (!api || !isIndependentTeacher) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get('/independent-teacher/workspace/lifecycle');
+        if (!cancelled && data?.reactivation_banner) {
+          setBanner(data.reactivation_banner);
+        }
+      } catch (_e) {
+        /* non-fatal — silently skip the banner */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [api, isIndependentTeacher]);
+
+  const handleDismiss = useCallback(async () => {
+    if (dismissing) return;
+    setDismissing(true);
+    setBanner(null);
+    try {
+      await api.post('/independent-teacher/workspace/lifecycle/reactivation-banner/dismiss');
+    } catch (_e) {
+      /* server-side will re-arm if persistence failed; UI already hidden */
+    } finally {
+      setDismissing(false);
+    }
+  }, [api, dismissing]);
+
+  if (!isIndependentTeacher || !banner) return null;
+
+  const archivedDate = banner.archived_at ? new Date(banner.archived_at) : null;
+  const wouldDeleteDate = banner.would_have_been_deleted_at
+    ? new Date(banner.would_have_been_deleted_at)
+    : null;
+  const archivedFmt = archivedDate ? formatHijriDate(archivedDate) : null;
+  const wouldDeleteFmt = wouldDeleteDate ? formatHijriDate(wouldDeleteDate) : null;
+  const daysLeft = banner.days_remaining_at_reactivation;
+
+  return (
+    <div
+      role="status"
+      data-testid="it-reactivation-banner"
+      className="relative rounded-2xl border border-emerald-500/30 bg-gradient-to-r from-emerald-500/10 via-emerald-400/5 to-brand-turquoise/10 p-4 mb-4 shadow-sm"
+    >
+      <button
+        type="button"
+        aria-label={t('itReactivationBannerDismiss')}
+        onClick={handleDismiss}
+        className="absolute top-3 end-3 p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+      >
+        <X className="h-4 w-4" />
+      </button>
+      <div className="flex items-start gap-3 pe-8">
+        <div className="h-10 w-10 rounded-xl bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+          <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-cairo font-bold text-sm text-foreground">
+            {t('itReactivationBannerTitle')}
+          </h3>
+          <div className="mt-1 space-y-1 text-xs font-tajawal text-muted-foreground">
+            {archivedFmt ? (
+              <p>
+                {t('itReactivationBannerArchivedOn').replace('{{date}}', archivedFmt)}
+              </p>
+            ) : (
+              <p>{t('itReactivationBannerNoCycle')}</p>
+            )}
+            {wouldDeleteFmt && daysLeft != null && (
+              <p>
+                {t('itReactivationBannerWindow')
+                  .replace('{{date}}', wouldDeleteFmt)
+                  .replace('{{days}}', String(daysLeft))}
+              </p>
+            )}
+          </div>
+          <div className="mt-3">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate('/account/settings#workspace')}
+              className="rounded-xl gap-1.5 text-xs"
+            >
+              {t('itReactivationBannerCta')}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

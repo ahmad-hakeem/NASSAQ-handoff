@@ -18,6 +18,7 @@ import {
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import { NotificationBell } from '../../components/notifications/NotificationBell';
 import { formatHijriDate, formatFullDate } from '../../utils/hijriDate';
+import ReactivationBanner from '../../components/teacher/ReactivationBanner';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 
@@ -216,6 +217,9 @@ export default function TeacherHomePage() {
         )}
 
         <div className="p-4 space-y-4 max-w-lg mx-auto">
+
+          {/* Task #222 — IT post-login reactivation banner */}
+          <ReactivationBanner />
 
           {/* Top Action Bar (Mobile) */}
           <div className="flex items-center justify-between">

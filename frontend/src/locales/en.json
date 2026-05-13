@@ -4459,5 +4459,11 @@
   "itSoftDeleteRequiresExport": "You must export your data within the last 24 hours before archiving.",
   "itSoftDeleteNameMismatch": "The workspace name does not match the registered name.",
   "itSoftDeleteFailed": "Could not complete the archive operation. Please try again later.",
-  "itSoftDeleteExportRequired": "You must export your workspace data within the last 24 hours before initiating soft-delete."
+  "itSoftDeleteExportRequired": "You must export your workspace data within the last 24 hours before initiating soft-delete.",
+  "itReactivationBannerTitle": "Welcome back — your workspace is active again",
+  "itReactivationBannerArchivedOn": "Your workspace was archived on {{date}}.",
+  "itReactivationBannerWindow": "It would have been permanently deleted on {{date}} ({{days}} day(s) left when you returned).",
+  "itReactivationBannerNoCycle": "Your workspace was just reactivated.",
+  "itReactivationBannerCta": "Manage workspace lifecycle",
+  "itReactivationBannerDismiss": "Dismiss"
 }

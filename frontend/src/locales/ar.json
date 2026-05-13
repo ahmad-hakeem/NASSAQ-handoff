@@ -4459,5 +4459,11 @@
   "itSoftDeleteRequiresExport": "يجب تصدير بياناتك خلال آخر ٢٤ ساعة قبل الأرشفة.",
   "itSoftDeleteNameMismatch": "اسم المساحة المُدخل لا يطابق الاسم المسجّل.",
   "itSoftDeleteFailed": "تعذّر إكمال عملية الأرشفة. حاول لاحقًا.",
-  "itSoftDeleteExportRequired": "يجب تصدير بيانات مساحة العمل خلال آخر 24 ساعة قبل بدء حذفها المؤقت."
+  "itSoftDeleteExportRequired": "يجب تصدير بيانات مساحة العمل خلال آخر 24 ساعة قبل بدء حذفها المؤقت.",
+  "itReactivationBannerTitle": "مرحبًا بعودتك — مساحتك نشطة من جديد",
+  "itReactivationBannerArchivedOn": "تمت أرشفة مساحتك في {{date}}.",
+  "itReactivationBannerWindow": "كانت ستُحذف نهائيًا في {{date}} (تبقّى {{days}} يومًا عند عودتك).",
+  "itReactivationBannerNoCycle": "تمت إعادة تفعيل مساحتك للتو.",
+  "itReactivationBannerCta": "إدارة دورة حياة المساحة",
+  "itReactivationBannerDismiss": "إغلاق"
 }

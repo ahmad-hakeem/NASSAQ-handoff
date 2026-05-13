@@ -302,6 +302,38 @@ async def read_workspace_lifecycle(
             return None
         return v.isoformat() if hasattr(v, "isoformat") else str(v)
 
+    # Reactivation banner gate: surface a one-time post-login banner
+    # whenever the user has reactivated since their last dismissal.
+    # Re-arms automatically on every fresh archive→reactivate cycle.
+    last_reactivated_at = _coerce_dt(school.get("last_reactivated_at"))
+    dismissed_at = _coerce_dt(school.get("reactivation_banner_dismissed_at"))
+    archive_cycle_archived_at = _coerce_dt(school.get("last_archive_cycle_archived_at"))
+    banner = None
+    if last_reactivated_at is not None and (
+        dismissed_at is None or dismissed_at < last_reactivated_at
+    ):
+        if archive_cycle_archived_at is not None:
+            would_have_been_deleted_at = archive_cycle_archived_at + _REACTIVATE_WINDOW
+            remaining = would_have_been_deleted_at - last_reactivated_at
+            days_remaining_at_reactivation = max(0, int(remaining.total_seconds() // 86400))
+            banner = {
+                "archived_at": archive_cycle_archived_at.isoformat(),
+                "reactivated_at": last_reactivated_at.isoformat(),
+                "would_have_been_deleted_at": would_have_been_deleted_at.isoformat(),
+                "reactivation_window_days": _REACTIVATE_WINDOW.days,
+                "days_remaining_at_reactivation": days_remaining_at_reactivation,
+            }
+        else:
+            # Defensive fallback for legacy rows reactivated before the
+            # archive-cycle column existed; show a minimal banner.
+            banner = {
+                "archived_at": None,
+                "reactivated_at": last_reactivated_at.isoformat(),
+                "would_have_been_deleted_at": None,
+                "reactivation_window_days": _REACTIVATE_WINDOW.days,
+                "days_remaining_at_reactivation": None,
+            }
+
     return {
         "workspace_id": workspace_id,
         "name_ar": school.get("name_ar"),
@@ -309,7 +341,38 @@ async def read_workspace_lifecycle(
         "last_export_at": _iso(school.get("last_export_at")),
         "archived_at": _iso(school.get("archived_at")),
         "pending_hard_delete": bool(school.get("pending_hard_delete")),
+        "reactivation_banner": banner,
     }
+
+
+# -- Endpoint: POST /independent-teacher/workspace/lifecycle/reactivation-banner/dismiss
+
+@router.post("/independent-teacher/workspace/lifecycle/reactivation-banner/dismiss")
+async def dismiss_reactivation_banner(
+    current_user: dict = Depends(_require_independent_teacher),
+):
+    """Stamp ``reactivation_banner_dismissed_at = now`` so the post-
+    login dashboard banner stops surfacing for the current archive
+    cycle. Idempotent: stamping again on an already-dismissed row is
+    a no-op from the user's perspective. A future archive→reactivate
+    cycle re-arms the banner because the gate compares the stamp
+    against ``last_reactivated_at``.
+    """
+    workspace_id = independent_workspace_id(current_user) or require_request_school_id(current_user)
+    school = await gd_find_one(db.session, "schools", {"id": workspace_id})
+    if not school:
+        raise HTTPException(status_code=404, detail=_MSG_WORKSPACE_NOT_FOUND)
+    now = _utcnow()
+    try:
+        async with db.session.begin_nested():
+            await gd_update_one(
+                db.session, "schools", {"id": workspace_id},
+                {"reactivation_banner_dismissed_at": now.isoformat()},
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("dismiss_reactivation_banner failed: %s", exc)
+        raise HTTPException(status_code=500, detail=_MSG_INTERNAL)
+    return {"ok": True, "dismissed_at": now.isoformat()}
 
 
 # -- Endpoint: POST /independent-teacher/workspace/export -----------------
@@ -608,6 +671,13 @@ async def reactivate_workspace(
     now = _utcnow()
     try:
         async with db.session.begin_nested():
+            # Copy ``archived_at`` into ``last_archive_cycle_archived_at``
+            # before nulling it so the post-login banner can render the
+            # "your workspace was archived on X" sentence and compute
+            # how many days were left when the user came back. Also
+            # stamp ``last_reactivated_at`` so the lifecycle GET can
+            # compare it against ``reactivation_banner_dismissed_at``
+            # and re-arm the banner on every fresh cycle.
             await gd_update_one(
                 db.session, "schools", {"id": workspace_id},
                 {
@@ -615,6 +685,8 @@ async def reactivate_workspace(
                     "archived_at": None,
                     "updated_at": now.isoformat(),
                     "reactivation_reminder_sent_at": None,
+                    "last_reactivated_at": now.isoformat(),
+                    "last_archive_cycle_archived_at": archived_at.isoformat(),
                 },
             )
             await audit_engine.log(

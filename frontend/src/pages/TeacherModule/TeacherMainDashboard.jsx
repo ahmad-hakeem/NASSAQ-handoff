@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import { NotificationBell } from '../../components/notifications/NotificationBell';
+import ReactivationBanner from '../../components/teacher/ReactivationBanner';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 const HAKIM_CHARACTER = '/hakim-poses/teacher-helper.png';
@@ -365,6 +366,9 @@ export default function TeacherMainDashboard() {
     <Sidebar>
       <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50/50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="p-4 md:p-6 space-y-5 max-w-[1400px] mx-auto">
+
+          {/* Task #222 — IT post-login reactivation banner */}
+          <ReactivationBanner />
 
           {/* Top Action Bar */}
           <div className="flex items-center justify-between">
