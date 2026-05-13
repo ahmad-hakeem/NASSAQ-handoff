@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTranslation } from '../../contexts/ThemeContext';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -94,8 +95,11 @@ function PlanPreview({ plan }) {
 }
 
 export default function LessonPlannerPage() {
-  const { api } = useAuth();
+  const { api, user } = useAuth();
+  const { t } = useTranslation();
   const { nassaqError, nassaqInfo, nassaqConfirm } = useNassaqAlert();
+  const isIndependentTeacher = (user?.role || '').toLowerCase() === 'independent_teacher';
+  const topicInputRef = useRef(null);
   const [form, setForm] = useState(DEFAULT_FORM);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -387,10 +391,12 @@ export default function LessonPlannerPage() {
               <div>
                 <label className="text-sm font-medium text-gray-700">موضوع الدرس *</label>
                 <Input
+                  ref={topicInputRef}
                   value={form.topic}
                   onChange={onChange('topic')}
                   placeholder="مثال: مقدمة في الكسور"
                   maxLength={500}
+                  data-testid="lesson-planner-topic-input"
                 />
               </div>
               <div>
@@ -467,6 +473,33 @@ export default function LessonPlannerPage() {
                   </Button>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!savedPlans.length && !current && isIndependentTeacher && (
+          <Card
+            className="border-dashed border-workspace-accent-border bg-workspace-accent-light/30"
+            data-testid="lesson-planner-empty-state-it"
+          >
+            <CardContent className="text-center py-16">
+              <Sparkles className="h-16 w-16 mx-auto mb-4 text-workspace-accent" />
+              <h3 className="font-bold text-lg mb-2 font-cairo text-workspace-accent-fg">
+                {t('itEmptyLessonPlansTitle')}
+              </h3>
+              <p className="text-muted-foreground text-sm font-tajawal mb-5 max-w-md mx-auto">
+                {t('itEmptyLessonPlansDescription')}
+              </p>
+              <Button
+                onClick={() => {
+                  try { topicInputRef.current?.focus(); } catch (_e) { /* noop */ }
+                }}
+                className="bg-workspace-accent hover:bg-workspace-accent-fg text-white rounded-xl gap-2 px-5"
+                data-testid="lesson-planner-empty-state-cta"
+              >
+                <Sparkles className="h-4 w-4" />
+                {t('itEmptyLessonPlansCta')}
+              </Button>
             </CardContent>
           </Card>
         )}

@@ -74,6 +74,10 @@ export const AdminCalendar = ({
   importEnabled = true,
   titleAr = 'الروزنامة الإدارية',
   titleEn = 'Administrative Calendar',
+  // Task #307 — opt-in styled empty state (workspace-accent dashed card
+  // with a primary CTA that opens the add-event dialog). Default `null`
+  // preserves the legacy school-wide neutral empty state byte-identically.
+  emptyState = null,
 } = {}) => {
   const { t } = useTranslation();
   const { isRTL } = useTheme();
@@ -373,12 +377,35 @@ export const AdminCalendar = ({
             <Loader2 className="h-5 w-5 animate-spin text-brand-turquoise" />
           </div>
         ) : sortedEvents.length === 0 ? (
-          <div className="text-center py-8">
-            <Sparkles className="h-7 w-7 text-brand-turquoise/60 mx-auto mb-2" />
-            <p className="text-sm font-tajawal text-muted-foreground">
-              {isRTL ? 'لا توجد أحداث قادمة' : 'No upcoming events'}
-            </p>
-          </div>
+          emptyState ? (
+            <div
+              className="text-center py-12 px-4 rounded-xl border border-dashed border-workspace-accent-border bg-workspace-accent-light/30"
+              data-testid="admin-calendar-empty-state-styled"
+            >
+              <Sparkles className="h-12 w-12 mx-auto mb-3 text-workspace-accent" />
+              <h3 className="font-bold text-base mb-2 font-cairo text-workspace-accent-fg">
+                {emptyState.title}
+              </h3>
+              <p className="text-muted-foreground text-sm font-tajawal mb-4 max-w-md mx-auto">
+                {emptyState.description}
+              </p>
+              <Button
+                onClick={openAddForm}
+                className="bg-workspace-accent hover:bg-workspace-accent-fg text-white rounded-xl gap-2 px-5"
+                data-testid="admin-calendar-empty-state-cta"
+              >
+                <Plus className="h-4 w-4" />
+                {emptyState.ctaLabel}
+              </Button>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Sparkles className="h-7 w-7 text-brand-turquoise/60 mx-auto mb-2" />
+              <p className="text-sm font-tajawal text-muted-foreground">
+                {isRTL ? 'لا توجد أحداث قادمة' : 'No upcoming events'}
+              </p>
+            </div>
+          )
         ) : (
           <ul className="space-y-1.5" data-testid="admin-calendar-list">
             {sortedEvents.map((event) => {

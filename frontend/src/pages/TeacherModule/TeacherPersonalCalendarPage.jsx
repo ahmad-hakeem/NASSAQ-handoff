@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { AdminCalendar } from '../../components/dashboard/AdminCalendar';
 
 /**
@@ -18,6 +18,7 @@ export default function TeacherPersonalCalendarPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { isRTL } = useTheme();
+  const { t } = useTranslation();
   const isIndependent = (user?.role || '').toLowerCase() === 'independent_teacher';
 
   useEffect(() => {
@@ -45,6 +46,11 @@ export default function TeacherPersonalCalendarPage() {
           importEnabled={false}
           titleAr="تقويمي الشخصي"
           titleEn="My Personal Calendar"
+          emptyState={{
+            title: t('itEmptyPersonalCalendarTitle'),
+            description: t('itEmptyPersonalCalendarDescription'),
+            ctaLabel: t('itEmptyPersonalCalendarCta'),
+          }}
         />
       </div>
     </div>
