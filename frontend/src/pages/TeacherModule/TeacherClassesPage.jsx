@@ -303,7 +303,10 @@ export default function TeacherClassesPage() {
     try {
       const res = await api.get('/subjects').catch(() => ({ data: [] }));
       const subjects = Array.isArray(res.data) ? res.data : (res.data?.subjects || []);
-      setWorkspaceSubjects(subjects);
+      // Defensive filter: backend already excludes soft-deleted rows, but
+      // belt-and-suspenders so a stale cache never surfaces a tombstoned
+      // subject in the create-class dropdown (Task #190).
+      setWorkspaceSubjects(subjects.filter(s => s?.is_active !== false));
     } catch (err) {
       console.error('Error fetching subjects:', err);
     }
@@ -958,8 +961,23 @@ export default function TeacherClassesPage() {
                       {isRTL ? (s.name_ar || s.name) : (s.name_en || s.name || s.name_ar)}
                     </SelectItem>
                   )) : (
-                    <div className="px-3 py-2 text-xs text-muted-foreground font-tajawal">
-                      {t('workspaceClassNoSubjects')}
+                    <div className="px-3 py-2 space-y-2">
+                      <div className="text-xs text-muted-foreground font-tajawal">
+                        {t('workspaceClassNoSubjects')}
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="font-cairo gap-1 w-full"
+                        onClick={() => {
+                          setShowAddClassDialog(false);
+                          navigate('/teacher/subjects');
+                        }}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        {t('addSubject') || 'إضافة مادة'}
+                      </Button>
                     </div>
                   )}
                 </SelectContent>

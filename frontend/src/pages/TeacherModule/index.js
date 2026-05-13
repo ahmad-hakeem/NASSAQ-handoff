@@ -32,6 +32,8 @@ export { default as WorkspaceSchedulePage } from './WorkspaceSchedulePage';
 export { default as TeacherPersonalCalendarPage } from './TeacherPersonalCalendarPage';
 // Independent-Teacher only: light AI lesson-planning assistant (Task #209 §6.4).
 export { default as LessonPlannerPage } from './LessonPlannerPage';
+// Independent-Teacher only: workspace subject management (Task #190 §5.3).
+export { default as TeacherSubjectsPage } from './TeacherSubjectsPage';
 // Independent-Teacher only: workspace audit-log view (Task #248).
 export { default as TeacherAuditLogPage } from './TeacherAuditLogPage';
 // Independent-Teacher only: workspace analytics dashboard (Task #273).

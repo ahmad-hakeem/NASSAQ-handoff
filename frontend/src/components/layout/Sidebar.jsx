@@ -471,6 +471,17 @@ export const Sidebar = ({ children }) => {
         permission: 'events.author_own',
         dataTour: 'sidebar-calendar',
       },
+      // Task #190 §5.3 — IT-only workspace subjects CRUD. Independent-
+      // Teacher accounts have no school directory to pull subjects from,
+      // so they manage their own list here. Surfaced in the create-class
+      // dialog dropdown immediately on save.
+      {
+        icon: BookOpen,
+        label: 'المواد',
+        href: '/teacher/subjects',
+        roles: ['independent_teacher'],
+        dataTour: 'sidebar-workspace-subjects',
+      },
       // Task #207 §6.1 — IT-only workspace-aware bulk student import.
       // Permission-gated on `students.bulk_import_workspace` so a
       // future RBAC change that grants the permission to additional

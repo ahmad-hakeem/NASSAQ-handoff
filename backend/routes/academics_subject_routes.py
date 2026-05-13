@@ -50,15 +50,18 @@ class SubjectCreateForSchool(BaseModel):
     weekly_periods: int = 4
 
 # ============== SUBJECTS CRUD - إدارة المواد الدراسية ==============
+# NOTE: these models are intentionally NAMED differently from the shared
+# `SubjectCreate` (which is `name`-keyed) so the `/subjects` routes below
+# bind to the shared model — keeping the IT-facing FE contract aligned
+# with the existing `/subjects` REST surface (Task #190).
 
-class SubjectCreate(BaseModel):
+class SchoolSubjectCreate(BaseModel):
     name_ar: str
     name_en: Optional[str] = None
     code: Optional[str] = None
     category: Optional[str] = None
     weekly_periods: int = 4
     description: Optional[str] = None
-
 
 # Task #185 — payload used by the generic /subjects POST/PUT endpoints
 # (Independent-Teacher + school-admin surfaces). Decoupled from the
@@ -74,7 +77,10 @@ class SubjectMutate(BaseModel):
     grade_levels: Optional[List[str]] = None
     school_id: Optional[str] = None  # ignored for IT callers
 
-class SubjectUpdate(BaseModel):
+# Renamed from SubjectUpdate (Task #190) to avoid shadowing the shared
+# `SubjectCreate` (`name`-keyed) used by the generic /subjects routes;
+# this model backs the legacy /school/subjects PUT only.
+class SchoolSubjectUpdate(BaseModel):
     name_ar: Optional[str] = None
     name_en: Optional[str] = None
     code: Optional[str] = None
@@ -85,7 +91,7 @@ class SubjectUpdate(BaseModel):
 
 @router.post("/school/subjects")
 async def create_school_subject(
-    subject_data: SubjectCreate,
+    subject_data: SchoolSubjectCreate,
     current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN])),
     x_school_context: str = Header(default=None, alias="X-School-Context")
 ):
@@ -124,7 +130,7 @@ async def create_school_subject(
 @router.put("/school/subjects/{subject_id}")
 async def update_school_subject(
     subject_id: str,
-    subject_data: SubjectUpdate,
+    subject_data: SchoolSubjectUpdate,
     current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN])),
     x_school_context: str = Header(default=None, alias="X-School-Context")
 ):
@@ -338,16 +344,41 @@ async def create_subject(
 @router.get("/subjects", response_model=List[SubjectResponse])
 async def get_subjects(
     school_id: Optional[str] = None,
+    include_inactive: bool = False,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get all subjects or filter by school"""
+    """Get all subjects or filter by school. Non-platform callers are
+    pinned to their own tenant; a caller-supplied `school_id` that does
+    not match is rejected with 403 so the API never confirms the
+    existence of foreign-tenant rows. Soft-deleted (`is_active=False`)
+    rows are hidden by default; platform admins can opt in via
+    `include_inactive=true`."""
+    from auth_scope import is_independent_teacher, independent_workspace_id
     query = {}
-    if school_id:
-        query["school_id"] = school_id
-    elif current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
-        from auth_scope import independent_workspace_id
-        query["school_id"] = current_user.get("tenant_id") or independent_workspace_id(current_user)
-    
+    if not include_inactive:
+        query["is_active"] = {"$ne": False}
+    # Tenant scope. IT callers fall back to their synthetic workspace id
+    # (`itw_{user_id}`) via `independent_workspace_id` when `tenant_id`
+    # is unset on the JWT.
+    is_platform = current_user.get("role") == UserRole.PLATFORM_ADMIN.value
+    caller_tenant = (
+        current_user.get("tenant_id")
+        or (independent_workspace_id(current_user) if is_independent_teacher(current_user) else None)
+    )
+    if is_platform:
+        # Platform admin may scope by any school_id, or list across all
+        # tenants when omitted.
+        if school_id:
+            query["school_id"] = school_id
+    else:
+        # Non-platform callers are pinned to their own tenant. A
+        # caller-supplied `school_id` that does not match the caller's
+        # tenant is rejected with 403 so the API never confirms the
+        # existence of foreign-tenant rows.
+        if school_id and school_id != caller_tenant:
+            raise HTTPException(status_code=403, detail="غير مصرح")
+        query["school_id"] = caller_tenant
+
     subjects = await gd_find(db.session, "subjects", query, limit=1000)
     result = []
     for s in subjects:
@@ -363,19 +394,20 @@ async def get_subjects(
 
 @router.get("/subjects/{subject_id}", response_model=SubjectResponse)
 async def get_subject(subject_id: str, current_user: dict = Depends(get_current_user)):
-    """Get subject by ID. Tenant-scoped for non-platform callers; IT
-    callers fall back to `itw_{user_id}` so cross-workspace ids return
-    404 (spec §8 inv. 3) instead of leaking existence."""
+    """Get subject by ID. Tenant-scoped for non-platform callers; cross-
+    workspace by-id reads return 404 (spec §8 inv. 3) so the API never
+    confirms the existence of foreign-tenant rows. Fails closed when a
+    non-platform caller has no resolvable tenant context."""
     from auth_scope import is_independent_teacher, independent_workspace_id
     query = {"id": subject_id}
-    role = current_user.get("role")
-    if role != UserRole.PLATFORM_ADMIN.value:
-        if is_independent_teacher(current_user):
-            query["school_id"] = independent_workspace_id(current_user)
-        else:
-            tid = current_user.get("tenant_id")
-            if tid:
-                query["school_id"] = tid
+    if current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
+        caller_tenant = (
+            independent_workspace_id(current_user) if is_independent_teacher(current_user)
+            else current_user.get("tenant_id")
+        )
+        if not caller_tenant:
+            raise HTTPException(status_code=403, detail="غير مصرح")
+        query["school_id"] = caller_tenant
     subject = await gd_find_one(db.session, "subjects", query)
     if not subject:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
@@ -391,18 +423,27 @@ async def update_subject(
     subject_data: SubjectMutate,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
-    """Update subject. IT callers are pinned to their own workspace
-    (cross-workspace ids return 404)."""
+    """Update subject. Tenant-scoped for non-platform callers; cross-
+    workspace ids return 404 (spec §8 inv. 3). Fails closed when a non-
+    platform caller has no resolvable tenant context."""
     from auth_scope import is_independent_teacher, independent_workspace_id
-    if is_independent_teacher(current_user):
-        wsid = independent_workspace_id(current_user)
-        old_subject = await gd_find_one(db.session, "subjects", {"id": subject_id, "school_id": wsid})
-        if not old_subject:
-            raise HTTPException(status_code=404, detail="المادة غير موجودة")
-    else:
-        old_subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
+    subject_query = {"id": subject_id}
+    if current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
+        caller_tenant = (
+            independent_workspace_id(current_user) if is_independent_teacher(current_user)
+            else current_user.get("tenant_id")
+        )
+        # Fail closed: refuse to run an unscoped lookup if the caller has
+        # no resolvable tenant context.
+        if not caller_tenant:
+            raise HTTPException(status_code=403, detail="غير مصرح")
+        subject_query["school_id"] = caller_tenant
+    old_subject = await gd_find_one(db.session, "subjects", subject_query)
+    if not old_subject:
+        raise HTTPException(status_code=404, detail="المادة غير موجودة")
+    new_name = subject_data.name
     update_doc = {
-        "name": subject_data.name,
+        "name": new_name,
         "name_en": subject_data.name_en,
         "code": subject_data.code,
         "description": subject_data.description,
@@ -410,13 +451,13 @@ async def update_subject(
         "grade_levels": subject_data.grade_levels,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    result = await gd_update_one(db.session, "subjects", {"id": subject_id}, update_doc)
+    result = await gd_update_one(db.session, "subjects", subject_query, update_doc)
     if result == 0:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
 
-    if old_subject and subject_data.name != old_subject.get("name"):
-        await gd_update_many(db.session, "teacher_assignments", {"subject_id": subject_id}, {"subject_name": subject_data.name})
-        await gd_update_many(db.session, "schedule_sessions", {"subject_id": subject_id}, {"subject_name": subject_data.name})
+    if old_subject and new_name and new_name != old_subject.get("name"):
+        await gd_update_many(db.session, "teacher_assignments", {"subject_id": subject_id}, {"subject_name": new_name})
+        await gd_update_many(db.session, "schedule_sessions", {"subject_id": subject_id}, {"subject_name": new_name})
 
     return {"message": "تم تحديث بيانات المادة"}
 
@@ -425,18 +466,24 @@ async def delete_subject(
     subject_id: str,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
-    """Delete subject (soft delete). IT callers are pinned to their own
-    workspace (cross-workspace ids return 404)."""
+    """Delete subject (soft delete). Tenant-scoped for non-platform
+    callers; cross-workspace ids return 404 (spec §8 inv. 3). Fails
+    closed when a non-platform caller has no resolvable tenant."""
     from auth_scope import is_independent_teacher, independent_workspace_id
-    if is_independent_teacher(current_user):
-        wsid = independent_workspace_id(current_user)
-        subject = await gd_find_one(db.session, "subjects", {"id": subject_id, "school_id": wsid})
-    else:
-        subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
+    subject_query = {"id": subject_id}
+    if current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
+        caller_tenant = (
+            independent_workspace_id(current_user) if is_independent_teacher(current_user)
+            else current_user.get("tenant_id")
+        )
+        if not caller_tenant:
+            raise HTTPException(status_code=403, detail="غير مصرح")
+        subject_query["school_id"] = caller_tenant
+    subject = await gd_find_one(db.session, "subjects", subject_query)
     if not subject:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
 
-    await gd_update_one(db.session, "subjects", {"id": subject_id}, {"is_active": False})
+    await gd_update_one(db.session, "subjects", subject_query, {"is_active": False})
     return {"message": "تم حذف المادة"}
 
 

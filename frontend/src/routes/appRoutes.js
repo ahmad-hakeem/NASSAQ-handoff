@@ -77,6 +77,7 @@ const WorkspaceSettingsPage = lazy(() => import("../pages/TeacherModule").then(m
 const WorkspaceSchedulePage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.WorkspaceSchedulePage })));
 const TeacherPersonalCalendarPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherPersonalCalendarPage })));
 const LessonPlannerPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.LessonPlannerPage })));
+const TeacherSubjectsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherSubjectsPage })));
 const TeacherAuditLogPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAuditLogPage })));
 const TeacherAnalyticsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAnalyticsPage })));
 const TeacherNotificationsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherNotificationsPage })));
@@ -381,6 +382,12 @@ export default function AppRoutes() {
             allowedRoles={['independent_teacher']}
             requiredPermission="ai.lesson_plans"
           ><LessonPlannerPage /></ProtectedRoute>
+        } />
+        {/* Task #190 §5.3 — Independent-Teacher only: workspace subjects
+            CRUD. Backend pins school_id == itw_{user_id} on every write
+            and returns 404 for cross-workspace ids per spec §8 inv. 3. */}
+        <Route path="/teacher/subjects" element={
+          <ProtectedRoute allowedRoles={['independent_teacher']}><TeacherSubjectsPage /></ProtectedRoute>
         } />
         {/* Task #248 — IT-only workspace audit-log view. Backend pins
             school_id == itw_{user_id} on every read, strips sensitive
