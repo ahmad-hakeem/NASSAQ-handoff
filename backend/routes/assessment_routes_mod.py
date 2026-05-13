@@ -433,6 +433,20 @@ async def create_bulk_grades(
         students_list = await gd_find(db.session, "students", {"id": {"$in": list(created_sids)}, "tenant_id": tenant_id}, limit=len(created_sids))
         student_map = {s["id"]: s for s in students_list}
 
+        # Task #286 — IT-aware copy: resolve the inviting teacher's name
+        # ONCE per request so the per-grade loop doesn't re-query `users`
+        # for every parent notification in IT bulk grade entry.
+        _from_ar = ""
+        _from_en = ""
+        if isinstance(tenant_id, str) and tenant_id.startswith("itw_"):
+            _owner = await gd_find_one(
+                db.session, "users", {"id": tenant_id[len("itw_"):]}
+            )
+            _tname = (_owner or {}).get("full_name")
+            if _tname:
+                _from_ar = f" من الأستاذ/ة {_tname}"
+                _from_en = f" from {_tname}"
+
         for g in data.grades:
             if g.student_id not in created_sids:
                 continue
@@ -465,10 +479,10 @@ async def create_bulk_grades(
                     })
                     if parent_user:
                         await create_notification_internal(
-                            title=f"درجة جديدة لـ {student_name}",
-                            title_en=f"New Grade for {student_name}",
-                            message=f"حصل {student_name} على درجة {g.score}/{max_score} ({percentage}%) في {assessment_title}",
-                            message_en=f"{student_name} scored {g.score}/{max_score} ({percentage}%) in {assessment_title}",
+                            title=f"درجة جديدة لـ {student_name}{_from_ar}",
+                            title_en=f"New Grade for {student_name}{_from_en}",
+                            message=f"حصل {student_name} على درجة {g.score}/{max_score} ({percentage}%) في {assessment_title}{_from_ar}",
+                            message_en=f"{student_name} scored {g.score}/{max_score} ({percentage}%) in {assessment_title}{_from_en}",
                             recipient_id=parent_user['id'],
                             notification_type="assessment",
                             priority="medium",
