@@ -172,6 +172,16 @@ def register_routes(app, api_router: APIRouter):
         router as it_workspace_lifecycle_router,
     )
     api_router.include_router(it_workspace_lifecycle_router)
+    # Phase 2 §6.4 (#209) — IT-only light AI lesson-planning assistant.
+    # Mounted WITHOUT _full_tenant_dep; the router enforces the IT role
+    # gate per-endpoint, pins workspace_school_id == itw_{user_id} +
+    # created_by == current_user.id on every read/write, and bumps the
+    # workspace_quota.lesson_plans_today daily counter on each generate.
+    # NO MFA step-up (low-sensitivity content generation per spec).
+    from routes.independent_teacher_lesson_plans_routes import (
+        router as it_lesson_plans_router,
+    )
+    api_router.include_router(it_lesson_plans_router)
     api_router.include_router(scheduling_smart_router, dependencies=_full_tenant_dep)
     api_router.include_router(scheduling_smart_sess_router, dependencies=_full_tenant_dep)
     api_router.include_router(schedule_candidates_router, dependencies=_full_tenant_dep)

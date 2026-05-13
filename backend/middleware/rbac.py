@@ -106,6 +106,10 @@ class Permission(str, Enum):
     # events they own inside their own workspace. It is intentionally NOT a
     # superset of school-wide calendar permissions used by principals.
     EVENTS_AUTHOR_OWN = "events.author_own"
+    # Phase 2 §6.4 (Task #209) — IT light AI lesson-planning assistant.
+    # Granted to `independent_teacher` only; the route layer enforces
+    # workspace pinning + daily quota. No MFA step-up (low-sensitivity).
+    AI_LESSON_PLANS = "ai.lesson_plans"
 
     # IT §6.7 — Cross-workspace co-teaching (Task #210). The ONLY
     # sanctioned cross-tenant data path. Granted to the host IT so they
@@ -248,6 +252,9 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
         Permission.STUDENTS_BULK_IMPORT_WORKSPACE.value,
         # §6.7 — host IT may invite/revoke a single collaborator per class.
         Permission.WORKSPACE_COLLAB_MANAGE.value,
+        # Phase 2 §6.4 (#209) — light AI lesson-planning assistant.
+        # No MFA step-up (low-sensitivity); daily quota enforced server-side.
+        Permission.AI_LESSON_PLANS.value,
     ],
     
     "student": [

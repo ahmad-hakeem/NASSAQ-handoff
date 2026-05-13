@@ -18,6 +18,10 @@ MAX_CLASSES = 5
 MAX_STUDENTS = 200
 MAX_ACADEMIC_YEARS = 1
 MAX_TERMS = 2
+# Phase 2 §6.4 (Task #209) — light AI lesson-planning assistant.
+# Daily generations per IT workspace; counter resets at UTC midnight in
+# application code (mirrors workspace_quota.imports_today).
+MAX_LESSON_PLANS_PER_DAY = 20
 
 _MSG_CLASSES = (
     "بلغت الحد الأقصى لعدد الفصول في حسابك المستقل (٥). "
@@ -34,6 +38,9 @@ _MSG_YEARS = (
 _MSG_TERMS = (
     "حسابك المستقل يدعم فصلين دراسيين كحد أقصى. "
     "احذف فصلاً قبل إنشاء فصل جديد."
+)
+_MSG_LESSON_PLANS_DAILY = (
+    "بلغت الحد اليومي لتوليد خطط الدروس. حاول مرة أخرى غدًا."
 )
 
 
@@ -110,6 +117,7 @@ __all__ = [
     "MAX_STUDENTS",
     "MAX_ACADEMIC_YEARS",
     "MAX_TERMS",
+    "MAX_LESSON_PLANS_PER_DAY",
     "enforce_class_quota",
     "enforce_student_quota",
     "enforce_academic_year_quota",

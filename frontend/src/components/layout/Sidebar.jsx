@@ -52,6 +52,7 @@ import {
   Lightbulb,
   ChevronDown,
   Upload,
+  Sparkles,
 } from 'lucide-react';
 
 
@@ -464,6 +465,16 @@ export const Sidebar = ({ children }) => {
         href: '/teacher/import-students',
         roles: ['independent_teacher'],
         permission: 'students.bulk_import_workspace',
+      },
+      // Task #209 §6.4 — IT-only light AI lesson-planning assistant.
+      // Permission-gated on `ai.lesson_plans` so the link only appears
+      // when the backend RBAC slice exposes the route to this user.
+      {
+        icon: Sparkles,
+        label: 'مساعد خطط الدروس',
+        href: '/teacher/lesson-planner',
+        roles: ['independent_teacher'],
+        permission: 'ai.lesson_plans',
       },
     ];
 

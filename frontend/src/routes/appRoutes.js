@@ -74,6 +74,7 @@ const TeacherSettingsPage = lazy(() => import("../pages/TeacherModule").then(m =
 const WorkspaceSettingsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.WorkspaceSettingsPage })));
 const WorkspaceSchedulePage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.WorkspaceSchedulePage })));
 const TeacherPersonalCalendarPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherPersonalCalendarPage })));
+const LessonPlannerPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.LessonPlannerPage })));
 
 const ProductHubPage = lazy(() => import("../pages/ProductHubPage").then(m => ({ default: m.ProductHubPage })));
 const ProductHubSubmitPage = lazy(() => import("../pages/ProductHubSubmitPage").then(m => ({ default: m.ProductHubSubmitPage })));
@@ -345,6 +346,15 @@ export default function AppRoutes() {
             is_personal=True on every read/write. */}
         <Route path="/teacher/calendar" element={
           <ProtectedRoute allowedRoles={['independent_teacher']}><TeacherPersonalCalendarPage /></ProtectedRoute>
+        } />
+        {/* Task #209 §6.4 — IT-only light AI lesson-planning assistant.
+            Backend pins workspace + author and bumps the daily counter
+            on workspace_quota.lesson_plans_today. No MFA step-up. */}
+        <Route path="/teacher/lesson-planner" element={
+          <ProtectedRoute
+            allowedRoles={['independent_teacher']}
+            requiredPermission="ai.lesson_plans"
+          ><LessonPlannerPage /></ProtectedRoute>
         } />
 
         {/* Student Portal Routes */}

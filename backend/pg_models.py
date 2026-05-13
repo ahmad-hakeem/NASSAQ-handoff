@@ -1271,6 +1271,47 @@ class SystemSetting(Base):
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
+class LessonPlan(Base):
+    """IT Phase 2 §6.4 (Task #209) — saved AI lesson-plan generations.
+
+    One row per saved generation. Always pinned to the synthetic
+    ``itw_{user_id}`` workspace tenant via ``workspace_school_id`` and
+    authored by the IT user. Generated payload lives in JSONB so the
+    LLM schema can evolve without a migration.
+    """
+    __tablename__ = "lesson_plans"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    workspace_school_id = Column(
+        String, ForeignKey("schools.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    created_by = Column(
+        String, ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    subject = Column(String(200), nullable=True)
+    grade_level = Column(String(200), nullable=True)
+    topic = Column(String(500), nullable=False)
+    duration_minutes = Column(Integer, nullable=True)
+    language = Column(String(8), nullable=False, default="ar")
+    prompt = Column(Text, nullable=True)
+    plan = Column(JSONB, nullable=False, default=dict)
+    class_id = Column(
+        String, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True,
+    )
+    is_saved = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False,
+    )
+
+    __table_args__ = (
+        Index("ix_lesson_plans_ws_created", "workspace_school_id", "created_at"),
+        Index("ix_lesson_plans_ws_author", "workspace_school_id", "created_by"),
+    )
+
+
 class GenericDocument(Base):
     __tablename__ = "generic_documents"
 

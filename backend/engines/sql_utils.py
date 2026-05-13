@@ -48,6 +48,7 @@ def _get_orm_model(collection: str):
         CalendarEvent, DailyTask,
         MfaFactor, MfaRecoveryCode, MfaPendingChallenge,
         MfaEmailOtp, MfaWebauthnChallenge,
+        LessonPlan,
     )
     _ORM_REGISTRY = {
         "users": User,
@@ -62,6 +63,7 @@ def _get_orm_model(collection: str):
         "timetables": Timetable,
         "timetable_runs": TimetableRun,
         "schedule_sessions": ScheduleSession,
+        "lesson_plans": LessonPlan,
         "attendance": Attendance,
         "product_issues": ProductIssue,
         "issue_comments": IssueComment,
