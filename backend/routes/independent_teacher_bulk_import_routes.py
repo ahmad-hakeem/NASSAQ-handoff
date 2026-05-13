@@ -577,6 +577,42 @@ async def commit_csv(
         logger.exception("IT bulk import failed: %s", exc)
         raise HTTPException(status_code=500, detail=_MSG_INTERNAL)
 
+    # Task #260 — quota near-limit warning at 80% on the bulk-import
+    # path, mirroring the lesson-plan emit. Fires only on the row that
+    # crosses the threshold (prev < 80% AND new >= 80%) so a heavy
+    # importer cannot generate duplicate notifications on the same day.
+    try:
+        max_per_day = quota_view_pre["max_imports_per_day"]
+        prev_count = quota_view_pre["imports_today"]
+        if max_per_day:
+            threshold = int(max_per_day * 0.8)
+            if (
+                threshold > 0
+                and new_count >= threshold > prev_count
+                and new_count < max_per_day
+            ):
+                from routes.notification_routes_mod import create_notification_internal
+                from routes.independent_teacher_notifications_routes import should_send_channel
+                if await should_send_channel(current_user, "quota", "in_app"):
+                    await create_notification_internal(
+                        title="اقتراب الحد اليومي لاستيراد الطلاب",
+                        message=f"استخدمت {new_count} من {max_per_day} عمليات استيراد اليوم.",
+                        title_en="Daily student-import quota nearly reached",
+                        message_en=f"Used {new_count} of {max_per_day} imports today.",
+                        recipient_id=current_user["id"],
+                        notification_type="quota_warning",
+                        priority="medium",
+                        school_id=workspace_id,
+                        category="quota",
+                        cta_url="/teacher/import-students",
+                        extra_data={
+                            "imports_today": new_count,
+                            "max_imports_per_day": max_per_day,
+                        },
+                    )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("bulk-import quota warning notify failed: %s", exc)
+
     refreshed = await gd_find_one(
         db.session, "workspace_quota", {"workspace_school_id": workspace_id},
     ) or quota

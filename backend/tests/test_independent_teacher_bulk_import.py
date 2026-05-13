@@ -353,3 +353,67 @@ async def test_commit_ignores_extra_school_id_key_in_payload(client):
         db.session, "students", {"school_id": "evil-tenant-id"},
     )
     assert evil is None
+
+
+# ----------------------------------------------------------------------
+# (k) Task #260 — quota near-limit warning at 80% of max_imports_per_day.
+#     Fires exactly once on the row that crosses the threshold; never
+#     duplicates on the same UTC day for subsequent imports.
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_commit_emits_quota_warning_when_crossing_80pct_once(client):
+    from datetime import date as _date
+    from engines.sql_utils import gd_find
+
+    user = await _mk_it_workspace()
+    # Pre-seed today's counter at 3/5 — the next successful commit will
+    # bump it to 4 and cross the 80% threshold (int(5*0.8)==4).
+    await gd_insert(db.session, "workspace_quota", {
+        "workspace_school_id": user["tenant_id"],
+        "max_students": 200, "max_classes": 5,
+        "max_imports_per_day": 5, "max_rows_per_import": 200,
+        "imports_today": 3,
+        "imports_today_date": _date.today().isoformat(),
+    })
+    h = _headers(user["id"], user["role"], user["tenant_id"], mfa_recent_at=_now_ts())
+    payload = {"rows": [{
+        "row_number": 1,
+        "full_name": "أحمد محمد العتيبي",
+        "is_valid": True, "errors": [],
+    }]}
+
+    r1 = await client.post(
+        "/independent-teacher/students/bulk/commit",
+        headers=h, json=payload,
+    )
+    assert r1.status_code == 200, r1.text
+    assert r1.json()["quota"]["imports_today"] == 4
+
+    notes = await gd_find(
+        db.session, "notifications",
+        {"user_id": user["id"], "category": "quota"},
+    )
+    assert len(notes or []) == 1, notes
+    assert notes[0].get("type") == "quota_warning"
+    assert notes[0].get("cta_url") == "/teacher/import-students"
+
+    # A second commit on the same day (4 → 5, the hard cap) must NOT
+    # emit a duplicate. (The 5th counter value is at the cap and the
+    # next attempt would 429 — the warning row stays at 1.)
+    payload2 = {"rows": [{
+        "row_number": 1,
+        "full_name": "سارة عبدالله القحطاني",
+        "is_valid": True, "errors": [],
+    }]}
+    r2 = await client.post(
+        "/independent-teacher/students/bulk/commit",
+        headers=h, json=payload2,
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["quota"]["imports_today"] == 5
+
+    notes_after = await gd_find(
+        db.session, "notifications",
+        {"user_id": user["id"], "category": "quota"},
+    )
+    assert len(notes_after or []) == 1, notes_after
