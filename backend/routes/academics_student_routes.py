@@ -531,10 +531,16 @@ async def transfer_student_class(
 @router.delete("/students/{student_id}")
 async def delete_student(
     student_id: str,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
-    """Delete student — full removal from system"""
-    student = await gd_find_one(db.session, "students", {"id": student_id})
+    """Delete student — full removal from system. IT callers are pinned
+    to their own workspace (cross-workspace ids return 404)."""
+    from auth_scope import is_independent_teacher, independent_workspace_id
+    if is_independent_teacher(current_user):
+        wsid = independent_workspace_id(current_user)
+        student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": wsid})
+    else:
+        student = await gd_find_one(db.session, "students", {"id": student_id})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
     

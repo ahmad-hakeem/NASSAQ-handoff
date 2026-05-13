@@ -59,6 +59,21 @@ class SubjectCreate(BaseModel):
     weekly_periods: int = 4
     description: Optional[str] = None
 
+
+# Task #185 — payload used by the generic /subjects POST/PUT endpoints
+# (Independent-Teacher + school-admin surfaces). Decoupled from the
+# legacy /school/subjects `SubjectCreate` model so the IT FE can send
+# `name`/`weekly_hours` without breaking the older school-admin schema.
+class SubjectMutate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    name: str
+    name_en: Optional[str] = None
+    code: Optional[str] = None
+    description: Optional[str] = None
+    weekly_hours: Optional[int] = 4
+    grade_levels: Optional[List[str]] = None
+    school_id: Optional[str] = None  # ignored for IT callers
+
 class SubjectUpdate(BaseModel):
     name_ar: Optional[str] = None
     name_en: Optional[str] = None
@@ -283,21 +298,28 @@ async def get_unique_school_subjects(
 # ============== SUBJECTS ROUTES ==============
 @router.post("/subjects", response_model=SubjectResponse)
 async def create_subject(
-    subject_data: SubjectCreate,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
+    subject_data: SubjectMutate,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
-    """Create a new subject"""
+    """Create a new subject. IT callers are always pinned to their own
+    workspace; any caller-supplied `school_id` for IT is ignored."""
+    from auth_scope import is_independent_teacher, independent_workspace_id
     subject_id = str(uuid.uuid4())
-    
+
+    if is_independent_teacher(current_user):
+        target_school_id = independent_workspace_id(current_user)
+    else:
+        target_school_id = subject_data.school_id or current_user.get("tenant_id")
+
     subject_doc = {
         "id": subject_id,
-        "name": getattr(subject_data, 'name', None) or getattr(subject_data, 'name_ar', None),
-        "name_en": getattr(subject_data, 'name_en', None),
-        "school_id": getattr(subject_data, 'school_id', None) or current_user.get("tenant_id"),
-        "code": getattr(subject_data, 'code', None),
-        "description": getattr(subject_data, 'description', None),
-        "weekly_hours": getattr(subject_data, 'weekly_hours', None) or getattr(subject_data, 'weekly_periods', 4),
-        "grade_levels": getattr(subject_data, 'grade_levels', None),
+        "name": subject_data.name,
+        "name_en": subject_data.name_en,
+        "school_id": target_school_id,
+        "code": subject_data.code,
+        "description": subject_data.description,
+        "weekly_hours": subject_data.weekly_hours or 4,
+        "grade_levels": subject_data.grade_levels,
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
@@ -323,7 +345,8 @@ async def get_subjects(
     if school_id:
         query["school_id"] = school_id
     elif current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
-        query["school_id"] = current_user.get("tenant_id")
+        from auth_scope import independent_workspace_id
+        query["school_id"] = current_user.get("tenant_id") or independent_workspace_id(current_user)
     
     subjects = await gd_find(db.session, "subjects", query, limit=1000)
     result = []
@@ -340,29 +363,54 @@ async def get_subjects(
 
 @router.get("/subjects/{subject_id}", response_model=SubjectResponse)
 async def get_subject(subject_id: str, current_user: dict = Depends(get_current_user)):
-    """Get subject by ID"""
-    subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
+    """Get subject by ID. Tenant-scoped for non-platform callers; IT
+    callers fall back to `itw_{user_id}` so cross-workspace ids return
+    404 (spec §8 inv. 3) instead of leaking existence."""
+    from auth_scope import is_independent_teacher, independent_workspace_id
+    query = {"id": subject_id}
+    role = current_user.get("role")
+    if role != UserRole.PLATFORM_ADMIN.value:
+        if is_independent_teacher(current_user):
+            query["school_id"] = independent_workspace_id(current_user)
+        else:
+            tid = current_user.get("tenant_id")
+            if tid:
+                query["school_id"] = tid
+    subject = await gd_find_one(db.session, "subjects", query)
     if not subject:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
+    if "name" not in subject and "name_ar" in subject:
+        subject["name"] = subject["name_ar"]
+    if "weekly_periods" not in subject and "weekly_hours" in subject:
+        subject["weekly_periods"] = subject["weekly_hours"]
     return SubjectResponse(**subject)
 
 @router.put("/subjects/{subject_id}")
 async def update_subject(
     subject_id: str,
-    subject_data: SubjectCreate,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
+    subject_data: SubjectMutate,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
-    """Update subject"""
-    old_subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
-    result = await gd_update_one(db.session, "subjects", {"id": subject_id}, {
-            "name": subject_data.name,
-            "name_en": subject_data.name_en,
-            "code": subject_data.code,
-            "description": subject_data.description,
-            "weekly_hours": subject_data.weekly_hours,
-            "grade_levels": subject_data.grade_levels,
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        })
+    """Update subject. IT callers are pinned to their own workspace
+    (cross-workspace ids return 404)."""
+    from auth_scope import is_independent_teacher, independent_workspace_id
+    if is_independent_teacher(current_user):
+        wsid = independent_workspace_id(current_user)
+        old_subject = await gd_find_one(db.session, "subjects", {"id": subject_id, "school_id": wsid})
+        if not old_subject:
+            raise HTTPException(status_code=404, detail="المادة غير موجودة")
+    else:
+        old_subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
+    update_doc = {
+        "name": subject_data.name,
+        "name_en": subject_data.name_en,
+        "code": subject_data.code,
+        "description": subject_data.description,
+        "weekly_hours": subject_data.weekly_hours or 4,
+        "grade_levels": subject_data.grade_levels,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    result = await gd_update_one(db.session, "subjects", {"id": subject_id}, update_doc)
     if result == 0:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
 
@@ -375,13 +423,19 @@ async def update_subject(
 @router.delete("/subjects/{subject_id}")
 async def delete_subject(
     subject_id: str,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
-    """Delete subject (soft delete)"""
-    subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
+    """Delete subject (soft delete). IT callers are pinned to their own
+    workspace (cross-workspace ids return 404)."""
+    from auth_scope import is_independent_teacher, independent_workspace_id
+    if is_independent_teacher(current_user):
+        wsid = independent_workspace_id(current_user)
+        subject = await gd_find_one(db.session, "subjects", {"id": subject_id, "school_id": wsid})
+    else:
+        subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
     if not subject:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
-    
+
     await gd_update_one(db.session, "subjects", {"id": subject_id}, {"is_active": False})
     return {"message": "تم حذف المادة"}
 

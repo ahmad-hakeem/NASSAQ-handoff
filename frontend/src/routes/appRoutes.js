@@ -80,6 +80,7 @@ const LessonPlannerPage = lazy(() => import("../pages/TeacherModule").then(m => 
 const TeacherAuditLogPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAuditLogPage })));
 const TeacherAnalyticsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAnalyticsPage })));
 const TeacherNotificationsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherNotificationsPage })));
+const TeacherSubjectsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherSubjectsPage })));
 
 const ProductHubPage = lazy(() => import("../pages/ProductHubPage").then(m => ({ default: m.ProductHubPage })));
 const ProductHubSubmitPage = lazy(() => import("../pages/ProductHubSubmitPage").then(m => ({ default: m.ProductHubSubmitPage })));
@@ -404,6 +405,11 @@ export default function AppRoutes() {
         {/* Task #249 — IT-only notifications inbox. */}
         <Route path="/teacher/notifications" element={
           <ProtectedRoute allowedRoles={['independent_teacher']}><TeacherNotificationsPage /></ProtectedRoute>
+        } />
+        {/* Task #185 — IT-only subjects CRUD. Backend tenant-scopes every
+            read/write to itw_{user_id}; cross-workspace ids return 404. */}
+        <Route path="/teacher/subjects" element={
+          <ProtectedRoute allowedRoles={['independent_teacher']}><TeacherSubjectsPage /></ProtectedRoute>
         } />
 
         {/* Student Portal Routes */}

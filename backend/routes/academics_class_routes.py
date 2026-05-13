@@ -350,9 +350,16 @@ async def get_class(class_id: str, current_user: dict = Depends(get_current_user
 async def update_class(
     class_id: str,
     class_data: ClassUpdate,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
-    """Update class"""
+    """Update class. IT callers can only touch their own workspace
+    (cross-workspace ids return 404 per §8 inv. 3)."""
+    from auth_scope import is_independent_teacher, independent_workspace_id
+    if is_independent_teacher(current_user):
+        wsid = independent_workspace_id(current_user)
+        existing = await gd_find_one(db.session, "classes", {"id": class_id, "school_id": wsid})
+        if not existing:
+            raise HTTPException(status_code=404, detail="الفصل غير موجود")
     # Build update dict with only provided fields
     update_fields = {"updated_at": datetime.now(timezone.utc).isoformat()}
     
@@ -385,10 +392,16 @@ async def update_class(
 @router.delete("/classes/{class_id}")
 async def delete_class(
     class_id: str,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
-    """Delete class — full removal from system"""
-    class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
+    """Delete class — full removal from system. IT callers are pinned to
+    their own workspace (cross-workspace ids return 404)."""
+    from auth_scope import is_independent_teacher, independent_workspace_id
+    if is_independent_teacher(current_user):
+        wsid = independent_workspace_id(current_user)
+        class_doc = await gd_find_one(db.session, "classes", {"id": class_id, "school_id": wsid})
+    else:
+        class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
     if not class_doc:
         raise HTTPException(status_code=404, detail="الفصل غير موجود")
     

@@ -21,7 +21,8 @@ import {
   Phone, Mail, ClipboardCheck, FileText, TrendingUp, Star,
   BookOpen, Calendar, ChevronLeft, BarChart3, Brain, Target,
   CheckCircle, AlertTriangle, Sparkles, ArrowUpCircle, ArrowDownCircle,
-  Lightbulb, Activity, MessageSquare, Send, Plus, UserPlus, Link2
+  Lightbulb, Activity, MessageSquare, Send, Plus, UserPlus, Link2,
+  Pencil, Trash2
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import AddStudentWizard from '../../components/wizards/AddStudentWizard';
@@ -451,6 +452,66 @@ export default function TeacherStudentsPage() {
     s.student_id?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // IT student edit/delete dialogs (Task #185).
+  const [editStudentDialog, setEditStudentDialog] = useState(null); // { id, full_name, grade, gender }
+  const [editStudentSaving, setEditStudentSaving] = useState(false);
+
+  const handleEditStudent = (e, student) => {
+    e.stopPropagation();
+    setEditStudentDialog({
+      id: student.id,
+      full_name: student.full_name || '',
+      grade: student.grade || '',
+      gender: student.gender || '',
+    });
+  };
+
+  const handleDeleteStudent = (e, student) => {
+    e.stopPropagation();
+    nassaqConfirm(
+      isRTL
+        ? `هل تريد حذف الطالب "${student.full_name}" نهائياً؟ سيتم حذف كل بياناته.`
+        : `Permanently delete student "${student.full_name}"? All their data will be removed.`,
+      async (ok) => {
+        if (!ok) return;
+        try {
+          await api.delete(`/students/${student.id}`);
+          await fetchStudents();
+          if (typeof fetchWorkspaceStudentCount === 'function') {
+            await fetchWorkspaceStudentCount();
+          }
+          nassaqInfo(isRTL ? 'تم حذف الطالب' : 'Student deleted');
+        } catch (err) {
+          const detail = err?.response?.data?.detail;
+          nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر حذف الطالب' : 'Could not delete student'));
+        }
+      }
+    );
+  };
+
+  const saveEditStudent = async () => {
+    if (!editStudentDialog) return;
+    const full_name = (editStudentDialog.full_name || '').trim();
+    if (!full_name) {
+      nassaqError(isRTL ? 'الاسم مطلوب' : 'Name is required');
+      return;
+    }
+    setEditStudentSaving(true);
+    try {
+      const body = { full_name };
+      if (editStudentDialog.grade) body.grade = editStudentDialog.grade;
+      if (editStudentDialog.gender) body.gender = editStudentDialog.gender;
+      await api.put(`/students/${editStudentDialog.id}`, body);
+      setEditStudentDialog(null);
+      await fetchStudents();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر التحديث' : 'Could not update'));
+    } finally {
+      setEditStudentSaving(false);
+    }
+  };
+
   const getGradeColor = (grade) => {
     if (grade >= 90) return 'text-green-600';
     if (grade >= 75) return 'text-blue-600';
@@ -786,6 +847,31 @@ export default function TeacherStudentsPage() {
                       }
                       return null;
                     })()}
+
+                    {isIndependentTeacher && (
+                      <div className="flex gap-1.5 mt-3 pt-2 border-t border-border/50">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="flex-1 h-7 text-xs"
+                          onClick={(e) => handleEditStudent(e, student)}
+                          data-testid={`student-edit-${student.id}`}
+                        >
+                          <Pencil className="h-3 w-3 me-1" />
+                          {isRTL ? 'تعديل' : 'Edit'}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="flex-1 h-7 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
+                          onClick={(e) => handleDeleteStudent(e, student)}
+                          data-testid={`student-delete-${student.id}`}
+                        >
+                          <Trash2 className="h-3 w-3 me-1" />
+                          {isRTL ? 'حذف' : 'Delete'}
+                        </Button>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}
@@ -1473,6 +1559,58 @@ export default function TeacherStudentsPage() {
                 </TabsContent>
               </Tabs>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit student dialog (IT only — Task #185) */}
+        <Dialog open={!!editStudentDialog} onOpenChange={(o) => !o && setEditStudentDialog(null)}>
+          <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+            <DialogHeader>
+              <DialogTitle className="font-cairo flex items-center gap-2">
+                <Pencil className="h-5 w-5 text-brand-turquoise" />
+                {isRTL ? 'تعديل بيانات الطالب' : 'Edit student'}
+              </DialogTitle>
+            </DialogHeader>
+            {editStudentDialog && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="font-cairo text-sm">{isRTL ? 'الاسم الكامل' : 'Full name'}</label>
+                  <Input
+                    value={editStudentDialog.full_name}
+                    onChange={(e) => setEditStudentDialog((p) => ({ ...p, full_name: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="font-cairo text-sm">{isRTL ? 'الصف' : 'Grade'}</label>
+                  <Input
+                    value={editStudentDialog.grade}
+                    onChange={(e) => setEditStudentDialog((p) => ({ ...p, grade: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="font-cairo text-sm">{isRTL ? 'الجنس' : 'Gender'}</label>
+                  <Select
+                    value={editStudentDialog.gender || ''}
+                    onValueChange={(v) => setEditStudentDialog((p) => ({ ...p, gender: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={isRTL ? 'اختر' : 'Select'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="male">{isRTL ? 'ذكر' : 'Male'}</SelectItem>
+                      <SelectItem value="female">{isRTL ? 'أنثى' : 'Female'}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditStudentDialog(null)}>{t('cancel')}</Button>
+              <Button onClick={saveEditStudent} disabled={editStudentSaving}>
+                {editStudentSaving ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : null}
+                {t('save') || (isRTL ? 'حفظ' : 'Save')}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 

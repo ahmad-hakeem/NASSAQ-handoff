@@ -494,6 +494,14 @@ export const Sidebar = ({ children }) => {
         permission: 'classes.bulk_import_workspace',
         dataTour: 'sidebar-bulk-import',
       },
+      // Task #185 — IT-only subjects CRUD page (workspace-scoped).
+      {
+        icon: BookOpen,
+        label: 'موادي',
+        href: '/teacher/subjects',
+        roles: ['independent_teacher'],
+        dataTour: 'sidebar-subjects',
+      },
       // Task #209 §6.4 — IT-only light AI lesson-planning assistant.
       // Permission-gated on `ai.lesson_plans` so the link only appears
       // when the backend RBAC slice exposes the route to this user.

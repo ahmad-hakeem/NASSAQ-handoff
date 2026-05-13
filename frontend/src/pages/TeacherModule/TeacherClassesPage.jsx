@@ -24,7 +24,7 @@ import {
   TrendingUp, LayoutGrid, List, Clock, Play,
   ChevronLeft, Star, AlertTriangle, CheckCircle2,
   ArrowUpDown, Settings, Plus, FileSpreadsheet,
-  FileImage, FileText, Upload, Info, X
+  FileImage, FileText, Upload, Info, X, Pencil, Trash2
 } from 'lucide-react';
 import SessionsManageTab from './SessionsManageTab';
 import StandbyTab from './StandbyTab';
@@ -109,7 +109,9 @@ export default function TeacherClassesPage() {
   const [importType, setImportType] = useState('');
 
   const { t } = useTranslation();
-  const { nassaqError, nassaqWarning } = useNassaqAlert();
+  const { nassaqError, nassaqWarning, nassaqConfirm, nassaqInfo } = useNassaqAlert();
+  const [editClassDialog, setEditClassDialog] = useState(null); // { id, name, capacity }
+  const [editClassSaving, setEditClassSaving] = useState(false);
   const teacherId = user?.teacher_id || user?.id;
   const isIndependentTeacher = user?.role === 'independent_teacher';
 
@@ -543,6 +545,58 @@ export default function TeacherClassesPage() {
     );
   };
 
+  const handleEditClass = (e, cls) => {
+    e.stopPropagation();
+    setEditClassDialog({
+      id: cls.id,
+      name: cls.name || '',
+      capacity: cls.capacity || 30,
+    });
+  };
+
+  const handleDeleteClass = (e, cls) => {
+    e.stopPropagation();
+    nassaqConfirm(
+      isRTL
+        ? `هل تريد حذف الفصل "${cls.name}"؟ لا يمكن حذفه إذا كان به طلاب.`
+        : `Delete class "${cls.name}"? It can't be deleted while it has students.`,
+      async (ok) => {
+        if (!ok) return;
+        try {
+          await api.delete(`/classes/${cls.id}`);
+          await fetchClasses();
+          await fetchWorkspaceClassCount();
+        } catch (err) {
+          const detail = err?.response?.data?.detail;
+          nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر حذف الفصل' : 'Could not delete class'));
+        }
+      }
+    );
+  };
+
+  const saveEditClass = async () => {
+    if (!editClassDialog) return;
+    const name = (editClassDialog.name || '').trim();
+    if (!name) {
+      nassaqError(isRTL ? 'الاسم مطلوب' : 'Name is required');
+      return;
+    }
+    setEditClassSaving(true);
+    try {
+      await api.put(`/classes/${editClassDialog.id}`, {
+        name,
+        capacity: Number(editClassDialog.capacity) || 30,
+      });
+      setEditClassDialog(null);
+      await fetchClasses();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر التحديث' : 'Could not update'));
+    } finally {
+      setEditClassSaving(false);
+    }
+  };
+
   const ClassCard = ({ cls }) => {
     const gc = getGradeColor(cls.grade_level || cls.grade_id);
     const curriculumPct = cls.curriculum_completion ?? cls.progress ?? Math.min(100, Math.round((cls.total_sessions || 0) * 2.5));
@@ -658,6 +712,30 @@ export default function TeacherClassesPage() {
               {t('reports2')}
             </Button>
           </div>
+          {isIndependentTeacher && !cls._collab && (
+            <div className="flex gap-1.5 pt-1.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex-1 h-7 text-xs"
+                onClick={(e) => handleEditClass(e, cls)}
+                data-testid={`class-edit-${cls.id}`}
+              >
+                <Pencil className="h-3 w-3 me-1" />
+                {isRTL ? 'تعديل' : 'Edit'}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex-1 h-7 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
+                onClick={(e) => handleDeleteClass(e, cls)}
+                data-testid={`class-delete-${cls.id}`}
+              >
+                <Trash2 className="h-3 w-3 me-1" />
+                {isRTL ? 'حذف' : 'Delete'}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     );
@@ -1305,6 +1383,45 @@ export default function TeacherClassesPage() {
 
       {renderSettingsModal()}
       {renderAddClassDialog()}
+      {/* Edit class dialog (IT only) */}
+      <Dialog open={!!editClassDialog} onOpenChange={(o) => !o && setEditClassDialog(null)}>
+        <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="font-cairo flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-brand-turquoise" />
+              {isRTL ? 'تعديل بيانات الفصل' : 'Edit class'}
+            </DialogTitle>
+          </DialogHeader>
+          {editClassDialog && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="font-cairo text-sm">{t('courseName')}</Label>
+                <Input
+                  value={editClassDialog.name}
+                  onChange={(e) => setEditClassDialog((p) => ({ ...p, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="font-cairo text-sm">{isRTL ? 'السعة' : 'Capacity'}</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={editClassDialog.capacity}
+                  onChange={(e) => setEditClassDialog((p) => ({ ...p, capacity: e.target.value }))}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditClassDialog(null)}>{t('cancel')}</Button>
+            <Button onClick={saveEditClass} disabled={editClassSaving}>
+              {editClassSaving ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : null}
+              {t('save') || (isRTL ? 'حفظ' : 'Save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {renderImportDialog()}
 
       <input
