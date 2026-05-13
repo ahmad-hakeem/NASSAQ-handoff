@@ -457,6 +457,49 @@ async def test_export_csv_honours_category_filter(client):
 
 
 @pytest.mark.asyncio
+async def test_export_csv_caps_very_large_workspaces(client, monkeypatch):
+    """Task #265 — when a workspace's filtered history exceeds the
+    server-side export cap, the endpoint MUST refuse with 413 + a safe
+    Arabic message (never quietly truncate, never time out trying to
+    materialise the whole result set in memory).
+
+    We monkeypatch the cap to a tiny value so the test is fast.
+    """
+    from routes import independent_teacher_audit_routes as audit_mod
+
+    monkeypatch.setattr(audit_mod, "_MAX_EXPORT_ROWS", 3)
+
+    own = await mk_it_workspace()
+    # Seed cap+1 rows so the over-fetch (cap+1 select limit) trips the
+    # "too large" guard.
+    for _ in range(4):
+        await _seed_log(school_id=own["wsid"], action="auth.login")
+
+    resp = await client.get(
+        "/independent-teacher/audit-logs/export.csv",
+        headers=_it_h(own),
+    )
+    assert resp.status_code == 413, resp.text
+    body = resp.json()
+    # Custom envelope: ``error.message`` carries the safe Arabic copy.
+    msg = (body.get("error") or {}).get("message", "")
+    assert "النطاق" in msg and "from/to" in msg, body
+
+    # And the cap is inclusive: exactly cap rows must still succeed.
+    own2 = await mk_it_workspace()
+    for _ in range(3):
+        await _seed_log(school_id=own2["wsid"], action="auth.login")
+    ok = await client.get(
+        "/independent-teacher/audit-logs/export.csv",
+        headers=_it_h(own2),
+    )
+    assert ok.status_code == 200, ok.text
+    # Header row + 3 data rows.
+    lines = ok.content.decode("utf-8-sig").splitlines()
+    assert len(lines) == 4, lines
+
+
+@pytest.mark.asyncio
 async def test_export_csv_non_it_role_is_forbidden(client):
     own = await mk_it_workspace()
     await _seed_log(school_id=own["wsid"], action="auth.login")

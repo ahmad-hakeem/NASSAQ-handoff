@@ -59,6 +59,18 @@ router = APIRouter(
 _MSG_NOT_FOUND = "السجل غير موجود"
 _MSG_BAD_CURSOR = "مؤشر الصفحة غير صالح"
 _MSG_BAD_DATE = "صيغة التاريخ غير صالحة"
+_MSG_EXPORT_TOO_LARGE = (
+    "النطاق الزمني المطلوب يحتوي على عدد كبير جداً من السجلات. "
+    "يرجى تضييق نطاق التاريخ (from/to) ثم إعادة المحاولة."
+)
+
+# Hard cap on rows returned by the CSV export. Long-lived workspaces can
+# accumulate tens of thousands of audit rows; loading them all into memory
+# before streaming risks request-memory blowup and proxy timeouts. 50k
+# rows ≈ a few MB of CSV which streams comfortably; anything larger we
+# refuse with a safe Arabic message asking the IT to narrow the date
+# range.
+_MAX_EXPORT_ROWS = 50_000
 
 
 # -- Details sanitization ------------------------------------------------
@@ -574,32 +586,47 @@ async def export_audit_logs_csv(
         ts_to = _parse_iso_aware(to, msg=_MSG_BAD_DATE)
         conditions.append(AuditLog.timestamp < ts_to)
 
+    # Over-fetch by exactly one row so we can detect "more than the cap
+    # would allow" in a single round-trip without a separate COUNT(*).
     stmt = (
         select(AuditLog)
         .where(and_(*conditions))
         .order_by(desc(AuditLog.timestamp))
+        .limit(_MAX_EXPORT_ROWS + 1)
     )
 
     result = await db.session.execute(stmt)
     rows = list(result.scalars().all())
-    serialized = [_serialize(_row_to_dict(r)) for r in rows]
+    if len(rows) > _MAX_EXPORT_ROWS:
+        # Fail closed with a clear, safe Arabic message so the IT can
+        # narrow the date range. 413 = Payload Too Large.
+        raise HTTPException(status_code=413, detail=_MSG_EXPORT_TOO_LARGE)
 
-    buf = io.StringIO()
-    # UTF-8 BOM so Excel opens the Arabic columns correctly.
-    buf.write("\ufeff")
-    writer = csv.writer(buf, quoting=csv.QUOTE_MINIMAL)
-    writer.writerow(fields)
-    for row in serialized:
-        writer.writerow([_csv_value(row, k) for k in fields])
+    def _iter_csv():
+        # UTF-8 BOM so Excel opens the Arabic columns correctly.
+        header_buf = io.StringIO()
+        header_buf.write("\ufeff")
+        header_writer = csv.writer(header_buf, quoting=csv.QUOTE_MINIMAL)
+        header_writer.writerow(fields)
+        yield header_buf.getvalue().encode("utf-8")
 
-    payload = buf.getvalue().encode("utf-8")
+        # Stream each row independently so peak memory is one row, not
+        # the entire serialised payload. ``fields`` is the validated
+        # subset from the ``columns`` query param (defaults to the full
+        # ``_CSV_FIELDS`` set).
+        for r in rows:
+            row_buf = io.StringIO()
+            row_writer = csv.writer(row_buf, quoting=csv.QUOTE_MINIMAL)
+            serialized = _serialize(_row_to_dict(r))
+            row_writer.writerow([_csv_value(serialized, k) for k in fields])
+            yield row_buf.getvalue().encode("utf-8")
+
     filename = f"audit-log-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.csv"
     return StreamingResponse(
-        io.BytesIO(payload),
+        _iter_csv(),
         media_type="text/csv; charset=utf-8",
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',
-            "Content-Length": str(len(payload)),
         },
     )
 
