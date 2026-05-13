@@ -126,15 +126,20 @@ export default function TeacherNotificationsPage() {
     try {
       const res = await api.post('/independent-teacher/notifications/read-all');
       const updated = Number(res?.data?.updated) || 0;
-      setItems((prev) => prev.map((n) => ({ ...n, is_read: true })));
       setUnread(0);
+      // Re-fetch the visible list so the active tab reflects the new
+      // state — most importantly, the "unread" tab must become empty
+      // instead of showing now-read rows. The bell badge is synced
+      // via the global ``notifications:refresh`` event below.
+      await fetchList({ readMode: readTab, category: categoryFilter });
+      window.dispatchEvent(new CustomEvent('notifications:refresh'));
       nassaqInfo(isAr ? `تم تحديد ${updated} إشعارًا كمقروء.` : `Marked ${updated} notifications as read.`);
     } catch (err) {
       nassaqError(err?.response?.data?.detail || (isAr ? 'تعذّر تحديد الإشعارات.' : 'Failed to mark notifications.'));
     } finally {
       setMarking(false);
     }
-  }, [api, isAr, nassaqError, nassaqInfo]);
+  }, [api, isAr, nassaqError, nassaqInfo, fetchList, readTab, categoryFilter]);
 
   const filtered = useMemo(() => items, [items]);
 
@@ -171,7 +176,7 @@ export default function TeacherNotificationsPage() {
               >
                 {marking ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCheck className="h-4 w-4" />}
                 <span className="mx-1">
-                  {isAr ? 'تحديد الكل كمقروء' : 'Mark all read'}
+                  {isAr ? 'تعليم الكل كمقروء' : 'Mark all as read'}
                 </span>
               </Button>
             </div>

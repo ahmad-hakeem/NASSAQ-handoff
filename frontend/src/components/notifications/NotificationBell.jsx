@@ -95,6 +95,20 @@ export const NotificationBell = () => {
     return () => clearInterval(interval);
   }, [fetchUnreadCount]);
 
+  // Task #261 — listen for the global ``notifications:refresh`` event
+  // dispatched by surfaces that flip notification state in bulk
+  // (e.g. the IT inbox "تعليم الكل كمقروء" action) so the header
+  // badge zeroes out immediately instead of waiting for the next
+  // 30-second poll tick.
+  useEffect(() => {
+    const handler = () => {
+      fetchUnreadCount();
+      if (open) fetchRecentNotifications();
+    };
+    window.addEventListener('notifications:refresh', handler);
+    return () => window.removeEventListener('notifications:refresh', handler);
+  }, [fetchUnreadCount, fetchRecentNotifications, open]);
+
   // Fetch notifications when dropdown opens
   useEffect(() => {
     if (open) {

@@ -197,6 +197,38 @@ async def test_cursor_pagination_and_read_all_alias(client):
 
 
 @pytest.mark.asyncio
+async def test_read_all_does_not_touch_cross_workspace_rows(client):
+    # Task #261 — /read-all must only flip the caller's own
+    # workspace-pinned unread rows; foreign-workspace rows must
+    # stay unread (§8 inv. 3 — no cross-tenant writes).
+    a = await mk_it_workspace(with_class=False, with_student=False, with_parent=False)
+    b = await mk_it_workspace(with_class=False, with_student=False, with_parent=False)
+
+    own_a = [
+        await _seed_notif(user_id=a["uid"], tenant_id=a["wsid"]) for _ in range(2)
+    ]
+    foreign_b = await _seed_notif(user_id=b["uid"], tenant_id=b["wsid"])
+
+    resp = await client.post(
+        "/independent-teacher/notifications/read-all",
+        headers=_it_headers(a),
+    )
+    assert resp.status_code == 200, resp.text
+    assert int(resp.json()["updated"]) == 2
+
+    # Caller's own rows are now read.
+    for nid in own_a:
+        row = await gd_find_one(db.session, "notifications", {"id": nid})
+        assert row is not None
+        assert bool(row.get("is_read")) is True
+
+    # Foreign-workspace row is untouched.
+    other = await gd_find_one(db.session, "notifications", {"id": foreign_b})
+    assert other is not None
+    assert bool(other.get("is_read")) is False
+
+
+@pytest.mark.asyncio
 async def test_should_send_channel_respects_email_suppression(client):
     ctx = await mk_it_workspace(with_class=False, with_student=False, with_parent=False)
     h = _it_headers(ctx)
