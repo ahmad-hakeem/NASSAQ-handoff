@@ -7,6 +7,15 @@ import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { Loader2, History, RefreshCw, ChevronDown, ChevronUp, Search, Download } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../../components/ui/dropdown-menu';
 import { formatHijriDate } from '../../utils/hijriDate';
 import { useTranslation } from '../../contexts/ThemeContext';
 
@@ -16,6 +25,23 @@ import { useTranslation } from '../../contexts/ThemeContext';
 // ids per spec §8 inv. 3. Permission gate: `audit.read_own_workspace`.
 
 const PAGE_LIMIT = 25;
+
+// CSV column presets — keys must mirror backend ``_CSV_FIELDS``.
+// "standard" matches the historical default minus the bulky JSON
+// ``details`` blob; "minimal" is the share-with-parent slice the
+// task brief calls out; "full" is the original fixed column set.
+const CSV_COLUMN_PRESETS = {
+  minimal: ['timestamp', 'action_label_ar', 'actor_name'],
+  standard: [
+    'id', 'timestamp', 'category_label_ar', 'action_label_ar',
+    'severity', 'actor_name', 'actor_role', 'entity_type', 'entity_id',
+  ],
+  full: [
+    'id', 'timestamp', 'category', 'category_label_ar', 'action',
+    'action_label_ar', 'severity', 'actor_name', 'actor_role',
+    'performed_by', 'entity_type', 'entity_id', 'details',
+  ],
+};
 
 function severityClass(sev) {
   switch ((sev || '').toLowerCase()) {
@@ -107,6 +133,7 @@ export default function TeacherAuditLogPage() {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [csvPreset, setCsvPreset] = useState('full');
   const [expanded, setExpanded] = useState({});
 
   const errMsg = useMemo(
@@ -128,6 +155,12 @@ export default function TeacherAuditLogPage() {
       const toIso = dayBoundaryIso(toDate, { endOfDay: true });
       if (fromIso) params.from = fromIso;
       if (toIso) params.to = toIso;
+      // Only attach `columns` when narrowing the set; omitting the
+      // param keeps the legacy default behaviour intact.
+      const cols = CSV_COLUMN_PRESETS[csvPreset];
+      if (cols && csvPreset !== 'full') {
+        params.columns = cols.join(',');
+      }
       const res = await api.get('/independent-teacher/audit-logs/export.csv', {
         params,
         responseType: 'blob',
@@ -150,7 +183,7 @@ export default function TeacherAuditLogPage() {
     } finally {
       setExporting(false);
     }
-  }, [api, activeCategory, fromDate, toDate, exporting, nassaqError, exportErrMsg]);
+  }, [api, activeCategory, fromDate, toDate, csvPreset, exporting, nassaqError, exportErrMsg]);
 
   const fetchPage = useCallback(async (opts = {}) => {
     setLoading(true);
@@ -237,19 +270,78 @@ export default function TeacherAuditLogPage() {
               </h1>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={onDownloadCsv}
-                disabled={exporting || loading}
-                title={t('downloadCsv') || 'تنزيل CSV'}
-              >
-                {exporting
-                  ? <Loader2 className="w-4 h-4 ml-2 animate-spin" />
-                  : <Download className="w-4 h-4 ml-2" />}
-                {t('downloadCsv') || 'تنزيل CSV'}
-              </Button>
+              <div className="inline-flex rounded-md border border-input overflow-hidden">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="rounded-none border-0"
+                  onClick={onDownloadCsv}
+                  disabled={exporting || loading}
+                  title={t('downloadCsv') || 'تنزيل CSV'}
+                >
+                  {exporting
+                    ? <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+                    : <Download className="w-4 h-4 ml-2" />}
+                  {t('downloadCsv') || 'تنزيل CSV'}
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="rounded-none border-0 border-r border-input px-2"
+                      disabled={exporting || loading}
+                      title={t('csvColumnsPickerTitle') || 'اختيار الأعمدة'}
+                      aria-label={t('csvColumnsPickerTitle') || 'اختيار الأعمدة'}
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64">
+                    <DropdownMenuLabel>
+                      {t('csvColumnsPickerTitle') || 'اختيار الأعمدة'}
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuRadioGroup
+                      value={csvPreset}
+                      onValueChange={setCsvPreset}
+                    >
+                      <DropdownMenuRadioItem value="minimal">
+                        <div className="flex flex-col">
+                          <span className="text-sm">
+                            {t('csvColumnsMinimal') || 'مختصر — وقت + الحدث + المنفّذ'}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {t('csvColumnsMinimalHint') || 'مناسب للمشاركة مع وليّ الأمر'}
+                          </span>
+                        </div>
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="standard">
+                        <div className="flex flex-col">
+                          <span className="text-sm">
+                            {t('csvColumnsStandard') || 'قياسي — بدون تفاصيل JSON'}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {t('csvColumnsStandardHint') || 'الأعمدة المعتادة بدون الحقل التفصيلي'}
+                          </span>
+                        </div>
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="full">
+                        <div className="flex flex-col">
+                          <span className="text-sm">
+                            {t('csvColumnsFull') || 'كامل — جميع الأعمدة'}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {t('csvColumnsFullHint') || 'يتضمن حقل التفاصيل (JSON) للأرشفة'}
+                          </span>
+                        </div>
+                      </DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
               <Button
                 type="button"
                 variant="outline"

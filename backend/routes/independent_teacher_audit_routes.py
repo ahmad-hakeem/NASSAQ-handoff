@@ -479,6 +479,34 @@ _CSV_FIELDS: Tuple[str, ...] = (
     "details",
 )
 
+# Whitelist of column names accepted by the ``columns`` query param.
+# Mirrors ``_CSV_FIELDS`` exactly so the picker on the FE can never
+# surface an emit-able column the JSON serialiser doesn't already
+# expose. Order in the output CSV follows ``_CSV_FIELDS`` (not the
+# request order), so a tampered query can't reshuffle the file.
+_CSV_FIELDS_ALLOWED = frozenset(_CSV_FIELDS)
+
+
+def _resolve_csv_columns(raw: Optional[str]) -> Tuple[str, ...]:
+    """Parse the ``columns`` query param into an ordered, validated tuple.
+
+    - ``None`` / empty / whitespace-only → full default set (back-compat).
+    - Comma-separated names: trimmed, lower-cased, deduped, intersected
+      with ``_CSV_FIELDS_ALLOWED``, and re-ordered to match ``_CSV_FIELDS``
+      so the on-disk column order is stable regardless of request order.
+    - All-unknown / empty after validation → fall back to the full set
+      so the export is never silently truncated to a useless 0-column file.
+    """
+    if not raw or not str(raw).strip():
+        return _CSV_FIELDS
+    requested = {
+        token.strip().lower()
+        for token in str(raw).split(",")
+        if token.strip()
+    }
+    selected = tuple(field for field in _CSV_FIELDS if field in requested and field in _CSV_FIELDS_ALLOWED)
+    return selected or _CSV_FIELDS
+
 
 def _csv_value(row: Dict[str, Any], key: str) -> str:
     if key == "category_label_ar":
@@ -503,6 +531,15 @@ async def export_audit_logs_csv(
     action: Optional[str] = Query(default=None, max_length=128),
     from_: Optional[str] = Query(default=None, alias="from", max_length=32),
     to: Optional[str] = Query(default=None, max_length=32),
+    columns: Optional[str] = Query(
+        default=None,
+        max_length=512,
+        description=(
+            "Comma-separated subset of CSV column names to emit "
+            "(see _CSV_FIELDS). Unknown names are ignored; absent/empty "
+            "param keeps the full default column set for back-compat."
+        ),
+    ),
     current_user: dict = Depends(_require_independent_teacher),
 ):
     """Stream the workspace audit log as CSV.
@@ -511,7 +548,13 @@ async def export_audit_logs_csv(
     sensitive-key stripping, and same category/action/date filters as
     the JSON list endpoint. No cursor/limit — exports the full filtered
     history newest-first so the IT can keep an offline archive.
+
+    The optional ``columns`` query param lets the FE picker narrow the
+    output to a subset (e.g. minimal share-with-parent vs full archive).
+    Column order in the file always follows ``_CSV_FIELDS``, regardless
+    of the request order, so the file shape stays predictable.
     """
+    fields = _resolve_csv_columns(columns)
     workspace_id = _workspace_id(current_user)
 
     conditions = [AuditLog.school_id == workspace_id]
@@ -545,9 +588,9 @@ async def export_audit_logs_csv(
     # UTF-8 BOM so Excel opens the Arabic columns correctly.
     buf.write("\ufeff")
     writer = csv.writer(buf, quoting=csv.QUOTE_MINIMAL)
-    writer.writerow(_CSV_FIELDS)
+    writer.writerow(fields)
     for row in serialized:
-        writer.writerow([_csv_value(row, k) for k in _CSV_FIELDS])
+        writer.writerow([_csv_value(row, k) for k in fields])
 
     payload = buf.getvalue().encode("utf-8")
     filename = f"audit-log-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.csv"
