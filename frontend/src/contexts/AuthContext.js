@@ -3,8 +3,33 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { createApiService } from '../services/apiClient';
 import { isMfaStepUpHandlerRegistered, requestMfaStepUp } from '../services/mfaStepUpBridge';
+import {
+  isPerimeterGateHandlerRegistered,
+  notifyWorkspaceNotMaterialised,
+  hasShownBootstrapDialogThisSession,
+  markBootstrapDialogShownThisSession,
+  resetBootstrapDialogGuard,
+} from '../services/perimeterGateBridge';
+import { WORKSPACE_NOT_MATERIALISED_AR_FE } from '../constants/auth';
 import arLocale from '../locales/ar.json';
 import enLocale from '../locales/en.json';
+
+// Lightweight base64url JWT payload decoder (no signature check — the
+// backend re-validates every request). Used by the perimeter-gate
+// interceptor branch to decide whether a freshly-refreshed access token
+// has had its `tenant_id` claim populated by another tab's bootstrap.
+function _decodeJwtPayload(token) {
+  try {
+    const part = token.split('.')[1];
+    if (!part) return null;
+    const padded = part.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4));
+    const json = atob(padded + pad);
+    return JSON.parse(decodeURIComponent(escape(json)));
+  } catch {
+    return null;
+  }
+}
 
 // Lightweight translator that does not depend on a React hook — used by the
 // axios interceptor which lives outside React's render tree. Falls back to
@@ -166,6 +191,50 @@ export const AuthProvider = ({ children }) => {
 
       if (isGet && isTransient && retryCount < MAX_RETRIES) {
         return retryRequest(api, config, retryCount);
+      }
+
+      // Task #186 — IT perimeter "finish setup" handler.
+      // The backend's `require_workspace_materialised` gate emits a
+      // canonical 409 + safe Arabic detail when an IT user calls a
+      // non-allowlisted route with `tenant_id` claim still empty (signed
+      // up but never bootstrapped, OR opened a stale tab after another
+      // tab finished bootstrap). We do NOT widen this branch — it must
+      // match on BOTH status 409 AND the exact constant detail string,
+      // so unrelated 409s (concurrent edits, version mismatches, etc.)
+      // keep their existing handling.
+      const detailField = error.response?.data?.detail;
+      const detailMessage = typeof detailField === 'string'
+        ? detailField
+        : (detailField?.message || error.response?.data?.error?.message || '');
+      if (
+        status === 409
+        && detailMessage === WORKSPACE_NOT_MATERIALISED_AR_FE
+        && !config._perimeterGateRetried
+      ) {
+        // First, try a single-flight refresh — covers the common
+        // "bootstrapped in another tab" race transparently. Reuse the
+        // shared `attemptTokenRefresh` so parallel 409s coalesce.
+        const refreshed = await attemptTokenRefresh();
+        if (refreshed) {
+          const claims = _decodeJwtPayload(refreshed);
+          if (claims && claims.tenant_id) {
+            setToken(refreshed);
+            const retryCfg = {
+              ...config,
+              _perimeterGateRetried: true,
+              headers: { ...config.headers, Authorization: `Bearer ${refreshed}` },
+            };
+            return api.request(retryCfg);
+          }
+        }
+        // Real "not bootstrapped yet" — show the one-shot guidance
+        // dialog (idempotent across parallel 409s) and route to the
+        // wizard. Suppress the default error UI for this rejection.
+        if (!hasShownBootstrapDialogThisSession() && isPerimeterGateHandlerRegistered()) {
+          markBootstrapDialogShownThisSession();
+          notifyWorkspaceNotMaterialised();
+        }
+        return Promise.reject(error);
       }
 
       // Task #169 Step 9 — MFA step-up interceptor.
@@ -401,6 +470,10 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('nassaq_token', access_token);
       setToken(access_token);
       setUser(userData);
+      // Task #186 — fresh login resets the one-shot perimeter-gate
+      // dialog guard so a future stale-token recurrence in this tab
+      // can re-prompt.
+      resetBootstrapDialogGuard();
       // Task #231 — stash the IT workspace lifecycle snapshot embedded
       // in the login response so the post-login dashboard can render
       // the reactivation banner without waiting on a follow-up GET.
@@ -528,6 +601,9 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('nassaq_token', access_token);
       setToken(access_token);
       setUser(userData);
+      // Task #186 — fresh MFA-verified login also resets the one-shot
+      // perimeter-gate dialog guard.
+      resetBootstrapDialogGuard();
       // Task #231 — same as login(): stash the IT workspace lifecycle
       // snapshot so the post-login dashboard banner paints in the same
       // frame.

@@ -11,6 +11,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { GenericNameGuard } from "./components/GenericNameGuard";
 import AppRoutes from "./routes/appRoutes";
 import { BetaBanner } from "./components/BetaDisclaimer";
+import PerimeterGateBridge from "./components/PerimeterGateBridge";
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
                       so it can read the current URL on mount and resolve
                       deep links before any page renders. */}
                   <ParentActiveStudentProvider>
+                    <PerimeterGateBridge />
                     <BetaBanner />
                     <GenericNameGuard>
                       <AppRoutes />
