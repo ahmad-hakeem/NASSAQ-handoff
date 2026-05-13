@@ -30,6 +30,13 @@ WORKSPACE_NOT_MATERIALISED_AR = "يجب إكمال إنشاء مساحتك أو�
 _WORKSPACE_ALLOWLIST_PREFIXES = (
     "/auth/",                          # login, refresh, logout, me, mfa/*
     "/independent-teacher/bootstrap",  # the bootstrap call itself
+    # Public/health surfaces are unauthenticated by design. An IT user
+    # who happens to be logged in (bearer attached by the FE axios
+    # interceptor) must NOT 409 here — otherwise the global axios
+    # perimeter handler treats every background poll as a "finish
+    # setup" signal and bounces the wizard back to step 1.
+    "/public/",
+    "/healthz",
 )
 
 
