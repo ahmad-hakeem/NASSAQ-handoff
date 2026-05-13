@@ -108,7 +108,11 @@ class WorkspaceClassDraft(BaseModel):
 class WorkspaceBootstrapRequest(BaseModel):
     workspace_name_ar: str = Field(..., min_length=1, max_length=200)
     workspace_name_en: Optional[str] = Field(default=None, max_length=200)
-    avatar_url: Optional[str] = Field(default=None, max_length=1024)
+    # Accepts either a short URL or a base64 data:image/* payload (the
+    # onboarding wizard's ImageCropModal hands back the latter). Cap matches
+    # /users/me/avatar (2 MB raw, ~2.7 MB base64) so the workspace logo and
+    # user avatar share the same upload contract.
+    avatar_url: Optional[str] = Field(default=None, max_length=3 * 1024 * 1024)
 
     academic_year_label: str = Field(..., min_length=1, max_length=64)
     academic_year_start: Optional[str] = None  # ISO yyyy-mm-dd
