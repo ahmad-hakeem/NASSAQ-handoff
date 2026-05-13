@@ -510,10 +510,17 @@ async def hard_delete_workspace(
                 workspace_id,
             )
 
+            # The audit row's ``school_id`` FK references ``schools.id``
+            # with ``ON DELETE SET NULL``; since the schools row was just
+            # deleted by the cascade above, we deliberately pass
+            # ``tenant_id=None`` here so the insert doesn't trip the
+            # foreign-key on a row that no longer exists. The workspace
+            # id is still preserved verbatim inside ``entity_id`` and
+            # ``details.school_id`` for forensics.
             await audit_engine.log(
                 action=AUDIT_HARD_DELETED,
                 performed_by=current_user["id"],
-                tenant_id=workspace_id,
+                tenant_id=None,
                 entity_type="school",
                 entity_id=workspace_id,
                 details={

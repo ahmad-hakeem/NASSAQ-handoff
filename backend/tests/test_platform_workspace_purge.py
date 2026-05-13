@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import text as _sql
+from sqlalchemy.exc import ProgrammingError
 
 from dependencies import db
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_update_one
@@ -65,11 +66,24 @@ _CHILD_SCOPED = (
 
 
 async def _count(table: str, col: str, value: str) -> int:
-    r = await db.session.execute(
-        _sql(f"SELECT COUNT(*) FROM {table} WHERE {col} = :v"),
-        {"v": value},
-    )
-    return int(r.scalar() or 0)
+    """Count rows scoped by ``col=value``. Wrapped in a SAVEPOINT so a
+    missing table/column (the purge handler tolerates the same drift
+    via ``skipped_tables``) doesn't poison the surrounding session —
+    in that case we return 0, mirroring the handler's behaviour."""
+    sp = await db.session.begin_nested()
+    try:
+        r = await db.session.execute(
+            _sql(f"SELECT COUNT(*) FROM {table} WHERE {col} = :v"),
+            {"v": value},
+        )
+        await sp.commit()
+        return int(r.scalar() or 0)
+    except ProgrammingError as exc:
+        await sp.rollback()
+        msg = str(exc).lower()
+        if "does not exist" in msg or "undefined" in msg:
+            return 0
+        raise
 
 
 async def _flip_pending_hard_delete(wsid: str) -> None:
@@ -102,6 +116,7 @@ async def _seed_extra_rows(wsid: str) -> None:
         "id": str(uuid.uuid4()),
         "tenant_id": wsid,
         "title": "تجربة",
+        "title_ar": "تجربة",
         "date": datetime.now(timezone.utc).date().isoformat(),
         "is_personal": True,
     })
