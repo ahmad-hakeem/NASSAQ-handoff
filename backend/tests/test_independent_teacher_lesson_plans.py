@@ -159,6 +159,10 @@ async def test_generate_respects_daily_quota(client, monkeypatch):
     monkeypatch.setattr(qmod, "MAX_LESSON_PLANS_PER_DAY", 2)
     from routes import independent_teacher_lesson_plans_routes as mod
     monkeypatch.setattr(mod, "MAX_LESSON_PLANS_PER_DAY", 2)
+    # Disable the short-window burst guard so we can prove the daily
+    # quota path independently (Task #221).
+    monkeypatch.setattr(mod, "_BURST_SHORT_MAX", 100)
+    monkeypatch.setattr(mod, "_BURST_LONG_MAX", 100)
 
     for _ in range(2):
         r = await client.post(
@@ -172,6 +176,66 @@ async def test_generate_respects_daily_quota(client, monkeypatch):
         headers=h, json={"topic": "t"},
     )
     assert r.status_code == 429, r.text
+
+
+# ----------------------------------------------------------------------
+# (c2) Short-window burst guard (Task #221)
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_generate_burst_rate_limited(client, monkeypatch):
+    user = await _mk_it_workspace()
+    h = _headers(user["id"], user["role"], user["tenant_id"])
+    _mock_openai(monkeypatch, '{"title": "x"}')
+
+    # First call passes the 1/10s and 3/60s windows.
+    r1 = await client.post(
+        "/independent-teacher/lesson-plans/generate",
+        headers=h, json={"topic": "t"},
+    )
+    assert r1.status_code == 200, r1.text
+
+    # Immediate second call trips the 1/10s window.
+    r2 = await client.post(
+        "/independent-teacher/lesson-plans/generate",
+        headers=h, json={"topic": "t"},
+    )
+    assert r2.status_code == 429, r2.text
+    body = r2.json()
+    # Standard envelope is {"success": False, "error": {"code", "message"}}.
+    # Must be the burst copy, NOT the daily-quota copy.
+    err_msg = (body.get("error") or {}).get("message") or ""
+    assert "متكررة" in err_msg, err_msg
+    assert "اليومي" not in err_msg, err_msg
+    assert "Retry-After" in r2.headers
+
+
+@pytest.mark.asyncio
+async def test_generate_burst_long_window_3_per_minute(client, monkeypatch):
+    """Explicit coverage for the 3-per-60s ceiling (Task #221)."""
+    user = await _mk_it_workspace()
+    h = _headers(user["id"], user["role"], user["tenant_id"])
+    _mock_openai(monkeypatch, '{"title": "x"}')
+
+    # Disable the 1/10s window so we can isolate the 3/60s ceiling.
+    from routes import independent_teacher_lesson_plans_routes as mod
+    monkeypatch.setattr(mod, "_BURST_SHORT_MAX", 100)
+
+    # Three calls within the 60s window must all succeed.
+    for _ in range(3):
+        r = await client.post(
+            "/independent-teacher/lesson-plans/generate",
+            headers=h, json={"topic": "t"},
+        )
+        assert r.status_code == 200, r.text
+
+    # The fourth one in the same minute must trip the long-window guard.
+    r4 = await client.post(
+        "/independent-teacher/lesson-plans/generate",
+        headers=h, json={"topic": "t"},
+    )
+    assert r4.status_code == 429, r4.text
+    err_msg = (r4.json().get("error") or {}).get("message") or ""
+    assert "متكررة" in err_msg, err_msg
 
 
 # ----------------------------------------------------------------------

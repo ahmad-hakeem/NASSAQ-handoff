@@ -44,6 +44,7 @@ from auth_scope import (
 )
 from dependencies import db, get_current_user
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_update_one
+from middleware.rate_limiter import rate_store
 from quotas.independent_teacher import MAX_LESSON_PLANS_PER_DAY
 from routes.ai_routes_mod import AI_NOT_CONFIGURED_RESPONSE, get_openai_client
 
@@ -62,6 +63,15 @@ _MSG_NOT_FOUND = "خطة الدرس غير موجودة"
 _MSG_TOPIC_REQUIRED = "موضوع الدرس مطلوب"
 _MSG_INTERNAL = "تعذّر توليد خطة الدرس — حاول لاحقًا"
 _MSG_QUOTA_DAILY = "بلغت الحد اليومي لتوليد خطط الدروس. حاول مرة أخرى غدًا."
+_MSG_RATE_LIMITED = "طلبات متكررة بسرعة كبيرة لتوليد خطط الدروس. يرجى الانتظار قليلًا قبل المحاولة مجددًا."
+
+# Short-window burst limits (Task #221) — per workspace, in addition to
+# the daily quota. Mirrors the parent-invitation accept route's use of
+# the in-memory ``rate_store``.
+_BURST_SHORT_MAX = 1
+_BURST_SHORT_WINDOW = 10  # seconds
+_BURST_LONG_MAX = 3
+_BURST_LONG_WINDOW = 60  # seconds
 _MSG_CLASS_NOT_FOUND = "الفصل غير موجود في مساحتك"
 _MSG_AI_PARSE = "تعذّر تحليل ردّ الذكاء الاصطناعي — حاول مرة أخرى"
 
@@ -282,6 +292,28 @@ async def generate_lesson_plan(
         raise HTTPException(status_code=422, detail=_MSG_TOPIC_REQUIRED)
 
     workspace_id = _workspace_id(current_user)
+
+    # Short-window burst guard (Task #221). Keyed per workspace so a
+    # stolen IT token cannot drain the daily quota in seconds and spike
+    # OpenAI cost/latency for the rest of the platform. Two windows are
+    # checked: 1 req / 10s and 3 req / 60s. The longer window is checked
+    # first so its retry-after dominates when both fire.
+    for max_req, window in (
+        (_BURST_LONG_MAX, _BURST_LONG_WINDOW),
+        (_BURST_SHORT_MAX, _BURST_SHORT_WINDOW),
+    ):
+        limited, _, retry_after = await rate_store.is_rate_limited(
+            f"it_lesson_plan_generate:{workspace_id}:{window}",
+            max_req,
+            window,
+        )
+        if limited:
+            raise HTTPException(
+                status_code=429,
+                detail=_MSG_RATE_LIMITED,
+                headers={"Retry-After": str(retry_after)},
+            )
+
     quota = await _load_quota(workspace_id)
     used_today = _lesson_plans_today(quota)
     if used_today >= MAX_LESSON_PLANS_PER_DAY:

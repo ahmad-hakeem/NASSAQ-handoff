@@ -92,9 +92,14 @@ def create_app() -> FastAPI:
                 "code": f"HTTP_{exc.status_code}",
                 "message": exc.detail if isinstance(exc.detail, str) else str(exc.detail),
             }
+        # Preserve any explicit response headers the route attached to
+        # the HTTPException (e.g. ``Retry-After`` on 429s from the IT
+        # lesson-plan burst limiter, Task #221). Without this passthrough
+        # the headers would be silently dropped by JSONResponse.
         return JSONResponse(
             status_code=exc.status_code,
             content={"success": False, "error": err},
+            headers=getattr(exc, "headers", None) or None,
         )
 
     @application.exception_handler(IntegrityError)
