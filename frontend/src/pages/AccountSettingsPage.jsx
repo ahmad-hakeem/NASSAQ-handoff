@@ -209,7 +209,11 @@ const NotificationRow = ({ title, desc, checked, onChange }) => (
 // Task #275 — small toggle row used by the IT auto-export card. Same
 // visual + a11y shape as NotificationRow; kept separate so future
 // auto-export rows (e.g. inline schedule preview) can extend without
-// touching the broader notifications block.
+// touching the broader notifications block. Originally referenced by
+// the auto-export sub-card without ever being defined — Task #254's
+// workspace-hub integration render surfaced this as "ToggleRow is not
+// defined" the moment an IT user opened the hub. Aliasing keeps both
+// call-sites identical and is the smallest possible patch.
 const ToggleRow = NotificationRow;
 
 export const AccountSettingsPage = () => {
