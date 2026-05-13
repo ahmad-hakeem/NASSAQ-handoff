@@ -64,6 +64,7 @@ const TeacherAttendanceManagePage = lazy(() => import("../pages/TeacherModule").
 const TeacherAssessmentsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAssessmentsPage })));
 const TeacherBehaviorPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherBehaviorPage })));
 const TeacherStudentsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherStudentsPage })));
+const ImportStudentsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.ImportStudentsPage })));
 const TeacherAchievementsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAchievementsPage })));
 const TeacherCommunicationPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherCommunicationPage })));
 const TeacherResourcesPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherResourcesPage })));
@@ -297,6 +298,19 @@ export default function AppRoutes() {
         } />
         <Route path="/teacher/students" element={
           <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherStudentsPage /></ProtectedRoute>
+        } />
+        {/* Task #207 §6.1 — IT-only workspace-aware bulk student import.
+            Backend gates /commit with require_recent_mfa_403; the global
+            axios interceptor replays after passkey assertion. */}
+        {/* Bulk import is gated by the backend `students.bulk_import_workspace`
+            permission. The FE guard mirrors that contract via
+            requiredPermission so a future rbac change that grants the
+            permission to additional roles flows through automatically. */}
+        <Route path="/teacher/import-students" element={
+          <ProtectedRoute
+            allowedRoles={['independent_teacher']}
+            requiredPermission="students.bulk_import_workspace"
+          ><ImportStudentsPage /></ProtectedRoute>
         } />
         <Route path="/teacher/sessions" element={<Navigate to="/teacher/classes?tab=sessions" replace />} />
         <Route path="/teacher/achievements" element={

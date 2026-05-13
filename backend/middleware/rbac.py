@@ -93,6 +93,9 @@ class Permission(str, Enum):
     AUDIT_VIEW = "audit.view"
     AUDIT_EXPORT = "audit.export"
     
+    # Students (workspace-scoped capabilities)
+    STUDENTS_BULK_IMPORT_WORKSPACE = "students.bulk_import_workspace"
+
     # System
     SYSTEM_MONITOR = "system.monitor"
     SYSTEM_CONFIGURE = "system.configure"
@@ -227,6 +230,9 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
         # is enforced at the route layer (workspace tenant + caller as
         # author); the permission only signals UI eligibility.
         Permission.EVENTS_AUTHOR_OWN.value,
+        # Phase 2 §6.1 (#207) — workspace-aware bulk student import.
+        # Backend gates the actual /commit path with require_recent_mfa_403.
+        Permission.STUDENTS_BULK_IMPORT_WORKSPACE.value,
     ],
     
     "student": [

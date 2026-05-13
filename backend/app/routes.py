@@ -145,6 +145,14 @@ def register_routes(app, api_router: APIRouter):
         router as it_calendar_router,
     )
     api_router.include_router(it_calendar_router)
+    # Phase 2 §6.1 (#207) — IT workspace-aware bulk student import.
+    # Mounted WITHOUT _full_tenant_dep; the router enforces the IT
+    # role gate per-endpoint, pins all writes to itw_{user_id}, and
+    # gates /commit behind require_recent_mfa_403 (Tier-A step-up).
+    from routes.independent_teacher_bulk_import_routes import (
+        router as it_bulk_import_router,
+    )
+    api_router.include_router(it_bulk_import_router)
     api_router.include_router(scheduling_smart_router, dependencies=_full_tenant_dep)
     api_router.include_router(scheduling_smart_sess_router, dependencies=_full_tenant_dep)
     api_router.include_router(schedule_candidates_router, dependencies=_full_tenant_dep)

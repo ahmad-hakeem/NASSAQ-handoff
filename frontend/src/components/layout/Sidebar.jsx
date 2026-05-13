@@ -51,6 +51,7 @@ import {
   Award,
   Lightbulb,
   ChevronDown,
+  Upload,
 } from 'lucide-react';
 
 
@@ -452,6 +453,17 @@ export const Sidebar = ({ children }) => {
         href: '/teacher/calendar',
         roles: ['independent_teacher'],
         permission: 'events.author_own',
+      },
+      // Task #207 §6.1 — IT-only workspace-aware bulk student import.
+      // Permission-gated on `students.bulk_import_workspace` so a
+      // future RBAC change that grants the permission to additional
+      // roles surfaces the link automatically.
+      {
+        icon: Upload,
+        label: 'استيراد الطلاب',
+        href: '/teacher/import-students',
+        roles: ['independent_teacher'],
+        permission: 'students.bulk_import_workspace',
       },
     ];
 

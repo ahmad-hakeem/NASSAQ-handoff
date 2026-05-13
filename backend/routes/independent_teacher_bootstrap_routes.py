@@ -474,6 +474,27 @@ async def bootstrap_independent_teacher_workspace(
                 "updated_at": now.isoformat(),
             })
 
+        # 6.g.bis — Phase 2 §6.1 (#207): seed the workspace_quota row so
+        # the bulk-student-import endpoints find an authoritative row
+        # without lazily inserting one on first use. Defaults are taken
+        # from the migration's server_defaults so any future schema-level
+        # change carries through transparently.
+        from quotas.independent_teacher import (
+            MAX_STUDENTS as _IT_MAX_STUDENTS,
+            MAX_CLASSES as _IT_MAX_CLASSES,
+        )
+        await gd_insert(session, "workspace_quota", {
+            "workspace_school_id": school_id,
+            "max_students": _IT_MAX_STUDENTS,
+            "max_classes": _IT_MAX_CLASSES,
+            "max_imports_per_day": 5,
+            "max_rows_per_import": 200,
+            "imports_today": 0,
+            "imports_today_date": None,
+            "created_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+        })
+
         # 6.h — audit log. Part of the success contract: a failed audit
         #        write rolls back the entire bootstrap (every insert above
         #        is in this same SQLAlchemy session). Spec §5.1 requires

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -19,8 +20,49 @@ const LoadingSpinner = () => (
   </div>
 );
 
-export const ProtectedRoute = ({ children, allowedRoles, skipPasswordCheck = false }) => {
-  const { user, loading, isAuthenticated, isImpersonating, getEffectiveRole } = useAuth();
+// Walk a permissions payload and return true if `key` (e.g.
+// "students.bulk_import_workspace") is granted. Tolerates either an
+// array of permission strings or a nested object map (the
+// /auth/me/permissions response shape may evolve).
+const hasPermission = (permissions, key) => {
+  if (!permissions || !key) return false;
+  if (Array.isArray(permissions)) return permissions.includes(key);
+  if (typeof permissions === "object") {
+    if (Array.isArray(permissions.permissions)) {
+      return permissions.permissions.includes(key);
+    }
+    const [group, leaf] = key.split(".");
+    const bucket = permissions[group];
+    if (Array.isArray(bucket)) return bucket.includes(leaf);
+    if (bucket && typeof bucket === "object") return !!bucket[leaf];
+    return !!permissions[key];
+  }
+  return false;
+};
+
+export const ProtectedRoute = ({
+  children,
+  allowedRoles,
+  requiredPermission,
+  skipPasswordCheck = false,
+}) => {
+  const {
+    user, loading, isAuthenticated, getEffectiveRole,
+    permissions, fetchPermissions,
+  } = useAuth();
+  const [permsResolved, setPermsResolved] = useState(!requiredPermission);
+
+  useEffect(() => {
+    if (!requiredPermission) { setPermsResolved(true); return; }
+    if (permissions) { setPermsResolved(true); return; }
+    let cancelled = false;
+    (async () => {
+      try { await fetchPermissions?.(); } finally {
+        if (!cancelled) setPermsResolved(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [requiredPermission, permissions, fetchPermissions]);
 
   if (loading) return <LoadingSpinner />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
@@ -34,6 +76,14 @@ export const ProtectedRoute = ({ children, allowedRoles, skipPasswordCheck = fal
   if (allowedRoles && !allowedRoles.includes(effectiveRole)) {
     const target = ROLE_DASHBOARDS[effectiveRole] || "/";
     return <Navigate to={target} replace />;
+  }
+
+  if (requiredPermission) {
+    if (!permsResolved) return <LoadingSpinner />;
+    if (!hasPermission(permissions, requiredPermission)) {
+      const target = ROLE_DASHBOARDS[effectiveRole] || "/";
+      return <Navigate to={target} replace />;
+    }
   }
 
   return children;

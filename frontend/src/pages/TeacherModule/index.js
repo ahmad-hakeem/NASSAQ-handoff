@@ -17,6 +17,7 @@ export { default as TeacherAttendanceManagePage } from './TeacherAttendanceManag
 export { default as TeacherAssessmentsPage } from './TeacherAssessmentsPage';
 export { default as TeacherBehaviorPage } from './TeacherBehaviorPage';
 export { default as TeacherStudentsPage } from './TeacherStudentsPage';
+export { default as ImportStudentsPage } from './ImportStudentsPage';
 export { default as TeacherAchievementsPage } from './TeacherAchievementsPage';
 export { default as TeacherCommunicationPage } from './TeacherCommunicationPage';
 export { default as TeacherResourcesPage } from './TeacherResourcesPage';
