@@ -200,6 +200,15 @@ def register_routes(app, api_router: APIRouter):
         router as it_audit_router,
     )
     api_router.include_router(it_audit_router)
+    # Task #273 — IT-only workspace analytics dashboard. Mounted WITHOUT
+    # _full_tenant_dep; the router enforces the IT role gate per-endpoint
+    # and pins tenant_id == itw_{user_id} on every aggregation. Cross-
+    # workspace class_id returns 404 per spec §8 inv. 3. Read-only;
+    # no MFA step-up.
+    from routes.independent_teacher_analytics_routes import (
+        router as it_analytics_router,
+    )
+    api_router.include_router(it_analytics_router)
     # Task #249 — IT Notifications Inbox + per-category preferences.
     # Mounted WITHOUT _full_tenant_dep; the router enforces the IT role
     # gate per-endpoint and pins user_id + tenant_id == itw_{user_id}

@@ -504,6 +504,17 @@ export const Sidebar = ({ children }) => {
         roles: ['independent_teacher'],
         permission: 'audit.read_own_workspace',
       },
+      // Task #273 — IT-only workspace analytics dashboard. Permission-
+      // gated on `analytics.read_own_workspace` so the link mirrors the
+      // backend RBAC slice exactly.
+      {
+        icon: BarChart3,
+        label: 'التحليلات',
+        href: '/teacher/analytics',
+        roles: ['independent_teacher'],
+        permission: 'analytics.read_own_workspace',
+        dataTour: 'sidebar-analytics',
+      },
       // Task #249 — IT-only inbox for collaborator invites, parent
       // accepts, workspace lifecycle, quota and lesson-plan events.
       {

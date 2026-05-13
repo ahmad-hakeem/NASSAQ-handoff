@@ -97,6 +97,10 @@ class Permission(str, Enum):
     # ``school_id == itw_{user_id}`` on every read and strips
     # sensitive keys from ``details`` before serialisation.
     AUDIT_READ_OWN_WORKSPACE = "audit.read_own_workspace"
+    # Task #273 — IT analytics dashboard. Read-only; the route pins
+    # ``tenant_id == itw_{user_id}`` on every aggregation query and
+    # never widens scope by request param.
+    ANALYTICS_READ_OWN_WORKSPACE = "analytics.read_own_workspace"
     
     # Students (workspace-scoped capabilities)
     STUDENTS_BULK_IMPORT_WORKSPACE = "students.bulk_import_workspace"
@@ -264,6 +268,10 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
         # pins school_id == itw_{user_id} and strips sensitive keys from
         # details before serialisation.
         Permission.AUDIT_READ_OWN_WORKSPACE.value,
+        # Task #273 — IT analytics dashboard. Read-only aggregations
+        # over the caller's own workspace; the route pins
+        # ``tenant_id == itw_{user_id}`` and never honours cross-ws ids.
+        Permission.ANALYTICS_READ_OWN_WORKSPACE.value,
     ],
     
     "student": [
