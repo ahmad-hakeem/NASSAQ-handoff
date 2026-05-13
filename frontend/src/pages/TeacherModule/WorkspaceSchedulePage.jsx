@@ -230,7 +230,7 @@ export default function WorkspaceSchedulePage() {
           // otherwise it scrolls into the existing grid by reloading the
           // editor. Copy is locale-driven for both languages.
           <Card
-            className="bg-workspace-accent-light/30 border-workspace-accent-border"
+            className="border-dashed border-workspace-accent-border bg-workspace-accent-light/30"
             data-testid="workspace-schedule-empty-state"
           >
             <CardContent className="text-center py-16">
