@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 
 export const ROLE_DASHBOARDS = {
@@ -50,6 +50,7 @@ export const ProtectedRoute = ({
     user, loading, isAuthenticated, getEffectiveRole,
     permissions, fetchPermissions,
   } = useAuth();
+  const location = useLocation();
   const [permsResolved, setPermsResolved] = useState(!requiredPermission);
 
   useEffect(() => {
@@ -76,6 +77,22 @@ export const ProtectedRoute = ({
   if (allowedRoles && !allowedRoles.includes(effectiveRole)) {
     const target = ROLE_DASHBOARDS[effectiveRole] || "/";
     return <Navigate to={target} replace />;
+  }
+
+  // Pre-bootstrap Independent Teacher (no workspace yet) must land on the
+  // onboarding wizard before any other /teacher/* surface mounts. The wizard
+  // itself triggers MFA step-up via the AuthContext axios interceptor when
+  // it submits to the bootstrap endpoint, so we don't need a dedicated MFA
+  // route here. Allow the wizard, the change-password shim, and any future
+  // /auth/mfa/* surface to render without a redirect loop.
+  if (
+    effectiveRole === "independent_teacher" &&
+    !user?.tenant_id &&
+    location.pathname !== "/teacher/onboarding" &&
+    !location.pathname.startsWith("/auth/mfa") &&
+    location.pathname !== "/change-password"
+  ) {
+    return <Navigate to="/teacher/onboarding" replace />;
   }
 
   if (requiredPermission) {

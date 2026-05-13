@@ -601,5 +601,68 @@ class TestUnauthorizedAccess:
         print("✓ Unauthorized user creation correctly rejected")
 
 
+class TestIndependentTeacherInstantSignup:
+    """Public IT instant-signup contract — POST /api/registration-requests
+    with account_type=independent_teacher must create a pre-bootstrap user
+    (tenant_id=NULL, role=independent_teacher) and return a usable session."""
+
+    def test_it_signup_creates_pre_bootstrap_user_and_returns_token(self):
+        unique_id = str(uuid.uuid4())[:8]
+        email = f"TEST_it_{unique_id}@nassaq.test"
+        payload = {
+            "full_name": f"TEST معلم مستقل {unique_id}",
+            "phone": f"05{unique_id[:8]}",
+            "account_type": "independent_teacher",
+            "email": email,
+            "password": "ItTestPass123",
+            "specialization": "رياضيات",
+            "years_of_experience": "3",
+        }
+        r = requests.post(f"{BASE_URL}/api/registration-requests", json=payload)
+        assert r.status_code == 200, f"IT signup failed: {r.text}"
+        data = r.json()
+
+        assert data.get("account_type") == "independent_teacher"
+        assert data.get("status") == "approved"
+        assert data.get("access_token"), "missing access_token in IT signup response"
+        assert data.get("user", {}).get("role") == "independent_teacher"
+        # Pre-bootstrap invariant: workspace not yet materialised.
+        assert data["user"].get("tenant_id") in (None, ""), (
+            f"IT signup must NOT pre-set tenant_id (got {data['user'].get('tenant_id')!r})"
+        )
+
+        # The returned token should authenticate /auth/me and report the same role.
+        me = requests.get(
+            f"{BASE_URL}/api/auth/me",
+            headers={"Authorization": f"Bearer {data['access_token']}"},
+        )
+        assert me.status_code == 200, f"/auth/me with IT token failed: {me.text}"
+        me_user = me.json()
+        assert me_user.get("role") == "independent_teacher"
+        assert me_user.get("tenant_id") in (None, "")
+        print(f"✓ IT pre-bootstrap signup created user={me_user.get('id', '')[:8]}…")
+
+    def test_it_signup_rejects_short_password(self):
+        unique_id = str(uuid.uuid4())[:8]
+        r = requests.post(f"{BASE_URL}/api/registration-requests", json={
+            "full_name": f"TEST قصير {unique_id}",
+            "phone": f"05{unique_id[:8]}",
+            "account_type": "independent_teacher",
+            "email": f"TEST_short_{unique_id}@nassaq.test",
+            "password": "short",
+        })
+        assert r.status_code == 400, f"expected 400, got {r.status_code}: {r.text}"
+
+    def test_it_signup_rejects_missing_email(self):
+        unique_id = str(uuid.uuid4())[:8]
+        r = requests.post(f"{BASE_URL}/api/registration-requests", json={
+            "full_name": f"TEST بلا بريد {unique_id}",
+            "phone": f"05{unique_id[:8]}",
+            "account_type": "independent_teacher",
+            "password": "ItTestPass123",
+        })
+        assert r.status_code == 400
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

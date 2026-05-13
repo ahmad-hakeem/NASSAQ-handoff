@@ -354,6 +354,168 @@ async def _create_school_instant(
     }
 
 
+async def _create_independent_teacher_instant(
+    request_data: RegistrationRequest,
+    full_name: str,
+    phone_clean: str,
+    raw_phone: str,
+):
+    """
+    Direct sign-up flow for Independent Teachers (IT). Per spec the IT
+    account is created **pre-bootstrap**: an active `users` row with
+    role=independent_teacher and tenant_id=NULL is inserted, and an auth
+    token is returned. The frontend then orchestrates MFA enrolment →
+    onboarding wizard → POST /independent-teacher/bootstrap (which
+    materialises the synthetic itw_{user_id} workspace).
+    """
+    from sqlalchemy import select
+
+    session = db.session
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    teacher_email = (request_data.email or "").strip().lower()
+    user_password = (request_data.password or "")
+
+    if not teacher_email:
+        raise HTTPException(status_code=400, detail="يرجى إدخال البريد الإلكتروني")
+    if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", teacher_email):
+        raise HTTPException(status_code=400, detail="صيغة البريد الإلكتروني غير صحيحة")
+    if not user_password or len(user_password) < 8:
+        raise HTTPException(status_code=400, detail="يجب أن تتكون كلمة المرور من 8 أحرف على الأقل")
+
+    stmt = select(UserModel).where(UserModel.email == teacher_email).limit(1)
+    result = await session.execute(stmt)
+    if result.scalars().first():
+        raise HTTPException(status_code=400, detail="يوجد حساب مسجل مسبقًا بنفس البريد الإلكتروني")
+
+    user_id = str(uuid.uuid4())
+    request_id = str(uuid.uuid4())
+    password_hash_value = hash_password(user_password)
+
+    user_obj = dict_to_model(UserModel, {
+        "id": user_id,
+        "email": teacher_email,
+        "password_hash": password_hash_value,
+        "full_name": full_name,
+        "role": "independent_teacher",
+        "school_id": None,
+        "tenant_id": None,
+        "phone": phone_clean or raw_phone,
+        "is_active": True,
+        "must_change_password": False,
+        "preferred_language": "ar",
+        "preferred_theme": "light",
+        "permissions": [],
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "created_by": None,
+    })
+    session.add(user_obj)
+    await session.flush()
+
+    submission_data = request_data.model_dump()
+    submission_data.pop("password", None)
+    submission_data["account_type"] = "independent_teacher"
+    submission_data["full_name"] = full_name
+
+    extra_fields = {k: v for k, v in submission_data.items() if k not in ("id", "type", "name", "email", "phone", "school_name", "status", "source", "password")}
+    extra_fields["account_type"] = "independent_teacher"
+    extra_fields["full_name"] = full_name
+    extra_fields["auto_approved"] = True
+
+    request_doc = {
+        "id": request_id,
+        "type": "independent_teacher",
+        "name": full_name,
+        "email": teacher_email,
+        "phone": phone_clean or raw_phone,
+        "school_name": None,
+        "status": "approved",
+        "source": "public_signup_instant",
+        "data": extra_fields,
+        "payload_snapshot": submission_data,
+        "linked_entity_type": "user",
+        "linked_entity_id": user_id,
+        "review_notes": "Auto-approved (instant IT sign-up)",
+        "reviewed_at": now_iso,
+        "reviewed_by": None,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+    }
+    await gd_insert(session, "registration_requests", request_doc)
+
+    try:
+        audit_entry = {
+            "id": str(uuid.uuid4()),
+            "action": "account_auto_approved",
+            "event_type": "Independent Teacher Account Auto-Approved",
+            "entity_type": "user",
+            "entity_id": user_id,
+            "actor_name": full_name,
+            "actor_id": user_id,
+            "details": {
+                "account_type": "independent_teacher",
+                "source": "public_signup_instant",
+                "request_id": request_id,
+            },
+            "timestamp": now_iso,
+            "created_at": now_iso,
+        }
+        await gd_insert(session, "audit_logs", audit_entry)
+    except Exception as e:
+        logger.error(f"[InstantSignup] Failed to write IT audit log: {e}")
+
+    # Pre-bootstrap: tenant_id is NULL by design — frontend will route
+    # the user through /auth/mfa/enroll → /teacher/onboarding before any
+    # workspace-scoped API call succeeds.
+    token_payload = {
+        "sub": user_id,
+        "role": "independent_teacher",
+        "tenant_id": None,
+        "school_id": None,
+    }
+    access_token = create_access_token(token_payload)
+    try:
+        import jwt as _jwt
+        access_jti = _jwt.decode(access_token, JWT_SECRET, algorithms=[JWT_ALGORITHM]).get("jti")
+    except Exception:
+        access_jti = None
+    refresh = create_refresh_token(token_payload, remember_me=False, linked_access_jti=access_jti)
+
+    user_response = UserResponse(
+        id=user_id,
+        email=teacher_email,
+        full_name=full_name,
+        full_name_en=None,
+        role=UserRole("independent_teacher"),
+        tenant_id=None,
+        phone=phone_clean or raw_phone,
+        avatar_url=None,
+        is_active=True,
+        must_change_password=False,
+        preferred_language="ar",
+        preferred_theme="light",
+        created_at=now_iso,
+    )
+
+    logger.info(f"[InstantSignup] Independent teacher created and auto-logged-in: user={user_id[:8]}… email={teacher_email}")
+
+    return {
+        "id": request_id,
+        "status": "approved",
+        "account_type": "independent_teacher",
+        "user_id": user_id,
+        "full_name": full_name,
+        "email": teacher_email,
+        "phone": phone_clean or raw_phone,
+        "created_at": now_iso,
+        "access_token": access_token,
+        "refresh_token": refresh,
+        "token_type": "bearer",
+        "user": user_response.model_dump(),
+    }
+
+
 @router.post("/registration-requests", response_model=None)
 async def create_registration_request(request_data: RegistrationRequest):
     """
@@ -366,7 +528,7 @@ async def create_registration_request(request_data: RegistrationRequest):
     For other account types the legacy "pending admin review" flow still applies.
     """
 
-    VALID_ACCOUNT_TYPES = {"school", "teacher", "parent", "student"}
+    VALID_ACCOUNT_TYPES = {"school", "teacher", "independent_teacher", "parent", "student"}
     account_type = (request_data.account_type or "").strip().lower()
     if not account_type or account_type not in VALID_ACCOUNT_TYPES:
         raise HTTPException(
@@ -409,6 +571,9 @@ async def create_registration_request(request_data: RegistrationRequest):
 
     if account_type == "school":
         return await _create_school_instant(request_data, full_name, phone_clean, raw_phone)
+
+    if account_type == "independent_teacher":
+        return await _create_independent_teacher_instant(request_data, full_name, phone_clean, raw_phone)
 
     request_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()

@@ -21,6 +21,7 @@ import {
   Loader2,
   Building2,
   UserCheck,
+  GraduationCap,
   CheckCircle2,
   Shield,
   Mail,
@@ -168,6 +169,22 @@ export const RegisterPage = () => {
       if (!formData.specialization.trim()) {
         newErrors.specialization = t('specializationIsRequired');
       }
+    } else if (formData.accountType === 'independent_teacher') {
+      if (!formData.teacher_email.trim()) {
+        newErrors.teacher_email = t('emailIsRequired');
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.teacher_email)) {
+        newErrors.teacher_email = t('invalidEmailFormat2');
+      }
+      if (!formData.password) {
+        newErrors.password = isRTL ? 'كلمة المرور مطلوبة' : 'Password is required';
+      } else if (formData.password.length < 8) {
+        newErrors.password = isRTL ? 'يجب أن تتكون كلمة المرور من 8 أحرف على الأقل' : 'Password must be at least 8 characters';
+      }
+      if (!formData.confirm_password) {
+        newErrors.confirm_password = isRTL ? 'يرجى تأكيد كلمة المرور' : 'Please confirm password';
+      } else if (formData.password !== formData.confirm_password) {
+        newErrors.confirm_password = isRTL ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match';
+      }
     }
     
     setErrors(newErrors);
@@ -187,6 +204,8 @@ export const RegisterPage = () => {
       case 3:
         isValid = validateStep3();
         if (isValid && formData.accountType === 'teacher') {
+          // School-teacher join flow lives on a separate page; IT stays
+          // on this wizard and continues to step 4.
           navigate('/teacher-register', {
             replace: true,
             state: {
@@ -241,6 +260,11 @@ export const RegisterPage = () => {
           school_address: formData.school_address,
           student_capacity: formData.student_capacity,
           password: formData.password,
+        } : formData.accountType === 'independent_teacher' ? {
+          email: formData.teacher_email,
+          specialization: formData.specialization,
+          years_of_experience: formData.years_of_experience,
+          password: formData.password,
         } : {
           email: formData.teacher_email,
           school_code: formData.school_code,
@@ -275,8 +299,14 @@ export const RegisterPage = () => {
           case 'school_sub_admin':
             target = '/school';
             break;
-          case 'teacher':
           case 'independent_teacher':
+            // Pre-bootstrap IT (no tenant_id yet) must complete the onboarding
+            // wizard before any /teacher/* surface mounts. The wizard's bootstrap
+            // submit triggers MFA step-up via the AuthContext axios interceptor,
+            // so we route straight to onboarding rather than a dedicated MFA page.
+            target = data.user.tenant_id ? '/teacher' : '/teacher/onboarding';
+            break;
+          case 'teacher':
             target = '/teacher';
             break;
           case 'platform_admin':
@@ -594,6 +624,31 @@ export const RegisterPage = () => {
                         </p>
                       </div>
                     </div>
+
+                    <div
+                      className={`relative flex items-start gap-4 p-4 rounded-2xl border-2 cursor-pointer transition-all ${
+                        formData.accountType === 'independent_teacher'
+                          ? 'border-brand-turquoise bg-brand-turquoise/5'
+                          : 'border-border hover:border-brand-turquoise/50'
+                      }`}
+                      onClick={() => updateFormData('accountType', 'independent_teacher')}
+                      data-testid="account-type-independent-teacher"
+                    >
+                      <RadioGroupItem value="independent_teacher" id="independent_teacher" className="mt-1" />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-10 h-10 rounded-xl bg-brand-turquoise/10 flex items-center justify-center">
+                            <GraduationCap className="h-5 w-5 text-brand-turquoise" />
+                          </div>
+                          <Label htmlFor="independent_teacher" className="font-cairo font-bold text-lg cursor-pointer">
+                            {t('itRoleBadgeLabel')}
+                          </Label>
+                        </div>
+                        <p className="text-muted-foreground text-sm font-tajawal">
+                          {t('independentTeacherCardDescription')}
+                        </p>
+                      </div>
+                    </div>
                   </RadioGroup>
 
                   {errors.accountType && (
@@ -830,6 +885,108 @@ export const RegisterPage = () => {
                             data-testid="school-phone-input"
                           />
                         </div>
+                      </div>
+                    </>
+                  )}
+
+                  {formData.accountType === 'independent_teacher' && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="teacher_email" className="font-tajawal">
+                          {t('email2')} *
+                        </Label>
+                        <div className="relative">
+                          <Mail className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                          <Input
+                            id="teacher_email"
+                            type="email"
+                            placeholder="teacher@example.com"
+                            value={formData.teacher_email}
+                            onChange={(e) => updateFormData('teacher_email', e.target.value)}
+                            className={`ps-10 h-12 rounded-xl font-tajawal ${errors.teacher_email ? 'border-destructive' : ''}`}
+                            dir="ltr"
+                            data-testid="it-email-input"
+                          />
+                        </div>
+                        {errors.teacher_email && (
+                          <p className="text-destructive text-xs font-tajawal">{errors.teacher_email}</p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="it_specialization" className="font-tajawal">
+                          {t('specialization')}
+                        </Label>
+                        <Input
+                          id="it_specialization"
+                          placeholder={t('egMathematicsArabic')}
+                          value={formData.specialization}
+                          onChange={(e) => updateFormData('specialization', e.target.value)}
+                          className="h-12 rounded-xl font-tajawal"
+                          data-testid="it-specialization-input"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="it_password" className="font-tajawal">
+                          {isRTL ? 'كلمة المرور' : 'Password'} *
+                        </Label>
+                        <div className="relative">
+                          <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                          <Input
+                            id="it_password"
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder={isRTL ? '٨ أحرف على الأقل' : 'At least 8 characters'}
+                            value={formData.password}
+                            onChange={(e) => updateFormData('password', e.target.value)}
+                            className={`ps-10 pe-10 h-12 rounded-xl font-tajawal ${errors.password ? 'border-destructive' : ''}`}
+                            autoComplete="new-password"
+                            data-testid="it-password-input"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            aria-label="toggle password visibility"
+                            data-testid="it-toggle-password-btn"
+                          >
+                            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          </button>
+                        </div>
+                        {errors.password && (
+                          <p className="text-destructive text-xs font-tajawal">{errors.password}</p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="it_confirm_password" className="font-tajawal">
+                          {isRTL ? 'تأكيد كلمة المرور' : 'Confirm Password'} *
+                        </Label>
+                        <div className="relative">
+                          <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                          <Input
+                            id="it_confirm_password"
+                            type={showConfirmPassword ? 'text' : 'password'}
+                            placeholder={isRTL ? 'أعد إدخال كلمة المرور' : 'Re-enter password'}
+                            value={formData.confirm_password}
+                            onChange={(e) => updateFormData('confirm_password', e.target.value)}
+                            className={`ps-10 pe-10 h-12 rounded-xl font-tajawal ${errors.confirm_password ? 'border-destructive' : ''}`}
+                            autoComplete="new-password"
+                            data-testid="it-confirm-password-input"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            aria-label="toggle confirm password visibility"
+                            data-testid="it-toggle-confirm-password-btn"
+                          >
+                            {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          </button>
+                        </div>
+                        {errors.confirm_password && (
+                          <p className="text-destructive text-xs font-tajawal">{errors.confirm_password}</p>
+                        )}
                       </div>
                     </>
                   )}
