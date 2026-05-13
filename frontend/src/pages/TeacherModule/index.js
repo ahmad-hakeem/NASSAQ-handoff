@@ -40,5 +40,3 @@ export { default as TeacherAuditLogPage } from './TeacherAuditLogPage';
 export { default as TeacherAnalyticsPage } from './TeacherAnalyticsPage';
 // Independent-Teacher only: notifications inbox (Task #249).
 export { default as TeacherNotificationsPage } from './TeacherNotificationsPage';
-// Independent-Teacher only: subjects CRUD (Task #185).
-export { default as TeacherSubjectsPage } from './SubjectsPage';
