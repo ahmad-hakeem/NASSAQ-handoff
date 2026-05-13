@@ -54,6 +54,14 @@ _INVITATION_PURPOSE = "parent_invitation"
 _COLLAB_INVITATION_PURPOSE = "workspace_collab_invitation"
 COLLAB_INVITATION_TOKEN_TTL = timedelta(days=7)
 
+# IT Phase-2 §6.8 workspace-export download token. Short-lived (24h)
+# JWT bound to the workspace school id + the originating IT user, so a
+# leaked link cannot be replayed against a different workspace and
+# expires automatically. The 24h window is also the §6.8 freshness
+# requirement gating the soft-delete confirmation step.
+WORKSPACE_EXPORT_TOKEN_TTL = timedelta(hours=24)
+_WORKSPACE_EXPORT_PURPOSE = "workspace_export"
+
 
 def token_hash(raw_token: str) -> str:
     """Return the canonical sha256 hex digest of a single-use token.
@@ -179,3 +187,50 @@ def verify_collab_invitation_token(
     if (payload.get("email") or "").lower() != (collaborator_email or "").lower():
         return False
     return hmac.compare_digest(token_hash(raw_token), stored_hash)
+
+
+# -- IT §6.8 workspace export token --------------------------------------
+
+def mint_workspace_export_token(
+    workspace_school_id: str,
+    user_id: str,
+):
+    """Mint a 24h signed workspace-export download token.
+
+    Returns ``(raw_token, raw_token_hash, expires_at)``. The token is
+    bound to BOTH the workspace id AND the user id that generated it —
+    replays against a different workspace or by a different user are
+    rejected by ``verify_workspace_export_token``. The ``raw_token_hash``
+    is the sha256 hex digest persisted on ``schools.last_export_token_hash``
+    so the public download endpoint can enforce single-use semantics
+    (consumed_at flip on first download; subsequent attempts 404).
+    """
+    now = datetime.now(timezone.utc)
+    expires_at = now + WORKSPACE_EXPORT_TOKEN_TTL
+    payload = {
+        "purpose": _WORKSPACE_EXPORT_PURPOSE,
+        "ws": workspace_school_id,
+        "uid": user_id,
+        "jti": str(uuid.uuid4()),
+        "iat": now,
+        "exp": expires_at,
+    }
+    raw = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return raw, token_hash(raw), expires_at
+
+
+def verify_workspace_export_token(raw_token: str):
+    """Verify a workspace-export token. Returns the decoded payload
+    (``ws``, ``uid``) on success, ``None`` on any failure. Never raises.
+    """
+    if not raw_token:
+        return None
+    try:
+        payload = jwt.decode(raw_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        return None
+    if payload.get("purpose") != _WORKSPACE_EXPORT_PURPOSE:
+        return None
+    if not payload.get("ws") or not payload.get("uid"):
+        return None
+    return payload

@@ -163,6 +163,15 @@ def register_routes(app, api_router: APIRouter):
         router as it_collab_router,
     )
     api_router.include_router(it_collab_router)
+    # Phase 2 §6.8 (#211) — IT workspace lifecycle (export +
+    # soft-delete + reactivate + public download). No global gate;
+    # IT-only endpoints enforce the role + Tier-A MFA per route, and
+    # the public download endpoint is unauthenticated + IP rate-
+    # limited. Hard-delete remains platform-admin out-of-band.
+    from routes.independent_teacher_workspace_lifecycle_routes import (
+        router as it_workspace_lifecycle_router,
+    )
+    api_router.include_router(it_workspace_lifecycle_router)
     api_router.include_router(scheduling_smart_router, dependencies=_full_tenant_dep)
     api_router.include_router(scheduling_smart_sess_router, dependencies=_full_tenant_dep)
     api_router.include_router(schedule_candidates_router, dependencies=_full_tenant_dep)

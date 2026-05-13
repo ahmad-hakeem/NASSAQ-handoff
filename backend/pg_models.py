@@ -144,6 +144,12 @@ class School(Base):
     trial_end = Column(DateTime(timezone=True), nullable=True)
     website = Column(String, nullable=True)
     created_by = Column(String, nullable=True)
+    archived_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    pending_hard_delete = Column(Boolean, nullable=False, server_default=text("false"), index=True)
+    last_export_at = Column(DateTime(timezone=True), nullable=True)
+    # IT §6.8 single-use export token state.
+    last_export_token_hash = Column(String, nullable=True)
+    last_export_consumed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 

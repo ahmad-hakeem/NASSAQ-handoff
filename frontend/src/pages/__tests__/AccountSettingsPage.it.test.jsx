@@ -262,14 +262,58 @@ describe('AccountSettingsPage — Task #200 §5.8 IT-only sections', () => {
     expect(screen.getByTestId('it-workspace-name-en')).toHaveValue('Test Workspace');
   });
 
-  test('IT user: data-export uses nassaqInfo (no native alert, no toast.error)', async () => {
+  test('IT user: workspace export POSTs to /independent-teacher/workspace/export and surfaces nassaqSuccess', async () => {
+    // Task #211 §6.8 — clicking "Export now" must hit the real
+    // workspace-export endpoint and surface success through
+    // NassaqAlertDialog, never via toast.error or a native browser
+    // alert (per replit.md user preference).
     window.history.replaceState(null, '', '/account/settings#export');
+    mockApiPost.mockResolvedValue({
+      data: {
+        download_url: '/api/public/workspace-export/test-token',
+        expires_at: '2099-01-01T00:00:00+00:00',
+        ttl_hours: 24,
+      },
+    });
+
     render(<AccountSettingsPage />);
 
-    const btn = await screen.findByTestId('it-export-coming-soon-btn');
+    const btn = await screen.findByTestId('it-export-run-btn');
     fireEvent.click(btn);
 
-    expect(mockNassaqInfo).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/independent-teacher/workspace/export');
+    });
+    await waitFor(() => {
+      expect(mockNassaqSuccess).toHaveBeenCalled();
+    });
+    expect(mockToastError).not.toHaveBeenCalled();
+  });
+
+  test('IT user: soft-delete confirm POSTs to /independent-teacher/workspace/soft-delete with the typed name', async () => {
+    // §6.8 — the confirm dialog collects the workspace-name verbatim
+    // string and forwards it to the soft-delete endpoint. The button is
+    // disabled until the input is non-empty.
+    window.history.replaceState(null, '', '/account/settings#export');
+    mockApiPost.mockResolvedValue({
+      data: { ok: true, status: 'archived' },
+    });
+
+    render(<AccountSettingsPage />);
+
+    const openBtn = await screen.findByTestId('it-soft-delete-open-btn');
+    fireEvent.click(openBtn);
+
+    const input = await screen.findByTestId('it-soft-delete-confirm-input');
+    fireEvent.change(input, { target: { value: 'Test Workspace' } });
+    fireEvent.click(screen.getByTestId('it-soft-delete-confirm-btn'));
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith(
+        '/independent-teacher/workspace/soft-delete',
+        expect.objectContaining({ confirm_workspace_name: 'Test Workspace' }),
+      );
+    });
     expect(mockToastError).not.toHaveBeenCalled();
   });
 

@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
+import { formatHijriDate } from '../utils/hijriDate';
 import {
   User,
   Lock,
@@ -180,6 +181,22 @@ export const AccountSettingsPage = () => {
   const { user, api, logout, refreshUser, updateToken } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark, language, setLanguage, theme, setTheme } = useTheme();
   const { nassaqError, nassaqInfo, nassaqSuccess } = useNassaqAlert();
+  const { nassaqWarning } = useNassaqAlert();
+  // §6.8 export + soft-delete local state. lastExportAt powers the
+  // "exported X hours ago" chip (Hijri formatted) so the user can see
+  // whether they still satisfy the 24h precondition before opening
+  // the soft-delete dialog.
+  const [lastExportAt, setLastExportAt] = useState(null);
+  const [lastExportUrl, setLastExportUrl] = useState(null);
+  const [lastExportExpiresAt, setLastExportExpiresAt] = useState(null);
+  const [softDeleteOpen, setSoftDeleteOpen] = useState(false);
+  const [softDeleteConfirmName, setSoftDeleteConfirmName] = useState('');
+  // §6.8 — the soft-delete confirm step is gated by a fresh export
+  // (within 24h) so the user always has a downloadable copy of their
+  // data before the workspace is archived. Server re-validates the
+  // same window and returns 412 if stale; the FE mirror keeps the
+  // affordance honest (button greyed-out, reason inline).
+  const softDeleteEligible = !!lastExportAt && (Date.now() - new Date(lastExportAt).getTime()) <= 24 * 60 * 60 * 1000;
   const nassaqErrorTop = nassaqError;
 
   // Task #200 §5.8 — Independent-Teacher (IT) gate for the three IT-only
@@ -340,6 +357,17 @@ export const AccountSettingsPage = () => {
       } catch (err) {
         // Pre-bootstrap users won't have a workspace yet; leave defaults.
         setWorkspaceLoaded(true);
+      }
+      // §6.8 — pull the lifecycle view in parallel so the soft-delete
+      // gating (24h export freshness) survives a page refresh. Failures
+      // are non-fatal — the button just stays disabled with the
+      // "export-required" hint.
+      try {
+        const { data: lc } = await api.get('/independent-teacher/workspace/lifecycle');
+        if (cancelled || !lc) return;
+        if (lc.last_export_at) setLastExportAt(lc.last_export_at);
+      } catch (_e) {
+        /* non-fatal */
       }
     })();
     return () => { cancelled = true; };
@@ -514,13 +542,67 @@ export const AccountSettingsPage = () => {
     }
   };
 
-  // Task #200 §5.8 — Phase-1 placeholder for the workspace data export
-  // surface. Per spec it must use `nassaqInfo` (NassaqAlertDialog), never a
-  // native browser alert or `toast.error`.
-  const handleExportComingSoon = () => {
-    nassaqInfo(t('dataExportComingSoonMessage'), {
-      title: t('dataExportComingSoonTitle'),
-    });
+  // Task #211 §6.8 — Workspace export & soft-delete.
+  // Right-to-export: POSTs to /independent-teacher/workspace/export
+  // and surfaces the 24h signed download URL through nassaqSuccess
+  // (no toast.error, no native window.confirm). The download URL is
+  // bound to the caller's workspace + user id server-side; opening it
+  // streams the zip bundle directly.
+  const handleExportWorkspace = async () => {
+    setSaving(true);
+    try {
+      const { data } = await api.post('/independent-teacher/workspace/export');
+      const url = data?.download_url;
+      const expiresAt = data?.expires_at;
+      setLastExportAt(new Date().toISOString());
+      setLastExportUrl(url || null);
+      setLastExportExpiresAt(expiresAt || null);
+      if (url) {
+        // Open in a new tab so the settings page state survives the
+        // download; the link itself is single-purpose (zip stream).
+        try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (_e) { /* popup blocked */ }
+      }
+      nassaqSuccess(t('itExportReadyMessage'), { title: t('itExportReadyTitle') });
+    } catch (error) {
+      nassaqError(error?.response?.data?.detail || t('itExportFailed'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Right-to-leave: opens the confirm dialog. The actual archive POST
+  // happens in handleConfirmSoftDelete after the user types the
+  // workspace name verbatim — server enforces the same equality check
+  // so client-only typos cannot accidentally archive a workspace.
+  const handleOpenSoftDelete = () => {
+    setSoftDeleteConfirmName('');
+    setSoftDeleteOpen(true);
+  };
+
+  const handleConfirmSoftDelete = async () => {
+    setSaving(true);
+    try {
+      await api.post('/independent-teacher/workspace/soft-delete', {
+        confirm_workspace_name: softDeleteConfirmName.trim(),
+      });
+      setSoftDeleteOpen(false);
+      nassaqSuccess(t('itSoftDeleteSuccessMessage'), {
+        title: t('itSoftDeleteSuccessTitle'),
+        onConfirm: () => { try { logout(); } catch (_e) {} },
+      });
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      const status = error?.response?.status;
+      if (status === 412) {
+        nassaqWarning(detail || t('itSoftDeleteRequiresExport'));
+      } else if (status === 422) {
+        nassaqWarning(detail || t('itSoftDeleteNameMismatch'));
+      } else {
+        nassaqError(detail || t('itSoftDeleteFailed'));
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSavePreferences = async () => {
@@ -1162,55 +1244,167 @@ export const AccountSettingsPage = () => {
                 </Card>
               )}
 
-              {/* Task #200 §5.8 — IT-only: Data export (planned, Phase 2).
-                  Per spec this is a de-emphasised "coming soon" card, NOT
-                  a primary surface; it intentionally does NOT use the
-                  workspace-accent token so it reads as a placeholder.
-                  Slate/muted styling keeps the active workspace +
-                  communication sections visually dominant. */}
+              {/* Task #211 §6.8 — IT-only: Data export + soft-delete.
+                  Two cards per spec: a primary export card (right-to-export)
+                  and a destructive soft-delete card (right-to-leave). All
+                  warnings/errors/confirms route through NassaqAlertDialog;
+                  any inline date is formatted via the hijriDate utility,
+                  never Intl.DateTimeFormat. */}
               {activeSection === 'export' && isIndependentTeacher && (
-                <Card className="card-nassaq border-slate-200 dark:border-slate-700" data-testid="it-export-section">
-                  <CardHeader className="pb-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40">
-                    <CardTitle className="font-cairo flex items-center gap-2 text-lg text-slate-700 dark:text-slate-200">
-                      <Download className="h-5 w-5 text-slate-500" />
-                      {t('itDataExportSection')}
-                    </CardTitle>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-tajawal mt-1">
-                      {t('itDataExportSectionHint')}
-                    </p>
-                  </CardHeader>
-                  <CardContent className="space-y-4 pt-5">
-                    <div className="rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 p-5 flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
-                        <Download className="h-5 w-5 text-slate-500 dark:text-slate-300" />
+                <div className="space-y-6" data-testid="it-export-section">
+                  <Card className="card-nassaq border-brand-turquoise/20">
+                    <CardHeader className="pb-4 border-b border-border/40 bg-brand-turquoise/5">
+                      <CardTitle className="font-cairo flex items-center gap-2 text-lg text-brand-navy">
+                        <Download className="h-5 w-5 text-brand-turquoise" />
+                        {t('itDataExportSection')}
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground font-tajawal mt-1">
+                        {t('itDataExportSectionHint')}
+                      </p>
+                    </CardHeader>
+                    <CardContent className="space-y-4 pt-5">
+                      <div className="rounded-xl bg-muted/30 border border-border/40 p-5 flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-brand-turquoise/15 flex items-center justify-center flex-shrink-0">
+                          <Download className="h-5 w-5 text-brand-turquoise" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-cairo font-semibold text-foreground">
+                            {t('itExportCardTitle')}
+                          </p>
+                          <p className="text-sm text-muted-foreground font-tajawal mt-1">
+                            {t('itExportCardHint')}
+                          </p>
+                          {lastExportAt && (
+                            <p
+                              className="text-xs text-brand-turquoise font-tajawal mt-2"
+                              data-testid="it-export-last-at"
+                            >
+                              {t('itExportLastAt')}: {formatHijriDate(new Date(lastExportAt))}
+                            </p>
+                          )}
+                          {lastExportUrl && (
+                            <a
+                              href={lastExportUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-brand-navy underline font-tajawal mt-1 inline-block"
+                              data-testid="it-export-download-link"
+                            >
+                              {t('itExportDownloadAgain')}
+                            </a>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <p className="font-cairo font-semibold text-slate-700 dark:text-slate-200">
-                          {t('dataExportComingSoonTitle')}
-                        </p>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 font-tajawal mt-1">
-                          {t('dataExportComingSoonMessage')}
-                        </p>
+                      <div className="flex items-center justify-end pt-2 border-t border-border/30">
+                        <Button
+                          type="button"
+                          onClick={handleExportWorkspace}
+                          disabled={saving}
+                          className="bg-brand-navy rounded-xl gap-2"
+                          data-testid="it-export-run-btn"
+                        >
+                          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                          {t('itExportRun')}
+                        </Button>
                       </div>
-                    </div>
-                    <div className="flex items-center justify-end pt-2 border-t border-border/30">
-                      <Button
-                        type="button"
-                        onClick={handleExportComingSoon}
-                        variant="outline"
-                        className="rounded-xl border-slate-300 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 gap-2"
-                        data-testid="it-export-coming-soon-btn"
-                      >
-                        <Sparkles className="h-4 w-4" />
-                        {t('itDataExportLearnMore')}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="card-nassaq border-red-200 dark:border-red-900/40" data-testid="it-soft-delete-section">
+                    <CardHeader className="pb-4 border-b border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/20">
+                      <CardTitle className="font-cairo flex items-center gap-2 text-lg text-red-700 dark:text-red-300">
+                        <AlertTriangle className="h-5 w-5 text-red-500" />
+                        {t('itSoftDeleteSection')}
+                      </CardTitle>
+                      <p className="text-xs text-red-600/80 dark:text-red-300/70 font-tajawal mt-1">
+                        {t('itSoftDeleteSectionHint')}
+                      </p>
+                    </CardHeader>
+                    <CardContent className="space-y-4 pt-5">
+                      <ul className="text-sm text-muted-foreground font-tajawal space-y-1 list-disc ps-5">
+                        <li>{t('itSoftDeleteBullet1')}</li>
+                        <li>{t('itSoftDeleteBullet2')}</li>
+                        <li>{t('itSoftDeleteBullet3')}</li>
+                      </ul>
+                      {!softDeleteEligible && (
+                        <p
+                          className="text-xs text-red-600/80 dark:text-red-300/80 font-tajawal rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 p-3"
+                          data-testid="it-soft-delete-export-required"
+                        >
+                          {t('itSoftDeleteExportRequired')}
+                        </p>
+                      )}
+                      <div className="flex items-center justify-end pt-2 border-t border-border/30">
+                        <Button
+                          type="button"
+                          onClick={handleOpenSoftDelete}
+                          variant="outline"
+                          disabled={!softDeleteEligible || saving}
+                          className="rounded-xl border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          data-testid="it-soft-delete-open-btn"
+                        >
+                          <AlertTriangle className="h-4 w-4" />
+                          {t('itSoftDeleteOpen')}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
               )}
             </div>
           </div>
         </div>
+
+        {/* §6.8 soft-delete confirm dialog. Native confirm() and
+            window.prompt() are forbidden — this is the only place the
+            workspace-name verbatim check is collected; the server
+            re-validates the same string so a client-only bypass cannot
+            archive a workspace. */}
+        <AlertDialog open={softDeleteOpen} onOpenChange={setSoftDeleteOpen}>
+          <AlertDialogContent dir="rtl" data-testid="it-soft-delete-dialog">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="font-cairo text-red-700">
+                {t('itSoftDeleteDialogTitle')}
+              </AlertDialogTitle>
+              <AlertDialogDescription className="font-tajawal text-sm whitespace-pre-wrap">
+                {t('itSoftDeleteDialogBody')}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-2 py-2">
+              <Label htmlFor="it-soft-delete-confirm-input" className="font-tajawal text-xs">
+                {t('itSoftDeleteConfirmLabel')}
+              </Label>
+              <Input
+                id="it-soft-delete-confirm-input"
+                value={softDeleteConfirmName}
+                onChange={(e) => setSoftDeleteConfirmName(e.target.value)}
+                placeholder={t('itSoftDeleteConfirmPlaceholder')}
+                data-testid="it-soft-delete-confirm-input"
+              />
+            </div>
+            <AlertDialogFooter className="gap-2 flex-row-reverse">
+              <Button
+                type="button"
+                onClick={handleConfirmSoftDelete}
+                disabled={saving || !softDeleteConfirmName.trim()}
+                className="bg-red-600 hover:bg-red-700 text-white rounded-xl"
+                data-testid="it-soft-delete-confirm-btn"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {t('itSoftDeleteConfirm')}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSoftDeleteOpen(false)}
+                className="rounded-xl"
+                data-testid="it-soft-delete-cancel-btn"
+              >
+                {t('cancel')}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
           <AlertDialogContent>

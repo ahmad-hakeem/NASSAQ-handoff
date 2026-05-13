@@ -212,6 +212,46 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
             reason="account_locked"
         )
         raise HTTPException(status_code=401, detail="الحساب مقفل. يرجى التواصل مع الإدارة")
+
+    # IT §6.8 — workspace archived gate. An IT user whose workspace
+    # was soft-deleted cannot log in until they reactivate within the
+    # 30-day window. Past that window the lazy sweep flips
+    # ``pending_hard_delete=TRUE`` and the account is permanently
+    # locked out — the FE shows a "contact support" message.
+    try:
+        from auth_scope import independent_workspace_id as _it_ws_id
+        from routes.independent_teacher_workspace_lifecycle_routes import (
+            maybe_flip_pending_hard_delete as _maybe_flip,
+        )
+        _maybe_user = {
+            "role": user.get("role"),
+            "account_type": user.get("account_type"),
+            "id": user.get("id") or str(user.get("_id")),
+        }
+        _ws_id = _it_ws_id(_maybe_user)
+        if _ws_id:
+            await _maybe_flip(_ws_id)
+            _ws_row = await gd_find_one(db.session, "schools", {"id": _ws_id})
+            if _ws_row and (
+                _ws_row.get("pending_hard_delete")
+                or (_ws_row.get("status") or "").lower() == "archived"
+            ):
+                await audit_engine.log_auth_event(
+                    action=AuditAction.LOGIN_FAILED.value,
+                    user_id=_maybe_user["id"],
+                    tenant_id=_ws_id,
+                    success=False,
+                    email=credentials.email,
+                    reason="workspace_archived",
+                )
+                raise HTTPException(
+                    status_code=401,
+                    detail="تم أرشفة مساحتك. يمكنك استرجاعها من رابط الدعم خلال ٣٠ يومًا من الأرشفة.",
+                )
+    except HTTPException:
+        raise
+    except Exception as _e:
+        logger.debug("IT archived-workspace login gate skipped: %s", _e)
     
     user_id = user.get("id") or str(user["_id"])
 

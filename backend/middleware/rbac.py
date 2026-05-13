@@ -114,6 +114,10 @@ class Permission(str, Enum):
     # they do not need this permission to accept or to read shared data.
     WORKSPACE_COLLAB_MANAGE = "workspace.collab_manage"
 
+    # IT §6.8 — Workspace lifecycle (export + soft-delete)
+    WORKSPACE_EXPORT = "workspace.export"
+    WORKSPACE_SOFT_DELETE = "workspace.soft_delete"
+
 
 # Role to Permissions Mapping
 ROLE_PERMISSIONS: Dict[str, List[str]] = {
@@ -217,6 +221,8 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
     ],
     
     "independent_teacher": [
+        Permission.WORKSPACE_EXPORT.value,
+        Permission.WORKSPACE_SOFT_DELETE.value,
         Permission.SCHEDULE_VIEW.value,
         Permission.ATTENDANCE_VIEW.value,
         Permission.ATTENDANCE_RECORD.value,
