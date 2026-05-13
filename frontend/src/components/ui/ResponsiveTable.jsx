@@ -1,0 +1,142 @@
+import * as React from 'react';
+import { cn } from '@/lib/utils';
+
+/**
+ * Task #274 — small reusable table → cards adaptor.
+ *
+ * Renders a real `<table>` at sm+ (≥640px) and a stacked card list
+ * (label → value pairs) below 640px. Both modes share the same
+ * `columns` + `rows` props so callers stay DRY.
+ *
+ * `columns`: Array<{ key, header, render?(row), cellClassName?, hideOnMobile?, primary?, mobileFullWidth? }>
+ *   - render: optional cell renderer (defaults to row[key])
+ *   - hideOnMobile: skip the card row line for this column
+ *   - primary: render this column as the card title (no label prefix)
+ *   - mobileFullWidth: on phones, render this column as a full-width
+ *     block at the bottom of the card with no label prefix — meant for
+ *     action buttons / CTAs so they remain a comfortable tap target.
+ * `rows`: Array<{ id?, ...rowFields }>
+ * `getRowKey`: optional fn(row, idx) → key (defaults to row.id || idx)
+ * `emptyState`: optional React node shown when rows.length === 0
+ */
+export function ResponsiveTable({
+  columns,
+  rows,
+  getRowKey,
+  emptyState = null,
+  className,
+  cardClassName,
+  rowClassName,
+  ariaLabel,
+  onRowClick,
+}) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const keyFor = (row, idx) => {
+    if (typeof getRowKey === 'function') return getRowKey(row, idx);
+    if (row && row.id != null) return row.id;
+    return idx;
+  };
+
+  if (!safeRows.length && emptyState) return emptyState;
+
+  return (
+    <div className={cn('w-full', className)} data-testid="responsive-table">
+      {/* Desktop / tablet — real table */}
+      <div className="hidden sm:block w-full overflow-x-auto">
+        <table className="w-full text-sm" aria-label={ariaLabel}>
+          <thead>
+            <tr className="border-b">
+              {columns.map((col) => (
+                <th
+                  key={col.key}
+                  className={cn(
+                    'h-10 px-2 text-start align-middle font-medium text-muted-foreground',
+                    col.headerClassName,
+                  )}
+                >
+                  {col.header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {safeRows.map((row, idx) => (
+              <tr
+                key={keyFor(row, idx)}
+                className={cn(
+                  'border-b last:border-0 hover:bg-muted/30',
+                  onRowClick && 'cursor-pointer',
+                  rowClassName,
+                )}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+              >
+                {columns.map((col) => (
+                  <td
+                    key={col.key}
+                    className={cn('p-2 align-middle', col.cellClassName)}
+                  >
+                    {col.render ? col.render(row) : row[col.key]}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile — stacked card per row */}
+      <ul
+        className="sm:hidden flex flex-col gap-2"
+        data-testid="responsive-table-mobile"
+      >
+        {safeRows.map((row, idx) => {
+          const visibleCols = columns.filter((c) => !c.hideOnMobile);
+          const primaryCol = visibleCols.find((c) => c.primary);
+          const rest = visibleCols.filter((c) => !c.primary);
+          return (
+            <li
+              key={keyFor(row, idx)}
+              className={cn(
+                'rounded-lg border border-border/60 bg-white dark:bg-slate-900 p-3 space-y-1.5',
+                onRowClick && 'cursor-pointer hover:bg-muted/30',
+                cardClassName,
+              )}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+            >
+              {primaryCol && (
+                <div className="font-semibold text-sm text-foreground break-words min-w-0">
+                  {primaryCol.render ? primaryCol.render(row) : row[primaryCol.key]}
+                </div>
+              )}
+              {rest
+                .filter((c) => !c.mobileFullWidth)
+                .map((col) => (
+                  <div
+                    key={col.key}
+                    className="flex items-baseline justify-between gap-3 text-xs min-w-0"
+                  >
+                    <span className="text-muted-foreground shrink-0">{col.header}</span>
+                    <span className="text-foreground text-end break-words min-w-0">
+                      {col.render ? col.render(row) : row[col.key]}
+                    </span>
+                  </div>
+                ))}
+              {rest
+                .filter((c) => c.mobileFullWidth)
+                .map((col) => (
+                  // Action / CTA columns get a full-width block at the
+                  // bottom of the card so buttons stay comfortably
+                  // tappable (≥44px wide) at 360px.
+                  <div key={col.key} className="pt-1 [&>*]:w-full">
+                    {col.render ? col.render(row) : row[col.key]}
+                  </div>
+                ))}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+export default ResponsiveTable;

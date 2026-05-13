@@ -226,18 +226,18 @@ const CommandPalette = () => {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/50 backdrop-blur-sm pt-[10vh] px-4"
+      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/50 backdrop-blur-sm sm:pt-[10vh] sm:px-4"
       onClick={() => setOpen(false)}
       data-testid="cmdk-overlay"
       dir={isRTL ? 'rtl' : 'ltr'}
     >
       <div
-        className="w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden"
+        className="w-full h-full sm:h-auto sm:max-w-xl bg-white sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
         data-testid="cmdk-panel"
       >
         <div className="flex items-center gap-2 border-b px-4 py-3">
-          <Search className="h-5 w-5 text-muted-foreground" />
+          <Search className="h-5 w-5 text-muted-foreground shrink-0" />
           <input
             ref={inputRef}
             type="text"
@@ -245,22 +245,31 @@ const CommandPalette = () => {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder={t('cmdkPlaceholder')}
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground min-w-0"
             data-testid="cmdk-input"
             aria-label={t('cmdkPlaceholder')}
           />
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="text-muted-foreground hover:text-foreground"
+            className="hidden sm:inline-flex text-muted-foreground hover:text-foreground"
             data-testid="cmdk-close"
             aria-label={t('close') || 'close'}
           >
             <X className="h-4 w-4" />
           </button>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="sm:hidden inline-flex items-center px-3 py-1.5 rounded-lg bg-brand-navy/10 text-brand-navy text-sm font-medium"
+            data-testid="cmdk-close-mobile"
+            aria-label={t('close') || 'close'}
+          >
+            {t('done') || t('close') || 'Done'}
+          </button>
         </div>
 
-        <div className="max-h-[50vh] overflow-y-auto">
+        <div className="flex-1 sm:flex-none sm:max-h-[50vh] overflow-y-auto">
           {showRecents ? (
             recents.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-muted-foreground" data-testid="cmdk-empty-hint">

@@ -68,18 +68,34 @@ export function OnboardingTour({ open, onFinish, onSkip }) {
   const targetVisible = !!rect;
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1024;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 768;
+  // Task #274 — tighten spotlight padding on phones so the cutout doesn't
+  // bleed into the tooltip and the tooltip itself stays clamped to the
+  // viewport edges (we already use Math.max/min for `left`).
+  const isMobile = vw < 640;
+  const spotPad = isMobile ? 3 : 6;
+  const tipGap = isMobile ? 6 : PADDING;
+  const tipHeightEstimate = isMobile ? 240 : 220;
+  const edgePad = isMobile ? 8 : 16;
 
   let tipStyle;
-  const tipWidth = Math.min(380, vw - 32);
+  const tipWidth = Math.min(380, vw - edgePad * 2);
   if (targetVisible) {
     const spaceBelow = vh - (rect.top + rect.height);
-    const above = spaceBelow < 220 && rect.top > 240;
-    const top = above ? Math.max(16, rect.top - PADDING - 220) : rect.top + rect.height + PADDING;
+    const above = spaceBelow < tipHeightEstimate && rect.top > tipHeightEstimate + 20;
+    let top = above
+      ? Math.max(edgePad, rect.top - tipGap - tipHeightEstimate)
+      : rect.top + rect.height + tipGap;
+    // Final clamp so the tooltip never spills off-screen on phones.
+    top = Math.max(edgePad, Math.min(vh - tipHeightEstimate - edgePad, top));
     let left = rect.left + rect.width / 2 - tipWidth / 2;
-    left = Math.max(16, Math.min(vw - tipWidth - 16, left));
+    left = Math.max(edgePad, Math.min(vw - tipWidth - edgePad, left));
     tipStyle = { top, left, width: tipWidth };
   } else {
-    tipStyle = { top: vh / 2 - 110, left: vw / 2 - tipWidth / 2, width: tipWidth };
+    tipStyle = {
+      top: Math.max(edgePad, vh / 2 - 110),
+      left: Math.max(edgePad, vw / 2 - tipWidth / 2),
+      width: tipWidth,
+    };
   }
 
   const node = (
@@ -97,12 +113,12 @@ export function OnboardingTour({ open, onFinish, onSkip }) {
             <rect width="100%" height="100%" fill="white" />
             {targetVisible && (
               <rect
-                x={Math.max(0, rect.left - 6)}
-                y={Math.max(0, rect.top - 6)}
-                width={rect.width + 12}
-                height={rect.height + 12}
-                rx="12"
-                ry="12"
+                x={Math.max(0, rect.left - spotPad)}
+                y={Math.max(0, rect.top - spotPad)}
+                width={rect.width + spotPad * 2}
+                height={rect.height + spotPad * 2}
+                rx={isMobile ? 8 : 12}
+                ry={isMobile ? 8 : 12}
                 fill="black"
               />
             )}
@@ -120,10 +136,10 @@ export function OnboardingTour({ open, onFinish, onSkip }) {
         <div
           className="absolute pointer-events-none rounded-xl ring-2 ring-brand-turquoise shadow-[0_0_0_4px_rgba(20,184,166,0.25)]"
           style={{
-            top: rect.top - 6,
-            left: rect.left - 6,
-            width: rect.width + 12,
-            height: rect.height + 12,
+            top: rect.top - spotPad,
+            left: rect.left - spotPad,
+            width: rect.width + spotPad * 2,
+            height: rect.height + spotPad * 2,
           }}
         />
       )}

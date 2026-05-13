@@ -328,9 +328,9 @@ export default function LessonPlannerPage() {
   return (
     <div className="flex min-h-screen bg-gray-50" dir="rtl">
       <Sidebar />
-      <main className="flex-1 p-6 space-y-6 max-w-5xl mx-auto">
+      <main className="flex-1 p-4 sm:p-6 space-y-6 max-w-5xl mx-auto w-full">
         <header className="space-y-1">
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Sparkles className="w-6 h-6 text-amber-500" /> مساعد خطط الدروس
           </h1>
           <p className="text-sm text-gray-600">

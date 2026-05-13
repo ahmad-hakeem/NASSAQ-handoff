@@ -102,10 +102,13 @@ test('mark-all on the Unread tab clears the visible list via a real refetch', as
 
   render(<TeacherNotificationsPage />);
 
-  // Initial load: 2 rows visible on the All tab.
+  // Initial load: 2 rows visible on the All tab. Task #274 — the inbox
+  // now mounts ResponsiveTable, which renders both the desktop table
+  // and the mobile-cards tree (Tailwind toggles which is visible), so
+  // each title appears more than once in the DOM.
   await waitFor(() => {
-    expect(screen.getByText('t1')).toBeInTheDocument();
-    expect(screen.getByText('t2')).toBeInTheDocument();
+    expect(screen.getAllByText('t1').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('t2').length).toBeGreaterThan(0);
   });
 
   // Switch to the Unread tab. Radix Tabs uses role=tab buttons; the

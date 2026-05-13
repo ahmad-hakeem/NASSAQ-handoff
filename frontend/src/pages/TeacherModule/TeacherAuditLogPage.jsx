@@ -19,6 +19,7 @@ import {
 import { Checkbox } from '../../components/ui/checkbox';
 import { formatHijriDate } from '../../utils/hijriDate';
 import { useTranslation } from '../../contexts/ThemeContext';
+import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 
 // Task #248 — IT workspace audit-log view (read-only).
 // Backend pins school_id == itw_{user_id} on every read, strips
@@ -421,16 +422,16 @@ export default function TeacherAuditLogPage() {
   return (
     <div className="flex min-h-screen bg-gray-50" dir="rtl">
       <Sidebar />
-      <main className="flex-1 p-6 lg:p-10">
+      <main className="flex-1 p-4 sm:p-6 lg:p-10">
         <div className="max-w-5xl mx-auto space-y-6">
-          <header className="flex items-center justify-between gap-3">
+          <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3">
               <History className="w-6 h-6 text-emerald-700" />
-              <h1 className="text-2xl font-bold text-gray-900">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
                 {t('teacherAuditLogTitle') || 'سجل النشاط'}
               </h1>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex rounded-md border border-input overflow-hidden">
                 <Button
                   type="button"
@@ -611,7 +612,7 @@ export default function TeacherAuditLogPage() {
 
           <Card>
             <CardContent className="pt-6 space-y-4">
-              <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] items-end">
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-[1fr_1fr_auto] items-end">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
                     {t('fromDate') || 'من تاريخ'}
@@ -650,13 +651,14 @@ export default function TeacherAuditLogPage() {
                   size="sm"
                   onClick={onClearDates}
                   disabled={loading || (!fromDate && !toDate)}
+                  className="w-full sm:w-auto"
                 >
                   {t('clearDates') || 'مسح التواريخ'}
                 </Button>
               </div>
               <form
                 onSubmit={onSubmitActor}
-                className="grid gap-4 sm:grid-cols-[1fr_auto_auto] items-end"
+                className="grid gap-3 grid-cols-1 sm:grid-cols-[1fr_auto_auto] items-end"
               >
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -679,6 +681,7 @@ export default function TeacherAuditLogPage() {
                   variant="outline"
                   size="sm"
                   disabled={loading || actorInput.trim() === actorQuery}
+                  className="w-full sm:w-auto"
                 >
                   {t('search') || 'بحث'}
                 </Button>
@@ -688,6 +691,7 @@ export default function TeacherAuditLogPage() {
                   size="sm"
                   onClick={onClearActor}
                   disabled={loading || (!actorInput && !actorQuery)}
+                  className="w-full sm:w-auto"
                 >
                   {t('clearSearch') || 'مسح البحث'}
                 </Button>
@@ -715,53 +719,82 @@ export default function TeacherAuditLogPage() {
                 </div>
               )}
 
-              {logs.map(row => {
-                const isOpen = !!expanded[row.id];
-                const role = roleLabel(t, row.actor_role);
-                return (
-                  <div
-                    key={row.id}
-                    className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition"
-                  >
-                    <div className="flex flex-wrap items-center gap-3">
-                      <Badge
-                        variant="outline"
-                        className={severityClass(row.severity)}
-                      >
-                        {row.severity}
-                      </Badge>
-                      <span className="font-semibold text-gray-900">
-                        {row.action_label_ar || row.action}
-                      </span>
-                      {(row.actor_name || role) && (
-                        <span className="text-xs text-gray-500">
-                          —
-                          {row.actor_name ? ` ${row.actor_name}` : ''}
-                          {role ? (
-                            <span className="ms-1 inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">
-                              {role}
-                            </span>
-                          ) : null}
-                        </span>
-                      )}
-                      <span className="ms-auto text-xs text-gray-500">
-                        {formatTimestamp(row.timestamp)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => toggleExpanded(row.id)}
-                        className="text-xs text-emerald-700 hover:underline flex items-center gap-1"
-                      >
-                        {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                        {isOpen
-                          ? (t('hideDetails') || 'إخفاء التفاصيل')
-                          : (t('showDetails') || 'عرض التفاصيل')}
-                      </button>
-                    </div>
-                    {isOpen && <DetailsBlock details={row.details} />}
-                  </div>
-                );
-              })}
+              {/* Task #274 — events render through ResponsiveTable so the
+                  list is a real `<table>` at sm+ and stacked label/value
+                  cards below 640px. Severity badge, action label, actor
+                  metadata, and timestamp keep their look in both modes;
+                  the per-row "details" toggle stays inline and the
+                  expanded JSON panel renders just under the row in either
+                  layout. */}
+              {!!logs.length && (
+                <ResponsiveTable
+                  ariaLabel={t('teacherAuditLogTitle') || 'سجل أنشطة مساحة العمل'}
+                  rows={logs}
+                  getRowKey={(row) => row.id}
+                  rowClassName="align-top"
+                  columns={[
+                    {
+                      key: 'severity',
+                      header: t('severity') || 'الخطورة',
+                      cellClassName: 'whitespace-nowrap',
+                      render: (row) => (
+                        <Badge
+                          variant="outline"
+                          className={severityClass(row.severity)}
+                        >
+                          {row.severity}
+                        </Badge>
+                      ),
+                    },
+                    {
+                      key: 'action',
+                      header: t('events') || 'الحدث',
+                      primary: true,
+                      render: (row) => {
+                        const isOpen = !!expanded[row.id];
+                        const role = roleLabel(t, row.actor_role);
+                        return (
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-gray-900">
+                                {row.action_label_ar || row.action}
+                              </span>
+                              {(row.actor_name || role) && (
+                                <span className="text-xs text-gray-500">
+                                  —
+                                  {row.actor_name ? ` ${row.actor_name}` : ''}
+                                  {role ? (
+                                    <span className="ms-1 inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">
+                                      {role}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => toggleExpanded(row.id)}
+                                className="text-xs text-emerald-700 hover:underline flex items-center gap-1 ms-auto"
+                              >
+                                {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                {isOpen
+                                  ? (t('hideDetails') || 'إخفاء التفاصيل')
+                                  : (t('showDetails') || 'عرض التفاصيل')}
+                              </button>
+                            </div>
+                            {isOpen && <DetailsBlock details={row.details} />}
+                          </div>
+                        );
+                      },
+                    },
+                    {
+                      key: 'when',
+                      header: t('when') || 'الوقت',
+                      cellClassName: 'whitespace-nowrap text-xs text-gray-500',
+                      render: (row) => formatTimestamp(row.timestamp),
+                    },
+                  ]}
+                />
+              )}
 
               {hasMore && (
                 <div className="pt-3 flex justify-center">

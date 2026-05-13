@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { formatHijriDate } from '../utils/hijriDate';
 import { useWorkspaceHubData } from '../hooks/useWorkspaceHubData';
+import { ResponsiveTable } from '../components/ui/ResponsiveTable';
 import {
   User,
   Lock,
@@ -204,6 +205,12 @@ const NotificationRow = ({ title, desc, checked, onChange }) => (
     <Switch checked={checked} onCheckedChange={onChange} />
   </div>
 );
+
+// Task #275 — small toggle row used by the IT auto-export card. Same
+// visual + a11y shape as NotificationRow; kept separate so future
+// auto-export rows (e.g. inline schedule preview) can extend without
+// touching the broader notifications block.
+const ToggleRow = NotificationRow;
 
 export const AccountSettingsPage = () => {
   const { t } = useTranslation();
@@ -1919,40 +1926,69 @@ export const AccountSettingsPage = () => {
                             </ul>
                           </div>
 
-                          {/* Pending-only mini list — quick cancel without leaving the hub. */}
+                          {/* Pending-only mini list — quick cancel without leaving the hub.
+                              Task #274 — rendered through ResponsiveTable: a real
+                              `<table>` at sm+ keeps email / class / cancel aligned;
+                              below 640px each invite collapses to a stacked card
+                              with the cancel button full-width so it stays tappable
+                              on phones. `data-testid` hooks are preserved for the
+                              §6.7 collaborator E2E suite. */}
                           {hub.counts.pending > 0 && (
                             <div data-testid="it-hub-collab-pending-list">
                               <p className="text-xs uppercase tracking-wide text-muted-foreground font-cairo mb-2">
                                 {t('itHubCollabPendingHeader')}
                               </p>
-                              <ul className="space-y-2">
-                                {hub.collaborators
-                                  .filter((c) => (c.status || '').toLowerCase() === 'pending')
-                                  .map((c) => (
-                                    <li
-                                      key={c.id}
-                                      className="flex items-center justify-between gap-3 p-3 rounded-xl border border-amber-200 bg-amber-50/40"
-                                      data-testid={`it-hub-collab-pending-row-${c.id}`}
-                                    >
-                                      <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-cairo font-medium truncate">{c.collaborator_email}</p>
-                                        <p className="text-xs text-muted-foreground font-tajawal truncate">
-                                          {t('itHubCollabClassLabel')}: {c.class_name}
-                                        </p>
-                                      </div>
+                              <ResponsiveTable
+                                ariaLabel={t('itHubCollabPendingHeader')}
+                                rows={hub.collaborators.filter(
+                                  (c) => (c.status || '').toLowerCase() === 'pending',
+                                )}
+                                getRowKey={(c) => c.id}
+                                cardClassName="border-amber-200 bg-amber-50/40"
+                                rowClassName="hover:bg-amber-50/40"
+                                columns={[
+                                  {
+                                    key: 'collaborator_email',
+                                    header: t('itHubCollabEmailLabel') || 'البريد',
+                                    primary: true,
+                                    render: (c) => (
+                                      <span
+                                        className="font-cairo font-medium break-words"
+                                        data-testid={`it-hub-collab-pending-row-${c.id}`}
+                                      >
+                                        {c.collaborator_email}
+                                      </span>
+                                    ),
+                                  },
+                                  {
+                                    key: 'class_name',
+                                    header: t('itHubCollabClassLabel'),
+                                    render: (c) => (
+                                      <span className="text-xs font-tajawal break-words">
+                                        {c.class_name}
+                                      </span>
+                                    ),
+                                  },
+                                  {
+                                    key: 'actions',
+                                    header: '',
+                                    cellClassName: 'text-end',
+                                    mobileFullWidth: true,
+                                    render: (c) => (
                                       <Button
                                         type="button"
                                         variant="outline"
                                         size="sm"
                                         onClick={() => handleHubCollabAction(c)}
-                                        className="rounded-xl text-amber-700 border-amber-300 hover:bg-amber-100"
+                                        className="rounded-xl text-amber-700 border-amber-300 hover:bg-amber-100 w-full sm:w-auto"
                                         data-testid={`it-hub-collab-cancel-${c.id}`}
                                       >
                                         {t('itHubCollabCancelInvite')}
                                       </Button>
-                                    </li>
-                                  ))}
-                              </ul>
+                                    ),
+                                  },
+                                ]}
+                              />
                             </div>
                           )}
                         </>

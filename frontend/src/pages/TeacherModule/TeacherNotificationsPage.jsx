@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { Loader2, Bell, CheckCheck, ExternalLink, Inbox, Users, GraduationCap, Building2, Gauge, Sparkles, Info } from 'lucide-react';
 import { formatHijriDate } from '../../utils/hijriDate';
+import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 
 // Task #249 — IT Notifications Inbox.
 // Backend pins user_id + tenant_id == itw_{user_id}; this page is
@@ -146,23 +147,23 @@ export default function TeacherNotificationsPage() {
   return (
     <div className="flex h-screen bg-gray-50" dir={isAr ? 'rtl' : 'ltr'}>
       <Sidebar />
-      <main className="flex-1 overflow-y-auto p-6">
+      <main className="flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="max-w-4xl mx-auto space-y-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Bell className="h-6 w-6 text-blue-600" />
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <Bell className="h-6 w-6 text-blue-600 shrink-0" />
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
                   {isAr ? 'الإشعارات' : 'Notifications'}
                 </h1>
-                <p className="text-sm text-gray-500">
+                <p className="text-xs sm:text-sm text-gray-500">
                   {isAr
                     ? 'دعوات التعاون وقبول أولياء الأمور وتنبيهات مساحة العمل والحصص.'
                     : 'Collaborator invites, parent accepts, workspace and quota events.'}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {unread > 0 && (
                 <Badge variant="destructive" className="px-2 py-1">
                   {unread} {isAr ? 'غير مقروء' : 'unread'}
@@ -238,44 +239,77 @@ export default function TeacherNotificationsPage() {
                   {isAr ? 'لا توجد إشعارات لعرضها.' : 'Nothing to show yet.'}
                 </div>
               ) : (
-                <ul className="divide-y">
-                  {filtered.map((n) => {
-                    const unreadRow = !n.is_read;
-                    return (
-                      <li
-                        key={n.id}
-                        className={`flex items-start gap-3 p-4 hover:bg-gray-50 cursor-pointer ${unreadRow ? 'bg-blue-50/40' : ''}`}
-                        onClick={() => handleOpen(n)}
-                      >
-                        <div className="mt-0.5">
-                          <CategoryIcon category={n.category} className={`h-5 w-5 ${unreadRow ? 'text-blue-600' : 'text-gray-400'}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className={`font-semibold ${unreadRow ? 'text-gray-900' : 'text-gray-700'}`}>
-                              {(isAr ? n.title : n.title_en) || n.title || ''}
-                            </span>
-                            {unreadRow && <span className="h-2 w-2 rounded-full bg-blue-500" />}
-                          </div>
-                          {(n.message || n.message_en) && (
-                            <div className="text-sm text-gray-600 mt-0.5 line-clamp-2">
-                              {(isAr ? n.message : n.message_en) || n.message}
+                /* Task #274 — notifications inbox renders through
+                   ResponsiveTable so the list is a real `<table>` at sm+
+                   (icon | title/message | when) and stacks into per-row
+                   cards below 640px. The whole row keeps its existing
+                   onClick-to-open semantics via `onRowClick`. */
+                <div className="p-2 sm:p-3" data-testid="teacher-notifications-list">
+                  <ResponsiveTable
+                    ariaLabel={isAr ? 'الإشعارات' : 'Notifications'}
+                    rows={filtered}
+                    getRowKey={(n) => n.id}
+                    onRowClick={handleOpen}
+                    rowClassName="align-top"
+                    columns={[
+                      {
+                        key: 'icon',
+                        header: '',
+                        cellClassName: 'w-8',
+                        hideOnMobile: true,
+                        render: (n) => (
+                          <CategoryIcon
+                            category={n.category}
+                            className={`h-5 w-5 ${!n.is_read ? 'text-blue-600' : 'text-gray-400'}`}
+                          />
+                        ),
+                      },
+                      {
+                        key: 'title',
+                        header: isAr ? 'الإشعار' : 'Notification',
+                        primary: true,
+                        render: (n) => {
+                          const unreadRow = !n.is_read;
+                          return (
+                            <div className="flex flex-col gap-1 min-w-0">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <CategoryIcon
+                                  category={n.category}
+                                  className={`h-4 w-4 shrink-0 sm:hidden ${unreadRow ? 'text-blue-600' : 'text-gray-400'}`}
+                                />
+                                <span
+                                  className={`font-semibold break-words min-w-0 ${unreadRow ? 'text-gray-900' : 'text-gray-700'}`}
+                                >
+                                  {(isAr ? n.title : n.title_en) || n.title || ''}
+                                </span>
+                                {unreadRow && (
+                                  <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
+                                )}
+                              </div>
+                              {(n.message || n.message_en) && (
+                                <div className="text-sm text-gray-600 line-clamp-2 break-words">
+                                  {(isAr ? n.message : n.message_en) || n.message}
+                                </div>
+                              )}
+                              {n.cta_url && (
+                                <span className="inline-flex items-center gap-1 text-xs text-blue-600">
+                                  <ExternalLink className="h-3 w-3" />
+                                  {isAr ? 'فتح' : 'Open'}
+                                </span>
+                              )}
                             </div>
-                          )}
-                          <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-                            <span>{formatRowDate(n.created_at, isAr)}</span>
-                            {n.cta_url && (
-                              <span className="inline-flex items-center gap-1 text-blue-600">
-                                <ExternalLink className="h-3 w-3" />
-                                {isAr ? 'فتح' : 'Open'}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
+                          );
+                        },
+                      },
+                      {
+                        key: 'when',
+                        header: isAr ? 'الوقت' : 'When',
+                        cellClassName: 'whitespace-nowrap text-xs text-gray-400',
+                        render: (n) => formatRowDate(n.created_at, isAr),
+                      },
+                    ]}
+                  />
+                </div>
               )}
               {hasMore && !loading && (
                 <div className="p-3 border-t text-center">
