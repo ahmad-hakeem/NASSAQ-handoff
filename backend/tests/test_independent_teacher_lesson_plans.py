@@ -415,3 +415,159 @@ async def test_non_it_role_denied_403(client, monkeypatch):
         headers=h, json={"class_id": str(uuid.uuid4())},
     )
     assert r.status_code == 403, r.text
+
+    r = await client.put(
+        f"/independent-teacher/lesson-plans/{uuid.uuid4()}",
+        headers=h, json={"topic": "x"},
+    )
+    assert r.status_code == 403, r.text
+
+    r = await client.delete(
+        f"/independent-teacher/lesson-plans/{uuid.uuid4()}",
+        headers=h,
+    )
+    assert r.status_code == 403, r.text
+
+
+# ----------------------------------------------------------------------
+# (i) PUT updates fields, scrubs foreign ids from plan body
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_update_lesson_plan_edits_and_scrubs_plan(client):
+    user = await _mk_it_workspace()
+    now = datetime.now(timezone.utc)
+    plan_id = str(uuid.uuid4())
+    await gd_insert(db.session, "lesson_plans", {
+        "id": plan_id,
+        "workspace_school_id": user["tenant_id"],
+        "created_by": user["id"],
+        "topic": "old-topic",
+        "subject": "old-subj",
+        "grade_level": "g1",
+        "duration_minutes": 30,
+        "language": "ar",
+        "plan": {"title": "old-title"},
+        "is_saved": True,
+        "created_at": now, "updated_at": now,
+    })
+    h = _headers(user["id"], user["role"], user["tenant_id"])
+    r = await client.put(
+        f"/independent-teacher/lesson-plans/{plan_id}",
+        headers=h,
+        json={
+            "topic": "new-topic",
+            "subject": "new-subj",
+            "duration_minutes": 60,
+            "plan": {
+                "title": "new-title",
+                "student_id": "leak",
+                "tenant_id": "x",
+                "activities": [{"name": "a", "class_id": "c"}],
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()["lesson_plan"]
+    assert body["topic"] == "new-topic"
+    assert body["subject"] == "new-subj"
+    assert body["duration_minutes"] == 60
+    assert body["plan"]["title"] == "new-title"
+    assert "student_id" not in body["plan"]
+    assert "tenant_id" not in body["plan"]
+    assert "class_id" not in body["plan"]["activities"][0]
+
+
+# ----------------------------------------------------------------------
+# (j) PUT cross-workspace plan_id → 404
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_update_lesson_plan_cross_workspace_404(client):
+    user_a = await _mk_it_workspace()
+    user_b = await _mk_it_workspace()
+    now = datetime.now(timezone.utc)
+    plan_id = str(uuid.uuid4())
+    await gd_insert(db.session, "lesson_plans", {
+        "id": plan_id,
+        "workspace_school_id": user_a["tenant_id"],
+        "created_by": user_a["id"],
+        "topic": "t", "language": "ar",
+        "plan": {}, "is_saved": True,
+        "created_at": now, "updated_at": now,
+    })
+    hb = _headers(user_b["id"], user_b["role"], user_b["tenant_id"])
+    r = await client.put(
+        f"/independent-teacher/lesson-plans/{plan_id}",
+        headers=hb, json={"topic": "x"},
+    )
+    assert r.status_code == 404, r.text
+
+
+# ----------------------------------------------------------------------
+# (k) PUT with empty topic → 422
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_update_lesson_plan_blank_topic_422(client):
+    user = await _mk_it_workspace()
+    now = datetime.now(timezone.utc)
+    plan_id = str(uuid.uuid4())
+    await gd_insert(db.session, "lesson_plans", {
+        "id": plan_id,
+        "workspace_school_id": user["tenant_id"],
+        "created_by": user["id"],
+        "topic": "t", "language": "ar",
+        "plan": {}, "is_saved": True,
+        "created_at": now, "updated_at": now,
+    })
+    h = _headers(user["id"], user["role"], user["tenant_id"])
+    r = await client.put(
+        f"/independent-teacher/lesson-plans/{plan_id}",
+        headers=h, json={"topic": "   "},
+    )
+    assert r.status_code == 422, r.text
+
+
+# ----------------------------------------------------------------------
+# (l) DELETE removes the row; cross-workspace plan_id → 404
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_delete_lesson_plan_and_cross_workspace_404(client):
+    user_a = await _mk_it_workspace()
+    user_b = await _mk_it_workspace()
+    now = datetime.now(timezone.utc)
+    plan_id = str(uuid.uuid4())
+    await gd_insert(db.session, "lesson_plans", {
+        "id": plan_id,
+        "workspace_school_id": user_a["tenant_id"],
+        "created_by": user_a["id"],
+        "topic": "t", "language": "ar",
+        "plan": {}, "is_saved": True,
+        "created_at": now, "updated_at": now,
+    })
+
+    # B cannot see/delete A's plan → 404
+    hb = _headers(user_b["id"], user_b["role"], user_b["tenant_id"])
+    r = await client.delete(
+        f"/independent-teacher/lesson-plans/{plan_id}", headers=hb,
+    )
+    assert r.status_code == 404, r.text
+
+    # Row still exists
+    assert await gd_count(
+        db.session, "lesson_plans", {"id": plan_id},
+    ) == 1
+
+    # A deletes successfully
+    ha = _headers(user_a["id"], user_a["role"], user_a["tenant_id"])
+    r = await client.delete(
+        f"/independent-teacher/lesson-plans/{plan_id}", headers=ha,
+    )
+    assert r.status_code == 200, r.text
+    assert await gd_count(
+        db.session, "lesson_plans", {"id": plan_id},
+    ) == 0
+
+    # Re-deleting → 404
+    r = await client.delete(
+        f"/independent-teacher/lesson-plans/{plan_id}", headers=ha,
+    )
+    assert r.status_code == 404, r.text

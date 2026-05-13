@@ -121,6 +121,36 @@ class SaveToClassRequest(BaseModel):
     class_id: str = Field(min_length=1, max_length=64)
 
 
+class UpdateLessonPlanRequest(BaseModel):
+    """Partial-update payload. Every field is optional; only the keys
+    explicitly provided by the caller are written. ``plan`` (the JSONB
+    body) is scrubbed of foreign id keys before persistence — same rule
+    as the LLM payload on the generate path.
+    """
+    topic: Optional[str] = Field(default=None, max_length=500)
+    subject: Optional[str] = Field(default=None, max_length=200)
+    grade_level: Optional[str] = Field(default=None, max_length=200)
+    duration_minutes: Optional[int] = Field(default=None, ge=5, le=600)
+    language: Optional[str] = Field(default=None, max_length=8)
+    plan: Optional[Dict[str, Any]] = None
+
+    @field_validator("topic", "subject", "grade_level", "language")
+    @classmethod
+    def _strip(cls, v):
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s or None
+
+    @field_validator("language")
+    @classmethod
+    def _lang(cls, v):
+        if v is None:
+            return None
+        v = v.strip().lower()
+        return v if v in {"ar", "en"} else "ar"
+
+
 # -- Gates ---------------------------------------------------------------
 
 
@@ -463,6 +493,94 @@ async def save_to_class(
     )
     refreshed = await gd_find_one(db.session, "lesson_plans", {"id": plan_id}) or row
     return {"lesson_plan": _serialize(refreshed)}
+
+
+@router.put("/{plan_id}")
+async def update_lesson_plan(
+    plan_id: str,
+    payload: UpdateLessonPlanRequest,
+    current_user: dict = Depends(_require_independent_teacher),
+):
+    """Edit/rename a saved or draft lesson plan (Task #220).
+
+    Pins ``workspace_school_id == itw_{user_id}`` + ``created_by ==
+    current_user.id``; cross-workspace ``plan_id`` → 404 per spec §8
+    inv. 3. ``plan`` is recursively scrubbed of foreign id keys, same
+    rule as the LLM-generate path.
+    """
+    workspace_id = _workspace_id(current_user)
+    row = await gd_find_one(db.session, "lesson_plans", {
+        "id": plan_id,
+        "workspace_school_id": workspace_id,
+        "created_by": current_user["id"],
+    })
+    if not row:
+        raise HTTPException(status_code=404, detail=_MSG_NOT_FOUND)
+
+    data = payload.model_dump(exclude_unset=True)
+    updates: Dict[str, Any] = {}
+    for key in ("topic", "subject", "grade_level", "duration_minutes", "language"):
+        if key in data:
+            updates[key] = data[key]
+    if "plan" in data:
+        plan_val = data["plan"]
+        if plan_val is None:
+            updates["plan"] = {}
+        elif isinstance(plan_val, dict):
+            updates["plan"] = _strip_foreign_ids(plan_val)
+        else:
+            raise HTTPException(status_code=422, detail=_MSG_NOT_FOUND)
+
+    if "topic" in updates and not (updates["topic"] or "").strip():
+        raise HTTPException(status_code=422, detail=_MSG_TOPIC_REQUIRED)
+
+    if not updates:
+        return {"lesson_plan": _serialize(row)}
+
+    updates["updated_at"] = datetime.now(timezone.utc)
+    await gd_update_one(
+        db.session,
+        "lesson_plans",
+        {
+            "id": plan_id,
+            "workspace_school_id": workspace_id,
+            "created_by": current_user["id"],
+        },
+        updates,
+    )
+    refreshed = await gd_find_one(db.session, "lesson_plans", {"id": plan_id}) or row
+    return {"lesson_plan": _serialize(refreshed)}
+
+
+@router.delete("/{plan_id}")
+async def delete_lesson_plan(
+    plan_id: str,
+    current_user: dict = Depends(_require_independent_teacher),
+):
+    """Delete a lesson plan owned by the calling IT (Task #220).
+
+    Cross-workspace ``plan_id`` → 404 per spec §8 inv. 3.
+    """
+    workspace_id = _workspace_id(current_user)
+    row = await gd_find_one(db.session, "lesson_plans", {
+        "id": plan_id,
+        "workspace_school_id": workspace_id,
+        "created_by": current_user["id"],
+    })
+    if not row:
+        raise HTTPException(status_code=404, detail=_MSG_NOT_FOUND)
+
+    from engines.sql_utils import gd_delete_one
+    await gd_delete_one(
+        db.session,
+        "lesson_plans",
+        {
+            "id": plan_id,
+            "workspace_school_id": workspace_id,
+            "created_by": current_user["id"],
+        },
+    )
+    return {"ok": True, "id": plan_id}
 
 
 __all__ = ["router"]

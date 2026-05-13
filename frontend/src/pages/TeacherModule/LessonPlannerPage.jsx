@@ -6,7 +6,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
-import { Loader2, Sparkles, BookOpen, Save } from 'lucide-react';
+import { Loader2, Sparkles, BookOpen, Save, Pencil, Trash2, X, Check } from 'lucide-react';
 import { formatHijriDate } from '../../utils/hijriDate';
 
 // Phase 2 §6.4 (Task #209) — IT-only light AI lesson-planning assistant.
@@ -94,7 +94,7 @@ function PlanPreview({ plan }) {
 
 export default function LessonPlannerPage() {
   const { api } = useAuth();
-  const { nassaqError, nassaqInfo } = useNassaqAlert();
+  const { nassaqError, nassaqInfo, nassaqConfirm } = useNassaqAlert();
   const [form, setForm] = useState(DEFAULT_FORM);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -103,6 +103,9 @@ export default function LessonPlannerPage() {
   const [classes, setClasses] = useState([]);
   const [classId, setClassId] = useState('');
   const [savedPlans, setSavedPlans] = useState([]);
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState({ topic: '', subject: '', grade_level: '', duration_minutes: '', title: '' });
+  const [rowBusy, setRowBusy] = useState(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -203,6 +206,78 @@ export default function LessonPlannerPage() {
     } catch (_e) { /* graceful */ }
     return { used, max, remaining, exhausted, percent, nextResetAr };
   }, [quota]);
+
+  const startEdit = useCallback((p) => {
+    setEditingId(p.id);
+    setEditDraft({
+      topic: p.topic || '',
+      subject: p.subject || '',
+      grade_level: p.grade_level || '',
+      duration_minutes: p.duration_minutes ?? '',
+      title: p.plan?.title || '',
+    });
+  }, []);
+
+  const cancelEdit = useCallback(() => {
+    setEditingId(null);
+    setEditDraft({ topic: '', subject: '', grade_level: '', duration_minutes: '', title: '' });
+  }, []);
+
+  const saveEdit = useCallback(async (p) => {
+    if (!editDraft.topic?.trim()) {
+      nassaqError('موضوع الدرس مطلوب.', { title: 'حقل مطلوب' });
+      return;
+    }
+    setRowBusy(p.id);
+    try {
+      const nextPlan = { ...(p.plan || {}) };
+      if (editDraft.title?.trim()) {
+        nextPlan.title = editDraft.title.trim();
+      } else {
+        delete nextPlan.title;
+      }
+      const body = {
+        topic: editDraft.topic.trim(),
+        subject: editDraft.subject?.trim() || null,
+        grade_level: editDraft.grade_level?.trim() || null,
+        duration_minutes: editDraft.duration_minutes
+          ? Number(editDraft.duration_minutes)
+          : null,
+        plan: nextPlan,
+      };
+      await api.put(`/independent-teacher/lesson-plans/${p.id}`, body);
+      nassaqInfo('تم حفظ التعديلات.', { title: 'تم التحديث' });
+      cancelEdit();
+      refresh();
+    } catch (err) {
+      const msg = err?.response?.data?.detail
+        || 'تعذّر حفظ التعديلات. حاول مرة أخرى.';
+      nassaqError(String(msg), { title: 'فشل التعديل' });
+    } finally {
+      setRowBusy(null);
+    }
+  }, [api, editDraft, cancelEdit, refresh, nassaqError, nassaqInfo]);
+
+  const askDelete = useCallback((p) => {
+    nassaqConfirm(
+      `هل تريد حذف الخطة "${p.topic}"؟ لا يمكن التراجع عن هذه العملية.`,
+      async () => {
+        setRowBusy(p.id);
+        try {
+          await api.delete(`/independent-teacher/lesson-plans/${p.id}`);
+          if (editingId === p.id) cancelEdit();
+          refresh();
+        } catch (err) {
+          const msg = err?.response?.data?.detail
+            || 'تعذّر حذف الخطة. حاول مرة أخرى.';
+          nassaqError(String(msg), { title: 'فشل الحذف' });
+        } finally {
+          setRowBusy(null);
+        }
+      },
+      { title: 'تأكيد الحذف', confirmText: 'حذف', cancelText: 'إلغاء' },
+    );
+  }, [api, editingId, cancelEdit, refresh, nassaqConfirm, nassaqError]);
 
   const quotaBadge = useMemo(() => {
     if (!quota) return null;
@@ -371,19 +446,91 @@ export default function LessonPlannerPage() {
               <CardTitle className="text-base">الخطط المحفوظة</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {savedPlans.map((p) => (
-                <div key={p.id} className="border rounded-md p-3 text-sm bg-white">
-                  <div className="flex flex-wrap justify-between gap-2">
-                    <div className="font-semibold">{p.topic}</div>
-                    <div className="text-xs text-gray-500">
-                      {p.subject || '—'} · {p.grade_level || '—'} · {p.duration_minutes || '—'} د
-                    </div>
+              {savedPlans.map((p) => {
+                const isEditing = editingId === p.id;
+                const busy = rowBusy === p.id;
+                return (
+                  <div key={p.id} className="border rounded-md p-3 text-sm bg-white">
+                    {isEditing ? (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs font-medium text-gray-700">الموضوع</label>
+                            <Input
+                              value={editDraft.topic}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, topic: e.target.value }))}
+                              maxLength={500}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-gray-700">العنوان</label>
+                            <Input
+                              value={editDraft.title}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, title: e.target.value }))}
+                              maxLength={500}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-gray-700">المادة</label>
+                            <Input
+                              value={editDraft.subject}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, subject: e.target.value }))}
+                              maxLength={200}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-gray-700">الصف</label>
+                            <Input
+                              value={editDraft.grade_level}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, grade_level: e.target.value }))}
+                              maxLength={200}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-gray-700">المدة (دقيقة)</label>
+                            <Input
+                              type="number"
+                              min={5}
+                              max={600}
+                              value={editDraft.duration_minutes}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, duration_minutes: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={cancelEdit} disabled={busy}>
+                            <X className="w-4 h-4 ml-1" /> إلغاء
+                          </Button>
+                          <Button size="sm" onClick={() => saveEdit(p)} disabled={busy || !editDraft.topic?.trim()}>
+                            {busy ? <Loader2 className="w-4 h-4 ml-1 animate-spin" /> : <Check className="w-4 h-4 ml-1" />}
+                            حفظ التغييرات
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap justify-between gap-2 items-start">
+                          <div className="font-semibold">{p.topic}</div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-xs text-gray-500">
+                              {p.subject || '—'} · {p.grade_level || '—'} · {p.duration_minutes || '—'} د
+                            </div>
+                            <Button variant="ghost" size="sm" onClick={() => startEdit(p)} disabled={busy} title="تعديل">
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => askDelete(p)} disabled={busy} title="حذف">
+                              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4 text-red-600" />}
+                            </Button>
+                          </div>
+                        </div>
+                        {p.plan?.title && (
+                          <div className="text-gray-600 mt-1">{p.plan.title}</div>
+                        )}
+                      </>
+                    )}
                   </div>
-                  {p.plan?.title && (
-                    <div className="text-gray-600 mt-1">{p.plan.title}</div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </CardContent>
           </Card>
         )}
