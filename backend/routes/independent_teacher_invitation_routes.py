@@ -44,6 +44,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field, field_validator
+from sqlalchemy import select
 
 from auth_scope import (
     INDEPENDENT_TEACHER_DENIED_AR,
@@ -58,8 +59,9 @@ from dependencies import (
     get_current_user,
     require_recent_mfa_403,
 )
-from engines.sql_utils import gd_count, gd_find, gd_find_one, gd_insert, gd_update_one
+from engines.sql_utils import gd_count, gd_find_one, gd_insert, gd_update_one
 from middleware.rate_limiter import rate_store
+from pg_models import ParentInvitation
 from utils.tokens import (
     mint_invitation_token,
     token_hash as _token_hash,
@@ -155,6 +157,39 @@ async def _require_independent_teacher(
 _recent_mfa_403_dep = require_recent_mfa_403()
 
 
+def _invitation_to_dict(row: ParentInvitation) -> Dict[str, Any]:
+    """Project a ``ParentInvitation`` ORM row to the legacy dict shape used
+    by the route's serialiser/audit/notify code paths.
+
+    The route layer historically consumed ``gd_find_one`` dicts; keeping the
+    same shape avoids a sweeping rewrite of every ``row.get(...)`` callsite.
+    """
+    return {
+        "id": row.id,
+        "workspace_school_id": row.workspace_school_id,
+        "student_id": row.student_id,
+        "parent_email": row.parent_email,
+        "parent_phone": row.parent_phone,
+        "token_hash": row.token_hash,
+        "sent_at": row.sent_at,
+        "accepted_at": row.accepted_at,
+        "expires_at": row.expires_at,
+        "status": row.status,
+        "created_by": row.created_by,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+async def _find_invitation(**filters) -> Optional[ParentInvitation]:
+    stmt = select(ParentInvitation)
+    for key, value in filters.items():
+        stmt = stmt.where(getattr(ParentInvitation, key) == value)
+    stmt = stmt.limit(1)
+    result = await db.session.execute(stmt)
+    return result.scalars().first()
+
+
 async def _load_workspace_student(student_id: str, school_id: str) -> Dict[str, Any]:
     """Tenant-pinned student lookup. Cross-tenant → 404 (§8 inv. 3)."""
     student = await gd_find_one(
@@ -189,18 +224,17 @@ async def create_parent_invitation(
     # Idempotency: if a pending invitation already exists for this
     # (workspace, student) pair, return it verbatim. Token is NOT
     # rotated — the original recipient may still hold the link.
-    existing = await gd_find_one(db.session, "parent_invitations", {
-        "workspace_school_id": workspace_id,
-        "student_id": student_id,
-        "status": "pending",
-    })
+    existing = await _find_invitation(
+        workspace_school_id=workspace_id,
+        student_id=student_id,
+        status="pending",
+    )
     if existing:
-        return _serialise_invitation(existing, channels=_channels(existing), reused=True)
+        existing_d = _invitation_to_dict(existing)
+        return _serialise_invitation(existing_d, channels=_channels(existing_d), reused=True)
 
     raw_token, t_hash, expires_at = mint_invitation_token(workspace_id, student_id)
     now = _utcnow()
-    now_iso = now.isoformat()
-    expires_iso = expires_at.isoformat()
     invitation_id = str(uuid.uuid4())
     row = {
         "id": invitation_id,
@@ -209,17 +243,18 @@ async def create_parent_invitation(
         "parent_email": payload.parent_email,
         "parent_phone": payload.parent_phone,
         "token_hash": t_hash,
-        "sent_at": now_iso,
+        "sent_at": now,
         "accepted_at": None,
-        "expires_at": expires_iso,
+        "expires_at": expires_at,
         "status": "pending",
         "created_by": current_user["id"],
-        "created_at": now_iso,
-        "updated_at": now_iso,
+        "created_at": now,
+        "updated_at": now,
     }
     try:
         async with db.session.begin_nested():
-            await gd_insert(db.session, "parent_invitations", row)
+            db.session.add(ParentInvitation(**row))
+            await db.session.flush()
             await audit_engine.log(
                 action=AUDIT_INVITATION_CREATED,
                 performed_by=current_user["id"],
@@ -248,7 +283,8 @@ async def create_parent_invitation(
         )
         raise HTTPException(status_code=500, detail=_MSG_INTERNAL)
 
-    fresh = await gd_find_one(db.session, "parent_invitations", {"id": invitation_id})
+    fresh_row = await _find_invitation(id=invitation_id)
+    fresh = _invitation_to_dict(fresh_row) if fresh_row else None
     payload_out = _serialise_invitation(fresh or row, channels=_channels(row), reused=False)
     # The raw token is returned ONCE so the calling adapter (Phase-2
     # email/SMS sender) can hand it to the user. Never logged.
@@ -311,14 +347,18 @@ async def get_latest_parent_invitation(
     # 404 the cross-tenant case before reading invitations.
     await _load_workspace_student(student_id, school_id)
 
-    rows = await gd_find(
-        db.session, "parent_invitations",
-        {"workspace_school_id": workspace_id, "student_id": student_id},
-        order_by="created_at", desc_order=True, limit=1,
+    stmt = (
+        select(ParentInvitation)
+        .where(ParentInvitation.workspace_school_id == workspace_id)
+        .where(ParentInvitation.student_id == student_id)
+        .order_by(ParentInvitation.created_at.desc())
+        .limit(1)
     )
-    if not rows:
+    result = await db.session.execute(stmt)
+    inv_row = result.scalars().first()
+    if not inv_row:
         return {"invitation": None}
-    row = rows[0]
+    row = _invitation_to_dict(inv_row)
     # Surface the derived "expired" view to the FE without touching the
     # stored status (cancellation/acceptance always win over expiry).
     derived_status = row.get("status")
@@ -371,23 +411,21 @@ async def cancel_parent_invitation(
     workspace_id = independent_workspace_id(current_user) or school_id
 
     # Tenant-pin the lookup so cross-workspace ids 404 (§8 inv. 3).
-    inv = await gd_find_one(db.session, "parent_invitations", {
-        "id": invitation_id,
-        "workspace_school_id": workspace_id,
-    })
-    if not inv:
+    inv_row = await _find_invitation(
+        id=invitation_id, workspace_school_id=workspace_id,
+    )
+    if not inv_row:
         raise HTTPException(status_code=404, detail=_MSG_INVITATION_NOT_FOUND)
 
-    if inv.get("status") != "pending":
+    if inv_row.status != "pending":
         raise HTTPException(status_code=409, detail=_MSG_INVITATION_BAD_STATE)
+    inv = _invitation_to_dict(inv_row)
 
     try:
         async with db.session.begin_nested():
-            await gd_update_one(
-                db.session, "parent_invitations",
-                {"id": invitation_id},
-                {"status": "cancelled", "updated_at": _utcnow_iso()},
-            )
+            inv_row.status = "cancelled"
+            inv_row.updated_at = _utcnow()
+            await db.session.flush()
             await audit_engine.log(
                 action=AUDIT_INVITATION_CANCELLED,
                 performed_by=current_user["id"],
@@ -414,7 +452,8 @@ async def cancel_parent_invitation(
         )
         raise HTTPException(status_code=500, detail=_MSG_INTERNAL)
 
-    fresh = await gd_find_one(db.session, "parent_invitations", {"id": invitation_id})
+    fresh_row = await _find_invitation(id=invitation_id)
+    fresh = _invitation_to_dict(fresh_row) if fresh_row else inv
     return _serialise_invitation(fresh, channels=_channels(fresh), reused=False)
 
 
@@ -491,9 +530,10 @@ async def accept_parent_invitation(
 
     raw_token = payload.token
     t_hash = _token_hash(raw_token)
-    inv = await gd_find_one(db.session, "parent_invitations", {"token_hash": t_hash})
-    if not inv or inv.get("status") != "pending":
+    inv_row = await _find_invitation(token_hash=t_hash)
+    if not inv_row or inv_row.status != "pending":
         raise HTTPException(status_code=400, detail=_MSG_INVITATION_INVALID)
+    inv = _invitation_to_dict(inv_row)
 
     workspace_id = inv["workspace_school_id"]
     student_id = inv["student_id"]
@@ -645,16 +685,11 @@ async def accept_parent_invitation(
             if not updated:
                 raise HTTPException(status_code=400, detail=_MSG_INVITATION_INVALID)
 
-            now_dt = _utcnow_iso()
-            await gd_update_one(
-                db.session, "parent_invitations",
-                {"id": invitation_id},
-                {
-                    "status": "accepted",
-                    "accepted_at": now_dt,
-                    "updated_at": now_dt,
-                },
-            )
+            now_dt = _utcnow()
+            inv_row.status = "accepted"
+            inv_row.accepted_at = now_dt
+            inv_row.updated_at = now_dt
+            await db.session.flush()
 
             await audit_engine.log(
                 action=AUDIT_INVITATION_ACCEPTED,

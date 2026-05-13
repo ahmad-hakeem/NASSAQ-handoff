@@ -50,6 +50,7 @@ def _get_orm_model(collection: str):
         MfaEmailOtp, MfaWebauthnChallenge,
         LessonPlan,
         NotificationPreference,
+        ParentInvitation, WorkspaceCollaborator, WorkspaceQuota,
     )
     _ORM_REGISTRY = {
         "users": User,
@@ -113,6 +114,9 @@ def _get_orm_model(collection: str):
         "mfa_pending_challenges": MfaPendingChallenge,
         "mfa_email_otps": MfaEmailOtp,
         "mfa_webauthn_challenges": MfaWebauthnChallenge,
+        "parent_invitations": ParentInvitation,
+        "workspace_collaborators": WorkspaceCollaborator,
+        "workspace_quota": WorkspaceQuota,
     }
     return _ORM_REGISTRY.get(collection)
 
@@ -785,7 +789,11 @@ async def gd_update_many(session, collection: str, filters: dict, updates: dict)
 async def gd_count(session, collection: str, filters: dict = None) -> int:
     orm_model = _get_orm_model(collection)
     if orm_model is not None:
-        stmt = select(func.count(orm_model.id))
+        # Some ORM models (e.g. WorkspaceQuota) don't carry an ``id`` column;
+        # fall back to ``count(*)`` which is portable across all schemas.
+        count_target = getattr(orm_model, "id", None)
+        stmt = select(func.count(count_target) if count_target is not None else func.count())
+        stmt = stmt.select_from(orm_model)
         conds = _build_orm_filter_conditions(orm_model, filters)
         if conds:
             stmt = stmt.where(and_(*conds))
@@ -835,6 +843,17 @@ async def gd_delete_one(session, collection: str, filters: dict) -> int:
 async def gd_delete_many(session, collection: str, filters: dict) -> int:
     orm_model = _get_orm_model(collection)
     if orm_model is not None:
+        # Some ORM models don't carry an ``id`` column (e.g. WorkspaceQuota,
+        # whose primary key is workspace_school_id). Issue a direct DELETE
+        # instead of an ``id IN (...)`` subquery in that case.
+        if getattr(orm_model, "id", None) is None:
+            stmt = sa_delete(orm_model)
+            conds = _build_orm_filter_conditions(orm_model, filters)
+            if conds:
+                stmt = stmt.where(and_(*conds))
+            result = await session.execute(stmt)
+            await session.flush()
+            return result.rowcount
         sub = select(orm_model.id)
         conds = _build_orm_filter_conditions(orm_model, filters)
         if conds:

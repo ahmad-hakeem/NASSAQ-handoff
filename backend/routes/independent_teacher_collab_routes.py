@@ -60,7 +60,10 @@ from dependencies import (
     get_current_user,
     require_recent_mfa_403,
 )
-from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_update_one
+from sqlalchemy import select
+
+from engines.sql_utils import gd_find_one
+from pg_models import WorkspaceCollaborator
 from middleware.rbac import Permission
 from utils.tokens import (
     mint_collab_invitation_token,
@@ -143,10 +146,6 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _utcnow_iso() -> str:
-    return _utcnow().isoformat()
-
-
 async def _require_independent_teacher(
     current_user: dict = Depends(get_current_user),
 ) -> dict:
@@ -191,6 +190,47 @@ def _serialise(row: dict, *, raw_token: Optional[str] = None) -> dict:
     if raw_token is not None:
         out["token"] = raw_token
     return out
+
+
+def _collab_to_dict(row: WorkspaceCollaborator) -> Dict[str, Any]:
+    """Project a ``WorkspaceCollaborator`` ORM row to the legacy dict
+    shape consumed by ``_serialise``/audit/notify code paths.
+    """
+    return {
+        "id": row.id,
+        "host_school_id": row.host_school_id,
+        "collaborator_school_id": row.collaborator_school_id,
+        "class_id": row.class_id,
+        "collaborator_email": row.collaborator_email,
+        "collaborator_user_id": row.collaborator_user_id,
+        "token_hash": row.token_hash,
+        "scope": row.scope,
+        "status": row.status,
+        "sent_at": row.sent_at,
+        "accepted_at": row.accepted_at,
+        "revoked_at": row.revoked_at,
+        "expires_at": row.expires_at,
+        "created_by": row.created_by,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+async def _find_collab(**filters) -> Optional[WorkspaceCollaborator]:
+    stmt = select(WorkspaceCollaborator)
+    for key, value in filters.items():
+        stmt = stmt.where(getattr(WorkspaceCollaborator, key) == value)
+    stmt = stmt.limit(1)
+    result = await db.session.execute(stmt)
+    return result.scalars().first()
+
+
+async def _list_collabs(**filters) -> list[WorkspaceCollaborator]:
+    stmt = select(WorkspaceCollaborator)
+    for key, value in filters.items():
+        stmt = stmt.where(getattr(WorkspaceCollaborator, key) == value)
+    result = await db.session.execute(stmt)
+    return list(result.scalars().all())
 
 
 async def _load_host_class(class_id: str, host_school_id: str) -> Dict[str, Any]:
@@ -246,23 +286,23 @@ async def create_collab_invitation(
         raise HTTPException(status_code=400, detail=_MSG_COLLAB_SELF)
 
     # Idempotency: pending invite for this (host, class, email) wins.
-    existing = await gd_find_one(db.session, "workspace_collaborators", {
-        "host_school_id": host_school_id,
-        "class_id": payload.class_id,
-        "collaborator_email": email,
-        "status": "pending",
-    })
+    existing = await _find_collab(
+        host_school_id=host_school_id,
+        class_id=payload.class_id,
+        collaborator_email=email,
+        status="pending",
+    )
     if existing:
-        return {**_serialise(existing), "reused": True}
+        return {**_serialise(_collab_to_dict(existing)), "reused": True}
 
     # Reject if this triple is already accepted (active link). The host
     # must revoke first before re-inviting.
-    accepted = await gd_find_one(db.session, "workspace_collaborators", {
-        "host_school_id": host_school_id,
-        "class_id": payload.class_id,
-        "collaborator_email": email,
-        "status": "accepted",
-    })
+    accepted = await _find_collab(
+        host_school_id=host_school_id,
+        class_id=payload.class_id,
+        collaborator_email=email,
+        status="accepted",
+    )
     if accepted:
         raise HTTPException(status_code=409, detail=_MSG_COLLAB_BAD_STATE)
 
@@ -280,17 +320,18 @@ async def create_collab_invitation(
         "token_hash": t_hash,
         "scope": {"mode": payload.scope.mode},
         "status": "pending",
-        "sent_at": now.isoformat(),
+        "sent_at": now,
         "accepted_at": None,
         "revoked_at": None,
-        "expires_at": expires_at.isoformat(),
+        "expires_at": expires_at,
         "created_by": current_user["id"],
-        "created_at": now.isoformat(),
-        "updated_at": now.isoformat(),
+        "created_at": now,
+        "updated_at": now,
     }
     try:
         async with db.session.begin_nested():
-            await gd_insert(db.session, "workspace_collaborators", row)
+            db.session.add(WorkspaceCollaborator(**row))
+            await db.session.flush()
             await audit_engine.log(
                 action=AUDIT_COLLAB_INVITED,
                 performed_by=current_user["id"],
@@ -362,20 +403,16 @@ async def cancel_collab_invitation(
     )
 
     # Cross-workspace by-id lookup must 404, not 403.
-    row = await gd_find_one(db.session, "workspace_collaborators", {
-        "id": collab_id, "host_school_id": host_school_id,
-    })
-    if not row:
+    orm_row = await _find_collab(id=collab_id, host_school_id=host_school_id)
+    if not orm_row:
         raise HTTPException(status_code=404, detail=_MSG_COLLAB_NOT_FOUND)
-    if row.get("status") != "pending":
+    if orm_row.status != "pending":
         raise HTTPException(status_code=409, detail=_MSG_COLLAB_BAD_STATE)
 
-    now_iso = _utcnow_iso()
-    await gd_update_one(
-        db.session, "workspace_collaborators",
-        {"id": collab_id},
-        {"status": "cancelled", "updated_at": now_iso},
-    )
+    orm_row.status = "cancelled"
+    orm_row.updated_at = _utcnow()
+    await db.session.flush()
+    row = _collab_to_dict(orm_row)
     await audit_engine.log(
         action=AUDIT_COLLAB_CANCELLED,
         performed_by=current_user["id"],
@@ -385,8 +422,7 @@ async def cancel_collab_invitation(
         details={"host_school_id": host_school_id, "class_id": row["class_id"]},
         actor_role=current_user.get("role"),
     )
-    refreshed = await gd_find_one(db.session, "workspace_collaborators", {"id": collab_id})
-    return _serialise(refreshed or {**row, "status": "cancelled"})
+    return _serialise(row)
 
 
 # -- Endpoint: DELETE revoke (accepted or pending) -----------------------
@@ -404,28 +440,28 @@ async def revoke_collab(
     )
 
     # Cross-workspace by-id → 404 unless the caller owns *either* side.
-    row = await gd_find_one(db.session, "workspace_collaborators", {"id": collab_id})
-    if not row or (
-        row.get("host_school_id") != caller_ws
-        and row.get("collaborator_school_id") != caller_ws
+    orm_row = await _find_collab(id=collab_id)
+    if not orm_row or (
+        orm_row.host_school_id != caller_ws
+        and orm_row.collaborator_school_id != caller_ws
     ):
         raise HTTPException(status_code=404, detail=_MSG_COLLAB_NOT_FOUND)
 
     # Hosts revoking still need the manage permission; collaborators
     # always may withdraw their side without it.
-    if row.get("host_school_id") == caller_ws:
+    if orm_row.host_school_id == caller_ws:
         _require_collab_manage(current_user)
 
-    if row.get("status") not in {"pending", "accepted"}:
+    if orm_row.status not in {"pending", "accepted"}:
         raise HTTPException(status_code=409, detail=_MSG_COLLAB_BAD_STATE)
 
-    now_iso = _utcnow_iso()
-    new_status = "cancelled" if row.get("status") == "pending" else "revoked"
-    await gd_update_one(
-        db.session, "workspace_collaborators",
-        {"id": collab_id},
-        {"status": new_status, "revoked_at": now_iso, "updated_at": now_iso},
-    )
+    now_dt = _utcnow()
+    new_status = "cancelled" if orm_row.status == "pending" else "revoked"
+    orm_row.status = new_status
+    orm_row.revoked_at = now_dt
+    orm_row.updated_at = now_dt
+    await db.session.flush()
+    row = _collab_to_dict(orm_row)
     await audit_engine.log(
         action=AUDIT_COLLAB_REVOKED if new_status == "revoked" else AUDIT_COLLAB_CANCELLED,
         performed_by=current_user["id"],
@@ -440,8 +476,7 @@ async def revoke_collab(
         },
         actor_role=current_user.get("role"),
     )
-    refreshed = await gd_find_one(db.session, "workspace_collaborators", {"id": collab_id})
-    return _serialise(refreshed or {**row, "status": new_status})
+    return _serialise(row)
 
 
 # -- Endpoint: GET host view ---------------------------------------------
@@ -458,11 +493,14 @@ async def list_class_collaborators(
     # 404 on cross-workspace class id.
     await _load_host_class(class_id, host_school_id)
 
-    rows = await gd_find(db.session, "workspace_collaborators", {
-        "host_school_id": host_school_id,
-        "class_id": class_id,
-    }) or []
-    rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    orm_rows = await _list_collabs(
+        host_school_id=host_school_id, class_id=class_id,
+    )
+    rows = [_collab_to_dict(r) for r in orm_rows]
+    rows.sort(
+        key=lambda r: (r.get("created_at").isoformat() if isinstance(r.get("created_at"), datetime) else (r.get("created_at") or "")),
+        reverse=True,
+    )
     return {"items": [_serialise(r) for r in rows]}
 
 
@@ -475,10 +513,10 @@ async def list_shared_with_me(
     caller_ws = independent_workspace_id(current_user)
     if not caller_ws:
         return {"items": []}
-    rows = await gd_find(db.session, "workspace_collaborators", {
-        "collaborator_school_id": caller_ws,
-        "status": "accepted",
-    }) or []
+    orm_rows = await _list_collabs(
+        collaborator_school_id=caller_ws, status="accepted",
+    )
+    rows = [_collab_to_dict(r) for r in orm_rows]
     return {"items": [_serialise(r) for r in rows]}
 
 
@@ -506,14 +544,14 @@ async def preview_collab_invitation(token: str = Query(..., min_length=10, max_l
     invited_email = (claims.get("email") or "").lower()
     if not host_school_id or not class_id or not invited_email:
         raise HTTPException(status_code=400, detail=_MSG_COLLAB_INVALID_TOKEN)
-    row = await gd_find_one(db.session, "workspace_collaborators", {
-        "host_school_id": host_school_id,
-        "class_id": class_id,
-        "collaborator_email": invited_email,
-        "status": "pending",
-    })
-    if not row or not verify_collab_invitation_token(
-        token, row["token_hash"],
+    orm_row = await _find_collab(
+        host_school_id=host_school_id,
+        class_id=class_id,
+        collaborator_email=invited_email,
+        status="pending",
+    )
+    if not orm_row or not verify_collab_invitation_token(
+        token, orm_row.token_hash,
         host_school_id=host_school_id,
         class_id=class_id,
         collaborator_email=invited_email,
@@ -521,13 +559,14 @@ async def preview_collab_invitation(token: str = Query(..., min_length=10, max_l
         raise HTTPException(status_code=400, detail=_MSG_COLLAB_INVALID_TOKEN)
     cls = await gd_find_one(db.session, "classes", {"id": class_id}) or {}
     school = await gd_find_one(db.session, "schools", {"id": host_school_id}) or {}
+    expires_at = orm_row.expires_at
     return {
         "invited_email": invited_email,
         "class_name": cls.get("name"),
         "host_workspace_name": school.get("name"),
-        "scope": row.get("scope") or {"mode": "read"},
-        "expires_at": row.get("expires_at"),
-        "status": row.get("status"),
+        "scope": orm_row.scope or {"mode": "read"},
+        "expires_at": expires_at.isoformat() if isinstance(expires_at, datetime) else expires_at,
+        "status": orm_row.status,
     }
 
 
@@ -573,24 +612,24 @@ async def accept_collab_invitation(
     if caller_ws == host_school_id:
         raise HTTPException(status_code=400, detail=_MSG_COLLAB_SELF)
 
-    row = await gd_find_one(db.session, "workspace_collaborators", {
-        "host_school_id": host_school_id,
-        "class_id": class_id,
-        "collaborator_email": invited_email,
-        "status": "pending",
-    })
-    if not row:
+    orm_row = await _find_collab(
+        host_school_id=host_school_id,
+        class_id=class_id,
+        collaborator_email=invited_email,
+        status="pending",
+    )
+    if not orm_row:
         raise HTTPException(status_code=400, detail=_MSG_COLLAB_INVALID_TOKEN)
 
     if not verify_collab_invitation_token(
-        payload.token, row["token_hash"],
+        payload.token, orm_row.token_hash,
         host_school_id=host_school_id,
         class_id=class_id,
         collaborator_email=invited_email,
     ):
         raise HTTPException(status_code=400, detail=_MSG_COLLAB_INVALID_TOKEN)
 
-    expires_at = row.get("expires_at")
+    expires_at = orm_row.expires_at
     if isinstance(expires_at, str):
         try:
             expires_at = datetime.fromisoformat(expires_at)
@@ -602,22 +641,18 @@ async def accept_collab_invitation(
         if expires_at < _utcnow():
             raise HTTPException(status_code=400, detail=_MSG_COLLAB_INVALID_TOKEN)
 
-    now_iso = _utcnow_iso()
+    row = _collab_to_dict(orm_row)
+    now_dt = _utcnow()
     try:
         async with db.session.begin_nested():
-            updated = await gd_update_one(
-                db.session, "workspace_collaborators",
-                {"id": row["id"], "status": "pending"},
-                {
-                    "status": "accepted",
-                    "collaborator_school_id": caller_ws,
-                    "collaborator_user_id": current_user["id"],
-                    "accepted_at": now_iso,
-                    "updated_at": now_iso,
-                },
-            )
-            if not updated:
+            if orm_row.status != "pending":
                 raise HTTPException(status_code=400, detail=_MSG_COLLAB_INVALID_TOKEN)
+            orm_row.status = "accepted"
+            orm_row.collaborator_school_id = caller_ws
+            orm_row.collaborator_user_id = current_user["id"]
+            orm_row.accepted_at = now_dt
+            orm_row.updated_at = now_dt
+            await db.session.flush()
             await audit_engine.log(
                 action=AUDIT_COLLAB_ACCEPTED,
                 performed_by=current_user["id"],
@@ -670,5 +705,6 @@ async def accept_collab_invitation(
     except Exception as exc:  # noqa: BLE001
         logger.debug("collab accept inbox notify failed: %s", exc)
 
-    refreshed = await gd_find_one(db.session, "workspace_collaborators", {"id": row["id"]})
+    refreshed_row = await _find_collab(id=row["id"])
+    refreshed = _collab_to_dict(refreshed_row) if refreshed_row else None
     return _serialise(refreshed or row)

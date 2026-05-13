@@ -55,7 +55,10 @@ from dependencies import (
     require_recent_mfa_403,
 )
 from engines.name_validation import validate_personal_name
+from sqlalchemy import select
+
 from engines.sql_utils import gd_count, gd_find_one, gd_insert, gd_update_one
+from pg_models import WorkspaceQuota
 from quotas.independent_teacher import MAX_STUDENTS
 
 
@@ -153,6 +156,10 @@ def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 async def _require_independent_teacher(
     current_user: dict = Depends(get_current_user),
 ) -> dict:
@@ -161,14 +168,36 @@ async def _require_independent_teacher(
     return current_user
 
 
+def _quota_to_dict(row: WorkspaceQuota) -> Dict[str, Any]:
+    return {
+        "workspace_school_id": row.workspace_school_id,
+        "max_students": row.max_students,
+        "max_classes": row.max_classes,
+        "max_imports_per_day": row.max_imports_per_day,
+        "max_rows_per_import": row.max_rows_per_import,
+        "imports_today": row.imports_today,
+        "imports_today_date": row.imports_today_date,
+        "lesson_plans_today": row.lesson_plans_today,
+        "lesson_plans_today_date": row.lesson_plans_today_date,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+async def _get_quota_orm(workspace_id: str) -> Optional[WorkspaceQuota]:
+    stmt = select(WorkspaceQuota).where(
+        WorkspaceQuota.workspace_school_id == workspace_id,
+    )
+    result = await db.session.execute(stmt)
+    return result.scalars().first()
+
+
 async def _load_quota(workspace_id: str) -> Dict[str, Any]:
     """Read or lazily seed the workspace_quota row for this IT workspace."""
-    row = await gd_find_one(
-        db.session, "workspace_quota", {"workspace_school_id": workspace_id},
-    )
+    row = await _get_quota_orm(workspace_id)
     if row:
-        return row
-    now = _utcnow_iso()
+        return _quota_to_dict(row)
+    now = _utcnow()
     seed = {
         "workspace_school_id": workspace_id,
         "max_students": MAX_STUDENTS,
@@ -181,7 +210,8 @@ async def _load_quota(workspace_id: str) -> Dict[str, Any]:
         "updated_at": now,
     }
     try:
-        await gd_insert(db.session, "workspace_quota", seed)
+        db.session.add(WorkspaceQuota(**seed))
+        await db.session.flush()
     except Exception as exc:
         logger.warning(
             "workspace_quota lazy seed failed for %s: %s", workspace_id, exc,
@@ -537,15 +567,12 @@ async def commit_csv(
                 int(quota.get("imports_today") or 0) + 1
                 if last == today else 1
             )
-            await gd_update_one(
-                session, "workspace_quota",
-                {"workspace_school_id": workspace_id},
-                {
-                    "imports_today": new_count,
-                    "imports_today_date": today.isoformat(),
-                    "updated_at": now_iso,
-                },
-            )
+            quota_orm = await _get_quota_orm(workspace_id)
+            if quota_orm is not None:
+                quota_orm.imports_today = new_count
+                quota_orm.imports_today_date = today
+                quota_orm.updated_at = _utcnow()
+                await session.flush()
 
             try:
                 await audit_engine.log(
@@ -613,9 +640,8 @@ async def commit_csv(
     except Exception as exc:  # noqa: BLE001
         logger.debug("bulk-import quota warning notify failed: %s", exc)
 
-    refreshed = await gd_find_one(
-        db.session, "workspace_quota", {"workspace_school_id": workspace_id},
-    ) or quota
+    refreshed_orm = await _get_quota_orm(workspace_id)
+    refreshed = _quota_to_dict(refreshed_orm) if refreshed_orm else quota
     new_current = await gd_count(
         db.session, "students",
         {"school_id": workspace_id, "is_active": {"$ne": False}},
