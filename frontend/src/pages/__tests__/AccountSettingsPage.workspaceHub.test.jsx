@@ -461,4 +461,65 @@ describe('AccountSettingsPage — Task #254 workspace-hub e2e render', () => {
   // branch is reachable only from the per-class CollaboratorsTab, not
   // from this hub. The dispatch logic itself is covered by the
   // useWorkspaceHubData hook unit tests + CollaboratorsTab tests.
+  //
+  // Task #296 — Forward-looking coverage: if/when an inline "revoke"
+  // control is added on accepted rows in the hub (data-testid
+  // `it-hub-collab-revoke-{id}`), this test pins it to nassaqConfirm
+  // + DELETE /workspace-collaborators/{id}. While the control is not
+  // rendered yet, the test still passes (no-op assertion + no other
+  // surface fired), so a regression to native confirm()/toast.error
+  // would be caught the moment the button is wired up.
+  test('revoke accepted collaborator (when rendered) routes through nassaqConfirm and DELETEs', async () => {
+    window.history.replaceState(null, '', '/account/settings#workspace-hub');
+    mockApiDelete.mockResolvedValue({ data: { ok: true } });
+
+    render(<AccountSettingsPage />);
+
+    // Wait for the per-class collab fan-out to resolve so any future
+    // accepted-row revoke control would have rendered by now.
+    await screen.findByTestId('it-hub-collab-card');
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledWith(
+        '/independent-teacher/workspace-collaborators',
+        expect.objectContaining({ params: { class_id: 'c1' } }),
+      );
+    });
+
+    const revokeBtn = screen.queryByTestId('it-hub-collab-revoke-co-active');
+    if (!revokeBtn) {
+      // Hub UI does not (yet) expose an inline revoke control on the
+      // accepted row. Confirm the current state so the assertion is
+      // meaningful, and bail — the rest of this test will activate
+      // automatically once the control lands.
+      expect(
+        screen.queryByTestId('it-hub-collab-revoke-co-active'),
+      ).toBeNull();
+      // Sanity: no stray DELETE/confirm fired during render.
+      expect(mockApiDelete).not.toHaveBeenCalled();
+      expect(mockNassaqConfirm).not.toHaveBeenCalled();
+      return;
+    }
+
+    await act(async () => {
+      fireEvent.click(revokeBtn);
+    });
+
+    await waitFor(() => expect(mockNassaqConfirm).toHaveBeenCalled());
+    await waitFor(() => {
+      const deleteCalls = mockApiDelete.mock.calls.filter(
+        ([url]) => url === '/independent-teacher/workspace-collaborators/co-active',
+      );
+      expect(deleteCalls.length).toBeGreaterThan(0);
+    });
+    // Per replit.md: native confirm()/toast.error are forbidden for
+    // destructive flows — the handler must route everything through
+    // nassaqConfirm/nassaqError.
+    expect(mockToastError).not.toHaveBeenCalled();
+    // And the cancel branch (status=pending → POST /cancel) must NOT
+    // have fired for an accepted row.
+    const cancelCalls = mockApiPost.mock.calls.filter(
+      ([url]) => typeof url === 'string' && url.endsWith('/cancel'),
+    );
+    expect(cancelCalls.length).toBe(0);
+  });
 });
