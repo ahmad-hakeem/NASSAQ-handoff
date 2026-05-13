@@ -352,7 +352,15 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
       } else {
         console.error('Failed to fetch user:', error);
-        toast.error('تعذر تحميل بيانات المستخدم');
+        // Task #196 — suppress the bootstrap toast on public/auth surfaces
+        // (login, forgot-password, etc.) so it cannot double-fire alongside
+        // the LoginPage's own inline error banner during the login → /auth/me
+        // race, and so a user who navigates away from /login mid-bootstrap
+        // doesn't see a stale "failed to load profile" message. Protected
+        // routes still surface a single Arabic message here.
+        if (!isPublicPath) {
+          toast.error('تعذر تحميل بيانات المستخدم');
+        }
       }
     } finally {
       setLoading(false);
