@@ -52,6 +52,7 @@ function getStudentParentDisplay(student) {
 }
 
 import { useTranslation } from '../../contexts/ThemeContext';
+import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 export default function TeacherStudentsPage() {
   const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
@@ -669,11 +670,9 @@ export default function TeacherStudentsPage() {
                 </CardContent>
               </Card>
             )
-          ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredStudents.map((student, idx) => (
+          ) : (() => {
+            const renderStudentCard = (student, idx) => (
                 <Card 
-                  key={student.id}
                   className="hover:shadow-lg transition-all cursor-pointer border-2 hover:border-brand-turquoise"
                   onClick={() => viewStudentDetails(student)}
                   data-testid={`student-card-${student.id}`}
@@ -916,9 +915,23 @@ export default function TeacherStudentsPage() {
                     )}
                   </CardContent>
                 </Card>
-              ))}
-            </div>
-          )}
+            );
+            return (
+              <ResponsiveTable
+                ariaLabel={t('students') || 'الطلاب'}
+                rows={filteredStudents}
+                getRowKey={(student) => student.id}
+                cardClassName="p-0 border-0 bg-transparent"
+                desktopMode="grid"
+                columns={[{
+                  key: 'student',
+                  header: t('students') || 'الطلاب',
+                  primary: true,
+                  render: (student, idx) => renderStudentCard(student, idx),
+                }]}
+              />
+            );
+          })()}
         </div>
 
         {/* Message Parent Dialog */}

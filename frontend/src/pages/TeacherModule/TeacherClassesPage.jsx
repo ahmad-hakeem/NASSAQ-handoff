@@ -29,6 +29,7 @@ import {
 import SessionsManageTab from './SessionsManageTab';
 import StandbyTab from './StandbyTab';
 import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialog';
+import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 
@@ -744,14 +745,14 @@ export default function TeacherClassesPage() {
     );
   };
 
-  const ClassTableRow = ({ cls }) => {
-    const gc = getGradeColor(cls.grade_level || cls.grade_id);
-    return (
-      <tr
-        className="hover:bg-muted/30 cursor-pointer transition-colors border-b border-border/50 last:border-0"
-        onClick={() => navigate(`/teacher/class/${cls.id}`)}
-      >
-        <td className="p-3">
+  const classListColumns = [
+    {
+      key: 'class',
+      header: t('class'),
+      primary: true,
+      render: (cls) => {
+        const gc = getGradeColor(cls.grade_level || cls.grade_id);
+        return (
           <div className="flex items-center gap-3">
             <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${gc.bg} flex items-center justify-center shadow-sm flex-shrink-0`}>
               <GraduationCap className="h-4 w-4 text-white" />
@@ -761,53 +762,82 @@ export default function TeacherClassesPage() {
               <p className={`text-xs ${gc.text}`}>{cls.grade_name}</p>
             </div>
           </div>
-        </td>
-        <td className="p-3">
-          <div className="flex flex-wrap gap-1">
-            {(cls.subjects || []).slice(0, 2).map((s, i) => (
-              <Badge key={i} variant="outline" className="text-[10px] py-0">{s}</Badge>
-            ))}
-            {(cls.subjects || []).length > 2 && (
-              <Badge variant="outline" className="text-[10px] py-0">+{cls.subjects.length - 2}</Badge>
-            )}
-          </div>
-        </td>
-        <td className="p-3 text-center">
-          <div className="flex items-center justify-center gap-1">
-            <Users className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="font-bold">{cls.student_count || 0}</span>
-          </div>
-        </td>
-        <td className="p-3 text-center">
-          <span className={`font-bold text-sm ${
-            cls.attendance_rate >= 90 ? 'text-emerald-600' :
-            cls.attendance_rate >= 80 ? 'text-amber-600' : 'text-red-500'
-          }`}>{cls.attendance_rate}%</span>
-        </td>
-        <td className="p-3">
-          {cls.next_session ? (
-            <div className="flex items-center gap-1.5 text-xs">
-              <Clock className="h-3 w-3 text-brand-turquoise" />
-              <span>{t(cls.next_session.day) || cls.next_session.day} {cls.next_session.start_time}</span>
-            </div>
-          ) : (
-            <span className="text-xs text-muted-foreground">—</span>
+        );
+      },
+    },
+    {
+      key: 'subjects',
+      header: t('subjects'),
+      render: (cls) => (
+        <div className="flex flex-wrap gap-1">
+          {(cls.subjects || []).slice(0, 2).map((s, i) => (
+            <Badge key={i} variant="outline" className="text-[10px] py-0">{s}</Badge>
+          ))}
+          {(cls.subjects || []).length > 2 && (
+            <Badge variant="outline" className="text-[10px] py-0">+{cls.subjects.length - 2}</Badge>
           )}
-        </td>
-        <td className="p-3">{getStatusBadge(cls)}</td>
-        <td className="p-3">
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); navigate(`/teacher/class/${cls.id}`); }}>
-              <Users className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); navigate(`/teacher/attendance?class=${cls.id}`); }}>
-              <ClipboardCheck className="h-3.5 w-3.5" />
-            </Button>
+        </div>
+      ),
+    },
+    {
+      key: 'students',
+      header: t('students'),
+      cellClassName: 'text-center',
+      headerClassName: 'text-center',
+      render: (cls) => (
+        <div className="flex items-center justify-center gap-1">
+          <Users className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="font-bold">{cls.student_count || 0}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'attendance',
+      header: t('attendance2'),
+      cellClassName: 'text-center',
+      headerClassName: 'text-center',
+      render: (cls) => (
+        <span className={`font-bold text-sm ${
+          cls.attendance_rate >= 90 ? 'text-emerald-600' :
+          cls.attendance_rate >= 80 ? 'text-amber-600' : 'text-red-500'
+        }`}>{cls.attendance_rate}%</span>
+      ),
+    },
+    {
+      key: 'nextSession',
+      header: t('nextSession'),
+      render: (cls) => (
+        cls.next_session ? (
+          <div className="flex items-center gap-1.5 text-xs">
+            <Clock className="h-3 w-3 text-brand-turquoise" />
+            <span>{t(cls.next_session.day) || cls.next_session.day} {cls.next_session.start_time}</span>
           </div>
-        </td>
-      </tr>
-    );
-  };
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )
+      ),
+    },
+    {
+      key: 'status',
+      header: t('status2'),
+      render: (cls) => getStatusBadge(cls),
+    },
+    {
+      key: 'actions',
+      header: t('actions'),
+      mobileFullWidth: true,
+      render: (cls) => (
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); navigate(`/teacher/class/${cls.id}`); }}>
+            <Users className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); navigate(`/teacher/attendance?class=${cls.id}`); }}>
+            <ClipboardCheck className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
   // The "Class Settings" entry from "My Classes" now opens the same canonical
   // SidebarSettingsDialog used by the Interactive Class flow (SessionTeachPage).
@@ -1354,26 +1384,13 @@ export default function TeacherClassesPage() {
                 </div>
               ) : (
                 <Card className="overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-muted/50 text-muted-foreground">
-                          <th className="p-3 text-start font-medium">{t('class')}</th>
-                          <th className="p-3 text-start font-medium">{t('subjects')}</th>
-                          <th className="p-3 text-center font-medium">{t('students')}</th>
-                          <th className="p-3 text-center font-medium">{t('attendance2')}</th>
-                          <th className="p-3 text-start font-medium">{t('nextSession')}</th>
-                          <th className="p-3 text-start font-medium">{t('status2')}</th>
-                          <th className="p-3 text-start font-medium">{t('actions')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredClasses.map(cls => (
-                          <ClassTableRow key={cls.id} cls={cls} />
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <ResponsiveTable
+                    ariaLabel={t('myClasses')}
+                    rows={filteredClasses}
+                    getRowKey={(cls) => cls.id}
+                    onRowClick={(cls) => navigate(`/teacher/class/${cls.id}`)}
+                    columns={classListColumns}
+                  />
                 </Card>
               )}
             </>

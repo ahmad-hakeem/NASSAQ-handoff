@@ -29,6 +29,8 @@ export function ResponsiveTable({
   rowClassName,
   ariaLabel,
   onRowClick,
+  desktopMode = 'table',
+  desktopGridClassName,
 }) {
   const safeRows = Array.isArray(rows) ? rows : [];
   const keyFor = (row, idx) => {
@@ -38,6 +40,53 @@ export function ResponsiveTable({
   };
 
   if (!safeRows.length && emptyState) return emptyState;
+
+  const primaryCol = columns.find((c) => c.primary) || columns[0];
+
+  if (desktopMode === 'grid') {
+    return (
+      <div className={cn('w-full', className)} data-testid="responsive-table">
+        <div
+          className={cn(
+            'hidden sm:grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+            desktopGridClassName,
+          )}
+          role="list"
+          aria-label={ariaLabel}
+          data-testid="responsive-table-grid"
+        >
+          {safeRows.map((row, idx) => (
+            <div
+              key={keyFor(row, idx)}
+              role="listitem"
+              className={cn(onRowClick && 'cursor-pointer', rowClassName)}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+            >
+              {primaryCol && (primaryCol.render ? primaryCol.render(row, idx) : row[primaryCol.key])}
+            </div>
+          ))}
+        </div>
+        <ul
+          className="sm:hidden flex flex-col gap-2"
+          data-testid="responsive-table-mobile"
+        >
+          {safeRows.map((row, idx) => (
+            <li
+              key={keyFor(row, idx)}
+              className={cn(
+                'rounded-lg border border-border/60 bg-white dark:bg-slate-900 p-3',
+                onRowClick && 'cursor-pointer hover:bg-muted/30',
+                cardClassName,
+              )}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+            >
+              {primaryCol && (primaryCol.render ? primaryCol.render(row, idx) : row[primaryCol.key])}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
 
   return (
     <div className={cn('w-full', className)} data-testid="responsive-table">
