@@ -73,7 +73,12 @@ from dependencies import (
     get_current_user,
     require_recent_mfa_403,
 )
-from engines.sql_utils import gd_find, gd_find_one, gd_update_one
+from engines.sql_utils import gd_count, gd_find, gd_find_one, gd_update_one
+from quotas.independent_teacher import (
+    MAX_CLASSES as _Q_MAX_CLASSES,
+    MAX_LESSON_PLANS_PER_DAY as _Q_MAX_LESSON_PLANS,
+    MAX_STUDENTS as _Q_MAX_STUDENTS,
+)
 from middleware.rate_limiter import rate_store
 from utils.tokens import (
     WORKSPACE_EXPORT_TOKEN_TTL,
@@ -288,7 +293,89 @@ async def _build_export_bundle(workspace_id: str) -> bytes:
 # last_export_at is within 24h) on mount, without leaking any of the
 # token-state columns. Same workspace-scope guard as the write paths.
 
-def _build_lifecycle_payload(workspace_id: str, school: Dict[str, Any]) -> Dict[str, Any]:
+async def _load_quota_snapshot(workspace_id: str) -> Optional[Dict[str, Any]]:
+    """Read-only workspace_quota snapshot for the §6.8 lifecycle hub.
+
+    Mirrors the fields exposed by the bulk-import ``_quota_view`` so the FE
+    "إعدادات المساحة" hub (Task #252) can render progress bars without a
+    second source of truth. Returns ``None`` on any read failure — the
+    lifecycle endpoint must not fail if the quota row is absent.
+    """
+    try:
+        quota = await gd_find_one(
+            db.session, "workspace_quota", {"workspace_school_id": workspace_id},
+        )
+        if not quota:
+            quota = {}
+        # Per-day counters reset at UTC midnight; mirror the bulk-import +
+        # lesson-plans behaviour so the FE chip is consistent across surfaces.
+        today = _utcnow().date()
+
+        def _coerce_day(v):
+            if v is None:
+                return None
+            if isinstance(v, datetime):
+                return v.date()
+            if hasattr(v, "year") and not isinstance(v, str):
+                return v
+            try:
+                return datetime.fromisoformat(str(v)[:10]).date()
+            except Exception:  # noqa: BLE001
+                return None
+
+        imports_day = _coerce_day(quota.get("imports_today_date"))
+        imports_today = (
+            int(quota.get("imports_today") or 0) if imports_day == today else 0
+        )
+        plans_day = _coerce_day(quota.get("lesson_plans_today_date"))
+        plans_today = (
+            int(quota.get("lesson_plans_today") or 0) if plans_day == today else 0
+        )
+
+        # Live counts (cheap: one COUNT(*) each) — needed for the
+        # "students used / max" + "classes used / max" progress bars.
+        # IMPORTANT: align scope + active filter with the canonical
+        # enforcement path in `independent_teacher_bulk_import_routes.py`
+        # (`{school_id, is_active != False}`) so the hub progress bars
+        # never disagree with what bulk-import / the seat counter see.
+        try:
+            current_students = await gd_count(
+                db.session,
+                "students",
+                {"school_id": workspace_id, "is_active": {"$ne": False}},
+            )
+        except Exception:  # noqa: BLE001
+            current_students = 0
+        try:
+            current_classes = await gd_count(
+                db.session,
+                "classes",
+                {"school_id": workspace_id},
+            )
+        except Exception:  # noqa: BLE001
+            current_classes = 0
+
+        return {
+            "max_students": int(quota.get("max_students") or _Q_MAX_STUDENTS),
+            "max_classes": int(quota.get("max_classes") or _Q_MAX_CLASSES),
+            "max_imports_per_day": int(quota.get("max_imports_per_day") or 5),
+            "max_rows_per_import": int(quota.get("max_rows_per_import") or 200),
+            "max_lesson_plans_per_day": _Q_MAX_LESSON_PLANS,
+            "current_students": current_students,
+            "current_classes": current_classes,
+            "imports_today": imports_today,
+            "lesson_plans_today": plans_today,
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("_load_quota_snapshot failed for %s: %s", workspace_id, exc)
+        return None
+
+
+def _build_lifecycle_payload(
+    workspace_id: str,
+    school: Dict[str, Any],
+    quota: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Shared builder for the IT workspace lifecycle view + the post-login
     reactivation banner. Used by ``GET /independent-teacher/workspace/lifecycle``
     and embedded into ``/auth/login`` + ``/auth/mfa/verify`` token responses
@@ -333,7 +420,7 @@ def _build_lifecycle_payload(workspace_id: str, school: Dict[str, Any]) -> Dict[
                 "days_remaining_at_reactivation": None,
             }
 
-    return {
+    payload = {
         "workspace_id": workspace_id,
         "name_ar": school.get("name_ar"),
         "name_en": school.get("name_en"),
@@ -342,6 +429,12 @@ def _build_lifecycle_payload(workspace_id: str, school: Dict[str, Any]) -> Dict[
         "pending_hard_delete": bool(school.get("pending_hard_delete")),
         "reactivation_banner": banner,
     }
+    # Task #252 (additive): the §6.8 "إعدادات المساحة" hub renders progress
+    # bars from this snapshot. Field is omitted when unavailable so legacy
+    # callers see the same payload shape they did before.
+    if quota is not None:
+        payload["quota"] = quota
+    return payload
 
 
 async def fetch_workspace_lifecycle_for_user(user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -373,7 +466,11 @@ async def read_workspace_lifecycle(
     school = await gd_find_one(db.session, "schools", {"id": workspace_id})
     if not school:
         raise HTTPException(status_code=404, detail=_MSG_WORKSPACE_NOT_FOUND)
-    return _build_lifecycle_payload(workspace_id, school)
+    # Task #252 — embed the workspace_quota snapshot so the §6.8 hub can
+    # paint progress bars in one round trip. Failures fall back to None;
+    # the FE treats absent quota as "unknown" and hides the bar.
+    quota = await _load_quota_snapshot(workspace_id)
+    return _build_lifecycle_payload(workspace_id, school, quota=quota)
 
 
 # -- Endpoint: POST /independent-teacher/workspace/lifecycle/reactivation-banner/dismiss

@@ -10,6 +10,7 @@ import { Badge } from '../components/ui/badge';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { formatHijriDate } from '../utils/hijriDate';
+import { useWorkspaceHubData } from '../hooks/useWorkspaceHubData';
 import {
   User,
   Lock,
@@ -50,6 +51,10 @@ import {
   MessageSquare,
   Download,
   ImageIcon,
+  ShieldAlert,
+  Database,
+  RotateCcw,
+  Users2,
 } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -166,6 +171,29 @@ const FieldGroup = ({ label, icon: Icon, children }) => (
   </div>
 );
 
+// Task #252 — small inline helper for the workspace-hub quota card.
+// Renders "<used> of <max>" + a clamped progress bar; turns amber at 80%
+// and red at 100% so the user gets a visual hint before they hit the cap.
+const QuotaBar = ({ label, used, max, t, testid }) => {
+  const safeMax = Math.max(0, Number(max) || 0);
+  const safeUsed = Math.max(0, Number(used) || 0);
+  const pct = safeMax > 0 ? Math.min(100, Math.round((safeUsed / safeMax) * 100)) : 0;
+  const tone = pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-brand-turquoise';
+  return (
+    <div className="space-y-1.5" data-testid={testid}>
+      <div className="flex items-center justify-between text-xs font-tajawal">
+        <span className="text-foreground">{label}</span>
+        <span className="text-muted-foreground">
+          {(t('itHubQuotaUsageOf') || '{0} of {1}').replace('{0}', String(safeUsed)).replace('{1}', String(safeMax))}
+        </span>
+      </div>
+      <div className="h-2 w-full rounded-full bg-muted/40 overflow-hidden">
+        <div className={`h-full ${tone} transition-all`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+};
+
 const NotificationRow = ({ title, desc, checked, onChange }) => (
   <div className="flex items-center justify-between p-4 rounded-xl border border-border/50 hover:bg-muted/20 transition-colors">
     <div>
@@ -180,7 +208,7 @@ export const AccountSettingsPage = () => {
   const { t } = useTranslation();
   const { user, api, logout, refreshUser, updateToken } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark, language, setLanguage, theme, setTheme } = useTheme();
-  const { nassaqError, nassaqInfo, nassaqSuccess } = useNassaqAlert();
+  const { nassaqError, nassaqInfo, nassaqSuccess, nassaqConfirm } = useNassaqAlert();
   const { nassaqWarning } = useNassaqAlert();
   // §6.8 export + soft-delete local state. lastExportAt powers the
   // "exported X hours ago" chip (Hijri formatted) so the user can see
@@ -211,7 +239,7 @@ export const AccountSettingsPage = () => {
   const _initialSection = (() => {
     if (typeof window === 'undefined') return 'profile';
     const raw = (window.location.hash || '').replace(/^#/, '').toLowerCase();
-    return ['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export'].includes(raw)
+    return ['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export', 'workspace-hub'].includes(raw)
       ? raw
       : 'profile';
   })();
@@ -225,7 +253,7 @@ export const AccountSettingsPage = () => {
   useEffect(() => {
     const onHash = () => {
       const raw = (window.location.hash || '').replace(/^#/, '').toLowerCase();
-      if (['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export'].includes(raw)) {
+      if (['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export', 'workspace-hub'].includes(raw)) {
         setActiveSection(raw);
       }
     };
@@ -669,8 +697,102 @@ export const AccountSettingsPage = () => {
       { id: 'workspace', icon: Briefcase, label: t('itWorkspaceSection'), desc: t('itWorkspaceSectionDesc') },
       { id: 'communication', icon: MessageSquare, label: t('itCommunicationSection'), desc: t('itCommunicationSectionDesc') },
       { id: 'export', icon: Download, label: t('itDataExportSection'), desc: t('itDataExportSectionDesc') },
+      // Task #252 — at-a-glance hub: quota + export + collaborators + lifecycle.
+      { id: 'workspace-hub', icon: ShieldAlert, label: t('itHubSection'), desc: t('itHubSectionDesc') },
     ] : []),
   ];
+
+  // Task #252 — aggregator hook lazily loads only when the IT user is on
+  // the hub section, so non-IT users + IT users on other sections pay no
+  // network cost. The hook fans out to lifecycle + classes + per-class
+  // collaborators in parallel.
+  const hubEnabled = isIndependentTeacher && activeSection === 'workspace-hub';
+  const hub = useWorkspaceHubData(api, hubEnabled);
+
+  // Task #252 — hub-specific export. Unlike handleExportWorkspace (which
+  // also auto-opens the download in a new tab for the dedicated Export
+  // section's UX), this one surfaces the one-shot signed URL exactly
+  // once via NassaqAlertDialog so the IT user can copy it. The URL is
+  // single-use server-side; we deliberately do NOT persist it in page
+  // state.
+  const handleHubExport = async () => {
+    setSaving(true);
+    try {
+      const { data } = await api.post('/independent-teacher/workspace/export');
+      const url = data?.download_url || '';
+      // Best-effort copy; fall back silently when clipboard is unavailable
+      // (insecure context, jsdom test, etc.). The URL is also embedded in
+      // the dialog body so the user can copy manually.
+      try {
+        if (url && navigator?.clipboard?.writeText) {
+          await navigator.clipboard.writeText(url);
+        }
+      } catch (_clip) { /* clipboard blocked — URL is still shown below */ }
+      // Sync the page-level lastExportAt state so the legacy
+      // `softDeleteEligible` derived flag (used to gate the archive CTA
+      // in this same hub session) flips to true immediately, without
+      // waiting for the hub.refresh() round-trip.
+      const nowIso = new Date().toISOString();
+      setLastExportAt(nowIso);
+      setLastExportExpiresAt(data?.expires_at || null);
+      await hub.refresh();
+      const body = `${t('itHubExportOneShotBody')}\n\n${url}`;
+      nassaqInfo(body, { title: t('itHubExportOneShotTitle'), confirmText: t('itHubExportOneShotClose') });
+    } catch (error) {
+      nassaqError(error?.response?.data?.detail || t('itExportFailed'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleHubReactivate = async () => {
+    nassaqConfirm(
+      t('itHubLifecycleReactivateConfirm'),
+      async () => {
+        try {
+          await api.post('/independent-teacher/workspace/reactivate');
+          nassaqSuccess(t('itHubLifecycleReactivateDone'));
+          await hub.refresh();
+        } catch (err) {
+          const status = err?.response?.status;
+          if (status === 410) {
+            nassaqWarning(t('itHubLifecycleReactivateExpired'));
+          } else {
+            nassaqError(
+              err?.response?.data?.detail || t('itHubLifecycleReactivateFailed'),
+            );
+          }
+        }
+      },
+    );
+  };
+
+  const handleHubCollabAction = (item) => {
+    const isPending = (item.status || '').toLowerCase() === 'pending';
+    const message = isPending
+      ? t('collabCancelConfirmBody').replace('{0}', item.collaborator_email || '')
+      : t('collabRevokeConfirmBody').replace('{0}', item.collaborator_email || '');
+    nassaqConfirm(message, async () => {
+      try {
+        if (isPending) {
+          await api.post(
+            `/independent-teacher/workspace-collaborators/${item.id}/cancel`,
+          );
+          nassaqSuccess(t('itHubCollabCancelDone'));
+        } else {
+          await api.delete(
+            `/independent-teacher/workspace-collaborators/${item.id}`,
+          );
+          nassaqSuccess(t('itHubCollabRevokeDone'));
+        }
+        await hub.refresh();
+      } catch (err) {
+        nassaqError(
+          err?.response?.data?.detail || t('itHubCollabActionFailed'),
+        );
+      }
+    });
+  };
 
   const SaveButton = ({ onClick, sectionKey, label }) => (
     <Button onClick={onClick} disabled={saving} className="bg-brand-navy rounded-xl gap-2 min-w-[140px]" data-testid={`save-${sectionKey}`}>
@@ -1250,6 +1372,338 @@ export const AccountSettingsPage = () => {
                   warnings/errors/confirms route through NassaqAlertDialog;
                   any inline date is formatted via the hijriDate utility,
                   never Intl.DateTimeFormat. */}
+              {/* Task #252 — IT-only "إعدادات المساحة" hub: a single
+                  section bundling Quota / Export & backup / Collaborators /
+                  Lifecycle into four sub-cards. Reuses existing endpoints
+                  through useWorkspaceHubData; destructive actions route
+                  through nassaqConfirm per the project rule against
+                  native confirms / toast.error. */}
+              {activeSection === 'workspace-hub' && isIndependentTeacher && (
+                <div className="space-y-6" data-testid="it-workspace-hub-section">
+                  <Card className="card-nassaq">
+                    <CardHeader className="pb-4 border-b border-border/40 bg-gradient-to-r from-brand-navy/5 to-brand-turquoise/5">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="font-cairo flex items-center gap-2 text-lg text-brand-navy">
+                          <ShieldAlert className="h-5 w-5 text-brand-turquoise" />
+                          {t('itHubSectionTitle')}
+                        </CardTitle>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => hub.refresh()}
+                          disabled={hub.loading}
+                          className="rounded-xl gap-2"
+                          data-testid="it-hub-refresh-btn"
+                        >
+                          {hub.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                          {t('itHubRefresh')}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground font-tajawal mt-1">
+                        {t('itHubSectionHint')}
+                      </p>
+                      {hub.partialErrors.length > 0 && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 font-tajawal mt-2" data-testid="it-hub-partial-errors">
+                          {t('itHubPartialErrors')}
+                        </p>
+                      )}
+                    </CardHeader>
+                  </Card>
+
+                  {/* Sub-card 1: Quota overview */}
+                  <Card className="card-nassaq" data-testid="it-hub-quota-card">
+                    <CardHeader className="pb-4 border-b border-border/40">
+                      <CardTitle className="font-cairo flex items-center gap-2 text-base">
+                        <Database className="h-4 w-4 text-brand-turquoise" />
+                        {t('itHubQuotaTitle')}
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground font-tajawal mt-1">
+                        {t('itHubQuotaHint')}
+                      </p>
+                    </CardHeader>
+                    <CardContent className="pt-5">
+                      {hub.loading && !hub.quota ? (
+                        <p className="text-sm text-muted-foreground font-tajawal">{t('itHubLoading')}</p>
+                      ) : !hub.quota ? (
+                        <p className="text-sm text-muted-foreground font-tajawal" data-testid="it-hub-quota-unavailable">
+                          {t('itHubQuotaUnavailable')}
+                        </p>
+                      ) : (
+                        <div className="space-y-4">
+                          <QuotaBar label={t('itHubQuotaStudents')} used={hub.quota.current_students} max={hub.quota.max_students} t={t} testid="it-hub-quota-students" />
+                          <QuotaBar label={t('itHubQuotaClasses')} used={hub.quota.current_classes} max={hub.quota.max_classes} t={t} testid="it-hub-quota-classes" />
+                          <QuotaBar label={t('itHubQuotaImportsToday')} used={hub.quota.imports_today} max={hub.quota.max_imports_per_day} t={t} testid="it-hub-quota-imports" />
+                          <QuotaBar label={t('itHubQuotaLessonPlansToday')} used={hub.quota.lesson_plans_today} max={hub.quota.max_lesson_plans_per_day} t={t} testid="it-hub-quota-lesson-plans" />
+                          <div className="flex justify-end pt-2 border-t border-border/30">
+                            <a
+                              href="/teacher/import-students"
+                              className="inline-flex items-center gap-2 text-xs font-cairo text-brand-navy hover:text-brand-turquoise underline-offset-4 hover:underline"
+                              data-testid="it-hub-quota-bulk-import-link"
+                            >
+                              <Database className="h-3.5 w-3.5" />
+                              {t('itHubQuotaBulkImportLink')}
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Sub-card 2: Export & backup */}
+                  <Card className="card-nassaq" data-testid="it-hub-export-card">
+                    <CardHeader className="pb-4 border-b border-border/40">
+                      <CardTitle className="font-cairo flex items-center gap-2 text-base">
+                        <Download className="h-4 w-4 text-brand-turquoise" />
+                        {t('itHubExportTitle')}
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground font-tajawal mt-1">
+                        {t('itHubExportHint')}
+                      </p>
+                    </CardHeader>
+                    <CardContent className="pt-5 space-y-3">
+                      <div className="text-sm font-tajawal">
+                        {hub.lifecycle?.last_export_at ? (
+                          <>
+                            <p data-testid="it-hub-export-last-at">
+                              {t('itExportLastAt')}: {formatHijriDate(new Date(hub.lifecycle.last_export_at))}
+                            </p>
+                            {softDeleteEligible || (hub.lifecycle.last_export_at && (Date.now() - new Date(hub.lifecycle.last_export_at).getTime()) <= 24 * 60 * 60 * 1000) ? (
+                              <p className="text-xs text-emerald-600 mt-1">{t('itHubExportEligible')}</p>
+                            ) : (
+                              <p className="text-xs text-amber-600 mt-1">{t('itHubExportStale')}</p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-muted-foreground" data-testid="it-hub-export-never">
+                            {t('itHubExportNever')}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex justify-end pt-2 border-t border-border/30">
+                        <Button
+                          type="button"
+                          onClick={handleHubExport}
+                          disabled={saving}
+                          className="bg-brand-navy rounded-xl gap-2"
+                          data-testid="it-hub-export-btn"
+                        >
+                          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                          {t('itHubExportRunOneShot')}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Sub-card 3: Collaborators */}
+                  <Card className="card-nassaq" data-testid="it-hub-collab-card">
+                    <CardHeader className="pb-4 border-b border-border/40">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <CardTitle className="font-cairo flex items-center gap-2 text-base">
+                          <Users2 className="h-4 w-4 text-brand-turquoise" />
+                          {t('itHubCollabTitle')}
+                        </CardTitle>
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs" data-testid="it-hub-collab-active-count">
+                            {t('itHubCollabActive')}: {hub.counts.active}
+                          </Badge>
+                          <Badge className="bg-amber-100 text-amber-700 border-0 text-xs" data-testid="it-hub-collab-pending-count">
+                            {t('itHubCollabPending')}: {hub.counts.pending}
+                          </Badge>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground font-tajawal mt-1">
+                        {t('itHubCollabHint')}
+                      </p>
+                    </CardHeader>
+                    <CardContent className="pt-5 space-y-5">
+                      {hub.loading && hub.collaborators.length === 0 ? (
+                        <p className="text-sm text-muted-foreground font-tajawal">{t('itHubLoading')}</p>
+                      ) : hub.collaborators.length === 0 ? (
+                        <p className="text-sm text-muted-foreground font-tajawal" data-testid="it-hub-collab-empty">
+                          {t('itHubCollabEmpty')}
+                        </p>
+                      ) : (
+                        <>
+                          {/* Per-class breakdown — one row per class with active/pending counts
+                              and a deep-link to that class' Collaborators tab. */}
+                          <div data-testid="it-hub-collab-by-class">
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground font-cairo mb-2">
+                              {t('itHubCollabByClassHeader')}
+                            </p>
+                            <ul className="space-y-2">
+                              {(() => {
+                                const byClass = new Map();
+                                for (const c of hub.collaborators) {
+                                  if (!c.class_id) continue;
+                                  if (!byClass.has(c.class_id)) {
+                                    byClass.set(c.class_id, { class_id: c.class_id, class_name: c.class_name, active: 0, pending: 0 });
+                                  }
+                                  const row = byClass.get(c.class_id);
+                                  if ((c.status || '').toLowerCase() === 'pending') row.pending += 1;
+                                  else row.active += 1;
+                                }
+                                const rows = Array.from(byClass.values());
+                                return rows.map((row) => (
+                                  <li
+                                    key={row.class_id}
+                                    className="flex items-center justify-between gap-3 p-3 rounded-xl border border-border/50 bg-muted/10"
+                                    data-testid={`it-hub-collab-class-${row.class_id}`}
+                                  >
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-sm font-cairo font-medium truncate">{row.class_name}</p>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <Badge className="bg-emerald-100 text-emerald-700 border-0 text-[10px]">
+                                          {t('itHubCollabActive')}: {row.active}
+                                        </Badge>
+                                        <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px]">
+                                          {t('itHubCollabPending')}: {row.pending}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                    <a
+                                      href={`/teacher/classes/${row.class_id}?tab=collaborators`}
+                                      className="text-xs font-cairo text-brand-navy hover:text-brand-turquoise underline-offset-4 hover:underline shrink-0"
+                                      data-testid={`it-hub-collab-class-link-${row.class_id}`}
+                                    >
+                                      {t('itHubCollabManage')}
+                                    </a>
+                                  </li>
+                                ));
+                              })()}
+                            </ul>
+                          </div>
+
+                          {/* Pending-only mini list — quick cancel without leaving the hub. */}
+                          {hub.counts.pending > 0 && (
+                            <div data-testid="it-hub-collab-pending-list">
+                              <p className="text-xs uppercase tracking-wide text-muted-foreground font-cairo mb-2">
+                                {t('itHubCollabPendingHeader')}
+                              </p>
+                              <ul className="space-y-2">
+                                {hub.collaborators
+                                  .filter((c) => (c.status || '').toLowerCase() === 'pending')
+                                  .map((c) => (
+                                    <li
+                                      key={c.id}
+                                      className="flex items-center justify-between gap-3 p-3 rounded-xl border border-amber-200 bg-amber-50/40"
+                                      data-testid={`it-hub-collab-pending-row-${c.id}`}
+                                    >
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-cairo font-medium truncate">{c.collaborator_email}</p>
+                                        <p className="text-xs text-muted-foreground font-tajawal truncate">
+                                          {t('itHubCollabClassLabel')}: {c.class_name}
+                                        </p>
+                                      </div>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handleHubCollabAction(c)}
+                                        className="rounded-xl text-amber-700 border-amber-300 hover:bg-amber-100"
+                                        data-testid={`it-hub-collab-cancel-${c.id}`}
+                                      >
+                                        {t('itHubCollabCancelInvite')}
+                                      </Button>
+                                    </li>
+                                  ))}
+                              </ul>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Sub-card 4: Workspace lifecycle */}
+                  <Card className="card-nassaq border-red-200 dark:border-red-900/40" data-testid="it-hub-lifecycle-card">
+                    <CardHeader className="pb-4 border-b border-red-200 dark:border-red-900/40 bg-red-50/40 dark:bg-red-950/20">
+                      <CardTitle className="font-cairo flex items-center gap-2 text-base text-red-700 dark:text-red-300">
+                        <AlertTriangle className="h-4 w-4 text-red-500" />
+                        {t('itHubLifecycleTitle')}
+                      </CardTitle>
+                      <p className="text-xs text-red-600/80 dark:text-red-300/70 font-tajawal mt-1">
+                        {t('itHubLifecycleHint')}
+                      </p>
+                    </CardHeader>
+                    <CardContent className="pt-5 space-y-4">
+                      <div className="text-sm font-tajawal flex items-center gap-2">
+                        <span className="text-muted-foreground">{t('itHubLifecycleStatus')}:</span>
+                        {hub.lifecycle?.pending_hard_delete ? (
+                          <Badge className="bg-red-100 text-red-700 border-0 text-xs" data-testid="it-hub-lifecycle-status">
+                            {t('itHubLifecycleStatusPendingDelete')}
+                          </Badge>
+                        ) : hub.lifecycle?.archived_at ? (
+                          <Badge className="bg-amber-100 text-amber-700 border-0 text-xs" data-testid="it-hub-lifecycle-status">
+                            {t('itHubLifecycleStatusArchived')}
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs" data-testid="it-hub-lifecycle-status">
+                            {t('itHubLifecycleStatusActive')}
+                          </Badge>
+                        )}
+                      </div>
+                      {hub.lifecycle?.archived_at && (
+                        <p className="text-xs text-muted-foreground font-tajawal" data-testid="it-hub-lifecycle-archived-at">
+                          {t('itHubLifecycleArchivedOn').replace('{0}', formatHijriDate(new Date(hub.lifecycle.archived_at)))}
+                        </p>
+                      )}
+                      {/* 30-day reactivation countdown — clamped to 0; once
+                          pending_hard_delete flips, reactivation is no longer
+                          possible and we surface a separate copy line. */}
+                      {hub.lifecycle?.archived_at && !hub.lifecycle?.pending_hard_delete && (() => {
+                        const archivedMs = new Date(hub.lifecycle.archived_at).getTime();
+                        const elapsedDays = Math.floor((Date.now() - archivedMs) / (24 * 60 * 60 * 1000));
+                        const remaining = Math.max(0, 30 - elapsedDays);
+                        const tone = remaining <= 7 ? 'text-red-600' : remaining <= 14 ? 'text-amber-600' : 'text-emerald-600';
+                        return (
+                          <p className={`text-xs font-cairo font-medium ${tone}`} data-testid="it-hub-lifecycle-countdown">
+                            {t('itHubLifecycleDaysRemaining').replace('{0}', String(remaining))}
+                          </p>
+                        );
+                      })()}
+                      {hub.lifecycle?.pending_hard_delete && (
+                        <p className="text-xs font-cairo font-medium text-red-600" data-testid="it-hub-lifecycle-window-expired">
+                          {t('itHubLifecycleWindowExpired')}
+                        </p>
+                      )}
+                      <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-border/30">
+                        {hub.lifecycle?.archived_at && !hub.lifecycle?.pending_hard_delete && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleHubReactivate}
+                            className="rounded-xl border-emerald-300 text-emerald-700 hover:bg-emerald-50 gap-2"
+                            data-testid="it-hub-reactivate-btn"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                            {t('itHubLifecycleReactivate')}
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          onClick={handleOpenSoftDelete}
+                          variant="outline"
+                          disabled={!softDeleteEligible || saving || !!hub.lifecycle?.archived_at}
+                          className="rounded-xl border-red-300 text-red-600 hover:bg-red-50 gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          data-testid="it-hub-archive-btn"
+                        >
+                          <AlertTriangle className="h-4 w-4" />
+                          {t('itSoftDeleteOpen')}
+                        </Button>
+                      </div>
+                      {!softDeleteEligible && !hub.lifecycle?.archived_at && (
+                        <p
+                          className="text-xs text-red-600/80 dark:text-red-300/80 font-tajawal rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 p-3"
+                          data-testid="it-hub-archive-export-required"
+                        >
+                          {t('itSoftDeleteExportRequired')}
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+
               {activeSection === 'export' && isIndependentTeacher && (
                 <div className="space-y-6" data-testid="it-export-section">
                   <Card className="card-nassaq border-brand-turquoise/20">
