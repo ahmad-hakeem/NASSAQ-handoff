@@ -3445,6 +3445,8 @@
   "hakimInsufficientData": "Not enough weekly data yet to show Hakim's insights",
   "hakimInsufficientDataHint": "The story and tip will appear once teachers log participation, behaviour notes, or grades this week.",
   "hakimWeeklyStorySection": "Story of the week",
+  "hakimWeeklyAdviceTitle": "Tip of the week",
+  "hakimWeeklyHighlights": "This week's highlights",
   "hakimGeneratedAt": "Generated:",
   "poweredByHakim": "Powered by Hakim",
   "updateCredentials": "Update Credentials",

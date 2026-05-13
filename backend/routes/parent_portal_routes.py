@@ -677,6 +677,154 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
     # ============= WEEKLY STORY =============
 
+    def _rank_weekly_cards(signals: dict) -> list:
+        """Build a small, ranked, UI-ready cards list from the weekly signals.
+
+        Card schema: {kind, tone, icon, title_ar, value, metric}
+          - kind:   participation | positive_behaviour | skill | strong_subject |
+                    weak_subject | late | absent | homework_high | homework_low |
+                    remedial
+          - tone:   positive | concern | academic
+          - icon:   stable lucide name the FE maps to a component
+          - value:  optional short value (e.g. "92%", "3")
+        Selection: at most 4 cards = top 2 positive + top 1 concern + top 1
+        academic. Slots collapse upward when a tier is empty so we never pad
+        with empty tiles. Returns [] when no usable signals exist.
+        """
+        positive: list = []
+        concern: list = []
+        academic: list = []
+
+        participation = int(signals.get("participation_count") or 0)
+        positive_b = int(signals.get("positive_behaviors") or 0)
+        skills = signals.get("acquired_skills") or []
+        strong = signals.get("strong_subjects") or []
+        weak = signals.get("weak_subjects") or []
+        remedial = signals.get("remedial_plans") or []
+        late_count = int(signals.get("late_count") or 0)
+        absent_count = int(signals.get("absent_count") or 0)
+        hw_total = int(signals.get("homework_total") or 0)
+        hw_done = int(signals.get("homework_done") or 0)
+        hw_rate = round((hw_done / hw_total) * 100) if hw_total > 0 else None
+
+        # ---- positive tier ----
+        if participation >= 1:
+            positive.append({
+                "kind": "participation",
+                "tone": "positive",
+                "icon": "Star",
+                "title_ar": f"شارك بفعالية في {participation} حصة" if participation > 1
+                            else "شارك بفعالية في حصة واحدة",
+                "value": str(participation),
+                "metric": "participation_count",
+            })
+        if positive_b >= 1:
+            positive.append({
+                "kind": "positive_behaviour",
+                "tone": "positive",
+                "icon": "Award",
+                "title_ar": f"حصل على {positive_b} ملاحظة إيجابية" if positive_b > 1
+                            else "حصل على ملاحظة إيجابية",
+                "value": str(positive_b),
+                "metric": "positive_behaviors",
+            })
+        if skills:
+            positive.append({
+                "kind": "skill",
+                "tone": "positive",
+                "icon": "Sparkles",
+                "title_ar": f"اكتسب مهارة: {skills[0]}",
+                "value": None,
+                "metric": "acquired_skills",
+            })
+        if hw_rate is not None and hw_rate >= 80:
+            positive.append({
+                "kind": "homework_high",
+                "tone": "positive",
+                "icon": "CheckCircle2",
+                "title_ar": f"أتم {hw_rate}% من الواجبات",
+                "value": f"{hw_rate}%",
+                "metric": "homework_rate",
+            })
+
+        # ---- concern tier ----
+        if late_count >= 1:
+            concern.append({
+                "kind": "late",
+                "tone": "concern",
+                "icon": "Clock",
+                "title_ar": f"تأخر {late_count} مرات" if late_count > 1
+                            else "تأخر مرة واحدة",
+                "value": str(late_count),
+                "metric": "late_count",
+            })
+        if absent_count >= 1:
+            concern.append({
+                "kind": "absent",
+                "tone": "concern",
+                "icon": "AlertCircle",
+                "title_ar": f"تغيّب {absent_count} مرات" if absent_count > 1
+                            else "تغيّب مرة واحدة",
+                "value": str(absent_count),
+                "metric": "absent_count",
+            })
+        if hw_rate is not None and hw_rate < 60:
+            concern.append({
+                "kind": "homework_low",
+                "tone": "concern",
+                "icon": "FileText",
+                "title_ar": f"أتم {hw_rate}% فقط من الواجبات",
+                "value": f"{hw_rate}%",
+                "metric": "homework_rate",
+            })
+        if weak:
+            w0 = weak[0]
+            subj = w0.get("subject") if isinstance(w0, dict) else str(w0)
+            avg = w0.get("average") if isinstance(w0, dict) else None
+            concern.append({
+                "kind": "weak_subject",
+                "tone": "concern",
+                "icon": "TrendingDown",
+                "title_ar": f"يحتاج دعمًا في {subj}" + (f" ({avg}%)" if avg is not None else ""),
+                "value": f"{avg}%" if avg is not None else None,
+                "metric": "weak_subjects",
+            })
+
+        # ---- academic tier ----
+        if strong:
+            s0 = strong[0]
+            subj = s0.get("subject") if isinstance(s0, dict) else str(s0)
+            avg = s0.get("average") if isinstance(s0, dict) else None
+            academic.append({
+                "kind": "strong_subject",
+                "tone": "academic",
+                "icon": "GraduationCap",
+                "title_ar": f"تميّز في {subj}" + (f" ({avg}%)" if avg is not None else ""),
+                "value": f"{avg}%" if avg is not None else None,
+                "metric": "strong_subjects",
+            })
+        if remedial:
+            r0 = remedial[0]
+            title = (r0.get("title") if isinstance(r0, dict) else str(r0)) or "خطة علاجية"
+            academic.append({
+                "kind": "remedial",
+                "tone": "academic",
+                "icon": "BookOpen",
+                "title_ar": f"خطة علاجية: {title}",
+                "value": None,
+                "metric": "remedial_plans",
+            })
+
+        cards: list = []
+        cards.extend(positive[:2])
+        cards.extend(concern[:1])
+        cards.extend(academic[:1])
+        # Backfill if we have fewer than 4 and more available in any tier.
+        if len(cards) < 4:
+            extras = positive[2:] + concern[1:] + academic[1:]
+            cards.extend(extras[: 4 - len(cards)])
+        return cards[:4]
+
     async def _get_or_build_parent_weekly_insight(
         *,
         child_id: str,
@@ -684,6 +832,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         week_start: str,
         week_end: str,
         signals: dict,
+        cards: Optional[list] = None,
     ) -> dict:
         """Return the Hakim-generated weekly story+tip envelope for a child.
 
@@ -696,15 +845,21 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         entity_type='student', entity_id=child_id, school_id=school_id,
         and data.week_start matching the current Saudi week start.
         """
-        # 1) Sufficiency gate — at least 2 of 5 weekly signals must be present
-        signal_flags = [
-            signals.get("participation_count", 0) > 0,
-            signals.get("positive_behaviors", 0) > 0,
-            bool(signals.get("strong_subjects")) or bool(signals.get("weak_subjects")),
-            bool(signals.get("acquired_skills")),
-            bool(signals.get("remedial_plans")),
-        ]
-        if sum(1 for f in signal_flags if f) < 2:
+        # 1) Sufficiency gate — when the caller already ranked cards, defer
+        #    to that decision (zero usable cards => insufficient data).
+        #    Otherwise fall back to the legacy "≥2 of 5 raw signals" rule.
+        if cards is not None:
+            insufficient = len(cards) == 0
+        else:
+            signal_flags = [
+                signals.get("participation_count", 0) > 0,
+                signals.get("positive_behaviors", 0) > 0,
+                bool(signals.get("strong_subjects")) or bool(signals.get("weak_subjects")),
+                bool(signals.get("acquired_skills")),
+                bool(signals.get("remedial_plans")),
+            ]
+            insufficient = sum(1 for f in signal_flags if f) < 2
+        if insufficient:
             return {
                 "status": "insufficient_data",
                 "story": None,
@@ -779,6 +934,20 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             ],
         }
 
+        # Tip context is intentionally tighter than the story context: the
+        # advice card must be tied to the ranked headline metrics shown to
+        # the parent, never to raw teacher notes or unbounded extras. We
+        # pass only the short title strings of the chosen cards.
+        tip_ctx = {
+            "week_start": week_start,
+            "week_end": week_end,
+            "grade_level": signals.get("grade_level") or "",
+            "acquired_skills": [
+                c.get("title_ar") for c in (cards or [])
+                if isinstance(c, dict) and c.get("title_ar")
+            ],
+        }
+
         # Wrap LLM calls so any unexpected exception fails closed to a
         # structured "unavailable" status rather than bubbling a 500.
         try:
@@ -789,7 +958,8 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             )
             tip_res = await hakim_generate(
                 mode="generate", field="parent_weekly_tip",
-                text="", context=ctx, language="ar", tone="educational",
+                text="", context=(tip_ctx if cards else ctx),
+                language="ar", tone="educational",
                 tenant_id=school_id,
             )
         except Exception as e:
@@ -940,6 +1110,44 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "created_at": {"$gte": week_start.isoformat(), "$lte": (week_end + timedelta(days=1)).isoformat()}
         }, limit=20)
 
+        # ----- Lateness / absence (this week) -----
+        late_count = await gd_count(db.session, "attendance", {
+            "student_id": child_id,
+            "school_id": tenant_school_id,
+            "status": "late",
+            "date": {"$gte": week_start.isoformat(), "$lte": week_end.isoformat()}
+        })
+        absent_count = await gd_count(db.session, "attendance", {
+            "student_id": child_id,
+            "school_id": tenant_school_id,
+            "status": "absent",
+            "date": {"$gte": week_start.isoformat(), "$lte": week_end.isoformat()}
+        })
+
+        # ----- Homework completion (this week, best-effort) -----
+        # Honest empty: when the school doesn't track assignments we leave
+        # both at 0 so the ranker simply skips the homework cards.
+        homework_total = 0
+        homework_done = 0
+        try:
+            class_id = child.get("class_id")
+            if class_id:
+                week_assignments = await gd_find(db.session, "student_assignments", {
+                    "class_id": class_id,
+                    "school_id": tenant_school_id,
+                    "due_date": {"$gte": week_start.isoformat(), "$lte": week_end.isoformat()},
+                }, limit=50)
+                if week_assignments:
+                    assignment_ids = [a.get("id") for a in week_assignments if a.get("id")]
+                    submissions = await gd_find(db.session, "assignment_submissions", {
+                        "student_id": child_id,
+                        "assignment_id": {"$in": assignment_ids},
+                    }, limit=50) if assignment_ids else []
+                    homework_total = len(week_assignments)
+                    homework_done = len(submissions)
+        except Exception as e:
+            logger.debug(f"weekly homework signal lookup failed: {e}")
+
         daily_data = []
         day_names_ar = ["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس"]
         for i in range(6):
@@ -971,30 +1179,54 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             for p in remedial_plans
         ]
 
-        # ----- Real Hakim insight (story + tip) -----
-        # Tenant-scoped cache key: one brief per (school, child, week_start).
+        # ----- Compact ranked cards (top 2 positive + 1 concern + 1 academic)
+        ranked_signals = {
+            "grade_level": child.get("grade_level") or child.get("grade") or "",
+            "participation_count": participation_count,
+            "positive_behaviors": positive_behaviors,
+            "acquired_skills": acquired_skills[:8],
+            "strong_subjects": strong_subjects,
+            "weak_subjects": weak_subjects,
+            "remedial_plans": [
+                {"title": p.get("title"), "subject": p.get("subject")}
+                for p in remedial_plans_payload[:3]
+            ],
+            "late_count": late_count,
+            "absent_count": absent_count,
+            "homework_total": homework_total,
+            "homework_done": homework_done,
+        }
+        cards = _rank_weekly_cards(ranked_signals)
+        status = "available" if cards else "insufficient_data"
+
+        # ----- Real Hakim insight (story + tip). The advice card is fed
+        # ONLY by the structured ranked metrics — never by raw teacher notes.
         weekly_insight = await _get_or_build_parent_weekly_insight(
             child_id=child_id,
             school_id=child.get("school_id") or school_id,
             week_start=week_start.isoformat(),
             week_end=week_end.isoformat(),
-            signals={
-                "grade_level": child.get("grade_level") or child.get("grade") or "",
-                "participation_count": participation_count,
-                "positive_behaviors": positive_behaviors,
-                "acquired_skills": acquired_skills[:8],
-                "strong_subjects": [s["subject"] for s in strong_subjects],
-                "weak_subjects": [s["subject"] for s in weak_subjects],
-                "remedial_plans": [
-                    {"title": p.get("title"), "subject": p.get("subject")}
-                    for p in remedial_plans_payload[:3]
-                ],
-            },
+            signals=ranked_signals,
+            cards=cards,
         )
 
+        # Advice card payload — present only when Hakim returned a real tip.
+        # When the LLM is unavailable we omit it gracefully (FE skips it).
+        advice = None
+        if weekly_insight.get("status") == "available" and weekly_insight.get("tip"):
+            advice = {
+                "text_ar": weekly_insight.get("tip"),
+                "generated_at": weekly_insight.get("generated_at"),
+            }
+
         return {
+            "status": status,
             "week_start": week_start.isoformat(),
             "week_end": week_end.isoformat(),
+            # New compact, UI-ready payload (Task #324)
+            "cards": cards,
+            "advice": advice,
+            # ---- Back-compat: keep legacy fields so older clients don't break
             "participation_count": participation_count,
             "positive_behaviors": positive_behaviors,
             "acquired_skills": acquired_skills,
@@ -1002,9 +1234,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "weak_subjects": weak_subjects,
             "remedial_plans": remedial_plans_payload,
             "daily_chart_data": daily_data,
-            # Hakim-powered insight envelope
             "weekly_insight": weekly_insight,
-            # Backward-compatible: still expose the plain tip string when available
             "weekly_tip": weekly_insight.get("tip") if weekly_insight.get("status") == "available" else None,
         }
 

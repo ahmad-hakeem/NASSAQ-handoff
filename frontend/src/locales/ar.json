@@ -3449,6 +3449,8 @@
   "hakimInsufficientData": "لا تتوفر بيانات كافية لهذا الأسبوع لعرض رؤى حكيم بعد",
   "hakimInsufficientDataHint": "ستظهر القصة والنصيحة فور تسجيل المعلمين لمشاركات أو ملاحظات أو درجات خلال الأسبوع.",
   "hakimWeeklyStorySection": "قصة الأسبوع",
+  "hakimWeeklyAdviceTitle": "نصيحة الأسبوع",
+  "hakimWeeklyHighlights": "أبرز محطات الأسبوع",
   "hakimGeneratedAt": "تم التوليد:",
   "poweredByHakim": "بدعم من حكيم",
   "updateCredentials": "تحديث بيانات الدخول",
