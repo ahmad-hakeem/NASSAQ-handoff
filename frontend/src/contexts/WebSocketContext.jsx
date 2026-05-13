@@ -7,6 +7,12 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import { useAuth } from './AuthContext';
 import { toast } from 'sonner';
 import { Bell, ShieldAlert, UserPlus, Megaphone, AlertTriangle, Lock, LogIn, Wrench } from 'lucide-react';
+import {
+  notifyWorkspaceNotMaterialised,
+  hasShownBootstrapDialogThisSession,
+  markBootstrapDialogShownThisSession,
+  isPerimeterGateHandlerRegistered,
+} from '../services/perimeterGateBridge';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 const getWsUrl = () => {
@@ -285,6 +291,25 @@ export const WebSocketProvider = ({ children }) => {
           if (process.env.NODE_ENV === 'development') console.warn('WebSocket auth failed (4001), not reconnecting');
           return; // 4001 = invalid/expired token — do not reconnect
           // Note: 4002 = server ping timeout (network blip) — falls through to reconnect logic below
+        }
+
+        // Task #288 — IT perimeter "finish setup" parity for live updates.
+        // Backend closes with code 4003 + reason "workspace not materialised"
+        // when an Independent-Teacher token has no `tenant_id` claim yet
+        // (signed up but never bootstrapped, or stale tab whose other tab
+        // bootstrapped after this one opened). Mirror the HTTP interceptor
+        // behaviour: trigger the same one-shot perimeter-gate dialog +
+        // navigate('/teacher/onboarding'), and do NOT reconnect. Silent
+        // recovery happens naturally via the AuthContext token-refresh
+        // useEffect — once `token` updates with a tenant_id-bearing claim,
+        // the connect() effect re-runs and the handshake succeeds.
+        if (event.code === 4003) {
+          if (process.env.NODE_ENV === 'development') console.warn('WebSocket workspace not materialised (4003), not reconnecting');
+          if (!hasShownBootstrapDialogThisSession() && isPerimeterGateHandlerRegistered()) {
+            markBootstrapDialogShownThisSession();
+            notifyWorkspaceNotMaterialised();
+          }
+          return;
         }
         
         if (event.code !== 1000 && token && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {

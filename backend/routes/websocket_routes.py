@@ -189,6 +189,29 @@ def create_websocket_routes(db, decode_token):
                 await websocket.send_json({"type": "error", "message": "Invalid token payload"})
                 await websocket.close(code=4001, reason="Invalid token payload")
                 return
+
+            # Task #288 — IT perimeter "finish setup" parity for live updates.
+            # Mirror the HTTP `require_workspace_materialised` gate at the
+            # WebSocket handshake: an Independent-Teacher token whose
+            # workspace has not been bootstrapped yet (no `tenant_id` claim)
+            # would otherwise silently fail any tenant-scoped broadcast.
+            # Close with a dedicated code (4003) + canonical reason so the
+            # frontend can route the user to the same one-shot wizard
+            # dialog as the HTTP path. Other roles are unaffected.
+            if role == "independent_teacher" and not tenant_id:
+                try:
+                    await websocket.send_json({
+                        "type": "error",
+                        "code": "WORKSPACE_NOT_MATERIALISED",
+                        "message": "يجب إكمال إنشاء مساحتك أولًا.",
+                    })
+                except Exception:
+                    pass
+                try:
+                    await websocket.close(code=4003, reason="workspace not materialised")
+                except Exception:
+                    pass
+                return
             
             # Register connection
             if user_id not in manager.active_connections:
