@@ -182,6 +182,15 @@ def register_routes(app, api_router: APIRouter):
         router as it_lesson_plans_router,
     )
     api_router.include_router(it_lesson_plans_router)
+    # Task #217 — Platform-admin hard-delete tooling for workspaces
+    # whose 30-day reactivation window has lapsed
+    # (`schools.pending_hard_delete = TRUE`). Lives behind
+    # `require_roles([PLATFORM_ADMIN])`; never reachable from the IT
+    # surface itself, preserving the §6.8 trust boundary.
+    from routes.platform_workspace_purge_routes import (
+        router as platform_workspace_purge_router,
+    )
+    api_router.include_router(platform_workspace_purge_router)
     api_router.include_router(scheduling_smart_router, dependencies=_full_tenant_dep)
     api_router.include_router(scheduling_smart_sess_router, dependencies=_full_tenant_dep)
     api_router.include_router(schedule_candidates_router, dependencies=_full_tenant_dep)
