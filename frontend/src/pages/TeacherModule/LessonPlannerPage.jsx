@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
+import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { Loader2, Sparkles, BookOpen, Save, Pencil, Trash2, X, Check } from 'lucide-react';
 import { formatHijriDate } from '../../utils/hijriDate';
@@ -117,7 +118,6 @@ export default function LessonPlannerPage() {
   const [highlightedPlanId, setHighlightedPlanId] = useState(null);
   const _location = useLocation();
   const _navigate = useNavigate();
-  const _planRefs = useRef({});
   const _deepLinkConsumedRef = useRef(null);
 
   const refresh = useCallback(async () => {
@@ -146,10 +146,25 @@ export default function LessonPlannerPage() {
     if (!savedPlans.some((p) => p.id === pid)) return;
     _deepLinkConsumedRef.current = pid;
     setHighlightedPlanId(pid);
-    const node = _planRefs.current[pid];
-    if (node && typeof node.scrollIntoView === 'function') {
-      try { node.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_e) { /* noop */ }
-    }
+    // ResponsiveTable mounts both desktop table + mobile cards branches
+    // simultaneously (CSS-toggled), so look up every wrapper carrying
+    // the per-row testid and scroll the one currently visible to the
+    // user (offsetParent !== null is the cheapest visibility probe and
+    // skips display:none branches). Falls back to the first node if
+    // jsdom can't compute layout.
+    try {
+      const nodes = typeof document !== 'undefined' && document.querySelectorAll
+        ? document.querySelectorAll(`[data-testid="saved-plan-row-${pid}"]`)
+        : [];
+      let target = null;
+      for (const n of nodes) {
+        if (n && n.offsetParent !== null) { target = n; break; }
+      }
+      if (!target && nodes.length) target = nodes[0];
+      if (target && typeof target.scrollIntoView === 'function') {
+        target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    } catch (_e) { /* noop */ }
     const t1 = window.setTimeout(() => setHighlightedPlanId(null), 2400);
     params.delete('plan_id');
     _navigate(
@@ -509,99 +524,151 @@ export default function LessonPlannerPage() {
             <CardHeader>
               <CardTitle className="text-base">الخطط المحفوظة</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {savedPlans.map((p) => {
-                const isEditing = editingId === p.id;
-                const busy = rowBusy === p.id;
-                return (
-                  <div
-                    key={p.id}
-                    ref={(el) => { _planRefs.current[p.id] = el; }}
-                    data-testid={`saved-plan-row-${p.id}`}
-                    className={`border rounded-md p-3 text-sm bg-white transition-shadow ${
-                      highlightedPlanId === p.id ? 'ring-2 ring-brand-navy/60 shadow-md' : ''
-                    }`}
-                  >
-                    {isEditing ? (
-                      <div className="space-y-2">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-xs font-medium text-gray-700">الموضوع</label>
-                            <Input
-                              value={editDraft.topic}
-                              onChange={(e) => setEditDraft((d) => ({ ...d, topic: e.target.value }))}
-                              maxLength={500}
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-gray-700">العنوان</label>
-                            <Input
-                              value={editDraft.title}
-                              onChange={(e) => setEditDraft((d) => ({ ...d, title: e.target.value }))}
-                              maxLength={500}
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-gray-700">المادة</label>
-                            <Input
-                              value={editDraft.subject}
-                              onChange={(e) => setEditDraft((d) => ({ ...d, subject: e.target.value }))}
-                              maxLength={200}
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-gray-700">الصف</label>
-                            <Input
-                              value={editDraft.grade_level}
-                              onChange={(e) => setEditDraft((d) => ({ ...d, grade_level: e.target.value }))}
-                              maxLength={200}
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-gray-700">المدة (دقيقة)</label>
-                            <Input
-                              type="number"
-                              min={5}
-                              max={600}
-                              value={editDraft.duration_minutes}
-                              onChange={(e) => setEditDraft((d) => ({ ...d, duration_minutes: e.target.value }))}
-                            />
-                          </div>
-                        </div>
-                        <div className="flex justify-end gap-2">
-                          <Button variant="ghost" size="sm" onClick={cancelEdit} disabled={busy}>
-                            <X className="w-4 h-4 ml-1" /> إلغاء
-                          </Button>
-                          <Button size="sm" onClick={() => saveEdit(p)} disabled={busy || !editDraft.topic?.trim()}>
-                            {busy ? <Loader2 className="w-4 h-4 ml-1 animate-spin" /> : <Check className="w-4 h-4 ml-1" />}
-                            حفظ التغييرات
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex flex-wrap justify-between gap-2 items-start">
-                          <div className="font-semibold">{p.topic}</div>
-                          <div className="flex items-center gap-2">
-                            <div className="text-xs text-gray-500">
-                              {p.subject || '—'} · {p.grade_level || '—'} · {p.duration_minutes || '—'} د
+            <CardContent>
+              <ResponsiveTable
+                ariaLabel="الخطط المحفوظة"
+                rows={savedPlans}
+                getRowKey={(p) => p.id}
+                columns={[
+                  {
+                    key: 'topic',
+                    header: 'الموضوع',
+                    primary: true,
+                    render: (p) => {
+                      const isEditing = editingId === p.id;
+                      return (
+                        <div
+                          data-testid={`saved-plan-row-${p.id}`}
+                          className={
+                            highlightedPlanId === p.id
+                              ? 'ring-2 ring-brand-navy/60 rounded-md p-1 -m-1 transition-shadow'
+                              : ''
+                          }
+                        >
+                          {isEditing ? (
+                            <div className="space-y-2">
+                              <div>
+                                <label className="text-xs font-medium text-gray-700">الموضوع</label>
+                                <Input
+                                  value={editDraft.topic}
+                                  onChange={(e) => setEditDraft((d) => ({ ...d, topic: e.target.value }))}
+                                  maxLength={500}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs font-medium text-gray-700">العنوان</label>
+                                <Input
+                                  value={editDraft.title}
+                                  onChange={(e) => setEditDraft((d) => ({ ...d, title: e.target.value }))}
+                                  maxLength={500}
+                                />
+                              </div>
                             </div>
-                            <Button variant="ghost" size="sm" onClick={() => startEdit(p)} disabled={busy} title="تعديل">
-                              <Pencil className="w-4 h-4" />
+                          ) : (
+                            <div className="min-w-0">
+                              <div className="font-semibold break-words">{p.topic}</div>
+                              {p.plan?.title && (
+                                <div className="text-xs text-gray-600 font-normal mt-0.5 break-words">
+                                  {p.plan.title}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    },
+                  },
+                  {
+                    key: 'subject',
+                    header: 'المادة',
+                    render: (p) => (editingId === p.id ? (
+                      <Input
+                        value={editDraft.subject}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, subject: e.target.value }))}
+                        maxLength={200}
+                      />
+                    ) : (p.subject || '—')),
+                  },
+                  {
+                    key: 'grade_level',
+                    header: 'الصف',
+                    render: (p) => (editingId === p.id ? (
+                      <Input
+                        value={editDraft.grade_level}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, grade_level: e.target.value }))}
+                        maxLength={200}
+                      />
+                    ) : (p.grade_level || '—')),
+                  },
+                  {
+                    key: 'duration_minutes',
+                    header: 'المدة (د)',
+                    render: (p) => (editingId === p.id ? (
+                      <Input
+                        type="number"
+                        min={5}
+                        max={600}
+                        value={editDraft.duration_minutes}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, duration_minutes: e.target.value }))}
+                      />
+                    ) : (p.duration_minutes ? `${p.duration_minutes} د` : '—')),
+                  },
+                  {
+                    key: 'actions',
+                    header: '',
+                    mobileFullWidth: true,
+                    cellClassName: 'text-end',
+                    render: (p) => {
+                      const busy = rowBusy === p.id;
+                      const isEditing = editingId === p.id;
+                      if (isEditing) {
+                        return (
+                          <div className="flex justify-end gap-2 flex-wrap">
+                            <Button variant="ghost" size="sm" onClick={cancelEdit} disabled={busy}>
+                              <X className="w-4 h-4 ml-1" /> إلغاء
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={() => askDelete(p)} disabled={busy} title="حذف">
-                              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4 text-red-600" />}
+                            <Button
+                              size="sm"
+                              onClick={() => saveEdit(p)}
+                              disabled={busy || !editDraft.topic?.trim()}
+                            >
+                              {busy ? <Loader2 className="w-4 h-4 ml-1 animate-spin" /> : <Check className="w-4 h-4 ml-1" />}
+                              حفظ التغييرات
                             </Button>
                           </div>
+                        );
+                      }
+                      return (
+                        <div className="flex justify-end gap-2 flex-wrap">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => startEdit(p)}
+                            disabled={busy}
+                            title="تعديل"
+                          >
+                            <Pencil className="w-4 h-4 ml-1" /> تعديل
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => askDelete(p)}
+                            disabled={busy}
+                            title="حذف"
+                          >
+                            {busy ? (
+                              <Loader2 className="w-4 h-4 ml-1 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4 ml-1 text-red-600" />
+                            )}
+                            حذف
+                          </Button>
                         </div>
-                        {p.plan?.title && (
-                          <div className="text-gray-600 mt-1">{p.plan.title}</div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                );
-              })}
+                      );
+                    },
+                  },
+                ]}
+              />
             </CardContent>
           </Card>
         )}
