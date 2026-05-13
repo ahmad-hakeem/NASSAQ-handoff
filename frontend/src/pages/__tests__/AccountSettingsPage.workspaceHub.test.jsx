@@ -399,9 +399,21 @@ describe('AccountSettingsPage — Task #254 workspace-hub e2e render', () => {
 
     render(<AccountSettingsPage />);
 
-    // Wait for the pending row to render — driven by the per-class
-    // collab fan-out resolving with a pending status entry.
-    const cancelBtn = await screen.findByTestId('it-hub-collab-cancel-co-pending');
+    // The collab pending row is rendered through ResponsiveTable, which
+    // emits BOTH a desktop `<table>` (hidden sm:block) and a mobile
+    // stacked card (sm:hidden) variant of every row. jsdom does not
+    // apply Tailwind CSS, so both copies stay in the DOM and the
+    // `it-hub-collab-cancel-{id}` testid resolves to two elements —
+    // which makes `findByTestId` throw "Found multiple elements". Use
+    // `findAllByTestId` and click the first match (desktop table row);
+    // the mobile copy fires the same handler so picking either is fine.
+    const cancelBtns = await screen.findAllByTestId(
+      'it-hub-collab-cancel-co-pending',
+      {},
+      { timeout: 3000 },
+    );
+    expect(cancelBtns.length).toBeGreaterThan(0);
+    const cancelBtn = cancelBtns[0];
 
     // Wrap the click in act + flush microtasks so the async confirm
     // callback (which awaits api.post) is observed by waitFor.
