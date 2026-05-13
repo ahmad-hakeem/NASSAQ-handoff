@@ -13,7 +13,7 @@ import {
   Play, RefreshCw, Loader2,
   Target, Award, BarChart3,
   CheckCircle2, Activity, Flame, Building2, MapPin, Star, Briefcase,
-  Bell, Check, CircleDot, Timer
+  Bell, Check, CircleDot, Timer, Sparkles, Plus
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import { NotificationBell } from '../../components/notifications/NotificationBell';
@@ -59,6 +59,9 @@ export default function TeacherHomePage() {
   const [classMetrics, setClassMetrics] = useState(null);
   const [dayStatus, setDayStatus] = useState(null);
   const [portfolioProgress, setPortfolioProgress] = useState(0);
+  // Task #310 — IT brand-new-workspace empty state (mobile dashboard).
+  const isIndependentTeacher = user?.role === 'independent_teacher';
+  const [itEventsCount, setItEventsCount] = useState(null);
 
   const teacherId = user?.teacher_id || user?.id;
 
@@ -152,6 +155,25 @@ export default function TeacherHomePage() {
     return () => clearInterval(interval);
   }, [fetchTeacherData, fetchDayStatus, fetchPortfolioProgress]);
 
+  // Task #310 — count personal-calendar events for IT only. Tri-state
+  // (null = unknown) so a transient API failure can't falsely flip the
+  // dashboard into the brand-new empty state for a workspace that
+  // actually has events.
+  useEffect(() => {
+    if (!isIndependentTeacher) { setItEventsCount(0); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get('/independent-teacher/calendar/events');
+        const data = Array.isArray(res?.data) ? res.data : (res?.data?.events || []);
+        if (!cancelled) setItEventsCount(data.length);
+      } catch (e) {
+        // Leave as null — empty-state stays suppressed on transient errors.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [api, isIndependentTeacher]);
+
   useEffect(() => {
     if (!teacherId) return;
     const fetchMetrics = async () => {
@@ -208,6 +230,58 @@ export default function TeacherHomePage() {
     if (!isSchoolTime && next === currentLesson) return todayLessons[1] || null;
     return next || null;
   })();
+
+  // Task #310 — Brand-new IT workspace: single centered welcome empty-state
+  // card matching the dashed workspace-accent style of the rest of the IT
+  // onboarding triad. Reverts to the normal mobile dashboard the moment the
+  // workspace has at least one class. Non-IT roles are unchanged.
+  const itDashboardIsEmpty =
+    isIndependentTeacher
+    && !loading
+    && itEventsCount !== null
+    && (stats.classesCount || 0) === 0
+    && (stats.studentsCount || 0) === 0
+    && itEventsCount === 0;
+
+  if (itDashboardIsEmpty) {
+    return (
+      <Sidebar>
+        <div
+          className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50/50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950"
+          dir={isRTL ? 'rtl' : 'ltr'}
+        >
+          <div className="p-4 space-y-4 max-w-lg mx-auto">
+            <OnboardingTrigger />
+            <ReactivationBanner />
+            <div className="flex items-center justify-center min-h-[60vh]">
+              <Card
+                className="border-dashed border-workspace-accent-border bg-workspace-accent-light/30 w-full"
+                data-testid="teacher-dashboard-empty-state-it-mobile"
+              >
+                <CardContent className="text-center py-12 px-5">
+                  <Sparkles className="h-14 w-14 mx-auto mb-4 text-workspace-accent" />
+                  <h3 className="font-bold text-lg mb-2 font-cairo text-workspace-accent-fg">
+                    {t('itEmptyDashboardTitle')}
+                  </h3>
+                  <p className="text-muted-foreground text-sm font-tajawal mb-5 leading-relaxed">
+                    {t('itEmptyDashboardDescription')}
+                  </p>
+                  <Button
+                    onClick={() => navigate('/teacher/classes')}
+                    className="bg-workspace-accent hover:bg-workspace-accent-fg text-white rounded-xl gap-2 px-5"
+                    data-testid="teacher-dashboard-empty-state-cta-mobile"
+                  >
+                    <Plus className="h-4 w-4" />
+                    {t('itEmptyDashboardCta')}
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      </Sidebar>
+    );
+  }
 
   return (
     <Sidebar>

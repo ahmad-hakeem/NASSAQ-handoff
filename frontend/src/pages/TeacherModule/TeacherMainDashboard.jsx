@@ -15,7 +15,7 @@ import {
   ChevronRight, FileText, CalendarDays,
   RefreshCw, MessageSquare, Play, Target, Activity, Flame, Award,
   Timer, CircleDot, School, Sparkles, Zap, TrendingUp, Star,
-  FolderOpen, ArrowLeft, ArrowRight, Check
+  FolderOpen, ArrowLeft, ArrowRight, Check, Plus
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import { NotificationBell } from '../../components/notifications/NotificationBell';
@@ -147,6 +147,12 @@ export default function TeacherMainDashboard() {
   const [hakimLoading, setHakimLoading] = useState(false);
   const [dayStatus, setDayStatus] = useState(null);
   const [portfolioProgress, setPortfolioProgress] = useState(0);
+  // Task #310 — IT brand-new-workspace empty state. We only fetch the IT
+  // personal-calendar event count when the signed-in user is an Independent
+  // Teacher; principals/teachers in real schools never see this card and
+  // never hit the IT-only endpoint.
+  const isIndependentTeacher = user?.role === 'independent_teacher';
+  const [itEventsCount, setItEventsCount] = useState(null);
 
   const teacherId = user?.teacher_id || user?.id;
   const teacherSubject = user?.primary_subject_name || user?.specialization || '';
@@ -259,6 +265,26 @@ export default function TeacherMainDashboard() {
   useEffect(() => { fetchMetrics(); }, [fetchMetrics]);
   useEffect(() => { fetchPortfolioProgress(); }, [fetchPortfolioProgress]);
 
+  // Task #310 — count personal-calendar events for IT only, so we can show
+  // the brand-new-workspace empty state when classes/students/events are
+  // all zero. We keep `itEventsCount` as a tri-state (null = unknown) and
+  // only flip the empty-state on a *confirmed* zero so a transient API
+  // failure can't falsely hide a workspace that actually has events.
+  useEffect(() => {
+    if (!isIndependentTeacher) { setItEventsCount(0); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get('/independent-teacher/calendar/events');
+        const data = Array.isArray(res?.data) ? res.data : (res?.data?.events || []);
+        if (!cancelled) setItEventsCount(data.length);
+      } catch (e) {
+        // Leave as null — empty-state stays suppressed on transient errors.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [api, isIndependentTeacher]);
+
   // Task #145 — silently refresh today's lessons block when the school
   // admin publishes a new schedule. WebSocketContext bridges the tenant
   // ``schedule_published`` WS frame to a window CustomEvent. We pass
@@ -349,6 +375,60 @@ export default function TeacherMainDashboard() {
     const ampm = h < 12 ? t('am') : t('pm');
     return `${isRTL ? h : h12}:${m.toString().padStart(2, '0')} ${ampm}`;
   };
+
+  // Task #310 — Brand-new IT workspace: show a single centered welcome
+  // empty-state card matching the dashed workspace-accent style used by
+  // the rest of the IT onboarding triad (classes / students / schedule)
+  // and the lesson planner / personal calendar pages. Reverts to the
+  // normal dashboard the moment the workspace has at least one class.
+  // Non-IT roles' dashboards are unchanged.
+  const itDashboardIsEmpty =
+    isIndependentTeacher
+    && !loading
+    && itEventsCount !== null
+    && (stats.myClasses || 0) === 0
+    && (stats.myStudents || 0) === 0
+    && itEventsCount === 0;
+
+  if (itDashboardIsEmpty) {
+    return (
+      <Sidebar>
+        <div
+          className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50/50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950"
+          dir={isRTL ? 'rtl' : 'ltr'}
+        >
+          <div className="p-4 md:p-6 max-w-[1400px] mx-auto space-y-5">
+            <ReactivationBanner />
+            <OnboardingTrigger />
+            <div className="flex items-center justify-center min-h-[60vh]">
+              <Card
+                className="border-dashed border-workspace-accent-border bg-workspace-accent-light/30 w-full max-w-xl"
+                data-testid="teacher-dashboard-empty-state-it"
+              >
+                <CardContent className="text-center py-16 px-6">
+                  <Sparkles className="h-16 w-16 mx-auto mb-4 text-workspace-accent" />
+                  <h3 className="font-bold text-lg mb-2 font-cairo text-workspace-accent-fg">
+                    {t('itEmptyDashboardTitle')}
+                  </h3>
+                  <p className="text-muted-foreground text-sm font-tajawal mb-5 max-w-md mx-auto leading-relaxed">
+                    {t('itEmptyDashboardDescription')}
+                  </p>
+                  <Button
+                    onClick={() => navigate('/teacher/classes')}
+                    className="bg-workspace-accent hover:bg-workspace-accent-fg text-white rounded-xl gap-2 px-5"
+                    data-testid="teacher-dashboard-empty-state-cta"
+                  >
+                    <Plus className="h-4 w-4" />
+                    {t('itEmptyDashboardCta')}
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      </Sidebar>
+    );
+  }
 
   if (loading) {
     return (
