@@ -7,6 +7,7 @@ import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { Loader2, Sparkles, BookOpen, Save } from 'lucide-react';
+import { formatHijriDate } from '../../utils/hijriDate';
 
 // Phase 2 §6.4 (Task #209) — IT-only light AI lesson-planning assistant.
 // Backend pins workspace_school_id == itw_{user_id} + created_by ==
@@ -178,14 +179,45 @@ export default function LessonPlannerPage() {
     }
   }, [api, current, classId, nassaqError, nassaqInfo, refresh]);
 
+  const quotaInfo = useMemo(() => {
+    const used = Math.max(0, Number(quota?.used_today ?? 0));
+    const max = Math.max(0, Number(quota?.max_per_day ?? 0));
+    const remaining = Math.max(0, max - used);
+    const exhausted = max > 0 && used >= max;
+    const percent = max > 0 ? Math.min(100, Math.round((used / max) * 100)) : 0;
+    let nextResetAr = '';
+    try {
+      const now = new Date();
+      // Build a local-time Date whose y/m/d match the UTC calendar date
+      // of the next UTC midnight, so the Hijri formatter (which reads
+      // local getters) shows the same Gregorian day as UTC midnight.
+      const nextUtcDay = new Date(Date.UTC(
+        now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1,
+      ));
+      const localProxy = new Date(
+        nextUtcDay.getUTCFullYear(),
+        nextUtcDay.getUTCMonth(),
+        nextUtcDay.getUTCDate(),
+      );
+      nextResetAr = formatHijriDate(localProxy, { includeWeekday: false });
+    } catch (_e) { /* graceful */ }
+    return { used, max, remaining, exhausted, percent, nextResetAr };
+  }, [quota]);
+
   const quotaBadge = useMemo(() => {
     if (!quota) return null;
     return (
-      <Badge variant="outline">
-        خطط اليوم: {quota.used_today ?? 0} / {quota.max_per_day ?? 0}
+      <Badge variant={quotaInfo.exhausted ? 'destructive' : 'outline'}>
+        خطط اليوم: {quotaInfo.used} / {quotaInfo.max}
       </Badge>
     );
-  }, [quota]);
+  }, [quota, quotaInfo]);
+
+  const quotaBarColor = quotaInfo.exhausted
+    ? 'bg-red-500'
+    : quotaInfo.percent >= 80
+      ? 'bg-amber-500'
+      : 'bg-emerald-500';
 
   return (
     <div className="flex min-h-screen bg-gray-50" dir="rtl">
@@ -210,6 +242,41 @@ export default function LessonPlannerPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {quota && (
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs text-gray-600">
+                  <span>
+                    استخدمت {quotaInfo.used} من {quotaInfo.max} خطة اليوم
+                    {!quotaInfo.exhausted && quotaInfo.max > 0 && (
+                      <span className="text-gray-500"> · المتبقي {quotaInfo.remaining}</span>
+                    )}
+                  </span>
+                  {quotaInfo.nextResetAr && (
+                    <span className="text-gray-500">
+                      تتجدّد عند منتصف الليل بتوقيت UTC ({quotaInfo.nextResetAr})
+                    </span>
+                  )}
+                </div>
+                <div
+                  className="h-2 w-full rounded-full bg-gray-200 overflow-hidden"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={quotaInfo.max || 0}
+                  aria-valuenow={quotaInfo.used}
+                  aria-label="استخدام خطط الدروس اليومي"
+                >
+                  <div
+                    className={`h-full transition-all ${quotaBarColor}`}
+                    style={{ width: `${quotaInfo.percent}%` }}
+                  />
+                </div>
+                {quotaInfo.exhausted && (
+                  <p className="text-xs text-red-600">
+                    بلغت الحد اليومي لتوليد خطط الدروس. يمكنك المحاولة مجددًا بعد تجدد الحد عند منتصف الليل بتوقيت UTC.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-sm font-medium text-gray-700">موضوع الدرس *</label>
@@ -245,10 +312,21 @@ export default function LessonPlannerPage() {
               </div>
             </div>
             <div className="flex justify-end">
-              <Button onClick={onGenerate} disabled={generating || !form.topic?.trim()}>
-                {generating ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Sparkles className="w-4 h-4 ml-2" />}
-                توليد الخطة
-              </Button>
+              <div className="flex flex-col items-end gap-1">
+                <Button
+                  onClick={onGenerate}
+                  disabled={generating || !form.topic?.trim() || quotaInfo.exhausted}
+                  title={quotaInfo.exhausted ? 'بلغت الحد اليومي لتوليد خطط الدروس' : undefined}
+                >
+                  {generating ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Sparkles className="w-4 h-4 ml-2" />}
+                  توليد الخطة
+                </Button>
+                {quotaInfo.exhausted && (
+                  <span className="text-xs text-red-600">
+                    لا يمكن التوليد حتى تجدد الحد عند منتصف الليل بتوقيت UTC.
+                  </span>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
