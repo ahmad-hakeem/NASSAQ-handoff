@@ -410,6 +410,7 @@ export const Sidebar = ({ children }) => {
         label: t('myClasses'),
         href: '/teacher/classes',
         roles: ['teacher', 'independent_teacher'],
+        dataTour: 'sidebar-my-classes',
       },
       {
         icon: Award,
@@ -422,6 +423,7 @@ export const Sidebar = ({ children }) => {
         label: t('communicationNotifications'),
         href: '/teacher/communication',
         roles: ['teacher', 'independent_teacher'],
+        dataTour: 'sidebar-communication',
       },
       {
         icon: Network,
@@ -444,6 +446,7 @@ export const Sidebar = ({ children }) => {
         label: 'إعدادات مساحتي',
         href: '/teacher/workspace-settings',
         roles: ['independent_teacher'],
+        dataTour: 'sidebar-workspace-settings',
       },
       // Task #193 §5.4 — Independent-Teacher only: manual schedule editor.
       {
@@ -451,6 +454,7 @@ export const Sidebar = ({ children }) => {
         label: 'جدولي',
         href: '/teacher/workspace-schedule',
         roles: ['independent_teacher'],
+        dataTour: 'sidebar-workspace-schedule',
       },
       // Task #208 §6.3 — Independent-Teacher only: personal calendar.
       // Role-gated AND permission-gated on the new `events.author_own`
@@ -462,6 +466,7 @@ export const Sidebar = ({ children }) => {
         href: '/teacher/calendar',
         roles: ['independent_teacher'],
         permission: 'events.author_own',
+        dataTour: 'sidebar-calendar',
       },
       // Task #207 §6.1 — IT-only workspace-aware bulk student import.
       // Permission-gated on `students.bulk_import_workspace` so a
@@ -473,6 +478,7 @@ export const Sidebar = ({ children }) => {
         href: '/teacher/import-students',
         roles: ['independent_teacher'],
         permission: 'students.bulk_import_workspace',
+        dataTour: 'sidebar-import-students',
       },
       // Task #209 §6.4 — IT-only light AI lesson-planning assistant.
       // Permission-gated on `ai.lesson_plans` so the link only appears
@@ -483,6 +489,7 @@ export const Sidebar = ({ children }) => {
         href: '/teacher/lesson-planner',
         roles: ['independent_teacher'],
         permission: 'ai.lesson_plans',
+        dataTour: 'sidebar-lesson-planner',
       },
     ];
 
@@ -715,6 +722,7 @@ export const Sidebar = ({ children }) => {
                 to={item.href}
                 onClick={() => setMobileOpen(false)}
                 data-testid={`sidebar-link-${item.href.replace(/\//g, '-')}`}
+                data-tour={item.dataTour}
                 className={`sidebar-item ${
                   isActive(item.href) ? 'sidebar-item-active' : 'sidebar-item-inactive'
                 }`}

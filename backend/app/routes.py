@@ -182,6 +182,15 @@ def register_routes(app, api_router: APIRouter):
         router as it_lesson_plans_router,
     )
     api_router.include_router(it_lesson_plans_router)
+    # Task #250 — IT first-login onboarding tour state. Three IT-only
+    # endpoints (state / complete / reset) gating the welcome card +
+    # replay link. Mounted WITHOUT _full_tenant_dep; the router enforces
+    # the IT role gate per-endpoint and only writes
+    # ``users.it_onboarding_completed_at`` on the caller's own row.
+    from routes.independent_teacher_onboarding_routes import (
+        router as it_onboarding_router,
+    )
+    api_router.include_router(it_onboarding_router)
     # Task #217 — Platform-admin hard-delete tooling for workspaces
     # whose 30-day reactivation window has lapsed
     # (`schools.pending_hard_delete = TRUE`). Lives behind

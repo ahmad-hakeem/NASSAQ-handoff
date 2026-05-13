@@ -39,6 +39,8 @@ const getTimeUntilLesson = (lessonTime) => {
   return { status: 'upcoming', minutes: diffMinutes };
 };
 
+import OnboardingTrigger from '../../components/teacher/OnboardingTour/OnboardingTrigger';
+
 export default function TeacherHomePage() {
   const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
@@ -217,6 +219,8 @@ export default function TeacherHomePage() {
         )}
 
         <div className="p-4 space-y-4 max-w-lg mx-auto">
+          {/* Task #250 — IT first-login guided tour (welcome card + coach-marks). */}
+          <OnboardingTrigger />
 
           {/* Task #222 — IT post-login reactivation banner */}
           <ReactivationBanner />

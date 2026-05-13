@@ -20,6 +20,7 @@ import {
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import { NotificationBell } from '../../components/notifications/NotificationBell';
 import ReactivationBanner from '../../components/teacher/ReactivationBanner';
+import OnboardingTrigger from '../../components/teacher/OnboardingTour/OnboardingTrigger';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 const HAKIM_CHARACTER = '/hakim-poses/teacher-helper.png';
@@ -369,6 +370,9 @@ export default function TeacherMainDashboard() {
 
           {/* Task #222 — IT post-login reactivation banner */}
           <ReactivationBanner />
+
+          {/* Task #250 — IT first-login guided tour (welcome card + coach-marks). */}
+          <OnboardingTrigger />
 
           {/* Top Action Bar */}
           <div className="flex items-center justify-between">

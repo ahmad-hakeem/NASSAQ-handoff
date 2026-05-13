@@ -1304,6 +1304,28 @@ export const AccountSettingsPage = () => {
                         {saveSuccess === 'workspace' ? (t('saved')) : (t('saveChanges2'))}
                       </Button>
                     </div>
+
+                    {/* Task #250 — Replay the IT first-login onboarding tour. */}
+                    <div className="mt-6 pt-4 border-t border-workspace-accent-border/60 flex items-center justify-between gap-3 flex-wrap">
+                      <div className="text-xs font-tajawal text-workspace-accent-fg/80">
+                        {t('itTourReplayHint')}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-workspace-accent hover:bg-workspace-accent-light rounded-xl font-tajawal"
+                        data-testid="it-tour-replay"
+                        onClick={async () => {
+                          try {
+                            await api.post('/independent-teacher/onboarding/reset');
+                            window.location.assign('/teacher');
+                          } catch (e) { /* surfaced via global axios error handler */ }
+                        }}
+                      >
+                        {t('itTourReplay')}
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               )}

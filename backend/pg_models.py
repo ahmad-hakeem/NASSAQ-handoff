@@ -87,6 +87,12 @@ class User(Base):
     # codes in a safe place" checkbox in the forced presentation modal.
     mfa_recovery_codes_acknowledged = Column(Boolean, nullable=False, default=False)
 
+    # Task #250 — IT first-login onboarding tour. NULL means "show the
+    # welcome card next time this user lands on their IT dashboard";
+    # non-IT roles always carry NULL here (the trigger surfaces are
+    # IT-only).
+    it_onboarding_completed_at = Column(DateTime(timezone=True), nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
