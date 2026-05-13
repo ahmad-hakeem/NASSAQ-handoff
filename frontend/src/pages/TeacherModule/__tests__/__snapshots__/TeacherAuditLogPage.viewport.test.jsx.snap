@@ -1,0 +1,125 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`TeacherAuditLogPage at 360px — Task #281 viewport fingerprint fingerprint @ 360px is stable 1`] = `
+Object {
+  "breakpoint_classes": Object {
+    "lg:p-10": 1,
+    "md:text-sm": 3,
+    "sm:block": 1,
+    "sm:flex-row": 1,
+    "sm:grid-cols-[1fr_1fr_auto]": 1,
+    "sm:grid-cols-[1fr_auto_auto]": 1,
+    "sm:hidden": 1,
+    "sm:items-center": 1,
+    "sm:justify-between": 1,
+    "sm:p-6": 1,
+    "sm:text-2xl": 1,
+    "sm:w-auto": 3,
+  },
+  "element_count": 96,
+  "inner_width": 360,
+  "matched_breakpoints": Object {
+    "2xl": false,
+    "lg": false,
+    "md": false,
+    "sm": false,
+    "xl": false,
+  },
+  "root_class": "flex min-h-screen bg-gray-50",
+  "root_tag": "div",
+  "width": 360,
+}
+`;
+
+exports[`TeacherAuditLogPage at 414px — Task #281 viewport fingerprint fingerprint @ 414px is stable 1`] = `
+Object {
+  "breakpoint_classes": Object {
+    "lg:p-10": 1,
+    "md:text-sm": 3,
+    "sm:block": 1,
+    "sm:flex-row": 1,
+    "sm:grid-cols-[1fr_1fr_auto]": 1,
+    "sm:grid-cols-[1fr_auto_auto]": 1,
+    "sm:hidden": 1,
+    "sm:items-center": 1,
+    "sm:justify-between": 1,
+    "sm:p-6": 1,
+    "sm:text-2xl": 1,
+    "sm:w-auto": 3,
+  },
+  "element_count": 96,
+  "inner_width": 414,
+  "matched_breakpoints": Object {
+    "2xl": false,
+    "lg": false,
+    "md": false,
+    "sm": false,
+    "xl": false,
+  },
+  "root_class": "flex min-h-screen bg-gray-50",
+  "root_tag": "div",
+  "width": 414,
+}
+`;
+
+exports[`TeacherAuditLogPage at 768px — Task #281 viewport fingerprint fingerprint @ 768px is stable 1`] = `
+Object {
+  "breakpoint_classes": Object {
+    "lg:p-10": 1,
+    "md:text-sm": 3,
+    "sm:block": 1,
+    "sm:flex-row": 1,
+    "sm:grid-cols-[1fr_1fr_auto]": 1,
+    "sm:grid-cols-[1fr_auto_auto]": 1,
+    "sm:hidden": 1,
+    "sm:items-center": 1,
+    "sm:justify-between": 1,
+    "sm:p-6": 1,
+    "sm:text-2xl": 1,
+    "sm:w-auto": 3,
+  },
+  "element_count": 96,
+  "inner_width": 768,
+  "matched_breakpoints": Object {
+    "2xl": false,
+    "lg": false,
+    "md": true,
+    "sm": true,
+    "xl": false,
+  },
+  "root_class": "flex min-h-screen bg-gray-50",
+  "root_tag": "div",
+  "width": 768,
+}
+`;
+
+exports[`TeacherAuditLogPage at 1024px — Task #281 viewport fingerprint fingerprint @ 1024px is stable 1`] = `
+Object {
+  "breakpoint_classes": Object {
+    "lg:p-10": 1,
+    "md:text-sm": 3,
+    "sm:block": 1,
+    "sm:flex-row": 1,
+    "sm:grid-cols-[1fr_1fr_auto]": 1,
+    "sm:grid-cols-[1fr_auto_auto]": 1,
+    "sm:hidden": 1,
+    "sm:items-center": 1,
+    "sm:justify-between": 1,
+    "sm:p-6": 1,
+    "sm:text-2xl": 1,
+    "sm:w-auto": 3,
+  },
+  "element_count": 96,
+  "inner_width": 1024,
+  "matched_breakpoints": Object {
+    "2xl": false,
+    "lg": true,
+    "md": true,
+    "sm": true,
+    "xl": false,
+  },
+  "root_class": "flex min-h-screen bg-gray-50",
+  "root_tag": "div",
+  "width": 1024,
+}
+`;

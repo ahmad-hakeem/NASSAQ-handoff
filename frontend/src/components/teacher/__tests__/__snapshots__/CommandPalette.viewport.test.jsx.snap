@@ -1,0 +1,113 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`CommandPalette at 360px — Task #281 viewport fingerprint (open) fingerprint @ 360px is stable 1`] = `
+Object {
+  "breakpoint_classes": Object {
+    "sm:flex-none": 1,
+    "sm:h-auto": 1,
+    "sm:hidden": 1,
+    "sm:inline-flex": 1,
+    "sm:max-h-[50vh]": 1,
+    "sm:max-w-xl": 1,
+    "sm:pt-[10vh]": 1,
+    "sm:px-4": 1,
+    "sm:rounded-2xl": 1,
+  },
+  "element_count": 17,
+  "inner_width": 360,
+  "matched_breakpoints": Object {
+    "2xl": false,
+    "lg": false,
+    "md": false,
+    "sm": false,
+    "xl": false,
+  },
+  "root_class": "fixed inset-0 z-[100] flex items-start justify-center bg-black/50 backdrop-blur-sm sm:pt-[10vh] sm:px-4",
+  "root_tag": "div",
+  "width": 360,
+}
+`;
+
+exports[`CommandPalette at 414px — Task #281 viewport fingerprint (open) fingerprint @ 414px is stable 1`] = `
+Object {
+  "breakpoint_classes": Object {
+    "sm:flex-none": 1,
+    "sm:h-auto": 1,
+    "sm:hidden": 1,
+    "sm:inline-flex": 1,
+    "sm:max-h-[50vh]": 1,
+    "sm:max-w-xl": 1,
+    "sm:pt-[10vh]": 1,
+    "sm:px-4": 1,
+    "sm:rounded-2xl": 1,
+  },
+  "element_count": 17,
+  "inner_width": 414,
+  "matched_breakpoints": Object {
+    "2xl": false,
+    "lg": false,
+    "md": false,
+    "sm": false,
+    "xl": false,
+  },
+  "root_class": "fixed inset-0 z-[100] flex items-start justify-center bg-black/50 backdrop-blur-sm sm:pt-[10vh] sm:px-4",
+  "root_tag": "div",
+  "width": 414,
+}
+`;
+
+exports[`CommandPalette at 768px — Task #281 viewport fingerprint (open) fingerprint @ 768px is stable 1`] = `
+Object {
+  "breakpoint_classes": Object {
+    "sm:flex-none": 1,
+    "sm:h-auto": 1,
+    "sm:hidden": 1,
+    "sm:inline-flex": 1,
+    "sm:max-h-[50vh]": 1,
+    "sm:max-w-xl": 1,
+    "sm:pt-[10vh]": 1,
+    "sm:px-4": 1,
+    "sm:rounded-2xl": 1,
+  },
+  "element_count": 17,
+  "inner_width": 768,
+  "matched_breakpoints": Object {
+    "2xl": false,
+    "lg": false,
+    "md": true,
+    "sm": true,
+    "xl": false,
+  },
+  "root_class": "fixed inset-0 z-[100] flex items-start justify-center bg-black/50 backdrop-blur-sm sm:pt-[10vh] sm:px-4",
+  "root_tag": "div",
+  "width": 768,
+}
+`;
+
+exports[`CommandPalette at 1024px — Task #281 viewport fingerprint (open) fingerprint @ 1024px is stable 1`] = `
+Object {
+  "breakpoint_classes": Object {
+    "sm:flex-none": 1,
+    "sm:h-auto": 1,
+    "sm:hidden": 1,
+    "sm:inline-flex": 1,
+    "sm:max-h-[50vh]": 1,
+    "sm:max-w-xl": 1,
+    "sm:pt-[10vh]": 1,
+    "sm:px-4": 1,
+    "sm:rounded-2xl": 1,
+  },
+  "element_count": 17,
+  "inner_width": 1024,
+  "matched_breakpoints": Object {
+    "2xl": false,
+    "lg": true,
+    "md": true,
+    "sm": true,
+    "xl": false,
+  },
+  "root_class": "fixed inset-0 z-[100] flex items-start justify-center bg-black/50 backdrop-blur-sm sm:pt-[10vh] sm:px-4",
+  "root_tag": "div",
+  "width": 1024,
+}
+`;

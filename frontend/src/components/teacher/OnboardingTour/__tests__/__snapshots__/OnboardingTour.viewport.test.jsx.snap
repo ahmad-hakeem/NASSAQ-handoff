@@ -1,0 +1,121 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`OnboardingTour at 360px — Task #281 viewport fingerprint fingerprint @ 360px is stable 1`] = `
+Object {
+  "breakpoint_classes": Object {},
+  "element_count": 35,
+  "inner_width": 360,
+  "matched_breakpoints": Object {
+    "2xl": false,
+    "lg": false,
+    "md": false,
+    "sm": false,
+    "xl": false,
+  },
+  "root_class": "fixed inset-0 z-[9999]",
+  "root_tag": "div",
+  "spotlight": Object {
+    "height": "46",
+    "rx": "8",
+    "width": "126",
+    "x": "77",
+    "y": "97",
+  },
+  "tooltip": Object {
+    "left": 77,
+    "top": 97,
+    "width": 126,
+  },
+  "width": 360,
+}
+`;
+
+exports[`OnboardingTour at 414px — Task #281 viewport fingerprint fingerprint @ 414px is stable 1`] = `
+Object {
+  "breakpoint_classes": Object {},
+  "element_count": 35,
+  "inner_width": 414,
+  "matched_breakpoints": Object {
+    "2xl": false,
+    "lg": false,
+    "md": false,
+    "sm": false,
+    "xl": false,
+  },
+  "root_class": "fixed inset-0 z-[9999]",
+  "root_tag": "div",
+  "spotlight": Object {
+    "height": "46",
+    "rx": "8",
+    "width": "126",
+    "x": "77",
+    "y": "97",
+  },
+  "tooltip": Object {
+    "left": 77,
+    "top": 97,
+    "width": 126,
+  },
+  "width": 414,
+}
+`;
+
+exports[`OnboardingTour at 768px — Task #281 viewport fingerprint fingerprint @ 768px is stable 1`] = `
+Object {
+  "breakpoint_classes": Object {},
+  "element_count": 35,
+  "inner_width": 768,
+  "matched_breakpoints": Object {
+    "2xl": false,
+    "lg": false,
+    "md": true,
+    "sm": true,
+    "xl": false,
+  },
+  "root_class": "fixed inset-0 z-[9999]",
+  "root_tag": "div",
+  "spotlight": Object {
+    "height": "52",
+    "rx": "12",
+    "width": "132",
+    "x": "74",
+    "y": "94",
+  },
+  "tooltip": Object {
+    "left": 74,
+    "top": 94,
+    "width": 132,
+  },
+  "width": 768,
+}
+`;
+
+exports[`OnboardingTour at 1024px — Task #281 viewport fingerprint fingerprint @ 1024px is stable 1`] = `
+Object {
+  "breakpoint_classes": Object {},
+  "element_count": 35,
+  "inner_width": 1024,
+  "matched_breakpoints": Object {
+    "2xl": false,
+    "lg": true,
+    "md": true,
+    "sm": true,
+    "xl": false,
+  },
+  "root_class": "fixed inset-0 z-[9999]",
+  "root_tag": "div",
+  "spotlight": Object {
+    "height": "52",
+    "rx": "12",
+    "width": "132",
+    "x": "74",
+    "y": "94",
+  },
+  "tooltip": Object {
+    "left": 74,
+    "top": 94,
+    "width": 132,
+  },
+  "width": 1024,
+}
+`;

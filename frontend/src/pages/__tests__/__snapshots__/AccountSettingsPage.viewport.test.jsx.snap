@@ -1,0 +1,97 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`AccountSettingsPage (IT) at 360px — Task #281 viewport fingerprint fingerprint @ 360px is stable 1`] = `
+Object {
+  "breakpoint_classes": Object {
+    "lg:grid-cols-[280px_1fr]": 1,
+    "lg:self-start": 1,
+    "lg:sticky": 1,
+    "lg:top-[80px]": 1,
+    "md:grid-cols-2": 1,
+  },
+  "element_count": 167,
+  "inner_width": 360,
+  "matched_breakpoints": Object {
+    "2xl": false,
+    "lg": false,
+    "md": false,
+    "sm": false,
+    "xl": false,
+  },
+  "root_class": "",
+  "root_tag": "div",
+  "width": 360,
+}
+`;
+
+exports[`AccountSettingsPage (IT) at 414px — Task #281 viewport fingerprint fingerprint @ 414px is stable 1`] = `
+Object {
+  "breakpoint_classes": Object {
+    "lg:grid-cols-[280px_1fr]": 1,
+    "lg:self-start": 1,
+    "lg:sticky": 1,
+    "lg:top-[80px]": 1,
+    "md:grid-cols-2": 1,
+  },
+  "element_count": 167,
+  "inner_width": 414,
+  "matched_breakpoints": Object {
+    "2xl": false,
+    "lg": false,
+    "md": false,
+    "sm": false,
+    "xl": false,
+  },
+  "root_class": "",
+  "root_tag": "div",
+  "width": 414,
+}
+`;
+
+exports[`AccountSettingsPage (IT) at 768px — Task #281 viewport fingerprint fingerprint @ 768px is stable 1`] = `
+Object {
+  "breakpoint_classes": Object {
+    "lg:grid-cols-[280px_1fr]": 1,
+    "lg:self-start": 1,
+    "lg:sticky": 1,
+    "lg:top-[80px]": 1,
+    "md:grid-cols-2": 1,
+  },
+  "element_count": 167,
+  "inner_width": 768,
+  "matched_breakpoints": Object {
+    "2xl": false,
+    "lg": false,
+    "md": true,
+    "sm": true,
+    "xl": false,
+  },
+  "root_class": "",
+  "root_tag": "div",
+  "width": 768,
+}
+`;
+
+exports[`AccountSettingsPage (IT) at 1024px — Task #281 viewport fingerprint fingerprint @ 1024px is stable 1`] = `
+Object {
+  "breakpoint_classes": Object {
+    "lg:grid-cols-[280px_1fr]": 1,
+    "lg:self-start": 1,
+    "lg:sticky": 1,
+    "lg:top-[80px]": 1,
+    "md:grid-cols-2": 1,
+  },
+  "element_count": 167,
+  "inner_width": 1024,
+  "matched_breakpoints": Object {
+    "2xl": false,
+    "lg": true,
+    "md": true,
+    "sm": true,
+    "xl": false,
+  },
+  "root_class": "",
+  "root_tag": "div",
+  "width": 1024,
+}
+`;
