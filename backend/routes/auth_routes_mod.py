@@ -84,7 +84,8 @@ async def register(user_data: UserCreate):
         is_active=True,
         preferred_language="ar",
         preferred_theme="light",
-        created_at=user_doc["created_at"]
+        created_at=user_doc["created_at"],
+        mfa_enrolled_at=None,
     )
     
     return TokenResponse(access_token=token, user=user_response)
@@ -454,7 +455,8 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
         created_at=user.get("created_at") or "",
         teacher_id=user.get("teacher_id"),
         student_id=user.get("student_id"),
-        parent_id=user.get("parent_id")
+        parent_id=user.get("parent_id"),
+        mfa_enrolled_at=user.get("mfa_enrolled_at"),
     )
     
     # Task #231 — embed the IT workspace lifecycle snapshot (including the
@@ -803,7 +805,8 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         student_id=current_user.get("student_id"),
         parent_id=current_user.get("parent_id"),
         is_switched=bool(current_user.get("is_switched")),
-        original_role=current_user.get("original_role")
+        original_role=current_user.get("original_role"),
+        mfa_enrolled_at=current_user.get("mfa_enrolled_at"),
     )
 
 @router.get("/auth/me/permissions")

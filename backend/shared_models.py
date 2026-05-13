@@ -133,6 +133,11 @@ class UserResponse(BaseModel):
     parent_id: Optional[str] = None
     is_switched: bool = False
     original_role: Optional[str] = None
+    # Surfaced so the FE first-login orchestration (LoginPage.resolveRedirectTarget,
+    # RouteGuards IT MFA gate, MfaEnrollPage Continue gate) can tell whether
+    # the user already has a second factor. Without this, every IT login was
+    # bounced back to /auth/mfa/enroll because the FE always read it as null.
+    mfa_enrolled_at: Optional[str] = None
 
 class TokenResponse(BaseModel):
     access_token: Optional[str] = None

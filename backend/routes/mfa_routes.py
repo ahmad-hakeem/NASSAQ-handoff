@@ -233,6 +233,7 @@ async def _complete_mfa_login(
         teacher_id=user.get("teacher_id"),
         student_id=user.get("student_id"),
         parent_id=user.get("parent_id"),
+        mfa_enrolled_at=user.get("mfa_enrolled_at"),
     )
 
     # Surface the "show recovery codes again" hint if the user has never
