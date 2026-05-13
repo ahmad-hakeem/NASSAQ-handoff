@@ -53,6 +53,7 @@ import {
   ChevronDown,
   Upload,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 
 
@@ -281,6 +282,13 @@ export const Sidebar = ({ children }) => {
         icon: Shield,
         label: t('securityCenter'),
         href: '/admin/security',
+        roles: ['platform_admin'],
+      },
+      // Task #225 — IT §6.8 platform-admin hard-delete UI for archived workspaces.
+      {
+        icon: Trash2,
+        label: t('workspacePurgeMenu'),
+        href: '/admin/workspace-purge',
         roles: ['platform_admin'],
       },
       {

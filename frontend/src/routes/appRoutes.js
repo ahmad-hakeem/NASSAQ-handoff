@@ -86,6 +86,8 @@ const PlatformUsersPage = lazy(() => import("../pages/PlatformUsersPage").then(m
 const PlatformNotificationsPage = lazy(() => import("../pages/PlatformNotificationsPage").then(m => ({ default: m.PlatformNotificationsPage })));
 const PlatformSettingsPage = lazy(() => import("../pages/PlatformSettingsPage").then(m => ({ default: m.PlatformSettingsPage })));
 const RulesManagementPage = lazy(() => import("../pages/RulesManagementPage").then(m => ({ default: m.RulesManagementPage })));
+// Task #225 — IT §6.8 platform-admin hard-delete UI for archived workspaces.
+const PlatformWorkspacePurgePage = lazy(() => import("../pages/PlatformWorkspacePurgePage").then(m => ({ default: m.PlatformWorkspacePurgePage })));
 // Heavy: SystemMonitoringPage pulls recharts
 const SystemMonitoringPage = lazy(() => import("../pages/SystemMonitoringPage").then(m => ({ default: m.SystemMonitoringPage })));
 const IntegrationsPage = lazy(() => import("../pages/IntegrationsPage"));
@@ -222,6 +224,10 @@ export default function AppRoutes() {
         } />
         <Route path="/admin/security" element={
           <ProtectedRoute allowedRoles={['platform_admin']}><SecurityCenterPage /></ProtectedRoute>
+        } />
+        {/* Task #225 — IT §6.8 platform-admin hard-delete UI. */}
+        <Route path="/admin/workspace-purge" element={
+          <ProtectedRoute allowedRoles={['platform_admin']}><PlatformWorkspacePurgePage /></ProtectedRoute>
         } />
         <Route path="/admin/audit" element={
           <ProtectedRoute allowedRoles={['platform_admin', 'platform_security_officer', 'platform_data_analyst']}><AuditLogsPage /></ProtectedRoute>
