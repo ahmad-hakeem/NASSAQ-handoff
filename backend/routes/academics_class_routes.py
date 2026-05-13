@@ -33,6 +33,50 @@ router = APIRouter()
 
 # ============== CLASSES ROUTES ==============
 
+def _normalize_class_name(value: Optional[str]) -> str:
+    """Normalize a class name for case-insensitive duplicate comparison.
+
+    Trims surrounding whitespace, collapses internal whitespace, and
+    case-folds. Returns an empty string for falsy input so the dedupe
+    check is a no-op when no name was supplied.
+    """
+    if not value:
+        return ""
+    return " ".join(str(value).split()).casefold()
+
+
+async def _assert_class_name_unique(
+    school_id: Optional[str],
+    name: Optional[str],
+    name_en: Optional[str] = None,
+    exclude_id: Optional[str] = None,
+) -> None:
+    """Reject the request if another active class in the same workspace
+    already uses this `name` or `name_en` (case-insensitive, whitespace-
+    normalized). Soft-deleted (`is_active=False`) rows are ignored so a
+    teacher can re-create a previously deleted class (Task #308).
+    Mirrors `_assert_subject_name_unique` in academics_subject_routes.
+    """
+    candidates = {n for n in (_normalize_class_name(name), _normalize_class_name(name_en)) if n}
+    if not candidates or not school_id:
+        return
+    existing = await gd_find(
+        db.session,
+        "classes",
+        {"school_id": school_id, "is_active": {"$ne": False}},
+        limit=1000,
+    )
+    for row in existing:
+        if exclude_id and row.get("id") == exclude_id:
+            continue
+        existing_names = {
+            _normalize_class_name(row.get("name")),
+            _normalize_class_name(row.get("name_en")),
+        }
+        if candidates & (existing_names - {""}):
+            raise HTTPException(status_code=409, detail="يوجد بالفعل فصل بنفس الاسم")
+
+
 # Class Wizard Options
 
 class ClassWizardCreate(BaseModel):
@@ -106,13 +150,16 @@ async def create_class_wizard(
         class_name = f"{grade_name} - {data.section or 'أ'}"
     
     grade_name = grade_level.get("name_ar") if grade_level else f"الصف {grade_number}"
-    
+
+    class_name_en = data.name_en or f"Grade {grade_number} - {data.section or 'A'}"
+    await _assert_class_name_unique(school_id, class_name, class_name_en)
+
     # Create class document - use correct field names for ORM model
     class_doc = {
         "id": class_id,
         "school_id": school_id,
         "name": class_name,
-        "name_en": data.name_en or f"Grade {grade_number} - {data.section or 'A'}",
+        "name_en": class_name_en,
         "grade_id": grade_level.get("id") if grade_level else data.grade_id,
         "grade_level": data.grade_id,
         "capacity": data.capacity,
@@ -169,6 +216,8 @@ async def create_class(
     user_tenant = current_user.get("tenant_id")
     if user_tenant and school_id != user_tenant:
         raise HTTPException(status_code=403, detail="لا يمكنك إنشاء فصل في مدرسة أخرى / Cannot create class in another school")
+
+    await _assert_class_name_unique(school_id, class_data.name, getattr(class_data, 'name_en', None))
 
     class_id = str(uuid.uuid4())
     
@@ -355,11 +404,22 @@ async def update_class(
     """Update class. IT callers can only touch their own workspace
     (cross-workspace ids return 404 per §8 inv. 3)."""
     from auth_scope import is_independent_teacher, independent_workspace_id
+    existing = None
     if is_independent_teacher(current_user):
         wsid = independent_workspace_id(current_user)
         existing = await gd_find_one(db.session, "classes", {"id": class_id, "school_id": wsid})
         if not existing:
             raise HTTPException(status_code=404, detail="الفصل غير موجود")
+    if class_data.name is not None or class_data.name_en is not None:
+        if existing is None:
+            existing = await gd_find_one(db.session, "classes", {"id": class_id})
+        if existing:
+            await _assert_class_name_unique(
+                existing.get("school_id"),
+                class_data.name if class_data.name is not None else existing.get("name"),
+                class_data.name_en if class_data.name_en is not None else existing.get("name_en"),
+                exclude_id=class_id,
+            )
     # Build update dict with only provided fields
     update_fields = {"updated_at": datetime.now(timezone.utc).isoformat()}
     
