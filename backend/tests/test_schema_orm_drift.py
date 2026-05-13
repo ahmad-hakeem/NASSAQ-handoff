@@ -40,10 +40,6 @@ KNOWN_DB_ONLY_TABLES: frozenset[str] = frozenset({
     "_deployment_markers",      # deploy-time marker rows, raw-SQL managed
     "impersonation_sessions",   # legacy table, accessed only via raw SQL
     "revoked_token_families",   # legacy table, accessed only via raw SQL
-    # IT Phase-2 tables managed via raw SQL / gd_* helpers (no ORM model yet).
-    "parent_invitations",       # IT §6.2 — Alembic a3b4c5d6e7f8
-    "workspace_collaborators",  # IT §6.7 — Alembic b1d2e3f4a5b7
-    "workspace_quota",          # IT §6.1 — Alembic b4d5e6f7a8b0
 })
 
 # Columns present in the live DB but intentionally absent from the ORM model
