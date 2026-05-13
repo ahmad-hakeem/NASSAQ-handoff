@@ -211,6 +211,49 @@ async def list_recent_purges(
     }
 
 
+async def purge_workspace_cascade(workspace_id: str) -> tuple[Dict[str, int], List[str], int]:
+    """Run the workspace child→parent purge cascade.
+
+    Shared helper so both the platform-admin hard-delete endpoint and the
+    Task #276 daily erasure sweep follow the exact same delete order +
+    schema-drift tolerance. Caller is responsible for the surrounding
+    transaction (savepoint), audit logging, and pre-flight gating
+    (e.g. checking ``pending_hard_delete`` / ``erasure_requested_at``).
+
+    Returns ``(deleted_counts, skipped_keys, schools_deleted)``. Raises
+    on hard DB errors so the caller's savepoint rolls back.
+    """
+    deleted_counts: Dict[str, int] = {}
+    skipped: List[str] = []
+    schools_deleted = 0
+    for table_name, scope_col in _PURGE_TABLES:
+        key = f"{table_name}.{scope_col}"
+        is_parent = table_name == "schools"
+        try:
+            n = await gd_delete_many(
+                db.session, table_name, {scope_col: workspace_id},
+            )
+        except ProgrammingError as exc:
+            pgcode = getattr(getattr(exc, "orig", None), "sqlstate", None)
+            if is_parent or pgcode not in {"42P01", "42703"}:
+                raise
+            logger.warning(
+                "purge_workspace_cascade: skipping %s scope=%s pgcode=%s: %s",
+                table_name, scope_col, pgcode, exc,
+            )
+            skipped.append(key)
+            continue
+        if is_parent:
+            schools_deleted = int(n or 0)
+        if n:
+            deleted_counts[key] = deleted_counts.get(key, 0) + int(n)
+    if schools_deleted < 1:
+        raise RuntimeError(
+            f"purge_workspace_cascade: schools row {workspace_id} not deleted",
+        )
+    return deleted_counts, skipped, schools_deleted
+
+
 @router.post("/platform/workspaces/{workspace_id}/hard-delete")
 async def hard_delete_workspace(
     workspace_id: str,
@@ -239,50 +282,12 @@ async def hard_delete_workspace(
 
     deleted_counts: Dict[str, int] = {}
     skipped: List[str] = []
-    schools_deleted = 0
 
     try:
         async with db.session.begin_nested():
-            for table_name, scope_col in _PURGE_TABLES:
-                key = f"{table_name}.{scope_col}"
-                is_parent = table_name == "schools"
-                try:
-                    n = await gd_delete_many(
-                        db.session, table_name, {scope_col: workspace_id},
-                    )
-                except ProgrammingError as exc:
-                    # Narrow allow-list: only tolerate schema-drift
-                    # cases (undefined table / undefined column —
-                    # asyncpg pgcodes 42P01 / 42703). Everything else
-                    # — FK violation, lock timeout, generic DB error
-                    # — must abort the purge so we never report
-                    # success while data is still on disk. The
-                    # ``schools`` parent row is NEVER allowed to be
-                    # skipped — its absence would be a contract bug,
-                    # not schema drift.
-                    pgcode = getattr(getattr(exc, "orig", None), "sqlstate", None)
-                    if is_parent or pgcode not in {"42P01", "42703"}:
-                        raise
-                    logger.warning(
-                        "hard_delete: skipping %s scope=%s pgcode=%s: %s",
-                        table_name, scope_col, pgcode, exc,
-                    )
-                    skipped.append(key)
-                    continue
-                if is_parent:
-                    schools_deleted = int(n or 0)
-                if n:
-                    deleted_counts[key] = deleted_counts.get(key, 0) + int(n)
-
-            if schools_deleted < 1:
-                # Defensive — the row existed at the top of the
-                # handler (we already 404'd otherwise), so a 0-row
-                # delete here means somebody raced us or the FK
-                # cascade silently swallowed the row. Either way the
-                # contract is broken; fail the savepoint.
-                raise RuntimeError(
-                    f"hard_delete: schools row {workspace_id} not deleted",
-                )
+            deleted_counts, skipped, _schools_deleted = await purge_workspace_cascade(
+                workspace_id,
+            )
 
             await audit_engine.log(
                 action=AUDIT_HARD_DELETED,
@@ -321,4 +326,4 @@ async def hard_delete_workspace(
     }
 
 
-__all__ = ["router"]
+__all__ = ["router", "purge_workspace_cascade", "_PURGE_TABLES"]

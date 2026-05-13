@@ -29,6 +29,7 @@ const ForcePasswordChange = lazy(() => import("../pages/ForcePasswordChange"));
 const ParentInvitationAcceptPage = lazy(() => import("../pages/ParentInvitationAcceptPage"));
 // Task #210 — IT §6.7 cross-workspace collaborator accept landing.
 const CollabInvitationAcceptPage = lazy(() => import("../pages/CollabInvitationAcceptPage"));
+const AccountErasedPage = lazy(() => import("../pages/AccountErasedPage"));
 
 // Heavy: AdminDashboard pulls recharts
 const AdminDashboard = lazy(() => import("../pages/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
@@ -187,6 +188,10 @@ export default function AppRoutes() {
             access is intentional — the token in the URL is the auth. */}
         <Route path="/parent-invitations/accept" element={<ParentInvitationAcceptPage />} />
         <Route path="/teacher/collab-accept" element={<CollabInvitationAcceptPage />} />
+        {/* Task #276 — public landing after IT account-erasure request.
+            The session is force-logged-out before redirect, so this
+            page renders without auth and surfaces the deadline copy. */}
+        <Route path="/account-erased" element={<AccountErasedPage />} />
         <Route path="/workspace-collaborators/accept" element={<CollabInvitationAcceptPage />} />
 
         {/* Force Password Change */}

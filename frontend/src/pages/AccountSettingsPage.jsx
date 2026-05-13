@@ -55,6 +55,7 @@ import {
   Database,
   RotateCcw,
   Users2,
+  Trash2,
 } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -219,6 +220,15 @@ export const AccountSettingsPage = () => {
   const [lastExportExpiresAt, setLastExportExpiresAt] = useState(null);
   const [softDeleteOpen, setSoftDeleteOpen] = useState(false);
   const [softDeleteConfirmName, setSoftDeleteConfirmName] = useState('');
+  // Task #276 — IT account erasure (GDPR right-to-be-forgotten).
+  // Multi-step flow: 'consequences' → 'confirm' (verbatim name +
+  // checkbox). Tier-A MFA is collected by the AuthContext axios
+  // interceptor when the POST returns the 403 step-up envelope, so
+  // there is no separate MFA step in the dialog.
+  const [erasureOpen, setErasureOpen] = useState(false);
+  const [erasureStep, setErasureStep] = useState('consequences');
+  const [erasureConfirmName, setErasureConfirmName] = useState('');
+  const [erasureAcknowledged, setErasureAcknowledged] = useState(false);
   // §6.8 — the soft-delete confirm step is gated by a fresh export
   // (within 24h) so the user always has a downloadable copy of their
   // data before the workspace is archived. Server re-validates the
@@ -691,6 +701,68 @@ export const AccountSettingsPage = () => {
         nassaqWarning(detail || t('itSoftDeleteNameMismatch'));
       } else {
         nassaqError(detail || t('itSoftDeleteFailed'));
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Task #276 — IT account erasure handlers.
+  //
+  // Step 1 (consequences) is surfaced through NassaqAlertDialog
+  // (`nassaqConfirm`) per repo policy — never `window.confirm` /
+  // `toast.error` for important warnings. Step 2 collects the
+  // verbatim workspace name + acknowledge checkbox, which still
+  // requires an inline AlertDialog (the NassaqAlert primitive does
+  // not accept embedded inputs); the inline dialog uses the same
+  // visual styling as the existing soft-delete confirm and routes
+  // every error variant back through `nassaqWarning` / `nassaqError`.
+  const handleOpenErasure = () => {
+    setErasureConfirmName('');
+    setErasureAcknowledged(false);
+    setErasureStep('confirm');
+    nassaqConfirm(
+      t('itErasureDialogConsequences'),
+      () => { setErasureOpen(true); },
+      {
+        title: t('itErasureDialogTitle'),
+        confirmText: t('itErasureContinue'),
+        cancelText: t('cancel'),
+      },
+    );
+  };
+
+  const handleConfirmErasure = async () => {
+    setSaving(true);
+    try {
+      const { data } = await api.post(
+        '/independent-teacher/workspace/request-erasure',
+        {
+          confirm_workspace_name: erasureConfirmName.trim(),
+          acknowledged: true,
+        },
+      );
+      setErasureOpen(false);
+      const deadline = data?.erasure_deadline
+        ? formatHijriDate(new Date(data.erasure_deadline))
+        : '';
+      const msg = (t('itErasureSuccessMessage') || '').replace('{0}', deadline);
+      nassaqInfo(msg, {
+        title: t('itErasureSuccessTitle'),
+        onConfirm: () => {
+          try { logout(); } catch (_e) {}
+          try { window.location.assign('/account-erased'); } catch (_e) {}
+        },
+      });
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      const status = error?.response?.status;
+      if (status === 409) {
+        nassaqWarning(detail || t('itErasureAlreadyRequested'));
+      } else if (status === 422) {
+        nassaqWarning(detail || t('itErasureNameMismatch'));
+      } else {
+        nassaqError(detail || t('itErasureFailed'));
       }
     } finally {
       setSaving(false);
@@ -1964,6 +2036,22 @@ export const AccountSettingsPage = () => {
                           <AlertTriangle className="h-4 w-4" />
                           {t('itSoftDeleteOpen')}
                         </Button>
+                        {/* Task #276 — IT GDPR right-to-be-forgotten CTA.
+                            Distinct from archive: this is a ONE-WAY
+                            erasure request that triggers the configured
+                            grace window then a physical purge. Disabled
+                            once the workspace is already archived/erasure
+                            so users cannot double-submit. */}
+                        <Button
+                          type="button"
+                          onClick={handleOpenErasure}
+                          disabled={saving || !!hub.lifecycle?.archived_at || !!hub.lifecycle?.pending_hard_delete}
+                          className="rounded-xl bg-red-600 hover:bg-red-700 text-white gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          data-testid="it-hub-erasure-btn"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          {t('itErasureOpen')}
+                        </Button>
                       </div>
                       {!softDeleteEligible && !hub.lifecycle?.archived_at && (
                         <p
@@ -2127,6 +2215,78 @@ export const AccountSettingsPage = () => {
                 onClick={() => setSoftDeleteOpen(false)}
                 className="rounded-xl"
                 data-testid="it-soft-delete-cancel-btn"
+              >
+                {t('cancel')}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Task #276 — IT account erasure (GDPR right-to-be-forgotten)
+            STEP 2 confirm. Step 1 (consequences) is collected via
+            NassaqAlertDialog (`nassaqConfirm`) inside
+            `handleOpenErasure`. This inline AlertDialog only
+            appears after the user accepts step 1; it collects the
+            verbatim workspace-name match + explicit acknowledge
+            checkbox. Tier-A MFA is collected automatically by the
+            AuthContext axios interceptor when the POST returns the
+            403 step-up envelope — no extra MFA UI here. */}
+        <AlertDialog open={erasureOpen} onOpenChange={setErasureOpen}>
+          <AlertDialogContent dir="rtl" data-testid="it-erasure-dialog">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="font-cairo text-red-700 flex items-center gap-2">
+                <Trash2 className="h-4 w-4" />
+                {t('itErasureDialogTitle')}
+              </AlertDialogTitle>
+              <AlertDialogDescription className="font-tajawal text-sm whitespace-pre-wrap">
+                {t('itErasureDialogConfirmBody')}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="it-erasure-confirm-input" className="font-tajawal text-xs">
+                  {t('itErasureConfirmLabel')}
+                </Label>
+                <Input
+                  id="it-erasure-confirm-input"
+                  value={erasureConfirmName}
+                  onChange={(e) => setErasureConfirmName(e.target.value)}
+                  placeholder={t('itErasureConfirmPlaceholder')}
+                  data-testid="it-erasure-confirm-input"
+                />
+              </div>
+              <label className="flex items-start gap-2 text-xs font-tajawal text-red-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={erasureAcknowledged}
+                  onChange={(e) => setErasureAcknowledged(e.target.checked)}
+                  className="mt-0.5 accent-red-600"
+                  data-testid="it-erasure-ack-checkbox"
+                />
+                <span>{t('itErasureAckLabel')}</span>
+              </label>
+            </div>
+            <AlertDialogFooter className="gap-2 flex-row-reverse">
+              <Button
+                type="button"
+                onClick={handleConfirmErasure}
+                disabled={
+                  saving
+                  || !erasureConfirmName.trim()
+                  || !erasureAcknowledged
+                }
+                className="bg-red-600 hover:bg-red-700 text-white rounded-xl gap-2"
+                data-testid="it-erasure-confirm-btn"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {t('itErasureConfirm')}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setErasureOpen(false)}
+                className="rounded-xl"
+                data-testid="it-erasure-cancel-btn"
               >
                 {t('cancel')}
               </Button>

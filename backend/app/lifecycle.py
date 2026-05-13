@@ -246,10 +246,36 @@ async def startup_tasks():
     except Exception as e:
         logger.warning(f"Could not schedule auto-export loop: {e}")
 
+    # Task #276 — daily sweep that physically purges IT workspaces
+    # whose erasure grace window has elapsed (GDPR right-to-be-forgotten).
+    async def _erasure_purge_loop():
+        try:
+            await _asyncio.sleep(90)
+            while True:
+                try:
+                    await _run_with_session(
+                        "Workspace erasure purge sweep",
+                        _sweep_erasure_purges,
+                    )
+                except Exception as e:
+                    logger.warning(f"Erasure purge loop: {e}")
+                await _asyncio.sleep(24 * 60 * 60)
+        except _asyncio.CancelledError:
+            logger.info("Erasure purge loop cancelled (shutdown)")
+            raise
+
+    try:
+        global _erasure_purge_task
+        _erasure_purge_task = _asyncio.create_task(_erasure_purge_loop())
+        logger.info("Workspace erasure purge loop scheduled (daily)")
+    except Exception as e:
+        logger.warning(f"Could not schedule erasure purge loop: {e}")
+
 
 _revoked_token_cleanup_task = None
 _reactivation_reminder_task = None
 _auto_export_task = None
+_erasure_purge_task = None
 
 
 # Reminder copy is sent once when the remaining reactivation window is
@@ -543,6 +569,107 @@ async def _sweep_reactivation_reminders():
     return sent
 
 
+async def _sweep_erasure_purges():
+    """Find every IT workspace whose ``erasure_requested_at`` is older
+    than its configured ``erasure_window_days`` and physically purge
+    it via the shared ``purge_workspace_cascade`` helper.
+
+    Called once daily from the background loop. Each workspace is
+    processed in its own savepoint so a single failure does not block
+    the rest of the batch. Audit row ``INDEPENDENT_TEACHER_ERASURE_COMPLETED``
+    is written before the parent ``schools`` row is deleted (the audit
+    table is in a separate schema and is not in ``_PURGE_TABLES``).
+    """
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    from routes.platform_workspace_purge_routes import purge_workspace_cascade
+    from routes.independent_teacher_workspace_lifecycle_routes import (
+        AUDIT_ERASURE_COMPLETED,
+    )
+    from dependencies import audit_engine
+
+    now = _dt.now(_tz.utc)
+
+    candidates = await gd_find(db.session, "schools", {"status": "archived"})
+    purged = 0
+    for school in candidates or []:
+        try:
+            requested_at = school.get("erasure_requested_at")
+            if not requested_at:
+                continue
+            if isinstance(requested_at, str):
+                try:
+                    requested_at = _dt.fromisoformat(
+                        requested_at.replace("Z", "+00:00"),
+                    )
+                except ValueError:
+                    continue
+            if requested_at.tzinfo is None:
+                requested_at = requested_at.replace(tzinfo=_tz.utc)
+            window_days = school.get("erasure_window_days") or 7
+            try:
+                window_days = int(window_days)
+            except (TypeError, ValueError):
+                window_days = 7
+            deadline = requested_at + _td(days=window_days)
+            if now < deadline:
+                continue
+
+            workspace_id = school.get("id")
+            snapshot = {
+                "name": school.get("name"),
+                "status": school.get("status"),
+                "erasure_requested_at": requested_at.isoformat(),
+                "erasure_window_days": window_days,
+                "purged_at": now.isoformat(),
+            }
+            try:
+                async with db.session.begin_nested():
+                    deleted_counts, skipped, _ = await purge_workspace_cascade(
+                        workspace_id,
+                    )
+                    # The schools row is now gone — audit_logs.school_id
+                    # is FK-constrained to schools(id), so we must NOT
+                    # propagate the workspace_id onto that column. The
+                    # workspace id is preserved in `details` for
+                    # forensics + cross-referencing the
+                    # INDEPENDENT_TEACHER_ERASURE_REQUESTED row.
+                    await audit_engine.log(
+                        action=AUDIT_ERASURE_COMPLETED,
+                        performed_by=None,
+                        actor_name="system:erasure-sweep",
+                        actor_role="system",
+                        tenant_id=None,
+                        entity_type="school",
+                        entity_id=workspace_id,
+                        details={
+                            "school_id": workspace_id,
+                            "tenant_id": workspace_id,
+                            "actor": "system:erasure-sweep",
+                            "deleted_counts": deleted_counts,
+                            "skipped_tables": skipped,
+                            "snapshot": snapshot,
+                        },
+                    )
+                purged += 1
+                logger.info(
+                    "erasure-sweep: purged workspace=%s deleted=%s skipped=%s",
+                    workspace_id, deleted_counts, skipped,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "erasure-sweep: purge failed for workspace=%s: %s",
+                    workspace_id, exc,
+                )
+        except Exception as exc:
+            logger.warning(
+                "erasure-sweep: candidate skip for school=%s: %s",
+                school.get("id"), exc,
+            )
+    if purged:
+        logger.info(f"Workspace erasure purges completed: {purged}")
+    return purged
+
+
 async def shutdown_tasks():
     # Cancel the revoked-token cleanup loop cleanly.
     try:
@@ -569,6 +696,19 @@ async def shutdown_tasks():
             _reactivation_reminder_task = None
     except Exception as e:
         logger.debug(f"Reminder loop cancellation: {e}")
+
+    # Cancel the erasure purge loop cleanly.
+    try:
+        global _erasure_purge_task
+        if _erasure_purge_task is not None and not _erasure_purge_task.done():
+            _erasure_purge_task.cancel()
+            try:
+                await _erasure_purge_task
+            except Exception:
+                pass
+            _erasure_purge_task = None
+    except Exception as e:
+        logger.debug(f"Erasure purge loop cancellation: {e}")
 
     try:
         from routes.websocket_routes import get_connection_manager

@@ -15,7 +15,8 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import (
     Column, String, Integer, Float, Boolean, DateTime, Text, Enum as SAEnum,
-    ForeignKey, Index, JSON, LargeBinary, UniqueConstraint, Sequence, text
+    ForeignKey, Index, JSON, LargeBinary, SmallInteger, UniqueConstraint,
+    Sequence, text
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
 from sqlalchemy.orm import relationship
@@ -161,6 +162,12 @@ class School(Base):
     last_reactivated_at = Column(DateTime(timezone=True), nullable=True)
     last_archive_cycle_archived_at = Column(DateTime(timezone=True), nullable=True)
     reactivation_banner_dismissed_at = Column(DateTime(timezone=True), nullable=True)
+    # Task #276 — IT account-erasure (GDPR) state. ``erasure_requested_at``
+    # is stamped at request time; the daily sweep purges the workspace
+    # once ``erasure_window_days`` has elapsed. Reactivation 410s while
+    # ``erasure_requested_at IS NOT NULL``.
+    erasure_requested_at = Column(DateTime(timezone=True), nullable=True)
+    erasure_window_days = Column(SmallInteger, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 

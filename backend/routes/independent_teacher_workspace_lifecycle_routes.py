@@ -74,6 +74,7 @@ from dependencies import (
     require_recent_mfa_403,
 )
 from engines.sql_utils import gd_count, gd_find, gd_find_one, gd_update_one
+from sqlalchemy.exc import ProgrammingError as _PgProgrammingError
 from quotas.independent_teacher import (
     MAX_CLASSES as _Q_MAX_CLASSES,
     MAX_LESSON_PLANS_PER_DAY as _Q_MAX_LESSON_PLANS,
@@ -91,8 +92,10 @@ from utils.trusted_proxy import extract_client_ip
 from engines.email_service import (
     send_workspace_archived_email,
     send_workspace_auto_export_email,
+    send_workspace_erasure_final_export_email,
     send_workspace_reactivation_reminder_email,
 )
+import os
 
 
 logger = logging.getLogger("nassaq.it_workspace_lifecycle")
@@ -107,6 +110,9 @@ AUDIT_EXPORT_DOWNLOADED = "INDEPENDENT_TEACHER_EXPORT_DOWNLOADED"
 AUDIT_SOFT_DELETE = "INDEPENDENT_TEACHER_SOFT_DELETE"
 AUDIT_REACTIVATE = "INDEPENDENT_TEACHER_REACTIVATE"
 AUDIT_PENDING_HARD_DELETE = "INDEPENDENT_TEACHER_PENDING_HARD_DELETE"
+# Task #276 — IT account-erasure (GDPR right-to-be-forgotten).
+AUDIT_ERASURE_REQUESTED = "INDEPENDENT_TEACHER_ERASURE_REQUESTED"
+AUDIT_ERASURE_COMPLETED = "INDEPENDENT_TEACHER_ERASURE_COMPLETED"
 
 
 # -- Safe Arabic copy -----------------------------------------------------
@@ -120,6 +126,26 @@ _MSG_NOT_ARCHIVED = "هذه المساحة ليست مؤرشفة."
 _MSG_REACTIVATE_EXPIRED = "انتهت مهلة الاسترجاع (٣٠ يومًا). تواصل مع الدعم."
 _MSG_DOWNLOAD_INVALID = "رابط التنزيل غير صالح أو منتهي الصلاحية."
 _MSG_RATE_LIMITED = "عدد المحاولات تجاوز الحد المسموح. حاول لاحقًا."
+_MSG_ERASURE_PENDING = "تم تسجيل طلب الحذف النهائي مسبقًا — لا يمكن إعادة التفعيل."
+_MSG_ALREADY_ERASURE = "تم تسجيل طلب الحذف النهائي مسبقًا."
+_MSG_NOT_ACKNOWLEDGED = "يجب تأكيد فهم العواقب قبل المتابعة."
+
+
+def _erasure_window_days() -> int:
+    """Read the configured erasure grace window. Default 7 days. Clamped
+    to [1, 90] so a misconfigured env var cannot skip the grace period
+    or stretch it indefinitely.
+    """
+    raw = os.getenv("WORKSPACE_ERASURE_WINDOW_DAYS", "7")
+    try:
+        v = int(raw)
+    except (TypeError, ValueError):
+        v = 7
+    if v < 1:
+        v = 1
+    if v > 90:
+        v = 90
+    return v
 
 # Reactivation window — fixed at 30 days per §6.8. Past this window
 # the on-login sweep flips ``pending_hard_delete=TRUE`` and the
@@ -170,6 +196,11 @@ _REDACTED_COLUMNS = {
 
 class SoftDeleteRequest(BaseModel):
     confirm_workspace_name: str = Field(min_length=1, max_length=200)
+
+
+class RequestErasureRequest(BaseModel):
+    confirm_workspace_name: str = Field(min_length=1, max_length=200)
+    acknowledged: bool = Field(default=False)
 
 
 # -- Helpers --------------------------------------------------------------
@@ -815,6 +846,208 @@ async def soft_delete_workspace(
     }
 
 
+# -- Endpoint: POST /independent-teacher/workspace/request-erasure -------
+#
+# Task #276 — IT account erasure (GDPR right-to-be-forgotten).
+#
+# Distinct from soft-delete: this CTA is shown alongside the archive
+# button in the IT danger-zone hub, and is a ONE-WAY operation. We
+# stamp ``erasure_requested_at`` + ``pending_hard_delete=TRUE`` +
+# ``status='archived'`` immediately, so the on-login gate locks the
+# user out and the reactivate endpoint 410s with a distinct message.
+# A daily background sweep (``app.lifecycle._sweep_erasure_purges``)
+# physically purges the workspace using the shared
+# ``purge_workspace_cascade`` helper once the configured window
+# elapses (env ``WORKSPACE_ERASURE_WINDOW_DAYS``, default 7 days).
+
+@router.post("/independent-teacher/workspace/request-erasure")
+async def request_workspace_erasure(
+    payload: RequestErasureRequest,
+    request: Request,
+    current_user: dict = Depends(_require_independent_teacher),
+    _mfa: dict = Depends(_recent_mfa_403_dep),
+    _perm: dict = Depends(_require_workspace_soft_delete_perm),
+):
+    school_id = require_request_school_id(current_user)
+    workspace_id = independent_workspace_id(current_user) or school_id
+
+    school = await gd_find_one(db.session, "schools", {"id": workspace_id})
+    if not school:
+        raise HTTPException(status_code=404, detail=_MSG_WORKSPACE_NOT_FOUND)
+
+    if school.get("erasure_requested_at"):
+        raise HTTPException(status_code=409, detail=_MSG_ALREADY_ERASURE)
+
+    if not bool(payload.acknowledged):
+        raise HTTPException(status_code=422, detail=_MSG_NOT_ACKNOWLEDGED)
+
+    submitted = (payload.confirm_workspace_name or "").strip()
+    expected = (school.get("name") or "").strip()
+    if not submitted or submitted != expected:
+        raise HTTPException(status_code=422, detail=_MSG_NAME_MISMATCH)
+
+    now = _utcnow()
+    window_days = _erasure_window_days()
+    erasure_deadline = now + timedelta(days=window_days)
+
+    # Forensics snapshot — captured BEFORE the archive flip so the
+    # row counts reflect the live state at the moment of the request.
+    forensics_snapshot = await _build_erasure_forensics_snapshot(
+        workspace_id, school,
+    )
+
+    # Mint a fresh single-use export token so the email link works
+    # even if the user already consumed any prior download. This is
+    # the user's last chance to grab their data before the sweep
+    # purges the workspace.
+    fresh_token, fresh_hash, fresh_expires_at = mint_workspace_export_token(
+        workspace_id, current_user["id"],
+    )
+
+    try:
+        async with db.session.begin_nested():
+            await gd_update_one(
+                db.session, "schools", {"id": workspace_id},
+                {
+                    "status": "archived",
+                    "archived_at": now.isoformat(),
+                    "updated_at": now.isoformat(),
+                    "pending_hard_delete": True,
+                    "erasure_requested_at": now.isoformat(),
+                    "erasure_window_days": window_days,
+                    "last_export_at": now.isoformat(),
+                    "last_export_token_hash": fresh_hash,
+                    "last_export_consumed_at": None,
+                    "reactivation_reminder_sent_at": None,
+                },
+            )
+            await audit_engine.log(
+                action=AUDIT_ERASURE_REQUESTED,
+                performed_by=current_user["id"],
+                tenant_id=workspace_id,
+                entity_type="school",
+                entity_id=workspace_id,
+                details={
+                    "school_id": workspace_id,
+                    "tenant_id": workspace_id,
+                    "user_id": current_user["id"],
+                    "requested_at": now.isoformat(),
+                    "erasure_window_days": window_days,
+                    "erasure_deadline": erasure_deadline.isoformat(),
+                    "snapshot": forensics_snapshot,
+                },
+                actor_name=current_user.get("full_name"),
+                actor_role=current_user.get("role"),
+                actor_email=current_user.get("email"),
+                ip_address=(request.client.host if request.client else None),
+                user_agent=request.headers.get("user-agent"),
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "request_workspace_erasure failed user=%s: %s",
+            current_user.get("id"), exc,
+        )
+        raise HTTPException(status_code=500, detail=_MSG_INTERNAL)
+
+    download_url = f"/api/public/workspace-export/{fresh_token}"
+
+    # Best-effort final-export email. Failure must NOT undo the
+    # erasure request — the in-app dialog already surfaced the
+    # download URL and deadline.
+    try:
+        from routes.independent_teacher_notifications_routes import should_send_channel
+        recipient = (current_user.get("email") or "").strip()
+        email_allowed = await should_send_channel(
+            current_user, "workspace_lifecycle", "email",
+        )
+        if (
+            email_allowed
+            and recipient
+            and "@" in recipient
+            and "@invite.nassaq.invalid" not in recipient
+        ):
+            send_workspace_erasure_final_export_email(
+                to_email=recipient,
+                user_name=current_user.get("full_name") or recipient,
+                workspace_name=(school.get("name") or "").strip() or workspace_id,
+                download_url=download_url,
+                download_expires_at=fresh_expires_at.isoformat(),
+                erasure_deadline=erasure_deadline.isoformat(),
+                erasure_window_days=window_days,
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("workspace erasure email dispatch failed: %s", exc)
+
+    return {
+        "ok": True,
+        "status": "archived",
+        "pending_hard_delete": True,
+        "erasure_requested_at": now.isoformat(),
+        "erasure_deadline": erasure_deadline.isoformat(),
+        "erasure_window_days": window_days,
+        "download_url": download_url,
+        "download_expires_at": fresh_expires_at.isoformat(),
+    }
+
+
+def _iso_or_none(v):
+    if not v:
+        return None
+    return v.isoformat() if hasattr(v, "isoformat") else str(v)
+
+
+async def _build_erasure_forensics_snapshot(
+    workspace_id: str, school: dict,
+) -> dict:
+    """Capture a per-table row-count forensics snapshot mirroring the
+    ``_EXPORT_TABLES`` scope. Stored on the
+    ``INDEPENDENT_TEACHER_ERASURE_REQUESTED`` audit row so downstream
+    forensics can compare these against the
+    ``INDEPENDENT_TEACHER_ERASURE_COMPLETED`` ``deleted_counts``
+    written by the daily sweep. Schema-drift tolerant: tables/columns
+    that no longer exist are recorded under ``skipped_tables`` so a
+    stale whitelist entry never blocks an erasure request.
+    """
+    counts: Dict[str, int] = {}
+    skipped: List[str] = []
+    for table_name, scope_col in _EXPORT_TABLES:
+        key = f"{table_name}.{scope_col}"
+        try:
+            n = await gd_count(
+                db.session, table_name, {scope_col: workspace_id},
+            )
+            counts[key] = int(n or 0)
+        except _PgProgrammingError as exc:
+            pgcode = getattr(getattr(exc, "orig", None), "sqlstate", None)
+            if pgcode in {"42P01", "42703"}:
+                skipped.append(key)
+                continue
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "erasure snapshot: count failed for %s: %s", key, exc,
+            )
+            skipped.append(key)
+    return {
+        "school": {
+            "id": school.get("id"),
+            "name": school.get("name"),
+            "status": school.get("status"),
+            "archived_at": _iso_or_none(school.get("archived_at")),
+            "last_export_at": _iso_or_none(school.get("last_export_at")),
+            "created_at": _iso_or_none(school.get("created_at")),
+        },
+        "table_row_counts": counts,
+        "skipped_tables": skipped,
+        "export_tables_whitelist": [
+            f"{t}.{c}" for t, c in _EXPORT_TABLES
+        ],
+        "redacted_columns_whitelist": sorted(_REDACTED_COLUMNS),
+    }
+
+
 # -- Endpoint: POST /independent-teacher/workspace/reactivate -------------
 
 @router.post("/independent-teacher/workspace/reactivate")
@@ -834,6 +1067,12 @@ async def reactivate_workspace(
         raise HTTPException(status_code=409, detail=_MSG_NOT_ARCHIVED)
 
     if school.get("pending_hard_delete"):
+        # Erasure-flow workspaces ALSO carry pending_hard_delete=TRUE,
+        # but the user-facing message must be different — they are not
+        # past a reactivation deadline, they have explicitly requested
+        # erasure and must be told the request cannot be undone.
+        if school.get("erasure_requested_at"):
+            raise HTTPException(status_code=410, detail=_MSG_ERASURE_PENDING)
         raise HTTPException(status_code=410, detail=_MSG_REACTIVATE_EXPIRED)
 
     archived_at = _coerce_dt(school.get("archived_at"))
