@@ -12,6 +12,7 @@ import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { formatHijriDate } from '../utils/hijriDate';
 import { useWorkspaceHubData } from '../hooks/useWorkspaceHubData';
 import { ResponsiveTable } from '../components/ui/ResponsiveTable';
+import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 import {
   User,
   Lock,
@@ -176,11 +177,46 @@ const FieldGroup = ({ label, icon: Icon, children }) => (
 // Task #252 — small inline helper for the workspace-hub quota card.
 // Renders "<used> of <max>" + a clamped progress bar; turns amber at 80%
 // and red at 100% so the user gets a visual hint before they hit the cap.
-const QuotaBar = ({ label, used, max, t, testid }) => {
+// Task #253 — small spark-line under each QuotaBar to show usage trend.
+// Renders only when at least 2 history points exist AND any point is
+// non-zero (a flat-zero series would just be visual noise). Tone matches
+// the bar's own threshold colour so the user sees the same "approaching
+// the cap" signal in both glyphs at once.
+const QuotaSparkline = ({ history, max, tone, testid }) => {
+  if (!Array.isArray(history) || history.length < 2) return null;
+  if (!history.some((v) => Number(v) > 0)) return null;
+  const data = history.map((v, i) => ({ i, v: Math.max(0, Number(v) || 0) }));
+  const safeMax = Math.max(0, Number(max) || 0);
+  const dataMax = Math.max(...data.map((d) => d.v));
+  // Domain top: at least the cap (so the trend is read against the cap),
+  // but if the user already overshot we let the chart grow.
+  const yTop = Math.max(safeMax || dataMax || 1, dataMax || 1);
+  const stroke = tone === 'red' ? '#ef4444' : tone === 'amber' ? '#f59e0b' : '#14b8a6';
+  return (
+    <div className="h-8 w-full -mt-0.5" data-testid={testid}>
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
+          <YAxis hide domain={[0, yTop]} />
+          <Line
+            type="monotone"
+            dataKey="v"
+            stroke={stroke}
+            strokeWidth={1.5}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+const QuotaBar = ({ label, used, max, t, testid, history }) => {
   const safeMax = Math.max(0, Number(max) || 0);
   const safeUsed = Math.max(0, Number(used) || 0);
   const pct = safeMax > 0 ? Math.min(100, Math.round((safeUsed / safeMax) * 100)) : 0;
-  const tone = pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-brand-turquoise';
+  const toneKey = pct >= 100 ? 'red' : pct >= 80 ? 'amber' : 'turquoise';
+  const tone = toneKey === 'red' ? 'bg-red-500' : toneKey === 'amber' ? 'bg-amber-500' : 'bg-brand-turquoise';
   return (
     <div className="space-y-1.5" data-testid={testid}>
       <div className="flex items-center justify-between text-xs font-tajawal">
@@ -192,6 +228,7 @@ const QuotaBar = ({ label, used, max, t, testid }) => {
       <div className="h-2 w-full rounded-full bg-muted/40 overflow-hidden">
         <div className={`h-full ${tone} transition-all`} style={{ width: `${pct}%` }} />
       </div>
+      <QuotaSparkline history={history} max={safeMax} tone={toneKey} testid={testid ? `${testid}-spark` : undefined} />
     </div>
   );
 };
@@ -1713,10 +1750,10 @@ export const AccountSettingsPage = () => {
                         </p>
                       ) : (
                         <div className="space-y-4">
-                          <QuotaBar label={t('itHubQuotaStudents')} used={hub.quota.current_students} max={hub.quota.max_students} t={t} testid="it-hub-quota-students" />
-                          <QuotaBar label={t('itHubQuotaClasses')} used={hub.quota.current_classes} max={hub.quota.max_classes} t={t} testid="it-hub-quota-classes" />
-                          <QuotaBar label={t('itHubQuotaImportsToday')} used={hub.quota.imports_today} max={hub.quota.max_imports_per_day} t={t} testid="it-hub-quota-imports" />
-                          <QuotaBar label={t('itHubQuotaLessonPlansToday')} used={hub.quota.lesson_plans_today} max={hub.quota.max_lesson_plans_per_day} t={t} testid="it-hub-quota-lesson-plans" />
+                          <QuotaBar label={t('itHubQuotaStudents')} used={hub.quota.current_students} max={hub.quota.max_students} t={t} testid="it-hub-quota-students" history={hub.quotaHistory?.students} />
+                          <QuotaBar label={t('itHubQuotaClasses')} used={hub.quota.current_classes} max={hub.quota.max_classes} t={t} testid="it-hub-quota-classes" history={hub.quotaHistory?.classes} />
+                          <QuotaBar label={t('itHubQuotaImportsToday')} used={hub.quota.imports_today} max={hub.quota.max_imports_per_day} t={t} testid="it-hub-quota-imports" history={hub.quotaHistory?.imports} />
+                          <QuotaBar label={t('itHubQuotaLessonPlansToday')} used={hub.quota.lesson_plans_today} max={hub.quota.max_lesson_plans_per_day} t={t} testid="it-hub-quota-lesson-plans" history={hub.quotaHistory?.lesson_plans} />
                           <div className="flex justify-end pt-2 border-t border-border/30">
                             <a
                               href="/teacher/import-students"

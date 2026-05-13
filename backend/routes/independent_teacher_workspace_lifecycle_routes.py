@@ -58,7 +58,7 @@ import zipfile
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from auth_scope import (
@@ -503,6 +503,136 @@ async def read_workspace_lifecycle(
     # the FE treats absent quota as "unknown" and hides the bar.
     quota = await _load_quota_snapshot(workspace_id)
     return _build_lifecycle_payload(workspace_id, school, quota=quota)
+
+
+# -- Endpoint: GET /independent-teacher/workspace/quota-history -----------
+#
+# Task #253 — daily-usage time series powering the workspace-hub
+# QuotaBar spark-lines. Returns the last N (default 14, max 30) UTC
+# days of per-metric usage so the IT user can see whether they're
+# trending toward a cap before they hit it.
+#
+# Series shape (all four arrays are the same length as ``days``):
+#   * ``students`` — cumulative active-student count at end-of-day
+#     (rows where ``school_id == ws AND created_at <= EOD``). Mirrors
+#     the "current_students / max_students" progress bar.
+#   * ``classes`` — cumulative class count at end-of-day, same scope.
+#   * ``imports`` — per-day count of bulk-import audit events
+#     (``INDEPENDENT_TEACHER_BULK_IMPORT_STUDENTS``); mirrors the
+#     daily ``imports_today`` counter that resets at UTC midnight.
+#   * ``lesson_plans`` — per-day count of saved generations from the
+#     ``lesson_plans`` table; mirrors ``lesson_plans_today``.
+#
+# Pure read; no MFA. Workspace-pinned via the same scope helpers as
+# every other route in this router so cross-workspace callers can't
+# probe foreign tenant counts.
+
+async def _load_quota_history(workspace_id: str, days: int) -> Dict[str, Any]:
+    """Build a ``days``-long daily series for the workspace-hub spark-lines.
+
+    Each metric is computed from existing tables; no new history table.
+    Failures degrade to zero-filled arrays so a single broken metric
+    never wedges the others. Day labels are ISO ``YYYY-MM-DD`` UTC dates,
+    oldest → newest, length == ``days``.
+    """
+    from sqlalchemy import select, func
+    from pg_models import Student, Class, AuditLog, LessonPlan
+
+    today = _utcnow().date()
+    start = today - timedelta(days=days - 1)
+    start_dt = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
+    day_list = [(start + timedelta(days=i)).isoformat() for i in range(days)]
+    day_index = {d: i for i, d in enumerate(day_list)}
+
+    out: Dict[str, Any] = {
+        "days": day_list,
+        "students": [0] * days,
+        "classes": [0] * days,
+        "imports": [0] * days,
+        "lesson_plans": [0] * days,
+    }
+
+    session = db.session
+
+    async def _cumulative(model, scope_col, scope_val, ts_col):
+        """Cumulative end-of-day count series.
+
+        ``prior`` is the row count strictly before ``start_dt``; we then
+        walk forward adding the per-day row counts so each cell is the
+        cumulative total at that day's end.
+        """
+        try:
+            prior_stmt = select(func.count()).select_from(model).where(
+                scope_col == scope_val, ts_col < start_dt,
+            )
+            prior = int((await session.execute(prior_stmt)).scalar() or 0)
+            per_day_stmt = select(
+                func.date(ts_col).label("d"), func.count().label("c"),
+            ).where(
+                scope_col == scope_val, ts_col >= start_dt,
+            ).group_by(func.date(ts_col))
+            rows = (await session.execute(per_day_stmt)).all()
+            added: Dict[str, int] = {}
+            for r in rows:
+                key = r[0].isoformat() if hasattr(r[0], "isoformat") else str(r[0])
+                added[key] = int(r[1])
+            running = prior
+            series = [0] * days
+            for i, d in enumerate(day_list):
+                running += added.get(d, 0)
+                series[i] = running
+            return series
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("quota-history cumulative %s failed: %s", model.__tablename__, exc)
+            return [0] * days
+
+    async def _per_day(model, scope_col, scope_val, ts_col, extra=None):
+        try:
+            conds = [scope_col == scope_val, ts_col >= start_dt]
+            if extra is not None:
+                conds.append(extra)
+            stmt = select(
+                func.date(ts_col).label("d"), func.count().label("c"),
+            ).where(*conds).group_by(func.date(ts_col))
+            rows = (await session.execute(stmt)).all()
+            series = [0] * days
+            for r in rows:
+                key = r[0].isoformat() if hasattr(r[0], "isoformat") else str(r[0])
+                idx = day_index.get(key)
+                if idx is not None:
+                    series[idx] = int(r[1])
+            return series
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("quota-history per-day %s failed: %s", model.__tablename__, exc)
+            return [0] * days
+
+    out["students"] = await _cumulative(
+        Student, Student.school_id, workspace_id, Student.created_at,
+    )
+    out["classes"] = await _cumulative(
+        Class, Class.school_id, workspace_id, Class.created_at,
+    )
+    out["imports"] = await _per_day(
+        AuditLog, AuditLog.school_id, workspace_id, AuditLog.timestamp,
+        extra=(AuditLog.action == "INDEPENDENT_TEACHER_BULK_IMPORT_STUDENTS"),
+    )
+    out["lesson_plans"] = await _per_day(
+        LessonPlan, LessonPlan.workspace_school_id, workspace_id, LessonPlan.created_at,
+    )
+    return out
+
+
+@router.get("/independent-teacher/workspace/quota-history")
+async def read_quota_history(
+    days: int = Query(default=14, ge=1, le=30),
+    current_user: dict = Depends(_require_independent_teacher),
+):
+    workspace_id = independent_workspace_id(current_user) or require_request_school_id(current_user)
+    school = await gd_find_one(db.session, "schools", {"id": workspace_id})
+    if not school:
+        raise HTTPException(status_code=404, detail=_MSG_WORKSPACE_NOT_FOUND)
+    history = await _load_quota_history(workspace_id, days)
+    return {"workspace_id": workspace_id, "days_requested": days, **history}
 
 
 # -- Endpoint: POST /independent-teacher/workspace/lifecycle/reactivation-banner/dismiss

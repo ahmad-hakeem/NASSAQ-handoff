@@ -26,6 +26,10 @@ const _safe = async (promise) => {
 export function useWorkspaceHubData(api, enabled) {
   const [lifecycle, setLifecycle] = useState(null);
   const [quota, setQuota] = useState(null);
+  // Task #253 — daily-usage time series for the QuotaBar spark-lines.
+  // Same workspace-pinned endpoint as quota; failures degrade silently
+  // (the spark-lines simply don't render).
+  const [quotaHistory, setQuotaHistory] = useState(null);
   const [classes, setClasses] = useState([]);
   const [collaborators, setCollaborators] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -37,9 +41,10 @@ export function useWorkspaceHubData(api, enabled) {
     setLoading(true);
     setError(null);
     setPartialErrors([]);
-    const [lcRes, clsRes] = await Promise.all([
+    const [lcRes, clsRes, histRes] = await Promise.all([
       _safe(api.get('/independent-teacher/workspace/lifecycle')),
       _safe(api.get('/classes')),
+      _safe(api.get('/independent-teacher/workspace/quota-history', { params: { days: 14 } })),
     ]);
 
     const partial = [];
@@ -50,6 +55,13 @@ export function useWorkspaceHubData(api, enabled) {
       nextQuota = (lcRes.data && lcRes.data.quota) || null;
     } else {
       partial.push('lifecycle');
+    }
+
+    let nextHistory = null;
+    if (histRes && !histRes.__error) {
+      nextHistory = histRes.data || null;
+    } else {
+      partial.push('quota-history');
     }
 
     let classList = [];
@@ -88,6 +100,7 @@ export function useWorkspaceHubData(api, enabled) {
 
     setLifecycle(nextLifecycle);
     setQuota(nextQuota);
+    setQuotaHistory(nextHistory);
     setClasses(classList);
     setCollaborators(flat);
     setPartialErrors(partial);
@@ -114,6 +127,7 @@ export function useWorkspaceHubData(api, enabled) {
   return {
     lifecycle,
     quota,
+    quotaHistory,
     classes,
     collaborators,
     counts,
