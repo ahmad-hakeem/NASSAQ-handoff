@@ -302,6 +302,49 @@ async def get_unique_school_subjects(
 
 
 # ============== SUBJECTS ROUTES ==============
+def _normalize_subject_name(value: Optional[str]) -> str:
+    """Normalize a subject name for case-insensitive duplicate comparison.
+
+    Trims surrounding whitespace, collapses internal whitespace, and
+    case-folds. Returns an empty string for falsy input so the dedupe
+    check is a no-op when no name was supplied.
+    """
+    if not value:
+        return ""
+    return " ".join(str(value).split()).casefold()
+
+
+async def _assert_subject_name_unique(
+    school_id: str,
+    name: Optional[str],
+    name_ar: Optional[str] = None,
+    exclude_id: Optional[str] = None,
+) -> None:
+    """Reject the request if another active subject in the same workspace
+    already uses this `name` or `name_ar` (case-insensitive, whitespace-
+    normalized). Soft-deleted (`is_active=False`) rows are ignored so a
+    teacher can re-create a previously deleted subject (Task #190).
+    """
+    candidates = {n for n in (_normalize_subject_name(name), _normalize_subject_name(name_ar)) if n}
+    if not candidates or not school_id:
+        return
+    existing = await gd_find(
+        db.session,
+        "subjects",
+        {"school_id": school_id, "is_active": {"$ne": False}},
+        limit=1000,
+    )
+    for row in existing:
+        if exclude_id and row.get("id") == exclude_id:
+            continue
+        existing_names = {
+            _normalize_subject_name(row.get("name")),
+            _normalize_subject_name(row.get("name_ar")),
+        }
+        if candidates & (existing_names - {""}):
+            raise HTTPException(status_code=409, detail="يوجد بالفعل مادة بنفس الاسم")
+
+
 @router.post("/subjects", response_model=SubjectResponse)
 async def create_subject(
     subject_data: SubjectMutate,
@@ -316,6 +359,8 @@ async def create_subject(
         target_school_id = independent_workspace_id(current_user)
     else:
         target_school_id = subject_data.school_id or current_user.get("tenant_id")
+
+    await _assert_subject_name_unique(target_school_id, subject_data.name)
 
     subject_doc = {
         "id": subject_id,
@@ -442,6 +487,9 @@ async def update_subject(
     if not old_subject:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
     new_name = subject_data.name
+    await _assert_subject_name_unique(
+        old_subject.get("school_id"), new_name, exclude_id=subject_id
+    )
     update_doc = {
         "name": new_name,
         "name_en": subject_data.name_en,
