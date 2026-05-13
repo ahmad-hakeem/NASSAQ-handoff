@@ -185,7 +185,10 @@ describe('LoginPage — Task #195 success-and-error race', () => {
     expect(mockClearAuthState).toHaveBeenCalledTimes(1);
   });
 
-  test('credential failure: inline banner only, no dialog, no success toast', async () => {
+  test('credential failure: branded NassaqAlertDialog only, no toast', async () => {
+    // Task #197 — all login failures (credential AND system) now
+    // surface through the branded NassaqAlertDialog so the e2e
+    // suite can lock a single error contract.
     mockLogin.mockResolvedValue({ success: false, error: 'بيانات الدخول غير صحيحة', kind: 'credentials', httpStatus: 401 });
 
     render(<LoginPage />);
@@ -194,8 +197,8 @@ describe('LoginPage — Task #195 success-and-error race', () => {
 
     await waitFor(() => expect(mockLogin).toHaveBeenCalled());
     await flush();
-    expect(screen.getByText('بيانات الدخول غير صحيحة')).toBeInTheDocument();
-    expect(mockNassaqError).not.toHaveBeenCalled();
+    expect(mockNassaqError).toHaveBeenCalledTimes(1);
+    expect(mockNassaqError.mock.calls[0][0]).toBe('بيانات الدخول غير صحيحة');
     expect(mockToastSuccess).not.toHaveBeenCalled();
     expect(mockRefreshUser).not.toHaveBeenCalled();
   });

@@ -139,19 +139,18 @@ export const LoginPage = () => {
   };
 
   // Surface a single failure for the login attempt and reset to `failed`.
-  // `kind` picks the surface so we never double-fire:
-  //   credentials → inline banner only (validation / 401 / 404)
-  //   system      → NassaqAlertDialog only (network, 5xx, bootstrap)
-  const failLoginAttempt = (msg, kind = 'credentials') => {
+  // Per replit.md (and the e2e contract locked by Task #197) ALL
+  // user-facing login errors — credential-class AND system-class —
+  // surface through the branded NassaqAlertDialog. We never use a
+  // sonner toast here, and the inline banner is no longer rendered
+  // so we can't double-fire. `kind` is retained for future routing
+  // (e.g. analytics) but no longer changes the surface.
+  const failLoginAttempt = (msg, _kind = 'credentials') => {
     if (!mountedRef.current) return;
     submittingRef.current = false;
     setStatus('failed');
-    if (kind === 'system') {
-      setError('');
-      nassaqError(msg);
-    } else {
-      setError(msg);
-    }
+    setError('');
+    nassaqError(msg);
   };
 
   // Bootstrap = /auth/me + role/redirect resolution. Treated as part of
@@ -366,12 +365,6 @@ export const LoginPage = () => {
             </CardHeader>
 
             <CardContent className="pt-4">
-              {error && !mfaChallenge && (
-                <div className="mb-4 p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm font-tajawal text-center animate-fade-in">
-                  {error}
-                </div>
-              )}
-
               {mfaChallenge ? (
                 <MfaLoginChallengePanel
                   challenge={mfaChallenge}

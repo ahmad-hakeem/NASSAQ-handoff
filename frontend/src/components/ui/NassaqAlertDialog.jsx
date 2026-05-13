@@ -143,7 +143,12 @@ export const NassaqAlertProvider = ({ children }) => {
     <NassaqAlertContext.Provider value={{ showAlert, nassaqWarning, nassaqError, nassaqSuccess, nassaqInfo, nassaqConfirm }}>
       {children}
       <AlertDialog open={alertState.open} onOpenChange={(open) => { if (!open) closeAlert(); }}>
-        <AlertDialogContent className="max-w-md rounded-2xl p-0 overflow-hidden border-0 shadow-2xl" dir="rtl">
+        <AlertDialogContent
+          className="max-w-md rounded-2xl p-0 overflow-hidden border-0 shadow-2xl"
+          dir="rtl"
+          data-nassaq-alert={alertState.type}
+          data-testid="nassaq-alert-dialog"
+        >
           <div className={`${config.bgColor} ${config.borderColor} border-b px-6 pt-6 pb-4`}>
             <AlertDialogHeader className="flex flex-row items-center gap-3 space-y-0">
               <div className={`flex-shrink-0 w-12 h-12 rounded-full ${config.bgColor} border-2 ${config.borderColor} flex items-center justify-center`}>
