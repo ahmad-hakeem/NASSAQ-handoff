@@ -27,6 +27,7 @@ python-multipart>=0.0.23
 PyYAML>=6.0
 qrcode>=8.2
 reportlab>=4.4
+hijri-converter>=2.3
 requests>=2.33.0
 sqlalchemy[asyncio]>=2.0.41
 starlette>=0.37

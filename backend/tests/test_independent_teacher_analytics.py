@@ -266,6 +266,101 @@ async def test_analytics_empty_workspace_returns_zero_state(client):
 
 
 # ----------------------------------------------------------------------
+# (g) Task #283 — CSV / PDF exports mirror the workspace pinning + 404
+#     invariants of the JSON endpoint and stream a usable file.
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_analytics_export_csv_and_pdf(client):
+    a = await _mk_it_workspace()
+    cid = await _mk_class(a["tenant_id"], "C1")
+    s = await _mk_student(a["tenant_id"], "Alpha")
+    now = datetime.now(timezone.utc)
+    for i in range(1, 4):
+        await _mk_attendance(a["tenant_id"], s, cid, now - timedelta(days=i), "absent")
+
+    h = _headers(a["id"], a["role"], a["tenant_id"])
+
+    # CSV
+    r = await client.get("/independent-teacher/analytics/export.csv", headers=h)
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("text/csv")
+    cd_csv = r.headers["content-disposition"]
+    assert "attachment" in cd_csv
+    assert ".csv" in cd_csv
+    # Filename must carry the Hijri stamp suffix so a teacher can sort
+    # exported snapshots chronologically against the calendar they use.
+    assert "H.csv" in cd_csv, cd_csv
+    body = r.content.decode("utf-8-sig")
+    assert "NASSAQ Workspace Analytics" in body
+    assert "attendance" in body
+    assert "Alpha" in body  # top_students_absence row
+
+    # PDF
+    r = await client.get("/independent-teacher/analytics/export.pdf", headers=h)
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "application/pdf"
+    assert r.content[:4] == b"%PDF"
+    cd_pdf = r.headers["content-disposition"]
+    assert ".pdf" in cd_pdf
+    assert "H.pdf" in cd_pdf, cd_pdf
+    # The chart-builder helpers must return a Drawing for non-empty
+    # series so the PDF carries the visual snapshot the spec asks for
+    # (not just a tabular dump).
+    from routes.independent_teacher_analytics_routes import (
+        _aggregate_all, _build_attendance_chart,
+        _build_behavior_chart, _build_lesson_plan_chart,
+        _workspace_id as _ws_id_helper,
+    )
+    payload = await _aggregate_all(
+        a["tenant_id"],
+        now - timedelta(days=30), now, None,
+    )
+    assert _build_attendance_chart(payload["attendance"]) is not None
+    # behavior + lesson_plan helpers return None when the series is
+    # empty (planted only attendance rows), exercising the empty-state
+    # branch — that's the contract the PDF body relies on.
+    assert _build_behavior_chart([]) is None
+    assert _build_lesson_plan_chart([]) is None
+    assert _ws_id_helper({"id": "u1", "role": "independent_teacher"}) == "itw_u1"
+
+
+@pytest.mark.asyncio
+async def test_analytics_export_cross_workspace_class_id_404(client):
+    a = await _mk_it_workspace()
+    b = await _mk_it_workspace()
+    cb = await _mk_class(b["tenant_id"], "Cb")
+    h = _headers(a["id"], a["role"], a["tenant_id"])
+    for path in (
+        "/independent-teacher/analytics/export.csv",
+        "/independent-teacher/analytics/export.pdf",
+    ):
+        r = await client.get(path, headers=h, params={"class_id": cb})
+        assert r.status_code == 404, (path, r.text)
+
+
+@pytest.mark.asyncio
+async def test_analytics_export_non_it_role_is_forbidden(client):
+    sid = str(uuid.uuid4())
+    await gd_insert(db.session, "schools", {
+        "id": sid, "name": "S", "code": f"S{sid[:6]}", "status": "active",
+        "country": "SA", "language": "ar",
+    })
+    uid = str(uuid.uuid4())
+    await gd_insert(db.session, "users", {
+        "id": uid, "role": UserRole.SCHOOL_PRINCIPAL.value,
+        "tenant_id": sid, "email": f"p-{uid}@t.test",
+        "full_name": "P", "is_active": True, "password_hash": "x",
+    })
+    h = _headers(uid, UserRole.SCHOOL_PRINCIPAL.value, sid)
+    for path in (
+        "/independent-teacher/analytics/export.csv",
+        "/independent-teacher/analytics/export.pdf",
+    ):
+        r = await client.get(path, headers=h)
+        assert r.status_code == 403, (path, r.text)
+
+
+# ----------------------------------------------------------------------
 # (f) Behavior series buckets positive vs negative; lesson plans
 #     return both `generated` and `saved` per day.
 # ----------------------------------------------------------------------

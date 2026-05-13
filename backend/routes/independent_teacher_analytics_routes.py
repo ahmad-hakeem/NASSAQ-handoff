@@ -48,6 +48,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 
 from auth_scope import (
@@ -72,6 +73,7 @@ _MSG_BAD_RANGE = "نطاق التاريخ غير صالح."
 _MSG_CLASS_NOT_FOUND = "الفصل غير موجود في مساحتك."
 _MSG_PERMISSION = "ليست لديك صلاحية الوصول إلى التحليلات."
 _MSG_INTERNAL = "تعذّر جلب التحليلات — حاول لاحقًا."
+_MSG_EXPORT_FAILED = "تعذّر تصدير التحليلات — حاول لاحقًا."
 
 _DEFAULT_RANGE_DAYS = 30
 _MAX_RANGE_DAYS = 365
@@ -381,6 +383,414 @@ async def _top_classes_attendance(
             "total_count": total,
         })
     return out
+
+
+# ----------------------------------------------------------------------
+# Export helpers (Task #283 — CSV + PDF download)
+# ----------------------------------------------------------------------
+
+def _hijri_stamp(now: Optional[datetime] = None) -> str:
+    """Hijri ``YYYY-MM-DD`` stamp suitable for use inside a filename.
+
+    Falls back to the Gregorian stamp when ``hijri_converter`` blows up
+    (e.g. an out-of-range date), so we never wedge an export on a date
+    edge case.
+    """
+    n = now or datetime.now(timezone.utc)
+    try:
+        from hijri_converter import Gregorian as HGregorian  # type: ignore
+        h = HGregorian(n.year, n.month, n.day).to_hijri()
+        return f"{h.year:04d}-{h.month:02d}-{h.day:02d}H"
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("hijri stamp fallback: %s", exc)
+        return n.strftime("%Y-%m-%d")
+
+
+async def _aggregate_all(
+    workspace_id: str, start: datetime, end: datetime, cid: Optional[str],
+) -> Dict[str, Any]:
+    return {
+        "attendance":   await _attendance_series(workspace_id, start, end, cid),
+        "behavior":     await _behavior_series(workspace_id, start, end, cid),
+        "lesson_plans": await _lesson_plan_series(workspace_id, start, end),
+        "top_students_absence":   await _top_students_absence(workspace_id, start, end, cid),
+        "top_students_behavior":  await _top_students_behavior(workspace_id, start, end, cid),
+        "top_classes_attendance": await _top_classes_attendance(workspace_id, start, end),
+    }
+
+
+def _render_analytics_csv(
+    payload: Dict[str, Any], start: datetime, end: datetime, cid: Optional[str],
+) -> bytes:
+    """Build a single CSV bundle with one section per aggregated table.
+
+    A blank line + section header separates each block so the file
+    stays readable in Excel/Numbers while remaining a single download.
+    """
+    import csv
+    import io
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["NASSAQ Workspace Analytics"])
+    w.writerow(["from", start.isoformat()])
+    w.writerow(["to", end.isoformat()])
+    w.writerow(["class_id", cid or ""])
+    w.writerow([])
+
+    def _section(title: str, headers: List[str], rows: List[List[Any]]) -> None:
+        w.writerow([title])
+        w.writerow(headers)
+        for r in rows:
+            w.writerow(r)
+        w.writerow([])
+
+    _section(
+        "attendance",
+        ["day", "present", "absent", "late", "excused", "total"],
+        [[r["day"], r["present"], r["absent"], r["late"], r["excused"], r["total"]]
+         for r in payload["attendance"]],
+    )
+    _section(
+        "behavior",
+        ["week", "positive", "negative"],
+        [[r["week"], r["positive"], r["negative"]] for r in payload["behavior"]],
+    )
+    _section(
+        "lesson_plans",
+        ["day", "generated", "saved"],
+        [[r["day"], r["generated"], r["saved"]] for r in payload["lesson_plans"]],
+    )
+    _section(
+        "top_students_absence",
+        ["student_id", "name", "absent_count", "total_count", "absence_rate"],
+        [[r["student_id"], r["name"], r["absent_count"], r["total_count"], r["absence_rate"]]
+         for r in payload["top_students_absence"]],
+    )
+    _section(
+        "top_students_behavior",
+        ["student_id", "name", "negative_count"],
+        [[r["student_id"], r["name"], r["negative_count"]]
+         for r in payload["top_students_behavior"]],
+    )
+    _section(
+        "top_classes_attendance",
+        ["class_id", "name", "attendance_rate", "present_count", "total_count"],
+        [[r["class_id"], r["name"], r["attendance_rate"], r["present_count"], r["total_count"]]
+         for r in payload["top_classes_attendance"]],
+    )
+
+    # UTF-8 BOM keeps Arabic readable when opened in Excel on Windows.
+    return ("\ufeff" + buf.getvalue()).encode("utf-8")
+
+
+def _build_attendance_chart(rows: List[Dict[str, Any]]):
+    """Stacked bar chart of present / absent / late / excused per day.
+
+    Returns a ``reportlab`` ``Drawing`` ready to append to the story,
+    or ``None`` when the series is empty (caller falls back to text).
+    """
+    if not rows:
+        return None
+    from reportlab.graphics.shapes import Drawing, String
+    from reportlab.graphics.charts.barcharts import VerticalBarChart
+    from reportlab.graphics.charts.legends import Legend
+    from reportlab.lib import colors
+
+    data = [
+        [int(r.get("present", 0)) for r in rows],
+        [int(r.get("absent", 0))  for r in rows],
+        [int(r.get("late", 0))    for r in rows],
+        [int(r.get("excused", 0)) for r in rows],
+    ]
+    palette = [
+        colors.HexColor("#10b981"),
+        colors.HexColor("#dc2626"),
+        colors.HexColor("#f59e0b"),
+        colors.HexColor("#6b7280"),
+    ]
+    labels = ["Present", "Absent", "Late", "Excused"]
+
+    d = Drawing(480, 180)
+    chart = VerticalBarChart()
+    chart.x = 40
+    chart.y = 30
+    chart.height = 130
+    chart.width = 420
+    chart.data = data
+    chart.categoryAxis.categoryNames = [str(r.get("day", "")) for r in rows]
+    chart.categoryAxis.labels.fontSize = 6
+    chart.categoryAxis.labels.angle = 45
+    chart.categoryAxis.labels.dy = -6
+    chart.valueAxis.valueMin = 0
+    chart.bars.strokeColor = None
+    for i, c in enumerate(palette):
+        chart.bars[i].fillColor = c
+    chart.categoryAxis.style = "stacked"
+
+    legend = Legend()
+    legend.x = 40
+    legend.y = 175
+    legend.alignment = "right"
+    legend.colorNamePairs = list(zip(palette, labels))
+    legend.fontSize = 7
+    legend.deltax = 70
+    legend.dxTextSpace = 4
+    d.add(chart)
+    d.add(legend)
+    d.add(String(0, 0, "", fontSize=1))
+    return d
+
+
+def _build_behavior_chart(rows: List[Dict[str, Any]]):
+    if not rows:
+        return None
+    from reportlab.graphics.shapes import Drawing
+    from reportlab.graphics.charts.barcharts import VerticalBarChart
+    from reportlab.graphics.charts.legends import Legend
+    from reportlab.lib import colors
+
+    data = [
+        [int(r.get("positive", 0)) for r in rows],
+        [int(r.get("negative", 0)) for r in rows],
+    ]
+    palette = [colors.HexColor("#10b981"), colors.HexColor("#dc2626")]
+    labels = ["Positive", "Negative"]
+    d = Drawing(480, 180)
+    chart = VerticalBarChart()
+    chart.x = 40
+    chart.y = 30
+    chart.height = 130
+    chart.width = 420
+    chart.data = data
+    chart.categoryAxis.categoryNames = [str(r.get("week", "")) for r in rows]
+    chart.categoryAxis.labels.fontSize = 6
+    chart.valueAxis.valueMin = 0
+    chart.bars.strokeColor = None
+    for i, c in enumerate(palette):
+        chart.bars[i].fillColor = c
+    legend = Legend()
+    legend.x = 40
+    legend.y = 175
+    legend.alignment = "right"
+    legend.colorNamePairs = list(zip(palette, labels))
+    legend.fontSize = 7
+    legend.deltax = 70
+    d.add(chart)
+    d.add(legend)
+    return d
+
+
+def _build_lesson_plan_chart(rows: List[Dict[str, Any]]):
+    if not rows:
+        return None
+    from reportlab.graphics.shapes import Drawing
+    from reportlab.graphics.charts.linecharts import HorizontalLineChart
+    from reportlab.graphics.charts.legends import Legend
+    from reportlab.lib import colors
+
+    data = [
+        [int(r.get("generated", 0)) for r in rows],
+        [int(r.get("saved", 0))     for r in rows],
+    ]
+    palette = [colors.HexColor("#2563eb"), colors.HexColor("#10b981")]
+    labels = ["Generated", "Saved"]
+    d = Drawing(480, 180)
+    chart = HorizontalLineChart()
+    chart.x = 40
+    chart.y = 30
+    chart.height = 130
+    chart.width = 420
+    chart.data = data
+    chart.categoryAxis.categoryNames = [str(r.get("day", "")) for r in rows]
+    chart.categoryAxis.labels.fontSize = 6
+    chart.categoryAxis.labels.angle = 45
+    chart.categoryAxis.labels.dy = -6
+    chart.valueAxis.valueMin = 0
+    for i, c in enumerate(palette):
+        chart.lines[i].strokeColor = c
+        chart.lines[i].strokeWidth = 1.5
+    legend = Legend()
+    legend.x = 40
+    legend.y = 175
+    legend.alignment = "right"
+    legend.colorNamePairs = list(zip(palette, labels))
+    legend.fontSize = 7
+    legend.deltax = 70
+    d.add(chart)
+    d.add(legend)
+    return d
+
+
+def _render_analytics_pdf(
+    payload: Dict[str, Any], start: datetime, end: datetime, cid: Optional[str],
+    workspace_id: str,
+) -> bytes:
+    """Render the analytics dashboard as a printable Arabic PDF.
+
+    Each major series is rendered as both a chart (so the document is
+    a true visual snapshot of the in-app dashboard) AND a data table
+    underneath it (so the values are still legible when printed).
+    Reuses ``engines.export_engine`` primitives so the report inherits
+    the same Arabic font registration, palette and table chrome as
+    every other PDF in the platform.
+    """
+    import io
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.platypus import HRFlowable, SimpleDocTemplate, Spacer
+
+    from engines.export_engine import (
+        _ar_para, _ar_styles, _build_table, _register_arabic_fonts,
+        NASSAQ_TURQUOISE,
+    )
+
+    _register_arabic_fonts()
+    styles = _ar_styles()
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        rightMargin=15 * mm, leftMargin=15 * mm,
+        topMargin=18 * mm, bottomMargin=15 * mm,
+    )
+    story: List[Any] = []
+    story.append(_ar_para("تقرير التحليلات", styles["ArabicTitle"]))
+    range_line = (
+        f"من {start.strftime('%Y-%m-%d')} إلى {end.strftime('%Y-%m-%d')}"
+    )
+    story.append(_ar_para(range_line, styles["ArabicSubtitle"]))
+    if cid:
+        story.append(_ar_para(f"الفصل: {cid}", styles["ArabicSubtitle"]))
+    story.append(HRFlowable(width="100%", thickness=1, color=NASSAQ_TURQUOISE))
+    story.append(Spacer(1, 4 * mm))
+
+    def _section(title: str, headers: List[str], rows: List[List[Any]],
+                 empty_label: str = "لا توجد بيانات") -> None:
+        story.append(_ar_para(title, styles["ArabicSection"]))
+        if not rows:
+            story.append(_ar_para(empty_label, styles["ArabicBody"]))
+        else:
+            story.append(_build_table(headers, rows))
+        story.append(Spacer(1, 4 * mm))
+
+    story.append(_ar_para("الحضور اليومي", styles["ArabicSection"]))
+    att_chart = _build_attendance_chart(payload["attendance"])
+    if att_chart is not None:
+        story.append(att_chart)
+        story.append(Spacer(1, 2 * mm))
+    _section(
+        "تفاصيل الحضور",
+        ["الإجمالي", "بعذر", "متأخر", "غائب", "حاضر", "اليوم"],
+        [[r["total"], r["excused"], r["late"], r["absent"], r["present"], r["day"]]
+         for r in payload["attendance"]],
+    )
+
+    story.append(_ar_para("السلوك الأسبوعي", styles["ArabicSection"]))
+    beh_chart = _build_behavior_chart(payload["behavior"])
+    if beh_chart is not None:
+        story.append(beh_chart)
+        story.append(Spacer(1, 2 * mm))
+    _section(
+        "تفاصيل السلوك",
+        ["سلبي", "إيجابي", "الأسبوع"],
+        [[r["negative"], r["positive"], r["week"]] for r in payload["behavior"]],
+    )
+
+    story.append(_ar_para("خطط الدروس اليومية", styles["ArabicSection"]))
+    lp_chart = _build_lesson_plan_chart(payload["lesson_plans"])
+    if lp_chart is not None:
+        story.append(lp_chart)
+        story.append(Spacer(1, 2 * mm))
+    _section(
+        "تفاصيل خطط الدروس",
+        ["محفوظ", "تم إنشاؤه", "اليوم"],
+        [[r["saved"], r["generated"], r["day"]] for r in payload["lesson_plans"]],
+    )
+    _section(
+        "أعلى نسبة غياب — الطلاب",
+        ["نسبة الغياب", "الإجمالي", "الغياب", "الاسم"],
+        [[f"{round((r['absence_rate'] or 0) * 100)}%",
+          r["total_count"], r["absent_count"], r["name"]]
+         for r in payload["top_students_absence"]],
+    )
+    _section(
+        "أكثر السلوكيات السلبية — الطلاب",
+        ["العدد", "الاسم"],
+        [[r["negative_count"], r["name"]] for r in payload["top_students_behavior"]],
+    )
+    _section(
+        "أعلى نسبة حضور — الفصول",
+        ["نسبة الحضور", "الإجمالي", "الحضور", "الفصل"],
+        [[f"{round((r['attendance_rate'] or 0) * 100)}%",
+          r["total_count"], r["present_count"], r["name"]]
+         for r in payload["top_classes_attendance"]],
+    )
+
+    story.append(Spacer(1, 6 * mm))
+    story.append(HRFlowable(width="100%", thickness=0.5))
+    story.append(_ar_para(
+        f"نَسَّق NASSAQ  |  {workspace_id}  |  {_hijri_stamp()}",
+        styles["ArabicBody"],
+    ))
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+@router.get("/export.csv")
+async def export_workspace_analytics_csv(
+    from_: Optional[str] = Query(default=None, alias="from"),
+    to: Optional[str] = Query(default=None),
+    class_id: Optional[str] = Query(default=None),
+    current_user: dict = Depends(_require_independent_teacher),
+):
+    workspace_id = _workspace_id(current_user)
+    start, end = _resolve_range(from_, to)
+    cid = await _resolve_class_filter(workspace_id, class_id)
+    try:
+        payload = await _aggregate_all(workspace_id, start, end, cid)
+        body = _render_analytics_csv(payload, start, end, cid)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("workspace analytics CSV export failed: %s", exc)
+        raise HTTPException(status_code=500, detail=_MSG_EXPORT_FAILED)
+
+    fname = f"nassaq-analytics-{_hijri_stamp()}.csv"
+    return StreamingResponse(
+        iter([body]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@router.get("/export.pdf")
+async def export_workspace_analytics_pdf(
+    from_: Optional[str] = Query(default=None, alias="from"),
+    to: Optional[str] = Query(default=None),
+    class_id: Optional[str] = Query(default=None),
+    current_user: dict = Depends(_require_independent_teacher),
+):
+    workspace_id = _workspace_id(current_user)
+    start, end = _resolve_range(from_, to)
+    cid = await _resolve_class_filter(workspace_id, class_id)
+    try:
+        payload = await _aggregate_all(workspace_id, start, end, cid)
+        body = _render_analytics_pdf(payload, start, end, cid, workspace_id)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("workspace analytics PDF export failed: %s", exc)
+        raise HTTPException(status_code=500, detail=_MSG_EXPORT_FAILED)
+
+    fname = f"nassaq-analytics-{_hijri_stamp()}.pdf"
+    return StreamingResponse(
+        iter([body]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 @router.get("")

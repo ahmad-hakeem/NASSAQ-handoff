@@ -720,6 +720,27 @@ wheels = [
 ]
 
 [[package]]
+name = "hijri-converter"
+version = "2.3.2.post1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "hijridate" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0e/e3/c3d6210e4b4d51e501de032c58a70377ce25338f0aeacb472f17d69fbbae/hijri_converter-2.3.2.post1.tar.gz", hash = "sha256:986657ccd83a5beaf233ce5a219645747e885c45d4833bd2a8fa1b927fa39570", size = 32805, upload-time = "2025-07-27T05:32:12.758Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/16/b9/2c9070cc9326f1596a89a42d259e1524f13abcb8dfc4581ab4eadd25baf7/hijri_converter-2.3.2.post1-py3-none-any.whl", hash = "sha256:51124b40b27d072c402a4eeea1a368dd3952992f250109117292c8ecf9c66f28", size = 13370, upload-time = "2025-07-27T05:32:11.688Z" },
+]
+
+[[package]]
+name = "hijridate"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c4/72/7869b0241faa29d3214b265577f65012b6984e1efb620a24e7cb1c05cf19/hijridate-2.3.0.tar.gz", hash = "sha256:f0d96619dc91dd792ae6b28159b6973a7b4b8a15017106f4cbcd11825549d4af", size = 34681, upload-time = "2023-04-24T19:19:31.518Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/79/ff/69818c9d9718e6d49ab969e451e8452d0934e9f9dfb8d74615cb1e57b154/hijridate-2.3.0-py3-none-any.whl", hash = "sha256:de59a435cf2598dcee2dc028a34cd9b17d1fa2f35379b32efca70ab81462edfa", size = 13906, upload-time = "2023-04-24T19:19:30.351Z" },
+]
+
+[[package]]
 name = "httpcore"
 version = "1.0.9"
 source = { registry = "https://pypi.org/simple" }
@@ -1660,6 +1681,7 @@ dependencies = [
     { name = "email-validator" },
     { name = "fastapi" },
     { name = "greenlet" },
+    { name = "hijri-converter" },
     { name = "httpx" },
     { name = "lxml" },
     { name = "mako" },
@@ -1702,6 +1724,7 @@ requires-dist = [
     { name = "email-validator", specifier = ">=2.3" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "greenlet", specifier = ">=3.2" },
+    { name = "hijri-converter", specifier = ">=2.3" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "lxml", specifier = ">=6.1.0" },
     { name = "mako", specifier = ">=1.3.11" },

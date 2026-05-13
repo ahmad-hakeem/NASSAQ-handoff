@@ -13,7 +13,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { BarChart3, Loader2, RefreshCw } from 'lucide-react';
+import { BarChart3, Download, FileText, Loader2, RefreshCw } from 'lucide-react';
 
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -29,7 +29,7 @@ import {
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from '../../contexts/ThemeContext';
-import { formatHijriDate } from '../../utils/hijriDate';
+import { formatHijriDate, getHijriDate } from '../../utils/hijriDate';
 
 const DEFAULT_RANGE_DAYS = 30;
 
@@ -77,6 +77,7 @@ export default function TeacherAnalyticsPage() {
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
+  const [exporting, setExporting] = useState(null); // 'pdf' | 'csv' | null
 
   const loadClasses = useCallback(async () => {
     try {
@@ -114,6 +115,44 @@ export default function TeacherAnalyticsPage() {
   useEffect(() => { loadClasses(); }, [loadClasses]);
   useEffect(() => { loadAnalytics(); }, [loadAnalytics]);
 
+  const handleExport = useCallback(async (fmt) => {
+    if (exporting) return;
+    setExporting(fmt);
+    try {
+      const params = {
+        from: dayBoundaryIso(fromDate),
+        to: dayBoundaryIso(toDate, { endOfDay: true }),
+      };
+      if (classId && classId !== 'all') params.class_id = classId;
+      const path = fmt === 'pdf'
+        ? '/independent-teacher/analytics/export.pdf'
+        : '/independent-teacher/analytics/export.csv';
+      const res = await api.get(path, { params, responseType: 'blob' });
+      const mime = fmt === 'pdf' ? 'application/pdf' : 'text/csv;charset=utf-8';
+      const blob = res?.data instanceof Blob
+        ? res.data
+        : new Blob([res?.data ?? ''], { type: mime });
+      const h = getHijriDate(new Date());
+      const stamp = `${String(h.hijriYear).padStart(4, '0')}-${String(h.hijriMonth).padStart(2, '0')}-${String(h.hijriDay).padStart(2, '0')}H`;
+      const filename = `nassaq-analytics-${stamp}.${fmt}`;
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(href), 0);
+    } catch (err) {
+      const msg = err?.response?.data?.error?.message
+        || err?.response?.data?.detail
+        || t('teacherAnalyticsExportFailed');
+      nassaqError(msg);
+    } finally {
+      setExporting(null);
+    }
+  }, [api, fromDate, toDate, classId, exporting, t, nassaqError]);
+
   const behaviorRows = useMemo(() => data?.behavior || [], [data]);
 
   return (
@@ -127,15 +166,39 @@ export default function TeacherAnalyticsPage() {
               <p className="text-sm text-gray-500">{t('teacherAnalyticsIntro')}</p>
             </div>
           </div>
-          <Button
-            variant="outline"
-            onClick={loadAnalytics}
-            disabled={loading}
-            data-testid="analytics-refresh"
-          >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            <span className="mx-1">{t('teacherAnalyticsRefresh')}</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => handleExport('pdf')}
+              disabled={loading || !!exporting}
+              data-testid="analytics-export-pdf"
+            >
+              {exporting === 'pdf'
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <FileText className="h-4 w-4" />}
+              <span className="mx-1">{t('teacherAnalyticsExportPdf')}</span>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleExport('csv')}
+              disabled={loading || !!exporting}
+              data-testid="analytics-export-csv"
+            >
+              {exporting === 'csv'
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <Download className="h-4 w-4" />}
+              <span className="mx-1">{t('teacherAnalyticsExportCsv')}</span>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={loadAnalytics}
+              disabled={loading}
+              data-testid="analytics-refresh"
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              <span className="mx-1">{t('teacherAnalyticsRefresh')}</span>
+            </Button>
+          </div>
         </div>
 
         <Card>
