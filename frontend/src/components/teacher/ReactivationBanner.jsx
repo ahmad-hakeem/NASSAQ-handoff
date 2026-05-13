@@ -21,15 +21,32 @@ import { CheckCircle2, X, ArrowRight } from 'lucide-react';
  */
 export default function ReactivationBanner() {
   const { t } = useTranslation();
-  const { user, api } = useAuth();
+  const { user, api, consumeInitialWorkspaceLifecycle } = useAuth();
   const navigate = useNavigate();
-  const [banner, setBanner] = useState(null);
-  const [dismissing, setDismissing] = useState(false);
-
   const isIndependentTeacher = (user?.role || '').toLowerCase() === 'independent_teacher';
 
+  // Task #231 — seed initial state from the post-login lifecycle snapshot
+  // embedded in the /auth/login (and /auth/mfa/verify) response. The
+  // dashboard renders the banner in the same paint as the rest of the
+  // page; the follow-up GET below is only needed when the banner mounts
+  // outside the post-login flow (e.g. a hard refresh).
+  const [initial] = useState(() => {
+    if (!isIndependentTeacher || typeof consumeInitialWorkspaceLifecycle !== 'function') {
+      return { banner: null, consumed: false };
+    }
+    const { snapshot, consumed } = consumeInitialWorkspaceLifecycle();
+    return { banner: snapshot?.reactivation_banner || null, consumed };
+  });
+  const [banner, setBanner] = useState(initial.banner);
+  const [dismissing, setDismissing] = useState(false);
+
   useEffect(() => {
-    if (!api || !isIndependentTeacher) return;
+    // If the post-login flow already delivered a snapshot, skip the
+    // follow-up GET — the embedded payload is the freshest data we
+    // can possibly have. This includes the "snapshot present but
+    // reactivation_banner === null" case, where re-fetching would
+    // only generate a redundant request.
+    if (!api || !isIndependentTeacher || initial.consumed) return;
     let cancelled = false;
     (async () => {
       try {
@@ -42,7 +59,7 @@ export default function ReactivationBanner() {
       }
     })();
     return () => { cancelled = true; };
-  }, [api, isIndependentTeacher]);
+  }, [api, isIndependentTeacher, initial.consumed]);
 
   const handleDismiss = useCallback(async () => {
     if (dismissing) return;

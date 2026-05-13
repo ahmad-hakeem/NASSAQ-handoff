@@ -457,7 +457,25 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
         parent_id=user.get("parent_id")
     )
     
-    return TokenResponse(access_token=token, refresh_token=refresh, user=user_response)
+    # Task #231 — embed the IT workspace lifecycle snapshot (including the
+    # reactivation banner gate) so the post-login dashboard can paint the
+    # banner in the same frame as the rest of the page. Best-effort: a
+    # failure here must never break login.
+    workspace_lifecycle = None
+    try:
+        from routes.independent_teacher_workspace_lifecycle_routes import (
+            fetch_workspace_lifecycle_for_user,
+        )
+        workspace_lifecycle = await fetch_workspace_lifecycle_for_user(user)
+    except Exception as _wl_err:
+        logger.debug("login: workspace_lifecycle fetch skipped: %s", _wl_err)
+
+    return TokenResponse(
+        access_token=token,
+        refresh_token=refresh,
+        user=user_response,
+        workspace_lifecycle=workspace_lifecycle,
+    )
 
 
 class RefreshTokenRequest(BaseModel):

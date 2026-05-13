@@ -242,11 +242,24 @@ async def _complete_mfa_login(
         and not user.get("mfa_recovery_codes_acknowledged")
     )
 
+    # Task #231 — embed the IT workspace lifecycle snapshot (banner gate
+    # included) so the post-login dashboard paints the banner in the same
+    # frame as the rest of the page. Best-effort.
+    workspace_lifecycle = None
+    try:
+        from routes.independent_teacher_workspace_lifecycle_routes import (
+            fetch_workspace_lifecycle_for_user,
+        )
+        workspace_lifecycle = await fetch_workspace_lifecycle_for_user(user)
+    except Exception as _wl_err:
+        logger.debug("verify_mfa: workspace_lifecycle fetch skipped: %s", _wl_err)
+
     return TokenResponse(
         access_token=access,
         refresh_token=refresh,
         user=user_response,
         mfa_recovery_codes_pending_view=pending_view,
+        workspace_lifecycle=workspace_lifecycle,
     )
 
 

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { createApiService } from '../services/apiClient';
@@ -82,6 +82,12 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('nassaq_token'));
   const [loading, setLoading] = useState(true);
+  // Task #231 — initial workspace lifecycle snapshot embedded in the
+  // login / MFA verify response. Held in a ref (not state) so the
+  // one-shot consumer in <ReactivationBanner> can read it inside a
+  // useState initializer without triggering an "update during render"
+  // warning. Cleared on consume + on logout/clearAuthState.
+  const initialWorkspaceLifecycleRef = useRef(null);
   
   // School Context Switching (Platform Admin -> School Manager simulation)
   const [schoolContext, setSchoolContext] = useState(() => {
@@ -387,6 +393,10 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('nassaq_token', access_token);
       setToken(access_token);
       setUser(userData);
+      // Task #231 — stash the IT workspace lifecycle snapshot embedded
+      // in the login response so the post-login dashboard can render
+      // the reactivation banner without waiting on a follow-up GET.
+      initialWorkspaceLifecycleRef.current = data.workspace_lifecycle ?? null;
 
       if (refreshToken) {
         if (rememberMe) {
@@ -457,6 +467,11 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setSchoolContext(null);
     setIsImpersonating(false);
+    // Task #231 — drop any pending one-shot lifecycle snapshot so it
+    // cannot leak across sessions (e.g. user A logs out, user B logs
+    // in — B must not see A's snapshot if the new login somehow
+    // skipped the assignment).
+    initialWorkspaceLifecycleRef.current = null;
   }, []);
 
   const register = async (userData) => {
@@ -505,6 +520,10 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('nassaq_token', access_token);
       setToken(access_token);
       setUser(userData);
+      // Task #231 — same as login(): stash the IT workspace lifecycle
+      // snapshot so the post-login dashboard banner paints in the same
+      // frame.
+      initialWorkspaceLifecycleRef.current = res.data?.workspace_lifecycle ?? null;
 
       if (refreshToken) {
         if (remember_me) {
@@ -609,6 +628,11 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setSchoolContext(null);
     setIsImpersonating(false);
+    // Task #231 — drop any pending one-shot lifecycle snapshot so it
+    // cannot leak across sessions (e.g. user A logs out, user B logs
+    // in — B must not see A's snapshot if the new login somehow
+    // skipped the assignment).
+    initialWorkspaceLifecycleRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -796,6 +820,19 @@ export const AuthProvider = ({ children }) => {
     preferredLanguage,
     isRTL,
     apiServices: createApiService(api),
+    // Task #231 — one-shot post-login workspace lifecycle snapshot.
+    // Returns `{ snapshot, consumed }`: `consumed` is `true` whenever
+    // the post-login flow actually delivered a snapshot (even when the
+    // server resolved `reactivation_banner` to `null`), so callers can
+    // skip the redundant follow-up GET in that case. Reads + clears the
+    // ref synchronously without touching React state, which makes it
+    // safe to call from a `useState` initializer.
+    consumeInitialWorkspaceLifecycle: () => {
+      const snapshot = initialWorkspaceLifecycleRef.current;
+      const consumed = snapshot !== null;
+      if (consumed) initialWorkspaceLifecycleRef.current = null;
+      return { snapshot, consumed };
+    },
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

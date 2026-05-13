@@ -288,14 +288,13 @@ async def _build_export_bundle(workspace_id: str) -> bytes:
 # last_export_at is within 24h) on mount, without leaking any of the
 # token-state columns. Same workspace-scope guard as the write paths.
 
-@router.get("/independent-teacher/workspace/lifecycle")
-async def read_workspace_lifecycle(
-    current_user: dict = Depends(_require_independent_teacher),
-):
-    workspace_id = independent_workspace_id(current_user) or require_request_school_id(current_user)
-    school = await gd_find_one(db.session, "schools", {"id": workspace_id})
-    if not school:
-        raise HTTPException(status_code=404, detail=_MSG_WORKSPACE_NOT_FOUND)
+def _build_lifecycle_payload(workspace_id: str, school: Dict[str, Any]) -> Dict[str, Any]:
+    """Shared builder for the IT workspace lifecycle view + the post-login
+    reactivation banner. Used by ``GET /independent-teacher/workspace/lifecycle``
+    and embedded into ``/auth/login`` + ``/auth/mfa/verify`` token responses
+    so the dashboard can paint the banner in the same frame as the rest of
+    the page (Task #231).
+    """
 
     def _iso(v):
         if not v:
@@ -343,6 +342,38 @@ async def read_workspace_lifecycle(
         "pending_hard_delete": bool(school.get("pending_hard_delete")),
         "reactivation_banner": banner,
     }
+
+
+async def fetch_workspace_lifecycle_for_user(user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Best-effort post-login lifecycle snapshot for an IT user.
+
+    Returns ``None`` when the caller is not an Independent Teacher, when no
+    workspace row resolves, or when the lookup fails for any reason — the
+    login flow must never break because of a banner-gating side-channel.
+    Used by ``/auth/login`` + ``/auth/mfa/verify`` (Task #231).
+    """
+    try:
+        workspace_id = independent_workspace_id(user)
+        if not workspace_id:
+            return None
+        school = await gd_find_one(db.session, "schools", {"id": workspace_id})
+        if not school:
+            return None
+        return _build_lifecycle_payload(workspace_id, school)
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.debug("fetch_workspace_lifecycle_for_user skipped: %s", exc)
+        return None
+
+
+@router.get("/independent-teacher/workspace/lifecycle")
+async def read_workspace_lifecycle(
+    current_user: dict = Depends(_require_independent_teacher),
+):
+    workspace_id = independent_workspace_id(current_user) or require_request_school_id(current_user)
+    school = await gd_find_one(db.session, "schools", {"id": workspace_id})
+    if not school:
+        raise HTTPException(status_code=404, detail=_MSG_WORKSPACE_NOT_FOUND)
+    return _build_lifecycle_payload(workspace_id, school)
 
 
 # -- Endpoint: POST /independent-teacher/workspace/lifecycle/reactivation-banner/dismiss

@@ -151,6 +151,12 @@ class TokenResponse(BaseModel):
     available_factor_kinds: Optional[List[str]] = None
     challenge_expires_at: Optional[str] = None
     mfa_recovery_codes_pending_view: bool = False
+    # Task #231 — embed the IT workspace lifecycle snapshot (including the
+    # post-reactivation banner block) so the dashboard can render the
+    # banner in the same paint as the rest of the page, without waiting
+    # for a follow-up GET. ``None`` for non-IT users and when no workspace
+    # row resolves.
+    workspace_lifecycle: Optional[Dict[str, Any]] = None
 
 class SchoolBase(BaseModel):
     name: str
