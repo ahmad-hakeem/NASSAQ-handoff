@@ -283,6 +283,20 @@ export const AuthProvider = ({ children }) => {
       }
 
       if (status === 401 && !config.url?.includes('/auth/me') && !config.url?.includes('/auth/login') && !config.url?.includes('/auth/refresh')) {
+        // A 401 for a request that had NO Authorization header to begin
+        // with is not an expired session — it's an endpoint the caller
+        // (a guest) isn't allowed to hit (e.g. /public/stats is locked
+        // to platform_admin per the C-4 audit). Bouncing the browser to
+        // /login here would trap guests on the public landing page in a
+        // /login → / → /login redirect loop the moment any background
+        // poll 401s. Reject silently and let the caller surface the
+        // error (LandingPage already swallows /public/stats failures).
+        const hadAuthHeader = !!(config.headers && (config.headers.Authorization || config.headers.authorization));
+        const hasStoredToken = !!localStorage.getItem('nassaq_token');
+        if (!hadAuthHeader && !hasStoredToken) {
+          return Promise.reject(error);
+        }
+
         if (config._isRetryAfterRefresh) {
           clearAllAuthTokens();
           setToken(null);
