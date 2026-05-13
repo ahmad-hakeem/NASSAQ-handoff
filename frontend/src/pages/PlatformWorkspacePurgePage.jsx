@@ -17,7 +17,7 @@ import {
 } from '../components/ui/table';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
-import { RefreshCw, Trash2, AlertTriangle, ShieldAlert, X, History, ChevronLeft, ChevronRight } from 'lucide-react';
+import { RefreshCw, Trash2, AlertTriangle, ShieldAlert, X, History, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 
 const ARABIC = {
   pageTitle: 'مساحات العمل الجاهزة للحذف النهائي',
@@ -83,6 +83,13 @@ const ARABIC = {
   nextPage: 'التالي',
   page: 'صفحة',
   skippedTablesLabel: 'جداول تم تخطّيها',
+  searchPlaceholder: 'ابحث بمعرّف المساحة أو الاسم…',
+  searchAria: 'بحث في سجل الحذف',
+  fromLabel: 'من تاريخ',
+  toLabel: 'إلى تاريخ',
+  applyFilters: 'تطبيق',
+  clearFilters: 'مسح',
+  activeFilters: 'المرشّحات النشطة',
 };
 
 const PAGE_SIZE = 25;
@@ -125,6 +132,13 @@ export const PlatformWorkspacePurgePage = () => {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyPage, setHistoryPage] = useState(0);
   const [historyExpanded, setHistoryExpanded] = useState(null);
+  // Draft values bound to the inputs; "applied" copies are what the
+  // request actually uses so typing doesn't re-fire the API on every
+  // keystroke.
+  const [searchDraft, setSearchDraft] = useState('');
+  const [fromDraft, setFromDraft] = useState('');
+  const [toDraft, setToDraft] = useState('');
+  const [appliedFilters, setAppliedFilters] = useState({ q: '', from: '', to: '' });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -138,12 +152,23 @@ export const PlatformWorkspacePurgePage = () => {
     }
   }, [api, nassaqError]);
 
-  const loadHistory = useCallback(async (page = 0) => {
+  const loadHistory = useCallback(async (page = 0, filters = appliedFilters) => {
     setHistoryLoading(true);
     try {
-      const resp = await api.get('/platform/workspaces/recent-purges', {
-        params: { limit: PAGE_SIZE, offset: page * PAGE_SIZE },
-      });
+      const params = { limit: PAGE_SIZE, offset: page * PAGE_SIZE };
+      if (filters.q) params.q = filters.q;
+      if (filters.from) params.from = filters.from;
+      // Make the "to" date inclusive of the chosen day by advancing one
+      // day — the backend uses a strict ``<`` comparison so a raw
+      // YYYY-MM-DD would otherwise exclude same-day purges.
+      if (filters.to) {
+        const d = new Date(`${filters.to}T00:00:00Z`);
+        if (!Number.isNaN(d.getTime())) {
+          d.setUTCDate(d.getUTCDate() + 1);
+          params.to = d.toISOString();
+        }
+      }
+      const resp = await api.get('/platform/workspaces/recent-purges', { params });
       setHistory(resp?.data?.purges || []);
       setHistoryPage(page);
     } catch (err) {
@@ -151,7 +176,30 @@ export const PlatformWorkspacePurgePage = () => {
     } finally {
       setHistoryLoading(false);
     }
-  }, [api, nassaqError]);
+  }, [api, nassaqError, appliedFilters]);
+
+  const applyFilters = useCallback(() => {
+    const next = {
+      q: searchDraft.trim(),
+      from: fromDraft.trim(),
+      to: toDraft.trim(),
+    };
+    setAppliedFilters(next);
+    loadHistory(0, next);
+  }, [searchDraft, fromDraft, toDraft, loadHistory]);
+
+  const clearFilters = useCallback(() => {
+    setSearchDraft('');
+    setFromDraft('');
+    setToDraft('');
+    const next = { q: '', from: '', to: '' };
+    setAppliedFilters(next);
+    loadHistory(0, next);
+  }, [loadHistory]);
+
+  const hasActiveFilters = Boolean(
+    appliedFilters.q || appliedFilters.from || appliedFilters.to,
+  );
 
   useEffect(() => {
     load();
@@ -161,7 +209,7 @@ export const PlatformWorkspacePurgePage = () => {
     // Refetch on every tab activation so a freshly-completed purge
     // shows up without forcing a manual refresh click.
     if (tab === 'history' && !historyLoading) {
-      loadHistory(historyPage);
+      loadHistory(historyPage, appliedFilters);
     }
     // Only fire on tab switch — page changes call loadHistory directly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -232,7 +280,7 @@ export const PlatformWorkspacePurgePage = () => {
             </div>
             <Button
               variant="outline"
-              onClick={() => (tab === 'history' ? loadHistory(historyPage) : load())}
+              onClick={() => (tab === 'history' ? loadHistory(historyPage, appliedFilters) : load())}
               disabled={tab === 'history' ? historyLoading : loading}
               className="rounded-xl gap-2"
               data-testid="refresh-purge-list"
@@ -441,6 +489,107 @@ export const PlatformWorkspacePurgePage = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
+                  <div
+                    className="mb-4 flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3 sm:flex-row sm:flex-wrap sm:items-end"
+                    dir="rtl"
+                  >
+                    <div className="flex-1 min-w-[200px]">
+                      <Label htmlFor="purge-history-search" className="font-cairo text-xs text-gray-700">
+                        {ARABIC.searchAria}
+                      </Label>
+                      <div className="relative mt-1">
+                        <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                        <Input
+                          id="purge-history-search"
+                          dir="rtl"
+                          value={searchDraft}
+                          onChange={(e) => setSearchDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              applyFilters();
+                            }
+                          }}
+                          placeholder={ARABIC.searchPlaceholder}
+                          className="font-cairo pr-9"
+                          data-testid="purge-history-search"
+                          aria-label={ARABIC.searchAria}
+                        />
+                      </div>
+                    </div>
+                    <div className="w-full sm:w-40">
+                      <Label htmlFor="purge-history-from" className="font-cairo text-xs text-gray-700">
+                        {ARABIC.fromLabel}
+                      </Label>
+                      <Input
+                        id="purge-history-from"
+                        type="date"
+                        value={fromDraft}
+                        onChange={(e) => setFromDraft(e.target.value)}
+                        className="mt-1 font-mono"
+                        data-testid="purge-history-from"
+                      />
+                    </div>
+                    <div className="w-full sm:w-40">
+                      <Label htmlFor="purge-history-to" className="font-cairo text-xs text-gray-700">
+                        {ARABIC.toLabel}
+                      </Label>
+                      <Input
+                        id="purge-history-to"
+                        type="date"
+                        value={toDraft}
+                        onChange={(e) => setToDraft(e.target.value)}
+                        className="mt-1 font-mono"
+                        data-testid="purge-history-to"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={applyFilters}
+                        disabled={historyLoading}
+                        className="rounded-xl font-cairo gap-2"
+                        data-testid="purge-history-apply"
+                      >
+                        <Search className="h-4 w-4" />
+                        {ARABIC.applyFilters}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={clearFilters}
+                        disabled={
+                          historyLoading
+                          || (!hasActiveFilters && !searchDraft && !fromDraft && !toDraft)
+                        }
+                        className="rounded-xl font-cairo gap-2"
+                        data-testid="purge-history-clear"
+                      >
+                        <X className="h-4 w-4" />
+                        {ARABIC.clearFilters}
+                      </Button>
+                    </div>
+                    {hasActiveFilters && (
+                      <div className="flex flex-wrap items-center gap-1 sm:basis-full">
+                        <span className="text-xs text-gray-500 font-cairo">{ARABIC.activeFilters}:</span>
+                        {appliedFilters.q && (
+                          <Badge variant="secondary" className="font-cairo text-[11px]" data-testid="purge-history-active-q">
+                            {ARABIC.searchAria}: {appliedFilters.q}
+                          </Badge>
+                        )}
+                        {appliedFilters.from && (
+                          <Badge variant="secondary" className="font-cairo text-[11px]">
+                            {ARABIC.fromLabel}: {appliedFilters.from}
+                          </Badge>
+                        )}
+                        {appliedFilters.to && (
+                          <Badge variant="secondary" className="font-cairo text-[11px]">
+                            {ARABIC.toLabel}: {appliedFilters.to}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   {historyLoading && history.length === 0 ? (
                     <div className="py-10 text-center text-sm text-gray-500 font-cairo">
                       <RefreshCw className="h-5 w-5 animate-spin inline-block ml-2" />
@@ -564,7 +713,7 @@ export const PlatformWorkspacePurgePage = () => {
                           size="sm"
                           className="rounded-xl gap-2 font-cairo"
                           disabled={historyLoading || historyPage === 0}
-                          onClick={() => loadHistory(historyPage - 1)}
+                          onClick={() => loadHistory(historyPage - 1, appliedFilters)}
                           data-testid="purge-history-prev"
                         >
                           <ChevronRight className="h-4 w-4" />
@@ -578,7 +727,7 @@ export const PlatformWorkspacePurgePage = () => {
                           size="sm"
                           className="rounded-xl gap-2 font-cairo"
                           disabled={historyLoading || history.length < PAGE_SIZE}
-                          onClick={() => loadHistory(historyPage + 1)}
+                          onClick={() => loadHistory(historyPage + 1, appliedFilters)}
                           data-testid="purge-history-next"
                         >
                           {ARABIC.nextPage}

@@ -37,8 +37,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import and_, desc, or_, select
 from sqlalchemy.exc import ProgrammingError
 
 from dependencies import (
@@ -48,6 +49,7 @@ from dependencies import (
     UserRole,
 )
 from engines.sql_utils import gd_delete_many, gd_find, gd_find_one
+from pg_models import AuditLog
 
 
 logger = logging.getLogger("nassaq.platform_workspace_purge")
@@ -62,6 +64,34 @@ _MSG_NOT_FOUND = "لم يتم العثور على مساحة العمل."
 _MSG_NOT_PENDING = "هذه المساحة ليست في حالة الحذف النهائي."
 _MSG_CONFIRM_MISMATCH = "تأكيد المعرّف لا يطابق المساحة المطلوبة."
 _MSG_INTERNAL = "تعذّر تنفيذ العملية — حاول لاحقًا."
+_MSG_BAD_DATE = "صيغة التاريخ غير صحيحة."
+
+
+def _parse_iso_aware(value: str) -> datetime:
+    """Parse an ISO-8601 date or datetime string into an aware UTC datetime.
+
+    Accepts plain ``YYYY-MM-DD`` (treated as start-of-day UTC) and full
+    ISO timestamps (with or without trailing ``Z``). Raises HTTP 422
+    with a safe Arabic message on malformed input.
+    """
+    raw = (value or "").strip()
+    if not raw:
+        raise HTTPException(status_code=422, detail=_MSG_BAD_DATE)
+    try:
+        normalized = raw.replace("Z", "+00:00") if raw.endswith("Z") else raw
+        if len(normalized) == 10 and normalized[4] == "-" and normalized[7] == "-":
+            dt = datetime.fromisoformat(normalized + "T00:00:00+00:00")
+        else:
+            dt = datetime.fromisoformat(normalized)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail=_MSG_BAD_DATE)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _escape_like(needle: str) -> str:
+    return needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 # Cascade order: children first, parent last. Each entry is
@@ -153,6 +183,9 @@ async def list_pending_hard_delete(
 async def list_recent_purges(
     limit: int = 50,
     offset: int = 0,
+    q: Optional[str] = Query(default=None, max_length=200),
+    from_: Optional[str] = Query(default=None, alias="from", max_length=32),
+    to: Optional[str] = Query(default=None, max_length=32),
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
 ):
     # Clamp pagination params so a buggy/abusive client can't pull the
@@ -165,15 +198,61 @@ async def list_recent_purges(
     if offset is None or offset < 0:
         offset = 0
 
-    rows = await gd_find(
-        db.session,
-        "audit_logs",
-        {"action": AUDIT_HARD_DELETED},
-        order_by="timestamp",
-        desc_order=True,
-        limit=limit,
-        offset=offset,
+    conditions = [AuditLog.action == AUDIT_HARD_DELETED]
+
+    if q:
+        needle = q.strip()
+        if needle:
+            escaped = _escape_like(needle)
+            pattern = f"%{escaped}%"
+            # Match against the canonical workspace id (entity_id /
+            # details.school_id) and the snapshot name fields. Using
+            # JSONB ``->>`` keeps the comparison server-side so
+            # pagination remains correct.
+            details = AuditLog.details
+            conditions.append(
+                or_(
+                    AuditLog.entity_id.ilike(pattern, escape="\\"),
+                    details["school_id"].astext.ilike(pattern, escape="\\"),
+                    details["tenant_id"].astext.ilike(pattern, escape="\\"),
+                    details["snapshot"]["name"].astext.ilike(pattern, escape="\\"),
+                    details["snapshot"]["name_ar"].astext.ilike(pattern, escape="\\"),
+                    details["snapshot"]["name_en"].astext.ilike(pattern, escape="\\"),
+                )
+            )
+
+    ts_from = _parse_iso_aware(from_) if from_ else None
+    ts_to = _parse_iso_aware(to) if to else None
+    if ts_from and ts_to and ts_from >= ts_to:
+        raise HTTPException(status_code=422, detail=_MSG_BAD_DATE)
+    if ts_from is not None:
+        conditions.append(AuditLog.timestamp >= ts_from)
+    if ts_to is not None:
+        conditions.append(AuditLog.timestamp < ts_to)
+
+    stmt = (
+        select(AuditLog)
+        .where(and_(*conditions))
+        .order_by(desc(AuditLog.timestamp))
+        .limit(limit)
+        .offset(offset)
     )
+    result = await db.session.execute(stmt)
+    audit_rows = list(result.scalars().all())
+
+    rows: List[Dict[str, Any]] = [
+        {
+            "id": r.id,
+            "timestamp": r.timestamp,
+            "entity_id": r.entity_id,
+            "school_id": r.school_id,
+            "details": r.details,
+            "performed_by": r.performed_by,
+            "actor_name": r.actor_name,
+            "actor_email": r.actor_email,
+        }
+        for r in audit_rows
+    ]
 
     items: List[Dict[str, Any]] = []
     for r in rows:
