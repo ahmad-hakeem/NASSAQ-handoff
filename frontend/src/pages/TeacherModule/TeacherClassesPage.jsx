@@ -1204,7 +1204,7 @@ export default function TeacherClassesPage() {
                     {t('itEmptyClassesDescription')}
                   </p>
                   <Button
-                    onClick={() => setShowAddClassDialog(true)}
+                    onClick={handleOpenAddClassDialog}
                     className="bg-workspace-accent hover:bg-workspace-accent-fg text-white rounded-xl gap-2 px-5"
                     data-testid="teacher-classes-empty-state-cta"
                   >
