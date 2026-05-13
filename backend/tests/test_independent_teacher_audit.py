@@ -521,3 +521,71 @@ async def test_export_csv_non_it_role_is_forbidden(client):
         "/independent-teacher/audit-logs/export.csv", headers=p_h,
     )
     assert r.status_code == 403
+
+
+# ----------------------------------------------------------------------
+# (i) Task #271 — `columns` query-param picker presets.
+#
+#   Guarantees we lock down here:
+#     - A narrow preset truncates the file to exactly those columns,
+#       in `_CSV_FIELDS` order.
+#     - Garbled / unknown-only `columns` falls back to the full default
+#       set (back-compat: never silently emit a 0-column file).
+#     - A tampered request order still produces the canonical
+#       `_CSV_FIELDS` ordering (the FE picker can't reshuffle the file).
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_export_csv_columns_preset_emits_only_requested_in_canonical_order(client):
+    own = await mk_it_workspace()
+    await _seed_log(school_id=own["wsid"], action="auth.login")
+
+    resp = await client.get(
+        "/independent-teacher/audit-logs/export.csv"
+        "?columns=timestamp,action_label_ar,actor_name",
+        headers=_it_h(own),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.content.decode("utf-8-sig")
+    header = body.splitlines()[0].split(",")
+    # Exactly the three requested columns, in `_CSV_FIELDS` order
+    # (timestamp → action_label_ar → actor_name), not request order.
+    assert header == ["timestamp", "action_label_ar", "actor_name"]
+
+
+@pytest.mark.asyncio
+async def test_export_csv_columns_unknown_only_falls_back_to_full_default(client):
+    from routes.independent_teacher_audit_routes import _CSV_FIELDS
+
+    own = await mk_it_workspace()
+    await _seed_log(school_id=own["wsid"], action="auth.login")
+
+    resp = await client.get(
+        "/independent-teacher/audit-logs/export.csv"
+        "?columns=not_a_field,also_bogus,%20",
+        headers=_it_h(own),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.content.decode("utf-8-sig")
+    header = tuple(body.splitlines()[0].split(","))
+    # Back-compat: unknown-only must NOT truncate to a 0-column file —
+    # the resolver falls back to the full default set.
+    assert header == _CSV_FIELDS
+
+
+@pytest.mark.asyncio
+async def test_export_csv_columns_request_order_does_not_reshuffle_file(client):
+    own = await mk_it_workspace()
+    await _seed_log(school_id=own["wsid"], action="auth.login")
+
+    # Tampered order: details → timestamp → id. Canonical `_CSV_FIELDS`
+    # order is id → timestamp → … → details, so the file MUST come back
+    # as `id, timestamp, details` regardless of the request order.
+    resp = await client.get(
+        "/independent-teacher/audit-logs/export.csv"
+        "?columns=details,timestamp,id",
+        headers=_it_h(own),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.content.decode("utf-8-sig")
+    header = body.splitlines()[0].split(",")
+    assert header == ["id", "timestamp", "details"]
