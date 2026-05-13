@@ -382,3 +382,99 @@ async def test_actor_filter_substring_match(client):
     assert blank.status_code == 200
     blank_ids = {r["id"] for r in blank.json()["logs"]}
     assert fatima_id in blank_ids and farah_id in blank_ids and omar_id in blank_ids
+
+
+# ----------------------------------------------------------------------
+# (h) Task #255 — CSV export pins workspace, strips sensitive keys,
+# honours filters, and refuses non-IT callers.
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_export_csv_returns_only_own_rows_and_strips_sensitive(client):
+    own = await mk_it_workspace()
+    other = await mk_it_workspace()
+
+    own_login = await _seed_log(
+        school_id=own["wsid"], action="auth.login",
+    )
+    own_export = await _seed_log(
+        school_id=own["wsid"],
+        action="INDEPENDENT_TEACHER_EXPORT",
+        details={
+            "school_id": own["wsid"],
+            "ttl_hours": 24,
+            # Sensitive — must be stripped from the CSV cell too.
+            "token_hash": "secret-abc",
+            "password": "p@ss",
+            "email": "leak@example.com",
+        },
+    )
+    foreign = await _seed_log(
+        school_id=other["wsid"], action="auth.login",
+    )
+
+    resp = await client.get(
+        "/independent-teacher/audit-logs/export.csv",
+        headers=_it_h(own),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"].startswith("text/csv")
+    assert "attachment" in resp.headers.get("content-disposition", "")
+
+    body = resp.content.decode("utf-8-sig")
+    lines = body.splitlines()
+    assert lines, body
+    header = lines[0].split(",")
+    assert header[0] == "id"
+    assert "category" in header
+    assert "details" in header
+
+    assert own_login in body
+    assert own_export in body
+    # Cross-workspace row must not leak into the export.
+    assert foreign not in body
+    # Sensitive keys must not appear anywhere in the CSV payload.
+    for forbidden in ("token_hash", "secret-abc", "password", "p@ss",
+                      "leak@example.com"):
+        assert forbidden not in body, forbidden
+
+
+@pytest.mark.asyncio
+async def test_export_csv_honours_category_filter(client):
+    own = await mk_it_workspace()
+    auth_id = await _seed_log(school_id=own["wsid"], action="auth.login")
+    write_id = await _seed_log(
+        school_id=own["wsid"], action="academic.grade_recorded",
+    )
+
+    resp = await client.get(
+        "/independent-teacher/audit-logs/export.csv?category=auth",
+        headers=_it_h(own),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.content.decode("utf-8-sig")
+    assert auth_id in body
+    assert write_id not in body
+
+
+@pytest.mark.asyncio
+async def test_export_csv_non_it_role_is_forbidden(client):
+    own = await mk_it_workspace()
+    await _seed_log(school_id=own["wsid"], action="auth.login")
+
+    sid = str(uuid.uuid4())
+    await gd_insert(db.session, "schools", {
+        "id": sid, "name": "S", "code": f"S{sid[:8]}",
+        "status": "active", "country": "SA", "language": "ar",
+    })
+    p_uid = str(uuid.uuid4())
+    await gd_insert(db.session, "users", {
+        "id": p_uid, "role": UserRole.SCHOOL_PRINCIPAL.value,
+        "tenant_id": sid, "email": f"p-{p_uid}@t.test",
+        "full_name": "P", "is_active": True, "password_hash": "x",
+    })
+    p_h = headers(p_uid, UserRole.SCHOOL_PRINCIPAL.value, sid)
+
+    r = await client.get(
+        "/independent-teacher/audit-logs/export.csv", headers=p_h,
+    )
+    assert r.status_code == 403

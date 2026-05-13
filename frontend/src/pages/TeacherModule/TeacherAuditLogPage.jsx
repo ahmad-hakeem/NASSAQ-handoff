@@ -6,7 +6,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
-import { Loader2, History, RefreshCw, ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { Loader2, History, RefreshCw, ChevronDown, ChevronUp, Search, Download } from 'lucide-react';
 import { formatHijriDate } from '../../utils/hijriDate';
 import { useTranslation } from '../../contexts/ThemeContext';
 
@@ -106,12 +106,51 @@ export default function TeacherAuditLogPage() {
   const [cursor, setCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [expanded, setExpanded] = useState({});
 
   const errMsg = useMemo(
     () => t('auditLogLoadFailed') || 'تعذّر تحميل سجل النشاط — حاول لاحقًا.',
     [t],
   );
+  const exportErrMsg = useMemo(
+    () => t('auditLogExportFailed') || 'تعذّر تصدير سجل النشاط — حاول لاحقًا.',
+    [t],
+  );
+
+  const onDownloadCsv = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const params = {};
+      if (activeCategory) params.category = activeCategory;
+      const fromIso = dayBoundaryIso(fromDate);
+      const toIso = dayBoundaryIso(toDate, { endOfDay: true });
+      if (fromIso) params.from = fromIso;
+      if (toIso) params.to = toIso;
+      const res = await api.get('/independent-teacher/audit-logs/export.csv', {
+        params,
+        responseType: 'blob',
+      });
+      const blob = res?.data instanceof Blob
+        ? res.data
+        : new Blob([res?.data ?? ''], { type: 'text/csv;charset=utf-8' });
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `audit-log-${stamp}.csv`;
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(href), 0);
+    } catch (e) {
+      nassaqError(exportErrMsg);
+    } finally {
+      setExporting(false);
+    }
+  }, [api, activeCategory, fromDate, toDate, exporting, nassaqError, exportErrMsg]);
 
   const fetchPage = useCallback(async (opts = {}) => {
     setLoading(true);
@@ -197,18 +236,33 @@ export default function TeacherAuditLogPage() {
                 {t('teacherAuditLogTitle') || 'سجل النشاط'}
               </h1>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => fetchPage({
-                category: activeCategory, from: fromDate, to: toDate, actor: actorQuery,
-              })}
-              disabled={loading}
-            >
-              <RefreshCw className={`w-4 h-4 ml-2 ${loading ? 'animate-spin' : ''}`} />
-              {t('refresh') || 'تحديث'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onDownloadCsv}
+                disabled={exporting || loading}
+                title={t('downloadCsv') || 'تنزيل CSV'}
+              >
+                {exporting
+                  ? <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+                  : <Download className="w-4 h-4 ml-2" />}
+                {t('downloadCsv') || 'تنزيل CSV'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fetchPage({
+                  category: activeCategory, from: fromDate, to: toDate, actor: actorQuery,
+                })}
+                disabled={loading}
+              >
+                <RefreshCw className={`w-4 h-4 ml-2 ${loading ? 'animate-spin' : ''}`} />
+                {t('refresh') || 'تحديث'}
+              </Button>
+            </div>
           </header>
 
           <p className="text-sm text-gray-600">

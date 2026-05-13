@@ -26,11 +26,15 @@ their own workspace history).
 """
 from __future__ import annotations
 
+import csv
+import io
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, desc, not_, or_, select
 
 from auth_scope import (
@@ -457,6 +461,104 @@ async def list_audit_logs(
             {"key": k, "label_ar": _CATEGORY_LABELS_AR[k]} for k in _CATEGORY_KEYS
         ],
     }
+
+
+_CSV_FIELDS: Tuple[str, ...] = (
+    "id",
+    "timestamp",
+    "category",
+    "category_label_ar",
+    "action",
+    "action_label_ar",
+    "severity",
+    "actor_name",
+    "actor_role",
+    "performed_by",
+    "entity_type",
+    "entity_id",
+    "details",
+)
+
+
+def _csv_value(row: Dict[str, Any], key: str) -> str:
+    if key == "category_label_ar":
+        return _CATEGORY_LABELS_AR.get(row.get("category") or "", "")
+    if key == "details":
+        details = row.get("details") or {}
+        if not details:
+            return ""
+        try:
+            return json.dumps(details, ensure_ascii=False, sort_keys=True, default=str)
+        except (TypeError, ValueError):
+            return ""
+    val = row.get(key)
+    if val is None:
+        return ""
+    return str(val)
+
+
+@router.get("/export.csv")
+async def export_audit_logs_csv(
+    category: Optional[str] = Query(default=None, max_length=32),
+    action: Optional[str] = Query(default=None, max_length=128),
+    from_: Optional[str] = Query(default=None, alias="from", max_length=32),
+    to: Optional[str] = Query(default=None, max_length=32),
+    current_user: dict = Depends(_require_independent_teacher),
+):
+    """Stream the workspace audit log as CSV.
+
+    Same workspace-pin (``school_id == itw_{user_id}``), same
+    sensitive-key stripping, and same category/action/date filters as
+    the JSON list endpoint. No cursor/limit — exports the full filtered
+    history newest-first so the IT can keep an offline archive.
+    """
+    workspace_id = _workspace_id(current_user)
+
+    conditions = [AuditLog.school_id == workspace_id]
+
+    if action:
+        conditions.append(AuditLog.action == action.strip())
+
+    if category and category in _CATEGORY_KEYS:
+        clause = _sql_category_clause(category)
+        if clause is not None:
+            conditions.append(clause)
+
+    if from_:
+        ts_from = _parse_iso_aware(from_, msg=_MSG_BAD_DATE)
+        conditions.append(AuditLog.timestamp >= ts_from)
+    if to:
+        ts_to = _parse_iso_aware(to, msg=_MSG_BAD_DATE)
+        conditions.append(AuditLog.timestamp < ts_to)
+
+    stmt = (
+        select(AuditLog)
+        .where(and_(*conditions))
+        .order_by(desc(AuditLog.timestamp))
+    )
+
+    result = await db.session.execute(stmt)
+    rows = list(result.scalars().all())
+    serialized = [_serialize(_row_to_dict(r)) for r in rows]
+
+    buf = io.StringIO()
+    # UTF-8 BOM so Excel opens the Arabic columns correctly.
+    buf.write("\ufeff")
+    writer = csv.writer(buf, quoting=csv.QUOTE_MINIMAL)
+    writer.writerow(_CSV_FIELDS)
+    for row in serialized:
+        writer.writerow([_csv_value(row, k) for k in _CSV_FIELDS])
+
+    payload = buf.getvalue().encode("utf-8")
+    filename = f"audit-log-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.csv"
+    return StreamingResponse(
+        io.BytesIO(payload),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(payload)),
+        },
+    )
 
 
 @router.get("/{log_id}")
