@@ -25,6 +25,11 @@ const RegistrationConfirmationPage = lazy(() => import("../pages/RegistrationCon
 const ForgotPasswordPage = lazy(() => import("../pages/ForgotPasswordPage"));
 const ResetPasswordPage = lazy(() => import("../pages/ResetPasswordPage"));
 const ForcePasswordChange = lazy(() => import("../pages/ForcePasswordChange"));
+// Spec §5.1 IT first-login MFA enrolment surface (mounted under
+// /auth/mfa/enroll — the redirect target referenced by RouteGuards,
+// LoginPage.resolveRedirectTarget, RegisterPage, and the IT onboarding
+// wizard's mfa_enrollment_required handler).
+const MfaEnrollPage = lazy(() => import("../pages/MfaEnrollPage"));
 // Task #206 — public parent-invitation accept landing (IT §6.2c).
 const ParentInvitationAcceptPage = lazy(() => import("../pages/ParentInvitationAcceptPage"));
 // Task #210 — IT §6.7 cross-workspace collaborator accept landing.
@@ -199,6 +204,13 @@ export default function AppRoutes() {
         {/* Force Password Change */}
         <Route path="/change-password" element={
           <ProtectedRoute skipPasswordCheck={true}><ForcePasswordChange /></ProtectedRoute>
+        } />
+
+        {/* Spec §5.1 — IT first-login MFA enrolment. ProtectedRoute's IT
+            gate explicitly whitelists pathnames that start with /auth/mfa
+            so the page can render without re-bouncing to itself. */}
+        <Route path="/auth/mfa/enroll" element={
+          <ProtectedRoute skipPasswordCheck={true}><MfaEnrollPage /></ProtectedRoute>
         } />
 
         {/* Platform Admin Routes */}
