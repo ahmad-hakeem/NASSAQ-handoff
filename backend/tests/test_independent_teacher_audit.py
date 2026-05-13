@@ -329,3 +329,56 @@ async def test_date_range_filter(client):
         headers=_it_h(own),
     )
     assert bad.status_code == 422
+
+
+# ----------------------------------------------------------------------
+# (g) Actor substring filter — case-insensitive, workspace-pinned, and
+# safe against LIKE metacharacters smuggled in the query string.
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_actor_filter_substring_match(client):
+    own = await mk_it_workspace()
+    other = await mk_it_workspace()
+
+    fatima_id = await _seed_log(
+        school_id=own["wsid"], action="auth.login", actor_name="Fatima Al-Zahra",
+    )
+    farah_id = await _seed_log(
+        school_id=own["wsid"], action="auth.login", actor_name="Farah Khan",
+    )
+    omar_id = await _seed_log(
+        school_id=own["wsid"], action="auth.login", actor_name="Omar Said",
+    )
+    # Same substring in a foreign workspace must NOT leak.
+    foreign_fatima = await _seed_log(
+        school_id=other["wsid"], action="auth.login", actor_name="Fatima Foreign",
+    )
+
+    resp = await client.get(
+        "/independent-teacher/audit-logs?actor=fati",
+        headers=_it_h(own),
+    )
+    assert resp.status_code == 200, resp.text
+    ids = {r["id"] for r in resp.json()["logs"]}
+    assert fatima_id in ids
+    assert farah_id not in ids
+    assert omar_id not in ids
+    assert foreign_fatima not in ids
+
+    # Bare "%" must be treated as a literal — not a wildcard that
+    # widens the match back to "all rows".
+    pct = await client.get(
+        "/independent-teacher/audit-logs?actor=%25",
+        headers=_it_h(own),
+    )
+    assert pct.status_code == 200
+    assert pct.json()["logs"] == []
+
+    # Whitespace-only filter is a no-op (returns all own-workspace rows).
+    blank = await client.get(
+        "/independent-teacher/audit-logs?actor=%20%20",
+        headers=_it_h(own),
+    )
+    assert blank.status_code == 200
+    blank_ids = {r["id"] for r in blank.json()["logs"]}
+    assert fatima_id in blank_ids and farah_id in blank_ids and omar_id in blank_ids

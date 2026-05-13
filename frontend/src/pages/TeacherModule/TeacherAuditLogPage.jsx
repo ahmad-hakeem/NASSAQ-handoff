@@ -6,7 +6,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
-import { Loader2, History, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, History, RefreshCw, ChevronDown, ChevronUp, Search } from 'lucide-react';
 import { formatHijriDate } from '../../utils/hijriDate';
 import { useTranslation } from '../../contexts/ThemeContext';
 
@@ -101,6 +101,8 @@ export default function TeacherAuditLogPage() {
   const [activeCategory, setActiveCategory] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [actorInput, setActorInput] = useState('');
+  const [actorQuery, setActorQuery] = useState('');
   const [cursor, setCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -121,6 +123,8 @@ export default function TeacherAuditLogPage() {
       const toIso = dayBoundaryIso(opts.to, { endOfDay: true });
       if (fromIso) params.from = fromIso;
       if (toIso) params.to = toIso;
+      const actorTerm = (opts.actor || '').trim();
+      if (actorTerm) params.actor = actorTerm;
       const res = await api.get('/independent-teacher/audit-logs', { params });
       const data = res?.data || {};
       const next = Array.isArray(data.logs) ? data.logs : [];
@@ -138,8 +142,10 @@ export default function TeacherAuditLogPage() {
   }, [api, errMsg, nassaqError]);
 
   useEffect(() => {
-    fetchPage({ category: activeCategory, from: fromDate, to: toDate });
-  }, [activeCategory, fromDate, toDate, fetchPage]);
+    fetchPage({
+      category: activeCategory, from: fromDate, to: toDate, actor: actorQuery,
+    });
+  }, [activeCategory, fromDate, toDate, actorQuery, fetchPage]);
 
   const onPickCategory = (key) => {
     setActiveCategory(prev => (prev === key ? '' : key));
@@ -153,12 +159,25 @@ export default function TeacherAuditLogPage() {
       cursor,
       from: fromDate,
       to: toDate,
+      actor: actorQuery,
     });
   };
 
   const onClearDates = () => {
     setFromDate('');
     setToDate('');
+    setCursor(null);
+  };
+
+  const onSubmitActor = (e) => {
+    e.preventDefault();
+    setCursor(null);
+    setActorQuery(actorInput.trim());
+  };
+
+  const onClearActor = () => {
+    setActorInput('');
+    setActorQuery('');
     setCursor(null);
   };
 
@@ -183,7 +202,7 @@ export default function TeacherAuditLogPage() {
               variant="outline"
               size="sm"
               onClick={() => fetchPage({
-                category: activeCategory, from: fromDate, to: toDate,
+                category: activeCategory, from: fromDate, to: toDate, actor: actorQuery,
               })}
               disabled={loading}
             >
@@ -228,7 +247,7 @@ export default function TeacherAuditLogPage() {
           )}
 
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-6 space-y-4">
               <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] items-end">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -272,6 +291,44 @@ export default function TeacherAuditLogPage() {
                   {t('clearDates') || 'مسح التواريخ'}
                 </Button>
               </div>
+              <form
+                onSubmit={onSubmitActor}
+                className="grid gap-4 sm:grid-cols-[1fr_auto_auto] items-end"
+              >
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    {t('teacherAuditLogActorLabel') || 'بحث باسم المنفّذ'}
+                  </label>
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-gray-400 absolute top-1/2 -translate-y-1/2 right-3 pointer-events-none" />
+                    <Input
+                      type="search"
+                      value={actorInput}
+                      maxLength={128}
+                      placeholder={t('teacherAuditLogActorPlaceholder') || 'جزء من اسم المستخدم…'}
+                      onChange={e => setActorInput(e.target.value)}
+                      className="pr-9"
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="submit"
+                  variant="outline"
+                  size="sm"
+                  disabled={loading || actorInput.trim() === actorQuery}
+                >
+                  {t('search') || 'بحث'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={onClearActor}
+                  disabled={loading || (!actorInput && !actorQuery)}
+                >
+                  {t('clearSearch') || 'مسح البحث'}
+                </Button>
+              </form>
             </CardContent>
           </Card>
 

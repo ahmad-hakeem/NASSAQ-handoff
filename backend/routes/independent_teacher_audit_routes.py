@@ -391,6 +391,7 @@ def _row_to_dict(row: AuditLog) -> Dict[str, Any]:
 async def list_audit_logs(
     category: Optional[str] = Query(default=None, max_length=32),
     action: Optional[str] = Query(default=None, max_length=128),
+    actor: Optional[str] = Query(default=None, max_length=128, description="Case-insensitive substring match against actor_name"),
     from_: Optional[str] = Query(default=None, alias="from", max_length=32, description="ISO date/time; rows at or after this instant"),
     to: Optional[str] = Query(default=None, max_length=32, description="ISO date/time; rows strictly before this instant"),
     cursor: Optional[str] = Query(default=None, max_length=64, description="ISO timestamp; rows strictly older than this"),
@@ -408,6 +409,14 @@ async def list_audit_logs(
         clause = _sql_category_clause(category)
         if clause is not None:
             conditions.append(clause)
+
+    if actor:
+        needle = actor.strip()
+        if needle:
+            # Escape LIKE metacharacters so a user-supplied "%" or "_"
+            # doesn't widen the match.
+            escaped = needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            conditions.append(AuditLog.actor_name.ilike(f"%{escaped}%", escape="\\"))
 
     if from_:
         ts_from = _parse_iso_aware(from_, msg=_MSG_BAD_DATE)
