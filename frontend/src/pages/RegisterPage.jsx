@@ -300,11 +300,20 @@ export const RegisterPage = () => {
             target = '/school';
             break;
           case 'independent_teacher':
-            // Pre-bootstrap IT (no tenant_id yet) must complete the onboarding
-            // wizard before any /teacher/* surface mounts. The wizard's bootstrap
-            // submit triggers MFA step-up via the AuthContext axios interceptor,
-            // so we route straight to onboarding rather than a dedicated MFA page.
-            target = data.user.tenant_id ? '/teacher' : '/teacher/onboarding';
+            // Spec §5.1 first-login orchestration:
+            //   signup → MFA enrolment → recent assertion → wizard → bootstrap.
+            // The bootstrap endpoint hard-requires `users.mfa_enrolled_at`, so
+            // a brand-new IT signup MUST land on the MFA enrolment page first;
+            // otherwise the wizard submit returns 403 mfa_enrollment_required
+            // and bounces the user with the "إعداد عامل تحقق ثانوي" dialog.
+            // Mirrors LoginPage.resolveRedirectTarget().
+            if (!data.user.mfa_enrolled_at) {
+              target = '/auth/mfa/enroll';
+            } else if (!data.user.tenant_id) {
+              target = '/teacher/onboarding';
+            } else {
+              target = '/teacher';
+            }
             break;
           case 'teacher':
             target = '/teacher';

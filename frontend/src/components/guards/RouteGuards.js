@@ -79,20 +79,28 @@ export const ProtectedRoute = ({
     return <Navigate to={target} replace />;
   }
 
-  // Pre-bootstrap Independent Teacher (no workspace yet) must land on the
-  // onboarding wizard before any other /teacher/* surface mounts. The wizard
-  // itself triggers MFA step-up via the AuthContext axios interceptor when
-  // it submits to the bootstrap endpoint, so we don't need a dedicated MFA
-  // route here. Allow the wizard, the change-password shim, and any future
-  // /auth/mfa/* surface to render without a redirect loop.
+  // Spec §5.1 first-login orchestration for Independent Teacher accounts:
+  //   signup → MFA enrolment → recent assertion → wizard → bootstrap.
+  // The bootstrap endpoint hard-requires `users.mfa_enrolled_at`, so an IT
+  // user without MFA must land on /auth/mfa/enroll FIRST; only after MFA is
+  // enrolled may they reach the wizard. Once bootstrapped (tenant_id set)
+  // they get the regular /teacher surface. Allow /change-password as a
+  // permitted detour from either gate.
   if (
     effectiveRole === "independent_teacher" &&
-    !user?.tenant_id &&
-    location.pathname !== "/teacher/onboarding" &&
-    !location.pathname.startsWith("/auth/mfa") &&
     location.pathname !== "/change-password"
   ) {
-    return <Navigate to="/teacher/onboarding" replace />;
+    if (!user?.mfa_enrolled_at && !location.pathname.startsWith("/auth/mfa")) {
+      return <Navigate to="/auth/mfa/enroll" replace />;
+    }
+    if (
+      user?.mfa_enrolled_at &&
+      !user?.tenant_id &&
+      location.pathname !== "/teacher/onboarding" &&
+      !location.pathname.startsWith("/auth/mfa")
+    ) {
+      return <Navigate to="/teacher/onboarding" replace />;
+    }
   }
 
   if (requiredPermission) {
