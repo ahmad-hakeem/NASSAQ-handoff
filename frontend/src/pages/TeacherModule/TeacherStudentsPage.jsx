@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -88,6 +89,12 @@ export default function TeacherStudentsPage() {
   // (or `null` when no invitation exists). Populated lazily after the
   // student list loads so a class with no IT students still renders.
   const [invitationByStudent, setInvitationByStudent] = useState({});
+  // Task #251 — deep-link via /teacher/students?student_id=… opened from
+  // the IT command palette. Tracks whether we've already auto-opened the
+  // details dialog so we don't reopen on every render.
+  const _location = useLocation();
+  const _navigate = useNavigate();
+  const _deepLinkOpenedRef = useRef(null);
 
   const { nassaqError, nassaqWarning, nassaqInfo, nassaqConfirm } = useNassaqAlert();
   const teacherId = user?.teacher_id || user?.id;
@@ -290,6 +297,26 @@ export default function TeacherStudentsPage() {
       setLoadingAI(false);
     }
   };
+
+  // Task #251 — auto-open details dialog when arriving with
+  // ?student_id=… (deep-link from the IT command palette).
+  useEffect(() => {
+    if (!students || !students.length) return;
+    const params = new URLSearchParams(_location.search);
+    const sid = params.get('student_id');
+    if (!sid || _deepLinkOpenedRef.current === sid) return;
+    const match = students.find((s) => s.id === sid);
+    if (!match) return;
+    _deepLinkOpenedRef.current = sid;
+    // eslint-disable-next-line no-use-before-define
+    viewStudentDetails(match);
+    // Strip the deep-link param so a refresh doesn't replay the dialog.
+    params.delete('student_id');
+    _navigate(
+      { pathname: _location.pathname, search: params.toString() ? `?${params.toString()}` : '' },
+      { replace: true },
+    );
+  }, [students, _location.pathname, _location.search, _navigate]);
 
   const viewStudentDetails = async (student) => {
     setSelectedStudent(student);

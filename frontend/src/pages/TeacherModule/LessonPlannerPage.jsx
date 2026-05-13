@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -106,6 +107,14 @@ export default function LessonPlannerPage() {
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState({ topic: '', subject: '', grade_level: '', duration_minutes: '', title: '' });
   const [rowBusy, setRowBusy] = useState(null);
+  // Task #251 — deep-link via /teacher/lesson-planner?plan_id=… opened
+  // from the IT command palette. Tracks scroll-to + brief highlight ring
+  // applied to the matching saved-plan row.
+  const [highlightedPlanId, setHighlightedPlanId] = useState(null);
+  const _location = useLocation();
+  const _navigate = useNavigate();
+  const _planRefs = useRef({});
+  const _deepLinkConsumedRef = useRef(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -123,6 +132,28 @@ export default function LessonPlannerPage() {
   }, [api]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // Task #251 — scroll to + briefly highlight the row matching ?plan_id=…
+  useEffect(() => {
+    if (!savedPlans || !savedPlans.length) return;
+    const params = new URLSearchParams(_location.search);
+    const pid = params.get('plan_id');
+    if (!pid || _deepLinkConsumedRef.current === pid) return;
+    if (!savedPlans.some((p) => p.id === pid)) return;
+    _deepLinkConsumedRef.current = pid;
+    setHighlightedPlanId(pid);
+    const node = _planRefs.current[pid];
+    if (node && typeof node.scrollIntoView === 'function') {
+      try { node.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_e) { /* noop */ }
+    }
+    const t1 = window.setTimeout(() => setHighlightedPlanId(null), 2400);
+    params.delete('plan_id');
+    _navigate(
+      { pathname: _location.pathname, search: params.toString() ? `?${params.toString()}` : '' },
+      { replace: true },
+    );
+    return () => window.clearTimeout(t1);
+  }, [savedPlans, _location.pathname, _location.search, _navigate]);
 
   const onChange = (key) => (e) => {
     const value = e?.target?.value ?? '';
@@ -450,7 +481,14 @@ export default function LessonPlannerPage() {
                 const isEditing = editingId === p.id;
                 const busy = rowBusy === p.id;
                 return (
-                  <div key={p.id} className="border rounded-md p-3 text-sm bg-white">
+                  <div
+                    key={p.id}
+                    ref={(el) => { _planRefs.current[p.id] = el; }}
+                    data-testid={`saved-plan-row-${p.id}`}
+                    className={`border rounded-md p-3 text-sm bg-white transition-shadow ${
+                      highlightedPlanId === p.id ? 'ring-2 ring-brand-navy/60 shadow-md' : ''
+                    }`}
+                  >
                     {isEditing ? (
                       <div className="space-y-2">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">

@@ -4549,5 +4549,18 @@
   "itTourStep7Title": "Export your workspace",
   "itTourStep7Body": "Download a full export of your data anytime from workspace settings.",
   "itTourStep8Title": "Account settings",
-  "itTourStep8Body": "Manage your data and account security from workspace settings — and replay this tour whenever you like."
+  "itTourStep8Body": "Manage your data and account security from workspace settings — and replay this tour whenever you like.",
+  "cmdkOpen": "Quick search (Ctrl+K)",
+  "cmdkPlaceholder": "Search students, classes, subjects, plans, calendar…",
+  "cmdkRecents": "Recent",
+  "cmdkLoading": "Searching…",
+  "cmdkNoResults": "No results",
+  "cmdkEmptyHint": "Type at least two characters to start",
+  "cmdkHintNav": "↑ ↓ to navigate, Enter to open",
+  "cmdkHintHotkey": "Ctrl/⌘ + K",
+  "cmdkCategoryStudents": "Students",
+  "cmdkCategoryClasses": "Classes",
+  "cmdkCategorySubjects": "Subjects",
+  "cmdkCategoryLessonPlans": "Lesson plans",
+  "cmdkCategoryCalendarEvents": "Calendar"
 }

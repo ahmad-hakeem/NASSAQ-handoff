@@ -4549,5 +4549,18 @@
   "itTourStep7Title": "تصدير المساحة",
   "itTourStep7Body": "صدّر بياناتك في أي وقت كملف مضغوط من قسم إعدادات المساحة.",
   "itTourStep8Title": "إعدادات الحساب",
-  "itTourStep8Body": "تحكّم في بياناتك وأمان حسابك من إعدادات المساحة، وأعد الجولة متى أردت."
+  "itTourStep8Body": "تحكّم في بياناتك وأمان حسابك من إعدادات المساحة، وأعد الجولة متى أردت.",
+  "cmdkOpen": "بحث سريع (Ctrl+K)",
+  "cmdkPlaceholder": "ابحث في الطلاب، الفصول، المواد، الخطط، التقويم…",
+  "cmdkRecents": "الأحدث",
+  "cmdkLoading": "جارٍ البحث…",
+  "cmdkNoResults": "لا توجد نتائج",
+  "cmdkEmptyHint": "اكتب حرفين على الأقل للبدء",
+  "cmdkHintNav": "↑ ↓ للتنقل، Enter للفتح",
+  "cmdkHintHotkey": "Ctrl/⌘ + K",
+  "cmdkCategoryStudents": "الطلاب",
+  "cmdkCategoryClasses": "الفصول",
+  "cmdkCategorySubjects": "المواد",
+  "cmdkCategoryLessonPlans": "خطط الدروس",
+  "cmdkCategoryCalendarEvents": "التقويم"
 }

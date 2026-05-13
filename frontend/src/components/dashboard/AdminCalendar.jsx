@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTranslation, useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -107,6 +108,36 @@ export const AdminCalendar = ({
   }, [api, isRTL, basePath]);
 
   useEffect(() => { fetchEvents(); }, [fetchEvents]);
+
+  // Task #251 — deep-link via ?event_id=… opened from the IT command
+  // palette: auto-open the edit dialog for the matching event once the
+  // events list has loaded, then strip the query param so a refresh
+  // doesn't replay the dialog.
+  const _location = useLocation();
+  const _navigate = useNavigate();
+  const _eventDeepLinkRef = useRef(null);
+  useEffect(() => {
+    if (!events || !events.length) return;
+    const params = new URLSearchParams(_location.search);
+    const eid = params.get('event_id');
+    if (!eid || _eventDeepLinkRef.current === eid) return;
+    const match = events.find((ev) => ev.id === eid);
+    if (!match) return;
+    _eventDeepLinkRef.current = eid;
+    setEditing(match);
+    setForm({
+      title_ar: match.title_ar || '',
+      title_en: match.title_en || '',
+      type: match.type || 'meeting',
+      date: match.date || '',
+    });
+    setShowForm(true);
+    params.delete('event_id');
+    _navigate(
+      { pathname: _location.pathname, search: params.toString() ? `?${params.toString()}` : '' },
+      { replace: true },
+    );
+  }, [events, _location.pathname, _location.search, _navigate]);
 
   const todayLabel = useMemo(() => {
     try { return formatFullDate(new Date(), lang)?.full || ''; } catch { return ''; }

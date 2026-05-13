@@ -54,7 +54,9 @@ import {
   Upload,
   Sparkles,
   Trash2,
+  Search,
 } from 'lucide-react';
+import CommandPalette from '../teacher/CommandPalette';
 
 
 const LOGO_WHITE = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/q04svb5j_Nassaq%20LinkedIn%20Logo%20White.png';
@@ -574,6 +576,7 @@ export const Sidebar = ({ children }) => {
   const SidebarContent = () => {
     return (
     <div className="flex flex-col h-full">
+      <CommandPalette />
       {/* Logo */}
       <div className="p-4 flex flex-col items-center">
         {/* Logo and collapse button row */}
@@ -590,6 +593,18 @@ export const Sidebar = ({ children }) => {
             </Link>
           )}
           <div className="flex items-center gap-1">
+            {((getEffectiveRole ? getEffectiveRole() : user?.role) === 'independent_teacher') && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => window.dispatchEvent(new CustomEvent('nassaq:open-command-palette'))}
+                className="text-white/70 hover:text-white hover:bg-white/10"
+                data-testid="sidebar-cmdk-btn"
+                title={t('cmdkOpen')}
+              >
+                <Search className="h-5 w-5" />
+              </Button>
+            )}
             {availableRoles.length > 1 && (
               <Button
                 variant="ghost"
