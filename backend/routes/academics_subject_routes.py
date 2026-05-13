@@ -512,13 +512,22 @@ async def update_subject(
 @router.delete("/subjects/{subject_id}")
 async def delete_subject(
     subject_id: str,
+    force: bool = False,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
     """Delete subject (soft delete). Tenant-scoped for non-platform
     callers; cross-workspace ids return 404 (spec §8 inv. 3). Fails
-    closed when a non-platform caller has no resolvable tenant."""
+    closed when a non-platform caller has no resolvable tenant.
+
+    Mirrors the `/school/subjects/{id}` dependency-warning pattern
+    (Task #289): when the subject is still referenced by classes,
+    teacher_assignments, or schedule_sessions in the same workspace,
+    returns a `requires_confirmation` envelope instead of soft-deleting.
+    The caller must re-issue the request with `?force=true` to proceed.
+    """
     from auth_scope import is_independent_teacher, independent_workspace_id
     subject_query = {"id": subject_id}
+    scope_school_id = None
     if current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
         caller_tenant = (
             independent_workspace_id(current_user) if is_independent_teacher(current_user)
@@ -527,9 +536,33 @@ async def delete_subject(
         if not caller_tenant:
             raise HTTPException(status_code=403, detail="غير مصرح")
         subject_query["school_id"] = caller_tenant
+        scope_school_id = caller_tenant
     subject = await gd_find_one(db.session, "subjects", subject_query)
     if not subject:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
+
+    if not force:
+        ref_query_base = {"subject_id": subject_id}
+        if scope_school_id:
+            ref_query_base["school_id"] = scope_school_id
+        classes_count = await gd_count(db.session, "classes", ref_query_base)
+        assignments_count = await gd_count(db.session, "teacher_assignments", ref_query_base)
+        sessions_count = await gd_count(db.session, "schedule_sessions", ref_query_base)
+        total = classes_count + assignments_count + sessions_count
+        if total > 0:
+            return {
+                "warning": True,
+                "requires_confirmation": True,
+                "message": (
+                    f"هذه المادة مرتبطة بـ {classes_count} فصل و{assignments_count} "
+                    f"إسناد للمعلمين و{sessions_count} حصة. هل تريد الحذف؟"
+                ),
+                "dependencies": {
+                    "classes": classes_count,
+                    "teacher_assignments": assignments_count,
+                    "schedule_sessions": sessions_count,
+                },
+            }
 
     await gd_update_one(db.session, "subjects", subject_query, {"is_active": False})
     return {"message": "تم حذف المادة"}

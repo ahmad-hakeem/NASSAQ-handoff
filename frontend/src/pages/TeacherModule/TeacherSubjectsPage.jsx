@@ -112,21 +112,50 @@ export default function TeacherSubjectsPage() {
     }
   };
 
+  const performDelete = async (subjectId, { force = false } = {}) => {
+    setDeletingId(subjectId);
+    try {
+      const res = await api.delete(`/subjects/${subjectId}`, force ? { params: { force: true } } : undefined);
+      const data = res?.data;
+      if (data && data.requires_confirmation) {
+        const deps = data.dependencies || {};
+        const classes = deps.classes || 0;
+        const assignments = deps.teacher_assignments || 0;
+        const sessions = deps.schedule_sessions || 0;
+        const lines = [
+          data.message || (t('subjectDeleteHasDependencies')
+            || 'هذه المادة لا تزال مستخدمة في مساحتك.'),
+          `• ${t('classes') || 'الفصول'}: ${classes}`,
+          `• ${t('teacherAssignments') || 'إسنادات المعلمين'}: ${assignments}`,
+          `• ${t('scheduleSessions') || 'الحصص في الجدول'}: ${sessions}`,
+          t('subjectDeleteAnywayHint')
+            || 'سيؤدي الحذف إلى إخفاء المادة دون حذف الفصول أو الحصص المرتبطة. هل تريد المتابعة؟',
+        ];
+        setDeletingId(null);
+        nassaqConfirm(lines.join('\n'), async (ok) => {
+          if (!ok) return;
+          await performDelete(subjectId, { force: true });
+        }, {
+          confirmText: t('deleteAnyway') || 'حذف على أي حال',
+          cancelText: t('cancel') || 'إلغاء',
+        });
+        return;
+      }
+      fetchSubjects();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      nassaqError(typeof detail === 'string' ? detail : (t('errorDeleting') || 'تعذّر حذف المادة.'));
+    } finally {
+      setDeletingId((current) => (current === subjectId ? null : current));
+    }
+  };
+
   const handleDelete = (subject) => {
     const label = subject.name || subject.name_ar || subject.name_en || '';
     const message = (t('confirmDelete') || 'هل أنت متأكد من الحذف؟') + (label ? `\n${label}` : '');
     nassaqConfirm(message, async (ok) => {
       if (!ok) return;
-      setDeletingId(subject.id);
-      try {
-        await api.delete(`/subjects/${subject.id}`);
-        fetchSubjects();
-      } catch (err) {
-        const detail = err?.response?.data?.detail;
-        nassaqError(typeof detail === 'string' ? detail : (t('errorDeleting') || 'تعذّر حذف المادة.'));
-      } finally {
-        setDeletingId(null);
-      }
+      await performDelete(subject.id);
     });
   };
 
