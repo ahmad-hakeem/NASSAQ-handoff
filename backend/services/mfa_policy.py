@@ -8,8 +8,14 @@ cannot drift between the two surfaces.
 
 Tier A — phishing-resistant required (WebAuthn primary; TOTP + recovery codes
          mandatory backups)
-Tier B — standard staff (email OTP every login; recovery codes mandatory;
-         TOTP optional upgrade)
+Tier B — standard staff (authenticator-app TOTP every login; passkey allowed
+         where supported; recovery codes mandatory). NOTE 2026-05-13: email
+         OTP was the historical Tier B factor but has been removed because
+         email delivery is unreliable and many stored teacher emails are
+         placeholders. Existing teacher accounts with no enrolled non-email
+         factor are routed to TOTP enrolment after password login (FE
+         ProtectedRoute → ``/auth/mfa/enroll``) instead of being handed a
+         dead email-code challenge.
 Tier C — simple end-user (email OTP every login; recovery codes mandatory)
 
 Roles outside Tier A/B/C (student, driver, gatekeeper, ministry_rep,
@@ -100,10 +106,13 @@ def allowed_factor_kinds(user: dict) -> frozenset[str]:
     if tier is MfaTier.A:
         return frozenset({"webauthn", "totp", "recovery_code"})
     if tier is MfaTier.B:
-        # Teachers may upgrade to TOTP from settings; once enrolled it's a
-        # valid login factor alongside email OTP. Recovery codes are always
-        # accepted.
-        return frozenset({"email_otp", "totp", "recovery_code"})
+        # 2026-05-13: Tier B no longer accepts email OTP at login. Teachers
+        # authenticate with authenticator-app TOTP (and may use a passkey
+        # where the WebAuthn stack is available); recovery codes remain a
+        # mandatory backup. The historical email_otp factor was removed
+        # because email delivery is unreliable in this deployment and many
+        # stored teacher email addresses are not real.
+        return frozenset({"webauthn", "totp", "recovery_code"})
     if tier is MfaTier.C:
         return frozenset({"email_otp", "recovery_code"})
     return frozenset()

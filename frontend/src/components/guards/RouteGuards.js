@@ -103,6 +103,21 @@ export const ProtectedRoute = ({
     }
   }
 
+  // 2026-05-13 — School teachers (Tier B) must enrol an authenticator
+  // factor before reaching the dashboard. Email OTP was removed as a
+  // mandatory login factor (see backend/services/mfa_policy.py and
+  // backend/routes/auth_routes_mod.py login gate). The backend mints a
+  // normal access token for an unenrolled teacher and this guard mirrors
+  // that contract so a deep-link cannot bypass the enrolment screen.
+  if (
+    effectiveRole === "teacher" &&
+    !user?.mfa_enrolled_at &&
+    location.pathname !== "/change-password" &&
+    !location.pathname.startsWith("/auth/mfa")
+  ) {
+    return <Navigate to="/auth/mfa/enroll" replace />;
+  }
+
   if (requiredPermission) {
     if (!permsResolved) return <LoadingSpinner />;
     if (!hasPermission(permissions, requiredPermission)) {

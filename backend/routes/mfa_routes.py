@@ -716,12 +716,16 @@ async def stepup_start(
         db.session, "mfa_factors", {"user_id": user_id, "is_active": True}
     ) or []
 
-    # Tier B/C have an implicit email_otp factor (the user's email IS the
-    # delivery channel). Tier A users must hold at least one enrolled
-    # active factor — if they have none they'd already be blocked by the
-    # tier-A passkey enforcement branch in require_recent_mfa.
+    # Tier C has an implicit email_otp factor (the user's email IS the
+    # delivery channel). Tier B (teachers) used to as well, but the
+    # 2026-05-13 policy change dropped email_otp from Tier B because
+    # email delivery is unreliable and many stored teacher emails are
+    # placeholders — Tier B teachers must enrol TOTP/passkey before
+    # they can step up. Tier A users must hold at least one enrolled
+    # active factor — if they have none they'd already be blocked by
+    # the tier-A passkey enforcement branch in require_recent_mfa.
     from services.mfa_policy import MfaTier as _MfaTier
-    implicit_email_otp = tier in (_MfaTier.B, _MfaTier.C)
+    implicit_email_otp = tier is _MfaTier.C
     if not active_factors and not implicit_email_otp:
         raise HTTPException(
             status_code=409,

@@ -272,14 +272,19 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
         from engines.sql_utils import gd_insert
         active_factors = await gd_find(db.session, "mfa_factors", {"user_id": user_id, "is_active": True}) or []
         tier = mfa_policy.required_for(user)
-        # Tier B (teacher) and Tier C (parent) always get a challenge — their
-        # email_otp factor is implicit (the user record's email IS the factor)
-        # so a missing mfa_factors row is the expected normal case. Tier A
-        # users still require an explicitly enrolled factor row here; the
-        # "force enrolment if Tier A and zero factors" gate ships with the
-        # login UI in Step 10 (gated by MFA_GRACE_UNTIL).
+        # 2026-05-13 — Tier B (school teacher) no longer has an implicit
+        # email_otp factor. If a teacher has zero enrolled non-email
+        # factors we DO NOT issue a challenge here (which would have
+        # offered only the dead email-code path); instead we fall through
+        # and mint a normal access token. The frontend's ProtectedRoute
+        # then routes the user (mfa_enrolled_at is still null) to
+        # /auth/mfa/enroll where they enrol an authenticator app. Once
+        # enrolled, subsequent logins enter this branch via active_factors
+        # and present the TOTP challenge. Tier C (parents) keeps the
+        # implicit email_otp behaviour — that channel is operational for
+        # the parent population.
         from services.mfa_policy import MfaTier as _MfaTier
-        implicit_email_otp = tier in (_MfaTier.B, _MfaTier.C)
+        implicit_email_otp = tier is _MfaTier.C
         if tier is not None and (active_factors or implicit_email_otp):
             challenge_token, challenge_jti, challenge_exp = create_mfa_challenge_token(
                 user_id, user["role"], user.get("tenant_id"),

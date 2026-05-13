@@ -125,6 +125,13 @@ export const LoginPage = () => {
       if (!userData?.tenant_id) return '/teacher/onboarding';
       return '/teacher';
     }
+    // 2026-05-13 — School teachers (Tier B) no longer use email OTP. If
+    // they have not yet enrolled an authenticator factor, route them to
+    // the MFA enrolment surface before the dashboard. The backend issues
+    // a real access token in this state (mfa_enrolled_at IS NULL) and
+    // ProtectedRoute mirrors this gate so deep-links land in the same
+    // place.
+    if (role === 'teacher' && !userData?.mfa_enrolled_at) return '/auth/mfa/enroll';
     switch (role) {
       case 'platform_admin': return '/admin';
       case 'school_principal': return '/principal';
