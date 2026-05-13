@@ -4,6 +4,7 @@ import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
+import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { Loader2, Upload, FileSpreadsheet, CheckCircle, AlertTriangle } from 'lucide-react';
 
@@ -181,42 +182,50 @@ export default function ImportStudentsPage() {
               </div>
 
               <div className="border rounded-md overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-100 text-gray-700">
-                    <tr>
-                      <th className="p-2 text-right">#</th>
-                      <th className="p-2 text-right">الاسم الكامل</th>
-                      <th className="p-2 text-right">رقم الهوية</th>
-                      <th className="p-2 text-right">الجنس</th>
-                      <th className="p-2 text-right">تاريخ الميلاد</th>
-                      <th className="p-2 text-right">الصف</th>
-                      <th className="p-2 text-right">الحالة</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(parseResult.rows || []).map((r) => (
-                      <tr key={r.row_number} className={r.is_valid ? '' : 'bg-red-50'}>
-                        <td className="p-2">{r.row_number}</td>
-                        <td className="p-2">{r.full_name || '—'}</td>
-                        <td className="p-2">{r.national_id || '—'}</td>
-                        <td className="p-2">{r.gender === 'male' ? 'ذكر' : r.gender === 'female' ? 'أنثى' : '—'}</td>
-                        <td className="p-2">{r.date_of_birth || '—'}</td>
-                        <td className="p-2">{r.grade_level || '—'}</td>
-                        <td className="p-2">
-                          {r.is_valid ? (
-                            <span className="inline-flex items-center gap-1 text-green-700">
-                              <CheckCircle className="w-4 h-4" /> جاهز
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-red-700" title={(r.errors || []).join('، ')}>
-                              <AlertTriangle className="w-4 h-4" /> {(r.errors || [])[0] || 'غير صالح'}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <ResponsiveTable
+                  ariaLabel="معاينة الطلاب المستوردين"
+                  rows={parseResult.rows || []}
+                  getRowKey={(r) => r.row_number}
+                  rowClassName=""
+                  columns={[
+                    {
+                      key: 'full_name',
+                      header: 'الاسم الكامل',
+                      primary: true,
+                      render: (r) => (
+                        <span className={r.is_valid ? '' : 'text-red-700'}>
+                          {`#${r.row_number} — ${r.full_name || '—'}`}
+                        </span>
+                      ),
+                    },
+                    { key: 'national_id', header: 'رقم الهوية', render: (r) => r.national_id || '—' },
+                    {
+                      key: 'gender',
+                      header: 'الجنس',
+                      render: (r) => (r.gender === 'male' ? 'ذكر' : r.gender === 'female' ? 'أنثى' : '—'),
+                    },
+                    { key: 'date_of_birth', header: 'تاريخ الميلاد', render: (r) => r.date_of_birth || '—' },
+                    { key: 'grade_level', header: 'الصف', render: (r) => r.grade_level || '—' },
+                    {
+                      key: 'status',
+                      header: 'الحالة',
+                      render: (r) => (
+                        r.is_valid ? (
+                          <span className="inline-flex items-center gap-1 text-green-700">
+                            <CheckCircle className="w-4 h-4" /> جاهز
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1 text-red-700"
+                            title={(r.errors || []).join('، ')}
+                          >
+                            <AlertTriangle className="w-4 h-4" /> {(r.errors || [])[0] || 'غير صالح'}
+                          </span>
+                        )
+                      ),
+                    },
+                  ]}
+                />
               </div>
 
               <div className="flex justify-end gap-2">

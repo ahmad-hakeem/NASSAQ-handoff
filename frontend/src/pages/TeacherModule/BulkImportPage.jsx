@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Input } from '../../components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs';
+import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import {
   Loader2, Upload, FileSpreadsheet, CheckCircle, AlertTriangle,
@@ -42,9 +43,10 @@ function CsvImportPanel({
   api, nassaqError, nassaqInfo, nassaqConfirm,
   parseUrl, commitUrl,
   headers, templateName, sampleRows,
-  intro, columnsRender, rowsTableHead, renderRowCells,
+  intro, columnsRender, previewColumns,
   successPrefix, confirmPrefixFn,
   quotaBadgesFn,
+  ariaLabel,
 }) {
   const fileRef = useRef(null);
   const [parsing, setParsing] = useState(false);
@@ -175,37 +177,33 @@ function CsvImportPanel({
             </div>
 
             <div className="border rounded-md overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-100 text-gray-700">
-                  <tr>
-                    <th className="p-2 text-right">#</th>
-                    {rowsTableHead}
-                    <th className="p-2 text-right">الحالة</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(parseResult.rows || []).map((r) => (
-                    <tr key={r.row_number} className={r.is_valid ? '' : 'bg-red-50'}>
-                      <td className="p-2">{r.row_number}</td>
-                      {renderRowCells(r)}
-                      <td className="p-2">
-                        {r.is_valid ? (
-                          <span className="inline-flex items-center gap-1 text-green-700">
-                            <CheckCircle className="w-4 h-4" /> جاهز
-                          </span>
-                        ) : (
-                          <span
-                            className="inline-flex items-center gap-1 text-red-700"
-                            title={(r.errors || []).join('، ')}
-                          >
-                            <AlertTriangle className="w-4 h-4" /> {(r.errors || [])[0] || 'غير صالح'}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <ResponsiveTable
+                ariaLabel={ariaLabel}
+                rows={parseResult.rows || []}
+                getRowKey={(r) => r.row_number}
+                rowClassName=""
+                columns={[
+                  ...previewColumns,
+                  {
+                    key: 'status',
+                    header: 'الحالة',
+                    render: (r) => (
+                      r.is_valid ? (
+                        <span className="inline-flex items-center gap-1 text-green-700">
+                          <CheckCircle className="w-4 h-4" /> جاهز
+                        </span>
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1 text-red-700"
+                          title={(r.errors || []).join('، ')}
+                        >
+                          <AlertTriangle className="w-4 h-4" /> {(r.errors || [])[0] || 'غير صالح'}
+                        </span>
+                      )
+                    ),
+                  },
+                ]}
+              />
             </div>
 
             <div className="flex justify-end gap-2">
@@ -259,20 +257,21 @@ function ClassesTab() {
           </Badge>
         )
       )}
-      rowsTableHead={(
-        <>
-          <th className="p-2 text-right">اسم الفصل</th>
-          <th className="p-2 text-right">المرحلة</th>
-          <th className="p-2 text-right">المادة الافتراضية</th>
-        </>
-      )}
-      renderRowCells={(r) => (
-        <>
-          <td className="p-2">{r.name || '—'}</td>
-          <td className="p-2">{r.grade_level || '—'}</td>
-          <td className="p-2">{r.default_subject || '—'}</td>
-        </>
-      )}
+      ariaLabel="معاينة الفصول المستوردة"
+      previewColumns={[
+        {
+          key: 'name',
+          header: 'اسم الفصل',
+          primary: true,
+          render: (r) => (
+            <span className={r.is_valid ? '' : 'text-red-700'}>
+              {`#${r.row_number} — ${r.name || '—'}`}
+            </span>
+          ),
+        },
+        { key: 'grade_level', header: 'المرحلة', render: (r) => r.grade_level || '—' },
+        { key: 'default_subject', header: 'المادة الافتراضية', render: (r) => r.default_subject || '—' },
+      ]}
     />
   );
 }
@@ -302,18 +301,20 @@ function SubjectsTab() {
       )}
       successPrefix="تمت إضافة عدد مواد:"
       confirmPrefixFn={(n) => `سيتم إضافة ${n} مادة إلى مساحة عملك. هذه العملية نهائية.`}
-      rowsTableHead={(
-        <>
-          <th className="p-2 text-right">اسم المادة</th>
-          <th className="p-2 text-right">الكود</th>
-        </>
-      )}
-      renderRowCells={(r) => (
-        <>
-          <td className="p-2">{r.name || '—'}</td>
-          <td className="p-2">{r.code || '—'}</td>
-        </>
-      )}
+      ariaLabel="معاينة المواد المستوردة"
+      previewColumns={[
+        {
+          key: 'name',
+          header: 'اسم المادة',
+          primary: true,
+          render: (r) => (
+            <span className={r.is_valid ? '' : 'text-red-700'}>
+              {`#${r.row_number} — ${r.name || '—'}`}
+            </span>
+          ),
+        },
+        { key: 'code', header: 'الكود', render: (r) => r.code || '—' },
+      ]}
     />
   );
 }
