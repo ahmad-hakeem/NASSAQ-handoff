@@ -232,7 +232,6 @@ def create_refresh_token(
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    x_school_context: Optional[str] = Header(None, alias="X-School-Context")
 ) -> dict:
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
@@ -430,13 +429,6 @@ async def get_current_user(
                 user["role"] = payload["role"]
             if payload.get("tenant_id"):
                 user["tenant_id"] = payload["tenant_id"]
-
-        if x_school_context and user.get("role") == UserRole.PLATFORM_ADMIN.value:
-            school = await gd_find_one(db.session, "schools", {"id": x_school_context})
-            if school:
-                user["tenant_id"] = x_school_context
-                user["is_impersonating"] = True
-                user["original_role"] = user["role"]
 
         return user
     except jwt.ExpiredSignatureError:

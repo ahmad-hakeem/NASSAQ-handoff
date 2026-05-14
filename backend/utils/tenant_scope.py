@@ -321,11 +321,40 @@ def resolve_school_id(current_user: dict, override: Optional[str]) -> Optional[s
 
     Non-admins always operate on their own tenant; an override that
     matches their tenant is OK, an override that doesn't match is 403.
-    Platform admins may override freely; with no override they get None
-    (caller decides whether to require one).
+
+    Platform admins may only use a cross-tenant override when their token
+    was minted by /role-switch/switch (i.e., carries is_impersonating=True
+    and a tenant_id claim). A plain platform-admin access token must go
+    through the MFA-gated, audited role-switch flow before operating inside
+    any school's tenant. With no override they get None (caller decides).
     """
     if _is_platform_admin(current_user):
-        return override  # may be None — caller decides
+        if override is None:
+            return None  # caller decides; no cross-tenant attempt
+        # Reject cross-tenant override unless an active impersonation session
+        # is present (token minted by /role-switch/switch with MFA + audit).
+        if not current_user.get("is_impersonating"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="يجب استخدام مسار تبديل الدور للوصول إلى بيانات المدرسة",
+            )
+        # The switched token MUST carry the target tenant (set by /role-switch/switch).
+        # Fail explicitly if the claim is absent to prevent issuance-path drift
+        # from silently re-opening the bypass.
+        token_tenant = current_user.get("tenant_id") or current_user.get("school_id")
+        if not token_tenant:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="رمز الانتحال لا يحتوي على معرّف المدرسة المطلوب",
+            )
+        # The override (X-School-Context) must match the token's tenant to
+        # prevent override-within-override escalation.
+        if str(override) != str(token_tenant):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="لا يمكن تجاوز المدرسة المحددة في رمز الانتحال",
+            )
+        return override
     user_tenant = current_user.get("tenant_id") or current_user.get("school_id")
     if override is not None and str(override) != str(user_tenant):
         raise HTTPException(

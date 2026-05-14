@@ -389,7 +389,13 @@ async def get_school_id_from_context(current_user: dict, x_school_context: str =
 
     Delegates to `utils.tenant_scope.resolve_school_id` so that non-platform
     callers can never address another school's data via the X-School-Context
-    header (mismatched override → 403). Platform admins retain free override.
+    header (mismatched override → 403).
+
+    Platform admins may only use a cross-tenant override when their token
+    carries is_impersonating=True (i.e., was minted by /role-switch/switch
+    with MFA, reason capture, and an impersonation_sessions audit record).
+    A plain platform-admin access token is rejected with 403 when an override
+    is supplied.
     """
     from utils.tenant_scope import resolve_school_id
     return resolve_school_id(current_user, x_school_context)

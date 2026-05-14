@@ -48,11 +48,54 @@ class TestResolveSchoolId:
             resolve_school_id(PRINCIPAL_A, "school-B")
         assert exc.value.status_code == 403
 
-    def test_platform_admin_override_allowed(self):
-        assert resolve_school_id(PLATFORM_ADMIN, "school-X") == "school-X"
-
     def test_platform_admin_no_override_returns_none(self):
         assert resolve_school_id(PLATFORM_ADMIN, None) is None
+
+    # --- Task #368: X-School-Context impersonation bypass regression tests ---
+
+    def test_platform_admin_plain_token_with_override_denied(self):
+        """Plain platform-admin token + X-School-Context override must be rejected (403).
+
+        This is the exact bypass described in task #368: a stolen or long-lived
+        platform-admin access token must NOT grant cross-tenant access via header.
+        """
+        with pytest.raises(HTTPException) as exc:
+            resolve_school_id(PLATFORM_ADMIN, "school-X")
+        assert exc.value.status_code == 403
+
+    def test_platform_admin_impersonating_matching_override_allowed(self):
+        """Properly switched impersonation token with matching header override is allowed."""
+        impersonating_admin = {
+            "role": UserRole.PLATFORM_ADMIN.value,
+            "tenant_id": "school-X",
+            "school_id": None,
+            "is_impersonating": True,
+        }
+        assert resolve_school_id(impersonating_admin, "school-X") == "school-X"
+
+    def test_platform_admin_impersonating_mismatched_override_denied(self):
+        """Impersonation token + override that doesn't match token tenant must be 403."""
+        impersonating_admin = {
+            "role": UserRole.PLATFORM_ADMIN.value,
+            "tenant_id": "school-X",
+            "school_id": None,
+            "is_impersonating": True,
+        }
+        with pytest.raises(HTTPException) as exc:
+            resolve_school_id(impersonating_admin, "school-Y")
+        assert exc.value.status_code == 403
+
+    def test_platform_admin_impersonating_missing_tenant_claim_denied(self):
+        """Impersonation token without tenant_id claim must be explicitly rejected (403)."""
+        impersonating_admin_no_tenant = {
+            "role": UserRole.PLATFORM_ADMIN.value,
+            "tenant_id": None,
+            "school_id": None,
+            "is_impersonating": True,
+        }
+        with pytest.raises(HTTPException) as exc:
+            resolve_school_id(impersonating_admin_no_tenant, "school-X")
+        assert exc.value.status_code == 403
 
 
 def test_tenant_scoped_collections_includes_timetable_tables():
