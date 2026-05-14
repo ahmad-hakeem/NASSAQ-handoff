@@ -341,8 +341,15 @@ def register_routes(app, api_router: APIRouter):
         """
         try:
             payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-            # Reject refresh tokens — only access tokens may open a socket.
-            if payload.get("type") == "refresh":
+            # Task #342 (fix 2): require type == "access" — same rule as
+            # get_current_user() for HTTP routes. This rejects refresh tokens,
+            # mfa_challenge tokens, and any other non-access JWT so that an
+            # attacker who only has the first factor cannot open a WebSocket
+            # using the mfa_challenge token they received after login.
+            if payload.get("type") != "access":
+                logger.info(
+                    f"WebSocket auth rejected: non-access token type={payload.get('type')!r}"
+                )
                 return None
             jti = payload.get("jti")
             user_id = payload.get("sub")
@@ -366,6 +373,37 @@ def register_routes(app, api_router: APIRouter):
                 if user.get("is_locked", False):
                     logger.info(f"WebSocket auth rejected: locked user={user_id}")
                     return None
+                # Task #342 (fix 1): reject tokens issued before the last
+                # password change — matches the same boundary enforced by
+                # get_current_user() on HTTP routes.
+                last_pw_change = user.get("last_password_change")
+                token_iat = payload.get("iat")
+                if last_pw_change:
+                    if token_iat is None:
+                        logger.info(
+                            f"WebSocket auth rejected: no iat claim, user={user_id}"
+                        )
+                        return None
+                    try:
+                        _lpc_str = (
+                            last_pw_change
+                            if isinstance(last_pw_change, str)
+                            else str(last_pw_change)
+                        )
+                        _lpc_str = _lpc_str.replace("Z", "+00:00")
+                        from datetime import datetime as _dt_ws
+                        pw_change_ts = _dt_ws.fromisoformat(_lpc_str).timestamp()
+                        if token_iat < pw_change_ts:
+                            logger.info(
+                                f"WebSocket auth rejected: token predates password "
+                                f"change for user={user_id}"
+                            )
+                            return None
+                    except Exception as _ws_lpc_err:
+                        logger.debug(
+                            f"decode_token_for_ws: last_password_change parse "
+                            f"failed: {_ws_lpc_err}"
+                        )
             return payload
         except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, Exception):
             return None

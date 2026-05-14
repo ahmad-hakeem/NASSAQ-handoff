@@ -239,16 +239,18 @@ def create_websocket_routes(db, decode_token):
                 "online_users": manager.get_online_users_count()
             })
             
-            # Capture the access-token jti so the ping loop can revalidate
-            # it against revoked_tokens and force-close in-flight sockets
-            # whose token was logged out / revoked elsewhere
-            # (audit Open Question 3).
+            # Capture the access-token jti and iat so the ping loop can
+            # revalidate the connection against revoked_tokens AND the
+            # password-change boundary, force-closing stale sockets.
+            # (Task #342: extends audit Open Question 3.)
             _conn_jti = payload.get("jti")
+            _conn_iat = payload.get("iat")  # unix timestamp set by create_access_token
 
-            async def _server_ping_loop(ws, uid, conn_jti):
-                """Server-initiated ping every 30s + revocation check.
-                Force-closes the socket on send failure OR when the JWT jti
-                that authenticated the connection has been revoked."""
+            async def _server_ping_loop(ws, uid, conn_jti, conn_iat):
+                """Server-initiated ping every 30s + revocation + password-change check.
+                Force-closes the socket on send failure, when the JWT jti has
+                been revoked, or when the token was issued before the user's
+                most recent password change (Task #342)."""
                 try:
                     while True:
                         await asyncio.sleep(30)
@@ -260,15 +262,41 @@ def create_websocket_routes(db, decode_token):
                                     revoked = await gd_find_one(
                                         _ws_check, "revoked_tokens", {"jti": conn_jti}
                                     )
-                                if revoked:
-                                    logger.info(
-                                        f"WS jti={conn_jti} revoked — closing socket for user={uid}"
-                                    )
-                                    try:
-                                        await ws.close(code=4001, reason="token revoked")
-                                    except Exception:
-                                        pass
-                                    return
+                                    if revoked:
+                                        logger.info(
+                                            f"WS jti={conn_jti} revoked — closing socket for user={uid}"
+                                        )
+                                        try:
+                                            await ws.close(code=4001, reason="token revoked")
+                                        except Exception:
+                                            pass
+                                        return
+                                    # Task #342: check if the token predates a password change.
+                                    # Re-fetch the user record each cycle so we pick up changes
+                                    # that occurred while this socket was already open.
+                                    if conn_iat is not None:
+                                        _user_row = await gd_find_one(_ws_check, "users", {"id": uid})
+                                        _lpc = _user_row.get("last_password_change") if _user_row else None
+                                        if _lpc:
+                                            try:
+                                                _lpc_str = _lpc if isinstance(_lpc, str) else str(_lpc)
+                                                _lpc_str = _lpc_str.replace("Z", "+00:00")
+                                                from datetime import datetime as _dt_ping
+                                                _pw_ts = _dt_ping.fromisoformat(_lpc_str).timestamp()
+                                                if conn_iat < _pw_ts:
+                                                    logger.info(
+                                                        f"WS token predates password change — "
+                                                        f"closing socket for user={uid}"
+                                                    )
+                                                    try:
+                                                        await ws.close(code=4001, reason="password changed")
+                                                    except Exception:
+                                                        pass
+                                                    return
+                                            except Exception as _lpc_ping_err:
+                                                logger.debug(
+                                                    f"WS password-change boundary check failed: {_lpc_ping_err}"
+                                                )
                             except Exception as _rv:
                                 logger.debug(f"WS revocation check failed: {_rv}")
                         try:
@@ -283,7 +311,7 @@ def create_websocket_routes(db, decode_token):
                 except asyncio.CancelledError:
                     pass
 
-            ping_task = asyncio.create_task(_server_ping_loop(websocket, user_id, _conn_jti))
+            ping_task = asyncio.create_task(_server_ping_loop(websocket, user_id, _conn_jti, _conn_iat))
             try:
                 while True:
                     data = await websocket.receive_text()

@@ -145,11 +145,15 @@ def create_access_token(
     ``/auth/mfa/verify`` or ``/auth/mfa/stepup/verify`` mint.
     """
     to_encode = data.copy()
+    now = datetime.now(timezone.utc)
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = now + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE)
-    to_encode.update({"exp": expire, "type": "access", "jti": str(uuid.uuid4())})
+        expire = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE)
+    # Task #342: include `iat` so the password-change boundary check in
+    # get_current_user() and decode_token_for_ws() can compare issuance time
+    # against last_password_change, matching what refresh tokens already do.
+    to_encode.update({"exp": expire, "iat": now, "type": "access", "jti": str(uuid.uuid4())})
     if mfa_recent_at is not None:
         to_encode["mfa_recent_at"] = int(mfa_recent_at)
     if mfa_kind:
@@ -265,6 +269,32 @@ async def get_current_user(
 
         if user.get("is_locked", False):
             raise HTTPException(status_code=401, detail="Account is locked")
+
+        # Task #342: reject access tokens issued before the last password change
+        # or reset. This closes the session-invalidation gap where an attacker
+        # retains a stolen access token after the victim changes their password.
+        # Mirrors the same check already enforced in the refresh-token handler.
+        last_pw_change = user.get("last_password_change")
+        token_iat = payload.get("iat")
+        if last_pw_change:
+            if token_iat is None:
+                raise HTTPException(
+                    status_code=401,
+                    detail="انتهت صلاحية الجلسة. يرجى تسجيل الدخول مجدداً"
+                )
+            try:
+                _lpc_str = last_pw_change if isinstance(last_pw_change, str) else str(last_pw_change)
+                _lpc_str = _lpc_str.replace("Z", "+00:00")
+                pw_change_ts = datetime.fromisoformat(_lpc_str).timestamp()
+                if token_iat < pw_change_ts:
+                    raise HTTPException(
+                        status_code=401,
+                        detail="انتهت صلاحية الجلسة بسبب تغيير كلمة المرور. يرجى تسجيل الدخول مجدداً"
+                    )
+            except HTTPException:
+                raise
+            except Exception as _lpc_err:
+                logger.debug(f"get_current_user: last_password_change parse failed: {_lpc_err}")
 
         user.pop("_id", None)
         if "id" not in user or not user.get("id"):
