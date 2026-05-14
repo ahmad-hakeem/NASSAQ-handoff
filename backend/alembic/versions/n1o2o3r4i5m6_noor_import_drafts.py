@@ -1,7 +1,9 @@
 """Noor importer draft store
 
 Revision ID: n1o2o3r4i5m6
-Revises: z1a2b3c4d5e6
+Revises: e1f2a3b4c5d7, erw1x2y3z4a5, h2i3j4k5l6m7  (merge point that
+          consolidates the three pre-existing alembic heads — see
+          `down_revision` tuple below for the authoritative list)
 Create Date: 2026-05-14
 
 Creates `noor_import_drafts` — a short-lived (1h TTL), principal-bound,

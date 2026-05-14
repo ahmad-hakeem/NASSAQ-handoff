@@ -17,6 +17,7 @@ password-reset flows still work after import.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import secrets
@@ -59,6 +60,7 @@ async def resolve_login_email(
     noor_email: Optional[str],
     school_code: Optional[str],
     seen_emails_in_batch: set,
+    stable_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Returns {"email": <login_email>, "source": "noor"|"fallback"}.
@@ -74,19 +76,32 @@ async def resolve_login_email(
             seen_emails_in_batch.add(candidate)
             return {"email": candidate, "source": "noor"}
 
-    # Step 2 — mint deterministic fallback.
+    # Step 2 — DETERMINISTIC fallback derived from (school_code, stable_key).
+    # The same teacher (same national_id) re-imported into the same school
+    # always lands on the same fallback address, so a re-run does not mint
+    # a new login row — the engine's dedupe layer reuses the existing user.
     domain = _safe_school_domain(school_code)
-    base = f"import.tch.{secrets.token_hex(3)}"
+    stable_key = stable_key or "anon"
+    h = hashlib.sha256(
+        f"{(school_code or 'sch').lower()}|{stable_key.lower()}".encode("utf-8")
+    ).hexdigest()[:12]
+    base = f"import.tch.{h}"
     candidate = f"{base}@{domain}"
-    # Re-check for the (extremely unlikely) collision; suffix +{2hex}.
-    for _ in range(8):
+    if candidate not in seen_emails_in_batch and not await _email_in_use(
+        session, candidate
+    ):
+        seen_emails_in_batch.add(candidate)
+        return {"email": candidate, "source": "fallback"}
+    # Collision (vanishingly rare; only happens when two distinct ids hash
+    # to the same 12-hex prefix). Suffix the second key bytes deterministically
+    # before falling back to a small entropy tail as a last resort.
+    for tag in (h[12:18] if len(h) >= 18 else "tail", secrets.token_hex(2)):
+        candidate = f"{base}+{tag}@{domain}"
         if candidate not in seen_emails_in_batch and not await _email_in_use(
             session, candidate
         ):
             seen_emails_in_batch.add(candidate)
             return {"email": candidate, "source": "fallback"}
-        candidate = f"{base}+{secrets.token_hex(1)}@{domain}"
-    # Last-resort: append a longer entropy suffix.
     candidate = f"import.tch.{secrets.token_hex(8)}@{domain}"
     seen_emails_in_batch.add(candidate)
     return {"email": candidate, "source": "fallback"}

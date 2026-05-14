@@ -97,14 +97,12 @@ def _ext_ok(filename: str) -> bool:
 # Preview / dedupe annotation
 # ---------------------------------------------------------------------------
 
-async def _annotate_teacher_rows(
-    session, *, school_id: str, parsed_rows: List[Dict[str, Any]]
-) -> List[Dict[str, Any]]:
-    """Attach per-row dedupe outcome against existing school teachers."""
+async def _load_teacher_index(session, school_id: str):
+    """Build (by_nid, by_name_phone) indexes for a school's teachers."""
     result = await session.execute(
         text(
             """
-            SELECT id, national_id, email
+            SELECT id, national_id, email, full_name, phone
             FROM teachers
             WHERE school_id = :sid AND COALESCE(is_active, TRUE) = TRUE
             """
@@ -112,17 +110,43 @@ async def _annotate_teacher_rows(
         {"sid": school_id},
     )
     by_nid: Dict[str, Dict[str, Any]] = {}
+    by_name_phone: Dict[str, Dict[str, Any]] = {}
     for row in result.mappings().all():
         nid = (row.get("national_id") or "").strip()
         if nid:
             by_nid[nid] = dict(row)
+        name = (row.get("full_name") or "").strip()
+        phone = (row.get("phone") or "").strip()
+        if name and phone:
+            by_name_phone[f"{name}|{phone}"] = dict(row)
+    return by_nid, by_name_phone
+
+
+async def _annotate_teacher_rows(
+    session, *, school_id: str, parsed_rows: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Attach per-row dedupe outcome.
+
+    Outcomes:
+      • insert    — passes validation, no existing match.
+      • update    — exact national_id match against an active row.
+      • ambiguous — same (full_name, phone) as an existing row but
+                    no national_id match. /commit only inserts these
+                    when confirmations.ambiguous_treat_as_new lists
+                    the row_index, otherwise they're skipped.
+      • skip      — failed validation (missing/invalid national_id
+                    or full_name).
+    """
+    by_nid, by_name_phone = await _load_teacher_index(session, school_id)
 
     annotated: List[Dict[str, Any]] = []
     for r in parsed_rows:
         data = r["data"]
         issues: List[str] = []
         nid = (data.get("national_id") or "").strip()
-        if not data.get("full_name"):
+        name = (data.get("full_name") or "").strip()
+        phone = (data.get("phone") or "").strip()
+        if not name:
             issues.append("missing_full_name")
         if not nid:
             issues.append("missing_national_id")
@@ -131,9 +155,13 @@ async def _annotate_teacher_rows(
 
         dedupe = "skip" if issues else "insert"
         existing_id: Optional[str] = None
-        if not issues and nid in by_nid:
-            dedupe = "update"
-            existing_id = by_nid[nid]["id"]
+        if not issues:
+            if nid in by_nid:
+                dedupe = "update"
+                existing_id = by_nid[nid]["id"]
+            elif name and phone and f"{name}|{phone}" in by_name_phone:
+                dedupe = "ambiguous"
+                existing_id = by_name_phone[f"{name}|{phone}"]["id"]
         annotated.append(
             {
                 "row_index": r["row_index"],
@@ -149,17 +177,38 @@ async def _annotate_teacher_rows(
 async def _annotate_student_rows(
     session, *, school_id: str, parsed_rows: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
+    """Annotate student rows. Missing student_number falls back to a
+    generated NSS-{hex} internal id rather than skipping; the original
+    Noor number stays empty in that case so we never invent fake
+    ministry numbers."""
+    import secrets as _secrets
     students = await load_school_student_index(session, school_id)
     classes = await load_school_class_index(session, school_id)
     annotated: List[Dict[str, Any]] = []
+    in_batch_seen: set = set()
     for r in parsed_rows:
-        data = r["data"]
+        data = dict(r["data"])  # shallow copy — we may write back
         issues: List[str] = []
         num = (data.get("student_number") or "").strip()
-        if not data.get("full_name"):
+        full_name = (data.get("full_name") or "").strip()
+        if not full_name:
             issues.append("missing_full_name")
-        if not num:
-            issues.append("missing_student_number")
+        # Missing student_number is RECOVERABLE — mint NSS-{hex} so the
+        # row still imports. Spec: students must always have a stable
+        # internal id, even when Noor exports leave the column blank.
+        generated = False
+        if not num and full_name:
+            num = f"NSS-{_secrets.token_hex(5).upper()}"
+            data["student_number"] = num
+            generated = True
+        # In-batch collision guard: rare but possible for the generator.
+        while num in in_batch_seen:
+            num = f"NSS-{_secrets.token_hex(5).upper()}"
+            data["student_number"] = num
+            generated = True
+        if num:
+            in_batch_seen.add(num)
+
         dedupe = "skip" if issues else "insert"
         existing_id: Optional[str] = None
         if not issues and num in students:
@@ -182,6 +231,7 @@ async def _annotate_student_rows(
                 "existing_id": existing_id,
                 "class_id": class_id,
                 "class_unresolved": bool(class_unresolved),
+                "student_number_generated": generated,
             }
         )
     return annotated
@@ -332,6 +382,10 @@ async def _commit_teachers(
     school = await gd_find_one(session, "schools", {"id": school_id})
     school_code = (school or {}).get("code") or "sch"
     seen_emails: set = set()
+    # Re-load DB index at commit time — state may have changed since
+    # /parse, so we re-evaluate every row's dedupe verdict against
+    # fresh teachers, not the stale one snapshotted into the draft.
+    by_nid, by_name_phone = await _load_teacher_index(session, school_id)
 
     imported = 0
     updated = 0
@@ -353,24 +407,52 @@ async def _commit_teachers(
             # outer transaction (which would otherwise abort the final
             # delete_draft + commit).
             async with session.begin_nested():
-                dedupe = r.get("dedupe", "insert")
-                if dedupe == "update" and r.get("existing_id"):
+                # Commit-time revalidation against fresh DB state.
+                nid = (data.get("national_id") or "").strip()
+                name = (data.get("full_name") or "").strip()
+                phone = (data.get("phone") or "").strip()
+                live_existing_id: Optional[str] = None
+                live_dedupe = "insert"
+                if nid and nid in by_nid:
+                    live_dedupe = "update"
+                    live_existing_id = by_nid[nid]["id"]
+                elif name and phone and f"{name}|{phone}" in by_name_phone:
+                    live_dedupe = "ambiguous"
+                    live_existing_id = by_name_phone[f"{name}|{phone}"]["id"]
+
+                if live_dedupe == "ambiguous" and row_idx not in ambiguous_treat_as_new:
+                    skipped += 1
+                    errors.append(
+                        {
+                            "row": row_idx,
+                            "message": "تطابق غير مؤكد — أكّد المعالجة كصف جديد",
+                        }
+                    )
+                    continue
+
+                if live_dedupe == "update" and live_existing_id:
                     await session.execute(
                         text(
                             """
                             UPDATE teachers
-                            SET phone = COALESCE(:phone, phone),
-                                address = COALESCE(:address, address),
-                                gender = COALESCE(:gender, gender),
-                                updated_at = NOW()
+                            SET full_name    = COALESCE(:full_name, full_name),
+                                phone        = COALESCE(:phone, phone),
+                                address      = COALESCE(:address, address),
+                                gender       = COALESCE(:gender, gender),
+                                date_of_birth= COALESCE(:dob, date_of_birth),
+                                email        = COALESCE(:email, email),
+                                updated_at   = NOW()
                             WHERE id = :id AND school_id = :sid
                             """
                         ),
                         {
+                            "full_name": data.get("full_name"),
                             "phone": data.get("phone"),
                             "address": data.get("address"),
                             "gender": data.get("gender"),
-                            "id": r["existing_id"],
+                            "dob": data.get("date_of_birth"),
+                            "email": data.get("email"),
+                            "id": live_existing_id,
                             "sid": school_id,
                         },
                     )
@@ -382,6 +464,7 @@ async def _commit_teachers(
                     noor_email=data.get("email"),
                     school_code=school_code,
                     seen_emails_in_batch=seen_emails,
+                    stable_key=nid or name or None,
                 )
                 req = build_create_teacher_request(
                     data, login_email=resolved["email"]
@@ -399,6 +482,22 @@ async def _commit_teachers(
                     )
                     raise _RowAbort()
                 imported += 1
+                # Update in-memory index so a later row with the same
+                # national_id (or name+phone) lands on UPDATE.
+                if nid:
+                    by_nid[nid] = {
+                        "id": result.get("teacher_id"),
+                        "national_id": nid,
+                        "full_name": name,
+                        "phone": phone,
+                        "email": resolved["email"],
+                    }
+                if name and phone:
+                    by_name_phone[f"{name}|{phone}"] = by_nid.get(nid) or {
+                        "id": result.get("teacher_id"),
+                        "full_name": name,
+                        "phone": phone,
+                    }
                 account = result.get("user_account") or {}
                 temp_password = account.get("temp_password")
                 if temp_password:

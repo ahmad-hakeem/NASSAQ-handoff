@@ -798,7 +798,7 @@ export default function UsersClassesManagement() {
   const { t } = useTranslation();
   const { user, api, schoolContext, isImpersonating } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
-  const { nassaqConfirm, nassaqError, nassaqWarning } = useNassaqAlert();
+  const { nassaqConfirm, nassaqError, nassaqWarning, nassaqInfo } = useNassaqAlert();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -1662,7 +1662,7 @@ export default function UsersClassesManagement() {
                     </TabsList>
 
                     <TabsContent value="import">
-                      <NoorImportPanel api={api} nassaqError={nassaqError} nassaqWarning={nassaqWarning} nassaqConfirm={nassaqConfirm} t={t} onComplete={fetchAllData} />
+                      <NoorImportPanel api={api} nassaqError={nassaqError} nassaqWarning={nassaqWarning} nassaqConfirm={nassaqConfirm} nassaqInfo={nassaqInfo} t={t} onComplete={fetchAllData} />
                       <div className="grid gap-6 lg:grid-cols-2 mt-6">
                         <Card>
                           <CardHeader>

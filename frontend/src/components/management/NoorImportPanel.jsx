@@ -1,22 +1,47 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
-import { Loader2, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Database } from 'lucide-react';
+import { Loader2, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Database, Download } from 'lucide-react';
 
 const ROLE_LABELS = {
   insert: { ar: 'إضافة', cls: 'bg-green-50 text-green-700 dark:bg-green-950/40' },
   update: { ar: 'تحديث', cls: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40' },
   skip: { ar: 'تخطي', cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40' },
+  ambiguous: { ar: 'مطابقة غير مؤكدة', cls: 'bg-orange-50 text-orange-700 dark:bg-orange-950/40' },
 };
 
-export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassaqConfirm, t, onComplete }) {
+function csvEscape(v) {
+  const s = (v == null ? '' : String(v));
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function downloadCsv(filename, rows) {
+  if (!rows || rows.length === 0) return;
+  const headers = Object.keys(rows[0]);
+  const body = [headers.join(','), ...rows.map(r => headers.map(h => csvEscape(r[h])).join(','))].join('\n');
+  const blob = new Blob(['\uFEFF' + body], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassaqConfirm, nassaqInfo, t, onComplete }) {
   const [file, setFile] = useState(null);
   const [parsing, setParsing] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
+  const [ambiguousAccept, setAmbiguousAccept] = useState({}); // { row_index: true }
+
+  const ambiguousRowIndexes = useMemo(
+    () => (preview?.rows || []).filter(r => r.dedupe === 'ambiguous').map(r => r.row_index),
+    [preview],
+  );
 
   const onSelect = (e) => {
     const f = e.target.files?.[0];
@@ -28,6 +53,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
     setFile(f);
     setPreview(null);
     setResult(null);
+    setAmbiguousAccept({});
   };
 
   const onParse = async () => {
@@ -39,6 +65,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
       fd.append('file', file);
       const res = await api.post('/noor-import/parse', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       setPreview(res.data);
+      setAmbiguousAccept({});
     } catch (err) {
       nassaqError(err?.response?.data?.detail || 'تعذّر تحليل الملف');
     } finally {
@@ -51,10 +78,25 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
     nassaqConfirm('سيتم الآن تنفيذ عملية الاستيراد. هل تريد المتابعة؟', async () => {
       setCommitting(true);
       try {
-        const res = await api.post('/noor-import/commit', { import_draft_id: preview.import_draft_id, confirmations: {} });
-        setResult(res.data);
+        const ambiguous_treat_as_new = Object.entries(ambiguousAccept)
+          .filter(([, v]) => v)
+          .map(([k]) => Number(k));
+        const res = await api.post('/noor-import/commit', {
+          import_draft_id: preview.import_draft_id,
+          confirmations: { ambiguous_treat_as_new },
+        });
+        const data = res.data;
+        setResult(data);
         setPreview(null);
         setFile(null);
+        setAmbiguousAccept({});
+        const creds = data.credentials_csv || [];
+        if (creds.length > 0 && nassaqInfo) {
+          nassaqInfo(
+            `تم إنشاء ${creds.length} حساب معلّم. يمكنك تنزيل بيانات الدخول الآن — لن يتم عرضها مرة أخرى.`,
+            { confirmText: 'تنزيل CSV', onConfirm: () => downloadCsv(`noor_import_credentials_${Date.now()}.csv`, creds) },
+          );
+        }
         if (onComplete) onComplete();
       } catch (err) {
         nassaqError(err?.response?.data?.detail || 'تعذّر إتمام عملية الاستيراد');
@@ -89,12 +131,18 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
               <span className="text-muted-foreground">صف العناوين: {preview.header_row}</span>
               {preview.sheet_name && <span className="text-muted-foreground">| الورقة: {preview.sheet_name}</span>}
             </div>
-            <div className="grid grid-cols-4 gap-2 text-center text-xs">
+            <div className="grid grid-cols-5 gap-2 text-center text-xs">
               <div className="p-2 rounded bg-background border"><p className="text-lg font-bold">{preview.counts?.total || 0}</p><p className="text-muted-foreground">الإجمالي</p></div>
               <div className="p-2 rounded bg-green-50 dark:bg-green-950/30"><p className="text-lg font-bold text-green-600">{preview.counts?.insert || 0}</p><p className="text-muted-foreground">إضافة</p></div>
               <div className="p-2 rounded bg-blue-50 dark:bg-blue-950/30"><p className="text-lg font-bold text-blue-600">{preview.counts?.update || 0}</p><p className="text-muted-foreground">تحديث</p></div>
+              <div className="p-2 rounded bg-orange-50 dark:bg-orange-950/30"><p className="text-lg font-bold text-orange-600">{preview.counts?.ambiguous || 0}</p><p className="text-muted-foreground">غير مؤكد</p></div>
               <div className="p-2 rounded bg-amber-50 dark:bg-amber-950/30"><p className="text-lg font-bold text-amber-600">{preview.counts?.skip || 0}</p><p className="text-muted-foreground">تخطي</p></div>
             </div>
+            {ambiguousRowIndexes.length > 0 && (
+              <div className="text-xs p-2 rounded bg-orange-50 dark:bg-orange-950/20 text-orange-800 dark:text-orange-200">
+                توجد {ambiguousRowIndexes.length} مطابقة غير مؤكدة — فعّل الخانة لكل صف تريد معالجته كصف جديد، وإلا سيتم تخطيه.
+              </div>
+            )}
             <div className="max-h-[280px] overflow-y-auto border rounded">
               <table className="w-full text-xs">
                 <thead className="bg-muted sticky top-0"><tr>
@@ -108,16 +156,30 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                   {(preview.rows || []).slice(0, 200).map((r, i) => {
                     const role = ROLE_LABELS[r.dedupe] || ROLE_LABELS.skip;
                     const id = r.data?.national_id || r.data?.student_number || '';
+                    const isAmb = r.dedupe === 'ambiguous';
                     return (
                       <tr key={i} className="border-t">
                         <td className="p-2 text-muted-foreground">{r.row_index}</td>
                         <td className="p-2">{r.data?.full_name || '—'}</td>
                         <td className="p-2 font-mono text-[11px]">{id || '—'}</td>
-                        <td className="p-2"><span className={`px-2 py-0.5 rounded text-[11px] ${role.cls}`}>{role.ar}</span></td>
+                        <td className="p-2">
+                          <span className={`px-2 py-0.5 rounded text-[11px] ${role.cls}`}>{role.ar}</span>
+                          {isAmb && (
+                            <label className="ms-2 inline-flex items-center gap-1 text-[11px] cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={!!ambiguousAccept[r.row_index]}
+                                onChange={(e) => setAmbiguousAccept(s => ({ ...s, [r.row_index]: e.target.checked }))}
+                              />
+                              معالجة كصف جديد
+                            </label>
+                          )}
+                        </td>
                         <td className="p-2 text-amber-700">
                           {(r.issues || []).length > 0 && <AlertTriangle className="inline h-3 w-3 me-1" />}
                           {(r.issues || []).join('، ')}
                           {r.class_unresolved && <span className="ms-1 text-amber-600">(تعذّر مطابقة الفصل)</span>}
+                          {r.student_number_generated && <span className="ms-1 text-blue-600">(رقم داخلي مُولّد)</span>}
                         </td>
                       </tr>
                     );
@@ -143,6 +205,19 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
               <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-amber-600">{result.skipped || 0}</p><p className="text-muted-foreground">تم التخطي</p></div>
               <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-red-600">{result.failed || 0}</p><p className="text-muted-foreground">فشل</p></div>
             </div>
+            {(result.credentials_csv || []).length > 0 && (
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  onClick={() => downloadCsv(`noor_import_credentials_${Date.now()}.csv`, result.credentials_csv)}
+                >
+                  <Download className="h-4 w-4 me-2" />
+                  تنزيل بيانات الدخول ({result.credentials_csv.length})
+                </Button>
+              </div>
+            )}
             {(result.errors || []).length > 0 && (
               <div className="max-h-[160px] overflow-y-auto space-y-1">
                 {result.errors.map((e, i) => (
