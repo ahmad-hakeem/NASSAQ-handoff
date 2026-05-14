@@ -126,19 +126,51 @@ async def create_attendance(
 ):
     """Create a single attendance record"""
     if current_user['role'] not in ['teacher', 'school_principal', 'school_sub_admin', 'platform_admin', 'independent_teacher']:
-        raise HTTPException(status_code=403, detail="Not authorized to record attendance")
+        raise HTTPException(status_code=403, detail="ليس لديك صلاحية لتسجيل الحضور")
     # IT callers carry tenant_id only on the JWT, not on the DB users row.
     from auth_scope import independent_workspace_id as _itw_id
     _eff_tenant = current_user.get('tenant_id') or _itw_id(current_user)
-    
-    # Get student info
-    student = await gd_find_one(db.session, "students", {"id": attendance.student_id})
+
+    # Security: fail-closed tenant resolution for non-platform callers.
+    # Platform admins keep their own tenant_id (if set) or are allowed to
+    # operate cross-tenant; every other caller must resolve a tenant or 403.
+    _is_platform = current_user.get('role') == 'platform_admin'
+    if not _is_platform and not _eff_tenant:
+        raise HTTPException(status_code=403, detail="تعذّر التحقق من صلاحياتك — لا يوجد معرّف مؤسسة")
+
+    # Tenant-pin student lookup; cross-tenant student_id → 404.
+    _student_query: dict = {"id": attendance.student_id}
+    if _eff_tenant:
+        _student_query["$or"] = [
+            {"school_id": _eff_tenant},
+            {"tenant_id": _eff_tenant},
+        ]
+    student = await gd_find_one(db.session, "students", _student_query)
     if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
-    
-    # Get class info
-    class_info = await gd_find_one(db.session, "classes", {"id": attendance.class_id})
-    
+        raise HTTPException(status_code=404, detail="الطالب غير موجود")
+
+    # Integrity: verify the student is actually enrolled in the submitted class.
+    if student.get('class_id') and student['class_id'] != attendance.class_id:
+        raise HTTPException(status_code=422, detail="الطالب غير مسجّل في هذا الفصل")
+
+    # Tenant-pin class lookup; cross-tenant class_id → 404.
+    _class_query: dict = {"id": attendance.class_id}
+    if _eff_tenant and not _is_platform:
+        _class_query["$or"] = [
+            {"school_id": _eff_tenant},
+            {"tenant_id": _eff_tenant},
+        ]
+    class_info = await gd_find_one(db.session, "classes", _class_query)
+    if not class_info:
+        raise HTTPException(status_code=404, detail="الفصل غير موجود")
+
+    # Security: for teacher/independent_teacher callers verify they are
+    # assigned to this class before allowing any write.
+    if current_user['role'] in ('teacher', 'independent_teacher'):
+        from utils.tenant_scope import can_view_class
+        if not await can_view_class(db.session, current_user, attendance.class_id):
+            raise HTTPException(status_code=403, detail="لا يمكنك تسجيل الحضور لفصل غير مرتبط بك")
+
     # Get subject info if provided
     subject_name = None
     if attendance.subject_id:
@@ -148,12 +180,16 @@ async def create_attendance(
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
     # Check if attendance already exists for this student, class, date
-    existing = await gd_find_one(db.session, "attendance", {
+    # Tenant-pin the lookup to prevent overwriting foreign-tenant rows.
+    _att_query: dict = {
         "student_id": attendance.student_id,
         "class_id": attendance.class_id,
         "date": today,
-        "time_slot_id": attendance.time_slot_id
-    })
+        "time_slot_id": attendance.time_slot_id,
+    }
+    if _eff_tenant:
+        _att_query["tenant_id"] = _eff_tenant
+    existing = await gd_find_one(db.session, "attendance", _att_query)
     
     if existing:
         old_status = existing.get('status')
@@ -411,6 +447,32 @@ async def get_class_attendance(
     current_user: dict = Depends(get_current_user)
 ):
     """Get attendance records for a class on a specific date or date range"""
+    # Security: parents and students must not be able to read class attendance.
+    _allowed_read_roles = {'teacher', 'school_principal', 'school_sub_admin', 'school_admin', 'platform_admin', 'independent_teacher'}
+    if current_user.get('role') not in _allowed_read_roles:
+        raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على بيانات حضور الفصل")
+
+    # Phase 0 §4.B-4 — IT users carry tenant_id=None on the JWT; scope to
+    # their synthetic workspace via the canonical resolver so cross-IT
+    # attendance never leaks even when a class id is guessed/shared.
+    # Fail-closed: non-platform callers without a resolvable tenant get 403.
+    _is_platform = current_user.get('role') == 'platform_admin'
+    _eff_tenant = require_request_school_id(current_user) if not _is_platform else current_user.get('tenant_id')
+
+    # Verify the class belongs to the caller's tenant before returning any data.
+    _cls_q: dict = {"id": class_id}
+    if _eff_tenant and not _is_platform:
+        _cls_q["$or"] = [{"school_id": _eff_tenant}, {"tenant_id": _eff_tenant}]
+    _cls = await gd_find_one(db.session, "classes", _cls_q)
+    if not _cls:
+        raise HTTPException(status_code=404, detail="الفصل غير موجود")
+
+    # For teacher/IT callers, ensure they are actually assigned to this class.
+    if current_user.get('role') in ('teacher', 'independent_teacher'):
+        from utils.tenant_scope import can_view_class
+        if not await can_view_class(db.session, current_user, class_id):
+            raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على بيانات حضور هذا الفصل")
+
     query = {"class_id": class_id}
     if start_date or end_date:
         date_filter = {}
@@ -423,14 +485,9 @@ async def get_class_attendance(
         query["date"] = date
     else:
         query["date"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    # Phase 0 §4.B-4 — IT users carry tenant_id=None on the JWT; scope to
-    # their synthetic workspace via the canonical resolver so cross-IT
-    # attendance never leaks even when a class id is guessed/shared.
-    from auth_scope import independent_workspace_id, is_independent_teacher
-    if is_independent_teacher(current_user):
-        query['tenant_id'] = independent_workspace_id(current_user)
-    elif current_user.get('tenant_id'):
-        query['tenant_id'] = current_user['tenant_id']
+
+    if _eff_tenant:
+        query['tenant_id'] = _eff_tenant
     
     limit = 10000 if (start_date or end_date) else 1000
     records = await gd_find(db.session, "attendance", query, limit=limit)
@@ -555,19 +612,45 @@ async def get_daily_attendance_report(
     current_user: dict = Depends(get_current_user)
 ):
     """Get daily attendance report for a class"""
+    # Security: restrict to staff roles only.
+    _allowed_report_roles = {'teacher', 'school_principal', 'school_sub_admin', 'school_admin', 'platform_admin', 'independent_teacher'}
+    if current_user.get('role') not in _allowed_report_roles:
+        raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على تقرير الحضور اليومي")
+
+    # Fail-closed tenant resolution for non-platform callers.
+    _is_platform = current_user.get('role') == 'platform_admin'
+    _eff_tenant = require_request_school_id(current_user) if not _is_platform else current_user.get('tenant_id')
+
+    # Tenant-pin the class lookup so cross-tenant class IDs 404 instead of leaking.
+    _cls_q: dict = {"id": class_id}
+    if _eff_tenant and not _is_platform:
+        _cls_q["$or"] = [{"school_id": _eff_tenant}, {"tenant_id": _eff_tenant}]
+    class_info = await gd_find_one(db.session, "classes", _cls_q)
+    if not class_info:
+        raise HTTPException(status_code=404, detail="الفصل غير موجود")
+
+    # For teacher/IT callers, verify class assignment.
+    if current_user.get('role') in ('teacher', 'independent_teacher'):
+        from utils.tenant_scope import can_view_class
+        if not await can_view_class(db.session, current_user, class_id):
+            raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على تقرير هذا الفصل")
+
     if not date:
         date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
-    class_info = await gd_find_one(db.session, "classes", {"id": class_id})
-    if not class_info:
-        raise HTTPException(status_code=404, detail="Class not found")
-    
+    # Tenant-pin student and attendance queries.
+    _students_q: dict = {"class_id": class_id}
+    _att_q: dict = {"class_id": class_id, "date": date}
+    if _eff_tenant:
+        _students_q["$or"] = [{"school_id": _eff_tenant}, {"tenant_id": _eff_tenant}]
+        _att_q["tenant_id"] = _eff_tenant
+
     # Get all students in this class
-    students = await gd_find(db.session, "students", {"class_id": class_id}, limit=100)
+    students = await gd_find(db.session, "students", _students_q, limit=100)
     total_students = len(students)
     
     # Get attendance records for this date
-    records = await gd_find(db.session, "attendance", {"class_id": class_id, "date": date}, limit=100)
+    records = await gd_find(db.session, "attendance", _att_q, limit=100)
     
     # Calculate summary
     present = len([r for r in records if r['status'] == 'present'])
@@ -686,19 +769,44 @@ async def get_students_for_attendance(
     current_user: dict = Depends(get_current_user)
 ):
     """Get students with their attendance status for a class"""
+    # Security: parents and students must not read other students' attendance.
+    _allowed_sfc_roles = {'teacher', 'school_principal', 'school_sub_admin', 'school_admin', 'platform_admin', 'independent_teacher'}
+    if current_user.get('role') not in _allowed_sfc_roles:
+        raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على بيانات الفصل")
+
+    # Fail-closed tenant resolution for non-platform callers.
+    _is_platform = current_user.get('role') == 'platform_admin'
+    _eff_tenant = require_request_school_id(current_user) if not _is_platform else current_user.get('tenant_id')
+
+    # Tenant-pin the class lookup.
+    _cls_q: dict = {"id": class_id}
+    if _eff_tenant and not _is_platform:
+        _cls_q["$or"] = [{"school_id": _eff_tenant}, {"tenant_id": _eff_tenant}]
+    class_info = await gd_find_one(db.session, "classes", _cls_q)
+    if not class_info:
+        raise HTTPException(status_code=404, detail="الفصل غير موجود")
+
+    # For teacher/IT callers, verify assignment to this class.
+    if current_user.get('role') in ('teacher', 'independent_teacher'):
+        from utils.tenant_scope import can_view_class
+        if not await can_view_class(db.session, current_user, class_id):
+            raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على بيانات هذا الفصل")
+
     if not date:
         date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    
-    # Get class info
-    class_info = await gd_find_one(db.session, "classes", {"id": class_id})
-    if not class_info:
-        raise HTTPException(status_code=404, detail="Class not found")
-    
+
+    # Tenant-pin student and attendance queries.
+    _students_q: dict = {"class_id": class_id}
+    _att_q: dict = {"class_id": class_id, "date": date}
+    if _eff_tenant:
+        _students_q["$or"] = [{"school_id": _eff_tenant}, {"tenant_id": _eff_tenant}]
+        _att_q["tenant_id"] = _eff_tenant
+
     # Get all students in this class
-    students = await gd_find(db.session, "students", {"class_id": class_id}, limit=100)
+    students = await gd_find(db.session, "students", _students_q, limit=100)
     
     # Get existing attendance records for today
-    existing_records = await gd_find(db.session, "attendance", {"class_id": class_id, "date": date}, limit=100)
+    existing_records = await gd_find(db.session, "attendance", _att_q, limit=100)
     
     # Create a map of student_id -> status
     attendance_map = {r['student_id']: r for r in existing_records}
@@ -866,6 +974,10 @@ async def get_attendance_alerts(
     current_user: dict = Depends(get_current_user)
 ):
     """Get attendance-based alerts (low attendance, consecutive absences)"""
+    # Security: school-wide alert data must only be visible to staff.
+    _allowed_alert_roles = {'teacher', 'school_principal', 'school_sub_admin', 'school_admin', 'platform_admin', 'independent_teacher'}
+    if current_user.get('role') not in _allowed_alert_roles:
+        raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على تنبيهات الحضور")
     # Task #155: replace the original tenantless fallback (`{} if not school_id`)
     # with a fail-closed adapter that 403's on resolution failure. See
     # docs/security/2026-05-ai-teacher-scope-audit.md row #1.
@@ -948,6 +1060,10 @@ async def get_attendance_statistics(
     current_user: dict = Depends(get_current_user)
 ):
     """Get comprehensive attendance statistics"""
+    # Security: school-wide statistics must only be visible to staff.
+    _allowed_stats_roles = {'teacher', 'school_principal', 'school_sub_admin', 'school_admin', 'platform_admin', 'independent_teacher'}
+    if current_user.get('role') not in _allowed_stats_roles:
+        raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على إحصائيات الحضور")
     # Task #155: fail-closed school-id resolution; see audit row #2.
     school_id = require_request_school_id(current_user)
     q = {"school_id": school_id}
