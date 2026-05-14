@@ -42,6 +42,7 @@ dependencies = [
     "uvicorn>=0.25",
     "webauthn>=2.7.1",
     "websockets>=16.0",
+    "xlrd>=2.0",
     "xlsxwriter>=3.2",
 ]
 
