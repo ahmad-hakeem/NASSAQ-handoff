@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import {
   Dialog,
@@ -149,12 +149,30 @@ export default function AddStudentWizard({
   isRTL = true,
   grades = [],
   classes = [],
+  // When the wizard is launched from a class detail page, the caller
+  // pre-selects the target class so the new student is actually
+  // attached to it. Without this, the class selector defaults to ''
+  // and the student is created with no class linkage. The matching
+  // grade_id / education_level are seeded from the class so step-1
+  // validation still passes and the user cannot accidentally clear
+  // the class picker.
+  preselectedClassId = '',
+  preselectedGradeId = '',
+  preselectedEducationLevel = '',
   // #192 spec §5.6 — `workspace` mode is the IT inline-create variant.
   // It hides the parent-directory search, drops `check-parent`, makes
   // every parent field optional, and skips the school-only relationship
   // requirement so the wizard can submit a student with zero parent data.
   mode = 'school',
 }) {
+  const hasPreselectedClass = Boolean(preselectedClassId);
+  // Lock individual selectors only when we actually have a value to
+  // pre-fill them with. This avoids a step-1 lockout on schools whose
+  // class metadata doesn't expose a numeric grade (so we couldn't
+  // derive education_level) or doesn't expose a grade_id.
+  const lockClass = hasPreselectedClass;
+  const lockGrade = hasPreselectedClass && Boolean(preselectedGradeId);
+  const lockEducation = hasPreselectedClass && Boolean(preselectedEducationLevel);
   const isWorkspaceMode = mode === 'workspace';
   const { t } = useTranslation();
   const { nassaqError } = useNassaqAlert();
@@ -169,10 +187,24 @@ export default function AddStudentWizard({
     national_id: '',
     gender: 'male',
     date_of_birth: '',
-    education_level: '',
-    grade_id: '',
-    class_id: '',
+    education_level: preselectedEducationLevel || '',
+    grade_id: preselectedGradeId || '',
+    class_id: preselectedClassId || '',
   });
+
+  // Re-seed pre-selected fields whenever the wizard is opened or the
+  // pre-selection changes (e.g. navigating between class pages without
+  // unmounting). We never overwrite user-entered free-text fields.
+  useEffect(() => {
+    if (!open) return;
+    if (!hasPreselectedClass) return;
+    setStudentData(prev => ({
+      ...prev,
+      class_id: preselectedClassId,
+      grade_id: preselectedGradeId || prev.grade_id,
+      education_level: preselectedEducationLevel || prev.education_level,
+    }));
+  }, [open, hasPreselectedClass, preselectedClassId, preselectedGradeId, preselectedEducationLevel]);
 
   const [parentData, setParentData] = useState({
     full_name: '',
@@ -433,7 +465,16 @@ export default function AddStudentWizard({
 
   const resetForm = () => {
     setStep(1);
-    setStudentData({ full_name: '', email: '', national_id: '', gender: 'male', date_of_birth: '', education_level: '', grade_id: '', class_id: '' });
+    setStudentData({
+      full_name: '',
+      email: '',
+      national_id: '',
+      gender: 'male',
+      date_of_birth: '',
+      education_level: preselectedEducationLevel || '',
+      grade_id: preselectedGradeId || '',
+      class_id: preselectedClassId || '',
+    });
     setParentData({ full_name: '', national_id: '', phone: '', email: '', relationship: 'father', address: '' });
     setHealthData({ health_status: '', allergies: '', medications: '', special_needs: '', notes: '' });
     setExistingParent(null);
@@ -523,7 +564,7 @@ export default function AddStudentWizard({
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <FormField label={t('educationLevel')} required>
-                    <Select value={studentData.education_level} onValueChange={(val) => setStudentData({...studentData, education_level: val})}>
+                    <Select value={studentData.education_level} onValueChange={(val) => setStudentData({...studentData, education_level: val})} disabled={lockEducation}>
                       <SelectTrigger className="h-10 rounded-lg"><SelectValue placeholder={t('selectLevel')} /></SelectTrigger>
                       <SelectContent>
                         {EDUCATION_LEVELS.map(level => (<SelectItem key={level.id} value={level.id}>{isRTL ? level.name_ar : level.name_en}</SelectItem>))}
@@ -532,7 +573,7 @@ export default function AddStudentWizard({
                   </FormField>
 
                   <FormField label={t('grade')} required>
-                    <Select value={studentData.grade_id} onValueChange={(val) => setStudentData({...studentData, grade_id: val})}>
+                    <Select value={studentData.grade_id} onValueChange={(val) => setStudentData({...studentData, grade_id: val})} disabled={lockGrade}>
                       <SelectTrigger className="h-10 rounded-lg"><SelectValue placeholder={t('selectGrade')} /></SelectTrigger>
                       <SelectContent>
                         {grades.length > 0 ? (
@@ -547,7 +588,7 @@ export default function AddStudentWizard({
                   </FormField>
 
                   <FormField label={t('class')}>
-                    <Select value={studentData.class_id} onValueChange={(val) => setStudentData({...studentData, class_id: val})}>
+                    <Select value={studentData.class_id} onValueChange={(val) => setStudentData({...studentData, class_id: val})} disabled={lockClass}>
                       <SelectTrigger className="h-10 rounded-lg"><SelectValue placeholder={t('selectClass')} /></SelectTrigger>
                       <SelectContent>
                         {classes.length > 0 ? (

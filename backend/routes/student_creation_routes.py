@@ -343,6 +343,19 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             return v
 
         request.national_id = _blank_to_none(request.national_id)
+        # Defensive: never persist class_id="" (orphan-class state).
+        # The wizard now ships the parent class id when launched from a
+        # class detail page; older callers may still send "".
+        request.class_id = _blank_to_none(getattr(request, "class_id", None))
+        # Pin the class to the caller's tenant — a foreign-tenant class id
+        # MUST resolve to "no class" rather than crossing the boundary.
+        if request.class_id:
+            cls_owner = await gd_find_one(
+                db.session, "classes",
+                {"id": request.class_id, "school_id": school_id},
+            )
+            if not cls_owner:
+                raise HTTPException(status_code=404, detail="الفصل غير موجود")
         if request.parent is not None:
             request.parent.full_name = _blank_to_none(request.parent.full_name)
             request.parent.national_id = _blank_to_none(request.parent.national_id)
@@ -622,9 +635,14 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             for sib_id in sibling_ids:
                 await _gd_addtoset(db.session, "students", {"id": sib_id}, {"sibling_ids": student_id})
         
-        # Update class student count
+        # Update class student count. Scope by school_id so a stray
+        # cross-tenant class id can never be incremented.
         if request.class_id:
-            await _gd_inc(db.session, "classes", {"id": request.class_id}, {"current_students": 1})
+            await _gd_inc(
+                db.session, "classes",
+                {"id": request.class_id, "school_id": school_id},
+                {"current_students": 1},
+            )
         
         # Get class and grade info for response
         class_info = None

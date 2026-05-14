@@ -408,6 +408,109 @@ class TestStudentWizardValidation:
         print("✓ API correctly rejects unauthenticated request")
 
 
+class TestClassRosterAndCount:
+    """Regression: Task #361 — wizard launched from a class page must
+    persist `class_id`, increment `classes.current_students`, and the
+    new student must immediately show in `/classes/{id}/students`.
+    Delete must reverse both. Cross-tenant ids must 404."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        response = requests.post(f"{BASE_URL}/api/auth/login", json={
+            "email": PRINCIPAL_EMAIL,
+            "password": PRINCIPAL_PASSWORD,
+        })
+        self.token = response.json()["access_token"]
+        self.headers = {"Authorization": f"Bearer {self.token}"}
+
+    def _pick_class(self):
+        r = requests.get(f"{BASE_URL}/api/classes", headers=self.headers)
+        assert r.status_code == 200, r.text
+        classes = r.json()
+        if not classes:
+            pytest.skip("No classes available in test tenant")
+        return classes[0]
+
+    def _class_count(self, class_id):
+        r = requests.get(f"{BASE_URL}/api/classes/{class_id}", headers=self.headers)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        return int(body.get("student_count") or body.get("current_students") or 0)
+
+    def _roster_ids(self, class_id):
+        r = requests.get(f"{BASE_URL}/api/classes/{class_id}/students", headers=self.headers)
+        assert r.status_code == 200, r.text
+        return {s.get("id") for s in r.json()}
+
+    def test_add_then_delete_updates_roster_and_count(self):
+        cls = self._pick_class()
+        class_id = cls["id"]
+        before_count = self._class_count(class_id)
+        before_ids = self._roster_ids(class_id)
+
+        unique = str(uuid.uuid4())[:8]
+        payload = {
+            "full_name": f"TEST_T361_{unique}",
+            "gender": "male",
+            "date_of_birth": "2014-01-01",
+            "education_level": "primary",
+            "grade_id": cls.get("grade_id") or cls.get("grade_level") or "grade-1",
+            "class_id": class_id,
+            "parent": {
+                "full_name": f"TEST_T361_parent_{unique}",
+                "phone": f"05{unique}9",
+                "relationship": "father",
+            },
+        }
+        r = requests.post(f"{BASE_URL}/api/student-wizard/create", json=payload, headers=self.headers)
+        assert r.status_code == 200, r.text
+        new_id = r.json()["student"]["id"]
+
+        # Stronger signal: read the persisted student row directly and
+        # confirm the exact class_id was stored (not just roster visibility).
+        sr = requests.get(f"{BASE_URL}/api/students/{new_id}", headers=self.headers)
+        assert sr.status_code == 200, sr.text
+        assert sr.json().get("class_id") == class_id, (
+            f"Persisted class_id mismatch: got {sr.json().get('class_id')!r}, expected {class_id!r}"
+        )
+
+        after_ids = self._roster_ids(class_id)
+        assert new_id in after_ids, "New student must appear in class roster"
+        assert self._class_count(class_id) == before_count + 1, "Count must increment by 1"
+
+        d = requests.delete(f"{BASE_URL}/api/students/{new_id}", headers=self.headers)
+        assert d.status_code == 200, d.text
+        assert new_id not in self._roster_ids(class_id), "Student must be gone from roster"
+        assert self._class_count(class_id) == before_count, "Count must drop back"
+
+    def test_delete_foreign_student_id_fails_closed(self):
+        # An unknown / foreign-tenant student id must 404 from delete,
+        # never 200/403 (preserves §8 invariant 3 for student-by-id).
+        unknown = str(uuid.uuid4())
+        r = requests.delete(f"{BASE_URL}/api/students/{unknown}", headers=self.headers)
+        assert r.status_code == 404, f"Expected 404 for foreign student_id, got {r.status_code}: {r.text}"
+
+    def test_foreign_class_id_fails_closed(self):
+        # A random unknown class id from another tenant must 404, not silently
+        # create an orphan student.
+        unique = str(uuid.uuid4())
+        payload = {
+            "full_name": f"TEST_T361_foreign_{unique[:8]}",
+            "gender": "male",
+            "date_of_birth": "2014-01-01",
+            "education_level": "primary",
+            "grade_id": "grade-1",
+            "class_id": unique,
+            "parent": {
+                "full_name": "TEST_T361_p",
+                "phone": f"05{unique[:8]}",
+                "relationship": "father",
+            },
+        }
+        r = requests.post(f"{BASE_URL}/api/student-wizard/create", json=payload, headers=self.headers)
+        assert r.status_code == 404, f"Expected 404 for foreign class_id, got {r.status_code}: {r.text}"
+
+
 class TestCleanup:
     """Cleanup test data"""
     

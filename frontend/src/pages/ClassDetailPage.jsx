@@ -566,6 +566,15 @@ export default function ClassDetailPage() {
           isRTL={isRTL}
           grades={grades}
           classes={classes}
+          preselectedClassId={classId}
+          preselectedGradeId={classData?.grade_id || classData?.grade_level || ''}
+          preselectedEducationLevel={(() => {
+            const g = Number(classData?.grade);
+            if (!g || Number.isNaN(g)) return '';
+            if (g <= 6) return 'primary';
+            if (g <= 9) return 'middle';
+            return 'high';
+          })()}
         />
       </div>
     </Sidebar>
