@@ -1,0 +1,516 @@
+"""
+Noor (Saudi MoE) bulk import — server-authoritative two-step flow.
+
+Endpoints (mounted at /noor-import):
+    POST /parse   — multipart upload; returns import_draft_id + preview.
+                    NO writes.
+    POST /commit  — body: {import_draft_id, confirmations}; loads the
+                    draft from server-side storage and upserts.
+
+Trust model:
+    • School roles cannot pass `school_id` — the route always pins
+      `school_id = current_user.tenant_id`.
+    • /commit accepts ONLY {import_draft_id, confirmations}. Any
+      client-supplied `rows[]` is ignored. The draft is principal-bound
+      AND tenant-bound AND TTL'd (1h) — any miss → 403, zero writes.
+    • Teacher writes route through the canonical
+      TeacherManagementEngine.create_teacher (creates users + teachers
+      with proper login + must_change_password).
+    • Student writes are login-suppressed: NO `users` row, NO login.
+"""
+from __future__ import annotations
+
+import csv
+import io
+import logging
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel, Field
+from sqlalchemy import text
+
+from engines.noor_import import (
+    NoorParseError,
+    TEACHER_REPORT,
+    STUDENT_REPORT,
+    parse_workbook_bytes,
+)
+from engines.noor_import.draft_store import (
+    create_draft,
+    delete_draft,
+    load_draft,
+    purge_expired,
+)
+from engines.noor_import.teacher_mapper import (
+    build_create_teacher_request,
+    resolve_login_email,
+)
+from engines.noor_import.student_mapper import (
+    insert_student_record_only,
+    load_school_class_index,
+    load_school_student_index,
+    resolve_class,
+    update_student_mutable_fields,
+)
+from engines.sql_utils import gd_find_one
+from engines.teacher_management_engine import TeacherManagementEngine
+
+logger = logging.getLogger("nassaq.noor_import")
+
+
+_MAX_BYTES = 10 * 1024 * 1024
+_ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
+_ALLOWED_ROLES_VALUES = {"platform_admin", "school_principal", "school_admin"}
+_SAFE_PARSE_FAIL = "تعذّر تحليل الملف — تأكد من رفع تقرير نور غير معدّل"
+_SAFE_DRAFT_DENIED = "صلاحية المعاينة غير صالحة أو منتهية — أعد رفع الملف"
+_SAFE_COMMIT_FAIL = "تعذّر إتمام عملية الاستيراد"
+_SAFE_PERMISSION_DENIED = "غير مصرح لك بإجراء هذا الاستيراد"
+_SAFE_NO_TENANT = "لا يمكن الاستيراد دون تحديد المدرسة"
+
+
+class _RowAbort(Exception):
+    """Internal sentinel — used inside per-row SAVEPOINTs to roll back
+    one row without poisoning the outer transaction."""
+
+
+class CommitRequest(BaseModel):
+    import_draft_id: str = Field(..., min_length=8, max_length=128)
+    confirmations: Optional[Dict[str, Any]] = None
+
+
+def _require_school_role(current_user: dict) -> str:
+    role = (current_user.get("role") or "").lower()
+    if role not in _ALLOWED_ROLES_VALUES:
+        raise HTTPException(status_code=403, detail=_SAFE_PERMISSION_DENIED)
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail=_SAFE_NO_TENANT)
+    return tenant_id
+
+
+def _ext_ok(filename: str) -> bool:
+    name = (filename or "").lower()
+    return any(name.endswith(ext) for ext in _ALLOWED_EXTENSIONS)
+
+
+# ---------------------------------------------------------------------------
+# Preview / dedupe annotation
+# ---------------------------------------------------------------------------
+
+async def _annotate_teacher_rows(
+    session, *, school_id: str, parsed_rows: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Attach per-row dedupe outcome against existing school teachers."""
+    result = await session.execute(
+        text(
+            """
+            SELECT id, national_id, email
+            FROM teachers
+            WHERE school_id = :sid AND COALESCE(is_active, TRUE) = TRUE
+            """
+        ),
+        {"sid": school_id},
+    )
+    by_nid: Dict[str, Dict[str, Any]] = {}
+    for row in result.mappings().all():
+        nid = (row.get("national_id") or "").strip()
+        if nid:
+            by_nid[nid] = dict(row)
+
+    annotated: List[Dict[str, Any]] = []
+    for r in parsed_rows:
+        data = r["data"]
+        issues: List[str] = []
+        nid = (data.get("national_id") or "").strip()
+        if not data.get("full_name"):
+            issues.append("missing_full_name")
+        if not nid:
+            issues.append("missing_national_id")
+        elif len(nid) != 10 or not nid.isdigit():
+            issues.append("invalid_national_id")
+
+        dedupe = "skip" if issues else "insert"
+        existing_id: Optional[str] = None
+        if not issues and nid in by_nid:
+            dedupe = "update"
+            existing_id = by_nid[nid]["id"]
+        annotated.append(
+            {
+                "row_index": r["row_index"],
+                "data": data,
+                "issues": issues,
+                "dedupe": dedupe,
+                "existing_id": existing_id,
+            }
+        )
+    return annotated
+
+
+async def _annotate_student_rows(
+    session, *, school_id: str, parsed_rows: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    students = await load_school_student_index(session, school_id)
+    classes = await load_school_class_index(session, school_id)
+    annotated: List[Dict[str, Any]] = []
+    for r in parsed_rows:
+        data = r["data"]
+        issues: List[str] = []
+        num = (data.get("student_number") or "").strip()
+        if not data.get("full_name"):
+            issues.append("missing_full_name")
+        if not num:
+            issues.append("missing_student_number")
+        dedupe = "skip" if issues else "insert"
+        existing_id: Optional[str] = None
+        if not issues and num in students:
+            dedupe = "update"
+            existing_id = students[num]["id"]
+        class_id = resolve_class(
+            grade_code=data.get("grade_code"),
+            section_code=data.get("section_code"),
+            class_index=classes,
+        )
+        class_unresolved = class_id is None and (
+            data.get("grade_code") or data.get("section_code")
+        )
+        annotated.append(
+            {
+                "row_index": r["row_index"],
+                "data": data,
+                "issues": issues,
+                "dedupe": dedupe,
+                "existing_id": existing_id,
+                "class_id": class_id,
+                "class_unresolved": bool(class_unresolved),
+            }
+        )
+    return annotated
+
+
+def _summarise_counts(rows: List[Dict[str, Any]]) -> Dict[str, int]:
+    counts = {"total": len(rows), "insert": 0, "update": 0, "skip": 0, "ambiguous": 0}
+    for r in rows:
+        counts[r["dedupe"]] = counts.get(r["dedupe"], 0) + 1
+    return counts
+
+
+# ---------------------------------------------------------------------------
+# Router
+# ---------------------------------------------------------------------------
+
+def create_noor_import_routes(db, get_current_user):
+    router = APIRouter(prefix="/noor-import", tags=["Noor Import"])
+
+    @router.post("/parse")
+    async def parse_endpoint(
+        file: UploadFile = File(...),
+        current_user: dict = Depends(get_current_user),
+    ):
+        school_id = _require_school_role(current_user)
+        if not _ext_ok(file.filename or ""):
+            raise HTTPException(
+                status_code=400,
+                detail="نوع الملف غير مدعوم — استخدم Excel (.xlsx أو .xls)",
+            )
+        try:
+            content = await file.read()
+        except Exception:
+            raise HTTPException(status_code=400, detail=_SAFE_PARSE_FAIL)
+        if len(content) > _MAX_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail="حجم الملف يتجاوز الحد المسموح (10 ميغابايت)",
+            )
+
+        try:
+            parsed = parse_workbook_bytes(content, file.filename or "")
+        except NoorParseError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Noor parse failure: %s", e)
+            raise HTTPException(status_code=400, detail=_SAFE_PARSE_FAIL)
+
+        if parsed["detected_type"] == TEACHER_REPORT:
+            rows = await _annotate_teacher_rows(
+                db.session, school_id=school_id, parsed_rows=parsed["rows"]
+            )
+        else:
+            rows = await _annotate_student_rows(
+                db.session, school_id=school_id, parsed_rows=parsed["rows"]
+            )
+        counts = _summarise_counts(rows)
+        await purge_expired(db.session)
+
+        principal_id = str(current_user.get("id") or current_user.get("_id") or "")
+        draft_id = await create_draft(
+            db.session,
+            principal_id=principal_id,
+            school_id=school_id,
+            detected_type=parsed["detected_type"],
+            header_row=parsed["header_row"],
+            sheet_name=parsed.get("sheet_name"),
+            mapped_columns=parsed["mapped_columns"],
+            rows=rows,
+            counts=counts,
+        )
+        await db.session.commit()
+
+        return {
+            "import_draft_id": draft_id,
+            "detected_type": parsed["detected_type"],
+            "sheet_name": parsed.get("sheet_name"),
+            "header_row": parsed["header_row"],
+            "mapped_columns": parsed["mapped_columns"],
+            "rows": rows,
+            "counts": counts,
+        }
+
+    @router.post("/commit")
+    async def commit_endpoint(
+        body: CommitRequest,
+        current_user: dict = Depends(get_current_user),
+    ):
+        school_id = _require_school_role(current_user)
+        principal_id = str(current_user.get("id") or current_user.get("_id") or "")
+        draft = await load_draft(
+            db.session,
+            draft_id=body.import_draft_id,
+            principal_id=principal_id,
+            school_id=school_id,
+        )
+        if not draft:
+            raise HTTPException(status_code=403, detail=_SAFE_DRAFT_DENIED)
+
+        payload = draft.get("payload") or {}
+        rows: List[Dict[str, Any]] = payload.get("rows") or []
+        detected_type: str = draft["detected_type"]
+
+        confirmations = body.confirmations or {}
+        ambiguous_treat_as_new = set(
+            (confirmations.get("ambiguous_treat_as_new") or [])
+        )
+
+        if detected_type == TEACHER_REPORT:
+            outcome = await _commit_teachers(
+                db.session,
+                school_id=school_id,
+                rows=rows,
+                created_by=principal_id,
+                ambiguous_treat_as_new=ambiguous_treat_as_new,
+            )
+        elif detected_type == STUDENT_REPORT:
+            outcome = await _commit_students(
+                db.session,
+                school_id=school_id,
+                rows=rows,
+                created_by=principal_id,
+                ambiguous_treat_as_new=ambiguous_treat_as_new,
+            )
+        else:
+            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+
+        await delete_draft(db.session, draft_id=body.import_draft_id)
+        await db.session.commit()
+        return outcome
+
+    return router
+
+
+# ---------------------------------------------------------------------------
+# Commit helpers
+# ---------------------------------------------------------------------------
+
+async def _commit_teachers(
+    session,
+    *,
+    school_id: str,
+    rows: List[Dict[str, Any]],
+    created_by: str,
+    ambiguous_treat_as_new: set,
+) -> Dict[str, Any]:
+    engine = TeacherManagementEngine(type("DB", (), {"session": session})())
+    school = await gd_find_one(session, "schools", {"id": school_id})
+    school_code = (school or {}).get("code") or "sch"
+    seen_emails: set = set()
+
+    imported = 0
+    updated = 0
+    skipped = 0
+    failed = 0
+    errors: List[Dict[str, Any]] = []
+    credentials_csv: List[Dict[str, str]] = []
+
+    for r in rows:
+        row_idx = r.get("row_index")
+        data = r.get("data") or {}
+        issues: List[str] = r.get("issues") or []
+        if issues:
+            skipped += 1
+            errors.append({"row": row_idx, "message": "; ".join(issues)})
+            continue
+        try:
+            # Per-row SAVEPOINT so a single bad row doesn't poison the
+            # outer transaction (which would otherwise abort the final
+            # delete_draft + commit).
+            async with session.begin_nested():
+                dedupe = r.get("dedupe", "insert")
+                if dedupe == "update" and r.get("existing_id"):
+                    await session.execute(
+                        text(
+                            """
+                            UPDATE teachers
+                            SET phone = COALESCE(:phone, phone),
+                                address = COALESCE(:address, address),
+                                gender = COALESCE(:gender, gender),
+                                updated_at = NOW()
+                            WHERE id = :id AND school_id = :sid
+                            """
+                        ),
+                        {
+                            "phone": data.get("phone"),
+                            "address": data.get("address"),
+                            "gender": data.get("gender"),
+                            "id": r["existing_id"],
+                            "sid": school_id,
+                        },
+                    )
+                    updated += 1
+                    continue
+
+                resolved = await resolve_login_email(
+                    session,
+                    noor_email=data.get("email"),
+                    school_code=school_code,
+                    seen_emails_in_batch=seen_emails,
+                )
+                req = build_create_teacher_request(
+                    data, login_email=resolved["email"]
+                )
+                result = await engine.create_teacher(req, school_id, created_by)
+                if not result.get("success"):
+                    failed += 1
+                    errors.append(
+                        {
+                            "row": row_idx,
+                            "message": result.get("message")
+                            or result.get("error")
+                            or "تعذّر إنشاء المعلم",
+                        }
+                    )
+                    raise _RowAbort()
+                imported += 1
+                account = result.get("user_account") or {}
+                temp_password = account.get("temp_password")
+                if temp_password:
+                    credentials_csv.append(
+                        {
+                            "teacher_id": str(result.get("teacher_id") or ""),
+                            "full_name": data.get("full_name") or "",
+                            "login_email": resolved["email"],
+                            "temp_password": temp_password,
+                            "email_source": resolved["source"],
+                        }
+                    )
+        except _RowAbort:
+            pass
+        except Exception as e:  # noqa: BLE001
+            failed += 1
+            logger.warning("Noor teacher commit row failed: %s", e)
+            errors.append({"row": row_idx, "message": "تعذّر معالجة هذا الصف"})
+
+    return {
+        "imported": imported,
+        "updated": updated,
+        "skipped": skipped,
+        "failed": failed,
+        "errors": errors,
+        "credentials_csv": credentials_csv,
+    }
+
+
+async def _commit_students(
+    session,
+    *,
+    school_id: str,
+    rows: List[Dict[str, Any]],
+    created_by: str,
+    ambiguous_treat_as_new: set,
+) -> Dict[str, Any]:
+    # Re-load indexes — state may have moved since /parse.
+    students = await load_school_student_index(session, school_id)
+    classes = await load_school_class_index(session, school_id)
+
+    imported = 0
+    updated = 0
+    skipped = 0
+    failed = 0
+    errors: List[Dict[str, Any]] = []
+
+    for r in rows:
+        row_idx = r.get("row_index")
+        data = r.get("data") or {}
+        issues: List[str] = r.get("issues") or []
+        if issues:
+            skipped += 1
+            errors.append({"row": row_idx, "message": "; ".join(issues)})
+            continue
+        try:
+            async with session.begin_nested():
+                num = (data.get("student_number") or "").strip()
+                full_name = (data.get("full_name") or "").strip()
+                grade_code = data.get("grade_code")
+                section_code = data.get("section_code")
+                mobile = data.get("mobile")
+                class_id = resolve_class(
+                    grade_code=grade_code,
+                    section_code=section_code,
+                    class_index=classes,
+                )
+                existing = students.get(num)
+                if existing:
+                    await update_student_mutable_fields(
+                        session,
+                        student_id=existing["id"],
+                        school_id=school_id,
+                        full_name=full_name or None,
+                        grade_code=grade_code,
+                        class_id=class_id,
+                        mobile=mobile,
+                    )
+                    updated += 1
+                    continue
+
+                new_id = await insert_student_record_only(
+                    session,
+                    school_id=school_id,
+                    student_number=num,
+                    full_name=full_name,
+                    grade_code=grade_code,
+                    section_code=section_code,
+                    class_id=class_id,
+                    mobile=mobile,
+                    created_by=created_by,
+                )
+                imported += 1
+                # Track in-batch so later rows with the same student_number
+                # become an UPDATE rather than colliding on the unique
+                # (school_id, student_number) index.
+                students[num] = {
+                    "id": new_id,
+                    "student_number": num,
+                    "full_name": full_name,
+                    "grade": grade_code,
+                    "class_id": class_id,
+                }
+        except Exception as e:  # noqa: BLE001
+            failed += 1
+            logger.warning("Noor student commit row failed: %s", e)
+            errors.append({"row": row_idx, "message": "تعذّر معالجة هذا الصف"})
+
+    return {
+        "imported": imported,
+        "updated": updated,
+        "skipped": skipped,
+        "failed": failed,
+        "errors": errors,
+    }

@@ -37,6 +37,7 @@ import CreateClassWizard from '../components/wizards/CreateClassWizard';
 import TeacherProfileDialog from '../components/management/TeacherProfileDialog';
 import ParentProfileDialog from '../components/management/ParentProfileDialog';
 import StudentClassGrid from '../components/management/StudentClassGrid';
+import NoorImportPanel from '../components/management/NoorImportPanel';
 
 const THEME_COLORS = {
   student: {
@@ -1661,7 +1662,8 @@ export default function UsersClassesManagement() {
                     </TabsList>
 
                     <TabsContent value="import">
-                      <div className="grid gap-6 lg:grid-cols-2">
+                      <NoorImportPanel api={api} nassaqError={nassaqError} nassaqWarning={nassaqWarning} nassaqConfirm={nassaqConfirm} t={t} onComplete={fetchAllData} />
+                      <div className="grid gap-6 lg:grid-cols-2 mt-6">
                         <Card>
                           <CardHeader>
                             <CardTitle className="flex items-center gap-2"><Upload className="h-5 w-5 text-brand-turquoise" />{t('importData')}</CardTitle>

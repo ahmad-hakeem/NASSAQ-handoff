@@ -376,6 +376,9 @@ def register_routes(app, api_router: APIRouter):
     bulk_routes = setup_bulk_routes(db, get_current_user, require_roles, UserRole)
     import_tracking_routes = setup_import_tracking_routes(db, get_current_user, require_roles, UserRole)
 
+    from routes.noor_import_routes import create_noor_import_routes
+    noor_import_router = create_noor_import_routes(db, get_current_user)
+
     from routes.student_portal_routes import setup_student_portal_routes
     student_portal_routes = setup_student_portal_routes(db, get_current_user, require_roles, UserRole)
 
@@ -401,6 +404,7 @@ def register_routes(app, api_router: APIRouter):
     api_router.include_router(websocket_router)
     api_router.include_router(bulk_routes, dependencies=_full_tenant_dep)
     api_router.include_router(import_tracking_routes, dependencies=_full_tenant_dep)
+    api_router.include_router(noor_import_router, dependencies=_full_tenant_dep)
     api_router.include_router(student_portal_routes)
     api_router.include_router(parent_portal_routes)
 
