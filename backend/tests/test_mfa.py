@@ -1053,3 +1053,357 @@ async def test_recovery_code_sets_must_restore_for_tier_a(client, tenant_a):
     assert r.status_code == 200, r.text
     fresh = await gd_find_one(db.session, "users", {"id": user["id"]})
     assert fresh.get("mfa_must_restore_factor") is True
+
+
+# ---------------------------------------------------------------------------
+# 8. MFA Lifecycle — Disable & Reset/Reconfigure (Task #338 follow-up)
+# ---------------------------------------------------------------------------
+
+async def _seed_totp_factor(user_id: str, *, active: bool = True) -> tuple[str, str]:
+    """Insert one TOTP factor row and return (factor_id, secret_b32)."""
+    fid = str(uuid.uuid4())
+    secret = mfa_crypto.generate_totp_secret()
+    await gd_insert(
+        db.session,
+        "mfa_factors",
+        {
+            "id": fid,
+            "user_id": user_id,
+            "kind": "totp",
+            "is_active": active,
+            "is_primary": active,
+            "label": "test totp",
+            "totp_secret_encrypted": mfa_crypto.encrypt_totp_secret(secret),
+            "verified_at": datetime.now(timezone.utc) if active else None,
+            "created_at": datetime.now(timezone.utc),
+        },
+    )
+    return fid, secret
+
+
+@pytest.mark.asyncio
+async def test_mfa_disable_clears_factors_and_burns_recovery_codes(client, tenant_a):
+    """Out-of-tier user (STUDENT — no mandatory MFA) disables MFA:
+    every active factor row is deactivated, every unconsumed recovery
+    code is burned, and the user-row flags collapse to "MFA disabled".
+    Requires fresh step-up + correct password."""
+    from engines.sql_utils import gd_find
+    user = await _mk_login_user(UserRole.STUDENT, tenant_a)
+    fid, _ = await _seed_totp_factor(user["id"])
+    await _seed_recovery_code(user["id"])
+    await _seed_recovery_code(user["id"])
+
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    token = create_access_token({
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    }, mfa_recent_at=now_ts)
+
+    r = await client.post(
+        "/auth/mfa/disable",
+        json={"password": _PASS},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json().get("disabled") is True
+
+    factor = await gd_find_one(db.session, "mfa_factors", {"id": fid})
+    assert factor and factor.get("is_active") is False
+
+    codes = await gd_find(db.session, "mfa_recovery_codes", {"user_id": user["id"]})
+    assert codes and all(c.get("consumed_at") is not None for c in codes)
+
+    fresh = await gd_find_one(db.session, "users", {"id": user["id"]})
+    assert fresh.get("mfa_enrolled_at") is None
+    assert fresh.get("mfa_must_restore_factor") is False
+
+
+@pytest.mark.asyncio
+async def test_mfa_disable_wrong_password_returns_401_and_does_not_mutate(client, tenant_a):
+    """Wrong password → 401, factors and recovery codes intact."""
+    user = await _mk_login_user(UserRole.STUDENT, tenant_a)
+    fid, _ = await _seed_totp_factor(user["id"])
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    token = create_access_token({
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    }, mfa_recent_at=now_ts)
+    r = await client.post(
+        "/auth/mfa/disable",
+        json={"password": "Wrong@1234!"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 401, r.text
+    factor = await gd_find_one(db.session, "mfa_factors", {"id": fid})
+    assert factor and factor.get("is_active") is True
+
+
+@pytest.mark.asyncio
+async def test_mfa_disable_refused_for_mandatory_tier(client, tenant_a):
+    """Tier-A principal cannot disable MFA — must rotate via reset
+    instead. Server returns 409 and leaves all state intact."""
+    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    fid, _ = await _seed_totp_factor(user["id"])
+    await _seed_webauthn_factor(user["id"])
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    token = create_access_token({
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    }, mfa_recent_at=now_ts)
+    r = await client.post(
+        "/auth/mfa/disable",
+        json={"password": _PASS},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 409, r.text
+    factor = await gd_find_one(db.session, "mfa_factors", {"id": fid})
+    assert factor and factor.get("is_active") is True
+
+
+@pytest.mark.asyncio
+async def test_mfa_disable_requires_recent_mfa(client, tenant_a):
+    """No fresh mfa_recent_at → 403 step-up envelope, no mutation."""
+    user = await _mk_login_user(UserRole.TEACHER, tenant_a)
+    fid, _ = await _seed_totp_factor(user["id"])
+    token = create_access_token({  # no mfa_recent_at
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    })
+    r = await client.post(
+        "/auth/mfa/disable",
+        json={"password": _PASS},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 403, r.text
+    factor = await gd_find_one(db.session, "mfa_factors", {"id": fid})
+    assert factor and factor.get("is_active") is True
+
+
+@pytest.mark.asyncio
+async def test_mfa_reset_begin_does_not_disturb_active_factor(client, tenant_a):
+    """/auth/mfa/reset/begin mints a NEW pending factor without
+    deactivating the existing one. The user must still be able to use
+    the old factor until /auth/mfa/reset/finalize succeeds."""
+    user = await _mk_login_user(UserRole.TEACHER, tenant_a)
+    old_fid, _ = await _seed_totp_factor(user["id"])
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    token = create_access_token({
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    }, mfa_recent_at=now_ts)
+    r = await client.post(
+        "/auth/mfa/reset/begin",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    new_fid = body.get("factor_id")
+    assert new_fid and new_fid != old_fid
+    assert body.get("qr_svg")
+    # Old factor untouched.
+    old = await gd_find_one(db.session, "mfa_factors", {"id": old_fid})
+    assert old and old.get("is_active") is True
+    # New factor is pending.
+    new = await gd_find_one(db.session, "mfa_factors", {"id": new_fid})
+    assert new and new.get("is_active") is False
+
+
+@pytest.mark.asyncio
+async def test_mfa_reset_finalize_atomically_swaps_and_rotates_codes(client, tenant_a):
+    """Successful finalize: new factor active+primary, old factor
+    deactivated, old recovery codes burned, fresh batch issued."""
+    from engines.sql_utils import gd_find
+    user = await _mk_login_user(UserRole.TEACHER, tenant_a)
+    old_fid, _ = await _seed_totp_factor(user["id"])
+    old_code_pt = await _seed_recovery_code(user["id"])
+
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    token = create_access_token({
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    }, mfa_recent_at=now_ts)
+    begin = await client.post(
+        "/auth/mfa/reset/begin",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert begin.status_code == 200
+    new_fid = begin.json()["factor_id"]
+
+    # Pull the just-stored secret to compute a valid TOTP code.
+    pending = await gd_find_one(db.session, "mfa_factors", {"id": new_fid})
+    enc = pending["totp_secret_encrypted"]
+    secret = mfa_crypto.decrypt_totp_secret(
+        enc if isinstance(enc, (bytes, bytearray)) else bytes(enc)
+    )
+    import pyotp  # type: ignore
+    code = pyotp.TOTP(secret).now()
+
+    r = await client.post(
+        "/auth/mfa/reset/finalize",
+        json={"factor_id": new_fid, "code": code},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body.get("factor_id") == new_fid
+    assert body.get("is_primary") is True
+    # Fresh recovery codes were issued.
+    new_codes = body.get("recovery_codes") or []
+    assert len(new_codes) >= 1
+    assert old_code_pt not in new_codes
+
+    # New factor active + primary; old factor deactivated.
+    new = await gd_find_one(db.session, "mfa_factors", {"id": new_fid})
+    assert new and new.get("is_active") is True and new.get("is_primary") is True
+    old = await gd_find_one(db.session, "mfa_factors", {"id": old_fid})
+    assert old and old.get("is_active") is False
+
+    # Every previously-stored recovery code burned.
+    codes = await gd_find(db.session, "mfa_recovery_codes", {"user_id": user["id"]})
+    burned = [c for c in codes if mfa_crypto.verify_recovery_code(old_code_pt, c.get("code_hash") or "")]
+    assert burned and all(c.get("consumed_at") is not None for c in burned)
+
+
+@pytest.mark.asyncio
+async def test_mfa_reset_finalize_bad_code_keeps_old_factor(client, tenant_a):
+    """Wrong TOTP code → 400, old factor still active, pending factor
+    still pending. No state was rotated."""
+    user = await _mk_login_user(UserRole.TEACHER, tenant_a)
+    old_fid, _ = await _seed_totp_factor(user["id"])
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    token = create_access_token({
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    }, mfa_recent_at=now_ts)
+    begin = await client.post(
+        "/auth/mfa/reset/begin",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    new_fid = begin.json()["factor_id"]
+
+    r = await client.post(
+        "/auth/mfa/reset/finalize",
+        json={"factor_id": new_fid, "code": "000000"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 400, r.text
+
+    old = await gd_find_one(db.session, "mfa_factors", {"id": old_fid})
+    assert old and old.get("is_active") is True
+    new = await gd_find_one(db.session, "mfa_factors", {"id": new_fid})
+    assert new and new.get("is_active") is False
+
+
+@pytest.mark.asyncio
+async def test_mfa_reset_finalize_works_under_must_restore_factor(client, tenant_a):
+    """Restore-required users (mfa_must_restore_factor=True from a
+    recovery-code login) MUST be able to call reset/finalize even
+    though every step-up-guarded route 403s on them. The fresh TOTP
+    code is itself the proof; on success the flag clears."""
+    from engines.sql_utils import gd_update_one
+    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    await gd_update_one(
+        db.session, "users", {"id": user["id"]},
+        {"mfa_must_restore_factor": True},
+    )
+    token = create_access_token({
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    })
+    begin = await client.post(
+        "/auth/mfa/reset/begin",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert begin.status_code == 200, begin.text
+    new_fid = begin.json()["factor_id"]
+    pending = await gd_find_one(db.session, "mfa_factors", {"id": new_fid})
+    enc = pending["totp_secret_encrypted"]
+    secret = mfa_crypto.decrypt_totp_secret(
+        enc if isinstance(enc, (bytes, bytearray)) else bytes(enc)
+    )
+    import pyotp  # type: ignore
+    code = pyotp.TOTP(secret).now()
+    r = await client.post(
+        "/auth/mfa/reset/finalize",
+        json={"factor_id": new_fid, "code": code},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    fresh = await gd_find_one(db.session, "users", {"id": user["id"]})
+    assert fresh.get("mfa_must_restore_factor") is False
+
+
+@pytest.mark.asyncio
+async def test_totp_enroll_confirm_clears_must_restore_flag(client, tenant_a):
+    """Enrolling a fresh TOTP via the standard enroll path also clears
+    mfa_must_restore_factor so a restore-required user is unblocked."""
+    from engines.sql_utils import gd_update_one
+    user = await _mk_login_user(UserRole.TEACHER, tenant_a)
+    await gd_update_one(
+        db.session, "users", {"id": user["id"]},
+        {"mfa_must_restore_factor": True},
+    )
+    token = create_access_token({
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    })
+    begin = await client.post(
+        "/auth/mfa/totp/enroll/begin",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert begin.status_code == 200, begin.text
+    new_fid = begin.json()["factor_id"]
+    pending = await gd_find_one(db.session, "mfa_factors", {"id": new_fid})
+    enc = pending["totp_secret_encrypted"]
+    secret = mfa_crypto.decrypt_totp_secret(
+        enc if isinstance(enc, (bytes, bytearray)) else bytes(enc)
+    )
+    import pyotp  # type: ignore
+    code = pyotp.TOTP(secret).now()
+    r = await client.post(
+        "/auth/mfa/totp/enroll/confirm",
+        json={"factor_id": new_fid, "code": code},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    fresh = await gd_find_one(db.session, "users", {"id": user["id"]})
+    assert fresh.get("mfa_must_restore_factor") is False
+
+
+@pytest.mark.asyncio
+async def test_mfa_reset_begin_requires_step_up_for_normal_user(client, tenant_a):
+    """A normal (non-restore-required) user must present a fresh MFA
+    proof before starting the reset/reconfigure flow — otherwise a
+    stolen access token alone could swap out the user's authenticator
+    and rotate recovery codes."""
+    user = await _mk_login_user(UserRole.TEACHER, tenant_a)
+    await _seed_totp_factor(user["id"])
+    token = create_access_token({  # NO mfa_recent_at
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    })
+    r = await client.post(
+        "/auth/mfa/reset/begin",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 403, r.text
+    assert _err_code(r) == "MFA_STEPUP_REQUIRED"
+
+
+@pytest.mark.asyncio
+async def test_mfa_reset_finalize_requires_step_up_for_normal_user(client, tenant_a):
+    """Same step-up requirement on finalize: a normal user without a
+    fresh MFA proof must be refused with a 403 step-up envelope; the
+    pending factor must remain pending and the active factor active."""
+    user = await _mk_login_user(UserRole.TEACHER, tenant_a)
+    old_fid, _ = await _seed_totp_factor(user["id"])
+    # Mint a pending factor row directly so we don't need step-up to
+    # produce one — the test is specifically about finalize's gate.
+    pending_fid, secret = await _seed_totp_factor(user["id"], active=False)
+    import pyotp  # type: ignore
+    code = pyotp.TOTP(secret).now()
+    token = create_access_token({  # NO mfa_recent_at
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    })
+    r = await client.post(
+        "/auth/mfa/reset/finalize",
+        json={"factor_id": pending_fid, "code": code},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 403, r.text
+    assert _err_code(r) == "MFA_STEPUP_REQUIRED"
+    # Pending factor still pending; old factor still active.
+    pending = await gd_find_one(db.session, "mfa_factors", {"id": pending_fid})
+    assert pending and pending.get("is_active") is False
+    old = await gd_find_one(db.session, "mfa_factors", {"id": old_fid})
+    assert old and old.get("is_active") is True

@@ -42,6 +42,8 @@ from dependencies import (
     create_access_token,
     create_refresh_token,
     get_current_user,
+    require_recent_mfa_403,
+    verify_password,
 )
 from engines.audit_engine import AuditLogEngine
 from engines.email_service import send_mfa_email_otp
@@ -498,9 +500,19 @@ async def totp_enroll_confirm(
     )
 
     # If this is the user's first ever factor, stamp mfa_enrolled_at.
+    user_updates: dict = {}
     if not current_user.get("mfa_enrolled_at"):
+        user_updates["mfa_enrolled_at"] = now
+    # Post-recovery restore: a recovery-code login set
+    # mfa_must_restore_factor=True. Activating a strong factor (TOTP or
+    # passkey) is the documented way to satisfy that requirement, so
+    # clear the flag here. require_recent_mfa otherwise refuses every
+    # sensitive route with MFA_RESTORE_REQUIRED indefinitely.
+    if current_user.get("mfa_must_restore_factor"):
+        user_updates["mfa_must_restore_factor"] = False
+    if user_updates:
         await gd_update_one(
-            db.session, "users", {"id": current_user["id"]}, {"mfa_enrolled_at": now}
+            db.session, "users", {"id": current_user["id"]}, user_updates
         )
 
     audit = AuditLogEngine(Repos(db.session))
@@ -2062,3 +2074,356 @@ async def _verify_recovery_code_and_complete(
     if remaining_after <= RECOVERY_LOW_REMAINING_THRESHOLD and not stepup_only:
         response = response.copy(update={"mfa_recovery_codes_pending_view": True})
     return response
+
+
+# ---------------------------------------------------------------------------
+# MFA Lifecycle — Disable & Reset/Reconfigure
+# ---------------------------------------------------------------------------
+#
+# Three explicit lifecycle endpoints complete the per-user MFA story:
+#
+#   POST /auth/mfa/disable
+#       Hard-off switch. Requires fresh second-factor proof (step-up) AND
+#       a current-password re-auth. Refused for users whose tier
+#       (mfa_policy.required_for) mandates MFA — those users must use
+#       reset/finalize instead. Deactivates every active factor row,
+#       burns every unconsumed recovery code, and clears every MFA flag
+#       on the user row so the account ends in a clean "MFA disabled"
+#       state.
+#
+#   POST /auth/mfa/reset/begin
+#       Starts a reconfigure ceremony WITHOUT touching the existing
+#       active factor. Mints a fresh inactive TOTP factor row exactly
+#       like /auth/mfa/totp/enroll/begin and returns the same QR/SVG
+#       payload. The old factor stays authoritative until reset/finalize
+#       succeeds.
+#
+#   POST /auth/mfa/reset/finalize
+#       Verifies the just-enrolled TOTP code, then ATOMICALLY:
+#         * activates the new factor as primary,
+#         * deactivates every other active factor (totp + webauthn),
+#         * burns every unconsumed recovery code and issues a fresh
+#           batch of RECOVERY_CODES_BATCH plaintext codes,
+#         * clears mfa_must_restore_factor,
+#         * stamps mfa_recovery_codes_generated_at and resets
+#           mfa_recovery_codes_acknowledged=False.
+#       Intentionally does NOT depend on require_recent_mfa: a user who
+#       just logged in with a recovery code carries
+#       mfa_must_restore_factor=True, which would make every step-up
+#       guarded route 403 with MFA_RESTORE_REQUIRED. The act of
+#       presenting a valid TOTP from a freshly-scanned QR IS the proof.
+
+class MfaDisableRequest(BaseModel):
+    password: str
+
+
+class MfaDisableResponse(BaseModel):
+    disabled: bool = True
+
+
+@router.post(
+    "/auth/mfa/disable",
+    response_model=MfaDisableResponse,
+    dependencies=[Depends(require_recent_mfa_403(max_age_seconds=300))],
+)
+async def mfa_disable(
+    body: MfaDisableRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Disable MFA for the calling user. Requires fresh step-up + password."""
+    # Refuse if the user's role mandates MFA. They can still rotate
+    # their factor via /auth/mfa/reset/* but cannot turn the second
+    # factor off entirely.
+    tier = mfa_policy.required_for(current_user)
+    if tier is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="هذا الحساب يتطلب تحققاً بخطوتين بحكم دوره — استخدم إعادة الضبط بدلاً من الإلغاء.",
+        )
+
+    if not body.password or not verify_password(
+        body.password, current_user.get("password_hash") or ""
+    ):
+        try:
+            audit = AuditLogEngine(Repos(db.session))
+            await audit.log_auth_event(
+                action="mfa.disable.denied",
+                user_id=current_user["id"],
+                tenant_id=current_user.get("tenant_id"),
+                success=False,
+                email=current_user.get("email"),
+                reason="password_invalid",
+            )
+        except Exception as exc:
+            logger.debug(f"mfa_disable: audit denied failed: {exc}")
+        raise HTTPException(status_code=401, detail="كلمة المرور غير صحيحة")
+
+    user_id = current_user["id"]
+    now = datetime.now(timezone.utc)
+
+    # Deactivate every active factor.
+    try:
+        from sqlalchemy import text as _sa_text
+        await db.session.execute(
+            _sa_text(
+                "UPDATE mfa_factors SET is_active = false, is_primary = false "
+                "WHERE user_id = :uid AND is_active = true"
+            ),
+            {"uid": user_id},
+        )
+        # Burn every unconsumed recovery code so old codes cannot be
+        # used after disable.
+        await db.session.execute(
+            _sa_text(
+                "UPDATE mfa_recovery_codes SET consumed_at = :now "
+                "WHERE user_id = :uid AND consumed_at IS NULL"
+            ),
+            {"now": now, "uid": user_id},
+        )
+    except Exception as exc:
+        logger.warning(f"mfa_disable: factor/recovery teardown failed: {exc}")
+        raise HTTPException(status_code=500, detail="تعذّر إلغاء التفعيل")
+
+    try:
+        await gd_update_one(
+            db.session,
+            "users",
+            {"id": user_id},
+            {
+                "mfa_enrolled_at": None,
+                "mfa_must_restore_factor": False,
+                "mfa_recovery_codes_generated_at": None,
+                "mfa_recovery_codes_acknowledged": False,
+            },
+        )
+    except Exception as exc:
+        # Fail-closed: factors and recovery codes are already burned;
+        # if the user-row flag write fails the request must surface 500
+        # so the caller does not mistake partial state for success.
+        logger.warning(f"mfa_disable: clear user flags failed: {exc}")
+        raise HTTPException(status_code=500, detail="تعذّر إلغاء التفعيل")
+
+    try:
+        audit = AuditLogEngine(Repos(db.session))
+        await audit.log_auth_event(
+            action="mfa.disabled",
+            user_id=user_id,
+            tenant_id=current_user.get("tenant_id"),
+            success=True,
+            email=current_user.get("email"),
+        )
+    except Exception as exc:
+        logger.debug(f"mfa_disable: audit failed: {exc}")
+
+    return MfaDisableResponse(disabled=True)
+
+
+# ---- reset/reconfigure -----------------------------------------------------
+
+class MfaResetFinalizeRequest(BaseModel):
+    factor_id: str = Field(..., min_length=8)
+    code: str = Field(..., min_length=6, max_length=10)
+    label: Optional[str] = Field(None, max_length=64)
+
+
+class MfaResetFinalizeResponse(BaseModel):
+    factor_id: str
+    activated_at: str
+    is_primary: bool = True
+    recovery_codes: List[str]
+    recovery_codes_generated_at: datetime
+
+
+async def _require_recent_mfa_unless_restore_required(
+    credentials: HTTPAuthorizationCredentials,
+    current_user: dict,
+) -> None:
+    """Conditional step-up gate for the reset flow.
+
+    Normal users (``mfa_must_restore_factor = False``) MUST present a
+    fresh second-factor proof before they can swap their authenticator
+    app — otherwise a stolen access token alone could rotate MFA.
+    Restore-required users (logged in via recovery code) are
+    intentionally exempt: every step-up route 403s on them with
+    ``MFA_RESTORE_REQUIRED``, so requiring step-up here would make the
+    Reset flow itself unreachable. Their proof is the fresh TOTP code
+    verified by ``mfa_reset_finalize``.
+    """
+    if current_user.get("mfa_must_restore_factor"):
+        return
+    base = require_recent_mfa_403(max_age_seconds=300)
+    await base(credentials=credentials, current_user=current_user)
+
+
+@router.post(
+    "/auth/mfa/reset/begin",
+    response_model=TotpEnrollBeginResponse,
+)
+async def mfa_reset_begin(
+    credentials: HTTPAuthorizationCredentials = Depends(_security),
+    current_user: dict = Depends(get_current_user),
+):
+    """Start a reset/reconfigure ceremony without disturbing the active
+    factor. Returns the same shape as ``/auth/mfa/totp/enroll/begin``;
+    the new pending factor is committed by ``/auth/mfa/reset/finalize``.
+
+    Step-up is required for normal users so a stolen access token alone
+    cannot rotate MFA; restore-required users (recovery-code login) are
+    exempt because every step-up route blocks them — see
+    ``_require_recent_mfa_unless_restore_required``.
+    """
+    await _require_recent_mfa_unless_restore_required(credentials, current_user)
+    return await totp_enroll_begin(current_user=current_user)
+
+
+@router.post(
+    "/auth/mfa/reset/finalize",
+    response_model=MfaResetFinalizeResponse,
+)
+async def mfa_reset_finalize(
+    body: MfaResetFinalizeRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(_security),
+    current_user: dict = Depends(get_current_user),
+):
+    """Verify the new TOTP code and atomically swap the user onto it.
+
+    Step-up is required for normal users so a stolen access token alone
+    cannot rotate MFA. Restore-required users (logged in via recovery
+    code) are exempt because every step-up call 403s on them with
+    ``MFA_RESTORE_REQUIRED``; the freshly-verified TOTP code itself IS
+    the proof for them.
+    """
+    await _require_recent_mfa_unless_restore_required(credentials, current_user)
+    _ensure_totp_kind_allowed(current_user)
+
+    factor = await gd_find_one(db.session, "mfa_factors", {"id": body.factor_id})
+    if (
+        not factor
+        or factor.get("user_id") != current_user["id"]
+        or factor.get("kind") != "totp"
+    ):
+        raise HTTPException(status_code=404, detail="عامل التحقق غير موجود")
+    if factor.get("is_active"):
+        raise HTTPException(status_code=409, detail="عامل التحقق مفعّل مسبقاً")
+
+    encrypted = factor.get("totp_secret_encrypted")
+    if not encrypted:
+        raise HTTPException(status_code=500, detail="عامل التحقق غير صالح")
+    try:
+        secret_b32 = mfa_crypto.decrypt_totp_secret(
+            encrypted if isinstance(encrypted, (bytes, bytearray)) else bytes(encrypted)
+        )
+    except mfa_crypto.MfaCryptoConfigError as exc:
+        logger.warning(f"mfa_reset_finalize: decrypt failed: {exc}")
+        raise HTTPException(status_code=500, detail="عامل التحقق غير صالح")
+
+    if not mfa_crypto.verify_totp_code(secret_b32, body.code, window=1):
+        try:
+            audit = AuditLogEngine(Repos(db.session))
+            await audit.log(
+                action="mfa.reset.failure",
+                performed_by=current_user["id"],
+                tenant_id=current_user.get("tenant_id"),
+                entity_type="mfa_factor",
+                entity_id=body.factor_id,
+                actor_email=current_user.get("email"),
+                actor_role=current_user.get("role"),
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=400, detail="رمز التحقق غير صحيح")
+
+    user_id = current_user["id"]
+    now = datetime.now(timezone.utc)
+
+    # Atomic swap: activate the new factor, deactivate every other
+    # active factor (totp + webauthn etc), burn all unconsumed recovery
+    # codes, then issue a fresh batch.
+    try:
+        from sqlalchemy import text as _sa_text
+        await gd_update_one(
+            db.session,
+            "mfa_factors",
+            {"id": body.factor_id},
+            {
+                "is_active": True,
+                "verified_at": now,
+                "label": body.label or "TOTP",
+                "is_primary": True,
+            },
+        )
+        await db.session.execute(
+            _sa_text(
+                "UPDATE mfa_factors SET is_active = false, is_primary = false "
+                "WHERE user_id = :uid AND id <> :keep AND is_active = true"
+            ),
+            {"uid": user_id, "keep": body.factor_id},
+        )
+        await db.session.execute(
+            _sa_text(
+                "UPDATE mfa_recovery_codes SET consumed_at = :now "
+                "WHERE user_id = :uid AND consumed_at IS NULL"
+            ),
+            {"now": now, "uid": user_id},
+        )
+    except Exception as exc:
+        logger.warning(f"mfa_reset_finalize: atomic swap failed: {exc}")
+        raise HTTPException(status_code=500, detail="تعذّر إعادة الضبط")
+
+    # Issue a fresh batch of recovery codes (when allowed for the role).
+    plaintext: List[str] = []
+    if "recovery_code" in mfa_policy.allowed_factor_kinds(current_user):
+        for _ in range(RECOVERY_CODES_BATCH):
+            code = mfa_crypto.generate_recovery_code()
+            plaintext.append(code)
+            await gd_insert(
+                db.session,
+                "mfa_recovery_codes",
+                {
+                    "id": str(uuid.uuid4()),
+                    "user_id": user_id,
+                    "code_hash": mfa_crypto.hash_recovery_code(code),
+                    "created_at": now,
+                    "consumed_at": None,
+                },
+            )
+
+    user_updates: dict = {
+        "mfa_must_restore_factor": False,
+    }
+    if not current_user.get("mfa_enrolled_at"):
+        user_updates["mfa_enrolled_at"] = now
+    if plaintext:
+        user_updates["mfa_recovery_codes_generated_at"] = now
+        user_updates["mfa_recovery_codes_acknowledged"] = False
+    try:
+        await gd_update_one(db.session, "users", {"id": user_id}, user_updates)
+    except Exception as exc:
+        # Fail-closed: if the user-row flag write fails AFTER we already
+        # rotated factors and recovery codes, surface 500 so the caller
+        # cannot mistake a partially-committed state for success.
+        logger.warning(f"mfa_reset_finalize: user-row update failed: {exc}")
+        raise HTTPException(status_code=500, detail="تعذّر إعادة الضبط")
+
+    try:
+        audit = AuditLogEngine(Repos(db.session))
+        await audit.log(
+            action="mfa.reset.success",
+            performed_by=user_id,
+            tenant_id=current_user.get("tenant_id"),
+            entity_type="mfa_factor",
+            entity_id=body.factor_id,
+            actor_email=current_user.get("email"),
+            actor_role=current_user.get("role"),
+            details={"recovery_codes_rotated": bool(plaintext)},
+        )
+    except Exception as exc:
+        logger.debug(f"mfa_reset_finalize: audit failed: {exc}")
+
+    return MfaResetFinalizeResponse(
+        factor_id=body.factor_id,
+        activated_at=now.isoformat(),
+        is_primary=True,
+        recovery_codes=plaintext,
+        recovery_codes_generated_at=now,
+    )

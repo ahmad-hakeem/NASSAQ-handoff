@@ -28,6 +28,8 @@ import {
   Download,
   RefreshCw,
   Plus,
+  RotateCcw,
+  ShieldOff,
 } from 'lucide-react';
 
 const TIER_META = {
@@ -80,6 +82,23 @@ export default function MfaSecuritySection({ onChange } = {}) {
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [recoveryError, setRecoveryError] = useState('');
   const [recoveryNewCodes, setRecoveryNewCodes] = useState(null);
+
+  // Reset / Reconfigure (swap to a new authenticator app without
+  // disabling MFA in between). Backend mints a pending TOTP factor on
+  // /auth/mfa/reset/begin and atomically swaps + rotates recovery
+  // codes on /auth/mfa/reset/finalize.
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetEnroll, setResetEnroll] = useState(null); // {factor_id, qr_svg, otpauth_uri, account_label}
+  const [resetCode, setResetCode] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [resetNewCodes, setResetNewCodes] = useState(null);
+
+  // Disable MFA (only when the user's role does not mandate MFA).
+  const [disableDialogOpen, setDisableDialogOpen] = useState(false);
+  const [disablePwd, setDisablePwd] = useState('');
+  const [disableBusy, setDisableBusy] = useState(false);
+  const [disableError, setDisableError] = useState('');
 
   const refresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -222,6 +241,128 @@ export default function MfaSecuritySection({ onChange } = {}) {
     URL.revokeObjectURL(url);
   };
 
+  // ---- Reset / Reconfigure ----
+  const beginReset = async () => {
+    setResetBusy(true);
+    setResetError('');
+    setResetCode('');
+    setResetNewCodes(null);
+    setResetEnroll(null);
+    try {
+      const r = await api.post('/auth/mfa/reset/begin');
+      setResetEnroll(r.data);
+      setResetDialogOpen(true);
+    } catch (err) {
+      const msg = err?.response?.data?.error?.message || err?.response?.data?.detail || (lang === 'ar' ? 'تعذر بدء إعادة الضبط' : 'Could not start reset');
+      nassaqError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  const finalizeReset = async () => {
+    if (!resetEnroll?.factor_id || !resetCode.trim()) {
+      setResetError(lang === 'ar' ? 'يرجى إدخال رمز التطبيق.' : 'Please enter the app code.');
+      return;
+    }
+    setResetBusy(true);
+    setResetError('');
+    try {
+      const r = await api.post('/auth/mfa/reset/finalize', {
+        factor_id: resetEnroll.factor_id,
+        code: resetCode.trim(),
+      });
+      // Server returns fresh recovery codes the user must save now;
+      // keep dialog open in "saved" mode so they can copy/download.
+      setResetNewCodes(Array.isArray(r.data?.recovery_codes) ? r.data.recovery_codes : []);
+      setResetCode('');
+      setResetEnroll(null);
+      nassaqSuccess(lang === 'ar' ? 'تم استبدال تطبيق المصادقة بنجاح.' : 'Authenticator app replaced.');
+      refresh();
+    } catch (err) {
+      const msg = err?.response?.data?.error?.message || err?.response?.data?.detail || (lang === 'ar' ? 'الرمز غير صحيح.' : 'Invalid code.');
+      setResetError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  const closeResetDialog = () => {
+    if (resetBusy) return;
+    setResetDialogOpen(false);
+    setResetEnroll(null);
+    setResetCode('');
+    setResetError('');
+    setResetNewCodes(null);
+  };
+
+  const copyResetCodes = async () => {
+    if (!resetNewCodes?.length) return;
+    try {
+      await navigator.clipboard.writeText(resetNewCodes.join('\n'));
+      nassaqSuccess(lang === 'ar' ? 'تم نسخ الرموز.' : 'Codes copied.');
+    } catch {
+      nassaqError(lang === 'ar' ? 'تعذّر النسخ.' : 'Copy failed.');
+    }
+  };
+
+  const downloadResetCodes = () => {
+    if (!resetNewCodes?.length) return;
+    const header = lang === 'ar'
+      ? 'رموز استرداد NASSAQ — احفظها في مكان آمن. كل رمز يُستخدم مرة واحدة فقط.\n\n'
+      : 'NASSAQ recovery codes — keep these safe. Each code can be used once.\n\n';
+    const blob = new Blob([header + resetNewCodes.join('\n') + '\n'], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `nassaq-recovery-codes-${Date.now()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // ---- Disable MFA ----
+  const submitDisable = async () => {
+    if (!disablePwd) {
+      setDisableError(lang === 'ar' ? 'يرجى إدخال كلمة المرور.' : 'Please enter your password.');
+      return;
+    }
+    setDisableBusy(true);
+    setDisableError('');
+    try {
+      await api.post('/auth/mfa/disable', { password: disablePwd });
+      setDisableDialogOpen(false);
+      setDisablePwd('');
+      nassaqSuccess(lang === 'ar' ? 'تم إلغاء تفعيل التحقق بخطوتين.' : 'MFA disabled.');
+      refresh();
+    } catch (err) {
+      const status = err?.response?.status;
+      const msg = err?.response?.data?.error?.message || err?.response?.data?.detail;
+      // 409 means the role mandates MFA → guide the user to Reset.
+      if (status === 409) {
+        setDisableError(typeof msg === 'string'
+          ? msg
+          : (lang === 'ar'
+              ? 'هذا الحساب يتطلب تحققاً بخطوتين بحكم دوره — استخدم إعادة الضبط بدلاً من الإلغاء.'
+              : 'This role requires MFA — use Reset instead of Disable.'));
+      } else {
+        setDisableError(typeof msg === 'string'
+          ? msg
+          : (lang === 'ar' ? 'تعذّر إلغاء التفعيل.' : 'Could not disable MFA.'));
+      }
+    } finally {
+      setDisableBusy(false);
+    }
+  };
+
+  const closeDisableDialog = () => {
+    if (disableBusy) return;
+    setDisableDialogOpen(false);
+    setDisablePwd('');
+    setDisableError('');
+  };
+
   const acknowledgeRecovery = async () => {
     try {
       await api.post('/auth/mfa/recovery-codes/acknowledge');
@@ -315,13 +456,30 @@ export default function MfaSecuritySection({ onChange } = {}) {
             )}
 
             {data.mfa_must_restore_factor && (
-              <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 text-amber-800 dark:text-amber-300">
-                <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                <span className="font-tajawal text-xs">
-                  {lang === 'ar'
-                    ? 'يجب إعادة تفعيل عامل تحقق قوي (مفتاح أمان أو تطبيق مصادقة) لاستئناف الإجراءات الحساسة.'
-                    : 'You must re-enroll a strong factor (security key or authenticator app) before sensitive actions resume.'}
-                </span>
+              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-800/60 text-amber-900 dark:text-amber-200" data-testid="mfa-restore-required-banner">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-cairo font-semibold text-sm">
+                      {lang === 'ar' ? 'يجب ربط تطبيق مصادقة جديد' : 'Re-link an authenticator app'}
+                    </p>
+                    <p className="font-tajawal text-xs mt-1">
+                      {lang === 'ar'
+                        ? 'تم تسجيل الدخول باستخدام رمز استرداد. يجب ربط تطبيق مصادقة جديد لاستئناف الإجراءات الحساسة.'
+                        : 'You signed in using a recovery code. Link a new authenticator app before sensitive actions resume.'}
+                    </p>
+                    <Button
+                      size="sm"
+                      onClick={beginReset}
+                      disabled={resetBusy}
+                      className="mt-3 bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+                      data-testid="mfa-restore-cta"
+                    >
+                      {resetBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                      {lang === 'ar' ? 'ربط تطبيق جديد الآن' : 'Link a new app now'}
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -329,7 +487,19 @@ export default function MfaSecuritySection({ onChange } = {}) {
               {/* Authenticator app (TOTP) */}
               {(allowed.has('totp') || (factorsByKind.totp || []).length > 0) && renderFactorRow('totp', {
                 actionsRight: (factorsByKind.totp || []).length > 0
-                  ? <Badge variant="outline" className="text-[10px]">{lang === 'ar' ? 'مفعّل' : 'Active'}</Badge>
+                  ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={beginReset}
+                      disabled={resetBusy}
+                      className="rounded-lg gap-1.5"
+                      data-testid="mfa-totp-reset-btn"
+                    >
+                      {resetBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                      {lang === 'ar' ? 'إعادة ضبط' : 'Reset'}
+                    </Button>
+                  )
                   : (
                     <Button
                       size="sm"
@@ -433,6 +603,42 @@ export default function MfaSecuritySection({ onChange } = {}) {
                       </Button>
                     )}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* ===== Disable MFA — only for roles whose tier does not
+                mandate MFA, and only when at least one factor is
+                currently enrolled. Mandatory-tier users must rotate
+                via Reset instead. ===== */}
+            {!data.tier && (data?.factors?.length || 0) > 0 && (
+              <div className="p-4 rounded-xl border border-red-200 bg-red-50/40 dark:border-red-900/40 dark:bg-red-950/20" data-testid="mfa-disable-panel">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-red-500/15 text-red-600 flex items-center justify-center flex-shrink-0">
+                      <ShieldOff className="h-5 w-5" />
+                    </div>
+                    <div className={`flex-1 min-w-0 ${isRTL ? 'text-right' : 'text-left'}`}>
+                      <p className="font-cairo font-semibold text-sm text-foreground">
+                        {lang === 'ar' ? 'إلغاء التحقق بخطوتين' : 'Disable two-step verification'}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground font-tajawal mt-0.5">
+                        {lang === 'ar'
+                          ? 'سيتم إلغاء تفعيل جميع وسائل التحقق وحذف رموز الاسترداد. يمكن إعادة التفعيل لاحقاً من نفس الصفحة.'
+                          : 'Deactivates all factors and burns your recovery codes. You can re-enable from this page later.'}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDisableDialogOpen(true)}
+                    className="rounded-lg gap-1.5 border-red-300 text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40"
+                    data-testid="mfa-disable-btn"
+                  >
+                    <ShieldOff className="h-3.5 w-3.5" />
+                    {lang === 'ar' ? 'إلغاء التفعيل' : 'Disable'}
+                  </Button>
                 </div>
               </div>
             )}
@@ -592,6 +798,158 @@ export default function MfaSecuritySection({ onChange } = {}) {
                 {lang === 'ar' ? 'حفظت الرموز' : 'I saved them'}
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== Reset / Reconfigure dialog ===== */}
+      <Dialog open={resetDialogOpen} onOpenChange={(o) => { if (!o) closeResetDialog(); }}>
+        <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="font-cairo flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-brand-turquoise" />
+              {resetNewCodes
+                ? (lang === 'ar' ? 'احفظ رموز الاسترداد الجديدة' : 'Save your new recovery codes')
+                : (lang === 'ar' ? 'إعادة ضبط تطبيق المصادقة' : 'Reset authenticator app')}
+            </DialogTitle>
+            <DialogDescription className="font-tajawal text-xs">
+              {resetNewCodes
+                ? (lang === 'ar'
+                    ? 'تم تفعيل التطبيق الجديد وإلغاء الرموز القديمة. احفظ هذه الرموز الآن — لن نعرضها مرة أخرى.'
+                    : 'The new app is active and your old recovery codes were burned. Save these now — we will not show them again.')
+                : (lang === 'ar'
+                    ? 'امسح الرمز التالي بتطبيق المصادقة الجديد ثم أدخل الرمز المعروض. سيتم استبدال التطبيق القديم تلقائياً عند النجاح.'
+                    : 'Scan the QR with your new authenticator app and enter the code below. The old app will be replaced automatically on success.')}
+            </DialogDescription>
+          </DialogHeader>
+
+          {!resetNewCodes && resetEnroll?.qr_svg && (
+            <div className="flex justify-center bg-white p-4 rounded-xl border border-border/40">
+              <div
+                className="[&>svg]:w-44 [&>svg]:h-44"
+                dangerouslySetInnerHTML={{ __html: resetEnroll.qr_svg }}
+              />
+            </div>
+          )}
+          {!resetNewCodes && resetEnroll?.account_label && (
+            <p className="text-[11px] text-center text-muted-foreground font-tajawal" dir="ltr">
+              {resetEnroll.account_label}
+            </p>
+          )}
+
+          {!resetNewCodes && (
+            <div className="space-y-2">
+              <Label htmlFor="reset-code" className="font-tajawal text-sm">
+                {lang === 'ar' ? 'الرمز من التطبيق الجديد' : 'Code from the new app'}
+              </Label>
+              <Input
+                id="reset-code"
+                value={resetCode}
+                onChange={(e) => setResetCode(e.target.value)}
+                placeholder="000000"
+                maxLength={6}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                className="text-center font-mono text-lg tracking-[0.4em] py-3 h-12 rounded-xl"
+                dir="ltr"
+                autoFocus
+                data-testid="mfa-reset-code-input"
+                onKeyDown={(e) => { if (e.key === 'Enter' && !resetBusy) finalizeReset(); }}
+              />
+              {resetError && <p className="text-xs text-red-600 font-tajawal">{resetError}</p>}
+            </div>
+          )}
+
+          {resetNewCodes && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2 p-4 rounded-xl bg-muted/40 border border-border/40">
+                {resetNewCodes.map((c) => (
+                  <code key={c} className="font-mono text-sm text-center py-1.5 px-2 rounded bg-background border border-border/40" dir="ltr">
+                    {c}
+                  </code>
+                ))}
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <Button size="sm" variant="outline" onClick={copyResetCodes} className="gap-1.5" data-testid="mfa-reset-copy-btn">
+                  <Copy className="h-3.5 w-3.5" />
+                  {lang === 'ar' ? 'نسخ' : 'Copy'}
+                </Button>
+                <Button size="sm" variant="outline" onClick={downloadResetCodes} className="gap-1.5" data-testid="mfa-reset-download-btn">
+                  <Download className="h-3.5 w-3.5" />
+                  {lang === 'ar' ? 'تنزيل' : 'Download'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            {!resetNewCodes ? (
+              <>
+                <Button variant="outline" onClick={closeResetDialog} disabled={resetBusy}>
+                  {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                </Button>
+                <Button onClick={finalizeReset} disabled={resetBusy} className="bg-brand-navy hover:bg-brand-navy-light gap-2" data-testid="mfa-reset-finalize-btn">
+                  {resetBusy && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {lang === 'ar' ? 'تأكيد الاستبدال' : 'Confirm replacement'}
+                </Button>
+              </>
+            ) : (
+              <Button onClick={closeResetDialog} className="bg-brand-navy hover:bg-brand-navy-light gap-2" data-testid="mfa-reset-done-btn">
+                <CheckCircle className="h-4 w-4" />
+                {lang === 'ar' ? 'حفظت الرموز' : 'I saved them'}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== Disable MFA dialog ===== */}
+      <Dialog open={disableDialogOpen} onOpenChange={(o) => { if (!o) closeDisableDialog(); }}>
+        <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="font-cairo flex items-center gap-2">
+              <ShieldOff className="h-5 w-5 text-red-600" />
+              {lang === 'ar' ? 'تأكيد إلغاء التحقق بخطوتين' : 'Confirm disabling MFA'}
+            </DialogTitle>
+            <DialogDescription className="font-tajawal text-xs">
+              {lang === 'ar'
+                ? 'سيتم إلغاء جميع عوامل التحقق وحذف رموز الاسترداد. أدخل كلمة المرور الحالية للتأكيد. قد يُطلب منك أيضاً إثبات تحقق إضافي.'
+                : 'All MFA factors will be deactivated and your recovery codes burned. Enter your current password to confirm. You may also be asked for an MFA challenge.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <Label htmlFor="disable-pwd" className="font-tajawal text-sm">
+              {lang === 'ar' ? 'كلمة المرور الحالية' : 'Current password'}
+            </Label>
+            <Input
+              id="disable-pwd"
+              type="password"
+              value={disablePwd}
+              onChange={(e) => setDisablePwd(e.target.value)}
+              className="rounded-xl"
+              dir="ltr"
+              autoFocus
+              data-testid="mfa-disable-pwd-input"
+              onKeyDown={(e) => { if (e.key === 'Enter' && !disableBusy) submitDisable(); }}
+            />
+            {disableError && <p className="text-xs text-red-600 font-tajawal">{disableError}</p>}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={closeDisableDialog} disabled={disableBusy}>
+              {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+            </Button>
+            <Button
+              onClick={submitDisable}
+              disabled={disableBusy}
+              className="bg-red-600 hover:bg-red-700 text-white gap-2"
+              data-testid="mfa-disable-confirm-btn"
+            >
+              {disableBusy && <Loader2 className="h-4 w-4 animate-spin" />}
+              <ShieldOff className="h-4 w-4" />
+              {lang === 'ar' ? 'إلغاء التفعيل' : 'Disable MFA'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
