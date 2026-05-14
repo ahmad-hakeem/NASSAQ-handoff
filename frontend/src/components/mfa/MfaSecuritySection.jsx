@@ -32,8 +32,8 @@ import {
 
 const TIER_META = {
   A: { ar: 'المستوى أ — تحقق إلزامي قوي', en: 'Tier A — strong MFA required', tone: 'bg-purple-100 text-purple-700' },
-  B: { ar: 'المستوى ب — تحقق ببريد إلكتروني', en: 'Tier B — email-based MFA', tone: 'bg-indigo-100 text-indigo-700' },
-  C: { ar: 'المستوى ج — تحقق ببريد إلكتروني', en: 'Tier C — email-based MFA', tone: 'bg-cyan-100 text-cyan-700' },
+  B: { ar: 'المستوى ب — تحقق عبر تطبيق المصادقة', en: 'Tier B — authenticator-app MFA', tone: 'bg-indigo-100 text-indigo-700' },
+  C: { ar: 'المستوى ج — تحقق عبر تطبيق المصادقة', en: 'Tier C — authenticator-app MFA', tone: 'bg-cyan-100 text-cyan-700' },
 };
 
 const FACTOR_LABEL = {

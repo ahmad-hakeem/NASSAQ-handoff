@@ -272,6 +272,34 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
         from engines.sql_utils import gd_insert
         active_factors = await gd_find(db.session, "mfa_factors", {"user_id": user_id, "is_active": True}) or []
         tier = mfa_policy.required_for(user)
+        # 2026-05-14 — Stale-factor remediation. Tier B (teachers) and Tier C
+        # (parents) had ``email_otp`` removed from their allowed kinds when
+        # email delivery proved unreliable, but legacy rows can still exist
+        # in ``mfa_factors`` from before that policy change. If we treated
+        # such a row as "the user has an enrolled factor" we would mint an
+        # mfa_challenge with NO usable factor kinds in
+        # ``available_factor_kinds`` and the user would be locked out — the
+        # exact teacher-login trap we are fixing. Drop any active factor
+        # whose ``kind`` is not in the user's current allowed set so the
+        # gate below decides as if the stale rows were never there. We also
+        # best-effort retire those rows so subsequent logins do not have to
+        # re-filter them, but a failure here must NEVER block the login.
+        if tier is not None and active_factors:
+            _allowed_now = mfa_policy.allowed_factor_kinds(user)
+            _stale = [f for f in active_factors if f.get("kind") not in _allowed_now]
+            if _stale:
+                active_factors = [f for f in active_factors if f.get("kind") in _allowed_now]
+                try:
+                    from engines.sql_utils import gd_update_one as _gd_update_one
+                    for _f in _stale:
+                        _fid = _f.get("id")
+                        if _fid:
+                            await _gd_update_one(
+                                db.session, "mfa_factors", {"id": _fid},
+                                {"$set": {"is_active": False}},
+                            )
+                except Exception as _stale_err:
+                    logger.debug(f"login: stale-factor retire failed for user={user_id}: {_stale_err}")
         # 2026-05-13 (Tier B / teachers) and 2026 (Tier C / parents) both
         # dropped the implicit email_otp factor — email delivery is
         # unreliable in this deployment and many stored email addresses

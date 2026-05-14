@@ -15,6 +15,7 @@ import { ImageCropModal } from '../../components/ui/ImageCropModal';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import HakimPresence from '../../components/hakim/HakimPresence';
+import MfaSecuritySection from '../../components/mfa/MfaSecuritySection';
 import {
   User, Lock, Bell, Globe, Save, Loader2, Camera, Mail, Phone, Key,
   Eye, EyeOff, Award, BookOpen, Users, CheckCircle2, Activity, Flame,
@@ -557,6 +558,7 @@ export default function TeacherSettingsPage() {
                 )}
 
                 {activeTab === 'security' && (
+                  <>
                   <Card>
                     <CardHeader className="pb-4">
                       <CardTitle className="text-lg font-cairo flex items-center gap-2">
@@ -617,6 +619,10 @@ export default function TeacherSettingsPage() {
                       </div>
                     </CardContent>
                   </Card>
+                  <div className="mt-4">
+                    <MfaSecuritySection />
+                  </div>
+                  </>
                 )}
 
                 {activeTab === 'notifications' && (
