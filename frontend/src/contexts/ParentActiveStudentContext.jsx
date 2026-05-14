@@ -148,7 +148,17 @@ export const ParentActiveStudentProvider = ({ children }) => {
     } catch (e) {
       setLinkedChildren([]);
       setActiveChildIdState(null);
-      setError(e);
+      // Classify the failure so the page can show a truthful state
+      // instead of always blaming connectivity. `kind` is one of:
+      //   - 'auth'    : 401/403 — session/role problem, must re-login
+      //   - 'server'  : 5xx     — backend failure
+      //   - 'network' : no response — actual transport failure
+      const status = e?.response?.status;
+      let kind = 'network';
+      if (status === 401 || status === 403) kind = 'auth';
+      else if (typeof status === 'number' && status >= 500) kind = 'server';
+      else if (typeof status === 'number') kind = 'server';
+      setError({ kind, status: status ?? null, raw: e });
     } finally {
       setHasLoadedChildren(true);
       setIsLoading(false);

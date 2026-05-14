@@ -195,7 +195,7 @@ export default function useParentDashboard() {
     weeklyLoading,
     liveError,
     weeklyError,
-    childrenError: !!childrenErrorObj,
+    childrenError: childrenErrorObj || null,
     refreshing,
     selectChild,
     refreshLiveData: () => fetchLiveData(selectedChildId),

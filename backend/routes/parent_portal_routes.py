@@ -14,7 +14,17 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 
 import logging
 
+from sqlalchemy.exc import ProgrammingError, OperationalError
+
 logger = logging.getLogger("nassaq.parent_portal_routes")
+
+# Narrow set of DB errors that indicate the optional legacy linkage
+# surfaces (`guardian_links` join table, `parents.student_ids` array)
+# are unreachable in this environment — typically a missing table /
+# missing column / connection blip. We swallow these so the canonical
+# `students.parent_id` resolution still works; everything else (auth,
+# tenant scoping, programming bugs) bubbles up as before.
+_LEGACY_LINKAGE_DB_ERRORS = (ProgrammingError, OperationalError)
 
 
 def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
@@ -51,22 +61,50 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         return refs
 
     async def _get_linked_student_ids(current_user: dict, school_id: Optional[str] = None) -> List[str]:
+        """Resolve extra student ids via the non-canonical linkage paths
+        (`guardian_links` join table and `parents.student_ids` array).
+
+        Both paths are best-effort and MUST fail safe: the canonical
+        `students.parent_id` resolution in `_find_children` is the primary
+        source of truth, and a missing/empty join table or a malformed
+        parent record must not 500 the parent dashboard. Each lookup is
+        isolated so one broken path does not poison the other.
+        """
         refs = _parent_refs(current_user)
         if not refs:
             return []
+        student_ids: set = set()
+
+        # Path A: guardian_links (preferred when present). Tolerate the
+        # table being absent in environments that never installed it —
+        # those installs rely entirely on parents.student_ids and the
+        # canonical students.parent_id back-reference.
         query = {"parent_ref": {"$in": refs}, "is_active": True}
         if school_id:
             query["tenant_id"] = school_id
-        links = await gd_find(db.session, "guardian_links", query, limit=50)
-        # also honour parents.student_ids array on the parent record
-        student_ids = {l["student_id"] for l in links if l.get("student_id")}
+        try:
+            links = await gd_find(db.session, "guardian_links", query, limit=50)
+            for link in links:
+                sid = link.get("student_id")
+                if sid:
+                    student_ids.add(sid)
+        except _LEGACY_LINKAGE_DB_ERRORS as exc:
+            logger.debug("guardian_links lookup degraded for parent %s: %s",
+                         current_user.get("id"), exc)
+
+        # Path B: parents.student_ids array on the parent record.
         parent_record_id = current_user.get("parent_id")
         if parent_record_id:
-            parent_rec = await gd_find_one(db.session, "parents", {"id": parent_record_id})
-            if parent_rec and isinstance(parent_rec.get("student_ids"), list):
-                for sid in parent_rec["student_ids"]:
-                    if sid:
-                        student_ids.add(sid)
+            try:
+                parent_rec = await gd_find_one(db.session, "parents", {"id": parent_record_id})
+                if parent_rec and isinstance(parent_rec.get("student_ids"), list):
+                    for sid in parent_rec["student_ids"]:
+                        if sid:
+                            student_ids.add(sid)
+            except _LEGACY_LINKAGE_DB_ERRORS as exc:
+                logger.debug("parents.student_ids lookup degraded for parent %s: %s",
+                             current_user.get("id"), exc)
+
         return list(student_ids)
 
     async def _find_children(current_user_or_id, parent_phone: Optional[str] = None, school_id: Optional[str] = None):
@@ -269,21 +307,33 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         child = await gd_find_one(db.session, "students", student_query)
         if child:
             return child
-        # Fallback 1: guardian_links
+        # Fallback 1: guardian_links (optional join table — fail safe if
+        # unreachable so by-id endpoints don't 500 in partial-schema
+        # environments; the canonical lookup above is the access boundary).
         refs = [pid for pid in (parent_id, parent_record_id) if pid]
         if refs:
             link_query = {"parent_ref": {"$in": refs}, "student_id": child_id, "is_active": True}
             if school_id:
                 link_query["tenant_id"] = school_id
-            link = await gd_find_one(db.session, "guardian_links", link_query)
+            link = None
+            try:
+                link = await gd_find_one(db.session, "guardian_links", link_query)
+            except _LEGACY_LINKAGE_DB_ERRORS as exc:
+                logger.debug("guardian_links by-id lookup degraded for parent %s: %s",
+                             parent_id, exc)
             if link:
                 fallback_q = {"id": child_id}
                 if school_id:
                     fallback_q["school_id"] = school_id
                 return await gd_find_one(db.session, "students", fallback_q)
-        # Fallback 2: parents.student_ids
+        # Fallback 2: parents.student_ids array (legacy linkage path).
         if parent_record_id:
-            parent_rec = await gd_find_one(db.session, "parents", {"id": parent_record_id})
+            try:
+                parent_rec = await gd_find_one(db.session, "parents", {"id": parent_record_id})
+            except _LEGACY_LINKAGE_DB_ERRORS as exc:
+                logger.debug("parents.student_ids by-id lookup degraded for parent %s: %s",
+                             parent_id, exc)
+                parent_rec = None
             if parent_rec and child_id in (parent_rec.get("student_ids") or []):
                 fallback_q = {"id": child_id}
                 if school_id:
