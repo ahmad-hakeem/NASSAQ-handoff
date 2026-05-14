@@ -20,6 +20,12 @@ cd /home/runner/workspace/frontend
 rm -rf build
 npm install --legacy-peer-deps
 unset DANGEROUSLY_DISABLE_HOST_CHECK
+# craco.config.js calls dotenv.config(), which would re-inject the dev-only
+# DANGEROUSLY_DISABLE_HOST_CHECK=true from frontend/.env and trip the
+# production guard. Strip it from .env for the deploy build (ephemeral env).
+if [ -f .env ]; then
+  sed -i '/^DANGEROUSLY_DISABLE_HOST_CHECK=/d' .env
+fi
 GENERATE_SOURCEMAP=false DISABLE_ESLINT_PLUGIN=true npx craco build
 test -f build/index.html || { echo "FATAL: frontend build did not produce build/index.html"; exit 1; }
 
