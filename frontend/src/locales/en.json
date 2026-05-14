@@ -2078,6 +2078,8 @@
   "notSpecified": "Not specified",
   "notStarted": "Not Started",
   "notSubmitted": "Not submitted",
+  "hwSubmittedShort": "Submitted",
+  "hwNotSubmittedShort": "Not submitted",
   "noUnreadMessages": "No unread messages",
   "noUnreadNotifications": "No unread notifications",
   "noUpcomingClasses": "No upcoming classes",

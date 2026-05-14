@@ -3170,6 +3170,8 @@
   "submitRequest": "إرسال الطلب",
   "submitted": "أنجز",
   "submitted2": "مسلّم",
+  "hwSubmittedShort": "سلم",
+  "hwNotSubmittedShort": "لم يسلم",
   "submitted3": "تم التسليم:",
   "submitting": "جاري الإرسال...",
   "subscriptionNotConfiguredYet": "لم يتم تكوين الاشتراك بعد",

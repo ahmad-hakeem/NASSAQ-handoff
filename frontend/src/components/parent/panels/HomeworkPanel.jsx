@@ -1,10 +1,31 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTranslation } from '../../../contexts/ThemeContext';
 import { Card, CardContent } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Skeleton } from '../../ui/skeleton';
-import { ClipboardList, Clock, CheckCircle, AlertCircle, BookOpen, Calendar } from 'lucide-react';
+import { ClipboardList, CheckCircle, AlertCircle, Calendar } from 'lucide-react';
+
+const SUBMITTED_STATUSES = new Set(['submitted', 'graded', 'corrected']);
+const NOT_SUBMITTED_STATUSES = new Set(['pending', 'late', 'missing', 'not_submitted', 'overdue']);
+
+export const isSubmittedStatus = (status) => SUBMITTED_STATUSES.has(String(status || '').toLowerCase());
+
+export const computeParentHomeworkSummary = (assignments = [], statsFromApi = {}) => {
+  if (Array.isArray(assignments) && assignments.length > 0) {
+    let submitted = 0;
+    let notSubmitted = 0;
+    for (const a of assignments) {
+      if (isSubmittedStatus(a?.status)) submitted += 1;
+      else notSubmitted += 1;
+    }
+    return { submitted, notSubmitted };
+  }
+  const s = statsFromApi || {};
+  const submitted = (s.submitted || 0) + (s.graded || 0) + (s.corrected || 0);
+  const notSubmitted = (s.pending || 0) + (s.late || 0) + (s.missing || 0) + (s.not_submitted || 0);
+  return { submitted, notSubmitted };
+};
 
 const HomeworkPanel = ({ childId }) => {
   const { t } = useTranslation();
@@ -28,6 +49,12 @@ const HomeworkPanel = ({ childId }) => {
     return () => { cancelled = true; };
   }, [childId, token, api]);
 
+  const assignments = data?.assignments || [];
+  const summary = useMemo(
+    () => computeParentHomeworkSummary(assignments, data?.statistics || {}),
+    [assignments, data]
+  );
+
   if (loading) {
     return (
       <div className="space-y-3">
@@ -37,32 +64,31 @@ const HomeworkPanel = ({ childId }) => {
     );
   }
 
-  const assignments = data?.assignments || [];
-  const stats = data?.statistics || {};
-
-  const getStatusInfo = (status) => {
-    const map = {
-      pending: { label: t('notStarted'), cls: 'bg-muted/40 text-foreground', icon: Clock },
-      submitted: { label: t('submitted'), cls: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300', icon: CheckCircle },
-      graded: { label: t('graded2'), cls: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300', icon: BookOpen },
-      late: { label: t('late'), cls: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300', icon: AlertCircle },
-    };
-    return map[status] || map.pending;
-  };
+  const cards = [
+    {
+      key: 'submitted',
+      label: t('hwSubmittedShort'),
+      value: summary.submitted,
+      colorClass: 'text-green-600 dark:text-green-400',
+    },
+    {
+      key: 'notSubmitted',
+      label: t('hwNotSubmittedShort'),
+      value: summary.notSubmitted,
+      colorClass: 'text-red-600 dark:text-red-400',
+    },
+  ];
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-4 gap-2">
-        {[
-          { label: t('pending'), value: stats.pending || 0, color: 'gray' },
-          { label: t('submitted2'), value: stats.submitted || 0, color: 'green' },
-          { label: t('graded3'), value: stats.graded || 0, color: 'blue' },
-          { label: t('late'), value: stats.late || 0, color: 'red' },
-        ].map((s, i) => (
-          <Card key={i} className="rounded-xl border-0 shadow-sm">
-            <CardContent className="p-3 text-center">
-              <p className={`text-xl font-bold text-${s.color}-600`}>{s.value}</p>
-              <p className="text-[10px] text-muted-foreground">{s.label}</p>
+    <div className="space-y-4" dir="rtl">
+      <div className="grid grid-cols-2 gap-3" data-testid="parent-homework-summary">
+        {cards.map((s) => (
+          <Card key={s.key} className="rounded-xl border-0 shadow-sm">
+            <CardContent className="p-4 text-center">
+              <p className={`text-2xl font-bold ${s.colorClass}`} data-testid={`hw-summary-${s.key}-value`}>
+                {s.value}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">{s.label}</p>
             </CardContent>
           </Card>
         ))}
@@ -78,13 +104,21 @@ const HomeworkPanel = ({ childId }) => {
       ) : (
         <div className="space-y-3">
           {assignments.map((a, idx) => {
-            const si = getStatusInfo(a.status);
+            const submitted = isSubmittedStatus(a.status);
+            const badgeCls = submitted
+              ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'
+              : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300';
+            const Icon = submitted ? CheckCircle : AlertCircle;
+            const label = submitted ? t('hwSubmittedShort') : t('hwNotSubmittedShort');
             return (
               <Card key={idx} className="rounded-xl border-0 shadow-sm">
                 <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-2 gap-2">
                     <p className="font-medium text-sm truncate flex-1">{a.title}</p>
-                    <Badge className={`${si.cls} border-0 text-xs`}>{si.label}</Badge>
+                    <Badge className={`${badgeCls} border-0 text-xs flex items-center gap-1`}>
+                      <Icon className="h-3 w-3" />
+                      {label}
+                    </Badge>
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <div className="flex items-center gap-1">
