@@ -716,17 +716,16 @@ async def stepup_start(
         db.session, "mfa_factors", {"user_id": user_id, "is_active": True}
     ) or []
 
-    # Tier C has an implicit email_otp factor (the user's email IS the
-    # delivery channel). Tier B (teachers) used to as well, but the
-    # 2026-05-13 policy change dropped email_otp from Tier B because
-    # email delivery is unreliable and many stored teacher emails are
-    # placeholders — Tier B teachers must enrol TOTP/passkey before
-    # they can step up. Tier A users must hold at least one enrolled
-    # active factor — if they have none they'd already be blocked by
-    # the tier-A passkey enforcement branch in require_recent_mfa.
-    from services.mfa_policy import MfaTier as _MfaTier
-    implicit_email_otp = tier is _MfaTier.C
-    if not active_factors and not implicit_email_otp:
+    # 2026-05-13 dropped email_otp from Tier B (teachers); 2026 dropped
+    # it from Tier C (parents) for the same reason — email delivery is
+    # unreliable in this deployment and many stored email addresses are
+    # placeholders. Both tiers must now enrol a real authenticator factor
+    # (TOTP or passkey) before they can step up. Tier A users must hold
+    # at least one enrolled active factor — if they have none they'd
+    # already be blocked by the tier-A passkey enforcement branch in
+    # require_recent_mfa. No tier has an implicit email_otp factor any
+    # more, so a step-up start with zero active factors is always 409.
+    if not active_factors:
         raise HTTPException(
             status_code=409,
             detail="لا يوجد عامل تحقق مفعّل — يجب تسجيل عامل أولاً",
@@ -771,8 +770,6 @@ async def stepup_start(
         f.get("kind") for f in active_factors
         if f.get("kind") in allowed_for_user
     }
-    if implicit_email_otp and "email_otp" in allowed_for_user:
-        enrolled_kinds.add("email_otp")
     if "recovery_code" in allowed_for_user:
         try:
             rc_rows = await gd_find(

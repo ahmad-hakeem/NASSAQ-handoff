@@ -193,17 +193,102 @@ async def test_login_tier_b_enrolled_teacher_returns_totp_challenge(client, tena
 
 
 @pytest.mark.asyncio
-async def test_login_tier_c_parent_returns_challenge(client, tenant_a):
-    """Parent (Tier C) login returns the same challenge contract as Tier B."""
+async def test_login_tier_c_unenrolled_parent_routes_to_enrolment(client, tenant_a):
+    """2026 — Tier C (parent) no longer has an implicit email_otp factor.
+    A parent with NO enrolled non-email factor logs in with a normal
+    access token and ``mfa_enrolled_at`` still NULL; the frontend
+    ProtectedRoute then routes them to /auth/mfa/enroll instead of the
+    (broken) email-code challenge.
+    """
     user = await _mk_login_user(UserRole.PARENT, tenant_a)
     r = await client.post("/auth/login", json={"email": user["email"], "password": _PASS})
-    assert r.status_code == 200
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert not body.get("mfa_required"), "unenrolled parent must skip the email-OTP challenge"
+    assert body.get("access_token"), "parent must receive an access token to reach the enrolment page"
+    me = body.get("user") or {}
+    assert me.get("role") == "parent"
+    assert not me.get("mfa_enrolled_at"), "FE relies on mfa_enrolled_at IS NULL to redirect to /auth/mfa/enroll"
+    kinds = body.get("available_factor_kinds") or []
+    assert "email_otp" not in kinds
+
+
+@pytest.mark.asyncio
+async def test_login_tier_c_enrolled_parent_returns_totp_challenge(client, tenant_a):
+    """A parent with an enrolled TOTP factor MUST be challenged at login,
+    and email_otp MUST NOT appear in the available factor kinds.
+    """
+    user = await _mk_login_user(UserRole.PARENT, tenant_a)
+    await gd_insert(
+        db.session,
+        "mfa_factors",
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "kind": "totp",
+            "is_active": True,
+            "is_primary": True,
+            "label": "test totp",
+            "totp_secret_encrypted": mfa_crypto.encrypt_totp_secret(
+                mfa_crypto.generate_totp_secret()
+            ),
+            "created_at": datetime.now(timezone.utc),
+        },
+    )
+    r = await client.post("/auth/login", json={"email": user["email"], "password": _PASS})
+    assert r.status_code == 200, r.text
     body = r.json()
     assert body.get("mfa_required") is True
     assert body.get("mfa_tier") == "C"
-    assert body.get("challenge_token"), "challenge_token must be present"
+    assert body.get("challenge_token")
     assert not body.get("access_token")
-    assert not body.get("refresh_token")
+    kinds = body.get("available_factor_kinds") or []
+    assert "totp" in kinds
+    assert "email_otp" not in kinds, "Tier C login MUST NOT offer email OTP anymore"
+
+
+@pytest.mark.asyncio
+async def test_mfa_policy_tier_c_excludes_email_otp():
+    """Direct contract test on ``mfa_policy.allowed_factor_kinds`` for a
+    parent role - email_otp must be gone, TOTP + recovery_code present."""
+    from services import mfa_policy as _mp
+    kinds = _mp.allowed_factor_kinds({"role": "parent"})
+    assert "email_otp" not in kinds
+    assert "totp" in kinds
+    assert "recovery_code" in kinds
+    assert "webauthn" in kinds
+
+
+@pytest.mark.asyncio
+async def test_verify_rejects_email_otp_for_parent(client, tenant_a):
+    """A parent submitting an email_otp proof to /auth/mfa/verify must
+    be rejected by the policy allow-list, even with a real challenge."""
+    user = await _mk_login_user(UserRole.PARENT, tenant_a)
+    await gd_insert(
+        db.session,
+        "mfa_factors",
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "kind": "totp",
+            "is_active": True,
+            "is_primary": True,
+            "label": "test totp",
+            "totp_secret_encrypted": mfa_crypto.encrypt_totp_secret(
+                mfa_crypto.generate_totp_secret()
+            ),
+            "created_at": datetime.now(timezone.utc),
+        },
+    )
+    login = await client.post("/auth/login", json={"email": user["email"], "password": _PASS})
+    chal = login.json()["challenge_token"]
+    r = await client.post(
+        "/auth/mfa/verify",
+        json={"factor_kind": "email_otp", "code": "000000"},
+        headers={"Authorization": f"Bearer {chal}"},
+    )
+    assert r.status_code == 400, r.text
+    assert "access_token" not in (r.json() or {})
 
 
 @pytest.mark.asyncio
@@ -246,11 +331,29 @@ async def test_login_student_skips_mfa(client, tenant_a):
 async def test_challenge_token_rejected_as_access_token(client, tenant_a):
     """A bare /auth/me call with a challenge bearer must 401.
 
-    Uses a parent (Tier C) account because Tier B teachers no longer
-    receive a challenge_token at login (2026-05-13 policy change — see
-    `test_login_tier_b_unenrolled_teacher_routes_to_enrolment`).
+    Uses a parent (Tier C) with an enrolled TOTP factor; both Tier B
+    teachers and unenrolled Tier C parents no longer receive a
+    challenge_token at login (2026 policy change — see
+    `test_login_tier_b_unenrolled_teacher_routes_to_enrolment` and
+    `test_login_tier_c_unenrolled_parent_routes_to_enrolment`).
     """
     user = await _mk_login_user(UserRole.PARENT, tenant_a)
+    await gd_insert(
+        db.session,
+        "mfa_factors",
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "kind": "totp",
+            "is_active": True,
+            "is_primary": True,
+            "label": "test totp",
+            "totp_secret_encrypted": mfa_crypto.encrypt_totp_secret(
+                mfa_crypto.generate_totp_secret()
+            ),
+            "created_at": datetime.now(timezone.utc),
+        },
+    )
     login = await client.post("/auth/login", json={"email": user["email"], "password": _PASS})
     chal = login.json()["challenge_token"]
     # /auth/me requires get_current_user (access-only); challenge → 401.
@@ -266,16 +369,35 @@ async def test_challenge_token_rejected_as_access_token(client, tenant_a):
 async def test_mfa_factors_accepts_challenge_token(client, tenant_a):
     """A challenge token issued at login can read /auth/mfa/factors so
     the picker UI can render before access tokens exist. Uses Tier C
-    (parent) since Tier B teachers no longer receive a challenge at
-    login when unenrolled (2026-05-13 policy change)."""
+    (parent) with an enrolled TOTP factor since neither Tier B teachers
+    nor unenrolled Tier C parents receive a challenge at login any more
+    (2026 policy change)."""
     user = await _mk_login_user(UserRole.PARENT, tenant_a)
+    await gd_insert(
+        db.session,
+        "mfa_factors",
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "kind": "totp",
+            "is_active": True,
+            "is_primary": True,
+            "label": "test totp",
+            "totp_secret_encrypted": mfa_crypto.encrypt_totp_secret(
+                mfa_crypto.generate_totp_secret()
+            ),
+            "created_at": datetime.now(timezone.utc),
+        },
+    )
     login = await client.post("/auth/login", json={"email": user["email"], "password": _PASS})
     chal = login.json()["challenge_token"]
     r = await client.get("/auth/mfa/factors", headers={"Authorization": f"Bearer {chal}"})
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["tier"] == "C"
-    assert "email_otp" in body["allowed_kinds"]
+    # Tier C no longer offers email_otp - confirm the policy contract.
+    assert "email_otp" not in body["allowed_kinds"]
+    assert "totp" in body["allowed_kinds"]
     assert "recovery_code" in body["allowed_kinds"]
 
 
@@ -417,6 +539,58 @@ async def test_stepup_start_enrolled_teacher_excludes_email_otp(client, tenant_a
 
 
 @pytest.mark.asyncio
+async def test_stepup_start_unenrolled_parent_returns_409(client, tenant_a):
+    """2026 — Tier C parents no longer have implicit email_otp either.
+    A parent with no enrolled mfa_factors row must receive 409 from
+    /auth/mfa/stepup/start so the FE routes to /auth/mfa/enroll instead
+    of binding a challenge to a non-existent factor."""
+    user = await _mk_login_user(UserRole.PARENT, tenant_a)
+    token = create_access_token({
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    })
+    r = await client.post(
+        "/auth/mfa/stepup/start",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 409, r.text
+
+
+@pytest.mark.asyncio
+async def test_stepup_start_enrolled_parent_excludes_email_otp(client, tenant_a):
+    """A parent with an enrolled TOTP factor receives a challenge whose
+    available_factor_kinds NEVER advertises email_otp."""
+    user = await _mk_login_user(UserRole.PARENT, tenant_a)
+    await gd_insert(
+        db.session,
+        "mfa_factors",
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "kind": "totp",
+            "is_active": True,
+            "is_primary": True,
+            "label": "test totp",
+            "totp_secret_encrypted": mfa_crypto.encrypt_totp_secret(
+                mfa_crypto.generate_totp_secret()
+            ),
+            "created_at": datetime.now(timezone.utc),
+        },
+    )
+    token = create_access_token({
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    })
+    r = await client.post(
+        "/auth/mfa/stepup/start",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    kinds = body.get("available_factor_kinds") or []
+    assert "totp" in kinds
+    assert "email_otp" not in kinds, "Tier C step-up MUST NOT offer email OTP"
+
+
+@pytest.mark.asyncio
 async def test_role_switch_requires_recent_mfa(client, tenant_a):
     """Sensitive route #2: /role-switch/switch is gated by require_recent_mfa
     even for platform admins. Stale token → structured 401."""
@@ -502,14 +676,30 @@ async def test_refresh_preserves_mfa_recent_at(client, tenant_a):
 async def test_recovery_code_single_use(client, tenant_a):
     """A recovery code consumed via /auth/mfa/verify cannot be replayed.
 
-    Uses Tier C (parent) — Tier B teachers no longer receive a challenge
-    at login when only recovery codes are seeded (2026-05-13: Tier B's
-    implicit email_otp factor was removed; the login gate triggers on
-    `active_factors OR implicit_email_otp`, and recovery codes alone are
-    not an `mfa_factors` row). Recovery-code semantics under test here
-    are tier-agnostic.
+    Uses Tier C (parent). 2026: parents (like teachers) no longer have
+    an implicit email_otp factor — the login gate triggers on
+    ``active_factors`` only, and recovery codes alone are not an
+    ``mfa_factors`` row. We seed a TOTP factor so the login returns a
+    challenge_token; the recovery-code semantics under test here are
+    tier-agnostic.
     """
     user = await _mk_login_user(UserRole.PARENT, tenant_a)
+    await gd_insert(
+        db.session,
+        "mfa_factors",
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "kind": "totp",
+            "is_active": True,
+            "is_primary": True,
+            "label": "test totp",
+            "totp_secret_encrypted": mfa_crypto.encrypt_totp_secret(
+                mfa_crypto.generate_totp_secret()
+            ),
+            "created_at": datetime.now(timezone.utc),
+        },
+    )
     plaintext = await _seed_recovery_code(user["id"])
 
     login = await client.post("/auth/login", json={"email": user["email"], "password": _PASS})
@@ -550,6 +740,23 @@ async def test_consumed_challenge_token_cannot_be_replayed(client, tenant_a):
     consumed. Replaying the same challenge bearer must 401 with the
     Arabic 'already consumed' detail, NOT mint a second access token."""
     user = await _mk_login_user(UserRole.PARENT, tenant_a)
+    # Seed TOTP so parent gets a challenge_token (2026: no implicit email_otp).
+    await gd_insert(
+        db.session,
+        "mfa_factors",
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "kind": "totp",
+            "is_active": True,
+            "is_primary": True,
+            "label": "test totp",
+            "totp_secret_encrypted": mfa_crypto.encrypt_totp_secret(
+                mfa_crypto.generate_totp_secret()
+            ),
+            "created_at": datetime.now(timezone.utc),
+        },
+    )
     plaintext = await _seed_recovery_code(user["id"])
     plaintext2 = await _seed_recovery_code(user["id"])
     login = await client.post("/auth/login", json={"email": user["email"], "password": _PASS})
@@ -579,6 +786,23 @@ async def test_expired_challenge_row_is_rejected(client, tenant_a):
     `mfa_pending_challenges` row must 401."""
     from engines.sql_utils import gd_update_one
     user = await _mk_login_user(UserRole.PARENT, tenant_a)
+    # Seed TOTP so parent gets a challenge_token (2026: no implicit email_otp).
+    await gd_insert(
+        db.session,
+        "mfa_factors",
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "kind": "totp",
+            "is_active": True,
+            "is_primary": True,
+            "label": "test totp",
+            "totp_secret_encrypted": mfa_crypto.encrypt_totp_secret(
+                mfa_crypto.generate_totp_secret()
+            ),
+            "created_at": datetime.now(timezone.utc),
+        },
+    )
     await _seed_recovery_code(user["id"])
     login = await client.post("/auth/login", json={"email": user["email"], "password": _PASS})
     chal = login.json()["challenge_token"]

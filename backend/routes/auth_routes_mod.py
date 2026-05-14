@@ -272,20 +272,18 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
         from engines.sql_utils import gd_insert
         active_factors = await gd_find(db.session, "mfa_factors", {"user_id": user_id, "is_active": True}) or []
         tier = mfa_policy.required_for(user)
-        # 2026-05-13 — Tier B (school teacher) no longer has an implicit
-        # email_otp factor. If a teacher has zero enrolled non-email
-        # factors we DO NOT issue a challenge here (which would have
-        # offered only the dead email-code path); instead we fall through
-        # and mint a normal access token. The frontend's ProtectedRoute
-        # then routes the user (mfa_enrolled_at is still null) to
-        # /auth/mfa/enroll where they enrol an authenticator app. Once
-        # enrolled, subsequent logins enter this branch via active_factors
-        # and present the TOTP challenge. Tier C (parents) keeps the
-        # implicit email_otp behaviour — that channel is operational for
-        # the parent population.
-        from services.mfa_policy import MfaTier as _MfaTier
-        implicit_email_otp = tier is _MfaTier.C
-        if tier is not None and (active_factors or implicit_email_otp):
+        # 2026-05-13 (Tier B / teachers) and 2026 (Tier C / parents) both
+        # dropped the implicit email_otp factor — email delivery is
+        # unreliable in this deployment and many stored email addresses
+        # are placeholders, which was locking users out. The login MFA
+        # gate now triggers ONLY when the user holds a real active
+        # factor row. Tiered users with zero active factors fall through
+        # this block and receive a normal access token; the frontend's
+        # ProtectedRoute then routes them (mfa_enrolled_at still NULL)
+        # to /auth/mfa/enroll where they enrol an authenticator app.
+        # Once enrolled, subsequent logins re-enter this branch via
+        # active_factors and present the TOTP challenge.
+        if tier is not None and active_factors:
             challenge_token, challenge_jti, challenge_exp = create_mfa_challenge_token(
                 user_id, user["role"], user.get("tenant_id"),
             )
@@ -314,11 +312,10 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
                 f.get("kind") for f in active_factors
                 if f.get("kind") in allowed_for_user
             }
-            # email_otp is always available for Tier B/C even with zero rows.
-            if implicit_email_otp and "email_otp" in allowed_for_user:
-                enrolled_kinds.add("email_otp")
-            # recovery_code is available iff the user has at least one
-            # unconsumed row (a Step-6 backup factor).
+            # No implicit email_otp factor for any tier any more (see
+            # the 2026 policy comment above). recovery_code is available
+            # iff the user has at least one unconsumed row (a Step-6
+            # backup factor).
             if "recovery_code" in allowed_for_user:
                 try:
                     rc_rows = await gd_find(

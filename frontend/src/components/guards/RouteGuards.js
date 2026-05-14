@@ -118,6 +118,21 @@ export const ProtectedRoute = ({
     return <Navigate to="/auth/mfa/enroll" replace />;
   }
 
+  // 2026 - Parents (Tier C) follow the same rule as Tier B teachers.
+  // Email OTP was removed as the mandatory parent login factor (see
+  // backend/services/mfa_policy.py and the login gate in
+  // backend/routes/auth_routes_mod.py). The backend mints a normal
+  // access token for an unenrolled parent so this guard mirrors the
+  // contract and prevents deep-links bypassing the enrolment screen.
+  if (
+    effectiveRole === "parent" &&
+    !user?.mfa_enrolled_at &&
+    location.pathname !== "/change-password" &&
+    !location.pathname.startsWith("/auth/mfa")
+  ) {
+    return <Navigate to="/auth/mfa/enroll" replace />;
+  }
+
   if (requiredPermission) {
     if (!permsResolved) return <LoadingSpinner />;
     if (!hasPermission(permissions, requiredPermission)) {

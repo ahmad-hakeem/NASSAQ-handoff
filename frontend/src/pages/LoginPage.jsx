@@ -140,7 +140,9 @@ export const LoginPage = () => {
       case 'platform_operations_manager': return '/admin';
       case 'teacher': return '/teacher';
       case 'student': return '/student';
-      case 'parent': return '/parent';
+      case 'parent':
+        if (!userData?.mfa_enrolled_at) return '/auth/mfa/enroll';
+        return '/parent';
       default: return null;
     }
   };

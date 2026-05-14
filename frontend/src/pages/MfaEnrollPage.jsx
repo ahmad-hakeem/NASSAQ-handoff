@@ -61,6 +61,8 @@ export default function MfaEnrollPage() {
     if (user.role === 'independent_teacher') {
       return <Navigate to={user.tenant_id ? '/teacher' : '/teacher/onboarding'} replace />;
     }
+    if (user.role === 'parent') return <Navigate to="/parent" replace />;
+    if (user.role === 'teacher') return <Navigate to="/teacher" replace />;
     return <Navigate to="/" replace />;
   }
 
@@ -113,6 +115,10 @@ export default function MfaEnrollPage() {
               } catch { /* fall back to whatever we have */ }
               if (fresh?.role === 'independent_teacher') {
                 navigate(fresh?.tenant_id ? '/teacher' : '/teacher/onboarding', { replace: true });
+              } else if (fresh?.role === 'parent') {
+                navigate('/parent', { replace: true });
+              } else if (fresh?.role === 'teacher') {
+                navigate('/teacher', { replace: true });
               } else {
                 navigate('/', { replace: true });
               }

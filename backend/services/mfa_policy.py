@@ -16,7 +16,17 @@ Tier B — standard staff (authenticator-app TOTP every login; passkey allowed
          factor are routed to TOTP enrolment after password login (FE
          ProtectedRoute → ``/auth/mfa/enroll``) instead of being handed a
          dead email-code challenge.
-Tier C — simple end-user (email OTP every login; recovery codes mandatory)
+Tier C — parents (authenticator-app TOTP every login; passkey allowed
+         where supported; recovery codes mandatory). NOTE 2026: email OTP
+         was the historical Tier C factor but has been removed for the
+         same reason it was removed from Tier B on 2026-05-13 — email
+         delivery is unreliable in this deployment and many stored parent
+         email addresses are placeholders, so the email-code path was
+         effectively locking parents out of the portal. Existing parent
+         accounts with no enrolled non-email factor are routed to TOTP
+         enrolment after password login (FE ProtectedRoute →
+         ``/auth/mfa/enroll``) instead of being handed a dead email-code
+         challenge.
 
 Roles outside Tier A/B/C (student, driver, gatekeeper, ministry_rep,
 testing_account, etc.) are intentionally NOT enrolled in MFA in this task —
@@ -31,8 +41,8 @@ from typing import Iterable, Optional
 
 class MfaTier(str, Enum):
     A = "A"  # WebAuthn required, TOTP + recovery mandatory backups
-    B = "B"  # email OTP login + recovery mandatory
-    C = "C"  # email OTP login + recovery mandatory
+    B = "B"  # authenticator-app TOTP every login + recovery mandatory
+    C = "C"  # authenticator-app TOTP every login + recovery mandatory
 
 
 # ---- role membership -------------------------------------------------------
@@ -60,7 +70,9 @@ _TIER_A_ROLES: frozenset[str] = frozenset({
 # Tier B: school-employed teachers — email OTP every login.
 _TIER_B_ROLES: frozenset[str] = frozenset({"teacher"})
 
-# Tier C: parents — email OTP every login.
+# Tier C: parents — authenticator-app TOTP every login (passkey allowed
+# where supported); recovery codes mandatory backup. Email OTP was the
+# historical Tier C factor but was removed in 2026 (see module docstring).
 _TIER_C_ROLES: frozenset[str] = frozenset({"parent"})
 
 
@@ -100,8 +112,11 @@ def is_required(user: dict) -> bool:
 
 def allowed_factor_kinds(user: dict) -> frozenset[str]:
     """Which ``mfa_factors.kind`` values are allowed to satisfy this user's
-    login second factor. Used by the verify route to refuse, e.g., a parent
-    who tries to log in with a TOTP code (parents are email-OTP only)."""
+    login second factor. Used by the verify route to refuse a factor kind
+    that the user's tier has not enabled. As of 2026 every tier (A/B/C)
+    accepts ``{webauthn, totp, recovery_code}``; ``email_otp`` was removed
+    from Tier B (2026-05-13) and Tier C (2026) because email delivery is
+    unreliable and many stored email addresses are placeholders."""
     tier = required_for(user)
     if tier is MfaTier.A:
         return frozenset({"webauthn", "totp", "recovery_code"})
@@ -114,7 +129,13 @@ def allowed_factor_kinds(user: dict) -> frozenset[str]:
         # stored teacher email addresses are not real.
         return frozenset({"webauthn", "totp", "recovery_code"})
     if tier is MfaTier.C:
-        return frozenset({"email_otp", "recovery_code"})
+        # 2026: Tier C no longer accepts email OTP at login. Parents
+        # authenticate with authenticator-app TOTP (and may use a passkey
+        # where the WebAuthn stack is available); recovery codes remain a
+        # mandatory backup. The historical email_otp factor was removed
+        # because email delivery is unreliable in this deployment and many
+        # stored parent email addresses are placeholders.
+        return frozenset({"webauthn", "totp", "recovery_code"})
     return frozenset()
 
 
