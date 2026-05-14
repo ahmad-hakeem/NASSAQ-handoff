@@ -74,6 +74,14 @@ class _RowAbort(Exception):
 
 
 class CommitRequest(BaseModel):
+    """Strict commit envelope.
+
+    Pydantic `extra='forbid'` makes any client-supplied field other
+    than these two (e.g. an injected `rows[]`) raise a 422 BEFORE the
+    handler runs — zero writes, zero draft consumption.
+    """
+    model_config = {"extra": "forbid"}
+
     import_draft_id: str = Field(..., min_length=8, max_length=128)
     confirmations: Optional[Dict[str, Any]] = None
 
@@ -465,27 +473,33 @@ async def _commit_teachers(
                     continue
 
                 if live_dedupe == "update" and live_existing_id:
+                    # NOTE: we only touch columns that exist on the
+                    # `teachers` model (see `pg_models.Teacher`). Noor
+                    # exports can carry address/dob, but those columns
+                    # are not present in this schema — silently drop
+                    # them rather than break the update path. Adding
+                    # them is a future Alembic migration.
                     await session.execute(
                         text(
                             """
                             UPDATE teachers
-                            SET full_name    = COALESCE(:full_name, full_name),
-                                phone        = COALESCE(:phone, phone),
-                                address      = COALESCE(:address, address),
-                                gender       = COALESCE(:gender, gender),
-                                date_of_birth= COALESCE(:dob, date_of_birth),
-                                email        = COALESCE(:email, email),
-                                updated_at   = NOW()
+                            SET full_name      = COALESCE(:full_name, full_name),
+                                phone          = COALESCE(:phone, phone),
+                                gender         = COALESCE(:gender, gender),
+                                email          = COALESCE(:email, email),
+                                specialization = COALESCE(:spec, specialization),
+                                qualification  = COALESCE(:qual, qualification),
+                                updated_at     = NOW()
                             WHERE id = :id AND school_id = :sid
                             """
                         ),
                         {
                             "full_name": data.get("full_name"),
                             "phone": data.get("phone"),
-                            "address": data.get("address"),
                             "gender": data.get("gender"),
-                            "dob": data.get("dob"),
                             "email": data.get("email"),
+                            "spec": data.get("specialization"),
+                            "qual": data.get("qualification"),
                             "id": live_existing_id,
                             "sid": school_id,
                         },

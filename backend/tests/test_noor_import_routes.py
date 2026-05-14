@@ -83,24 +83,23 @@ async def test_parse_rejects_non_excel(client, _db_session):
     assert r.status_code == 400
 
 
-async def test_commit_ignores_client_supplied_rows(client, _db_session):
-    """Defense-in-depth: a fabricated `rows`/`payload` field on the
-    commit body must NOT influence the write — only the server-side
-    draft is read."""
+async def test_commit_rejects_extra_fields_with_zero_writes(client, _db_session):
+    """Strict envelope: `CommitRequest` is `extra='forbid'`, so any
+    fabricated `rows[]`/`payload` field on the commit body MUST raise
+    422 BEFORE the handler runs — zero writes, zero draft consumption,
+    and the legitimate draft can still be committed afterwards."""
     user, school_id = await _seed_principal_with_school()
     files = {"file": ("StudentGuidance.xls", (FIX / "StudentGuidance.xls").read_bytes(), "application/vnd.ms-excel")}
     rp = await client.post("/noor-import/parse", files=files, headers=_headers(user))
     await db.session.commit()
     assert rp.status_code == 200
     draft_id = rp.json()["import_draft_id"]
-    expected_processed = rp.json()["counts"]["insert"] + rp.json()["counts"]["update"]
 
-    # Send a wildly different `rows` array. Pydantic schema only declares
-    # `import_draft_id` + `confirmations` so extras are silently dropped.
     fake_rows = [
         {"row_index": 9999, "data": {"student_number": "EVIL", "full_name": "DROP TABLE students;"},
          "issues": [], "dedupe": "insert"}
     ]
+    # Tampered body → 422, ZERO writes, draft still alive.
     rc = await client.post(
         "/noor-import/commit",
         json={
@@ -112,18 +111,64 @@ async def test_commit_ignores_client_supplied_rows(client, _db_session):
         headers=_headers(user),
     )
     await db.session.commit()
-    assert rc.status_code == 200, rc.text
-    body = rc.json()
-    # Outcome reflects the real fixture, NOT the injected row. The
-    # fixture repeats one student_number 6× so the commit splits into
-    # 1 insert + 5 in-batch updates — both numbers count as "real-row
-    # processing", and zero come from the injected payload.
-    assert (body["imported"] + body["updated"]) == expected_processed
-    # No student with the injected sentinel was created anywhere in the DB.
+    assert rc.status_code == 422, rc.text
     evil = (await db.session.execute(
         text("SELECT count(*) FROM students WHERE student_number = 'EVIL'"),
     )).scalar()
     assert evil == 0
+    # The legitimate envelope still works — the rejected attempt did
+    # not consume the draft.
+    rc2 = await client.post(
+        "/noor-import/commit",
+        json={"import_draft_id": draft_id, "confirmations": {}},
+        headers=_headers(user),
+    )
+    await db.session.commit()
+    assert rc2.status_code == 200, rc2.text
+
+
+async def test_student_upsert_idempotent_reimport(client, _db_session):
+    """Re-importing the same student fixture twice must NOT duplicate
+    rows: the second run sees the (school_id, student_number) unique
+    index hit and routes every row to UPDATE. Asserts the canonical
+    upsert path the architect review flagged as missing coverage."""
+    user, school_id = await _seed_principal_with_school()
+    file_bytes = (FIX / "StudentGuidance.xls").read_bytes()
+
+    async def _run_once():
+        files = {"file": ("StudentGuidance.xls", file_bytes, "application/vnd.ms-excel")}
+        rp = await client.post("/noor-import/parse", files=files, headers=_headers(user))
+        await db.session.commit()
+        assert rp.status_code == 200
+        draft_id = rp.json()["import_draft_id"]
+        rc = await client.post(
+            "/noor-import/commit",
+            json={"import_draft_id": draft_id, "confirmations": {}},
+            headers=_headers(user),
+        )
+        await db.session.commit()
+        assert rc.status_code == 200, rc.text
+        return rc.json()
+
+    first = await _run_once()
+    assert first["failed"] == 0, first["errors"]
+    assert (first["imported"] + first["updated"]) >= 1, first
+    first_count = (await db.session.execute(
+        text("SELECT count(*) FROM students WHERE school_id = :sid"),
+        {"sid": school_id},
+    )).scalar()
+
+    second = await _run_once()
+    assert second["failed"] == 0, second["errors"]
+    # Second pass: every existing (school_id, student_number) hits
+    # UPDATE — no inserts, no unique-violation failures.
+    assert second["imported"] == 0, second
+    assert second["updated"] >= 1, second
+    second_count = (await db.session.execute(
+        text("SELECT count(*) FROM students WHERE school_id = :sid"),
+        {"sid": school_id},
+    )).scalar()
+    assert first_count == second_count, "re-import must not duplicate students"
 
 
 async def test_parse_forbidden_for_non_school_role(client, _db_session):
