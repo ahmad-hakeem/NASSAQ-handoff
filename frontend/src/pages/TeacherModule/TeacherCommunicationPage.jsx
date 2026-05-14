@@ -26,13 +26,24 @@ import {
 import { useTranslation } from '../../contexts/ThemeContext';
 import IndependentTeacherCommunicationPage from './IndependentTeacherCommunicationPage';
 
+// Each template explicitly declares which recipient cohorts it can
+// target. The "Choose Recipients" step (Step 2) renders only these
+// cohorts for the selected template, and the same `id` is sent to the
+// backend as `template_id` for fail-closed server-side validation in
+// notification_routes_mod._enforce_template_recipient_rule.
+//
+// Default contract: a template that names cohorts here is restrictive
+// (only those are allowed). Templates with no `allowedRecipients` key
+// keep the legacy "all cohorts allowed" behaviour so existing flows do
+// not regress.
+const ALL_RECIPIENT_CATEGORY_IDS = ['parents', 'admin', 'staff'];
 const TEMPLATES = [
-  { id: 'homework', icon: BookOpen, color: 'bg-blue-500', titleKey: 'homeworkReminder', bodyKey: 'homeworkReminderBody' },
-  { id: 'exam', icon: FileText, color: 'bg-amber-500', titleKey: 'examNotice', bodyKey: 'examNoticeBody' },
-  { id: 'meeting', icon: UserCheck, color: 'bg-green-500', titleKey: 'meetingInvitation', bodyKey: 'meetingInvitationBody' },
-  { id: 'behavior', icon: AlertTriangle, color: 'bg-rose-500', titleKey: 'behaviorNote', bodyKey: 'behaviorNoteBody' },
-  { id: 'achievement', icon: CheckCircle2, color: 'bg-emerald-500', titleKey: 'achievementNotice', bodyKey: 'achievementNoticeBody' },
-  { id: 'absence', icon: AlertCircle, color: 'bg-red-500', titleKey: 'absenceAlert', bodyKey: 'absenceAlertBody' },
+  { id: 'homework', icon: BookOpen, color: 'bg-blue-500', titleKey: 'homeworkReminder', bodyKey: 'homeworkReminderBody', allowedRecipients: ['parents'] },
+  { id: 'exam', icon: FileText, color: 'bg-amber-500', titleKey: 'examNotice', bodyKey: 'examNoticeBody', allowedRecipients: ALL_RECIPIENT_CATEGORY_IDS },
+  { id: 'meeting', icon: UserCheck, color: 'bg-green-500', titleKey: 'meetingInvitation', bodyKey: 'meetingInvitationBody', allowedRecipients: ALL_RECIPIENT_CATEGORY_IDS },
+  { id: 'behavior', icon: AlertTriangle, color: 'bg-rose-500', titleKey: 'behaviorNote', bodyKey: 'behaviorNoteBody', allowedRecipients: ALL_RECIPIENT_CATEGORY_IDS },
+  { id: 'achievement', icon: CheckCircle2, color: 'bg-emerald-500', titleKey: 'achievementNotice', bodyKey: 'achievementNoticeBody', allowedRecipients: ALL_RECIPIENT_CATEGORY_IDS },
+  { id: 'absence', icon: AlertCircle, color: 'bg-red-500', titleKey: 'absenceAlert', bodyKey: 'absenceAlertBody', allowedRecipients: ALL_RECIPIENT_CATEGORY_IDS },
 ];
 
 // Recipient categories per spec: Parents / Administration / Staff.
@@ -173,6 +184,10 @@ function TeacherCommunicationPageInner() {
       const roleRecipients = selectedRecipients.filter(isRoleBasedRecipient);
       const userRecipients = selectedRecipients.filter(id => !isRoleBasedRecipient(id));
 
+      // Forward the selected template id so the backend can fail-closed
+      // on cohort mismatches (e.g. Homework Reminder → parents only).
+      const templateId = selectedTemplate?.id || null;
+
       if (roleRecipients.length > 0) {
         const roleMap = {
           'vice_principal': 'school_sub_admin',
@@ -190,6 +205,7 @@ function TeacherCommunicationPageInner() {
             priority: 'medium',
             recipient_role: role,
           };
+          if (templateId) payload.template_id = templateId;
           if (guidanceStudentIds.length > 0) {
             payload.related_entity = 'student';
             payload.related_entity_id = guidanceStudentIds.join(',');
@@ -199,13 +215,15 @@ function TeacherCommunicationPageInner() {
       }
 
       for (const recipientId of userRecipients) {
-        await api.post('/notifications', {
+        const payload = {
           title: messageSubject,
           message: messageBody,
           notification_type: 'communication',
           priority: 'medium',
           recipient_id: recipientId,
-        });
+        };
+        if (templateId) payload.template_id = templateId;
+        await api.post('/notifications', payload);
       }
 
       toast.success(t('messageSentSuccessfully'));
@@ -621,9 +639,25 @@ function TeacherCommunicationPageInner() {
     </div>
   );
 
-  const renderRecipientCategoriesGrid = () => (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-      {RECIPIENT_CATEGORIES.map(cat => {
+  const renderRecipientCategoriesGrid = () => {
+    // Filter the master cohort list against the selected template's
+    // declared `allowedRecipients`. Templates without that key remain
+    // unrestricted (legacy behaviour preserved).
+    const allowed = selectedTemplate?.allowedRecipients;
+    const visibleCategories = Array.isArray(allowed)
+      ? RECIPIENT_CATEGORIES.filter(c => allowed.includes(c.id))
+      : RECIPIENT_CATEGORIES;
+    // Keep cards visually balanced when only 1–2 cohorts are visible
+    // (e.g. Homework Reminder → Parents only). No placeholder cards.
+    const colsClass =
+      visibleCategories.length === 1
+        ? 'grid-cols-1 sm:max-w-sm'
+        : visibleCategories.length === 2
+        ? 'grid-cols-1 sm:grid-cols-2'
+        : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3';
+    return (
+    <div className={`grid ${colsClass} gap-4`}>
+      {visibleCategories.map(cat => {
         const CIcon = cat.icon;
         const isSelected = selectedCategory === cat.id;
         return (
@@ -645,7 +679,8 @@ function TeacherCommunicationPageInner() {
         );
       })}
     </div>
-  );
+    );
+  };
 
   const renderParentSubFlow = () => (
     <div className="space-y-4">

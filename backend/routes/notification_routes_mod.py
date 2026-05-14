@@ -58,6 +58,12 @@ class NotificationCreate(BaseModel):
     related_entity: Optional[str] = None  # e.g., "student", "class", "assessment"
     related_entity_id: Optional[str] = None
     action_url: Optional[str] = None  # URL to navigate when clicked
+    # Optional Communication-Center template id. When set and the
+    # template is in TEMPLATE_RECIPIENT_RULES, the recipient role/cohort
+    # is validated server-side so a tampered FE cannot widen the cohort
+    # (e.g. Homework Reminder → parents only). Templates not listed in
+    # the rules dict remain unrestricted (legacy behaviour preserved).
+    template_id: Optional[str] = None
 
 class NotificationResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -219,6 +225,58 @@ async def create_notification_internal(
 _IT_RECIPIENT_ROLE_BLOCKED_AR = "لا يمكن للمعلم المستقل البث حسب الدور."
 _IT_RECIPIENT_OUT_OF_SCOPE_AR = "المستلم غير ضمن مساحتك."
 
+# --- Communication-Center template → recipient cohort rules -----------
+# Maps the FE template id (TeacherCommunicationPage.jsx TEMPLATES.id) to
+# the set of user roles that are valid recipients for that template.
+# Templates not listed here are unrestricted (legacy behaviour). The
+# FE filter in renderRecipientCategoriesGrid is convenience UX; this
+# dict is the fail-closed server-side boundary per spec.
+TEMPLATE_RECIPIENT_RULES: Dict[str, set] = {
+    "homework": {"parent"},
+}
+_TEMPLATE_COHORT_MISMATCH_AR = "هذا القالب لا يسمح بهذه الفئة من المستلمين."
+
+
+async def _enforce_template_recipient_rule(
+    template_id: Optional[str],
+    *,
+    recipient_role: Optional[str] = None,
+    recipient_id: Optional[str] = None,
+) -> None:
+    """Reject sends whose recipient cohort does not match the rule for
+    ``template_id``. Safe Arabic message, HTTP 403 (writes must surface
+    the rejection — same convention used by the IT path above).
+
+    Resolution order:
+      * If ``template_id`` is missing or unknown → no-op.
+      * If ``recipient_role`` is supplied → must be in the allowed set.
+      * If ``recipient_id`` is supplied → look up the user's ``role``
+        and check membership.
+    """
+    if not template_id:
+        return
+    allowed = TEMPLATE_RECIPIENT_RULES.get(template_id)
+    if allowed is None:
+        return
+    # Validate EVERY supplied selector independently. An earlier draft
+    # short-circuited on `recipient_role` when allowed, but the route
+    # then delivered to `recipient_id` (single-recipient branch), so a
+    # request like `recipient_role='parent', recipient_id=<vp-user>`
+    # could deliver to a non-parent. Both must independently satisfy
+    # the allowed set; absent selectors are skipped here and rejected
+    # later by the route's normal "no recipient" handling.
+    if recipient_role is not None and recipient_role not in allowed:
+        raise HTTPException(status_code=403, detail=_TEMPLATE_COHORT_MISMATCH_AR)
+    if recipient_id:
+        # Strict: the recipient_id MUST resolve to a real user whose
+        # role is in the allowed set. No student/parent_id fallback —
+        # that admitted any user id that happened to appear in the
+        # parent_id column even if their own users.role was not parent.
+        # The FE always sends a parent user id for the parents cohort.
+        user = await gd_find_one(db.session, "users", {"id": recipient_id})
+        if not (user and user.get("role") in allowed):
+            raise HTTPException(status_code=403, detail=_TEMPLATE_COHORT_MISMATCH_AR)
+
 
 async def _it_validate_recipients_or_403(current_user: dict, recipient_ids: List[str]) -> None:
     """Reject any recipient that is not in the IT's spec §5.6 cohorts.
@@ -268,19 +326,31 @@ async def create_notification(
     if current_user['role'] not in ['platform_admin', 'school_principal', 'school_sub_admin', 'school_admin', 'teacher', 'independent_teacher']:
         raise HTTPException(status_code=403, detail="Not authorized to create notifications")
 
+    # Pin persisted tenant_id to itw_{user_id} even when the caller's
+    # users.tenant_id is stale/null. Mirrors the bulk path so single
+    # and bulk send paths agree on workspace tagging. (Was previously
+    # mis-indented under the auth raise above and therefore unreachable.)
+    if current_user.get('role') == 'independent_teacher':
+        from auth_scope import independent_workspace_id as _itw
+        _wsid = _itw(current_user)
+        if _wsid:
+            current_user = {**current_user, 'tenant_id': _wsid}
+
+    # Communication-Center template → recipient cohort guard. Runs for
+    # every caller (school + IT) so a tampered FE cannot widen the
+    # cohort declared by the template (e.g. Homework Reminder → parents).
+    await _enforce_template_recipient_rule(
+        notification.template_id,
+        recipient_role=notification.recipient_role,
+        recipient_id=notification.recipient_id,
+    )
+
     # IT hardening — Task #198 §5.6.
     if current_user.get('role') == 'independent_teacher':
         if notification.recipient_role:
             raise HTTPException(status_code=403, detail=_IT_RECIPIENT_ROLE_BLOCKED_AR)
         if notification.recipient_id:
             await _it_validate_recipients_or_403(current_user, [notification.recipient_id])
-        # Pin persisted tenant_id to itw_{user_id} even when the caller's
-        # users.tenant_id is stale/null. Mirrors the bulk path so single
-        # and bulk send paths agree on workspace tagging.
-        from auth_scope import independent_workspace_id as _itw
-        _wsid = _itw(current_user)
-        if _wsid:
-            current_user = {**current_user, 'tenant_id': _wsid}
 
     if notification.recipient_role and not notification.recipient_id:
         query = {"role": notification.recipient_role}
