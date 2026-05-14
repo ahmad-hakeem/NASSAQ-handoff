@@ -74,7 +74,9 @@ from dependencies import (
     require_recent_mfa_403,
 )
 from engines.sql_utils import gd_count, gd_find, gd_find_one, gd_update_one
+from sqlalchemy import select as _sa_select
 from sqlalchemy.exc import ProgrammingError as _PgProgrammingError
+from pg_models import School as _SchoolModel
 from quotas.independent_teacher import (
     MAX_CLASSES as _Q_MAX_CLASSES,
     MAX_LESSON_PLANS_PER_DAY as _Q_MAX_LESSON_PLANS,
@@ -778,10 +780,28 @@ async def download_workspace_export(token: str, request: Request):
         raise HTTPException(status_code=404, detail=_MSG_DOWNLOAD_INVALID)
     try:
         async with db.session.begin_nested():
-            await gd_update_one(
-                db.session, "schools", {"id": workspace_id},
-                {"last_export_consumed_at": _utcnow().isoformat()},
+            # --- TOCTOU guard: lock the schools row so concurrent requests
+            # using the same export URL serialise here. Re-verify both
+            # conditions after acquiring the lock so only the first
+            # request wins and all others get 404. ---
+            locked_school_result = await db.session.execute(
+                _sa_select(_SchoolModel)
+                .where(_SchoolModel.id == workspace_id)
+                .limit(1)
+                .with_for_update()
             )
+            school_locked = locked_school_result.scalars().first()
+            if (
+                not school_locked
+                or (school_locked.last_export_token_hash or "") != submitted_hash
+                or school_locked.last_export_consumed_at is not None
+            ):
+                raise HTTPException(status_code=404, detail=_MSG_DOWNLOAD_INVALID)
+
+            school_locked.last_export_consumed_at = _utcnow()
+            await db.session.flush()
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.warning("workspace export consume update failed: %s", exc)
         raise HTTPException(status_code=404, detail=_MSG_DOWNLOAD_INVALID)

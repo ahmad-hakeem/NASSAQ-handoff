@@ -61,7 +61,7 @@ from dependencies import (
 )
 from engines.sql_utils import gd_count, gd_find_one, gd_insert, gd_update_one
 from middleware.rate_limiter import rate_store
-from pg_models import ParentInvitation
+from pg_models import ParentInvitation, Student
 from utils.tokens import (
     mint_invitation_token,
     token_hash as _token_hash,
@@ -582,6 +582,35 @@ async def accept_parent_invitation(
 
     try:
         async with db.session.begin_nested():
+            # --- TOCTOU guard: re-acquire both rows under FOR UPDATE so that
+            # concurrent requests using the same token serialise here and
+            # only the first one past this gate actually commits. ---
+
+            locked_inv_result = await db.session.execute(
+                select(ParentInvitation)
+                .where(ParentInvitation.id == invitation_id)
+                .limit(1)
+                .with_for_update()
+            )
+            inv_locked = locked_inv_result.scalars().first()
+            if not inv_locked or inv_locked.status != "pending":
+                raise HTTPException(status_code=400, detail=_MSG_INVITATION_INVALID)
+
+            locked_stu_result = await db.session.execute(
+                select(Student)
+                .where(
+                    Student.id == student_id,
+                    Student.school_id == workspace_id,
+                )
+                .limit(1)
+                .with_for_update()
+            )
+            stu_locked = locked_stu_result.scalars().first()
+            if not stu_locked:
+                raise HTTPException(status_code=400, detail=_MSG_INVITATION_INVALID)
+            if stu_locked.parent_id:
+                raise HTTPException(status_code=409, detail=_MSG_ALREADY_LINKED)
+
             existing_parent, matched_by = await _dedupe_parent(
                 national_id=payload.national_id,
                 phone=parent_phone,
@@ -695,9 +724,9 @@ async def accept_parent_invitation(
                 raise HTTPException(status_code=400, detail=_MSG_INVITATION_INVALID)
 
             now_dt = _utcnow()
-            inv_row.status = "accepted"
-            inv_row.accepted_at = now_dt
-            inv_row.updated_at = now_dt
+            inv_locked.status = "accepted"
+            inv_locked.accepted_at = now_dt
+            inv_locked.updated_at = now_dt
             await db.session.flush()
 
             await audit_engine.log(
