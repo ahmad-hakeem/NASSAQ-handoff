@@ -257,8 +257,21 @@ async def get_audit_user_activity(
     ])),
     days: int = 30
 ):
-    """Get activity log for a specific user"""
-    activity = await audit_engine.get_user_activity(user_id=user_id, days=days)
+    """Get activity log for a specific user.
+
+    Platform admins and security officers see the full unscoped record.
+    School principals are restricted to audit entries belonging to their
+    own tenant; they cannot read cross-tenant activity.
+    """
+    caller_role = current_user.get("role", "")
+    platform_roles = {UserRole.PLATFORM_ADMIN.value, UserRole.PLATFORM_SECURITY_OFFICER.value}
+    if caller_role in platform_roles:
+        tenant_id = None
+    else:
+        tenant_id = current_user.get("tenant_id") or current_user.get("school_id")
+        if not tenant_id:
+            raise HTTPException(status_code=403, detail="لا يمكن تحديد نطاق المدرسة للمستخدم الحالي")
+    activity = await audit_engine.get_user_activity(user_id=user_id, days=days, tenant_id=tenant_id)
     return {"user_id": user_id, "activity": activity}
 
 
@@ -272,8 +285,21 @@ async def get_entity_history(
         UserRole.SCHOOL_PRINCIPAL
     ]))
 ):
-    """Get audit history for a specific entity"""
-    history = await audit_engine.get_entity_history(entity_type=entity_type, entity_id=entity_id)
+    """Get audit history for a specific entity.
+
+    Platform admins and security officers see the full unscoped record.
+    School principals are restricted to audit entries belonging to their
+    own tenant; they cannot read cross-tenant entity history.
+    """
+    caller_role = current_user.get("role", "")
+    platform_roles = {UserRole.PLATFORM_ADMIN.value, UserRole.PLATFORM_SECURITY_OFFICER.value}
+    if caller_role in platform_roles:
+        tenant_id = None
+    else:
+        tenant_id = current_user.get("tenant_id") or current_user.get("school_id")
+        if not tenant_id:
+            raise HTTPException(status_code=403, detail="لا يمكن تحديد نطاق المدرسة للمستخدم الحالي")
+    history = await audit_engine.get_entity_history(entity_type=entity_type, entity_id=entity_id, tenant_id=tenant_id)
     return {"entity_type": entity_type, "entity_id": entity_id, "history": history}
 
 
@@ -516,12 +542,15 @@ async def seed_test_accounts(current_user: dict = Depends(require_roles([UserRol
 
 @router.get("/activity/daily")
 async def get_daily_activity(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles([
+        UserRole.PLATFORM_ADMIN,
+        UserRole.PLATFORM_SECURITY_OFFICER,
+    ])),
     period: str = "today",
     view_by: str = "hour",
     school_id: Optional[str] = None
 ):
-    """Get daily platform activity data for charts"""
+    """Get daily platform activity data for charts — platform roles only"""
     now = datetime.now(timezone.utc)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     
@@ -613,8 +642,11 @@ async def get_daily_activity(
         return {"chart_data": type_data, "period": period, "view_by": view_by}
 
 @router.get("/activity/summary")
-async def get_activity_summary(current_user: dict = Depends(get_current_user)):
-    """Get quick summary of today's activity"""
+async def get_activity_summary(current_user: dict = Depends(require_roles([
+    UserRole.PLATFORM_ADMIN,
+    UserRole.PLATFORM_SECURITY_OFFICER,
+]))):
+    """Get quick summary of today's activity — platform roles only"""
     import random
     
     now = datetime.now(timezone.utc)

@@ -414,9 +414,9 @@ def setup_audit_routes(db, get_current_user, require_roles, UserRole, require_re
         target_id: Optional[str] = None,
         target_name: Optional[str] = None,
         details: Optional[dict] = None,
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
     ):
-        """إنشاء سجل تدقيق يدوي"""
+        """إنشاء سجل تدقيق يدوي — منصة المدير فقط"""
         try:
             import uuid as _uuid
             log_entry = {

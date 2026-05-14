@@ -293,12 +293,23 @@ class AuditLogEngine:
         self,
         entity_type: str,
         entity_id: str,
-        limit: int = 50
+        limit: int = 50,
+        tenant_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Get audit history for a specific entity"""
+        """Get audit history for a specific entity.
+
+        When ``tenant_id`` is provided the results are scoped to that school,
+        preventing cross-tenant information disclosure.
+        """
+        conditions = [
+            AuditLog.entity_type == entity_type,
+            AuditLog.entity_id == entity_id,
+        ]
+        if tenant_id:
+            conditions.append(AuditLog.school_id == tenant_id)
         stmt = (
             select(AuditLog)
-            .where(and_(AuditLog.entity_type == entity_type, AuditLog.entity_id == entity_id))
+            .where(and_(*conditions))
             .order_by(sa_desc(AuditLog.timestamp))
             .limit(limit)
         )
@@ -314,13 +325,24 @@ class AuditLogEngine:
         self,
         user_id: str,
         days: int = 30,
-        limit: int = 100
+        limit: int = 100,
+        tenant_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Get activity log for a specific user"""
+        """Get activity log for a specific user.
+
+        When ``tenant_id`` is provided the results are scoped to that school,
+        preventing cross-tenant information disclosure.
+        """
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        conditions = [
+            AuditLog.performed_by == user_id,
+            AuditLog.timestamp >= cutoff,
+        ]
+        if tenant_id:
+            conditions.append(AuditLog.school_id == tenant_id)
         stmt = (
             select(AuditLog)
-            .where(and_(AuditLog.performed_by == user_id, AuditLog.timestamp >= cutoff))
+            .where(and_(*conditions))
             .order_by(sa_desc(AuditLog.timestamp))
             .limit(limit)
         )
