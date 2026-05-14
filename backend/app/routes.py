@@ -327,7 +327,7 @@ def register_routes(app, api_router: APIRouter):
     settings_router = setup_settings_routes(db, get_current_user, require_roles, UserRole, _require_recent_mfa)
 
     from routes.user_roles_routes import setup_user_roles_routes
-    user_roles_router = setup_user_roles_routes(db, get_current_user, require_roles, UserRole, create_access_token)
+    user_roles_router = setup_user_roles_routes(db, get_current_user, require_roles, UserRole, create_access_token, _require_recent_mfa)
 
     from routes.websocket_routes import create_websocket_routes
     from db import async_session_factory as _ws_session_factory

@@ -1704,6 +1704,29 @@ async def restore_role(
         {"ended_at": now, "reason": "restored", "jti": jti},
     )
 
+    # Revoke the now-ended switched token so any copy in the wild is immediately
+    # rejected by get_current_user / WebSocket auth, not just after natural expiry.
+    # Fail-closed: if revocation cannot be persisted, abort the restore response
+    # rather than silently returning a new token while the old one stays valid.
+    # ON CONFLICT DO NOTHING handles the idempotent case (already revoked).
+    _old_exp = payload.get("exp")
+    if _old_exp:
+        _rev_exp_dt = datetime.fromtimestamp(_old_exp, tz=timezone.utc)
+    else:
+        _rev_exp_dt = now + timedelta(minutes=IMPERSONATION_TOKEN_TTL_MINUTES)
+    try:
+        await db.session.execute(
+            _sa_text(
+                "INSERT INTO revoked_tokens (jti, expires_at, revoked_at) "
+                "VALUES (:jti, :exp, :rev) "
+                "ON CONFLICT (jti) DO NOTHING"
+            ),
+            {"jti": jti, "exp": _rev_exp_dt, "rev": now},
+        )
+    except Exception as _rev_err:
+        logger.error(f"role-switch/restore: failed to revoke switched token JTI={jti}: {_rev_err}")
+        raise HTTPException(status_code=500, detail="تعذّر إنهاء الجلسة بأمان. يرجى المحاولة مجدداً")
+
     try:
         from services.audit_sink import emit_audit
         emit_audit({

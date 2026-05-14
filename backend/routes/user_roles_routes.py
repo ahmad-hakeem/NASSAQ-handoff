@@ -4,6 +4,7 @@ APIs for user role switching and multi-role management
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.security import HTTPBearer as _HTTPBearer, HTTPAuthorizationCredentials as _HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone
@@ -11,6 +12,7 @@ import uuid
 import logging
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 logger = logging.getLogger("nassaq")
+_bearer_scheme = _HTTPBearer()
 
 
 PLATFORM_ROLES = frozenset({
@@ -49,7 +51,7 @@ def _is_role_active(role_info: dict) -> bool:
     return True
 
 
-def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, create_access_token):
+def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, create_access_token, require_recent_mfa=None):
     router = APIRouter(prefix="/user-roles", tags=["User Roles"])
 
     async def _get_school_name(tenant_id: str) -> Optional[str]:
@@ -150,11 +152,16 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
             logger.error(f"Error getting user roles: {e}")
             raise HTTPException(status_code=500, detail="حدث خطأ داخلي في الخادم")
 
+    # Build the MFA dependency once so it can be referenced in the handler
+    # signature. Falls back to plain get_current_user if require_recent_mfa
+    # was not supplied (backwards-compat shim for tests / old callers).
+    _switch_mfa_dep = require_recent_mfa() if require_recent_mfa is not None else get_current_user
+
     @router.post("/switch")
     async def switch_role(
         request_body: RoleSwitchRequest,
         request: Request,
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(_switch_mfa_dep)
     ):
         try:
             user_id = current_user.get("id")
@@ -256,7 +263,7 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
 
             if is_cross_tenant_impersonation:
                 import jwt as _jwt
-                from config import JWT_SECRET as _JS, JWT_ALGORITHM as _JA
+                from dependencies import JWT_SECRET as _JS, JWT_ALGORITHM as _JA
                 from sqlalchemy import text as _sa_text
                 from datetime import timedelta as _td
                 _payload = _jwt.decode(new_token, _JS, algorithms=[_JA])
@@ -352,6 +359,7 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
     @router.post("/return-to-original")
     async def return_to_original_role(
         request: Request,
+        credentials: _HTTPAuthorizationCredentials = Depends(_bearer_scheme),
         current_user: dict = Depends(get_current_user)
     ):
         try:
@@ -367,6 +375,18 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
             original_tenant_id = user.get("tenant_id")
             from_role = current_user.get("role")
 
+            # Decode the current switched token to extract its JTI for revocation.
+            # The signature was already verified by get_current_user upstream.
+            import jwt as _jwt
+            from dependencies import JWT_SECRET as _JS, JWT_ALGORITHM as _JA
+            from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+            _old_payload = _jwt.decode(
+                credentials.credentials, _JS, algorithms=[_JA],
+                options={"verify_exp": False}
+            )
+            _old_jti = _old_payload.get("jti")
+            _old_exp = _old_payload.get("exp")
+
             token_data = {
                 "sub": user_id,
                 "role": original_role,
@@ -376,7 +396,31 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
             }
             new_token = create_access_token(token_data)
 
-            client_ip = request.client.host if request.client else None
+            # Revoke the old switched token so it cannot be replayed after restore.
+            # Fail-closed: abort if revocation cannot be persisted so the caller
+            # is never given a new token while the old switched one stays valid.
+            # ON CONFLICT DO NOTHING handles the idempotent/already-revoked case.
+            if _old_jti:
+                if _old_exp:
+                    _rev_exp_dt = _dt.fromtimestamp(_old_exp, tz=_tz.utc)
+                else:
+                    _rev_exp_dt = _dt.now(_tz.utc) + _td(minutes=30)
+                try:
+                    from sqlalchemy import text as _sa_text_r
+                    await db.session.execute(
+                        _sa_text_r(
+                            "INSERT INTO revoked_tokens (jti, expires_at, revoked_at) "
+                            "VALUES (:jti, :exp, :rev) "
+                            "ON CONFLICT (jti) DO NOTHING"
+                        ),
+                        {"jti": _old_jti, "exp": _rev_exp_dt, "rev": _dt.now(_tz.utc)},
+                    )
+                except Exception as _rev_err:
+                    logger.error(f"return-to-original: failed to revoke switched token JTI={_old_jti}: {_rev_err}")
+                    raise HTTPException(status_code=500, detail="تعذّر إنهاء الجلسة بأمان. يرجى المحاولة مجدداً")
+
+            from utils.trusted_proxy import extract_client_ip as _ip_fn
+            client_ip = _ip_fn(request)
 
             await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
