@@ -3,6 +3,8 @@ NASSAQ Route Module: Registration requests
 Unified Approval Engine API endpoints.
 """
 from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Body, Request
+from middleware.rate_limiter import rate_store
+from utils.trusted_proxy import extract_client_ip
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import Response
 from starlette.responses import StreamingResponse
@@ -59,41 +61,32 @@ def _fuzzy_similarity(a: str, b: str) -> float:
     return common / longer
 
 @router.get("/registration-requests/check-school-name")
-async def check_school_name(name: str = Query(..., min_length=2)):
+async def check_school_name(request: Request, name: str = Query(..., min_length=2)):
+    client_ip = extract_client_ip(request)
+    rate_key = f"school_name_check:{client_ip}"
+    limited, _, retry_after = await rate_store.is_rate_limited(rate_key, 20, 60)
+    if limited:
+        raise HTTPException(
+            status_code=429,
+            detail="طلبات كثيرة، يرجى المحاولة لاحقاً.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     normalized = _normalize_arabic(name)
     if len(normalized) < 2:
-        return {"similar_schools": [], "is_duplicate": False}
+        return {"is_duplicate": False}
 
+    # Only check registered schools (never pending requests — those are internal
+    # pipeline data and must not be exposed to unauthenticated callers).
+    # Use normalised exact-match only: fuzzy matching would allow prefix-scanning
+    # enumeration of the tenant list.  An exact match only confirms a conflict
+    # the caller already knows the full name for, so it reveals nothing new.
     existing_schools = await gd_find(db.session, "schools", {}, limit=500)
-
-    pending_requests = await gd_find(db.session, "registration_requests", {"account_type": "school", "status": {"$in": ["pending", "pending_review"]}}, limit=200)
-
-    similar = []
     for s in existing_schools:
-        score = _fuzzy_similarity(name, s.get("name", ""))
-        if score >= 0.6:
-            similar.append({
-                "name": s.get("name"),
-                "city": s.get("city"),
-                "source": "registered",
-                "similarity": round(score, 2)
-            })
+        if _normalize_arabic(s.get("name", "")) == normalized:
+            return {"is_duplicate": True}
 
-    for r in pending_requests:
-        score = _fuzzy_similarity(name, r.get("school_name", ""))
-        if score >= 0.6:
-            similar.append({
-                "name": r.get("school_name"),
-                "city": r.get("school_city"),
-                "source": "pending_request",
-                "similarity": round(score, 2)
-            })
-
-    similar.sort(key=lambda x: x["similarity"], reverse=True)
-    return {
-        "similar_schools": similar[:5],
-        "is_duplicate": any(s["similarity"] >= 0.85 for s in similar)
-    }
+    return {"is_duplicate": False}
 
 
 async def _generate_school_code_instant() -> str:

@@ -69,7 +69,7 @@ export const RegisterPage = () => {
   
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
-  const [similarSchools, setSimilarSchools] = useState([]);
+  const [schoolNameDuplicate, setSchoolNameDuplicate] = useState(false);
   const [checkingSchoolName, setCheckingSchoolName] = useState(false);
 
   const updateFormData = (field, value) => {
@@ -81,16 +81,15 @@ export const RegisterPage = () => {
 
   const checkSchoolName = useCallback(async (name) => {
     if (!name || name.trim().length < 3) {
-      setSimilarSchools([]);
+      setSchoolNameDuplicate(false);
       return;
     }
     setCheckingSchoolName(true);
     try {
       const res = await api.get(`/registration-requests/check-school-name?name=${encodeURIComponent(name.trim())}`);
-      setSimilarSchools(res.data?.similar_schools || []);
+      setSchoolNameDuplicate(res.data?.is_duplicate || false);
     } catch (e) {
-      console.error('Error checking school name:', e);
-      setSimilarSchools([]);
+      setSchoolNameDuplicate(false);
     } finally {
       setCheckingSchoolName(false);
     }
@@ -691,25 +690,14 @@ export const RegisterPage = () => {
                         {errors.school_name && (
                           <p className="text-destructive text-xs font-tajawal">{errors.school_name}</p>
                         )}
-                        {similarSchools.length > 0 && (
+                        {schoolNameDuplicate && (
                           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-2">
-                            <div className="flex items-center gap-2 mb-2">
+                            <div className="flex items-center gap-2">
                               <AlertTriangle className="h-4 w-4 text-amber-600" />
                               <span className="text-sm font-bold text-amber-700 font-tajawal">
-                                {t('similarSchoolsFound')}
+                                {t('schoolNameAlreadyExists')}
                               </span>
                             </div>
-                            <ul className="space-y-1">
-                              {similarSchools.map((s, i) => (
-                                <li key={i} className="text-sm text-amber-700 font-tajawal flex items-center gap-2">
-                                  <span>{s.name}</span>
-                                  {s.city && <span className="text-amber-500">({s.city})</span>}
-                                  <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-600">
-                                    {s.source === 'registered' ? (t('registered')) : (t('pending4'))}
-                                  </Badge>
-                                </li>
-                              ))}
-                            </ul>
                           </div>
                         )}
                       </div>
