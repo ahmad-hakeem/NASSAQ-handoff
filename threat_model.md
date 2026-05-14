@@ -27,6 +27,7 @@ This threat model assumes production runs behind Replit-managed TLS, `NODE_ENV=p
 
 - **Production entry points:** `backend/server.py`, `backend/app/routes.py`, `backend/app/middleware.py`, `frontend/src/App.js`, `frontend/src/services/apiClient.js`.
 - **Highest-risk code areas:** `backend/routes/auth_routes_mod.py`, `backend/dependencies.py`, `backend/routes/role_dashboards_mod.py`, `backend/routes/parent_portal_routes.py`, `backend/routes/websocket_routes.py`, `backend/routes/monitoring_routes.py`, tenant/auth helpers in `backend/middleware/` and `backend/auth_scope.py`.
+- **Additional scan anchors from 2026-05-14:** `backend/routes/academics_student_routes.py`, `backend/routes/attendance_routes.py`, `backend/routes/reporting_routes_mod.py`, `backend/routes/independent_teacher_invite_parent_routes.py`, `backend/routes/independent_teacher_invitation_routes.py`, and `backend/engines/session_engine.py`.
 - **Surface split:** public/auth routes, authenticated school-role routes, platform-admin routes, and WebSockets.
 - **Usually ignore unless proven reachable:** `backend/scripts/`, test files, migrations, and mockup/sandbox artifacts.
 
@@ -42,7 +43,7 @@ Clients can submit profile updates, attendance changes, grades, messages, upload
 
 ### Information Disclosure
 
-This platform stores sensitive student and family data. All dashboard, portal, notification, reporting, and search endpoints must scope responses by both role and tenant. Public monitoring, debug, or stats endpoints must not leak internal operational details that help attackers map the service or target high-value users.
+This platform stores sensitive student and family data. All dashboard, portal, notification, reporting, and search endpoints must scope responses by both role and tenant. Parent-child linkage must be based on canonical, tenant-safe identifiers rather than mutable contact fields, and student-by-id read surfaces must verify the viewer's relationship to the target object instead of trusting same-tenant presence alone. Public monitoring, debug, or stats endpoints must not leak internal operational details that help attackers map the service or target high-value users.
 
 ### Denial of Service
 
