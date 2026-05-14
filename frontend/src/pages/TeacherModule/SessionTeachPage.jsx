@@ -3983,6 +3983,9 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
 
 
 function StudentRow({ student, isFlashing, isSelected, onClick, onMenu, onSendNote, homeworkEnabled, homeworkStatus, onToggleHomework }) {
+  const { t } = useTranslation();
+  const homeworkLabel = t('modeHomework');
+  const noteLabel = t('note');
   const initials = student.full_name?.charAt(0) || '?';
   const count = student.interactionCount || 0;
   const correct = student.correctAnswers || 0;
@@ -4056,26 +4059,28 @@ function StudentRow({ student, isFlashing, isSelected, onClick, onMenu, onSendNo
       {homeworkEnabled && onToggleHomework && !isAbsent && (
         <button
           onClick={(e) => { e.stopPropagation(); onToggleHomework(student.id); }}
-          className={`p-1.5 rounded-md transition-colors opacity-80 group-hover:opacity-100 flex-none ${
+          className={`inline-flex items-center gap-1.5 flex-none rounded-full border px-2.5 py-1 text-[11px] font-bold transition-colors opacity-90 group-hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-background active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
             isHomeworkDone
-              ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 hover:bg-emerald-500/15'
-              : 'text-rose-600 dark:text-rose-400 hover:text-rose-700 hover:bg-rose-500/15'
+              ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border-emerald-400/40 hover:bg-emerald-500/20 focus-visible:ring-emerald-400'
+              : 'text-rose-700 dark:text-rose-300 bg-rose-500/10 border-rose-400/40 hover:bg-rose-500/20 focus-visible:ring-rose-400'
           }`}
           aria-label={isHomeworkDone ? 'أنجز الواجب' : 'لم ينجز الواجب'}
           aria-pressed={isHomeworkDone}
           title={isHomeworkDone ? 'الواجب: أنجز' : 'الواجب: لم ينجز'}
         >
-          <ClipboardCheck className="h-4 w-4" />
+          <ClipboardCheck className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">{homeworkLabel}</span>
         </button>
       )}
       {onSendNote && !isAbsent && (
         <button
           onClick={(e) => { e.stopPropagation(); onSendNote(student); }}
-          className="p-1.5 rounded-md text-amber-600 dark:text-amber-400 hover:text-amber-700 hover:bg-amber-500/15 transition-colors opacity-70 group-hover:opacity-100 flex-none"
-          aria-label="إرسال ملاحظة"
-          title="إرسال ملاحظة"
+          className="inline-flex items-center gap-1.5 flex-none rounded-full border px-2.5 py-1 text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10 border-amber-400/40 hover:bg-amber-500/20 transition-colors opacity-90 group-hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-1 focus-visible:ring-offset-background active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label={noteLabel}
+          title={noteLabel}
         >
-          <StickyNote className="h-4 w-4" />
+          <StickyNote className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">{noteLabel}</span>
         </button>
       )}
       {onMenu && (
