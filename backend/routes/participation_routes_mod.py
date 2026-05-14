@@ -17,6 +17,15 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 
 router = APIRouter()
 
+_PARTICIPATION_WRITE_ROLES = [
+    UserRole.PLATFORM_ADMIN,
+    UserRole.SCHOOL_PRINCIPAL,
+    UserRole.SCHOOL_ADMIN,
+    UserRole.SCHOOL_SUB_ADMIN,
+    UserRole.TEACHER,
+    UserRole.INDEPENDENT_TEACHER,
+]
+
 
 class ParticipationTypeEnum(str, Enum):
     HAND_RAISE = "hand_raise"
@@ -76,12 +85,23 @@ QUALITY_POINTS = {
 @router.post("/participation")
 async def record_participation(
     data: ParticipationCreate,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(_PARTICIPATION_WRITE_ROLES))
 ):
-    """Record a student participation event"""
+    """Record a student participation event.
+
+    SECURITY: Restricted to staff roles only. Teachers must additionally
+    be assigned to the referenced class so they cannot create participation
+    records for classes they do not teach.
+    """
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
+
+    role = current_user.get("role", "")
+    if role in (UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value):
+        from utils.tenant_scope import can_view_class, require_can_view_class_sync_check
+        cls_allowed = await can_view_class(db.session, current_user, data.class_id)
+        require_can_view_class_sync_check(cls_allowed)
 
     student = await gd_find_one(db.session, "students", {"id": data.student_id, "tenant_id": school_id})
     if not student:
@@ -119,12 +139,23 @@ async def record_participation(
 @router.post("/participation/bulk")
 async def record_bulk_participation(
     data: BulkParticipationCreate,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(_PARTICIPATION_WRITE_ROLES))
 ):
-    """Record participation for multiple students at once"""
+    """Record participation for multiple students at once.
+
+    SECURITY: Restricted to staff roles only. Teachers must additionally
+    be assigned to the referenced class so they cannot create records for
+    classes they do not teach.
+    """
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
+
+    role = current_user.get("role", "")
+    if role in (UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value):
+        from utils.tenant_scope import can_view_class, require_can_view_class_sync_check
+        cls_allowed = await can_view_class(db.session, current_user, data.class_id)
+        require_can_view_class_sync_check(cls_allowed)
 
     now = datetime.now(timezone.utc).isoformat()
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -200,7 +231,15 @@ async def get_student_participation_history(
     skip: int = 0,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get participation history for a student"""
+    """Get participation history for a student.
+
+    SECURITY: Student participation data is personal academic information.
+    The caller must be the student themselves, their guardian, an assigned
+    teacher, or a school admin.
+    """
+    from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+    allowed = await can_view_student(db.session, current_user, student_id)
+    require_can_view_student_sync_check(allowed)
     school_id = current_user.get("tenant_id")
     query = {"tenant_id": school_id, "student_id": student_id}
 
@@ -227,9 +266,18 @@ async def get_class_participation(
     date: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(_PARTICIPATION_WRITE_ROLES))
 ):
-    """Get participation records for a class"""
+    """Get participation records for a class.
+
+    SECURITY: Restricted to staff roles only. Class participation contains
+    per-student engagement data for the whole class and must not be
+    accessible to parents or students. Teachers must additionally be
+    assigned to the referenced class.
+    """
+    from utils.tenant_scope import can_view_class, require_can_view_class_sync_check
+    cls_allowed = await can_view_class(db.session, current_user, class_id)
+    require_can_view_class_sync_check(cls_allowed)
     school_id = current_user.get("tenant_id")
     query = {"tenant_id": school_id, "class_id": class_id}
 
@@ -281,11 +329,18 @@ async def get_participation_record(
     record_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get a specific participation record"""
+    """Get a specific participation record.
+
+    SECURITY: The record's student_id is used for the object-level check.
+    The caller must be authorized to view that student's data.
+    """
     school_id = current_user.get("tenant_id")
     record = await gd_find_one(db.session, "participation_records", {"id": record_id, "tenant_id": school_id})
     if not record:
         raise HTTPException(status_code=404, detail="السجل غير موجود")
+    from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+    allowed = await can_view_student(db.session, current_user, record.get("student_id", ""))
+    require_can_view_student_sync_check(allowed)
     return record
 
 
@@ -293,9 +348,12 @@ async def get_participation_record(
 async def update_participation_record(
     record_id: str,
     data: ParticipationUpdate,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(_PARTICIPATION_WRITE_ROLES))
 ):
-    """Update a participation record"""
+    """Update a participation record.
+
+    SECURITY: Restricted to staff roles only.
+    """
     school_id = current_user.get("tenant_id")
     record = await gd_find_one(db.session, "participation_records", {"id": record_id, "tenant_id": school_id})
     if not record:
@@ -319,9 +377,12 @@ async def update_participation_record(
 @router.delete("/participation/{record_id}")
 async def delete_participation_record(
     record_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(_PARTICIPATION_WRITE_ROLES))
 ):
-    """Delete a participation record"""
+    """Delete a participation record.
+
+    SECURITY: Restricted to staff roles only.
+    """
     school_id = current_user.get("tenant_id")
     result = await gd_delete_one(db.session, "participation_records", {"id": record_id, "tenant_id": school_id})
     if result == 0:
@@ -336,7 +397,13 @@ async def get_student_participation_statistics(
     period: str = "month",
     current_user: dict = Depends(get_current_user)
 ):
-    """Get detailed participation statistics for a student"""
+    """Get detailed participation statistics for a student.
+
+    SECURITY: The caller must be authorized to view the target student's data.
+    """
+    from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+    allowed = await can_view_student(db.session, current_user, student_id)
+    require_can_view_student_sync_check(allowed)
     school_id = current_user.get("tenant_id")
     query = {"tenant_id": school_id, "student_id": student_id}
 
@@ -422,9 +489,18 @@ async def get_class_participation_statistics(
     class_id: str,
     subject_id: Optional[str] = None,
     period: str = "month",
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(_PARTICIPATION_WRITE_ROLES))
 ):
-    """Get participation statistics for a class with rankings"""
+    """Get participation statistics for a class with rankings.
+
+    SECURITY: Restricted to staff roles only. Class statistics expose
+    engagement rankings for every student in the class and must not be
+    accessible to parents or students. Teachers must additionally be
+    assigned to the referenced class.
+    """
+    from utils.tenant_scope import can_view_class, require_can_view_class_sync_check
+    cls_allowed = await can_view_class(db.session, current_user, class_id)
+    require_can_view_class_sync_check(cls_allowed)
     school_id = current_user.get("tenant_id")
     query = {"tenant_id": school_id, "class_id": class_id}
 
@@ -497,7 +573,13 @@ async def get_student_participation_report(
     student_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Generate a comprehensive participation report for a student"""
+    """Generate a comprehensive participation report for a student.
+
+    SECURITY: The caller must be authorized to view the target student's data.
+    """
+    from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+    allowed = await can_view_student(db.session, current_user, student_id)
+    require_can_view_student_sync_check(allowed)
     school_id = current_user.get("tenant_id")
 
     student = await gd_find_one(db.session, "students", {"id": student_id, "tenant_id": school_id})
@@ -557,9 +639,18 @@ async def get_participation_leaderboard(
     class_id: str,
     period: str = "month",
     limit: int = 10,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(_PARTICIPATION_WRITE_ROLES))
 ):
-    """Get participation leaderboard for a class"""
+    """Get participation leaderboard for a class.
+
+    SECURITY: Restricted to staff roles only. The leaderboard exposes
+    ranked student names and scores for all students in the class and
+    must not be accessible to parents or students. Teachers must
+    additionally be assigned to the referenced class.
+    """
+    from utils.tenant_scope import can_view_class, require_can_view_class_sync_check
+    cls_allowed = await can_view_class(db.session, current_user, class_id)
+    require_can_view_class_sync_check(cls_allowed)
     school_id = current_user.get("tenant_id")
 
     now = datetime.now(timezone.utc)

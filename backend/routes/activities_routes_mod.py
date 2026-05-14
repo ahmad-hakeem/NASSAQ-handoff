@@ -58,9 +58,19 @@ async def list_student_activities(
     school_id: str = Query(...),
     current_user: dict = Depends(get_current_user),
 ):
+    """List a student's extracurricular activities.
+
+    SECURITY: Activities are non-public student records. The caller must
+    be the student themselves, a guardian, an assigned teacher, or a
+    school admin. Cross-tenant access is rejected first; then an
+    object-level check via can_view_student enforces the relationship.
+    """
     tenant = current_user.get("tenant_id")
     if tenant and tenant != school_id:
         raise HTTPException(403, "غير مصرح")
+    from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+    allowed = await can_view_student(db.session, current_user, student_id)
+    require_can_view_student_sync_check(allowed)
     records = await gd_find(db.session, "student_activities", {"student_id": student_id, "school_id": school_id}, order_by="date", desc_order=True, limit=500)
     for r in records:
         r.pop("_id", None)
@@ -145,9 +155,19 @@ async def list_student_certificates(
     school_id: str = Query(...),
     current_user: dict = Depends(get_current_user),
 ):
+    """List a student's certificates and awards.
+
+    SECURITY: Certificate records are non-public student data. The caller
+    must be the student themselves, a guardian, an assigned teacher, or a
+    school admin. Cross-tenant access is rejected first; then an
+    object-level check via can_view_student enforces the relationship.
+    """
     tenant = current_user.get("tenant_id")
     if tenant and tenant != school_id:
         raise HTTPException(403, "غير مصرح")
+    from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+    allowed = await can_view_student(db.session, current_user, student_id)
+    require_can_view_student_sync_check(allowed)
     records = await gd_find(db.session, "student_certificates", {"student_id": student_id, "school_id": school_id}, order_by="date", desc_order=True, limit=500)
     for r in records:
         r.pop("_id", None)

@@ -177,9 +177,14 @@ async def get_school_attendance_report(
 async def get_school_grades_report(
     period: str = "current_term",
     subject_id: Optional[str] = None,
-    current_user: dict = Depends(require_roles(_STAFF_ROLES))
+    current_user: dict = Depends(require_roles(_ADMIN_ONLY_ROLES))
 ):
-    """Get grades report by subject"""
+    """Get grades report by subject.
+
+    SECURITY: Restricted to admin roles only. School-wide grade summaries
+    expose per-subject averages across all students and must not be
+    accessible to teachers, students, or parents.
+    """
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
@@ -234,9 +239,14 @@ async def get_school_grades_report(
 @router.get("/reports/school/behavior")
 async def get_school_behavior_report(
     period: str = "current_term",
-    current_user: dict = Depends(require_roles(_STAFF_ROLES))
+    current_user: dict = Depends(require_roles(_ADMIN_ONLY_ROLES))
 ):
-    """Get behavior report with statistics"""
+    """Get behavior report with statistics.
+
+    SECURITY: Restricted to admin roles only. The behavior report exposes
+    student names, behavior notes, and class IDs for recent incidents across
+    the whole school and must not be accessible to teachers, students, or parents.
+    """
     school_id = current_user.get("tenant_id") or current_user.get("primary_tenant_id") or current_user.get("school_id")
     if not school_id:
         return {
@@ -289,9 +299,14 @@ async def get_school_behavior_report(
 
 @router.get("/reports/school/top-classes")
 async def get_top_performing_classes(
-    current_user: dict = Depends(require_roles(_STAFF_ROLES))
+    current_user: dict = Depends(require_roles(_ADMIN_ONLY_ROLES))
 ):
-    """Get top performing classes based on attendance and behavior"""
+    """Get top performing classes based on attendance and behavior.
+
+    SECURITY: Restricted to admin roles only. This report aggregates
+    school-wide attendance and behavior data across all classes and must
+    not be accessible to teachers, students, or parents.
+    """
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")

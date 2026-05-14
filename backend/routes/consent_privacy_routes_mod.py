@@ -56,13 +56,50 @@ class DataDeletionRequest(BaseModel):
     confirmation: bool = False
 
 
+_ADMIN_ROLES = frozenset({
+    "platform_admin", "school_principal", "school_admin", "school_sub_admin"
+})
+
+
+def _is_consent_admin(current_user: dict) -> bool:
+    return current_user.get("role", "") in _ADMIN_ROLES
+
+
 @router.post("/consent/record")
 async def record_consent(
     data: ConsentRecordCreate,
     current_user: dict = Depends(get_current_user)
 ):
-    """Record a user's consent decision"""
+    """Record a user's consent decision.
+
+    SECURITY: A caller may record consent only for themselves or, if they
+    are a parent/guardian, for a student linked to their account.  Admin
+    roles (principal, school_admin, sub_admin, platform_admin) may record
+    on behalf of any user in their tenant.
+    """
+    from engines.sql_utils import gd_find_one as _gd1
     school_id = current_user.get("tenant_id")
+    caller_id = current_user["id"]
+    role = current_user.get("role", "")
+
+    target_user_id = data.user_id
+    target_student_id = data.student_id
+
+    if not _is_consent_admin(current_user):
+        if target_user_id and target_user_id != caller_id:
+            raise HTTPException(status_code=403, detail="لا يمكنك تسجيل موافقة لمستخدم آخر")
+        if target_student_id:
+            if role == "parent":
+                parent = await _gd1(db.session, "parents", {"user_id": caller_id})
+                linked = parent and target_student_id in (parent.get("student_ids") or [])
+                if not linked:
+                    link = await _gd1(db.session, "guardian_links", {"parent_user_id": caller_id, "student_id": target_student_id})
+                    linked = bool(link)
+                if not linked:
+                    raise HTTPException(status_code=403, detail="لا يمكنك تسجيل موافقة لطالب غير مرتبط بحسابك")
+            else:
+                raise HTTPException(status_code=403, detail="غير مصرح")
+
     consent_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
 
@@ -97,7 +134,13 @@ async def get_user_consents(
     consent_type: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get all consent records for a user"""
+    """Get all consent records for a user.
+
+    SECURITY: Callers may only view their own consent records.  Admin
+    roles may view any user's records within their tenant.
+    """
+    if not _is_consent_admin(current_user) and current_user["id"] != user_id:
+        raise HTTPException(status_code=403, detail="لا يمكنك عرض سجلات موافقة مستخدم آخر")
     school_id = current_user.get("tenant_id")
     query = {"tenant_id": school_id, "target_user": user_id}
     if consent_type:
@@ -119,7 +162,15 @@ async def get_student_consents(
     student_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get all consent records for a student (given by parent/guardian)"""
+    """Get all consent records for a student (given by parent/guardian).
+
+    SECURITY: Only the student's guardians or admin roles may view a
+    student's consent records.  Any other caller receives 403.
+    """
+    if not _is_consent_admin(current_user):
+        from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+        allowed = await can_view_student(db.session, current_user, student_id)
+        require_can_view_student_sync_check(allowed)
     school_id = current_user.get("tenant_id")
     records = await gd_find(db.session, "consent_records", {"tenant_id": school_id, "student_id": student_id}, order_by="created_at", desc_order=True, limit=100)
 
@@ -131,7 +182,13 @@ async def withdraw_consent(
     data: dict = Body(...),
     current_user: dict = Depends(get_current_user)
 ):
-    """Withdraw a previously granted consent"""
+    """Withdraw a previously granted consent.
+
+    SECURITY: A caller may only withdraw consent records that belong to
+    them (target_user == caller) or, if they are a guardian, to a
+    student linked to their account.  Admin roles may withdraw any record
+    in their tenant.
+    """
     school_id = current_user.get("tenant_id")
     consent_id = data.get("consent_id")
     reason = data.get("reason", "")
@@ -139,6 +196,27 @@ async def withdraw_consent(
     consent = await gd_find_one(db.session, "consent_records", {"id": consent_id, "tenant_id": school_id})
     if not consent:
         raise HTTPException(status_code=404, detail="سجل الموافقة غير موجود")
+
+    if not _is_consent_admin(current_user):
+        caller_id = current_user["id"]
+        record_target = consent.get("target_user")
+        record_student = consent.get("student_id")
+        if record_target and record_target == caller_id:
+            pass
+        elif record_student:
+            role = current_user.get("role", "")
+            if role == "parent":
+                parent = await gd_find_one(db.session, "parents", {"user_id": caller_id})
+                linked = parent and record_student in (parent.get("student_ids") or [])
+                if not linked:
+                    link = await gd_find_one(db.session, "guardian_links", {"parent_user_id": caller_id, "student_id": record_student})
+                    linked = bool(link)
+                if not linked:
+                    raise HTTPException(status_code=403, detail="لا يمكنك سحب موافقة لطالب غير مرتبط بحسابك")
+            else:
+                raise HTTPException(status_code=403, detail="غير مصرح")
+        else:
+            raise HTTPException(status_code=403, detail="غير مصرح")
 
     now = datetime.now(timezone.utc).isoformat()
 
@@ -169,7 +247,13 @@ async def check_consent(
     consent_type: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Check if a specific consent is active for a user"""
+    """Check if a specific consent is active for a user.
+
+    SECURITY: Callers may only check their own consent status.  Admin
+    roles may check any user's status within their tenant.
+    """
+    if not _is_consent_admin(current_user) and current_user["id"] != user_id:
+        raise HTTPException(status_code=403, detail="لا يمكنك الاستعلام عن حالة موافقة مستخدم آخر")
     school_id = current_user.get("tenant_id")
 
     latest = await gd_find_one(db.session, "consent_records", {"tenant_id": school_id, "target_user": user_id, "consent_type": consent_type},

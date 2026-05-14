@@ -206,7 +206,16 @@ async def get_student_guardians(
     include_inactive: bool = False,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get all guardians linked to a student"""
+    """Get all guardians linked to a student.
+
+    SECURITY: Guardian data is sensitive family information. The caller
+    must be the student themselves, one of the student's own guardians, a
+    teacher assigned to the student's class, or a school admin. Same-tenant
+    membership alone is not sufficient.
+    """
+    from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+    allowed = await can_view_student(db.session, current_user, student_id)
+    require_can_view_student_sync_check(allowed)
     school_id = current_user.get("tenant_id")
     query = {"tenant_id": school_id, "student_id": student_id}
     if not include_inactive:
@@ -221,7 +230,18 @@ async def get_parent_children(
     parent_ref: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get all children linked to a parent/guardian"""
+    """Get all children linked to a parent/guardian.
+
+    SECURITY: A caller may only see their own children list (parent_ref
+    matches their user id) or must be a school admin / platform admin.
+    Any other caller receives 403.
+    """
+    role = current_user.get("role", "")
+    _admin_roles = frozenset({"platform_admin", "school_principal", "school_admin", "school_sub_admin"})
+    if role not in _admin_roles:
+        caller_id = current_user.get("id", "")
+        if caller_id != parent_ref:
+            raise HTTPException(status_code=403, detail="لا يمكنك عرض بيانات أولياء أمور آخرين")
     school_id = current_user.get("tenant_id")
     links = await gd_find(db.session, "guardian_links", {"tenant_id": school_id, "parent_ref": parent_ref, "is_active": True}, limit=20)
 
@@ -295,12 +315,26 @@ async def get_relationship_graph(
     entity_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get relationship graph for any entity (student, teacher, parent)"""
+    """Get relationship graph for any entity (student, teacher, parent).
+
+    SECURITY: The student graph exposes family structure, guardian names,
+    sibling records, and class context. For student entities the caller must
+    be authorized to view that student (self / guardian / assigned teacher /
+    admin). For teacher and parent entities the caller must be the entity
+    themselves or an admin.
+    """
+    role = current_user.get("role", "")
+    _admin_roles = frozenset({"platform_admin", "school_principal", "school_admin", "school_sub_admin"})
+    caller_id = current_user.get("id", "")
     school_id = current_user.get("tenant_id")
 
     student = await gd_find_one(db.session, "students", {"id": entity_id, "school_id": school_id})
 
     if student:
+        from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+        allowed = await can_view_student(db.session, current_user, entity_id)
+        require_can_view_student_sync_check(allowed)
+
         guardians = await gd_find(db.session, "guardian_links", {"tenant_id": school_id, "student_id": entity_id, "is_active": True}, limit=10)
 
         teacher_assignments_raw = await gd_find(db.session, "teacher_assignments", {"school_id": school_id, "class_id": student.get("class_id"), "is_active": True}, limit=20)
@@ -357,6 +391,11 @@ async def get_relationship_graph(
     teacher = await gd_find_one(db.session, "users", {"id": entity_id, "tenant_id": school_id, "role": "teacher"})
 
     if teacher:
+        # SECURITY: a caller may view a teacher's relationship graph only
+        # if they are that teacher themselves or a school/platform admin.
+        if role not in _admin_roles and caller_id != entity_id:
+            raise HTTPException(status_code=403, detail="لا يمكنك عرض بيانات معلم آخر")
+
         teacher_record_id = teacher.get("teacher_id") or entity_id
         teacher_rec = await gd_find_one(db.session, "teachers", {"$or": [{"id": entity_id}, {"user_id": entity_id}, {"id": teacher_record_id}], "school_id": school_id})
         lookup_id = teacher_rec["id"] if teacher_rec else teacher_record_id
@@ -400,6 +439,13 @@ async def get_relationship_graph(
         parent_query["tenant_id"] = school_id
     parent = await gd_find_one(db.session, "users", parent_query)
     if parent:
+        # SECURITY: a caller may view a parent's relationship graph only
+        # if they are that parent themselves or a school/platform admin.
+        # This prevents same-tenant users from enumerating other families'
+        # children via the graph endpoint.
+        if role not in _admin_roles and caller_id != entity_id:
+            raise HTTPException(status_code=403, detail="لا يمكنك عرض بيانات ولي أمر آخر")
+
         link_query = {"parent_ref": entity_id, "is_active": True}
         if school_id:
             link_query["tenant_id"] = school_id
@@ -429,7 +475,15 @@ async def get_siblings(
     student_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get siblings of a student (shared parents)"""
+    """Get siblings of a student (shared parents).
+
+    SECURITY: Sibling data reveals family structure for other children.
+    The caller must have a legitimate relationship to the target student
+    (self / guardian / assigned teacher / admin).
+    """
+    from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+    allowed = await can_view_student(db.session, current_user, student_id)
+    require_can_view_student_sync_check(allowed)
     school_id = current_user.get("tenant_id")
 
     links = await gd_find(db.session, "guardian_links", {"tenant_id": school_id, "student_id": student_id, "is_active": True}, limit=10)
