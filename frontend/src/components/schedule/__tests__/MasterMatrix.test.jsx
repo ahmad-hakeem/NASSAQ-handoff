@@ -171,6 +171,50 @@ describe('MasterMatrix — daily vs weekly layout (Task #142)', () => {
   });
 });
 
+describe('MasterMatrix — row-height contract (first-row alignment regression)', () => {
+  // Regression: the first visible teacher row used to render its lesson
+  // cells with a fixed `height: 88px` while the sticky teacher cell used
+  // `minHeight: 88px`. Whenever the teacher card grew (absence buttons,
+  // long subject text), the grid track stretched but the lesson cells
+  // stayed anchored to 88px at the top of the track — visually shorter
+  // than the next teacher row and clipping the teacher name on the
+  // sticky column. Both cells must now share `minHeight: ROW_HEIGHT`
+  // and rely on CSS grid `align-items: stretch` to stay in lockstep.
+  test('teacher cell and lesson cells in the same row share a single minHeight contract (no fixed height)', () => {
+    renderMatrix({ viewMode: 'weekly' });
+    const teacherCell = screen.getByTestId('master-matrix-teacher-t-1');
+    const lessonCell = screen.getByTestId('master-matrix-cell-t-1-sunday-1');
+
+    // Teacher column uses minHeight, never an explicit height.
+    expect(teacherCell.style.minHeight).toBe('88px');
+    expect(teacherCell.style.height).toBe('');
+
+    // Lesson cells must mirror that contract — minHeight, no fixed
+    // height. A fixed height would re-introduce the first-row drift
+    // bug because the cell would refuse to stretch when the teacher
+    // card grows the row track.
+    expect(lessonCell.style.minHeight).toBe('88px');
+    expect(lessonCell.style.height).toBe('');
+  });
+
+  test('every lesson cell across every teacher row uses the same row-height contract', () => {
+    renderMatrix({ viewMode: 'weekly' });
+    // Sweep all teacher rows so a future regression on row 1 only
+    // (the original bug shape) can never reappear silently.
+    for (const teacher of TEACHERS) {
+      for (const day of DAYS) {
+        for (const p of PERIODS) {
+          const cell = screen.getByTestId(
+            `master-matrix-cell-${teacher.id}-${day}-${p}`,
+          );
+          expect(cell.style.minHeight).toBe('88px');
+          expect(cell.style.height).toBe('');
+        }
+      }
+    }
+  });
+});
+
 describe('MasterMatrix — cell interactions (Task #142)', () => {
   test('clicking a filled session cell opens the read-only SessionDetailModal', () => {
     renderMatrix({ viewMode: 'weekly' });

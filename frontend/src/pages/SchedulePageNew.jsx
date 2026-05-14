@@ -2702,9 +2702,20 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                 return (
                   <div
                     key={`${teacher.id}-${dayKey}-${p}`}
+                    data-testid={`master-matrix-cell-${teacher.id}-${dayKey}-${p}`}
                     className={`min-w-0 border-b border-l border-slate-100 p-0.5 ${conflictBg} ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
                     style={{
-                      height: ROW_HEIGHT,
+                      // Single row-height contract: the teacher (first column)
+                      // cell uses `minHeight: ROW_HEIGHT` so absence buttons /
+                      // long subject text can grow the track. Lesson cells
+                      // share the same minHeight and rely on CSS grid's
+                      // default `align-items: stretch` to match the actual
+                      // track height. Using a fixed `height` here would cap
+                      // the lesson cell at 88px even when the teacher cell
+                      // pushes the row taller, which manifests as the first
+                      // visible row appearing shorter than the row below
+                      // and the teacher name being vertically clipped.
+                      minHeight: ROW_HEIGHT,
                       ...(subjectBarColor ? {
                         borderInlineStartWidth: '3px',
                         borderInlineStartStyle: 'solid',
