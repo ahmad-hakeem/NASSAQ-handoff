@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 
 import { useTranslation } from '../../contexts/ThemeContext';
+import { filterGradesByStage, gradeBelongsToStage } from '../../utils/stageGrade';
 const STEPS = [
   { id: 1, title_ar: 'بيانات الطالب', title_en: 'Student Info', icon: GraduationCap, color: 'blue' },
   { id: 2, title_ar: 'ولي الأمر', title_en: 'Parent', icon: Users, color: 'green' },
@@ -564,7 +565,12 @@ export default function AddStudentWizard({
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <FormField label={t('educationLevel')} required>
-                    <Select value={studentData.education_level} onValueChange={(val) => setStudentData({...studentData, education_level: val})} disabled={lockEducation}>
+                    <Select value={studentData.education_level} onValueChange={(val) => setStudentData(prev => {
+                      // Preserve grade only when it still belongs to the new stage; otherwise clear it.
+                      const currentGrade = grades.find(g => g.id === prev.grade_id);
+                      const keepGrade = currentGrade && gradeBelongsToStage(currentGrade, val);
+                      return { ...prev, education_level: val, grade_id: keepGrade ? prev.grade_id : '' };
+                    })} disabled={lockEducation}>
                       <SelectTrigger className="h-10 rounded-lg"><SelectValue placeholder={t('selectLevel')} /></SelectTrigger>
                       <SelectContent>
                         {EDUCATION_LEVELS.map(level => (<SelectItem key={level.id} value={level.id}>{isRTL ? level.name_ar : level.name_en}</SelectItem>))}
@@ -573,18 +579,38 @@ export default function AddStudentWizard({
                   </FormField>
 
                   <FormField label={t('grade')} required>
-                    <Select value={studentData.grade_id} onValueChange={(val) => setStudentData({...studentData, grade_id: val})} disabled={lockGrade}>
-                      <SelectTrigger className="h-10 rounded-lg"><SelectValue placeholder={t('selectGrade')} /></SelectTrigger>
-                      <SelectContent>
-                        {grades.length > 0 ? (
-                          grades.map(grade => (<SelectItem key={grade.id} value={grade.id}>{isRTL ? (grade.name_ar || grade.name) : (grade.name_en || grade.name)}</SelectItem>))
-                        ) : (
-                          <div className="px-2 py-3 text-xs text-muted-foreground text-center">
-                            {isRTL ? 'لا توجد صفوف متاحة — يُرجى إضافتها من الإعدادات' : 'No grades available — add from settings first'}
-                          </div>
-                        )}
-                      </SelectContent>
-                    </Select>
+                    {(() => {
+                      const stageFiltered = filterGradesByStage(grades, studentData.education_level);
+                      const stageSelected = Boolean(studentData.education_level);
+                      return (
+                        <Select
+                          value={studentData.grade_id}
+                          onValueChange={(val) => setStudentData({ ...studentData, grade_id: val })}
+                          disabled={lockGrade || !stageSelected}
+                        >
+                          <SelectTrigger className="h-10 rounded-lg">
+                            <SelectValue placeholder={!stageSelected ? (isRTL ? 'اختر المرحلة أولاً' : 'Select stage first') : t('selectGrade')} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {!stageSelected ? (
+                              <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                                {isRTL ? 'اختر المرحلة التعليمية أولاً' : 'Select an educational stage first'}
+                              </div>
+                            ) : stageFiltered.length > 0 ? (
+                              stageFiltered.map(grade => (
+                                <SelectItem key={grade.id} value={grade.id}>
+                                  {isRTL ? (grade.name_ar || grade.name) : (grade.name_en || grade.name)}
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                                {isRTL ? 'لا توجد صفوف لهذه المرحلة — يُرجى إضافتها من الإعدادات' : 'No grades for this stage — add from settings first'}
+                              </div>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      );
+                    })()}
                   </FormField>
 
                   <FormField label={t('class')}>

@@ -24,6 +24,9 @@ class CreateClassRequest(BaseModel):
     name_ar: str = Field(..., min_length=1)
     name_en: Optional[str] = None
     grade_id: str
+    # Optional canonical stage token (primary|middle|high or Arabic name).
+    # When supplied, the backend enforces stage↔grade consistency.
+    stage: Optional[str] = None
     class_type: ClassType = ClassType.regular
     capacity: int = Field(default=30, ge=1, le=50)
     homeroom_teacher_id: Optional[str] = None
@@ -56,6 +59,16 @@ def create_class_management_routes(db, get_current_user):
 
         # v1 IT workspace quota (Phase 0 §4.B-5).
         await enforce_class_quota(db.session, current_user)
+
+        # Stage/grade hierarchy enforcement (matches student creation).
+        # Stage is optional on this surface for back-compat; when sent the
+        # backend rejects mismatched grade ids with a safe Arabic message.
+        from utils.stage_grade import validate_stage_grade_pair
+        await validate_stage_grade_pair(
+            db.session, tenant_id,
+            request.stage, request.grade_id,
+            require_stage=False,
+        )
 
         from engines.class_management_engine import CreateClassRequest as EngineRequest, ClassType as EngineClassType
 

@@ -23,6 +23,7 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog';
 import { toast } from 'sonner';
+import { EDUCATION_STAGES, filterGradesByStage, gradeBelongsToStage, normalizeStage, availableStagesFromGrades } from '../../utils/stageGrade';
 import {
   ArrowLeft,
   ArrowRight,
@@ -166,7 +167,12 @@ export const CreateClassWizard = ({ open, onOpenChange, onSuccess }) => {
     const newErrors = {};
     if (step === 1) {
       if (!data.name_ar?.trim()) newErrors.name_ar = t('required');
+      if (!data.stage) newErrors.stage = t('required');
       if (!data.grade_id) newErrors.grade_id = t('required');
+      if (data.stage && data.grade_id) {
+        const g = (options.grades || []).find(x => x.id === data.grade_id);
+        if (g && !gradeBelongsToStage(g, data.stage)) newErrors.grade_id = isRTL ? 'الصف لا ينتمي للمرحلة المختارة' : 'Grade does not belong to selected stage';
+      }
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -271,13 +277,56 @@ export const CreateClassWizard = ({ open, onOpenChange, onSuccess }) => {
                   <FormField label={t('classNameEnglish')}>
                     <Input value={data.name_en || ''} onChange={(e) => onChange('name_en', e.target.value)} dir="ltr" className="h-10 rounded-lg" data-testid="class-name-en" />
                   </FormField>
+                  <FormField label={isRTL ? 'المرحلة التعليمية' : 'Educational Stage'} required error={errors.stage}>
+                    {(() => {
+                      const stagesWithRows = availableStagesFromGrades(options.grades);
+                      const stageList = stagesWithRows.length > 0 ? stagesWithRows : EDUCATION_STAGES;
+                      return (
+                        <Select
+                          value={data.stage || ''}
+                          onValueChange={(val) => setData(prev => {
+                            const currentGrade = (options.grades || []).find(g => g.id === prev.grade_id);
+                            const keepGrade = currentGrade && gradeBelongsToStage(currentGrade, val);
+                            return { ...prev, stage: val, grade_id: keepGrade ? prev.grade_id : '' };
+                          })}
+                        >
+                          <SelectTrigger className={`h-10 rounded-lg ${errors.stage ? 'border-red-500' : ''}`} data-testid="class-stage">
+                            <SelectValue placeholder={isRTL ? 'اختر المرحلة' : 'Select Stage'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {stageList.map((s) => (
+                              <SelectItem key={s.id} value={s.id}>{isRTL ? s.name_ar : s.name_en}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      );
+                    })()}
+                  </FormField>
                   <FormField label={t('grade2')} required error={errors.grade_id}>
-                    <Select value={data.grade_id || ''} onValueChange={(val) => onChange('grade_id', val)}>
-                      <SelectTrigger className={`h-10 rounded-lg ${errors.grade_id ? 'border-red-500' : ''}`} data-testid="class-grade"><SelectValue placeholder={isRTL ? 'اختر الصف' : 'Select Grade'} /></SelectTrigger>
-                      <SelectContent>
-                        {options.grades?.map((g) => (<SelectItem key={g.id} value={g.id}>{isRTL ? g.name_ar : g.name_en}</SelectItem>))}
-                      </SelectContent>
-                    </Select>
+                    {(() => {
+                      const stageSelected = Boolean(data.stage);
+                      const filtered = filterGradesByStage(options.grades, data.stage);
+                      return (
+                        <Select value={data.grade_id || ''} onValueChange={(val) => onChange('grade_id', val)} disabled={!stageSelected}>
+                          <SelectTrigger className={`h-10 rounded-lg ${errors.grade_id ? 'border-red-500' : ''}`} data-testid="class-grade">
+                            <SelectValue placeholder={!stageSelected ? (isRTL ? 'اختر المرحلة أولاً' : 'Select stage first') : (isRTL ? 'اختر الصف' : 'Select Grade')} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {!stageSelected ? (
+                              <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                                {isRTL ? 'اختر المرحلة التعليمية أولاً' : 'Select an educational stage first'}
+                              </div>
+                            ) : filtered.length > 0 ? (
+                              filtered.map((g) => (<SelectItem key={g.id} value={g.id}>{isRTL ? g.name_ar : g.name_en}</SelectItem>))
+                            ) : (
+                              <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                                {isRTL ? 'لا توجد صفوف لهذه المرحلة' : 'No grades for this stage'}
+                              </div>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      );
+                    })()}
                   </FormField>
                   <FormField label={t('classType')}>
                     <Select value={data.class_type || 'regular'} onValueChange={(val) => onChange('class_type', val)}>

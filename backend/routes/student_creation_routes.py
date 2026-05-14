@@ -317,6 +317,17 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         # Phase 0 §4.B-5 — IT v1 student quota.
         await enforce_student_quota(db.session, current_user)
 
+        # Stage/grade hierarchy enforcement — fail-closed validation that
+        # the submitted grade_id belongs to the submitted education_level
+        # under the resolved tenant. The frontend cascades the dropdown
+        # for UX, but the real boundary lives here.
+        from utils.stage_grade import validate_stage_grade_pair
+        await validate_stage_grade_pair(
+            db.session, school_id,
+            request.education_level, request.grade_id,
+            require_stage=True,
+        )
+
         # Workspace-mode (IT) accepts a fully-optional parent payload
         # (spec §5.6). For school-admin callers the pre-existing contract
         # still requires a parent record (with at least a phone) so the
