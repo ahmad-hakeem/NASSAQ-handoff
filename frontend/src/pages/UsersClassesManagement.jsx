@@ -936,20 +936,36 @@ export default function UsersClassesManagement() {
     try {
       const headers = {};
       if (isImpersonating && schoolContext?.school_id) headers['X-School-Context'] = schoolContext.school_id;
-      const [studentsRes, teachersRes, classesRes, gradesRes, parentsRes] = await Promise.all([
-        api.get('/students', { headers }).catch(() => ({ data: [] })),
-        api.get('/teachers', { headers }).catch(() => ({ data: [] })),
-        api.get('/classes', { headers }).catch(() => ({ data: [] })),
-        api.get('/reference/grades', { headers }).catch(() => ({ data: [] })),
-        api.get('/parents', { headers }).catch(() => ({ data: [] })),
-      ]);
-      setStudents(Array.isArray(studentsRes.data) ? studentsRes.data : []);
-      setTeachers(Array.isArray(teachersRes.data) ? teachersRes.data : []);
-      setClasses(Array.isArray(classesRes.data) ? classesRes.data : []);
-      setGrades(Array.isArray(gradesRes.data) ? gradesRes.data : []);
-      setParents(Array.isArray(parentsRes.data) ? parentsRes.data : []);
+      const endpoints = [
+        { key: 'students', url: '/students' },
+        { key: 'teachers', url: '/teachers' },
+        { key: 'classes', url: '/classes' },
+        { key: 'grades', url: '/reference/grades' },
+        { key: 'parents', url: '/parents' },
+      ];
+      const results = await Promise.allSettled(
+        endpoints.map(e => api.get(e.url, { headers }))
+      );
+      const failed = [];
+      const dataByKey = {};
+      results.forEach((r, i) => {
+        const key = endpoints[i].key;
+        if (r.status === 'fulfilled') {
+          dataByKey[key] = Array.isArray(r.value.data) ? r.value.data : [];
+        } else {
+          dataByKey[key] = [];
+          failed.push(endpoints[i].url);
+        }
+      });
+      setStudents(dataByKey.students);
+      setTeachers(dataByKey.teachers);
+      setClasses(dataByKey.classes);
+      setGrades(dataByKey.grades);
+      setParents(dataByKey.parents);
+      if (failed.length > 0) {
+        nassaqError(t('errorLoadingData'));
+      }
     } catch (error) {
-      console.error('Error fetching data:', error);
       nassaqError(t('errorLoadingData'));
     } finally {
       setLoading(false);

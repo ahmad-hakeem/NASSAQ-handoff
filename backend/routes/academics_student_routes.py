@@ -129,14 +129,21 @@ async def get_students(
     class_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get all students or filter by school/class"""
+    """Get all students or filter by school/class.
+
+    Task #335: fail-closed school-id resolution. Non-platform callers
+    must resolve a concrete tenant via `require_request_school_id`
+    (covers school roles AND independent-teacher synthetic workspaces);
+    a token without a tenant raises 403 instead of silently degrading
+    into an unscoped or empty query.
+    """
     query = {"is_active": {"$ne": False}}
     if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
         if school_id:
             query["school_id"] = school_id
     else:
-        query["school_id"] = current_user.get("tenant_id")
-    
+        query["school_id"] = require_request_school_id(current_user)
+
     if class_id:
         query["class_id"] = class_id
     
@@ -663,21 +670,72 @@ async def check_parent_exists(
 async def get_parents(
     current_user: dict = Depends(get_current_user)
 ):
-    school_id = current_user.get("tenant_id")
-    query = {"status": {"$ne": "closed"}}
+    """List parents in the caller's tenant.
+
+    Task #335: fail-closed school-id resolution for non-platform callers
+    (mirrors `/students`). Platform-admin callers are scoped to
+    `current_user.tenant_id` when present and otherwise see all tenants
+    (legacy admin-console behavior); every other role resolves a
+    concrete tenant via `require_request_school_id` and a token without
+    a tenant raises 403 instead of silently returning every tenant's
+    parents (or nothing).
+    """
+    if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
+        school_id = current_user.get("tenant_id")
+    else:
+        school_id = require_request_school_id(current_user)
+    query: Dict[str, Any] = {"status": {"$ne": "closed"}}
     if school_id:
         query["school_id"] = school_id
     parents = await gd_find(db.session, "parents", query, limit=1000)
+
+    # Deterministic children aggregation: combine the two link sources
+    # (`parents.student_ids` array and `students.parent_id` back-reference)
+    # so the per-parent children count cannot silently collapse to 0 when
+    # only one of the two is populated (e.g. legacy rows, partial Noor
+    # imports, or parent rows created before guardian linkage).
+    parent_ids = [p.get("id") for p in parents if p.get("id")]
+    back_ref_map: Dict[str, list] = {}
+    if parent_ids:
+        back_query: Dict[str, Any] = {"parent_id": {"$in": parent_ids}}
+        if school_id:
+            back_query["school_id"] = school_id
+        # Narrow to the specific failure mode the back-ref guards against
+        # (legacy DBs missing `students.parent_id`). Any other failure
+        # propagates so callers see a real 5xx instead of a partial,
+        # silently-degraded children list.
+        from sqlalchemy.exc import ProgrammingError as _SAProgrammingError
+        try:
+            back_students = await gd_find(db.session, "students", back_query, limit=5000)
+        except _SAProgrammingError as _back_err:
+            logger.warning(f"parents back-ref skipped (schema): {_back_err}")
+            back_students = []
+        for s in back_students:
+            pid = s.get("parent_id")
+            if not pid:
+                continue
+            back_ref_map.setdefault(pid, []).append(s)
+
     result = []
     for p in parents:
-        student_ids = p.get("student_ids", [])
-        children = []
+        student_ids = list(p.get("student_ids") or [])
+        children: List[Dict[str, Any]] = []
+        seen_ids = set()
         if student_ids:
-            child_query = {"id": {"$in": student_ids}}
+            child_query: Dict[str, Any] = {"id": {"$in": student_ids}}
             if school_id:
                 child_query["school_id"] = school_id
             students_docs = await gd_find(db.session, "students", child_query, limit=50)
-            children = [{"id": s.get("id"), "name": s.get("full_name") or s.get("full_name_ar")} for s in students_docs]
+            for s in students_docs:
+                sid = s.get("id")
+                if sid and sid not in seen_ids:
+                    seen_ids.add(sid)
+                    children.append({"id": sid, "name": s.get("full_name") or s.get("full_name_ar")})
+        for s in back_ref_map.get(p.get("id"), []):
+            sid = s.get("id")
+            if sid and sid not in seen_ids:
+                seen_ids.add(sid)
+                children.append({"id": sid, "name": s.get("full_name") or s.get("full_name_ar")})
         p["children"] = children
         p["children_count"] = len(children)
         if not p.get("full_name") and p.get("full_name_ar"):
