@@ -294,6 +294,58 @@ describe('Task #338 — /auth/change-password MFA step-up interceptor', () => {
     unmount();
   });
 
+  test('Task #351: 403 + MFA_RESTORE_REQUIRED rejects to caller WITHOUT opening step-up handler or navigating', async () => {
+    // The recovery-code session state cannot be satisfied by the step-up
+    // modal — only re-enrolling a primary factor can. The interceptor
+    // must NOT call the registered handler for this code; it must reject
+    // with the original error so AccountSettingsPage can route the user
+    // to the MFA Security section. The defense-in-depth branch still
+    // protects against the bare-401 logout fallback.
+    const { captured, unmount } = mountAndCaptureApi();
+    await waitFor(() => expect(captured.api).not.toBeNull());
+
+    const handler = jest.fn();
+    const unregister = registerMfaStepUpHandler(handler);
+
+    captured.api.defaults.adapter = (config) =>
+      Promise.reject({
+        config,
+        response: mockResponse({
+          status: 403,
+          data: {
+            detail: {
+              code: 'MFA_RESTORE_REQUIRED',
+              message:
+                'تم استخدام رمز استرداد. يجب إعادة تسجيل عامل تحقق (مفتاح أمان أو تطبيق مصادقة) قبل المتابعة',
+            },
+          },
+        }),
+        message: 'Request failed with status code 403',
+        isAxiosError: true,
+      });
+
+    let caught = null;
+    try {
+      await captured.api.post('/auth/change-password', {
+        current_password: 'Old@1234!',
+        new_password: 'New@12345!',
+      });
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(caught).not.toBeNull();
+    expect(caught.response.status).toBe(403);
+    expect(caught.response.data.detail.code).toBe('MFA_RESTORE_REQUIRED');
+    // Critical: the step-up handler MUST NOT be invoked for this code.
+    expect(handler).not.toHaveBeenCalled();
+    // No /login redirect either.
+    expect(window.location.href).toBe('http://localhost/account-settings');
+
+    unregister();
+    unmount();
+  });
+
   test('400 + Arabic detail rejects to the caller without step-up and without navigation', async () => {
     const { captured, unmount } = mountAndCaptureApi();
     await waitFor(() => expect(captured.api).not.toBeNull());

@@ -251,11 +251,25 @@ export const AuthProvider = ({ children }) => {
       // Task #199: sensitive-action surfaces (e.g. IT Invite Parent)
       // return 403 + canonical step-up payload instead of 401, so the
       // step-up modal can drive a Tier-A re-auth from a non-auth
-      // context. Both status codes funnel through the same replay,
-      // and we honour every canonical step-up code (passkey/restore
-      // included) so Tier-A users never get a generic toast when the
-      // server is asking for a specific factor.
+      // context. Both status codes funnel through the same replay.
+      //
+      // Task #351: MFA_RESTORE_REQUIRED is intentionally NOT in this
+      // auto-replay set. That code is only emitted when a Tier-A user
+      // signed in with a recovery code and `mfa_must_restore_factor`
+      // is true on the user row. The step-up dialog cannot satisfy it
+      // — only enrolling a fresh primary factor (passkey / TOTP) can
+      // — so opening the modal would either fail outright or loop. We
+      // reject with the original error and let the calling component
+      // (e.g. AccountSettingsPage handleChangePassword) detect the code
+      // and route the user to the MFA Security section instead. The
+      // canonical envelope is still recognised by the defense-in-depth
+      // re-rejection block below, so we never fall through to the
+      // bare-401 hard-logout path.
       const mfaStepUpCodes = new Set([
+        'MFA_STEPUP_REQUIRED',
+        'MFA_PASSKEY_REQUIRED',
+      ]);
+      const mfaCanonicalCodes = new Set([
         'MFA_STEPUP_REQUIRED',
         'MFA_PASSKEY_REQUIRED',
         'MFA_RESTORE_REQUIRED',
@@ -293,7 +307,7 @@ export const AuthProvider = ({ children }) => {
       // error so the calling component's `catch` surfaces its own Arabic
       // form-level message. This keeps any future route that emits the
       // canonical envelope safe even if it does so as a 401.
-      if (mfaStepUpCodes.has(mfaCode)) {
+      if (mfaCanonicalCodes.has(mfaCode)) {
         return Promise.reject(error);
       }
 

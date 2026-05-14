@@ -1229,6 +1229,16 @@ async def change_password(
     # pattern documented for IT §5.7 surfaces in `docs/it-phase2-reference.md`
     # and `replit.md`. The MFA gate itself is unchanged — only the wire
     # status code differs, so this is not a security weakening.
+    #
+    # Task #351: when the gate refuses with `MFA_RESTORE_REQUIRED` (Tier-A
+    # user that signed in via a recovery code, `mfa_must_restore_factor`
+    # is True on the user row), the FE does NOT auto-replay via the
+    # step-up modal — that modal cannot satisfy this state. The FE
+    # routes the user into the MFA Security section to enroll a fresh
+    # primary factor (passkey / TOTP). The password hash MUST stay
+    # unchanged until the gate is satisfied; this dependency runs
+    # before any write below, so a refusal here can never produce a
+    # partial commit.
     current_user: dict = Depends(require_recent_mfa_403()),
 ):
     """

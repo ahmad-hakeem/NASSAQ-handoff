@@ -493,6 +493,122 @@ async def test_tier_a_must_restore_factor_blocks(client, tenant_a):
 
 
 @pytest.mark.asyncio
+async def test_change_password_restore_required_does_not_mutate_or_audit(
+    client, tenant_a,
+):
+    """Task #351 — when /auth/change-password refuses with
+    MFA_RESTORE_REQUIRED (recovery-code session, mfa_must_restore_factor
+    is true), the stored password hash MUST be unchanged AND no
+    `password_changed` audit row may be written. The dependency runs
+    before the route body, so this is a defense-in-depth assertion that
+    a future regression cannot silently let the write through.
+    """
+    from dependencies import verify_password as _verify
+    from engines.sql_utils import gd_update_one, gd_find as _gd_find
+    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    await _seed_webauthn_factor(user["id"])
+    await gd_update_one(
+        db.session, "users", {"id": user["id"]},
+        {"mfa_must_restore_factor": True},
+    )
+    now = int(datetime.now(timezone.utc).timestamp())
+    token = create_access_token({
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    }, mfa_recent_at=now)
+
+    r = await client.post(
+        "/auth/change-password",
+        json={"current_password": _PASS, "new_password": "BrandNew@123!"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 403, r.text
+    assert _err_code(r) == "MFA_RESTORE_REQUIRED"
+    # Envelope stability: a non-empty Arabic message MUST be present so
+    # the FE can render the re-enrollment dialog copy without falling
+    # back to a generic error string. The global exception handler wraps
+    # detail into `error.message` (and may also keep `error.detail`); we
+    # tolerate both shapes.
+    body = r.json() or {}
+    err = body.get("error") if isinstance(body.get("error"), dict) else {}
+    msg = err.get("message")
+    if not (isinstance(msg, str) and msg.strip()):
+        nested = err.get("detail") if isinstance(err.get("detail"), dict) else {}
+        msg = nested.get("message")
+    if not (isinstance(msg, str) and msg.strip()):
+        det = body.get("detail") if isinstance(body.get("detail"), dict) else {}
+        msg = det.get("message")
+    assert isinstance(msg, str) and msg.strip(), f"missing message in envelope: {body!r}"
+
+    # Hash unchanged — old password still verifies.
+    fresh = await gd_find_one(db.session, "users", {"id": user["id"]})
+    assert _verify(_PASS, fresh.get("password_hash") or "")
+
+    # No `password_changed` audit row was emitted for this user.
+    audit_rows = await _gd_find(
+        db.session,
+        "audit_logs",
+        {"target_id": user["id"], "action": "password_changed"},
+    ) or []
+    assert audit_rows == [], f"unexpected password_changed audit row(s): {audit_rows}"
+
+
+@pytest.mark.asyncio
+async def test_change_password_succeeds_after_restore_factor_cleared(
+    client, tenant_a,
+):
+    """Task #351 — end-to-end state transition: a user starts in the
+    recovery-code post-login state (`mfa_must_restore_factor=True`) and,
+    after the flag is cleared (the contract that re-enrollment must
+    satisfy), `/auth/change-password` succeeds and the password hash
+    actually rotates. This pins the contract the FE re-enrollment hand-
+    off depends on so a future change to `require_recent_mfa` cannot
+    silently keep the user locked out after they restore a factor.
+    """
+    from dependencies import verify_password as _verify
+    from engines.sql_utils import gd_update_one
+    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    await _seed_webauthn_factor(user["id"])
+    # Step 1 — recovery-code session state.
+    await gd_update_one(
+        db.session, "users", {"id": user["id"]},
+        {"mfa_must_restore_factor": True},
+    )
+    now = int(datetime.now(timezone.utc).timestamp())
+    token = create_access_token({
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    }, mfa_recent_at=now)
+
+    # Pre-condition: blocked.
+    r1 = await client.post(
+        "/auth/change-password",
+        json={"current_password": _PASS, "new_password": "BrandNew@123!"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r1.status_code == 403
+    assert _err_code(r1) == "MFA_RESTORE_REQUIRED"
+
+    # Step 2 — re-enrollment clears the flag (modeled directly; the route
+    # that performs the clear is out of this task's scope, but the
+    # contract under test is "once cleared, change-password works").
+    await gd_update_one(
+        db.session, "users", {"id": user["id"]},
+        {"mfa_must_restore_factor": False},
+    )
+
+    # Step 3 — change-password now succeeds and the hash rotates.
+    new_pw = "BrandNew@123!"
+    r2 = await client.post(
+        "/auth/change-password",
+        json={"current_password": _PASS, "new_password": new_pw},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r2.status_code == 200, r2.text
+    fresh = await gd_find_one(db.session, "users", {"id": user["id"]})
+    assert _verify(new_pw, fresh.get("password_hash") or "")
+    assert not _verify(_PASS, fresh.get("password_hash") or "")
+
+
+@pytest.mark.asyncio
 async def test_stepup_start_unenrolled_teacher_returns_409(client, tenant_a):
     """2026-05-13 — Tier B no longer has implicit email_otp. A teacher
     with no enrolled mfa_factors row must receive 409 from

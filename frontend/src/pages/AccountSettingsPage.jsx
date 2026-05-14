@@ -257,7 +257,7 @@ export const AccountSettingsPage = () => {
   const { t } = useTranslation();
   const { user, api, logout, refreshUser, updateToken } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark, language, setLanguage, theme, setTheme } = useTheme();
-  const { nassaqError, nassaqInfo, nassaqSuccess, nassaqConfirm } = useNassaqAlert();
+  const { nassaqError, nassaqInfo, nassaqSuccess, nassaqConfirm, showAlert } = useNassaqAlert();
   const { nassaqWarning } = useNassaqAlert();
   // §6.8 export + soft-delete local state. lastExportAt powers the
   // "exported X hours ago" chip (Hijri formatted) so the user can see
@@ -594,11 +594,51 @@ export const AccountSettingsPage = () => {
       // the error reaches us here — surface a clear Arabic message in
       // the form instead of bouncing to /login. The interceptor's
       // defense-in-depth branch guarantees no logout for step-up codes.
-      const detail = error.response?.data?.detail;
-      const message = (detail && typeof detail === 'object' && detail.message)
-        ? detail.message
-        : (typeof detail === 'string' ? detail : t('failedToChangePassword'));
-      nassaqError(message);
+      // Task #351 — accept BOTH envelope shapes the backend can emit:
+      //   1. Canonical wrapped: `{ success:false, error:{ code, message } }`
+      //      from `http_exception_handler` in backend/server.py.
+      //   2. Raw FastAPI: `{ detail: { code, message } }` (defense in depth
+      //      for any router that bypasses the global wrapper).
+      const data = error.response?.data || {};
+      const errEnv = (data.error && typeof data.error === 'object') ? data.error : null;
+      const detail = data.detail;
+      const code = errEnv?.code
+        || (detail && typeof detail === 'object' ? detail.code : null);
+      const envelopeMessage = errEnv?.message
+        || (errEnv?.detail && typeof errEnv.detail === 'object' ? errEnv.detail.message : null)
+        || (detail && typeof detail === 'object' ? detail.message : null)
+        || (typeof detail === 'string' ? detail : null);
+      // Task #351: MFA_RESTORE_REQUIRED means the user signed in with a
+      // recovery code and must re-enroll a real second factor before
+      // sensitive writes are allowed. The step-up modal cannot satisfy
+      // this state — only the MFA Security section can. Show a focused
+      // dialog that scrolls the user there instead of dumping the raw
+      // backend message into a generic error alert.
+      if (code === 'MFA_RESTORE_REQUIRED') {
+        showAlert({
+          type: 'warning',
+          title: 'يلزم إعادة تسجيل عامل تحقق',
+          message:
+            'لقد سجّلت الدخول باستخدام رمز استرداد. لتغيير كلمة المرور، يجب أولاً إعادة تسجيل عامل تحقق (مفتاح أمان أو تطبيق مصادقة) من قسم "التحقق بخطوتين" أدناه، ثم أعد المحاولة.',
+          confirmText: 'الذهاب إلى إعدادات التحقق',
+          cancelText: 'إلغاء',
+          showCancel: true,
+          onConfirm: () => {
+            try {
+              const el = document.querySelector('[data-testid="mfa-security-section"]');
+              if (el && typeof el.scrollIntoView === 'function') {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                el.classList.add('ring-2', 'ring-amber-400');
+                setTimeout(() => {
+                  el.classList.remove('ring-2', 'ring-amber-400');
+                }, 2400);
+              }
+            } catch (_e) { /* scroll best-effort */ }
+          },
+        });
+        return;
+      }
+      nassaqError(envelopeMessage || t('failedToChangePassword'));
     } finally {
       setSaving(false);
     }

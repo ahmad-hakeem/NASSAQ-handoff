@@ -142,12 +142,23 @@ export default function MfaSecuritySection({ onChange } = {}) {
     }
     setTotpBusy(true);
     setTotpError('');
+    // Capture pre-enrollment restore-required state so we can nudge the
+    // user back to Change Password (Task #351) once they've satisfied the
+    // re-enrollment requirement triggered by a recovery-code login.
+    const wasRestoreRequired = !!data?.mfa_must_restore_factor;
     try {
       await api.post('/auth/mfa/totp/enroll/confirm', { factor_id: totpEnroll.factor_id, code: totpCode.trim() });
       setTotpDialogOpen(false);
       setTotpEnroll(null);
       setTotpCode('');
       nassaqSuccess(lang === 'ar' ? 'تم تفعيل تطبيق المصادقة بنجاح.' : 'Authenticator app activated.');
+      if (wasRestoreRequired) {
+        nassaqWarning(
+          lang === 'ar'
+            ? 'تم استعادة عامل التحقق. يمكنك الآن إعادة محاولة تغيير كلمة المرور.'
+            : 'Factor restored. You can now retry changing your password.'
+        );
+      }
       refresh();
     } catch (err) {
       const msg = err?.response?.data?.error?.message || err?.response?.data?.detail || (lang === 'ar' ? 'الرمز غير صحيح.' : 'Invalid code.');
