@@ -110,11 +110,19 @@ class GenderType(str, Enum):
 
 
 class SchoolType(str, Enum):
-    """Types of schools"""
+    """Types of schools.
+
+    NOTE: ``SPECIAL_NEEDS`` was historically a duplicate UI option ("خاصة")
+    for the same business category as ``PRIVATE`` ("أهلية"). It has been
+    consolidated into ``PRIVATE``; deprecated incoming values
+    (``"special"`` / ``"special_needs"``) are normalized to ``"private"``
+    at the API boundary by ``utils.school_type.normalize_school_type``,
+    and existing rows are backfilled by Alembic migration
+    ``c4d5e6f7a8b9_consolidate_school_type_special_to_private``.
+    """
     PUBLIC = "public"              # حكومية
-    PRIVATE = "private"            # أهلية
+    PRIVATE = "private"            # أهلية (canonical for "خاصة" too)
     INTERNATIONAL = "international" # دولية
-    SPECIAL_NEEDS = "special_needs" # تعليم خاص
 
 
 # ============== PERMISSION MODELS ==============

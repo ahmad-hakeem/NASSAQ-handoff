@@ -120,13 +120,25 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="font-semibold text-slate-700">{t('schoolTypeLabel')}</Label>
-                  <Select value={editedSchoolInfo.type || ''} onValueChange={v => setEditedSchoolInfo(p => ({ ...p, type: v }))}>
+                  <Select
+                    value={(() => {
+                      // Defensive hydration: the deprecated "خاصة" option
+                      // (stored as "special" or "special_needs") was
+                      // consolidated into the canonical "أهلية" option.
+                      // Map any legacy stored value to the canonical
+                      // option so the select doesn't render blank for a
+                      // historical school during the rollout window.
+                      const v = editedSchoolInfo.type || '';
+                      if (v === 'special' || v === 'special_needs') return 'private';
+                      return v;
+                    })()}
+                    onValueChange={v => setEditedSchoolInfo(p => ({ ...p, type: v }))}
+                  >
                     <SelectTrigger className="h-11 border-slate-200" data-testid="school-type-select"><SelectValue placeholder={t('schoolTypePlaceholder')} /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="government">{t('schoolTypeGovernment')}</SelectItem>
                       <SelectItem value="private">{t('schoolTypePrivate')}</SelectItem>
                       <SelectItem value="international">{t('schoolTypeInternational')}</SelectItem>
-                      <SelectItem value="special">{t('schoolTypeSpecial')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

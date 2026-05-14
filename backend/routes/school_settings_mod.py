@@ -218,6 +218,15 @@ class SchoolInfoUpdate(BaseModel):
     principal_mobile: Optional[str] = None
     educational_pathway: Optional[str] = None
 
+    @field_validator("type", mode="before")
+    @classmethod
+    def _normalize_type(cls, v):
+        # API exposes the column as ``type``; normalize the deprecated
+        # "خاصة" alias (special / special_needs) to canonical "private"
+        # at the API boundary so it never reaches the database.
+        from utils.school_type import normalize_school_type
+        return normalize_school_type(v)
+
 
 class WorkDaysConfig(BaseModel):
     sunday: bool = True

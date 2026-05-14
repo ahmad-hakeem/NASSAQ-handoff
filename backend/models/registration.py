@@ -2,9 +2,10 @@
 NASSAQ - Registration Models
 Registration requests and related models
 """
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_validator
 from typing import List, Optional
 from .enums import RegistrationStatus
+from utils.school_type import normalize_school_type
 
 
 class RegistrationRequestBase(BaseModel):
@@ -31,6 +32,11 @@ class RegistrationRequestBase(BaseModel):
     student_count: int = 0
     teacher_count: int = 0
     notes: Optional[str] = None
+
+    @field_validator("school_type", mode="before")
+    @classmethod
+    def _normalize_school_type(cls, v):
+        return normalize_school_type(v) or "public"
 
 
 class RegistrationRequestCreate(RegistrationRequestBase):

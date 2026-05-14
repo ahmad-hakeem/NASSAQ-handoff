@@ -2,9 +2,10 @@
 NASSAQ - School Models
 All school/tenant-related Pydantic models
 """
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_validator
 from typing import List, Optional
 from .enums import SchoolStatus
+from utils.school_type import normalize_school_type
 
 
 class SchoolBase(BaseModel):
@@ -22,6 +23,10 @@ class SchoolBase(BaseModel):
     student_capacity: int = 0
     current_students: int = 0
     current_teachers: int = 0
+
+
+def _normalize_school_type_field(cls, v):  # noqa: N805
+    return normalize_school_type(v)
 
 
 class SchoolCreate(BaseModel):
@@ -44,6 +49,10 @@ class SchoolCreate(BaseModel):
     principal_phone: Optional[str] = None
     principal_mobile: Optional[str] = None
     educational_pathway: Optional[str] = None
+
+    _normalize_school_type = field_validator("school_type", mode="before")(
+        _normalize_school_type_field
+    )
 
 
 class SchoolResponse(BaseModel):
@@ -82,3 +91,7 @@ class SchoolUpdate(BaseModel):
     stage: Optional[str] = None
     principal_mobile: Optional[str] = None
     educational_pathway: Optional[str] = None
+
+    _normalize_school_type = field_validator("school_type", mode="before")(
+        _normalize_school_type_field
+    )

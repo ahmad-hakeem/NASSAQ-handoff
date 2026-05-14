@@ -13,6 +13,8 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import uuid
 
+from utils.school_type import normalize_school_type
+
 from sqlalchemy import select, and_, func, desc as sa_desc
 
 from pg_models import School, AuditLog, Student, Teacher, Class
@@ -68,7 +70,7 @@ class TenantEngine:
             "name_en": name_en,
             "code": code,
             "status": TenantStatus.PENDING.value,
-            "school_type": kwargs.get("school_type", "private"),
+            "school_type": normalize_school_type(kwargs.get("school_type")) or "private",
             "email": kwargs.get("email"),
             "phone": kwargs.get("phone"),
             "region": kwargs.get("region"),

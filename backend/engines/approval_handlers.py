@@ -13,6 +13,8 @@ To add a new request type:
 """
 
 import os
+
+from utils.school_type import normalize_school_type as _normalize_school_type
 from datetime import datetime, timezone
 from typing import Optional
 import uuid
@@ -333,7 +335,7 @@ class SchoolApprovalHandler(ApprovalHandler):
             "student_capacity": student_capacity,
             "current_students": 0,
             "current_teachers": 0,
-            "school_type": request.get("school_type", "public"),
+            "school_type": _normalize_school_type(request.get("school_type")) or "public",
             "principal_name": principal_name,
             "principal_email": school_email,
             "principal_phone": school_phone,

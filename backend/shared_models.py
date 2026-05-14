@@ -200,6 +200,12 @@ class SchoolCreate(BaseModel):
     principal_mobile: Optional[str] = None
     educational_pathway: Optional[str] = None
 
+    @field_validator("school_type", mode="before")
+    @classmethod
+    def _normalize_school_type(cls, v):
+        from utils.school_type import normalize_school_type
+        return normalize_school_type(v)
+
 class SchoolResponse(BaseModel):
     model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
