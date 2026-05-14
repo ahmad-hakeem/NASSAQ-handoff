@@ -3,10 +3,17 @@ NASSAQ - Teacher Attendance Routes
 Teacher attendance management endpoints (for Principal use)
 """
 from fastapi import APIRouter, HTTPException, Depends, Query
-from typing import Optional, List
+from typing import Optional, List, Literal
 from datetime import datetime, timezone
 from pydantic import BaseModel
 import uuid
+
+# Canonical attendance status set — kept in sync with
+# `backend/models/enums.py::AttendanceStatus`. Pydantic Literal here is the
+# request-level boundary that rejects anything other than these four values
+# with a 422 (safe Arabic message via FastAPI default), so unknown statuses
+# never reach the persistence layer.
+AttendanceStatusLiteral = Literal["present", "absent", "late", "excused"]
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
 
 import logging
@@ -23,7 +30,7 @@ MAX_HISTORY_ENTRIES = 3
 class TeacherAttendanceRecord(BaseModel):
     teacher_id: str
     date: str
-    status: str  # present, absent, late, excused
+    status: AttendanceStatusLiteral  # present | absent | late | excused
     check_in_time: Optional[str] = None
     notes: Optional[str] = None
     subject_type: Optional[str] = "teacher"  # "teacher" or "admin"

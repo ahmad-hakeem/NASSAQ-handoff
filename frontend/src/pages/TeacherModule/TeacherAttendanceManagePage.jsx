@@ -12,16 +12,62 @@ import { Textarea } from '../../components/ui/textarea';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import {
-  ClipboardCheck, Users, Check, X,
+  ClipboardCheck, Users, Check, X, Clock, FileText,
   Loader2, Save, CheckCircle2, ArrowRight, ArrowLeft
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
 import { useTranslation } from '../../contexts/ThemeContext';
+
+// Canonical four-status set, mirrors backend `AttendanceStatusLiteral`
+// (`backend/routes/teacher_attendance_routes.py`). Keys MUST stay identical
+// to the backend literals — the same string is sent in the bulk payload.
+const STATUS_KEYS = ['present', 'absent', 'late', 'excused'];
+
 const ATTENDANCE_STATUS = {
-  present: { label: 'حاضر', labelEn: 'Present', color: 'bg-green-100 text-green-700 border-green-300', icon: Check },
-  absent: { label: 'غائب', labelEn: 'Absent', color: 'bg-red-100 text-red-700 border-red-300', icon: X },
+  present: {
+    labelKey: 'present',
+    labelAr: 'حاضر', labelEn: 'Present',
+    badge: 'bg-green-100 text-green-700 border-green-300',
+    cardActive: 'border-green-300 bg-green-50/40',
+    btnActive: 'bg-green-600 text-white hover:bg-green-700',
+    btnIdle: 'text-green-700 hover:bg-green-50',
+    icon: Check,
+  },
+  absent: {
+    labelKey: 'absent',
+    labelAr: 'غائب', labelEn: 'Absent',
+    badge: 'bg-red-100 text-red-700 border-red-300',
+    cardActive: 'border-red-300 bg-red-50/40',
+    btnActive: 'bg-red-600 text-white hover:bg-red-700',
+    btnIdle: 'text-red-700 hover:bg-red-50',
+    icon: X,
+  },
+  late: {
+    labelKey: 'late',
+    labelAr: 'متأخر', labelEn: 'Late',
+    badge: 'bg-amber-100 text-amber-800 border-amber-300',
+    cardActive: 'border-amber-300 bg-amber-50/50',
+    btnActive: 'bg-amber-500 text-white hover:bg-amber-600',
+    btnIdle: 'text-amber-700 hover:bg-amber-50',
+    icon: Clock,
+  },
+  excused: {
+    labelKey: 'excused2',
+    labelAr: 'بعذر', labelEn: 'Excused',
+    badge: 'bg-blue-100 text-blue-700 border-blue-300',
+    cardActive: 'border-blue-300 bg-blue-50/40',
+    btnActive: 'bg-blue-600 text-white hover:bg-blue-700',
+    btnIdle: 'text-blue-700 hover:bg-blue-50',
+    icon: FileText,
+  },
 };
+
+// Coerce any value coming back from the API (including legacy rows that only
+// store 'present'/'absent'/'excused', or future unknown values) into one of
+// the four canonical statuses, defaulting to 'present'.
+const normalizeStatus = (raw) =>
+  STATUS_KEYS.includes(raw) ? raw : 'present';
 
 export default function TeacherAttendanceManagePage() {
   const { t } = useTranslation();
@@ -100,11 +146,12 @@ export default function TeacherAttendanceManagePage() {
         });
       }
       
-      // Initialize attendance state
+      // Initialize attendance state — keep the persisted status verbatim
+      // when it's one of the four canonical values, otherwise default to
+      // 'present' (covers legacy rows and unknown values safely).
       const initialAttendance = {};
       studentsList.forEach(student => {
-        const raw = existingAttendance[student.id];
-        initialAttendance[student.id] = raw === 'absent' ? 'absent' : 'present';
+        initialAttendance[student.id] = normalizeStatus(existingAttendance[student.id]);
       });
       setAttendance(initialAttendance);
       
@@ -164,10 +211,15 @@ export default function TeacherAttendanceManagePage() {
     }
   };
 
+  // Counters: each student is counted in exactly one bucket so the four
+  // status totals always sum to `total`. No double-counting (late no longer
+  // collapses into present here — that earlier `!== 'absent'` check did).
   const stats = {
     total: students.length,
-    present: Object.values(attendance).filter(s => s !== 'absent').length,
+    present: Object.values(attendance).filter(s => s === 'present').length,
     absent: Object.values(attendance).filter(s => s === 'absent').length,
+    late: Object.values(attendance).filter(s => s === 'late').length,
+    excused: Object.values(attendance).filter(s => s === 'excused').length,
   };
 
   return (
@@ -244,18 +296,26 @@ export default function TeacherAttendanceManagePage() {
 
         {/* Stats Summary */}
         <div className="p-4 border-b">
-          <div className="grid grid-cols-3 gap-2">
-            <div className="p-3 rounded-xl bg-gray-100 text-center">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <div className="p-3 rounded-xl bg-gray-100 text-center" data-testid="stat-total">
               <div className="text-2xl font-bold">{stats.total}</div>
               <div className="text-xs text-muted-foreground">{t('total')}</div>
             </div>
-            <div className="p-3 rounded-xl bg-green-100 text-center">
+            <div className="p-3 rounded-xl bg-green-100 text-center" data-testid="stat-present">
               <div className="text-2xl font-bold text-green-700">{stats.present}</div>
               <div className="text-xs text-green-600">{t('present')}</div>
             </div>
-            <div className="p-3 rounded-xl bg-red-100 text-center">
+            <div className="p-3 rounded-xl bg-red-100 text-center" data-testid="stat-absent">
               <div className="text-2xl font-bold text-red-700">{stats.absent}</div>
               <div className="text-xs text-red-600">{t('absent')}</div>
+            </div>
+            <div className="p-3 rounded-xl bg-amber-100 text-center" data-testid="stat-late">
+              <div className="text-2xl font-bold text-amber-700">{stats.late}</div>
+              <div className="text-xs text-amber-600">{t('late')}</div>
+            </div>
+            <div className="p-3 rounded-xl bg-blue-100 text-center" data-testid="stat-excused">
+              <div className="text-2xl font-bold text-blue-700">{stats.excused}</div>
+              <div className="text-xs text-blue-600">{t('excused2')}</div>
             </div>
           </div>
         </div>
@@ -283,14 +343,15 @@ export default function TeacherAttendanceManagePage() {
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
               {students.map((student, idx) => {
-                const isAbsent = attendance[student.id] === 'absent';
-                const statusCfg = ATTENDANCE_STATUS[isAbsent ? 'absent' : 'present'];
+                const current = normalizeStatus(attendance[student.id]);
+                const statusCfg = ATTENDANCE_STATUS[current];
+                const isAbsent = current === 'absent';
                 return (
-                  <Card 
-                    key={student.id} 
-                    className={`transition-all cursor-pointer active:scale-[0.97] ${statusCfg.color.split(' ')[2]}`}
+                  <Card
+                    key={student.id}
+                    className={`transition-all border ${statusCfg.cardActive}`}
                     data-testid={`student-card-${student.id}`}
-                    onClick={() => handleStatusChange(student.id, isAbsent ? 'present' : 'absent')}
+                    data-status={current}
                   >
                     <CardContent className="p-4">
                       <div className="flex items-center gap-3">
@@ -304,9 +365,39 @@ export default function TeacherAttendanceManagePage() {
                           <p className={`font-medium truncate ${isAbsent ? 'line-through opacity-60' : ''}`}>{student.full_name || `طالب ${idx + 1}`}</p>
                           <p className="text-xs text-muted-foreground">{student.student_id || `#${idx + 1}`}</p>
                         </div>
-                        <Badge className={statusCfg.color}>
-                          {isRTL ? statusCfg.label : statusCfg.labelEn}
+                        <Badge className={statusCfg.badge} data-testid={`student-badge-${student.id}`}>
+                          {isRTL ? statusCfg.labelAr : statusCfg.labelEn}
                         </Badge>
+                      </div>
+                      {/* Mutually-exclusive status row. Selecting one writes
+                          a single value to local state — the next save sends
+                          exactly that value, no stale active styles. */}
+                      <div className="mt-3 grid grid-cols-4 gap-1.5" role="radiogroup" aria-label={t('attendance3')}>
+                        {STATUS_KEYS.map((key) => {
+                          const cfg = ATTENDANCE_STATUS[key];
+                          const Icon = cfg.icon;
+                          const active = current === key;
+                          const label = isRTL ? cfg.labelAr : cfg.labelEn;
+                          return (
+                            <Button
+                              key={key}
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              role="radio"
+                              aria-checked={active}
+                              aria-label={label}
+                              title={label}
+                              data-testid={`status-btn-${student.id}-${key}`}
+                              data-active={active}
+                              className={`h-8 px-2 border ${active ? cfg.btnActive + ' border-transparent' : 'bg-white border-gray-200 ' + cfg.btnIdle}`}
+                              onClick={() => handleStatusChange(student.id, key)}
+                            >
+                              <Icon className="h-3.5 w-3.5 me-1" />
+                              <span className="text-[11px]">{label}</span>
+                            </Button>
+                          );
+                        })}
                       </div>
                     </CardContent>
                   </Card>
@@ -325,7 +416,7 @@ export default function TeacherAttendanceManagePage() {
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-2 text-center">
+              <div className="grid grid-cols-4 gap-2 text-center">
                 <div className="p-2 rounded bg-green-100">
                   <div className="font-bold text-green-700">{stats.present}</div>
                   <div className="text-xs">{t('present')}</div>
@@ -333,6 +424,14 @@ export default function TeacherAttendanceManagePage() {
                 <div className="p-2 rounded bg-red-100">
                   <div className="font-bold text-red-700">{stats.absent}</div>
                   <div className="text-xs">{t('absent')}</div>
+                </div>
+                <div className="p-2 rounded bg-amber-100">
+                  <div className="font-bold text-amber-700">{stats.late}</div>
+                  <div className="text-xs">{t('late')}</div>
+                </div>
+                <div className="p-2 rounded bg-blue-100">
+                  <div className="font-bold text-blue-700">{stats.excused}</div>
+                  <div className="text-xs">{t('excused2')}</div>
                 </div>
               </div>
               <div>

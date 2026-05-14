@@ -11,10 +11,16 @@ Endpoints:
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import List, Optional
+from typing import List, Optional, Literal
 from pydantic import BaseModel
 from datetime import datetime, date
 import logging
+
+# Canonical student-attendance status set — mirrors
+# `backend/models/enums.py::AttendanceStatus`. Pydantic Literal rejects
+# unknown statuses at the API boundary with 422 before they reach the
+# attendance engine or the database.
+AttendanceStatusLiteral = Literal["present", "absent", "late", "excused"]
 
 from dependencies import audit_engine, AuditAction
 
@@ -27,7 +33,7 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 
 class AttendanceRecord(BaseModel):
     student_id: str
-    status: str = "present"
+    status: AttendanceStatusLiteral = "present"
     arrival_time: Optional[str] = None
     departure_time: Optional[str] = None
     notes: Optional[str] = None
@@ -37,7 +43,7 @@ class AttendanceCreate(BaseModel):
     student_id: str
     section_id: str
     attendance_date: str
-    status: str = "present"
+    status: AttendanceStatusLiteral = "present"
     arrival_time: Optional[str] = None
     departure_time: Optional[str] = None
     notes: Optional[str] = None
