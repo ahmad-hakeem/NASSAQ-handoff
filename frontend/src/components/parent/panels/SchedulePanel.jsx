@@ -193,13 +193,13 @@ const SchedulePanel = ({ childId }) => {
                               );
                             }
                             return (
-                              <td key={day} className="p-1 border-b">
-                                <div className="h-12 rounded-lg bg-brand-navy/5 border border-brand-navy/10 flex flex-col items-center justify-center px-1">
-                                  <span className="text-[10px] font-semibold text-brand-navy truncate max-w-full">
+                              <td key={day} className="p-1 border-b" data-testid="parent-grid-cell">
+                                <div
+                                  className="h-12 rounded-lg bg-brand-navy/5 border border-brand-navy/10 flex items-center justify-center px-1.5 text-center"
+                                  title={entry.subject}
+                                >
+                                  <span className="text-[11px] font-semibold text-brand-navy leading-tight line-clamp-2 max-w-full">
                                     {entry.subject}
-                                  </span>
-                                  <span className="text-[9px] text-muted-foreground truncate max-w-full">
-                                    {entry.teacher}
                                   </span>
                                 </div>
                               </td>
