@@ -750,9 +750,11 @@ async def _commit_students(
                 # just-inserted record in `students` and silently
                 # overwrites it (the bug that collapsed 6 rows into 1).
                 if num and num in batch_inserted_nums:
+                    # Duplicate rows are skipped — they did NOT land in
+                    # the DB, so they must not inflate the
+                    # `unclassified` counter (which describes rows
+                    # actually persisted without a class).
                     duplicates += 1
-                    if class_id is None and (grade_code or section_code):
-                        unclassified += 1
                     errors.append(
                         {
                             "row": row_idx,
@@ -791,6 +793,28 @@ async def _commit_students(
                     # duplicate, not allowed to re-update.
                     if num:
                         batch_inserted_nums.add(num)
+                    # Change-detection guard — a no-op re-import (same
+                    # name + grade + class) must not bump `updated_at`
+                    # nor inflate the "updated" counter. Mobile is not
+                    # in the cached index, so any incoming mobile
+                    # value forces a write.
+                    incoming_name = (full_name or "").strip()
+                    incoming_grade = (grade_code or "").strip() if grade_code else ""
+                    existing_name = (existing.get("full_name") or "").strip()
+                    existing_grade = (existing.get("grade") or "").strip()
+                    existing_class = existing.get("class_id")
+                    name_changed = bool(incoming_name) and incoming_name != existing_name
+                    grade_changed = bool(incoming_grade) and incoming_grade != existing_grade
+                    class_changed = class_id is not None and class_id != existing_class
+                    mobile_changed = bool(mobile)
+                    if not (name_changed or grade_changed or class_changed or mobile_changed):
+                        # No effective change — count as updated for
+                        # user-visible "row was processed" semantics
+                        # but skip the DB write.
+                        updated += 1
+                        if existing_class is None and (grade_code or section_code):
+                            unclassified += 1
+                        continue
                     await update_student_mutable_fields(
                         session,
                         student_id=existing["id"],
@@ -801,7 +825,11 @@ async def _commit_students(
                         mobile=mobile,
                     )
                     updated += 1
-                    if class_id is None and (grade_code or section_code):
+                    # Use post-update class for unclassified accounting:
+                    # if the row brought a new class_id, that's the
+                    # current state; otherwise the existing one stands.
+                    effective_class = class_id if class_changed else existing_class
+                    if effective_class is None and (grade_code or section_code):
                         unclassified += 1
                     continue
 

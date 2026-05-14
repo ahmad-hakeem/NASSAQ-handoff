@@ -158,7 +158,7 @@ async def test_commit_students_blocks_dupes_after_live_update():
     allowed to re-update the same record (review finding #1)."""
     rows = [
         {"row_index": 1, "data": {"student_number": "9999",
-                                   "full_name": "أحمد",
+                                   "full_name": "أحمد المُحدّث",
                                    "grade_code": "2", "section_code": "ب"},
          "issues": []},
         {"row_index": 2, "data": {"student_number": "9999",
@@ -187,6 +187,70 @@ async def test_commit_students_blocks_dupes_after_live_update():
     assert out["duplicates"] == 1
     assert out["imported"] == 0
     assert update_mock.await_count == 1, "UPDATE must run exactly once, not twice"
+
+
+@pytest.mark.asyncio
+async def test_commit_students_duplicate_skip_does_not_inflate_unclassified():
+    """`unclassified` counts rows actually persisted without a class —
+    duplicate-skipped rows must NOT inflate it (review finding #1)."""
+    rows = [
+        {"row_index": i + 1, "data": {"student_number": "1234567899",
+                                       "full_name": f"طالب {i+1}",
+                                       "grade_code": "1", "section_code": "أ"},
+         "issues": []}
+        for i in range(6)
+    ]
+    with patch("routes.noor_import_routes.load_school_student_index",
+               new=AsyncMock(return_value={})), \
+         patch("routes.noor_import_routes.load_school_class_index",
+               new=AsyncMock(return_value={})), \
+         patch("routes.noor_import_routes.insert_student_record_only",
+               new=AsyncMock(return_value="sid-1")), \
+         patch("routes.noor_import_routes.update_student_mutable_fields",
+               new=AsyncMock()):
+        out = await _commit_students(
+            session=_FakeSession(), school_id="s1", rows=rows,
+            created_by="u1", ambiguous_treat_as_new=set(),
+        )
+    # Row 1 inserted with no resolvable class → 1 unclassified.
+    # Rows 2..6 are duplicate-skipped and must NOT add to unclassified.
+    assert out["unclassified"] == 1
+    assert out["duplicates"] == 5
+    assert out["imported"] == 1
+
+
+@pytest.mark.asyncio
+async def test_commit_students_noop_reimport_skips_db_write():
+    """Re-importing the same row with no field changes must not call
+    update_student_mutable_fields (review finding #2)."""
+    rows = [
+        {"row_index": 1, "data": {"student_number": "7777",
+                                   "full_name": "سارة",
+                                   "grade_code": "3", "section_code": None,
+                                   "mobile": None},
+         "issues": []},
+    ]
+    update_mock = AsyncMock()
+    with patch("routes.noor_import_routes.load_school_student_index",
+               new=AsyncMock(return_value={"7777": {"id": "exists-7",
+                                                     "student_number": "7777",
+                                                     "full_name": "سارة",
+                                                     "grade": "3",
+                                                     "class_id": "c1"}})), \
+         patch("routes.noor_import_routes.load_school_class_index",
+               new=AsyncMock(return_value={})), \
+         patch("routes.noor_import_routes.insert_student_record_only",
+               new=AsyncMock()), \
+         patch("routes.noor_import_routes.update_student_mutable_fields",
+               new=update_mock):
+        out = await _commit_students(
+            session=_FakeSession(), school_id="s1", rows=rows,
+            created_by="u1", ambiguous_treat_as_new=set(),
+        )
+    assert update_mock.await_count == 0, \
+        "no-op re-import must not perform a DB update"
+    assert out["updated"] == 1, \
+        "row was processed end-to-end, count it as updated for the user"
 
 
 @pytest.mark.asyncio
