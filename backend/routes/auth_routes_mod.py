@@ -1382,6 +1382,23 @@ async def switch_user_role(
     }
 
 
+# Roles that cannot be granted by anyone below platform_admin.
+_PLATFORM_LEVEL_ROLES: frozenset = frozenset({
+    "platform_admin", "platform_operations_manager",
+    "platform_technical_admin", "platform_support_specialist",
+    "platform_data_analyst", "platform_security_officer",
+})
+
+# Maximum roles each non-platform caller may grant (same-tenant, non-platform only).
+_PRINCIPAL_GRANTABLE_ROLES: frozenset = frozenset({
+    "school_admin", "school_sub_admin", "teacher", "independent_teacher",
+    "student", "parent",
+})
+_SCHOOL_ADMIN_GRANTABLE_ROLES: frozenset = frozenset({
+    "teacher", "independent_teacher", "student", "parent",
+})
+
+
 @router.post("/users/{user_id}/add-role")
 async def add_role_to_user(
     user_id: str,
@@ -1392,15 +1409,74 @@ async def add_role_to_user(
 ):
     """Add an additional role to a user"""
     now = datetime.now(timezone.utc).isoformat()
-    
+
+    caller_role = current_user.get("role", "")
+    caller_tenant = current_user.get("tenant_id")
+
+    # --- Authorization: non-platform callers have strict constraints ---
+    if caller_role != UserRole.PLATFORM_ADMIN.value:
+        # 1. Prevent self-grant — a school admin/principal must not modify their own account.
+        if current_user.get("id") == user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="لا يمكنك إضافة دور لحسابك الخاص"
+            )
+
+        # 2. Deny granting platform-level roles unconditionally.
+        if role in _PLATFORM_LEVEL_ROLES:
+            raise HTTPException(
+                status_code=403,
+                detail="لا يمكنك منح أدوار النظام العامة"
+            )
+
+        # 3. Enforce the per-caller allowlist.
+        if caller_role == UserRole.SCHOOL_PRINCIPAL.value:
+            if role not in _PRINCIPAL_GRANTABLE_ROLES:
+                raise HTTPException(
+                    status_code=403,
+                    detail="لا يمكنك منح هذا الدور"
+                )
+        elif caller_role == UserRole.SCHOOL_ADMIN.value:
+            if role not in _SCHOOL_ADMIN_GRANTABLE_ROLES:
+                raise HTTPException(
+                    status_code=403,
+                    detail="لا يمكنك منح هذا الدور"
+                )
+        else:
+            raise HTTPException(status_code=403, detail="غير مصرح لك بهذا الإجراء")
+
+        # 4. Enforce same-tenant scope: the effective tenant for the new role must
+        #    match the caller's own tenant. The caller cannot cross tenant boundaries.
+        effective_tenant = tenant_id or caller_tenant
+        if effective_tenant != caller_tenant:
+            raise HTTPException(
+                status_code=403,
+                detail="لا يمكنك منح أدوار خارج نطاق مدرستك"
+            )
+        # Normalise tenant_id so the stored row always carries the caller's tenant.
+        tenant_id = caller_tenant
+        # Null out scope_id for non-platform callers — we cannot validate that a
+        # caller-supplied scope (e.g. a class ID) belongs to their tenant without
+        # additional lookups, so we discard it to avoid storing unvalidated foreign keys.
+        scope_id = None
+
     user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
-    
+
+    # For non-platform callers also verify the target user belongs to the same tenant.
+    if caller_role != UserRole.PLATFORM_ADMIN.value:
+        target_tenant = user.get("tenant_id")
+        if target_tenant and target_tenant != caller_tenant:
+            raise HTTPException(
+                status_code=403,
+                detail="هذا المستخدم لا ينتمي إلى مدرستك"
+            )
+
     # Check if role already exists
     existing_roles = user.get("linked_roles", [])
     for existing in existing_roles:
-        if (existing.get("role") == role and 
+        if (existing.get("role") == role and
             existing.get("tenant_id") == tenant_id and
             existing.get("is_active")):
             raise HTTPException(status_code=400, detail="هذا الدور موجود مسبقاً للمستخدم")

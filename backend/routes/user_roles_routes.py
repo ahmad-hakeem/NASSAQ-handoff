@@ -209,11 +209,17 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
                         tenant_name = role_info.get("tenant_name")
                         break
 
-            if user.get("role") == "platform_admin" and target_role == "school_principal" and target_tenant_id:
-                school = await gd_find_one(db.session, "schools", {"id": target_tenant_id})
-                if school:
-                    is_valid_role = True
-                    tenant_name = school.get("name")
+            # SECURITY (task #355 vuln-2): block cross-tenant platform_admin impersonation
+            # on this legacy endpoint. Platform admins must use the hardened
+            # /role-switch/switch route which enforces reason, fresh MFA, and a
+            # server-side impersonation_sessions row with its own restore path.
+            # Allowing it here (even with MFA) bypasses the reason requirement and
+            # the nested-impersonation guard of the hardened flow.
+            if user.get("role") == "platform_admin" and target_role in SCHOOL_SCOPED_ROLES:
+                raise HTTPException(
+                    status_code=403,
+                    detail="استخدم نقطة النهاية /role-switch/switch للتبديل إلى دور مدرسي"
+                )
 
             if not is_valid_role:
                 raise HTTPException(status_code=403, detail="ليس لديك صلاحية لهذا الدور")
@@ -397,9 +403,12 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
             new_token = create_access_token(token_data)
 
             # Revoke the old switched token so it cannot be replayed after restore.
-            # Fail-closed: abort if revocation cannot be persisted so the caller
-            # is never given a new token while the old switched one stays valid.
-            # ON CONFLICT DO NOTHING handles the idempotent/already-revoked case.
+            # Fail-closed: if the old token carries no JTI we cannot guarantee
+            # revocation, so we abort rather than silently handing back a new
+            # token while the old switched one remains valid.
+            if not _old_jti:
+                logger.error("return-to-original: switched token has no JTI — refusing restore to prevent token replay")
+                raise HTTPException(status_code=500, detail="تعذّر إنهاء الجلسة بأمان. يرجى المحاولة مجدداً")
             if _old_jti:
                 if _old_exp:
                     _rev_exp_dt = _dt.fromtimestamp(_old_exp, tz=_tz.utc)
