@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
+import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -11,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { toast } from 'sonner';
 import {
   FileText, Send, Calendar, Clock, CheckCircle, XCircle,
-  AlertCircle, Loader2, Upload, User, ChevronDown, History
+  Loader2, Upload, User, History, Paperclip, X
 } from 'lucide-react';
 
 
@@ -21,10 +22,22 @@ const STATUS_CONFIG = {
   rejected: { label: 'مرفوض', labelEn: 'Rejected', color: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-900/40', icon: XCircle },
 };
 
+const ALLOWED_MIME = ['image/jpeg', 'image/png', 'application/pdf'];
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
+
+const formatFileSize = (bytes) => {
+  if (!bytes && bytes !== 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+};
+
 const ParentAbsenceExcusePage = ({ embedded = false }) => {
   const { t } = useTranslation();
   const { token, user, api } = useAuth();
   const { isRTL } = useTheme();
+  const { nassaqError } = useNassaqAlert();
+  const fileInputRef = useRef(null);
   const [children, setChildren] = useState([]);
   const [excuses, setExcuses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,7 +47,7 @@ const ParentAbsenceExcusePage = ({ embedded = false }) => {
   const [selectedChild, setSelectedChild] = useState('');
   const [absenceDate, setAbsenceDate] = useState('');
   const [reason, setReason] = useState('');
-  const [attachmentName, setAttachmentName] = useState('');
+  const [attachmentFile, setAttachmentFile] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -47,7 +60,7 @@ const ParentAbsenceExcusePage = ({ embedded = false }) => {
       if (childList.length === 1) setSelectedChild(childList[0].id);
       setExcuses(excusesRes.data?.excuses || []);
     } catch (err) {
-      console.error('Error fetching data:', err);
+      // swallow; UI stays empty
     } finally {
       setLoading(false);
     }
@@ -57,29 +70,71 @@ const ParentAbsenceExcusePage = ({ embedded = false }) => {
     fetchData();
   }, [fetchData]);
 
+  const handleFilePicked = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!ALLOWED_MIME.includes(f.type)) {
+      nassaqError(t('attachmentTypeNotAllowed'));
+      e.target.value = '';
+      return;
+    }
+    if (f.size > MAX_FILE_BYTES) {
+      nassaqError(t('attachmentTooLarge'));
+      e.target.value = '';
+      return;
+    }
+    setAttachmentFile(f);
+  };
+
+  const clearAttachment = () => {
+    setAttachmentFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedChild || !absenceDate || !reason.trim()) {
-      toast.error(t('pleaseFillAllRequiredFields2'));
+      nassaqError(t('pleaseFillAllRequiredFields2'));
       return;
     }
     setSubmitting(true);
     try {
-      const res = await api.post('/parent-portal/absence-excuse', {
+      let attachment_url = null;
+      let attachment_name = null;
+
+      if (attachmentFile) {
+        const fd = new FormData();
+        fd.append('file', attachmentFile);
+        try {
+          const up = await api.post('/parent-portal/upload-attachment', fd, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+          attachment_url = up.data?.attachment_url || null;
+          attachment_name = up.data?.attachment_name || attachmentFile.name;
+        } catch (uerr) {
+          const msg = uerr.response?.data?.detail || t('attachmentUploadFailed');
+          nassaqError(msg);
+          setSubmitting(false);
+          return;
+        }
+      }
+
+      await api.post('/parent-portal/absence-excuse', {
         child_id: selectedChild,
         absence_date: absenceDate,
         reason: reason.trim(),
-        attachment_name: attachmentName || null,
+        attachment_url,
+        attachment_name,
       });
       toast.success(t('excuseSubmittedSuccessfully'));
       fetchData();
       setAbsenceDate('');
       setReason('');
-      setAttachmentName('');
+      clearAttachment();
       setShowForm(false);
     } catch (err) {
       const msg = err.response?.data?.detail || (isRTL ? 'حدث خطأ' : 'An error occurred');
-      toast.error(msg);
+      nassaqError(msg);
     } finally {
       setSubmitting(false);
     }
@@ -91,7 +146,7 @@ const ParentAbsenceExcusePage = ({ embedded = false }) => {
       return new Date(dateStr).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', {
         year: 'numeric', month: 'short', day: 'numeric'
       });
-    } catch (e) { console.error('Error formatting date:', e); return dateStr; }
+    } catch (e) { return dateStr; }
   };
 
   if (loading) {
@@ -197,14 +252,51 @@ const ParentAbsenceExcusePage = ({ embedded = false }) => {
                   <label className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-1.5 block">
                     {t('attachmentOptional')}
                   </label>
-                  <Input
-                    type="text"
-                    value={attachmentName}
-                    onChange={(e) => setAttachmentName(e.target.value)}
-                    placeholder={t('documentNameOrAttachmentLink')}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,application/pdf"
+                    onChange={handleFilePicked}
+                    className="hidden"
+                    data-testid="excuse-attachment-input"
                   />
+                  {!attachmentFile ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full justify-center gap-2"
+                    >
+                      <Paperclip className="h-4 w-4" />
+                      {t('attachmentChooseFile')}
+                    </Button>
+                  ) : (
+                    <div className="flex items-center justify-between gap-2 rounded-md border border-input bg-muted/40 px-3 py-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Paperclip className="h-4 w-4 text-brand-navy shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm truncate" data-testid="excuse-attachment-name">
+                            {attachmentFile.name}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {formatFileSize(attachmentFile.size)}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={clearAttachment}
+                        aria-label={t('attachmentRemove')}
+                        className="h-8 w-8 shrink-0"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground mt-1">
-                    {t('enterTheNameOfTheSupportingDocumentEgMedicalReport')}
+                    {t('attachmentFileHelp')}
                   </p>
                 </div>
 
@@ -249,6 +341,7 @@ const ParentAbsenceExcusePage = ({ embedded = false }) => {
             excuses.map(excuse => {
               const status = STATUS_CONFIG[excuse.status] || STATUS_CONFIG.pending;
               const StatusIcon = status.icon;
+              const hasUploadedFile = excuse.attachment_url && /^(https?:|data:)/i.test(excuse.attachment_url);
               return (
                 <Card key={excuse.id} className="border-0 shadow-sm hover:shadow-md transition-shadow">
                   <CardContent className="p-4">
@@ -278,12 +371,23 @@ const ParentAbsenceExcusePage = ({ embedded = false }) => {
                             </span>
                           </div>
                           <p className="text-sm text-foreground dark:text-muted-foreground/50 line-clamp-2">{excuse.reason}</p>
-                          {excuse.attachment_name && (
+                          {hasUploadedFile ? (
+                            <a
+                              href={excuse.attachment_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              download={excuse.attachment_name || undefined}
+                              className="mt-1.5 inline-flex items-center gap-1 text-xs text-brand-navy hover:underline dark:text-brand-navy/80"
+                            >
+                              <Upload className="h-3 w-3" />
+                              {excuse.attachment_name || t('attachmentOpen')}
+                            </a>
+                          ) : excuse.attachment_name ? (
                             <div className="mt-1.5 flex items-center gap-1 text-xs text-brand-navy dark:text-brand-navy/70">
                               <Upload className="h-3 w-3" />
                               {excuse.attachment_name}
                             </div>
-                          )}
+                          ) : null}
                         </div>
                       </div>
                     </div>
