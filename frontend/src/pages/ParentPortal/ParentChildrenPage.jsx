@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 
 const WeeklyAnalysisPanel = lazy(() => import('../../components/parent/WeeklyAnalysisPanel'));
-const StudentInsightsPanel = lazy(() => import('../../components/parent/StudentInsightsPanel'));
 const DetailsPanel = lazy(() => import('../../components/parent/panels/DetailsPanel'));
 const SchedulePanel = lazy(() => import('../../components/parent/panels/SchedulePanel'));
 const HomeworkPanel = lazy(() => import('../../components/parent/panels/HomeworkPanel'));
@@ -204,13 +203,11 @@ const ParentChildrenPage = () => {
                     <WeeklyAnalysisPanel childId={activeChild.id} />
                   </Suspense>
 
-                  {/* Cohesive insights — general strengths/weaknesses, Hakim
-                      narrative, and per-subject accordion. Stays mounted
-                      across child switches; refetch is silent (request-seq
-                      guard inside the component). */}
-                  <Suspense fallback={<Skeleton className="h-56 w-full rounded-2xl" />}>
-                    <StudentInsightsPanel childId={activeChild.id} />
-                  </Suspense>
+                  {/* Cohesive insights (general strengths/weaknesses, Hakim
+                      narrative, per-subject accordion) now lives inside the
+                      "Details" tab via DetailsPanel — keeps the profile
+                      header light and groups all per-subject context with
+                      the rest of the academic detail. */}
 
                   {/* Tab nav */}
                   <div

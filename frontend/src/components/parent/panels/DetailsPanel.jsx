@@ -7,6 +7,7 @@ import { Progress } from '../../ui/progress';
 import { Skeleton } from '../../ui/skeleton';
 import { ScrollArea } from '../../ui/scroll-area';
 import CumulativeAnalytics from '../CumulativeAnalytics';
+import StudentInsightsPanel from '../StudentInsightsPanel';
 import {
   BookOpen, CheckCircle, XCircle, AlertCircle, Clock, Award, Calendar,
 } from 'lucide-react';
@@ -168,6 +169,13 @@ const DetailsPanel = ({ childId }) => {
           </CardContent>
         </Card>
       )}
+
+      {/* General strengths/weaknesses + per-subject performance accordion.
+          Real-data only — backend `/insights` returns neutral states when
+          evidence is insufficient (no fabricated insights). Sits at the
+          bottom of the Details tab so it's visible regardless of which
+          inner sub-tab is active. */}
+      <StudentInsightsPanel childId={childId} />
 
       {section === 'attendance' && (
         <Card className="rounded-2xl border-0 shadow-sm">
