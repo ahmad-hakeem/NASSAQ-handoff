@@ -80,17 +80,19 @@ def resolve_class(
     align. Returns the class id on a unique match; None otherwise.
     Never invents a class.
     """
-    if not grade_code and not section_code:
-        return None
     g = (grade_code or "").strip()
     s = (section_code or "").strip()
+    if not g or not s:
+        # Strict spec: BOTH grade and section are required for a match.
+        # Anything weaker would risk attaching a student to the wrong
+        # class (e.g. grade "1" vs grade "11" via prefix/suffix slop).
+        return None
     matches = []
     for cls in class_index:
         cls_grade = (cls.get("grade_level") or cls.get("grade_id") or "").strip()
         cls_section = (cls.get("section") or "").strip()
-        if g and cls_grade and (g == cls_grade or g.endswith(cls_grade) or cls_grade.endswith(g)):
-            if s and cls_section and s == cls_section:
-                matches.append(cls["id"])
+        if g == cls_grade and s == cls_section:
+            matches.append(cls["id"])
     if len(matches) == 1:
         return matches[0]
     return None

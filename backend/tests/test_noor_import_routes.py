@@ -111,7 +111,7 @@ async def test_commit_rejects_extra_fields_with_zero_writes(client, _db_session)
         headers=_headers(user),
     )
     await db.session.commit()
-    assert rc.status_code == 422, rc.text
+    assert rc.status_code == 400, rc.text
     evil = (await db.session.execute(
         text("SELECT count(*) FROM students WHERE student_number = 'EVIL'"),
     )).scalar()

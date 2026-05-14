@@ -25,8 +25,9 @@ import io
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import text
 
 from engines.noor_import import (
@@ -359,9 +360,22 @@ def create_noor_import_routes(db, get_current_user):
 
     @router.post("/commit")
     async def commit_endpoint(
-        body: CommitRequest,
+        request: Request,
         current_user: dict = Depends(get_current_user),
     ):
+        # Manual envelope validation so a tampered body (e.g. an
+        # injected `rows[]`) returns a SAFE ARABIC 400 instead of
+        # FastAPI's default 422 schema dump. Zero writes either way.
+        try:
+            raw = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+        if not isinstance(raw, dict):
+            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+        try:
+            body = CommitRequest(**raw)
+        except ValidationError:
+            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
         school_id = _require_school_role(current_user)
         principal_id = str(current_user.get("id") or current_user.get("_id") or "")
         draft = await load_draft(
@@ -583,9 +597,19 @@ async def _commit_students(
     created_by: str,
     ambiguous_treat_as_new: set,
 ) -> Dict[str, Any]:
-    # Re-load indexes — state may have moved since /parse.
+    # Re-load indexes — state may have moved since /parse. We rebuild
+    # BOTH the exact-number index and the soft-match (name+grade+class)
+    # index so every row's dedupe verdict is recomputed against fresh
+    # DB state — the parse-time `r['dedupe']` is treated as advisory.
     students = await load_school_student_index(session, school_id)
     classes = await load_school_class_index(session, school_id)
+    soft_idx: Dict[str, Dict[str, Any]] = {}
+    for s in students.values():
+        nm = (s.get("full_name") or "").strip()
+        gd = (s.get("grade") or "").strip()
+        cid = s.get("class_id")
+        if nm:
+            soft_idx.setdefault(f"{nm}|{gd}|{cid or ''}", s)
 
     imported = 0
     updated = 0
@@ -613,11 +637,21 @@ async def _commit_students(
                     section_code=section_code,
                     class_index=classes,
                 )
-                # Honor ambiguous gating: if /parse flagged this row as
-                # ambiguous and the user didn't tick "treat as new",
-                # skip it server-side. (Defense-in-depth — the FE
-                # already filters via the checkbox.)
-                if r.get("dedupe") == "ambiguous" and row_idx not in ambiguous_treat_as_new:
+                # Recompute dedupe verdict at commit-time against the
+                # FRESH indexes (mirrors teacher commit's authority
+                # model). Parse-time `r['dedupe']` is ignored — only
+                # live DB state can route a row.
+                live_existing = students.get(num)
+                live_soft = None
+                if not live_existing and full_name:
+                    live_soft = soft_idx.get(
+                        f"{full_name}|{(grade_code or '').strip()}|{class_id or ''}"
+                    )
+                if (
+                    live_soft
+                    and not live_existing
+                    and row_idx not in ambiguous_treat_as_new
+                ):
                     skipped += 1
                     errors.append(
                         {
@@ -626,7 +660,7 @@ async def _commit_students(
                         }
                     )
                     continue
-                existing = students.get(num)
+                existing = live_existing
                 if existing:
                     await update_student_mutable_fields(
                         session,
