@@ -188,6 +188,54 @@ async def test_homework_template_rejects_dual_field_role_and_non_parent_id(
 
 
 @pytest.mark.asyncio
+async def test_teacher_role_broadcast_with_student_tag_is_rejected(
+    client, teacher_user
+):
+    """Safety net for the removed 'Student Counselor under Management'
+    sub-flow. The only wire shape that variant produced was a teacher
+    role-broadcast carrying `related_entity='student'`. With the FE
+    sub-option gone, a teacher request that still carries this combo
+    must be a tampered/legacy client — reject 403."""
+    res = await client.post(
+        "/notifications",
+        json={
+            "title": "T",
+            "message": "M",
+            "notification_type": "communication",
+            "priority": "medium",
+            "recipient_role": "school_sub_admin",
+            "related_entity": "student",
+            "related_entity_id": "any-id",
+        },
+        headers=_headers(teacher_user),
+    )
+    assert res.status_code == 403, res.text
+
+
+@pytest.mark.asyncio
+async def test_teacher_general_admin_broadcast_still_allowed(
+    client, teacher_user, tenant_a
+):
+    """The Management → General Admin Notice path (recipient_role
+    'school_principal' with no related_entity) must still succeed —
+    that is the surviving canonical Management variant."""
+    # Seed a principal so the role-broadcast resolution finds at least one user.
+    await _mk_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    res = await client.post(
+        "/notifications",
+        json={
+            "title": "T",
+            "message": "M",
+            "notification_type": "communication",
+            "priority": "medium",
+            "recipient_role": "school_principal",
+        },
+        headers=_headers(teacher_user),
+    )
+    assert res.status_code == 200, res.text
+
+
+@pytest.mark.asyncio
 async def test_no_template_id_preserves_legacy_behaviour(
     client, teacher_user, vp_user
 ):

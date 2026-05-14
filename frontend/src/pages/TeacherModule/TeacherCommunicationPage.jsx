@@ -19,7 +19,7 @@ import {
   Bell, Phone, Clock, CheckCircle2, AlertCircle, Search,
   Megaphone, UserCheck, ChevronLeft,
   BookOpen, FileText, AlertTriangle, Eye,
-  GraduationCap, Building2, Shield, Star,
+  Building2, Shield, Star,
   ScrollText, Presentation, ArrowLeft, ArrowRight,
   UserCog, HeartHandshake, Sparkles, Info
 } from 'lucide-react';
@@ -47,7 +47,8 @@ const TEMPLATES = [
 ];
 
 // Recipient categories per spec: Parents / Administration / Staff.
-// Direct student selection is reachable via Administration → Student Guidance.
+// Administration auto-resolves to the General Admin Notice (the
+// counselor sub-option was removed; see handleSelectCategory).
 const RECIPIENT_CATEGORIES = [
   { id: 'parents', icon: Users, color: 'bg-blue-500', i18nKey: 'parentsCategory' },
   { id: 'admin', icon: Building2, color: 'bg-brand-navy', i18nKey: 'adminCategory' },
@@ -93,12 +94,16 @@ function TeacherCommunicationPageInner() {
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedRecipients, setSelectedRecipients] = useState([]);
   const [parentMode, setParentMode] = useState(null);
+  // `adminMode` historically gated a 2-card sub-flow under "Management"
+  // (Student Counseling vs General Admin Notice). The counselor variant
+  // was removed per spec — Management now auto-resolves to the general
+  // admin notice. The state is retained as a passive marker so the
+  // existing scroll/effect dependency arrays do not change shape.
   const [adminMode, setAdminMode] = useState(null);
   const [messageBody, setMessageBody] = useState('');
   const [messageSubject, setMessageSubject] = useState('');
 
   const [schoolNotifFilter, setSchoolNotifFilter] = useState('all');
-  const [guidanceStudentIds, setGuidanceStudentIds] = useState([]);
 
   const step1Ref = useRef(null);
   const step2Ref = useRef(null);
@@ -206,10 +211,6 @@ function TeacherCommunicationPageInner() {
             recipient_role: role,
           };
           if (templateId) payload.template_id = templateId;
-          if (guidanceStudentIds.length > 0) {
-            payload.related_entity = 'student';
-            payload.related_entity_id = guidanceStudentIds.join(',');
-          }
           await api.post('/notifications', payload);
         }
       }
@@ -246,7 +247,6 @@ function TeacherCommunicationPageInner() {
     setAdminMode(null);
     setMessageBody('');
     setMessageSubject('');
-    setGuidanceStudentIds([]);
   };
 
   const applyTemplate = (template) => {
@@ -257,15 +257,22 @@ function TeacherCommunicationPageInner() {
     setSelectedRecipients([]);
     setParentMode(null);
     setAdminMode(null);
-    setGuidanceStudentIds([]);
   };
 
   const handleSelectCategory = (catId) => {
     setSelectedCategory(catId);
-    setSelectedRecipients([]);
     setParentMode(null);
-    setAdminMode(null);
-    setGuidanceStudentIds([]);
+    if (catId === 'admin') {
+      // Management auto-resolves to the general admin notice — the
+      // counselor sub-option was removed per spec, so there is no
+      // remaining branching to surface. Set the canonical recipient up
+      // front so the wizard's "next" affordance is enabled immediately.
+      setSelectedRecipients(['admin_general']);
+      setAdminMode('general');
+    } else {
+      setSelectedRecipients([]);
+      setAdminMode(null);
+    }
   };
 
   const handleParentModeSelect = (mode) => {
@@ -286,17 +293,6 @@ function TeacherCommunicationPageInner() {
 
   const handleStaffSelect = (roleId) => {
     setSelectedRecipients([roleId]);
-  };
-
-  const handleAdminSelect = (type) => {
-    if (type === 'guidance') {
-      setSelectedRecipients(['counselor']);
-      setGuidanceStudentIds([]);
-    } else {
-      setSelectedRecipients(['admin_general']);
-      setGuidanceStudentIds([]);
-    }
-    setAdminMode(type);
   };
 
   const goToPreview = () => {
@@ -483,7 +479,6 @@ function TeacherCommunicationPageInner() {
               setSelectedClass('');
               setMessageSubject('');
               setMessageBody('');
-              setGuidanceStudentIds([]);
               setActiveView('wizard');
             }}
           >
@@ -823,115 +818,13 @@ function TeacherCommunicationPageInner() {
     </div>
   );
 
-  const renderAdminSubFlow = () => (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <button
-          onClick={() => handleAdminSelect('guidance')}
-          className={`relative p-5 rounded-xl border-2 bg-card transition-all duration-200 text-start ${
-            adminMode === 'guidance'
-              ? 'border-brand-turquoise ring-2 ring-brand-turquoise/30 shadow-md'
-              : 'border-border/50 hover:border-brand-navy/40 hover:shadow-md'
-          }`}
-        >
-          {adminMode === 'guidance' && <SelectedBadge />}
-          <GraduationCap className="h-8 w-8 text-brand-navy dark:text-brand-turquoise mb-2" />
-          <p className="font-cairo font-semibold text-sm">{t('studentGuidance')}</p>
-          <p className="text-xs text-muted-foreground mt-1">{t('selectOneOrMoreStudents')}</p>
-        </button>
-
-        <button
-          onClick={() => handleAdminSelect('general')}
-          className={`relative p-5 rounded-xl border-2 bg-card transition-all duration-200 text-start ${
-            adminMode === 'general'
-              ? 'border-brand-turquoise ring-2 ring-brand-turquoise/30 shadow-md'
-              : 'border-border/50 hover:border-brand-navy/40 hover:shadow-md'
-          }`}
-        >
-          {adminMode === 'general' && <SelectedBadge />}
-          <Building2 className="h-8 w-8 text-brand-navy dark:text-brand-turquoise mb-2" />
-          <p className="font-cairo font-semibold text-sm">{t('generalAdminNotification')}</p>
-        </button>
-      </div>
-
-      <AnimatePresence initial={false}>
-        {adminMode === 'guidance' && (
-          <motion.div key="guidance-context" {...stepReveal} className="overflow-hidden">
-            <div className="space-y-3 pt-2">
-              <div className="flex items-center justify-between flex-wrap gap-3">
-                <p className="text-xs text-muted-foreground">{t('selectOneOrMoreStudents')}</p>
-                <div className="relative">
-                  <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder={t('search')}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="ps-9 w-full sm:w-[200px] h-9"
-                  />
-                </div>
-              </div>
-              <Select value={selectedClass} onValueChange={setSelectedClass}>
-                <SelectTrigger className="w-full sm:w-[240px]">
-                  <SelectValue placeholder={t('selectClass')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {classes.map(cls => (
-                    <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Card>
-                <CardContent className="p-3">
-                  <div className="max-h-[340px] overflow-y-auto space-y-1.5">
-                    {filteredStudents.length === 0 ? (
-                      <div className="text-center py-8 text-sm text-muted-foreground">
-                        {t('noStudentsFound')}
-                      </div>
-                    ) : (
-                      filteredStudents.map(student => {
-                        const isSel = guidanceStudentIds.includes(student.id);
-                        const toggle = () =>
-                          setGuidanceStudentIds(prev =>
-                            prev.includes(student.id) ? prev.filter(id => id !== student.id) : [...prev, student.id]
-                          );
-                        return (
-                          <div
-                            key={student.id}
-                            className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors duration-150 ${
-                              isSel ? 'bg-brand-turquoise/10 border-brand-turquoise/30' : 'hover:bg-muted/50 border-transparent'
-                            }`}
-                            onClick={toggle}
-                          >
-                            <Checkbox checked={isSel} onCheckedChange={toggle} />
-                            <Avatar className="h-8 w-8">
-                              <AvatarFallback className={`text-xs font-bold ${student.gender === 'male' ? 'bg-sky-100 text-sky-600' : 'bg-pink-100 text-pink-600'}`}>
-                                {student.full_name?.charAt(0) || '?'}
-                              </AvatarFallback>
-                            </Avatar>
-                            <p className="text-sm font-medium truncate flex-1">{student.full_name}</p>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-              <Badge variant="secondary" className="font-cairo">
-                {guidanceStudentIds.length} {t('selected2')}
-              </Badge>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-
   const renderRecipientSubPicker = () => {
     if (!selectedCategory) return null;
     let content = null;
     if (selectedCategory === 'parents') content = renderParentSubFlow();
     else if (selectedCategory === 'staff') content = renderStaffSubFlow();
-    else if (selectedCategory === 'admin') content = renderAdminSubFlow();
+    // 'admin' (Management) intentionally has no sub-picker: it
+    // auto-resolves to the general admin notice in handleSelectCategory.
     if (!content) return null;
     return (
       <div ref={subPickerRef} className="pt-4 mt-3 border-t border-border/40">

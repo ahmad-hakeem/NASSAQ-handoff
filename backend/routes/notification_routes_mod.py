@@ -345,6 +345,23 @@ async def create_notification(
         recipient_id=notification.recipient_id,
     )
 
+    # Safety net for the removed "Student Counselor under Management"
+    # sub-flow: the only payload shape that variant produced was a
+    # teacher-issued role broadcast carrying a per-student tag
+    # (`recipient_role` + `related_entity == 'student'`). The Management
+    # cohort now auto-resolves to the general admin notice with no
+    # related_entity, so a teacher request that still carries this
+    # combination must be a tampered/legacy client — reject 403.
+    if (
+        current_user.get('role') == 'teacher'
+        and notification.recipient_role
+        and notification.related_entity == 'student'
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="هذا المسار لم يعد متاحًا لإشعارات المعلم.",
+        )
+
     # IT hardening — Task #198 §5.6.
     if current_user.get('role') == 'independent_teacher':
         if notification.recipient_role:
