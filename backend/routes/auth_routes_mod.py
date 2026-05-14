@@ -13,7 +13,7 @@ from datetime import datetime, timezone, timedelta
 import uuid, os, logging, json, random, re, io, base64, jwt
 
 from dependencies import (
-    db, get_current_user, require_roles, require_recent_mfa, UserRole, SchoolStatus,
+    db, get_current_user, require_roles, require_recent_mfa, require_recent_mfa_403, UserRole, SchoolStatus,
     hash_password, verify_password, create_access_token, create_refresh_token,
     JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE, security, logger,
     audit_engine, AuditAction, AuditSeverity,
@@ -1222,7 +1222,14 @@ async def change_password(
     # gated by both the existing current-password check AND a fresh MFA
     # proof (≤5 minutes). require_recent_mfa returns the same user dict
     # as get_current_user, so the body of this handler is unchanged.
-    current_user: dict = Depends(require_recent_mfa()),
+    #
+    # Task #338: emit the canonical step-up envelope as **HTTP 403** (not
+    # 401) so the FE axios interceptor replays the request after passkey
+    # assertion instead of bouncing the user to /login. This is the same
+    # pattern documented for IT §5.7 surfaces in `docs/it-phase2-reference.md`
+    # and `replit.md`. The MFA gate itself is unchanged — only the wire
+    # status code differs, so this is not a security weakening.
+    current_user: dict = Depends(require_recent_mfa_403()),
 ):
     """
     Change user password. Required for first-time login with temporary password.

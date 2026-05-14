@@ -441,7 +441,11 @@ async def test_change_password_requires_recent_mfa(client, tenant_a):
         json={"current_password": _PASS, "new_password": "BrandNew@123!"},
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert r.status_code == 401
+    # Task #338: change-password now emits the canonical step-up envelope
+    # as HTTP 403 (via require_recent_mfa_403) so the FE axios interceptor
+    # replays after passkey assertion instead of bouncing to /login. The
+    # underlying step-up gate is unchanged — only the wire status differs.
+    assert r.status_code == 403
     code = _err_code(r)
     assert code in {"MFA_STEPUP_REQUIRED", "MFA_PASSKEY_REQUIRED", "MFA_RESTORE_REQUIRED"}
 
@@ -460,7 +464,8 @@ async def test_tier_a_without_passkey_blocked(client, tenant_a):
         json={"current_password": _PASS, "new_password": "BrandNew@123!"},
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert r.status_code == 401
+    # Task #338: change-password emits step-up envelopes as HTTP 403.
+    assert r.status_code == 403
     assert _err_code(r) == "MFA_PASSKEY_REQUIRED"
 
 
@@ -482,7 +487,8 @@ async def test_tier_a_must_restore_factor_blocks(client, tenant_a):
         json={"current_password": _PASS, "new_password": "BrandNew@123!"},
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert r.status_code == 401
+    # Task #338: change-password emits step-up envelopes as HTTP 403.
+    assert r.status_code == 403
     assert _err_code(r) == "MFA_RESTORE_REQUIRED"
 
 
@@ -621,6 +627,82 @@ async def test_end_all_sessions_requires_recent_mfa(client, tenant_a):
     )
     assert r.status_code == 401, r.text
     assert _err_code(r) in {"MFA_STEPUP_REQUIRED", "MFA_PASSKEY_REQUIRED", "MFA_RESTORE_REQUIRED"}
+
+
+@pytest.mark.asyncio
+async def test_change_password_principal_succeeds_with_fresh_mfa_and_passkey(client, tenant_a):
+    """Task #338 — happy path: a Tier-A principal with an active passkey
+    AND a fresh mfa_recent_at can change their password. The new
+    password's hash must verify and the old password's hash must not.
+    """
+    from dependencies import verify_password as _verify
+    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    await _seed_webauthn_factor(user["id"])
+    now = int(datetime.now(timezone.utc).timestamp())
+    token = create_access_token({
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    }, mfa_recent_at=now)
+    new_pw = "BrandNew@123!"
+    r = await client.post(
+        "/auth/change-password",
+        json={"current_password": _PASS, "new_password": new_pw},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    fresh = await gd_find_one(db.session, "users", {"id": user["id"]})
+    assert _verify(new_pw, fresh.get("password_hash") or "")
+    assert not _verify(_PASS, fresh.get("password_hash") or "")
+
+
+@pytest.mark.asyncio
+async def test_change_password_principal_wrong_current_returns_400_and_does_not_mutate(
+    client, tenant_a,
+):
+    """Task #338 — wrong `current_password` MUST surface as HTTP 400
+    with the existing Arabic message, NEVER a step-up envelope, and the
+    stored password hash must remain unchanged.
+    """
+    from dependencies import verify_password as _verify
+    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    await _seed_webauthn_factor(user["id"])
+    now = int(datetime.now(timezone.utc).timestamp())
+    token = create_access_token({
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    }, mfa_recent_at=now)
+    r = await client.post(
+        "/auth/change-password",
+        json={"current_password": "WrongPass@123!", "new_password": "BrandNew@123!"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 400, r.text
+    # Lock the Arabic UX contract — the form surfaces this exact string.
+    body = r.json() or {}
+    detail = body.get("detail") or (body.get("error") or {}).get("message")
+    assert detail == "كلمة المرور الحالية غير صحيحة", body
+    fresh = await gd_find_one(db.session, "users", {"id": user["id"]})
+    # Old password still valid → hash was not mutated.
+    assert _verify(_PASS, fresh.get("password_hash") or "")
+
+
+@pytest.mark.asyncio
+async def test_change_password_stale_mfa_does_not_mutate_password(client, tenant_a):
+    """Task #338 — when the step-up gate refuses (HTTP 403 envelope), the
+    password hash on disk MUST be unchanged. Belt-and-braces guard so a
+    future regression cannot silently advance the request past the gate.
+    """
+    from dependencies import verify_password as _verify
+    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    token = create_access_token({
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    })  # no mfa_recent_at
+    r = await client.post(
+        "/auth/change-password",
+        json={"current_password": _PASS, "new_password": "BrandNew@123!"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 403, r.text
+    fresh = await gd_find_one(db.session, "users", {"id": user["id"]})
+    assert _verify(_PASS, fresh.get("password_hash") or "")
 
 
 @pytest.mark.asyncio

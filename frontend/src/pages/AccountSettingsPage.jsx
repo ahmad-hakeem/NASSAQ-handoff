@@ -575,13 +575,30 @@ export const AccountSettingsPage = () => {
         current_password: passwordData.current_password,
         new_password: passwordData.new_password,
       });
-      await refreshUser();
+      // Task #338: a transient refreshUser() failure (e.g. network blip)
+      // must NOT undo the success path or surface as a change-password
+      // error — the password update has already been committed server-side.
+      try {
+        await refreshUser();
+      } catch (_refreshErr) {
+        // swallow — success state below is still the correct outcome.
+      }
       setSaveSuccess('password');
       toast.success(t('passwordChangedSuccessfully'));
       setPasswordData({ current_password: '', new_password: '', confirm_password: '' });
       setTimeout(() => setSaveSuccess(null), 3000);
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (t('failedToChangePassword')));
+      // Task #338: the axios interceptor handles MFA step-up envelopes
+      // (HTTP 403 + canonical code) by opening the step-up modal and
+      // replaying the request. If the user cancels or the replay fails,
+      // the error reaches us here — surface a clear Arabic message in
+      // the form instead of bouncing to /login. The interceptor's
+      // defense-in-depth branch guarantees no logout for step-up codes.
+      const detail = error.response?.data?.detail;
+      const message = (detail && typeof detail === 'object' && detail.message)
+        ? detail.message
+        : (typeof detail === 'string' ? detail : t('failedToChangePassword'));
+      nassaqError(message);
     } finally {
       setSaving(false);
     }

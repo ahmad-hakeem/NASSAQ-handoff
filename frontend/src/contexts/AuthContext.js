@@ -282,6 +282,21 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
+      // Task #338 — defense in depth for the canonical step-up envelope.
+      // The block above already opens the step-up modal when the response
+      // carries a step-up code on a fresh attempt. If the same envelope
+      // arrives on a replayed request (`_mfaStepUpRetried` is set, e.g.
+      // user cancelled / failed step-up, or the replay still wasn't
+      // accepted) we MUST NOT fall through to the legacy bare-401
+      // handler — that would call attemptTokenRefresh() and, on failure,
+      // hard-redirect the user to /login. Instead, reject the original
+      // error so the calling component's `catch` surfaces its own Arabic
+      // form-level message. This keeps any future route that emits the
+      // canonical envelope safe even if it does so as a 401.
+      if (mfaStepUpCodes.has(mfaCode)) {
+        return Promise.reject(error);
+      }
+
       if (status === 401 && !config.url?.includes('/auth/me') && !config.url?.includes('/auth/login') && !config.url?.includes('/auth/refresh')) {
         // A 401 for a request that had NO Authorization header to begin
         // with is not an expired session — it's an endpoint the caller
