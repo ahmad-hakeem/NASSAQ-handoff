@@ -2703,7 +2703,29 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                   <div
                     key={`${teacher.id}-${dayKey}-${p}`}
                     data-testid={`master-matrix-cell-${teacher.id}-${dayKey}-${p}`}
-                    className={`min-w-0 border-b border-l border-slate-100 p-0.5 ${conflictBg} ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
+                    // `flex` here is critical for the row-height contract:
+                    // CSS-grid stretches this wrapper to the row track, but
+                    // the inner SessionCell / FilledCell / EmptyCell uses
+                    // `h-full` (height: 100%). A percentage height inside a
+                    // grid item whose own `height` is `auto` (only
+                    // `minHeight` set) resolves to `auto` in browsers, so
+                    // the colored cell collapses to its content height
+                    // (~60px) inside an 88px row — exactly the symptom in
+                    // the bug screenshot. Switching the wrapper to a flex
+                    // container makes the child stretch via flex's
+                    // cross-axis (no percentage resolution required), so
+                    // the day-tinted cell, the empty-cell button, and the
+                    // DnD ring all fill the row faithfully.
+                    // `[&>*]:flex-1 [&>*]:min-w-0` forces the immediate
+                    // child (DroppableSlot when DnD is on, otherwise the
+                    // FilledCell/SessionCell/EmptyCell itself) to grow on
+                    // the flex main-axis (width). Cross-axis (height) is
+                    // already handled by flex's default `align-items:
+                    // stretch`. Together with the wrapper's `minHeight`
+                    // this guarantees the colored cell fully fills its
+                    // grid track regardless of whether SessionCell
+                    // happens to set `w-full` itself.
+                    className={`min-w-0 flex [&>*]:flex-1 [&>*]:min-w-0 border-b border-l border-slate-100 p-0.5 ${conflictBg} ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
                     style={{
                       // Single row-height contract: the teacher (first column)
                       // cell uses `minHeight: ROW_HEIGHT` so absence buttons /
