@@ -92,12 +92,19 @@ async def create_student(
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
+    class_name = None
+    if student_data.class_id:
+        class_doc = await gd_find_one(db.session, "classes", {"id": student_data.class_id, "school_id": school_id})
+        if not class_doc:
+            raise HTTPException(status_code=404, detail="الفصل غير موجود أو لا ينتمي إلى مدرستك")
+        class_name = class_doc.get("name")
+
     await gd_insert(db.session, "students", student_doc)
     
     await _gd_inc(db.session, "schools", {"id": student_doc["school_id"]}, {"current_students": 1})
     
     if student_data.class_id:
-        await _gd_inc(db.session, "classes", {"id": student_data.class_id}, {"current_students": 1})
+        await _gd_inc(db.session, "classes", {"id": student_data.class_id, "school_id": school_id}, {"current_students": 1})
     
     await audit_engine.log(
         action=AuditAction.USER_CREATED.value,
@@ -114,12 +121,6 @@ async def create_student(
         actor_role=current_user.get("role"),
         actor_email=current_user.get("email"),
     )
-    
-    class_name = None
-    if student_data.class_id:
-        class_doc = await gd_find_one(db.session, "classes", {"id": student_data.class_id})
-        if class_doc:
-            class_name = class_doc.get("name")
     
     return StudentResponse(**student_doc, class_name=class_name)
 
@@ -444,6 +445,11 @@ async def update_student(
     if student_data.grade is not None:
         update_fields["grade"] = student_data.grade
     if student_data.class_id is not None:
+        class_owner_id = school_id or existing.get("school_id")
+        if class_owner_id:
+            class_check = await gd_find_one(db.session, "classes", {"id": student_data.class_id, "school_id": class_owner_id})
+            if not class_check:
+                raise HTTPException(status_code=404, detail="الفصل غير موجود أو لا ينتمي إلى مدرستك")
         update_fields["class_id"] = student_data.class_id
     if student_data.date_of_birth is not None:
         update_fields["date_of_birth"] = student_data.date_of_birth
@@ -546,8 +552,13 @@ async def delete_student(
     if is_independent_teacher(current_user):
         wsid = independent_workspace_id(current_user)
         student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": wsid})
-    else:
+    elif current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
         student = await gd_find_one(db.session, "students", {"id": student_id})
+    else:
+        caller_tenant = current_user.get("tenant_id")
+        if not caller_tenant:
+            raise HTTPException(status_code=403, detail="سياق المدرسة مطلوب")
+        student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": caller_tenant})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
     
@@ -577,7 +588,7 @@ async def delete_student(
 
     await _gd_inc(db.session, "schools", {"id": school_id}, {"current_students": -1})
     if class_id:
-        await _gd_inc(db.session, "classes", {"id": class_id}, {"current_students": -1})
+        await _gd_inc(db.session, "classes", {"id": class_id, "school_id": school_id}, {"current_students": -1})
 
     r = await gd_delete_many(db.session, "attendance", {"student_id": student_id})
     cleanup["attendance"] = r
