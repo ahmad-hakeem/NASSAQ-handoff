@@ -410,6 +410,54 @@ async def test_accept_invitation_email_collision_falls_back_to_invalid(client):
 
 
 # ---------------------------------------------------------------------------
+# Accept — cross-tenant dedupe isolation
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_accept_invitation_does_not_dedupe_cross_tenant_parent(client):
+    """A parents row whose phone/email/national_id matches the invitation's
+    contact details but belongs to a DIFFERENT IT workspace must NOT be
+    reused.  A fresh parents row must be created in the invitation's own
+    workspace instead, preventing cross-tenant family merges."""
+    ctx = await mk_it_workspace(with_student=False, with_parent=False, with_passkey=False)
+    other = await mk_it_workspace(with_student=False, with_parent=False, with_passkey=False)
+    sid = await _mk_pending_student(ctx["wsid"])
+
+    shared_email = f"shared-{uuid.uuid4()}@example.com"
+    other_parent_id = str(uuid.uuid4())
+    # Seed a parent in the OTHER workspace with the same email address.
+    await gd_insert(db.session, "parents", {
+        "id": other_parent_id,
+        "full_name": "والد مدرسة أخرى",
+        "email": shared_email,
+        "school_id": other["wsid"],
+        "is_active": True,
+    })
+
+    inv_id, token = await _seed_invitation(
+        ctx["wsid"], sid, parent_email=shared_email,
+    )
+    resp = await client.post(
+        "/public/parent-invitations/accept",
+        json={"token": token},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    # The returned parent_id must NOT be the cross-workspace record.
+    assert body["parent_id"] != other_parent_id, (
+        "Cross-tenant parent row must not be reused during invitation accept"
+    )
+    # A brand-new parents row must have been created in the invitation workspace.
+    new_parent = await gd_find_one(db.session, "parents", {"id": body["parent_id"]})
+    assert new_parent is not None
+    assert new_parent["school_id"] == ctx["wsid"]
+    # The cross-tenant record must be completely untouched.
+    other_p = await gd_find_one(db.session, "parents", {"id": other_parent_id})
+    assert other_p["school_id"] == other["wsid"]
+
+
+# ---------------------------------------------------------------------------
 # Accept — error paths
 # ---------------------------------------------------------------------------
 

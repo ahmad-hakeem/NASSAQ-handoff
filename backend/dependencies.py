@@ -353,19 +353,28 @@ async def get_current_user(
                 await _persist_link("student_id", student.get("id"))
 
         if user.get("role") == UserRole.PARENT.value and not user.get("parent_id"):
-            parent = None
-            if user.get("email"):
-                parent = await gd_find_one(db.session, "parents", {"email": user.get("email")})
-            if not parent and user.get("phone"):
-                parent = await gd_find_one(db.session, "parents", {"phone": user.get("phone")})
-            if not parent and user.get("national_id"):
-                parent = await gd_find_one(db.session, "parents", {"national_id": user.get("national_id")})
+            # Use tenant-scoped lookups (same _scoped_lookup helper as teachers/students)
+            # to prevent a shared phone/email/national_id from binding a parent account
+            # to the wrong family's `parents` row across workspace boundaries.
+            parent = await _scoped_lookup("parents", "email", user.get("email"))
+            if not parent:
+                parent = await _scoped_lookup("parents", "phone", user.get("phone"))
+            if not parent:
+                parent = await _scoped_lookup("parents", "national_id", user.get("national_id"))
             if parent:
                 user["parent_id"] = parent.get("id")
+                await _persist_link("parent_id", parent.get("id"))
             else:
-                link = await gd_find_one(db.session, "guardian_links", {"parent_ref": user.get("id"), "is_active": True})
+                # Fall back to guardian_links, scoped by tenant_id when available.
+                link_q: dict = {"parent_ref": user.get("id"), "is_active": True}
+                if _tenant:
+                    link_q["tenant_id"] = _tenant
+                link = await gd_find_one(db.session, "guardian_links", link_q)
                 if link:
-                    user["parent_id"] = link.get("parent_id") or link.get("parent_ref")
+                    resolved = link.get("parent_id") or link.get("parent_ref")
+                    user["parent_id"] = resolved
+                    if resolved:
+                        await _persist_link("parent_id", resolved)
 
         if payload.get("is_impersonating"):
             user["is_impersonating"] = True

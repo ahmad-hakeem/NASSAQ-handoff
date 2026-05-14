@@ -461,21 +461,29 @@ async def cancel_parent_invitation(
 
 async def _dedupe_parent(
     *, national_id: Optional[str], phone: Optional[str], email: Optional[str],
+    workspace_id: str,
 ) -> tuple[Optional[Dict[str, Any]], str]:
+    """Four-step dedupe scoped to ``workspace_id``.
+
+    All lookups are constrained by ``school_id == workspace_id`` so that a
+    phone/email/national_id shared by a parent in a different IT workspace
+    never causes a cross-tenant family merge (mirrors the §5.6 fix).
+    """
+    scope = {"school_id": workspace_id}
     if national_id:
-        row = await gd_find_one(db.session, "parents", {"national_id": national_id})
+        row = await gd_find_one(db.session, "parents", {"national_id": national_id, **scope})
         if row:
             return row, "national_id"
     if phone and email:
-        row = await gd_find_one(db.session, "parents", {"phone": phone, "email": email})
+        row = await gd_find_one(db.session, "parents", {"phone": phone, "email": email, **scope})
         if row:
             return row, "phone_email"
     if phone and not email:
-        row = await gd_find_one(db.session, "parents", {"phone": phone})
+        row = await gd_find_one(db.session, "parents", {"phone": phone, **scope})
         if row:
             return row, "phone"
     if email and not phone:
-        row = await gd_find_one(db.session, "parents", {"email": email})
+        row = await gd_find_one(db.session, "parents", {"email": email, **scope})
         if row:
             return row, "email"
     return None, "new"
@@ -578,6 +586,7 @@ async def accept_parent_invitation(
                 national_id=payload.national_id,
                 phone=parent_phone,
                 email=parent_email,
+                workspace_id=workspace_id,
             )
 
             if existing_parent:

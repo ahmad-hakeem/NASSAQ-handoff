@@ -327,17 +327,17 @@ async def test_invite_parent_new_email_collision_falls_back_to_placeholder(clien
 
 
 # ----------------------------------------------------------------------
-# (b) Dedupe by national_id wins over everything else
+# (b) Dedupe by national_id — same workspace matches, cross-tenant is ignored
 # ----------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_invite_parent_dedupes_by_national_id(client):
+async def test_invite_parent_dedupes_by_national_id_same_workspace(client):
+    """A parents row with a matching national_id in the SAME workspace is
+    reused (correct dedupe behaviour)."""
     user = await _mk_it()
     wsid = independent_workspace_id(user)
     h = _it_headers(user)
     sid = await _mk_pending_student(wsid)
 
-    other_user = await _mk_it()
-    other_wsid = independent_workspace_id(other_user)
     existing_id = str(uuid.uuid4())
     await gd_insert(db.session, "parents", {
         "id": existing_id,
@@ -345,7 +345,7 @@ async def test_invite_parent_dedupes_by_national_id(client):
         "national_id": "1234567890",
         "phone": "+966500999999",
         "email": "existing@example.com",
-        "school_id": other_wsid,
+        "school_id": wsid,
         "is_active": True,
     })
 
@@ -358,11 +358,51 @@ async def test_invite_parent_dedupes_by_national_id(client):
     assert resp.json()["matched_by"] == "national_id"
     assert resp.json()["parent"]["id"] == existing_id
 
-    # parents.school_id NOT rewritten on cross-tenant link.
-    p = await gd_find_one(db.session, "parents", {"id": existing_id})
-    assert p["school_id"] == other_wsid
     # Established fields preserved (conservative update).
+    p = await gd_find_one(db.session, "parents", {"id": existing_id})
     assert p["phone"] == "+966500999999"
+
+
+@pytest.mark.asyncio
+async def test_invite_parent_does_not_dedupe_cross_tenant_national_id(client):
+    """A parents row with a matching national_id in a DIFFERENT workspace must
+    NOT be reused — a fresh parents row must be created in the requesting
+    teacher's workspace instead. This prevents cross-tenant family merges."""
+    user = await _mk_it()
+    wsid = independent_workspace_id(user)
+    h = _it_headers(user)
+    sid = await _mk_pending_student(wsid)
+
+    other_user = await _mk_it()
+    other_wsid = independent_workspace_id(other_user)
+    other_parent_id = str(uuid.uuid4())
+    await gd_insert(db.session, "parents", {
+        "id": other_parent_id,
+        "full_name": "أب في مدرسة أخرى",
+        "national_id": "9999988888",
+        "phone": "+966500111111",
+        "email": "other@example.com",
+        "school_id": other_wsid,
+        "is_active": True,
+    })
+
+    resp = await client.post(
+        f"/independent-teacher/students/{sid}/invite-parent",
+        json={"national_id": "9999988888", "phone": "+966500222222"},
+        headers=h,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # Cross-tenant row must NOT have been reused.
+    assert body["parent"]["id"] != other_parent_id
+    # A brand-new parent record was created in the requesting workspace.
+    assert body["matched_by"] == "new"
+    new_parent = await gd_find_one(db.session, "parents", {"id": body["parent"]["id"]})
+    assert new_parent is not None
+    assert new_parent["school_id"] == wsid
+    # The cross-tenant record is untouched.
+    other_p = await gd_find_one(db.session, "parents", {"id": other_parent_id})
+    assert other_p["school_id"] == other_wsid
 
 
 # ----------------------------------------------------------------------

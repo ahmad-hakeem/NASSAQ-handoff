@@ -175,16 +175,26 @@ async def _load_workspace_student(student_id: str, school_id: str) -> Dict[str, 
     return student
 
 
-async def _dedupe_parent(payload: InviteParentRequest) -> tuple[Optional[Dict[str, Any]], str]:
-    """Apply the frozen four-step dedupe. Returns ``(parent_or_None, matched_by)``.
+async def _dedupe_parent(
+    payload: InviteParentRequest,
+    workspace_id: str,
+) -> tuple[Optional[Dict[str, Any]], str]:
+    """Apply the frozen four-step dedupe, scoped to ``workspace_id``.
 
+    Returns ``(parent_or_None, matched_by)``.
     ``matched_by`` ∈ {"national_id", "phone_email", "phone", "email", "new"}.
     First match wins; no fuzzy matching.
+
+    All lookups are constrained by ``school_id == workspace_id`` so that a
+    phone/email/national_id shared by a parent in a different IT workspace
+    never causes a cross-tenant family merge.
     """
+    scope = {"school_id": workspace_id}
+
     # Step 1 — national_id.
     if payload.national_id:
         row = await gd_find_one(
-            db.session, "parents", {"national_id": payload.national_id},
+            db.session, "parents", {"national_id": payload.national_id, **scope},
         )
         if row:
             return row, "national_id"
@@ -193,7 +203,7 @@ async def _dedupe_parent(payload: InviteParentRequest) -> tuple[Optional[Dict[st
     if payload.phone and payload.email:
         row = await gd_find_one(
             db.session, "parents",
-            {"phone": payload.phone, "email": payload.email},
+            {"phone": payload.phone, "email": payload.email, **scope},
         )
         if row:
             return row, "phone_email"
@@ -201,7 +211,7 @@ async def _dedupe_parent(payload: InviteParentRequest) -> tuple[Optional[Dict[st
     # Step 3 — phone alone (when email absent).
     if payload.phone and not payload.email:
         row = await gd_find_one(
-            db.session, "parents", {"phone": payload.phone},
+            db.session, "parents", {"phone": payload.phone, **scope},
         )
         if row:
             return row, "phone"
@@ -209,7 +219,7 @@ async def _dedupe_parent(payload: InviteParentRequest) -> tuple[Optional[Dict[st
     # Step 4 — email alone (when phone absent).
     if payload.email and not payload.phone:
         row = await gd_find_one(
-            db.session, "parents", {"email": payload.email},
+            db.session, "parents", {"email": payload.email, **scope},
         )
         if row:
             return row, "email"
@@ -301,7 +311,7 @@ async def invite_parent(
     # Begin atomic block. Any inner failure rolls everything back.
     try:
         async with db.session.begin_nested():
-            existing_parent, matched_by = await _dedupe_parent(payload)
+            existing_parent, matched_by = await _dedupe_parent(payload, workspace_id)
 
             if existing_parent:
                 parent_id = existing_parent["id"]
