@@ -1238,6 +1238,234 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "weekly_tip": weekly_insight.get("tip") if weekly_insight.get("status") == "available" else None,
         }
 
+    # ============= WEEKLY ACADEMIC ANALYSIS =============
+    # Backend-aggregated weekly pulse for the Parent Portal student profile
+    # (التحليل الأكاديمي الأسبوعي). One endpoint, one student, one
+    # parent-authorized context. Reuses _verify_parent_access as the sole
+    # authorization boundary and enforces tenant scoping on every signal.
+    @router.get("/child/{child_id}/weekly-analysis")
+    async def get_child_weekly_analysis(
+        child_id: str,
+        current_user: dict = Depends(require_roles([UserRole.PARENT]))
+    ):
+        parent_id = current_user.get("id")
+        parent_phone = current_user.get("phone")
+        school_id = current_user.get("tenant_id")
+
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, school_id, current_user=current_user)
+        if not child:
+            raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
+
+        # Saudi academic week: Saturday → Thursday (mirrors weekly-story).
+        now = datetime.now(SAUDI_TZ)
+        today = now.date()
+        days_since_saturday = (today.weekday() + 2) % 7
+        week_start = today - timedelta(days=days_since_saturday)
+        week_end = week_start + timedelta(days=5)
+        prev_week_start = week_start - timedelta(days=7)
+        prev_week_end = week_end - timedelta(days=7)
+
+        tenant_school_id = child.get("school_id") or school_id
+
+        def _date_range(start, end):
+            # inclusive [start, end] on a date column stored as ISO date.
+            return {"$gte": start.isoformat(), "$lte": end.isoformat()}
+
+        def _ts_range(start, end):
+            # inclusive [start, end] on a timestamp column.
+            return {"$gte": start.isoformat(), "$lt": (end + timedelta(days=1)).isoformat()}
+
+        # ----- Attendance (this week) -----
+        attendance_records = await gd_find(db.session, "attendance", {
+            "student_id": child_id,
+            "school_id": tenant_school_id,
+            "date": _date_range(week_start, week_end),
+        }, limit=50)
+
+        att_counts = {"present": 0, "absent": 0, "late": 0, "excused": 0}
+        per_day_status = {}
+        for rec in attendance_records:
+            status = (rec.get("status") or "").lower()
+            if status in att_counts:
+                att_counts[status] += 1
+            day_key = str(rec.get("date") or "")[:10]
+            if day_key:
+                per_day_status[day_key] = status
+
+        att_total = sum(att_counts.values())
+        att_rate = round(((att_counts["present"] + att_counts["late"]) / att_total) * 100) if att_total > 0 else None
+
+        # Prior-week attendance for trend
+        prev_attendance = await gd_find(db.session, "attendance", {
+            "student_id": child_id,
+            "school_id": tenant_school_id,
+            "date": _date_range(prev_week_start, prev_week_end),
+        }, limit=50)
+        prev_present = sum(1 for r in prev_attendance if (r.get("status") or "").lower() in ("present", "late"))
+        prev_total = len(prev_attendance)
+        prev_att_rate = round((prev_present / prev_total) * 100) if prev_total > 0 else None
+        att_trend = (att_rate - prev_att_rate) if (att_rate is not None and prev_att_rate is not None) else None
+
+        # ----- Behaviour (this week) -----
+        positive_behaviour = await gd_count(db.session, "behaviour_records", {
+            "student_id": child_id,
+            "school_id": tenant_school_id,
+            "type": "positive",
+            "created_at": _ts_range(week_start, week_end),
+        })
+        negative_behaviour = await gd_count(db.session, "behaviour_records", {
+            "student_id": child_id,
+            "school_id": tenant_school_id,
+            "type": "negative",
+            "created_at": _ts_range(week_start, week_end),
+        })
+        behaviour_total = positive_behaviour + negative_behaviour
+        behaviour_score = round((positive_behaviour / behaviour_total) * 100) if behaviour_total > 0 else None
+
+        # ----- Assessments / grades (this week) -----
+        week_grades = await gd_find(db.session, "grades", {
+            "student_id": child_id,
+            "school_id": tenant_school_id,
+            "date": _date_range(week_start, week_end),
+        }, limit=200)
+        subj_buckets = {}
+        all_pcts = []
+        for g in week_grades:
+            pct = g.get("percentage")
+            if pct is None:
+                continue
+            try:
+                pct_val = float(pct)
+            except (TypeError, ValueError):
+                continue
+            all_pcts.append(pct_val)
+            subj = g.get("subject_name") or g.get("subject_id") or "عام"
+            subj_buckets.setdefault(subj, []).append(pct_val)
+        grades_avg = round(sum(all_pcts) / len(all_pcts)) if all_pcts else None
+        subjects_payload = [
+            {"subject": s, "average": round(sum(v) / len(v), 1), "items": len(v)}
+            for s, v in subj_buckets.items()
+        ]
+        subjects_payload.sort(key=lambda x: x["average"], reverse=True)
+
+        # ----- Homework (this week, best-effort) -----
+        hw_total = 0
+        hw_done = 0
+        hw_available = False
+        try:
+            class_id = child.get("class_id")
+            if class_id:
+                week_assignments = await gd_find(db.session, "student_assignments", {
+                    "class_id": class_id,
+                    "school_id": tenant_school_id,
+                    "due_date": _date_range(week_start, week_end),
+                }, limit=100)
+                if week_assignments:
+                    hw_available = True
+                    assignment_ids = [a.get("id") for a in week_assignments if a.get("id")]
+                    submissions = await gd_find(db.session, "assignment_submissions", {
+                        "student_id": child_id,
+                        "school_id": tenant_school_id,
+                        "assignment_id": {"$in": assignment_ids},
+                    }, limit=200) if assignment_ids else []
+                    hw_total = len(week_assignments)
+                    hw_done = len({s.get("assignment_id") for s in submissions if s.get("assignment_id")})
+        except Exception as e:
+            logger.debug(f"weekly-analysis homework lookup failed: {e}")
+        hw_rate = round((hw_done / hw_total) * 100) if hw_total > 0 else None
+
+        # ----- Per-day attendance series for the chart -----
+        day_names_ar = ["السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس"]
+        daily = []
+        for i in range(6):
+            d = week_start + timedelta(days=i)
+            iso = d.isoformat()
+            status = per_day_status.get(iso)
+            daily.append({
+                "day_ar": day_names_ar[i],
+                "date": iso,
+                "status": status,             # null when no record yet
+                "is_future": d > today,
+                "is_today": d == today,
+            })
+
+        # ----- Metric envelope (each carries an availability flag) -----
+        metrics = [
+            {
+                "key": "attendance",
+                "label_ar": "الحضور",
+                "available": att_rate is not None,
+                "value": att_rate,
+                "unit": "%",
+                "trend": att_trend,
+                "details": {
+                    "present": att_counts["present"],
+                    "absent": att_counts["absent"],
+                    "late": att_counts["late"],
+                    "excused": att_counts["excused"],
+                    "total": att_total,
+                },
+            },
+            {
+                "key": "assessments",
+                "label_ar": "التقييمات",
+                "available": grades_avg is not None,
+                "value": grades_avg,
+                "unit": "%",
+                "trend": None,
+                "details": {"items": len(all_pcts), "subjects": subjects_payload[:5]},
+            },
+            {
+                "key": "behaviour",
+                "label_ar": "السلوك",
+                "available": behaviour_score is not None,
+                "value": behaviour_score,
+                "unit": "%",
+                "trend": None,
+                "details": {
+                    "positive": positive_behaviour,
+                    "negative": negative_behaviour,
+                    "total": behaviour_total,
+                },
+            },
+            {
+                "key": "homework",
+                "label_ar": "الواجبات",
+                "available": hw_available,
+                "value": hw_rate,
+                "unit": "%",
+                "trend": None,
+                "details": {"done": hw_done, "total": hw_total},
+            },
+        ]
+
+        any_available = any(m["available"] for m in metrics)
+        status = "available" if any_available else "insufficient_data"
+
+        # Short Arabic headline derived ONLY from real metrics (no LLM here).
+        if not any_available:
+            headline_ar = "لا توجد بيانات كافية للأسبوع الحالي"
+        else:
+            parts = []
+            if att_rate is not None:
+                parts.append(f"الحضور {att_rate}%")
+            if grades_avg is not None:
+                parts.append(f"المعدل {grades_avg}%")
+            if behaviour_total > 0:
+                parts.append(f"{positive_behaviour} ملاحظة إيجابية")
+            headline_ar = " · ".join(parts) if parts else "ملخص الأسبوع متاح"
+
+        return {
+            "status": status,
+            "week_start": week_start.isoformat(),
+            "week_end": week_end.isoformat(),
+            "headline_ar": headline_ar,
+            "metrics": metrics,
+            "daily_attendance": daily,
+            "last_updated": now.isoformat(),
+            "empty_hint_ar": "لا توجد بيانات كافية للأسبوع الحالي",
+        }
+
     # ============= STUDENT PROFILE =============
 
     @router.get("/child/{child_id}/profile")

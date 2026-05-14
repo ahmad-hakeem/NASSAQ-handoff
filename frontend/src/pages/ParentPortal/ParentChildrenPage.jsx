@@ -11,6 +11,7 @@ import {
   ClipboardList, Heart,
 } from 'lucide-react';
 
+const WeeklyAnalysisPanel = lazy(() => import('../../components/parent/WeeklyAnalysisPanel'));
 const DetailsPanel = lazy(() => import('../../components/parent/panels/DetailsPanel'));
 const SchedulePanel = lazy(() => import('../../components/parent/panels/SchedulePanel'));
 const HomeworkPanel = lazy(() => import('../../components/parent/panels/HomeworkPanel'));
@@ -190,6 +191,17 @@ const ParentChildrenPage = () => {
                       </div>
                     </div>
                   </div>
+
+                  {/* Weekly academic analysis — backend-aggregated, real
+                      data only. NO per-child key here on purpose: the
+                      component stays mounted across child switches and
+                      refetches silently (its internal request-seq guard
+                      drops stale responses), so the previous payload
+                      remains visible until fresh data arrives instead of
+                      flashing a skeleton on every switch. */}
+                  <Suspense fallback={<Skeleton className="h-40 w-full rounded-2xl" />}>
+                    <WeeklyAnalysisPanel childId={activeChild.id} />
+                  </Suspense>
 
                   {/* Tab nav */}
                   <div
