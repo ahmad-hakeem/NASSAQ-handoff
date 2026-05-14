@@ -177,13 +177,37 @@ async def _annotate_teacher_rows(
 async def _annotate_student_rows(
     session, *, school_id: str, parsed_rows: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
-    """Annotate student rows. Missing student_number falls back to a
-    generated NSS-{hex} internal id rather than skipping; the original
-    Noor number stays empty in that case so we never invent fake
-    ministry numbers."""
-    import secrets as _secrets
+    """Annotate student rows.
+
+    Dedupe verdicts:
+      • update    — exact match on (school_id, student_number) against
+                    an existing active row.
+      • ambiguous — soft match on (normalized full_name + grade_code
+                    + section_code) but a different/blank Noor number.
+                    /commit only inserts when the row_index is in
+                    confirmations.ambiguous_treat_as_new.
+      • insert    — passes validation, no match.
+      • skip      — fails validation.
+
+    Missing student_number falls back to a DETERMINISTIC NSS-{hex8}
+    internal id derived from sha256(school_id|full_name|grade|section)
+    so re-imports of the same Noor row are idempotent (the second run
+    finds the prior NSS row and routes it to UPDATE instead of insert).
+    """
+    import hashlib
     students = await load_school_student_index(session, school_id)
     classes = await load_school_class_index(session, school_id)
+
+    # Soft-match index: (norm_name, grade, section) -> {id, student_number}
+    soft_idx: Dict[str, Dict[str, Any]] = {}
+    for s in students.values():
+        nm = (s.get("full_name") or "").strip()
+        gd = (s.get("grade") or "").strip()
+        cid = s.get("class_id")
+        if nm:
+            key = f"{nm}|{gd}|{cid or ''}"
+            soft_idx.setdefault(key, s)
+
     annotated: List[Dict[str, Any]] = []
     in_batch_seen: set = set()
     for r in parsed_rows:
@@ -191,19 +215,20 @@ async def _annotate_student_rows(
         issues: List[str] = []
         num = (data.get("student_number") or "").strip()
         full_name = (data.get("full_name") or "").strip()
+        grade_code = (data.get("grade_code") or "").strip()
+        section_code = (data.get("section_code") or "").strip()
         if not full_name:
             issues.append("missing_full_name")
-        # Missing student_number is RECOVERABLE — mint NSS-{hex} so the
-        # row still imports. Spec: students must always have a stable
-        # internal id, even when Noor exports leave the column blank.
+
+        # Deterministic NSS fallback derived from row contents — same
+        # row content + same school always hashes to the same id, so
+        # re-import is idempotent and the second pass routes to UPDATE.
         generated = False
         if not num and full_name:
-            num = f"NSS-{_secrets.token_hex(5).upper()}"
-            data["student_number"] = num
-            generated = True
-        # In-batch collision guard: rare but possible for the generator.
-        while num in in_batch_seen:
-            num = f"NSS-{_secrets.token_hex(5).upper()}"
+            h = hashlib.sha256(
+                f"{school_id}|{full_name}|{grade_code}|{section_code}".encode("utf-8")
+            ).hexdigest()[:10].upper()
+            num = f"NSS-{h}"
             data["student_number"] = num
             generated = True
         if num:
@@ -211,17 +236,26 @@ async def _annotate_student_rows(
 
         dedupe = "skip" if issues else "insert"
         existing_id: Optional[str] = None
-        if not issues and num in students:
-            dedupe = "update"
-            existing_id = students[num]["id"]
+        if not issues:
+            if num in students:
+                dedupe = "update"
+                existing_id = students[num]["id"]
+            elif full_name:
+                resolved_cid = resolve_class(
+                    grade_code=grade_code,
+                    section_code=section_code,
+                    class_index=classes,
+                )
+                soft_key = f"{full_name}|{grade_code}|{resolved_cid or ''}"
+                if soft_key in soft_idx:
+                    dedupe = "ambiguous"
+                    existing_id = soft_idx[soft_key]["id"]
         class_id = resolve_class(
-            grade_code=data.get("grade_code"),
-            section_code=data.get("section_code"),
+            grade_code=grade_code,
+            section_code=section_code,
             class_index=classes,
         )
-        class_unresolved = class_id is None and (
-            data.get("grade_code") or data.get("section_code")
-        )
+        class_unresolved = class_id is None and (grade_code or section_code)
         annotated.append(
             {
                 "row_index": r["row_index"],
@@ -450,7 +484,7 @@ async def _commit_teachers(
                             "phone": data.get("phone"),
                             "address": data.get("address"),
                             "gender": data.get("gender"),
-                            "dob": data.get("date_of_birth"),
+                            "dob": data.get("dob"),
                             "email": data.get("email"),
                             "id": live_existing_id,
                             "sid": school_id,
@@ -565,6 +599,19 @@ async def _commit_students(
                     section_code=section_code,
                     class_index=classes,
                 )
+                # Honor ambiguous gating: if /parse flagged this row as
+                # ambiguous and the user didn't tick "treat as new",
+                # skip it server-side. (Defense-in-depth — the FE
+                # already filters via the checkbox.)
+                if r.get("dedupe") == "ambiguous" and row_idx not in ambiguous_treat_as_new:
+                    skipped += 1
+                    errors.append(
+                        {
+                            "row": row_idx,
+                            "message": "تطابق غير مؤكد — أكّد المعالجة كصف جديد",
+                        }
+                    )
+                    continue
                 existing = students.get(num)
                 if existing:
                     await update_student_mutable_fields(
