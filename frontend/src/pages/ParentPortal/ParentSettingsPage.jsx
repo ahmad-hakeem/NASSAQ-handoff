@@ -13,6 +13,7 @@ import ContactInfoDialog from '../../components/parent/ContactInfoDialog';
 import ProfileEditDialog from '../../components/parent/ProfileEditDialog';
 import PasswordChangeDialog from '../../components/parent/PasswordChangeDialog';
 import ActiveSessionsCard from '../../components/parent/ActiveSessionsCard';
+import MfaSecuritySection from '../../components/mfa/MfaSecuritySection';
 import {
   Settings as SettingsIcon, FileText, Shield, Globe, MessageCircle,
   GraduationCap, LogOut, ChevronLeft, ChevronRight, User, Camera,
@@ -315,6 +316,9 @@ const ParentSettingsPage = () => {
               />
             </CardContent>
           </Card>
+          <div className="mb-3">
+            <MfaSecuritySection />
+          </div>
           <ActiveSessionsCard />
         </div>
 
