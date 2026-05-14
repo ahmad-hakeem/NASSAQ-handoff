@@ -243,22 +243,33 @@ def create_websocket_routes(db, decode_token):
             # revalidate the connection against revoked_tokens AND the
             # password-change boundary, force-closing stale sockets.
             # (Task #342: extends audit Open Question 3.)
+            # Task #350: also capture handshake-time role and tenant_id so the
+            # ping loop can detect authorization drift on already-open sockets.
+            # For impersonation/role-switch tokens the role/tenant claims differ
+            # from the base users row by design; the flag disables the drift
+            # check for those sessions (JTI revocation + JWT expiry still apply).
             _conn_jti = payload.get("jti")
             _conn_iat = payload.get("iat")  # unix timestamp set by create_access_token
+            _conn_is_impersonating = bool(payload.get("is_impersonating") or payload.get("is_switched"))
 
-            async def _server_ping_loop(ws, uid, conn_jti, conn_iat):
-                """Server-initiated ping every 30s + revocation + password-change check.
-                Force-closes the socket on send failure, when the JWT jti has
-                been revoked, or when the token was issued before the user's
-                most recent password change (Task #342)."""
+            async def _server_ping_loop(ws, uid, conn_jti, conn_iat, conn_role, conn_tenant_id, conn_is_impersonating):
+                """Server-initiated ping every 30s + full authorization recheck.
+
+                Closes the socket when:
+                - The JWT jti has been revoked (Task #342 / phase 3)
+                - The token predates the user's last password change (Task #342)
+                - The user is now inactive or locked (Task #350)
+                - The user's role has changed since handshake (Task #350)
+                - The user's tenant_id has changed since handshake (Task #350)
+                """
                 try:
                     while True:
                         await asyncio.sleep(30)
-                        # Phase 3 — in-flight revocation propagation.
-                        if conn_jti:
-                            try:
-                                from db import async_session_factory as _asf
-                                async with _asf() as _ws_check:
+                        try:
+                            from db import async_session_factory as _asf
+                            async with _asf() as _ws_check:
+                                # 1. Revocation check (requires jti).
+                                if conn_jti:
                                     revoked = await gd_find_one(
                                         _ws_check, "revoked_tokens", {"jti": conn_jti}
                                     )
@@ -271,34 +282,97 @@ def create_websocket_routes(db, decode_token):
                                         except Exception:
                                             pass
                                         return
-                                    # Task #342: check if the token predates a password change.
-                                    # Re-fetch the user record each cycle so we pick up changes
-                                    # that occurred while this socket was already open.
-                                    if conn_iat is not None:
-                                        _user_row = await gd_find_one(_ws_check, "users", {"id": uid})
-                                        _lpc = _user_row.get("last_password_change") if _user_row else None
-                                        if _lpc:
-                                            try:
-                                                _lpc_str = _lpc if isinstance(_lpc, str) else str(_lpc)
-                                                _lpc_str = _lpc_str.replace("Z", "+00:00")
-                                                from datetime import datetime as _dt_ping
-                                                _pw_ts = _dt_ping.fromisoformat(_lpc_str).timestamp()
-                                                if conn_iat < _pw_ts:
-                                                    logger.info(
-                                                        f"WS token predates password change — "
-                                                        f"closing socket for user={uid}"
-                                                    )
-                                                    try:
-                                                        await ws.close(code=4001, reason="password changed")
-                                                    except Exception:
-                                                        pass
-                                                    return
-                                            except Exception as _lpc_ping_err:
-                                                logger.debug(
-                                                    f"WS password-change boundary check failed: {_lpc_ping_err}"
+
+                                # 2. Re-fetch the live user row for all remaining checks.
+                                # This runs every cycle regardless of whether jti is set,
+                                # so is_active / is_locked / role / tenant drift are always
+                                # caught within one ping interval (~30 s).
+                                _user_row = await gd_find_one(_ws_check, "users", {"id": uid})
+                                if not _user_row:
+                                    logger.info(f"WS user={uid} no longer exists — closing socket")
+                                    try:
+                                        await ws.close(code=4001, reason="user not found")
+                                    except Exception:
+                                        pass
+                                    return
+
+                                # 3. is_active / is_locked (Task #350).
+                                if not _user_row.get("is_active", True):
+                                    logger.info(
+                                        f"WS user={uid} is now inactive — closing socket"
+                                    )
+                                    try:
+                                        await ws.close(code=4001, reason="account inactive")
+                                    except Exception:
+                                        pass
+                                    return
+                                if _user_row.get("is_locked", False):
+                                    logger.info(
+                                        f"WS user={uid} is now locked — closing socket"
+                                    )
+                                    try:
+                                        await ws.close(code=4001, reason="account locked")
+                                    except Exception:
+                                        pass
+                                    return
+
+                                # 4. Password-change boundary (Task #342).
+                                if conn_iat is not None:
+                                    _lpc = _user_row.get("last_password_change")
+                                    if _lpc:
+                                        try:
+                                            _lpc_str = _lpc if isinstance(_lpc, str) else str(_lpc)
+                                            _lpc_str = _lpc_str.replace("Z", "+00:00")
+                                            from datetime import datetime as _dt_ping
+                                            _pw_ts = _dt_ping.fromisoformat(_lpc_str).timestamp()
+                                            if conn_iat < _pw_ts:
+                                                logger.info(
+                                                    f"WS token predates password change — "
+                                                    f"closing socket for user={uid}"
                                                 )
-                            except Exception as _rv:
-                                logger.debug(f"WS revocation check failed: {_rv}")
+                                                try:
+                                                    await ws.close(code=4001, reason="password changed")
+                                                except Exception:
+                                                    pass
+                                                return
+                                        except Exception as _lpc_ping_err:
+                                            logger.debug(
+                                                f"WS password-change boundary check failed: {_lpc_ping_err}"
+                                            )
+
+                                # 5. Role / tenant drift (Task #350): close if the
+                                # user's role or tenant has changed since handshake.
+                                # Exempt impersonation/role-switch sockets — their
+                                # token claims intentionally differ from the base
+                                # users row; JTI revocation + JWT expiry still apply.
+                                if not conn_is_impersonating:
+                                    current_role = _user_row.get("role")
+                                    if conn_role and current_role and conn_role != current_role:
+                                        logger.info(
+                                            f"WS user={uid} role changed "
+                                            f"{conn_role!r} → {current_role!r} — closing socket"
+                                        )
+                                        try:
+                                            await ws.close(code=4001, reason="role changed")
+                                        except Exception:
+                                            pass
+                                        return
+
+                                    current_tenant = _user_row.get("tenant_id")
+                                    if conn_tenant_id != current_tenant:
+                                        logger.info(
+                                            f"WS user={uid} tenant changed "
+                                            f"{conn_tenant_id!r} → {current_tenant!r} — closing socket"
+                                        )
+                                        try:
+                                            await ws.close(code=4001, reason="tenant changed")
+                                        except Exception:
+                                            pass
+                                        return
+
+                        except Exception as _rv:
+                            logger.debug(f"WS periodic auth check failed: {_rv}")
+
                         try:
                             await ws.send_json({"type": "server_ping", "ts": datetime.now(timezone.utc).isoformat()})
                         except Exception:
@@ -311,7 +385,7 @@ def create_websocket_routes(db, decode_token):
                 except asyncio.CancelledError:
                     pass
 
-            ping_task = asyncio.create_task(_server_ping_loop(websocket, user_id, _conn_jti, _conn_iat))
+            ping_task = asyncio.create_task(_server_ping_loop(websocket, user_id, _conn_jti, _conn_iat, role, tenant_id, _conn_is_impersonating))
             try:
                 while True:
                     data = await websocket.receive_text()

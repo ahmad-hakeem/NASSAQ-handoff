@@ -373,6 +373,37 @@ def register_routes(app, api_router: APIRouter):
                 if user.get("is_locked", False):
                     logger.info(f"WebSocket auth rejected: locked user={user_id}")
                     return None
+                # Task #350: reject tokens whose role or tenant_id no longer
+                # match the current DB row.  Admin-driven role changes and
+                # tenant transfers do not revoke existing JWTs, so an unexpired
+                # token can carry stale claims.  Comparing against the live row
+                # here prevents a demoted/transferred user from opening a new
+                # socket using the old token.
+                #
+                # Exception: impersonation / role-switch tokens
+                # (`is_impersonating=True` or `is_switched=True`) intentionally
+                # carry a different role and tenant_id from the base users row.
+                # Their authority comes from the signed token claims and the
+                # persisted impersonation_sessions row; the role/tenant mismatch
+                # check must be skipped for them.
+                _is_impersonating = payload.get("is_impersonating") or payload.get("is_switched")
+                if not _is_impersonating:
+                    token_role = payload.get("role")
+                    token_tenant = payload.get("tenant_id")
+                    db_role = user.get("role")
+                    db_tenant = user.get("tenant_id")
+                    if token_role and db_role and token_role != db_role:
+                        logger.info(
+                            f"WebSocket auth rejected: role mismatch "
+                            f"token={token_role!r} db={db_role!r} user={user_id}"
+                        )
+                        return None
+                    if token_tenant != db_tenant:
+                        logger.info(
+                            f"WebSocket auth rejected: tenant_id mismatch "
+                            f"token={token_tenant!r} db={db_tenant!r} user={user_id}"
+                        )
+                        return None
                 # Task #342 (fix 1): reject tokens issued before the last
                 # password change — matches the same boundary enforced by
                 # get_current_user() on HTTP routes.
