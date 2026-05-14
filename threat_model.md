@@ -18,7 +18,7 @@ This threat model assumes production runs behind Replit-managed TLS, `NODE_ENV=p
 
 - **Browser / API** — all frontend input is untrusted. Backend routes must enforce authn, authz, validation, and tenant scoping server-side.
 - **API / Database** — the FastAPI backend has broad data access. Any broken authorization or unscoped query can expose cross-tenant data.
-- **Public / Authenticated / Privileged API** — public/auth routes (`/auth/*`, public routes, WebSockets, monitoring endpoints) must be separated from authenticated school-role and platform-admin functionality.
+- **Public / Authenticated / Privileged API** — public/auth routes (`/auth/*`, registration helpers, WebSockets, monitoring endpoints) must be separated from authenticated school-role and platform-admin functionality.
 - **School tenant / platform tenant** — platform users may traverse schools intentionally, but ordinary school-scoped roles must never widen tenant scope through request params, headers, or stale role-switch tokens.
 - **HTTP / WebSocket** — WebSocket auth must uphold the same guarantees as HTTP APIs, including token validity, revocation, and user-state enforcement.
 - **Production / dev-only code** — scripts, seeders, mockups, and tests are out of scope unless production reachability is shown.
@@ -26,8 +26,8 @@ This threat model assumes production runs behind Replit-managed TLS, `NODE_ENV=p
 ## Scan Anchors
 
 - **Production entry points:** `backend/server.py`, `backend/app/routes.py`, `backend/app/middleware.py`, `frontend/src/App.js`, `frontend/src/services/apiClient.js`.
-- **Highest-risk code areas:** `backend/routes/auth_routes_mod.py`, `backend/dependencies.py`, `backend/routes/role_dashboards_mod.py`, `backend/routes/parent_portal_routes.py`, `backend/routes/websocket_routes.py`, `backend/routes/monitoring_routes.py`, tenant/auth helpers in `backend/middleware/` and `backend/auth_scope.py`.
-- **Additional scan anchors from 2026-05-14:** `backend/routes/academics_student_routes.py`, `backend/routes/attendance_routes.py`, `backend/routes/reporting_routes_mod.py`, `backend/routes/independent_teacher_invite_parent_routes.py`, `backend/routes/independent_teacher_invitation_routes.py`, `backend/routes/independent_teacher_workspace_lifecycle_routes.py`, `backend/routes/user_roles_routes.py`, and `backend/engines/session_engine.py`.
+- **Highest-risk code areas:** `backend/routes/auth_routes_mod.py`, `backend/dependencies.py`, `backend/routes/user_roles_routes.py`, `backend/routes/role_dashboards_mod.py`, `backend/routes/parent_portal_routes.py`, `backend/routes/websocket_routes.py`, `backend/routes/monitoring_routes.py`, tenant/auth helpers in `backend/middleware/` and `backend/auth_scope.py`.
+- **Additional scan anchors from 2026-05-14 and 2026-05-14 follow-up:** `backend/routes/academics_student_routes.py`, `backend/routes/search_directory_routes_mod.py`, `backend/routes/attendance_routes.py`, `backend/routes/reporting_routes_mod.py`, `backend/routes/relationship_routes_mod.py`, `backend/routes/participation_routes_mod.py`, `backend/routes/consent_privacy_routes_mod.py`, `backend/routes/activities_routes_mod.py`, `backend/routes/registration_routes_mod.py`, `backend/routes/independent_teacher_invite_parent_routes.py`, `backend/routes/independent_teacher_invitation_routes.py`, `backend/routes/independent_teacher_workspace_lifecycle_routes.py`, `backend/routes/user_routes_mod.py`, and `backend/engines/session_engine.py`.
 - **Surface split:** public/auth routes, authenticated school-role routes, platform-admin routes, and WebSockets.
 - **Usually ignore unless proven reachable:** `backend/scripts/`, test files, migrations, and mockup/sandbox artifacts.
 
@@ -43,7 +43,7 @@ Clients can submit profile updates, attendance changes, grades, messages, upload
 
 ### Information Disclosure
 
-This platform stores sensitive student and family data. All dashboard, portal, notification, reporting, and search endpoints must scope responses by both role and tenant. Parent-child linkage must be based on canonical, tenant-safe identifiers rather than mutable contact fields, and student-by-id read surfaces must verify the viewer's relationship to the target object instead of trusting same-tenant presence alone. Public monitoring, debug, or stats endpoints must not leak internal operational details that help attackers map the service or target high-value users.
+This platform stores sensitive student and family data. All dashboard, portal, directory, relationship, consent, participation, reporting, and search endpoints must scope responses by both role and tenant. Parent-child linkage must be based on canonical, tenant-safe identifiers rather than mutable contact fields, and student-by-id read surfaces must verify the viewer's relationship to the target object instead of trusting same-tenant presence alone. Public monitoring, debug, registration-helper, or stats endpoints must not leak internal operational details, tenant inventory, or onboarding pipeline data that help attackers map the service or target high-value users.
 
 ### Denial of Service
 
@@ -51,4 +51,4 @@ Public and auth endpoints can be abused for brute force, scraping, or expensive 
 
 ### Elevation of Privilege
 
-The largest project-specific risk is broken access control in multi-role and multi-tenant flows: IDORs in dashboards/portals, unscoped relationship lookups, cross-tenant context switching, legacy report/directory endpoints that trust tenant membership alone, and WebSocket/impersonation behavior that does not match HTTP authorization rules. The system must enforce least privilege on every route regardless of what the frontend shows or what token claims request.
+The largest project-specific risk is broken access control in multi-role and multi-tenant flows: IDORs in dashboards/portals, unscoped relationship lookups, arbitrary linked-role assignment, cross-tenant context switching, legacy report/directory endpoints that trust tenant membership alone, and WebSocket/impersonation behavior that does not match HTTP authorization rules. The system must enforce least privilege on every route regardless of what the frontend shows or what token claims request, and authorization-changing admin workflows must invalidate stale real-time and switched-session access promptly.
