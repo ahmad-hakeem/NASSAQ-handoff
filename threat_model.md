@@ -27,7 +27,7 @@ This threat model assumes production runs behind Replit-managed TLS, `NODE_ENV=p
 
 - **Production entry points:** `backend/server.py`, `backend/app/routes.py`, `backend/app/middleware.py`, `frontend/src/App.js`, `frontend/src/services/apiClient.js`.
 - **Highest-risk code areas:** `backend/routes/auth_routes_mod.py`, `backend/dependencies.py`, `backend/routes/role_dashboards_mod.py`, `backend/routes/parent_portal_routes.py`, `backend/routes/websocket_routes.py`, `backend/routes/monitoring_routes.py`, tenant/auth helpers in `backend/middleware/` and `backend/auth_scope.py`.
-- **Additional scan anchors from 2026-05-14:** `backend/routes/academics_student_routes.py`, `backend/routes/attendance_routes.py`, `backend/routes/reporting_routes_mod.py`, `backend/routes/independent_teacher_invite_parent_routes.py`, `backend/routes/independent_teacher_invitation_routes.py`, and `backend/engines/session_engine.py`.
+- **Additional scan anchors from 2026-05-14:** `backend/routes/academics_student_routes.py`, `backend/routes/attendance_routes.py`, `backend/routes/reporting_routes_mod.py`, `backend/routes/independent_teacher_invite_parent_routes.py`, `backend/routes/independent_teacher_invitation_routes.py`, `backend/routes/independent_teacher_workspace_lifecycle_routes.py`, `backend/routes/user_roles_routes.py`, and `backend/engines/session_engine.py`.
 - **Surface split:** public/auth routes, authenticated school-role routes, platform-admin routes, and WebSockets.
 - **Usually ignore unless proven reachable:** `backend/scripts/`, test files, migrations, and mockup/sandbox artifacts.
 
@@ -51,4 +51,4 @@ Public and auth endpoints can be abused for brute force, scraping, or expensive 
 
 ### Elevation of Privilege
 
-The largest project-specific risk is broken access control in multi-role and multi-tenant flows: IDORs in dashboards/portals, unscoped relationship lookups, cross-tenant context switching, and WebSocket/impersonation behavior that does not match HTTP authorization rules. The system must enforce least privilege on every route regardless of what the frontend shows or what token claims request.
+The largest project-specific risk is broken access control in multi-role and multi-tenant flows: IDORs in dashboards/portals, unscoped relationship lookups, cross-tenant context switching, legacy report/directory endpoints that trust tenant membership alone, and WebSocket/impersonation behavior that does not match HTTP authorization rules. The system must enforce least privilege on every route regardless of what the frontend shows or what token claims request.
