@@ -260,7 +260,12 @@ async def bootstrap_independent_teacher_workspace(
         raise HTTPException(status_code=403, detail=_MSG_NOT_INDEPENDENT_TEACHER)
 
     # 2. MFA enrolment must have completed.
-    if not current_user.get("mfa_enrolled_at"):
+    #    Skipped entirely while the demo kill switch
+    #    (``MFA_ENFORCEMENT_DISABLED``) is engaged so an IT user can
+    #    bootstrap their workspace without an enrolled second factor.
+    from services import mfa_policy as _mfa_policy
+    _mfa_disabled = _mfa_policy.is_enforcement_disabled()
+    if not _mfa_disabled and not current_user.get("mfa_enrolled_at"):
         raise HTTPException(
             status_code=403,
             detail={
@@ -282,18 +287,21 @@ async def bootstrap_independent_teacher_workspace(
             credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM]
         )
     except jwt.PyJWTError:
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "code": "MFA_STEPUP_REQUIRED",
-                "message": _MSG_MFA_STEPUP_REQUIRED,
-                "challenge_endpoint": "/api/auth/mfa/stepup/start",
-                "max_age_seconds": _MFA_STEPUP_MAX_AGE_SECONDS,
-            },
-        )
+        if _mfa_disabled:
+            token_payload = {}
+        else:
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "code": "MFA_STEPUP_REQUIRED",
+                    "message": _MSG_MFA_STEPUP_REQUIRED,
+                    "challenge_endpoint": "/api/auth/mfa/stepup/start",
+                    "max_age_seconds": _MFA_STEPUP_MAX_AGE_SECONDS,
+                },
+            )
     mfa_recent_at = token_payload.get("mfa_recent_at")
     now_ts = int(_utcnow().timestamp())
-    if (
+    if not _mfa_disabled and (
         mfa_recent_at is None
         or (now_ts - int(mfa_recent_at)) > _MFA_STEPUP_MAX_AGE_SECONDS
     ):

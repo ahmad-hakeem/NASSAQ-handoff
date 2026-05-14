@@ -86,15 +86,21 @@ export const ProtectedRoute = ({
   // enrolled may they reach the wizard. Once bootstrapped (tenant_id set)
   // they get the regular /teacher surface. Allow /change-password as a
   // permitted detour from either gate.
+  // Demo kill switch — when the backend reports
+  // ``mfa_enforcement_disabled`` we mirror that here by skipping the
+  // ``/auth/mfa/enroll`` redirect for IT, teachers, and parents.
+  // Bootstrap (no tenant_id yet) still routes IT users through the
+  // onboarding wizard so workspace materialisation still completes.
+  const mfaDisabled = !!user?.mfa_enforcement_disabled;
   if (
     effectiveRole === "independent_teacher" &&
     location.pathname !== "/change-password"
   ) {
-    if (!user?.mfa_enrolled_at && !location.pathname.startsWith("/auth/mfa")) {
+    if (!mfaDisabled && !user?.mfa_enrolled_at && !location.pathname.startsWith("/auth/mfa")) {
       return <Navigate to="/auth/mfa/enroll" replace />;
     }
     if (
-      user?.mfa_enrolled_at &&
+      (mfaDisabled || user?.mfa_enrolled_at) &&
       !user?.tenant_id &&
       location.pathname !== "/teacher/onboarding" &&
       !location.pathname.startsWith("/auth/mfa")
@@ -111,6 +117,7 @@ export const ProtectedRoute = ({
   // that contract so a deep-link cannot bypass the enrolment screen.
   if (
     effectiveRole === "teacher" &&
+    !mfaDisabled &&
     !user?.mfa_enrolled_at &&
     location.pathname !== "/change-password" &&
     !location.pathname.startsWith("/auth/mfa")
@@ -126,6 +133,7 @@ export const ProtectedRoute = ({
   // contract and prevents deep-links bypassing the enrolment screen.
   if (
     effectiveRole === "parent" &&
+    !mfaDisabled &&
     !user?.mfa_enrolled_at &&
     location.pathname !== "/change-password" &&
     !location.pathname.startsWith("/auth/mfa")

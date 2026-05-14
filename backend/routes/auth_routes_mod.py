@@ -28,6 +28,7 @@ from shared_models import (
     UserCreate, UserLogin, UserResponse, TokenResponse,
     validate_password_complexity,
 )
+from services import mfa_policy as _mfa_policy_module
 
 router = APIRouter()
 
@@ -904,6 +905,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         is_switched=bool(current_user.get("is_switched")),
         original_role=current_user.get("original_role"),
         mfa_enrolled_at=current_user.get("mfa_enrolled_at"),
+        mfa_enforcement_disabled=_mfa_policy_module.is_enforcement_disabled(),
     )
 
 @router.get("/auth/me/permissions")

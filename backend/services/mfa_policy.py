@@ -35,8 +35,45 @@ those.
 """
 from __future__ import annotations
 
+import os
 from enum import Enum
 from typing import Iterable, Optional
+
+
+# ---------------------------------------------------------------------------
+# Temporary demo kill switch
+# ---------------------------------------------------------------------------
+# When ``MFA_ENFORCEMENT_DISABLED`` is truthy in the environment, this
+# module reports every role as out-of-scope for MFA. This is the single
+# source of truth: ``required_for()`` returns ``None`` for everyone, which
+# in turn makes:
+#
+#   * the login MFA challenge gate
+#     (``backend/routes/auth_routes_mod.py`` — uses ``required_for``)
+#   * the step-up dependency
+#     (``backend/dependencies.py:require_recent_mfa`` — uses
+#     ``is_required`` and ``is_tier_a``)
+#
+# fall through without forcing a second factor or a recent-MFA proof. The
+# IT bootstrap route reads ``is_enforcement_disabled()`` directly to skip
+# its own ``mfa_enrollment_required`` / step-up emits.
+#
+# The bypass is reversible: unsetting / setting ``MFA_ENFORCEMENT_DISABLED``
+# back to ``false`` restores the existing enforcement behaviour through the
+# same code paths — no deletion of MFA factors, routes, or recovery codes.
+
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def is_enforcement_disabled() -> bool:
+    """Return True when the demo kill switch is engaged.
+
+    Driven by the ``MFA_ENFORCEMENT_DISABLED`` env var. Read fresh on every
+    call so a Replit secret toggle takes effect on the next request without
+    a process restart in non-cached test contexts; in production the env
+    is loaded at process start and is stable for the lifetime of the worker.
+    """
+    return (os.getenv("MFA_ENFORCEMENT_DISABLED") or "").strip().lower() in _TRUTHY
 
 
 class MfaTier(str, Enum):
@@ -90,6 +127,12 @@ def required_for(user: dict) -> Optional[MfaTier]:
     deliberately out-of-scope for this task (student, driver, gatekeeper,
     ministry_rep, testing_account).
     """
+    # Demo kill switch — when enforcement is disabled, no role is held
+    # to MFA. This single check short-circuits the login challenge gate
+    # and the ``require_recent_mfa`` step-up dependency without
+    # touching either of those code paths.
+    if is_enforcement_disabled():
+        return None
     role = _normalised_role(user)
     if role in _TIER_A_ROLES:
         return MfaTier.A

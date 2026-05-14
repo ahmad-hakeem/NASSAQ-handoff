@@ -120,8 +120,14 @@ export const LoginPage = () => {
   // can't be mapped — fail-closed so we never silently dump the user on a
   // generic /dashboard they may not have permission to load.
   const resolveRedirectTarget = (role, userData) => {
+    // Demo kill switch — when the backend reports
+    // ``mfa_enforcement_disabled`` we mirror that here by skipping every
+    // ``/auth/mfa/enroll`` redirect. The dashboards remain otherwise
+    // unchanged so flipping the flag back off restores the original
+    // first-login orchestration without further FE work.
+    const mfaDisabled = !!userData?.mfa_enforcement_disabled;
     if (role === 'independent_teacher') {
-      if (!userData?.mfa_enrolled_at) return '/auth/mfa/enroll';
+      if (!mfaDisabled && !userData?.mfa_enrolled_at) return '/auth/mfa/enroll';
       if (!userData?.tenant_id) return '/teacher/onboarding';
       return '/teacher';
     }
@@ -131,7 +137,7 @@ export const LoginPage = () => {
     // a real access token in this state (mfa_enrolled_at IS NULL) and
     // ProtectedRoute mirrors this gate so deep-links land in the same
     // place.
-    if (role === 'teacher' && !userData?.mfa_enrolled_at) return '/auth/mfa/enroll';
+    if (role === 'teacher' && !mfaDisabled && !userData?.mfa_enrolled_at) return '/auth/mfa/enroll';
     switch (role) {
       case 'platform_admin': return '/admin';
       case 'school_principal': return '/principal';
@@ -141,7 +147,7 @@ export const LoginPage = () => {
       case 'teacher': return '/teacher';
       case 'student': return '/student';
       case 'parent':
-        if (!userData?.mfa_enrolled_at) return '/auth/mfa/enroll';
+        if (!mfaDisabled && !userData?.mfa_enrolled_at) return '/auth/mfa/enroll';
         return '/parent';
       default: return null;
     }

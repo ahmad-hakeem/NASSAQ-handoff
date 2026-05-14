@@ -57,7 +57,13 @@ export default function MfaEnrollPage() {
   // go to the onboarding wizard; bootstrapped IT users go to /teacher;
   // any non-IT user who lands here goes to "/" and lets the role-aware
   // guards take it from there.
-  if (user?.mfa_enrolled_at) {
+  // Demo kill switch — when MFA enforcement is disabled the backend will
+  // never gate any flow on ``mfa_enrolled_at``. Treat that as "enrolment
+  // not required" so a deep-link to /auth/mfa/enroll bounces straight to
+  // the role dashboard instead of trapping the user on this page during
+  // a demo.
+  const mfaEnforcementOff = !!user?.mfa_enforcement_disabled;
+  if (user?.mfa_enrolled_at || mfaEnforcementOff) {
     if (user.role === 'independent_teacher') {
       return <Navigate to={user.tenant_id ? '/teacher' : '/teacher/onboarding'} replace />;
     }

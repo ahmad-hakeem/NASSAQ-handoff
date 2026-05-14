@@ -138,6 +138,13 @@ class UserResponse(BaseModel):
     # the user already has a second factor. Without this, every IT login was
     # bounced back to /auth/mfa/enroll because the FE always read it as null.
     mfa_enrolled_at: Optional[str] = None
+    # Demo kill switch surfaced to the FE so the LoginPage redirect
+    # resolver, RouteGuards MFA gates, and the MfaEnrollPage short-circuit
+    # match the backend's relaxed enforcement. Mirrors
+    # ``services.mfa_policy.is_enforcement_disabled()`` at the moment the
+    # response is built. Defaults to False so production behaviour is
+    # unchanged when the env flag is not set.
+    mfa_enforcement_disabled: Optional[bool] = False
 
 class TokenResponse(BaseModel):
     access_token: Optional[str] = None
