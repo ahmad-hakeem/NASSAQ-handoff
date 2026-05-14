@@ -28,7 +28,16 @@ STUDENT_REPORT = "students"
 
 
 class NoorParseError(Exception):
-    """Raised when a Noor workbook cannot be parsed safely."""
+    """Raised when a Noor workbook cannot be parsed safely.
+
+    `diagnostics` (when present) carries server-side context — filename,
+    size, leading-bytes hex, and per-reader exception class+message — that
+    callers should log at WARNING level. It is NEVER surfaced to the user.
+    """
+
+    def __init__(self, message: str, diagnostics: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.diagnostics = diagnostics
 
 
 # ---------------------------------------------------------------------------
@@ -138,29 +147,88 @@ _STUDENT_TITLE_ANCHORS = ("Student Info Table", "بيانات الطلاب")
 # Workbook readers — tolerant of .xlsx (openpyxl) and .xls (xlrd)
 # ---------------------------------------------------------------------------
 
+_OLE2_MAGIC = b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"
+
+
+def _looks_like_html(content: bytes) -> bool:
+    """Sniff whether the leading bytes look like an HTML document.
+
+    Tolerates a UTF-8/UTF-16 BOM and any leading whitespace, then checks
+    for an HTML/table opening tag. Used as a guard before invoking the
+    pandas HTML fallback so corrupt binary files are not mis-parsed as a
+    one-cell HTML table.
+    """
+    if not content:
+        return False
+    head = content[:4096]
+    # Strip common BOMs
+    for bom in (b"\xef\xbb\xbf", b"\xff\xfe", b"\xfe\xff"):
+        if head.startswith(bom):
+            head = head[len(bom):]
+            break
+    head = head.lstrip()
+    if not head.startswith(b"<"):
+        return False
+    lowered = head[:512].lower()
+    return any(
+        tag in lowered
+        for tag in (b"<html", b"<table", b"<!doctype html", b"<meta", b"<body")
+    )
+
+
 def _read_workbook(content: bytes, filename: str) -> List[Tuple[str, List[List[Any]]]]:
     """
     Returns [(sheet_name, rows)] where rows is a list-of-lists of raw cell
     values. Picks the reader by the filename extension; falls back to the
     other reader if the first attempt fails (some Noor exports mislabel the
-    extension).
+    extension). When BOTH binary readers fail and the leading bytes look
+    like HTML, falls back to a pandas/lxml HTML-table reader so Noor
+    exports that save as `<table>`-disguised `.xls` still parse.
+
+    On total failure, raises NoorParseError carrying structured server-only
+    diagnostics so the caller can log what each reader saw without
+    surfacing it to the user.
     """
     name = (filename or "").lower()
-    readers = []
     if name.endswith(".xls"):
         readers = [_read_xls, _read_xlsx]
     else:
         readers = [_read_xlsx, _read_xls]
-    last_err: Optional[Exception] = None
+    reader_errors: List[Tuple[str, str, str]] = []
     for reader in readers:
         try:
             return reader(content)
         except NoorParseError:
             raise
         except Exception as e:  # noqa: BLE001 — try the other reader
-            last_err = e
+            reader_errors.append((reader.__name__, type(e).__name__, str(e)[:200]))
             logger.debug("Noor reader %s failed: %s", reader.__name__, e)
-    raise NoorParseError("تعذّر قراءة الملف — تأكد من أنه ملف Excel صالح من نظام نور")
+
+    # HTML fallback — only when the leading bytes actually look like HTML so
+    # a corrupt binary file does not get mis-parsed as a one-cell table.
+    if _looks_like_html(content):
+        try:
+            return _read_html(content)
+        except NoorParseError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            reader_errors.append(("_read_html", type(e).__name__, str(e)[:200]))
+            logger.debug("Noor reader _read_html failed: %s", e)
+
+    diagnostics = {
+        "filename": filename,
+        "size": len(content),
+        "head_hex": content[:16].hex(),
+        "looks_like_html": _looks_like_html(content),
+        "readers_tried": [
+            {"reader": r, "error_type": t, "error_message": m}
+            for r, t, m in reader_errors
+        ],
+    }
+    raise NoorParseError(
+        "تعذّر قراءة الملف — تأكد من أنه ملف Excel صالح من نظام نور",
+        diagnostics=diagnostics,
+    )
 
 
 def _read_xlsx(content: bytes) -> List[Tuple[str, List[List[Any]]]]:
@@ -177,13 +245,53 @@ def _read_xlsx(content: bytes) -> List[Tuple[str, List[List[Any]]]]:
 def _read_xls(content: bytes) -> List[Tuple[str, List[List[Any]]]]:
     import xlrd  # type: ignore[import-not-found]
 
-    book = xlrd.open_workbook(file_contents=content, formatting_info=False)
+    try:
+        book = xlrd.open_workbook(file_contents=content, formatting_info=False)
+    except Exception:
+        # Some Noor exports start with the OLE2 magic but have stray bytes
+        # appended past the end of the compound document (a trailing
+        # newline or framing junk) which trips xlrd 2.x. Try once more
+        # after trimming trailing junk on a 512-byte sector boundary.
+        if content.startswith(_OLE2_MAGIC) and len(content) > 512:
+            trimmed_len = (len(content) // 512) * 512
+            if trimmed_len != len(content) and trimmed_len >= 512:
+                book = xlrd.open_workbook(
+                    file_contents=content[:trimmed_len], formatting_info=False
+                )
+            else:
+                raise
+        else:
+            raise
     out: List[Tuple[str, List[List[Any]]]] = []
     for sheet in book.sheets():
         rows: List[List[Any]] = []
         for r in range(sheet.nrows):
             rows.append([sheet.cell_value(r, c) for c in range(sheet.ncols)])
         out.append((sheet.name, rows))
+    return out
+
+
+def _read_html(content: bytes) -> List[Tuple[str, List[List[Any]]]]:
+    """Fallback for Noor `.xls` exports that are actually HTML `<table>`
+    documents. Uses pandas/lxml. Each table becomes a sheet so the
+    downstream detection / header-scan code is unchanged.
+    """
+    import pandas as pd  # local import — cold path
+
+    try:
+        tables = pd.read_html(io.BytesIO(content), flavor="lxml", header=None)
+    except ValueError as e:
+        # pd.read_html raises ValueError("No tables found") — bubble up so
+        # _read_workbook records it as a reader failure.
+        raise RuntimeError(f"no html tables: {e}")
+    out: List[Tuple[str, List[List[Any]]]] = []
+    for idx, df in enumerate(tables):
+        rows: List[List[Any]] = []
+        for record in df.itertuples(index=False, name=None):
+            rows.append(
+                [None if (isinstance(v, float) and v != v) else v for v in record]
+            )
+        out.append((f"Table{idx + 1}", rows))
     return out
 
 

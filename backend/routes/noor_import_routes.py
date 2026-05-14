@@ -318,9 +318,30 @@ def create_noor_import_routes(db, get_current_user):
         try:
             parsed = parse_workbook_bytes(content, file.filename or "")
         except NoorParseError as e:
+            diag = getattr(e, "diagnostics", None)
+            if diag:
+                logger.warning(
+                    "Noor parse failure: filename=%r size=%s head_hex=%s "
+                    "content_type=%r looks_like_html=%s readers=%s",
+                    diag.get("filename"),
+                    diag.get("size"),
+                    diag.get("head_hex"),
+                    file.content_type,
+                    diag.get("looks_like_html"),
+                    diag.get("readers_tried"),
+                )
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:  # noqa: BLE001
-            logger.warning("Noor parse failure: %s", e)
+            logger.warning(
+                "Noor parse failure: filename=%r size=%s content_type=%r "
+                "head_hex=%s err_type=%s err=%s",
+                file.filename,
+                len(content),
+                file.content_type,
+                content[:16].hex() if content else "",
+                type(e).__name__,
+                str(e)[:200],
+            )
             raise HTTPException(status_code=400, detail=_SAFE_PARSE_FAIL)
 
         if parsed["detected_type"] == TEACHER_REPORT:

@@ -40,3 +40,48 @@ def test_unknown_workbook_rejected():
     # An empty xlsx-shaped payload should raise the safe parse error.
     with pytest.raises((NoorParseError, Exception)):
         parse_workbook_bytes(b"not-an-excel-file", "junk.xlsx")
+
+
+def test_real_noor_xls_with_school_info_sheet_parses_students():
+    """The real Noor .xls export from production has a leading 'School Info'
+    sheet and the student data on the second sheet — must still detect as
+    students with the correct row count."""
+    out = parse_workbook_bytes(_read("student_guidance_real.xls"), "StudentGuidance.xls")
+    assert out["detected_type"] == STUDENT_REPORT
+    assert len(out["rows"]) == 6
+    first = out["rows"][0]["data"]
+    assert first["full_name"]
+    assert first["student_number"]
+    assert "." not in first["student_number"]
+
+
+def test_html_disguised_xls_parses_students():
+    """Noor exports an HTML <table> with .xls extension; both binary
+    readers reject it. The pandas/lxml fallback must rescue it."""
+    out = parse_workbook_bytes(
+        _read("student_guidance_html.xls"), "student_guidance_html.xls"
+    )
+    assert out["detected_type"] == STUDENT_REPORT
+    assert len(out["rows"]) == 3
+    assert out["rows"][0]["data"]["full_name"] == "عمر علي"
+
+
+def test_corrupt_file_raises_with_diagnostics():
+    """A genuinely corrupt file must still surface the safe Arabic
+    message AND carry server-only diagnostics for the route to log."""
+    with pytest.raises(NoorParseError) as ei:
+        parse_workbook_bytes(b"\x00\x01\x02not-an-excel-file" * 8, "junk.xls")
+    err = ei.value
+    assert "تعذّر قراءة الملف" in str(err)
+    assert err.diagnostics is not None
+    diag = err.diagnostics
+    assert diag["filename"] == "junk.xls"
+    assert diag["size"] > 0
+    assert len(diag["head_hex"]) == 32  # first 16 bytes
+    assert diag["looks_like_html"] is False
+    readers = diag["readers_tried"]
+    assert len(readers) >= 2
+    for r in readers:
+        assert r["reader"] in {"_read_xls", "_read_xlsx", "_read_html"}
+        assert r["error_type"]
+        assert r["error_message"]

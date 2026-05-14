@@ -171,6 +171,41 @@ async def test_student_upsert_idempotent_reimport(client, _db_session):
     assert first_count == second_count, "re-import must not duplicate students"
 
 
+async def test_parse_corrupt_file_logs_diagnostics(client, _db_session, caplog):
+    """A genuinely unreadable .xls upload must surface the safe Arabic
+    error to the client AND emit one structured WARNING log carrying
+    filename, size, head_hex and the per-reader exceptions so the next
+    failure is diagnosable from production logs alone."""
+    import logging as _logging
+    user, _ = await _seed_principal_with_school()
+    junk = b"\x00\x01\x02not-an-excel-file" * 64
+    files = {"file": ("broken.xls", junk, "application/vnd.ms-excel")}
+    with caplog.at_level(_logging.WARNING, logger="nassaq.noor_import"):
+        r = await client.post(
+            "/noor-import/parse", files=files, headers=_headers(user)
+        )
+    assert r.status_code == 400
+    body = r.json()
+    msg = body.get("detail") or (body.get("error") or {}).get("message") or ""
+    # User sees the safe Arabic message; nothing leaked from str(e).
+    assert "تعذّر قراءة الملف" in msg
+    assert "Traceback" not in msg
+    # Server log carries the structured diagnostics.
+    warn_records = [
+        rec for rec in caplog.records
+        if rec.levelno == _logging.WARNING
+        and "Noor parse failure" in rec.getMessage()
+    ]
+    assert warn_records, "expected a WARNING log for the failed parse"
+    text_blob = "\n".join(r.getMessage() for r in warn_records)
+    assert "broken.xls" in text_blob
+    assert str(len(junk)) in text_blob
+    # First 16 bytes hex (32 chars) must be present.
+    assert junk[:16].hex() in text_blob
+    # At least one binary reader's exception class must be recorded.
+    assert "_read_xls" in text_blob or "_read_xlsx" in text_blob
+
+
 async def test_parse_forbidden_for_non_school_role(client, _db_session):
     school_id = str(uuid.uuid4())
     await _mk_school(school_id)
