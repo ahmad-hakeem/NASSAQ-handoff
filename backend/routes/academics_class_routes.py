@@ -325,8 +325,13 @@ async def get_classes(
     return result
 
 @router.get("/classes/{class_id}", response_model=ClassResponse)
-async def get_class(class_id: str, current_user: dict = Depends(get_current_user)):
+async def get_class(class_id: str, response: Response, current_user: dict = Depends(get_current_user)):
     """Get class by ID"""
+    # Bug #372 — class detail header (student_count / capacity bar) is
+    # the post-delete refetch target on the class detail page. Disable
+    # browser heuristic caching so the live count after DELETE
+    # /students/{id} is never served from the disk cache.
+    response.headers["Cache-Control"] = "no-store"
     # Tenant scoping (Task #188 security fix): non-platform callers must
     # only be able to read classes inside their own resolved workspace
     # (regular school for affiliated users, `itw_{user_id}` for IT). Any

@@ -280,6 +280,7 @@ async def get_class_types_options(current_user: dict = Depends(get_current_user)
 @router.get("/classes/{class_id}/students", response_model=List[StudentResponse])
 async def get_class_students(
     class_id: str,
+    response: Response,
     current_user: dict = Depends(require_roles([
         UserRole.PLATFORM_ADMIN,
         UserRole.SCHOOL_PRINCIPAL,
@@ -297,6 +298,11 @@ async def get_class_students(
     class assignment via can_view_class() for parity with attendance
     and reporting endpoints. The IT §6.7 collab path has its own gate.
     """
+    # Bug #372 — class roster is the post-delete refetch target on the
+    # class detail page. Disable browser heuristic caching so a fresh
+    # GET after DELETE /students/{id} always reflects the deletion
+    # instead of returning the pre-delete list from the disk cache.
+    response.headers["Cache-Control"] = "no-store"
     # Object-level class authorization for regular TEACHER callers.
     # INDEPENDENT_TEACHER access is controlled further below via the
     # §6.7 collab row check (workspace pinning / §8 invariant 3).

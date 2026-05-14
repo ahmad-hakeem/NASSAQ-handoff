@@ -315,7 +315,25 @@ export default function ClassDetailPage() {
     );
     if (!confirmed) return;
     try {
-      await api.delete(`/students/${student.id}`, { headers });
+      const res = await api.delete(`/students/${student.id}`, { headers });
+      if (res?.data && res.data.success === false) {
+        // Backend returned 2xx but explicitly signalled failure — treat as error.
+        const msg = res.data.detail || res.data.message;
+        nassaqError(typeof msg === 'string' ? msg : (t('deleteFailed2')));
+        return;
+      }
+      // Bug #372 — optimistically remove the deleted student from local
+      // state so the card disappears and the count drops the moment the
+      // success toast appears, then reconcile via fetchData(). This
+      // shields us from any browser-cached GET response on the post-
+      // delete refetch (the backend now also sets Cache-Control:
+      // no-store on the two GET endpoints).
+      setStudents(prev => prev.filter(s => s.id !== student.id));
+      setClassData(prev => prev ? {
+        ...prev,
+        student_count: Math.max(0, (prev.student_count || prev.current_students || 0) - 1),
+        current_students: Math.max(0, (prev.current_students || prev.student_count || 0) - 1),
+      } : prev);
       toast.success(t('studentDeleted'));
       fetchData();
     } catch (error) {
