@@ -822,24 +822,48 @@ async def logout(
     user_agent = request.headers.get("user-agent")
     from datetime import timezone as _tz
 
-    # Revoke the access token
+    # Each side-effect below is wrapped in its OWN SAVEPOINT
+    # (``session.begin_nested()``). Postgres aborts the whole transaction
+    # the moment any statement raises — a Python ``except: pass`` does NOT
+    # restore it, so without savepoints a single failing best-effort step
+    # (e.g. user_sessions update hitting a schema-drift column, or a
+    # missing user_sessions row) poisons the txn and the subsequent
+    # audit_logs INSERT then crashes the whole logout with 500
+    # "current transaction is aborted, commands ignored until end of
+    # transaction block". Savepoints scope each failure so the rest of
+    # logout can still complete cleanly.
+
+    async def _safe_step(coro_fn):
+        try:
+            async with db.session.begin_nested():
+                await coro_fn()
+        except Exception as _step_err:
+            logger.debug("logout: best-effort step failed (suppressed): %s", _step_err)
+
+    # Revoke the access token (and best-effort mark its session row revoked).
+    access_jti = None
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        jti = payload.get("jti")
-        exp = payload.get("exp")
-        if jti and exp:
-            expires_at = datetime.fromtimestamp(exp, tz=_tz.utc)
+        access_jti = payload.get("jti")
+        access_exp = payload.get("exp")
+    except Exception:
+        access_jti, access_exp = None, None
+
+    if access_jti and access_exp:
+        async def _revoke_access():
             await gd_insert(db.session, "revoked_tokens", {
-                "jti": jti,
-                "expires_at": expires_at.isoformat(),
+                "jti": access_jti,
+                "expires_at": datetime.fromtimestamp(access_exp, tz=_tz.utc).isoformat(),
                 "revoked_at": datetime.now(_tz.utc).isoformat(),
             })
-            try:
-                await gd_update_one(db.session, "user_sessions", {"jti": jti}, {"revoked_at": datetime.now(_tz.utc)})
-            except Exception:
-                pass
-    except Exception:
-        pass
+        await _safe_step(_revoke_access)
+
+        async def _mark_session_revoked():
+            await gd_update_one(
+                db.session, "user_sessions", {"jti": access_jti},
+                {"revoked_at": datetime.now(_tz.utc)},
+            )
+        await _safe_step(_mark_session_revoked)
 
     # Revoke the refresh token when the client provides it.
     # This closes the window where an attacker with a stolen refresh token
@@ -849,25 +873,33 @@ async def logout(
             rt_payload = jwt.decode(body.refresh_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
             rt_jti = rt_payload.get("jti")
             rt_exp = rt_payload.get("exp")
-            if rt_jti and rt_exp and rt_payload.get("type") == "refresh":
-                rt_expires_at = datetime.fromtimestamp(rt_exp, tz=_tz.utc)
+            rt_type = rt_payload.get("type")
+        except Exception:
+            rt_jti, rt_exp, rt_type = None, None, None
+
+        if rt_jti and rt_exp and rt_type == "refresh":
+            async def _revoke_refresh():
                 await gd_insert(db.session, "revoked_tokens", {
                     "jti": rt_jti,
-                    "expires_at": rt_expires_at.isoformat(),
+                    "expires_at": datetime.fromtimestamp(rt_exp, tz=_tz.utc).isoformat(),
                     "revoked_at": datetime.now(_tz.utc).isoformat(),
                 })
-        except Exception:
-            pass
+            await _safe_step(_revoke_refresh)
 
-    await audit_engine.log_auth_event(
-        action=AuditAction.LOGOUT.value,
-        user_id=user_id,
-        tenant_id=current_user.get("tenant_id"),
-        success=True,
-        email=current_user.get("email"),
-        ip_address=ip_address,
-        user_agent=user_agent,
-    )
+    # Audit the logout. Also savepoint-wrapped + try/except so a single
+    # bad audit row (e.g. an unexpected column on the audit_logs schema)
+    # cannot turn a successful logout into a 500 for the user.
+    async def _audit_logout():
+        await audit_engine.log_auth_event(
+            action=AuditAction.LOGOUT.value,
+            user_id=user_id,
+            tenant_id=current_user.get("tenant_id"),
+            success=True,
+            email=current_user.get("email"),
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+    await _safe_step(_audit_logout)
 
     return {"message": "تم تسجيل الخروج بنجاح"}
 
