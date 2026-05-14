@@ -124,8 +124,20 @@ def _parse_user_agent(ua: str) -> dict:
     return {"device": device, "browser": browser, "os": os_name}
 
 
-async def _record_session_from_token(session, token_str: str, user_id: str, ip_address, user_agent):
-    """Decode token, extract jti+exp, insert a user_sessions row. Best-effort."""
+async def _record_session_from_token(
+    session,
+    token_str: str,
+    user_id: str,
+    ip_address,
+    user_agent,
+    refresh_token_str: Optional[str] = None,
+):
+    """Decode token, extract jti+exp, insert a user_sessions row. Best-effort.
+
+    Task #374 — when ``refresh_token_str`` is supplied we also record the
+    paired refresh JTI and family id on the same row, so a later revoke can
+    block the refresh path (not just the short-lived access token).
+    """
     try:
         payload = jwt.decode(token_str, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         jti = payload.get("jti")
@@ -135,6 +147,19 @@ async def _record_session_from_token(session, token_str: str, user_id: str, ip_a
         from datetime import timezone as _tz
         expires_at = datetime.fromtimestamp(exp, tz=_tz.utc) if exp else None
         ua_info = _parse_user_agent(user_agent or "")
+        refresh_jti = None
+        refresh_family_id = None
+        refresh_expires_at = None
+        if refresh_token_str:
+            try:
+                rp = jwt.decode(refresh_token_str, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+                refresh_jti = rp.get("jti")
+                refresh_family_id = rp.get("fid")
+                _r_exp = rp.get("exp")
+                if _r_exp:
+                    refresh_expires_at = datetime.fromtimestamp(_r_exp, tz=_tz.utc)
+            except Exception as _re:
+                logger.debug(f"_record_session_from_token: refresh decode failed: {_re}")
         await gd_insert(session, "user_sessions", {
             "id": str(uuid.uuid4()),
             "user_id": user_id,
@@ -147,6 +172,9 @@ async def _record_session_from_token(session, token_str: str, user_id: str, ip_a
             "expires_at": expires_at,
             "created_at": datetime.now(_tz.utc),
             "last_seen_at": datetime.now(_tz.utc),
+            "refresh_jti": refresh_jti,
+            "refresh_family_id": refresh_family_id,
+            "refresh_expires_at": refresh_expires_at,
         })
     except Exception as _e:
         logger.debug(f"_record_session_from_token failed: {_e}")
@@ -428,7 +456,7 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
     # Track this login as an active session row (best-effort, non-blocking)
     _ip = request.client.host if request and request.client else None
     _ua = request.headers.get("user-agent") if request else None
-    await _record_session_from_token(db.session, token, user_id, _ip, _ua)
+    await _record_session_from_token(db.session, token, user_id, _ip, _ua, refresh_token_str=refresh)
 
     # Fire-and-forget the success audit log so it doesn't block the response.
     # Use an independent session/engine instance because the request-scoped
@@ -743,7 +771,9 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
             )
     except Exception as _rev_err:
         logger.debug(f"refresh: prior session row revoke failed: {_rev_err}")
-    await _record_session_from_token(db.session, new_access, user_id, _r_ip, _r_ua)
+    await _record_session_from_token(
+        db.session, new_access, user_id, _r_ip, _r_ua, refresh_token_str=new_refresh
+    )
 
     from engines.name_validation import is_generic_name
     user_response = UserResponse(

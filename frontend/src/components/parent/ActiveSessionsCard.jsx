@@ -53,11 +53,19 @@ const ActiveSessionsCard = () => {
       async () => {
         setBusyId(s.id);
         try {
+          // Task #374 — only mutate the list AFTER a confirmed 2xx. The
+          // previous optimistic filter would hide the row even when the
+          // backend revoke failed, making a failed request look like a
+          // success and leaving the other device authenticated.
           await api.delete(`/settings/sessions/${s.id}`);
-          setSessions((prev) => prev.filter((x) => x.id !== s.id));
+          await load();
           toast.success(t('sessionEnded') || (isRTL ? 'تم إنهاء الجلسة' : 'Session ended'));
         } catch (err) {
-          nassaqError(err?.response?.data?.detail || (t('errorEndingSession') || 'Could not end session'));
+          nassaqError(
+            err?.response?.data?.detail ||
+              t('errorEndingSession') ||
+              (isRTL ? 'تعذر إنهاء الجلسة' : 'Could not end session'),
+          );
         } finally {
           setBusyId(null);
         }

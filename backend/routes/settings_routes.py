@@ -627,6 +627,67 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole, require
 
     # ============= ACTIVE SESSIONS =============
 
+    async def _revoke_session_refresh_chain(s: dict, now, user_id: str) -> None:
+        """Task #374 — block the refresh path for a session row.
+
+        Inserts the session's ``refresh_jti`` into ``revoked_tokens`` (so the
+        per-jti check in ``/auth/refresh`` rejects it) AND inserts the session's
+        ``refresh_family_id`` into ``revoked_token_families`` (so any sibling
+        token already spawned from the same lineage is killed too — this is
+        the same primitive ``auth_routes_mod.py`` uses on reuse detection).
+
+        Best-effort: legacy session rows minted before the Task #374 migration
+        carry NULL refresh_jti / refresh_family_id and degrade to access-JTI-
+        only revocation, same as before.
+        """
+        from sqlalchemy import text as _sa_text
+        r_jti = s.get("refresh_jti")
+        r_fid = s.get("refresh_family_id")
+        if r_jti:
+            try:
+                # Task #374 follow-up — MUST use the refresh token's own
+                # expiry, NOT user_sessions.expires_at (that's the access
+                # token's ~15 min exp). The background cleanup loop in
+                # backend/app/lifecycle.py purges revoked_tokens rows
+                # whose expires_at < now, so using access expiry would
+                # delete the revocation record long before the refresh
+                # token (up to 30d for remember-me) actually expires —
+                # letting the ended device silently revive on its next
+                # /auth/refresh. Fall back to a conservative
+                # now + REFRESH_TOKEN_EXPIRE_DAYS for legacy session rows
+                # that pre-date the refresh_expires_at column.
+                from dependencies import REFRESH_TOKEN_EXPIRE_DAYS as _RTE_DAYS
+                from datetime import timedelta as _td
+                exp = s.get("refresh_expires_at") or (now + _td(days=_RTE_DAYS))
+                await gd_insert(db.session, "revoked_tokens", {
+                    "jti": r_jti,
+                    "expires_at": exp.isoformat() if hasattr(exp, "isoformat") else str(exp),
+                    "revoked_at": now.isoformat(),
+                })
+            except Exception as _e:
+                # Duplicate (already-revoked) is fine; anything else we
+                # log at debug so the user-visible revoke still succeeds.
+                import logging as _log
+                _log.getLogger("nassaq").debug(
+                    f"_revoke_session_refresh_chain: refresh jti insert: {_e}"
+                )
+        if r_fid:
+            try:
+                await db.session.execute(
+                    _sa_text(
+                        "INSERT INTO revoked_token_families "
+                        "(family_id, revoked_at, reason, user_id) "
+                        "VALUES (:f, :r, :why, :uid) "
+                        "ON CONFLICT (family_id) DO NOTHING"
+                    ),
+                    {"f": r_fid, "r": now, "why": "user_ended_session", "uid": user_id},
+                )
+            except Exception as _fe:
+                import logging as _log
+                _log.getLogger("nassaq").debug(
+                    f"_revoke_session_refresh_chain: family insert: {_fe}"
+                )
+
     def _fmt_session(s: dict, current_jti: Optional[str]) -> dict:
         device = s.get("device") or "Unknown"
         browser = s.get("browser") or ""
@@ -705,6 +766,11 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole, require
                 })
             except Exception:
                 pass
+        # Task #374 — also block the linked refresh JTI and revoke the
+        # whole refresh family. Without this the "ended" device silently
+        # revives on its next /auth/refresh as soon as its short-lived
+        # access token expires.
+        await _revoke_session_refresh_chain(row, now, current_user["id"])
         was_current = bool(jti and _jti_from_creds(creds) == jti)
         return {"success": True, "was_current": was_current, "message": "تم إنهاء الجلسة"}
 
@@ -747,6 +813,9 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole, require
                         "expires_at": exp.isoformat() if hasattr(exp, "isoformat") else str(exp),
                         "revoked_at": now.isoformat(),
                     })
+                # Task #374 — also block the refresh path for every other
+                # session, otherwise each one silently revives on refresh.
+                await _revoke_session_refresh_chain(s, now, current_user["id"])
                 ended += 1
             except Exception:
                 pass

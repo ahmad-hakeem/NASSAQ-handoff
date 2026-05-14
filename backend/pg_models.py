@@ -1557,6 +1557,18 @@ class UserSession(Base):
     last_seen_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=True)
     revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    # Task #374 — refresh token jti + family id paired with this session's
+    # access jti. Required so single-session and end-all revocation can
+    # block the refresh path too (otherwise the device silently revives
+    # on /auth/refresh after its short-lived access token expires).
+    refresh_jti = Column(String(64), nullable=True, index=True)
+    refresh_family_id = Column(String(64), nullable=True, index=True)
+    # Task #374 follow-up — refresh token's own ``exp``. Used by
+    # settings_routes._revoke_session_refresh_chain so the revoked
+    # refresh JTI lives in revoked_tokens until the refresh token
+    # actually expires (not the access token's ~15 min lifetime, which
+    # would let the cleanup loop purge the revocation early).
+    refresh_expires_at = Column(DateTime(timezone=True), nullable=True)
 
 
 # ============================================================================
