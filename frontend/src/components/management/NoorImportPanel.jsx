@@ -10,6 +10,7 @@ const ROLE_LABELS = {
   update: { ar: 'تحديث', cls: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40' },
   skip: { ar: 'تخطي', cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40' },
   ambiguous: { ar: 'مطابقة غير مؤكدة', cls: 'bg-orange-50 text-orange-700 dark:bg-orange-950/40' },
+  duplicate_in_file: { ar: 'مكرر في الملف', cls: 'bg-red-50 text-red-700 dark:bg-red-950/40' },
 };
 
 function csvEscape(v) {
@@ -91,7 +92,9 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         setFile(null);
         setAmbiguousAccept({});
         const creds = data.credentials_csv || [];
-        const summary = `اكتمل الاستيراد: تمت الإضافة ${data.imported || 0}، تم التحديث ${data.updated || 0}، تم التخطي ${data.skipped || 0}، فشل ${data.failed || 0}.`;
+        const dupPart = (data.duplicates || 0) > 0 ? `، مكرر في الملف ${data.duplicates}` : '';
+        const unclPart = (data.unclassified || 0) > 0 ? `، بدون فصل ${data.unclassified}` : '';
+        const summary = `اكتمل الاستيراد: تمت الإضافة ${data.imported || 0}، تم التحديث ${data.updated || 0}، تم التخطي ${data.skipped || 0}، فشل ${data.failed || 0}${dupPart}${unclPart}.`;
         if (creds.length > 0 && nassaqInfo) {
           nassaqInfo(
             `${summary}\nتم إنشاء ${creds.length} حساب معلّم — يمكنك تنزيل بيانات الدخول الآن، لن يتم عرضها مرة أخرى.`,
@@ -134,12 +137,14 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
               <span className="text-muted-foreground">صف العناوين: {preview.header_row}</span>
               {preview.sheet_name && <span className="text-muted-foreground">| الورقة: {preview.sheet_name}</span>}
             </div>
-            <div className="grid grid-cols-5 gap-2 text-center text-xs">
+            <div className="grid grid-cols-4 md:grid-cols-7 gap-2 text-center text-xs">
               <div className="p-2 rounded bg-background border"><p className="text-lg font-bold">{preview.counts?.total || 0}</p><p className="text-muted-foreground">الإجمالي</p></div>
               <div className="p-2 rounded bg-green-50 dark:bg-green-950/30"><p className="text-lg font-bold text-green-600">{preview.counts?.insert || 0}</p><p className="text-muted-foreground">إضافة</p></div>
               <div className="p-2 rounded bg-blue-50 dark:bg-blue-950/30"><p className="text-lg font-bold text-blue-600">{preview.counts?.update || 0}</p><p className="text-muted-foreground">تحديث</p></div>
               <div className="p-2 rounded bg-orange-50 dark:bg-orange-950/30"><p className="text-lg font-bold text-orange-600">{preview.counts?.ambiguous || 0}</p><p className="text-muted-foreground">غير مؤكد</p></div>
+              <div className="p-2 rounded bg-red-50 dark:bg-red-950/30"><p className="text-lg font-bold text-red-600">{preview.counts?.duplicate_in_file || 0}</p><p className="text-muted-foreground">مكرر في الملف</p></div>
               <div className="p-2 rounded bg-amber-50 dark:bg-amber-950/30"><p className="text-lg font-bold text-amber-600">{preview.counts?.skip || 0}</p><p className="text-muted-foreground">تخطي</p></div>
+              <div className="p-2 rounded bg-yellow-50 dark:bg-yellow-950/30"><p className="text-lg font-bold text-yellow-700">{preview.counts?.unclassified || 0}</p><p className="text-muted-foreground">بدون فصل</p></div>
             </div>
             {ambiguousRowIndexes.length > 0 && (
               <div className="text-xs p-2 rounded bg-orange-50 dark:bg-orange-950/20 text-orange-800 dark:text-orange-200">
@@ -202,9 +207,11 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         {result && (
           <div className="border rounded-xl p-4 bg-green-50/40 dark:bg-green-950/10 space-y-2">
             <div className="flex items-center gap-2 font-medium text-green-700"><CheckCircle2 className="h-5 w-5" />اكتمل الاستيراد</div>
-            <div className="grid grid-cols-4 gap-2 text-center text-xs">
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-center text-xs">
               <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-green-600">{result.imported || 0}</p><p className="text-muted-foreground">تمت الإضافة</p></div>
               <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-blue-600">{result.updated || 0}</p><p className="text-muted-foreground">تم التحديث</p></div>
+              <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-yellow-700">{result.unclassified || 0}</p><p className="text-muted-foreground">بدون فصل</p></div>
+              <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-red-700">{result.duplicates || 0}</p><p className="text-muted-foreground">مكرر في الملف</p></div>
               <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-amber-600">{result.skipped || 0}</p><p className="text-muted-foreground">تم التخطي</p></div>
               <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-red-600">{result.failed || 0}</p><p className="text-muted-foreground">فشل</p></div>
             </div>

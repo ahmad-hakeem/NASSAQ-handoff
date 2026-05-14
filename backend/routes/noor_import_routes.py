@@ -149,6 +149,8 @@ async def _annotate_teacher_rows(
     by_nid, by_name_phone = await _load_teacher_index(session, school_id)
 
     annotated: List[Dict[str, Any]] = []
+    seen_nid: set = set()
+    seen_name_phone: set = set()
     for r in parsed_rows:
         data = r["data"]
         issues: List[str] = []
@@ -165,12 +167,25 @@ async def _annotate_teacher_rows(
         dedupe = "skip" if issues else "insert"
         existing_id: Optional[str] = None
         if not issues:
-            if nid in by_nid:
+            # In-batch duplicate detection — second+ occurrences of the
+            # same national_id (or same name+phone) inside ONE upload
+            # are flagged distinctly so the preview shows them and the
+            # commit path skips them instead of silently overwriting.
+            np_key = f"{name}|{phone}" if name and phone else ""
+            if nid and nid in seen_nid:
+                dedupe = "duplicate_in_file"
+            elif np_key and np_key in seen_name_phone:
+                dedupe = "duplicate_in_file"
+            elif nid in by_nid:
                 dedupe = "update"
                 existing_id = by_nid[nid]["id"]
-            elif name and phone and f"{name}|{phone}" in by_name_phone:
+            elif name and phone and np_key in by_name_phone:
                 dedupe = "ambiguous"
-                existing_id = by_name_phone[f"{name}|{phone}"]["id"]
+                existing_id = by_name_phone[np_key]["id"]
+            if nid:
+                seen_nid.add(nid)
+            if np_key:
+                seen_name_phone.add(np_key)
         annotated.append(
             {
                 "row_index": r["row_index"],
@@ -240,13 +255,17 @@ async def _annotate_student_rows(
             num = f"NSS-{h}"
             data["student_number"] = num
             generated = True
-        if num:
-            in_batch_seen.add(num)
 
         dedupe = "skip" if issues else "insert"
         existing_id: Optional[str] = None
         if not issues:
-            if num in students:
+            # In-batch duplicate detection — second+ occurrences of the
+            # same student_number inside ONE upload are flagged so the
+            # preview shows them and the commit path skips them instead
+            # of silently overwriting the previously-inserted row.
+            if num and num in in_batch_seen:
+                dedupe = "duplicate_in_file"
+            elif num in students:
                 dedupe = "update"
                 existing_id = students[num]["id"]
             elif full_name:
@@ -265,6 +284,11 @@ async def _annotate_student_rows(
             class_index=classes,
         )
         class_unresolved = class_id is None and (grade_code or section_code)
+        # Only reserve the number when the row is actually
+        # processable — otherwise an invalid row could poison a later
+        # valid row carrying the same number into a false duplicate.
+        if num and not issues:
+            in_batch_seen.add(num)
         annotated.append(
             {
                 "row_index": r["row_index"],
@@ -281,9 +305,19 @@ async def _annotate_student_rows(
 
 
 def _summarise_counts(rows: List[Dict[str, Any]]) -> Dict[str, int]:
-    counts = {"total": len(rows), "insert": 0, "update": 0, "skip": 0, "ambiguous": 0}
+    counts = {
+        "total": len(rows),
+        "insert": 0,
+        "update": 0,
+        "skip": 0,
+        "ambiguous": 0,
+        "duplicate_in_file": 0,
+        "unclassified": 0,
+    }
     for r in rows:
         counts[r["dedupe"]] = counts.get(r["dedupe"], 0) + 1
+        if r.get("class_unresolved"):
+            counts["unclassified"] += 1
     return counts
 
 
@@ -468,8 +502,18 @@ async def _commit_teachers(
     updated = 0
     skipped = 0
     failed = 0
+    duplicates = 0
     errors: List[Dict[str, Any]] = []
     credentials_csv: List[Dict[str, str]] = []
+
+    # Track ids we've ALREADY accepted into this batch (whether the
+    # first sighting was an insert or a live UPDATE). A second row
+    # carrying the same national_id / (name+phone) is an in-file
+    # duplicate and must be rejected — otherwise rows 2..N would
+    # repeatedly UPDATE the same DB record, contradicting the
+    # parse-time `duplicate_in_file` verdict.
+    batch_inserted_nid: set = set()
+    batch_inserted_name_phone: set = set()
 
     for r in rows:
         row_idx = r.get("row_index")
@@ -488,14 +532,32 @@ async def _commit_teachers(
                 nid = (data.get("national_id") or "").strip()
                 name = (data.get("full_name") or "").strip()
                 phone = (data.get("phone") or "").strip()
+                np_key = f"{name}|{phone}" if name and phone else ""
+
+                # In-batch duplicate detection MUST run before the
+                # update lookup — otherwise the second row would find
+                # the just-inserted record in `by_nid` and silently
+                # overwrite it.
+                if (nid and nid in batch_inserted_nid) or (
+                    np_key and np_key in batch_inserted_name_phone
+                ):
+                    duplicates += 1
+                    errors.append(
+                        {
+                            "row": row_idx,
+                            "message": "رقم الهوية مكرر داخل نفس الملف",
+                        }
+                    )
+                    continue
+
                 live_existing_id: Optional[str] = None
                 live_dedupe = "insert"
                 if nid and nid in by_nid:
                     live_dedupe = "update"
                     live_existing_id = by_nid[nid]["id"]
-                elif name and phone and f"{name}|{phone}" in by_name_phone:
+                elif name and phone and np_key in by_name_phone:
                     live_dedupe = "ambiguous"
-                    live_existing_id = by_name_phone[f"{name}|{phone}"]["id"]
+                    live_existing_id = by_name_phone[np_key]["id"]
 
                 if live_dedupe == "ambiguous" and row_idx not in ambiguous_treat_as_new:
                     skipped += 1
@@ -508,6 +570,14 @@ async def _commit_teachers(
                     continue
 
                 if live_dedupe == "update" and live_existing_id:
+                    # Mark this key as accepted in-batch BEFORE doing
+                    # the update — so a later row with the same id is
+                    # blocked instead of repeatedly overwriting the
+                    # same DB record.
+                    if nid:
+                        batch_inserted_nid.add(nid)
+                    if np_key:
+                        batch_inserted_name_phone.add(np_key)
                     # NOTE: we only touch columns that exist on the
                     # `teachers` model (see `pg_models.Teacher`). Noor
                     # exports can carry address/dob, but those columns
@@ -565,8 +635,16 @@ async def _commit_teachers(
                     )
                     raise _RowAbort()
                 imported += 1
-                # Update in-memory index so a later row with the same
-                # national_id (or name+phone) lands on UPDATE.
+                # Track in-batch insertion so later rows with the same
+                # national_id (or name+phone) are rejected as
+                # in-file duplicates, NOT silently overwritten.
+                if nid:
+                    batch_inserted_nid.add(nid)
+                if np_key:
+                    batch_inserted_name_phone.add(np_key)
+                # Update live indexes too, so a re-run of the same row
+                # within a single batch (defensive) still hits UPDATE
+                # rather than producing a unique-constraint violation.
                 if nid:
                     by_nid[nid] = {
                         "id": result.get("teacher_id"),
@@ -576,7 +654,7 @@ async def _commit_teachers(
                         "email": resolved["email"],
                     }
                 if name and phone:
-                    by_name_phone[f"{name}|{phone}"] = by_nid.get(nid) or {
+                    by_name_phone[np_key] = by_nid.get(nid) or {
                         "id": result.get("teacher_id"),
                         "full_name": name,
                         "phone": phone,
@@ -605,6 +683,7 @@ async def _commit_teachers(
         "updated": updated,
         "skipped": skipped,
         "failed": failed,
+        "duplicates": duplicates,
         "errors": errors,
         "credentials_csv": credentials_csv,
     }
@@ -636,7 +715,15 @@ async def _commit_students(
     updated = 0
     skipped = 0
     failed = 0
+    duplicates = 0
+    unclassified = 0
     errors: List[Dict[str, Any]] = []
+
+    # Track student_numbers we ACCEPTED in this batch (insert OR live
+    # UPDATE). A second row with the same number is an in-file
+    # duplicate — must not be allowed to repeatedly overwrite the same
+    # DB record (the bug that collapsed 6 rows into 1).
+    batch_inserted_nums: set = set()
 
     for r in rows:
         row_idx = r.get("row_index")
@@ -658,6 +745,22 @@ async def _commit_students(
                     section_code=section_code,
                     class_index=classes,
                 )
+                # In-batch duplicate detection MUST run before the
+                # update lookup. Otherwise the second row finds the
+                # just-inserted record in `students` and silently
+                # overwrites it (the bug that collapsed 6 rows into 1).
+                if num and num in batch_inserted_nums:
+                    duplicates += 1
+                    if class_id is None and (grade_code or section_code):
+                        unclassified += 1
+                    errors.append(
+                        {
+                            "row": row_idx,
+                            "message": "رقم الطالب مكرر داخل نفس الملف",
+                        }
+                    )
+                    continue
+
                 # Recompute dedupe verdict at commit-time against the
                 # FRESH indexes (mirrors teacher commit's authority
                 # model). Parse-time `r['dedupe']` is ignored — only
@@ -683,6 +786,11 @@ async def _commit_students(
                     continue
                 existing = live_existing
                 if existing:
+                    # Mark the number BEFORE the UPDATE so a later row
+                    # with the same student_number is rejected as
+                    # duplicate, not allowed to re-update.
+                    if num:
+                        batch_inserted_nums.add(num)
                     await update_student_mutable_fields(
                         session,
                         student_id=existing["id"],
@@ -693,6 +801,8 @@ async def _commit_students(
                         mobile=mobile,
                     )
                     updated += 1
+                    if class_id is None and (grade_code or section_code):
+                        unclassified += 1
                     continue
 
                 new_id = await insert_student_record_only(
@@ -707,9 +817,13 @@ async def _commit_students(
                     created_by=created_by,
                 )
                 imported += 1
-                # Track in-batch so later rows with the same student_number
-                # become an UPDATE rather than colliding on the unique
-                # (school_id, student_number) index.
+                if class_id is None and (grade_code or section_code):
+                    unclassified += 1
+                if num:
+                    batch_inserted_nums.add(num)
+                # Update live index so a re-run of the same row within
+                # one batch (defensive) hits UPDATE rather than crashing
+                # on the unique (school_id, student_number) index.
                 students[num] = {
                     "id": new_id,
                     "student_number": num,
@@ -727,5 +841,7 @@ async def _commit_students(
         "updated": updated,
         "skipped": skipped,
         "failed": failed,
+        "duplicates": duplicates,
+        "unclassified": unclassified,
         "errors": errors,
     }
