@@ -8,9 +8,15 @@ Covers:
   * Export happy path: stamps schools.last_export_at, returns a 24h
     download_url, and the public download streams a zip whose
     manifest enumerates every whitelisted table.
-  * Public download token must be honoured for the bound workspace,
-    rejected with 404 for tampered / wrong-purpose tokens, and
-    redacted columns (password_hash, mfa secrets) never leak.
+  * Public download authenticated download contract (§369):
+    - Tampered / wrong-purpose export tokens → 404 (token checked
+      first, before auth, so unauthenticated tampered requests still
+      return 404 rather than 403).
+    - Valid export token + no Bearer token → 403.
+    - Valid export token + wrong-user Bearer token → 403.
+    - Valid export token + is_active=False (erasure path) + matching
+      Bearer token → 200 (is_active intentionally not checked).
+    - Redacted columns (password_hash, mfa secrets) never leak.
   * Soft-delete pre-conditions: 412 when no recent export, 422 on
     name mismatch, 409 once already archived. Happy path flips
     schools.status='archived' + archived_at.
@@ -84,7 +90,8 @@ async def test_public_download_streams_zip_with_manifest_and_redactions(client):
     create = await client.post("/independent-teacher/workspace/export", headers=h)
     url = create.json()["download_url"].replace("/api", "")  # client mounts at /
 
-    resp = await client.get(url)
+    # §369: download requires the owner's Bearer token.
+    resp = await client.get(url, headers=h)
     assert resp.status_code == 200, resp.text
     assert resp.headers["content-type"] == "application/zip"
 
@@ -107,8 +114,68 @@ async def test_public_download_streams_zip_with_manifest_and_redactions(client):
 
 @pytest.mark.asyncio
 async def test_public_download_rejects_tampered_token(client):
+    # The export-token check fires before the auth check, so a
+    # cryptographically invalid path token returns 404 regardless of
+    # whether a Bearer token is present (does not expose auth state).
     resp = await client.get("/public/workspace-export/not-a-real-token")
     assert resp.status_code == 404
+
+
+# §369 identity-binding contract tests -----------------------------------
+
+@pytest.mark.asyncio
+async def test_download_requires_bearer_token(client):
+    """Valid export token + no Authorization header → 403."""
+    ctx = await mk_it_workspace()
+    h = _it_headers(ctx)
+
+    create = await client.post("/independent-teacher/workspace/export", headers=h)
+    url = create.json()["download_url"].replace("/api", "")
+
+    # No auth header at all.
+    resp = await client.get(url)
+    assert resp.status_code == 403, resp.text
+
+
+@pytest.mark.asyncio
+async def test_download_rejects_wrong_user(client):
+    """Valid export token + different user's Bearer token → 403."""
+    ctx = await mk_it_workspace()
+    ctx2 = await mk_it_workspace()
+    h_owner = _it_headers(ctx)
+    h_other = _it_headers(ctx2)
+
+    create = await client.post("/independent-teacher/workspace/export", headers=h_owner)
+    url = create.json()["download_url"].replace("/api", "")
+
+    # Authenticated as a *different* IT user — identity mismatch.
+    resp = await client.get(url, headers=h_other)
+    assert resp.status_code == 403, resp.text
+
+
+@pytest.mark.asyncio
+async def test_download_succeeds_after_erasure_deactivates_user(client):
+    """Erasure path: is_active=False must NOT block the exit-artefact download.
+
+    The erasure endpoint sets users.is_active=False in the same transaction
+    that mints the exit-artefact token.  _authenticate_export_download
+    intentionally skips the is_active check so the user can retrieve their
+    data while the token is still live.  Simulate by deactivating the user
+    directly and confirming the download still succeeds with a valid token.
+    """
+    ctx = await mk_it_workspace()
+    h = _it_headers(ctx)
+
+    create = await client.post("/independent-teacher/workspace/export", headers=h)
+    url = create.json()["download_url"].replace("/api", "")
+
+    # Deactivate the user (simulates what erasure does in the same txn).
+    await gd_update_one(db.session, "users", {"id": ctx["uid"]}, {"is_active": False})
+
+    # Download must still succeed — is_active is not checked for this endpoint.
+    resp = await client.get(url, headers=h)
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["content-type"] == "application/zip"
 
 
 # ---------------------------------------------------------------------------

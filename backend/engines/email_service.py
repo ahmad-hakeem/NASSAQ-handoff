@@ -171,17 +171,16 @@ def send_workspace_archived_email(
     to_email: str,
     user_name: str,
     workspace_name: str,
-    download_url: str,
-    download_expires_at: str,
     reactivation_deadline: str,
     reactivation_window_days: int = 30,
+    download_url: str = "",
+    download_expires_at: str = "",
 ) -> bool:
     """Notify the Independent-Teacher that their workspace has been
-    archived (soft-deleted). Includes the one-time export download URL
-    and the date by which they must reactivate before the workspace
-    becomes eligible for hard-deletion. Best-effort: returns False if
-    Resend is not configured or rejects the message — the caller MUST
-    NOT undo the archive on a False return.
+    archived (soft-deleted) and that their data was downloaded to their
+    browser during the archive flow. Includes the reactivation deadline.
+    Best-effort: returns False if Resend is not configured or rejects
+    the message — the caller MUST NOT undo the archive on a False return.
     """
     if not RESEND_API_KEY:
         logger.warning("RESEND_API_KEY not configured — skipping workspace archived email")
@@ -190,11 +189,8 @@ def send_workspace_archived_email(
     resend.api_key = RESEND_API_KEY
     safe_name = _h(user_name or to_email, quote=True)
     safe_workspace = _h(workspace_name or "", quote=True)
-    safe_download = _h(download_url, quote=True)
-    safe_dl_exp = _h(download_expires_at, quote=True)
     safe_deadline = _h(reactivation_deadline, quote=True)
     base = _get_app_url()
-    full_download = safe_download if safe_download.startswith("http") else f"{base}{safe_download}"
 
     html = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -219,15 +215,11 @@ def send_workspace_archived_email(
               لن تتمكّن من تسجيل الدخول إليها حتى يتم استرجاعها.
             </p>
             <div style="background:#f8f9fb;border-radius:12px;padding:20px;margin:20px 0;">
-              <p style="color:#1a1f36;font-size:14px;margin:0 0 12px;font-weight:bold;">📥 رابط تنزيل النسخة المُصدَّرة</p>
-              <p style="color:#666;font-size:13px;margin:0 0 16px;line-height:1.7;">
-                هذا الرابط صالح لمدة ٢٤ ساعة (حتى {safe_dl_exp}) ويُستخدم مرة واحدة فقط.
+              <p style="color:#1a1f36;font-size:14px;margin:0 0 8px;font-weight:bold;">📥 نسخة البيانات المُصدَّرة</p>
+              <p style="color:#666;font-size:13px;margin:0;line-height:1.7;">
+                تم تنزيل نسخة كاملة من بياناتك تلقائياً إلى متصفحك عند تأكيد الأرشفة.
+                إذا لم يكتمل التنزيل، يمكنك تسجيل الدخول لإعادة تفعيل مساحتك وتصدير البيانات مجدداً.
               </p>
-              <div style="text-align:center;">
-                <a href="{full_download}" style="display:inline-block;background:linear-gradient(135deg,#64d9d6,#36b5b0);color:#1a1f36;font-weight:bold;font-size:15px;padding:12px 28px;border-radius:10px;text-decoration:none;">
-                  تنزيل البيانات
-                </a>
-              </div>
             </div>
             <div style="background:#fff7ed;border-radius:12px;padding:16px;margin:20px 0;">
               <p style="color:#92400e;font-size:14px;margin:0;line-height:1.8;">
@@ -352,11 +344,11 @@ def send_workspace_auto_export_email(
     to_email: str,
     user_name: str,
     workspace_name: str,
-    download_url: str,
-    download_expires_at: str,
+    download_url: str = "",
+    download_expires_at: str = "",
 ) -> bool:
     """Notify the Independent-Teacher that the weekly auto-export ran
-    successfully and a fresh single-use 24h download URL is ready.
+    successfully and is available to download from their account settings.
     Best-effort: returns False if Resend is not configured or rejects
     the message — the caller MUST stamp the row regardless so the next
     hourly tick doesn't pick the workspace up again inside the same
@@ -369,10 +361,7 @@ def send_workspace_auto_export_email(
     resend.api_key = RESEND_API_KEY
     safe_name = _h(user_name or to_email, quote=True)
     safe_workspace = _h(workspace_name or "", quote=True)
-    safe_download = _h(download_url, quote=True)
-    safe_dl_exp = _h(download_expires_at, quote=True)
     base = _get_app_url()
-    full_download = safe_download if safe_download.startswith("http") else f"{base}{safe_download}"
 
     html = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -397,13 +386,13 @@ def send_workspace_auto_export_email(
               <strong>{safe_workspace}</strong> بنجاح.
             </p>
             <div style="background:#f8f9fb;border-radius:12px;padding:20px;margin:20px 0;">
-              <p style="color:#1a1f36;font-size:14px;margin:0 0 12px;font-weight:bold;">📥 رابط التنزيل</p>
+              <p style="color:#1a1f36;font-size:14px;margin:0 0 8px;font-weight:bold;">📥 تنزيل النسخة الاحتياطية</p>
               <p style="color:#666;font-size:13px;margin:0 0 16px;line-height:1.7;">
-                هذا الرابط صالح لمدة ٢٤ ساعة (حتى {safe_dl_exp}) ويُستخدم مرة واحدة فقط.
+                لتنزيل نسخة بياناتك، سجّل الدخول إلى حسابك وانتقل إلى إعدادات مساحة العمل.
               </p>
               <div style="text-align:center;">
-                <a href="{full_download}" style="display:inline-block;background:linear-gradient(135deg,#64d9d6,#36b5b0);color:#1a1f36;font-weight:bold;font-size:15px;padding:12px 28px;border-radius:10px;text-decoration:none;">
-                  تنزيل البيانات
+                <a href="{base}/account-settings" style="display:inline-block;background:linear-gradient(135deg,#64d9d6,#36b5b0);color:#1a1f36;font-weight:bold;font-size:15px;padding:12px 28px;border-radius:10px;text-decoration:none;">
+                  تنزيل من إعدادات الحساب
                 </a>
               </div>
             </div>
@@ -440,20 +429,20 @@ def send_workspace_erasure_final_export_email(
     to_email: str,
     user_name: str,
     workspace_name: str,
-    download_url: str,
-    download_expires_at: str,
     erasure_deadline: str,
     erasure_window_days: int = 7,
+    download_url: str = "",
+    download_expires_at: str = "",
 ) -> bool:
     """Notify the Independent-Teacher that their workspace has been
     queued for permanent erasure (Task #276 — GDPR right-to-be-forgotten).
 
-    Includes the one-shot final export download URL and the date by
-    which the workspace will be hard-deleted. Reactivation is NOT
-    possible during the erasure grace window — this is a one-way
-    operation. Best-effort: returns False on send failure; the caller
-    MUST NOT undo the erasure stamp on a False return because the
-    in-app dialog already surfaced the deadline.
+    Informs the user that their data export was downloaded to their
+    browser during the erasure-request flow and provides the erasure
+    deadline. Reactivation is NOT possible during the erasure grace
+    window. Best-effort: returns False on send failure; the caller MUST
+    NOT undo the erasure stamp on a False return because the in-app
+    dialog already surfaced the deadline.
     """
     if not RESEND_API_KEY:
         logger.warning("RESEND_API_KEY not configured — skipping workspace erasure email")
@@ -462,11 +451,8 @@ def send_workspace_erasure_final_export_email(
     resend.api_key = RESEND_API_KEY
     safe_name = _h(user_name or to_email, quote=True)
     safe_workspace = _h(workspace_name or "", quote=True)
-    safe_download = _h(download_url, quote=True)
-    safe_dl_exp = _h(download_expires_at, quote=True)
     safe_deadline = _h(erasure_deadline, quote=True)
     base = _get_app_url()
-    full_download = safe_download if safe_download.startswith("http") else f"{base}{safe_download}"
 
     html = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -491,16 +477,11 @@ def send_workspace_erasure_final_export_email(
               ستُحذف جميع البيانات نهائيًا خلال {erasure_window_days} يومًا، ولن يكون بالإمكان استرجاع المساحة بعد ذلك.
             </p>
             <div style="background:#f8f9fb;border-radius:12px;padding:20px;margin:20px 0;">
-              <p style="color:#1a1f36;font-size:14px;margin:0 0 12px;font-weight:bold;">📥 رابط التنزيل النهائي للنسخة الكاملة</p>
-              <p style="color:#666;font-size:13px;margin:0 0 16px;line-height:1.7;">
-                هذا الرابط صالح لمدة ٢٤ ساعة (حتى {safe_dl_exp}) ويُستخدم مرة واحدة فقط.
-                نوصي بحفظ نسخة احتياطية الآن.
+              <p style="color:#1a1f36;font-size:14px;margin:0 0 8px;font-weight:bold;">📥 نسخة البيانات المُصدَّرة</p>
+              <p style="color:#666;font-size:13px;margin:0;line-height:1.7;">
+                تم تنزيل نسخة كاملة من بياناتك تلقائياً إلى متصفحك عند تأكيد طلب الحذف.
+                احتفظ بهذه النسخة — لن يكون بالإمكان استرجاع البيانات بعد {safe_deadline}.
               </p>
-              <div style="text-align:center;">
-                <a href="{full_download}" style="display:inline-block;background:linear-gradient(135deg,#64d9d6,#36b5b0);color:#1a1f36;font-weight:bold;font-size:15px;padding:12px 28px;border-radius:10px;text-decoration:none;">
-                  تنزيل البيانات
-                </a>
-              </div>
             </div>
             <div style="background:#fee2e2;border-radius:12px;padding:16px;margin:20px 0;">
               <p style="color:#991b1b;font-size:14px;margin:0;line-height:1.8;">

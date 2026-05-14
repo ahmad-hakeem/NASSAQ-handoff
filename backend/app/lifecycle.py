@@ -394,15 +394,11 @@ async def _sweep_auto_exports():
             is_placeholder = email.endswith("@invite.nassaq.invalid") or not email
             sent = False
             if not is_placeholder:
-                base = (os.getenv("APP_URL") or os.getenv("PUBLIC_BASE_URL") or "").rstrip("/")
-                download_url = f"{base}/api/public/workspace-export/{raw_token}" if base else f"/api/public/workspace-export/{raw_token}"
                 try:
                     sent = send_workspace_auto_export_email(
                         to_email=email,
                         user_name=owner.get("full_name") or "",
                         workspace_name=school.get("name") or "",
-                        download_url=download_url,
-                        download_expires_at=expires_at.isoformat(),
                     )
                 except Exception as email_exc:  # noqa: BLE001
                     logger.warning("Auto-export email send failed: %s", email_exc)

@@ -749,6 +749,25 @@ export const AccountSettingsPage = () => {
     }
   };
 
+  // §369 security fix — authenticated blob download helper.
+  // All workspace export downloads MUST carry the user's Bearer token so
+  // the server can verify the downloader is the same user who minted the
+  // export token.  window.open() / raw anchor hrefs cannot carry auth
+  // headers and are no longer accepted by the download endpoint.
+  const _downloadWorkspaceBlob = async (apiPath, filename = 'nassaq-workspace-export.zip') => {
+    const path = apiPath.replace(/^\/api/, '');
+    const response = await api.get(path, { responseType: 'blob' });
+    const blob = new Blob([response.data], { type: 'application/zip' });
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(objectUrl);
+  };
+
   // Task #211 §6.8 — Workspace export & soft-delete.
   // Right-to-export: POSTs to /independent-teacher/workspace/export
   // and surfaces the 24h signed download URL through nassaqSuccess
@@ -759,15 +778,13 @@ export const AccountSettingsPage = () => {
     setSaving(true);
     try {
       const { data } = await api.post('/independent-teacher/workspace/export');
-      const url = data?.download_url;
+      const downloadUrl = data?.download_url;
       const expiresAt = data?.expires_at;
       setLastExportAt(new Date().toISOString());
-      setLastExportUrl(url || null);
+      setLastExportUrl(downloadUrl || null);
       setLastExportExpiresAt(expiresAt || null);
-      if (url) {
-        // Open in a new tab so the settings page state survives the
-        // download; the link itself is single-purpose (zip stream).
-        try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (_e) { /* popup blocked */ }
+      if (downloadUrl) {
+        await _downloadWorkspaceBlob(downloadUrl);
       }
       nassaqSuccess(t('itExportReadyMessage'), { title: t('itExportReadyTitle') });
     } catch (error) {
@@ -789,10 +806,19 @@ export const AccountSettingsPage = () => {
   const handleConfirmSoftDelete = async () => {
     setSaving(true);
     try {
-      await api.post('/independent-teacher/workspace/soft-delete', {
+      const { data } = await api.post('/independent-teacher/workspace/soft-delete', {
         confirm_workspace_name: softDeleteConfirmName.trim(),
       });
       setSoftDeleteOpen(false);
+      // Trigger the exit-artefact download while the user's access token is still
+      // valid. The download endpoint requires authentication and verifies the
+      // caller is the same user who minted the token (§369 security fix).
+      const exitDownloadUrl = data?.download_url;
+      if (exitDownloadUrl) {
+        try {
+          await _downloadWorkspaceBlob(exitDownloadUrl);
+        } catch (_dlErr) { /* non-fatal: user was already shown the export earlier */ }
+      }
       nassaqSuccess(t('itSoftDeleteSuccessMessage'), {
         title: t('itSoftDeleteSuccessTitle'),
         onConfirm: () => { try { logout(); } catch (_e) {} },
@@ -848,6 +874,15 @@ export const AccountSettingsPage = () => {
         },
       );
       setErasureOpen(false);
+      // Trigger the final exit-artefact download while the user's access token
+      // is still valid. The download endpoint requires authentication and
+      // verifies the caller is the same user who minted the token (§369).
+      const exitDownloadUrl = data?.download_url;
+      if (exitDownloadUrl) {
+        try {
+          await _downloadWorkspaceBlob(exitDownloadUrl);
+        } catch (_dlErr) { /* non-fatal */ }
+      }
       const deadline = data?.erasure_deadline
         ? formatHijriDate(new Date(data.erasure_deadline))
         : '';
@@ -1009,15 +1044,7 @@ export const AccountSettingsPage = () => {
     setSaving(true);
     try {
       const { data } = await api.post('/independent-teacher/workspace/export');
-      const url = data?.download_url || '';
-      // Best-effort copy; fall back silently when clipboard is unavailable
-      // (insecure context, jsdom test, etc.). The URL is also embedded in
-      // the dialog body so the user can copy manually.
-      try {
-        if (url && navigator?.clipboard?.writeText) {
-          await navigator.clipboard.writeText(url);
-        }
-      } catch (_clip) { /* clipboard blocked — URL is still shown below */ }
+      const downloadUrl = data?.download_url || '';
       // Sync the page-level lastExportAt state so the legacy
       // `softDeleteEligible` derived flag (used to gate the archive CTA
       // in this same hub session) flips to true immediately, without
@@ -1026,8 +1053,10 @@ export const AccountSettingsPage = () => {
       setLastExportAt(nowIso);
       setLastExportExpiresAt(data?.expires_at || null);
       await hub.refresh();
-      const body = `${t('itHubExportOneShotBody')}\n\n${url}`;
-      nassaqInfo(body, { title: t('itHubExportOneShotTitle'), confirmText: t('itHubExportOneShotClose') });
+      if (downloadUrl) {
+        await _downloadWorkspaceBlob(downloadUrl);
+      }
+      nassaqSuccess(t('itExportReadyMessage'), { title: t('itExportReadyTitle') });
     } catch (error) {
       nassaqError(error?.response?.data?.detail || t('itExportFailed'));
     } finally {
@@ -2231,17 +2260,6 @@ export const AccountSettingsPage = () => {
                             >
                               {t('itExportLastAt')}: {formatHijriDate(new Date(lastExportAt))}
                             </p>
-                          )}
-                          {lastExportUrl && (
-                            <a
-                              href={lastExportUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-brand-navy underline font-tajawal mt-1 inline-block"
-                              data-testid="it-export-download-link"
-                            >
-                              {t('itExportDownloadAgain')}
-                            </a>
                           )}
                         </div>
                       </div>

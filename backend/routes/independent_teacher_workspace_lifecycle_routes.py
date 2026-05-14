@@ -15,10 +15,20 @@ Four HTTP surfaces:
       step can enforce the "must export within 24h" pre-condition.
 
   * ``GET  /public/workspace-export/{token}``
-      Unauthenticated download endpoint. Verifies the JWT signature +
+      Authenticated download endpoint. Verifies the JWT signature +
       purpose + ``ws``/``uid`` claims, then streams a JSON-zip bundle
       of the workspace's whitelisted tables. IP rate-limited via the
       existing ``rate_store``.
+
+      Identity binding (§369): ALL downloads require a valid Bearer
+      access token whose ``sub`` claim matches ``payload["uid"]``.
+      No unauthenticated path exists.  The token-verification helper
+      ``_authenticate_export_download`` intentionally skips
+      ``is_active`` and the IT-archived-workspace gate because the
+      erasure flow deactivates the user in the same transaction that
+      mints the exit-artefact token; the export token's own single-use
+      + expiry + uid/ws binding are sufficient guards.  See helper
+      docstring for full rationale.
 
   * ``POST /independent-teacher/workspace/soft-delete``
       IT-only, Tier-A MFA. Pre-conditions:
@@ -67,7 +77,11 @@ from auth_scope import (
     is_independent_teacher,
     require_request_school_id,
 )
+import jwt as _jwt
+
 from dependencies import (
+    JWT_ALGORITHM,
+    JWT_SECRET,
     audit_engine,
     db,
     get_current_user,
@@ -127,6 +141,8 @@ _MSG_ALREADY_ARCHIVED = "تم أرشفة المساحة بالفعل."
 _MSG_NOT_ARCHIVED = "هذه المساحة ليست مؤرشفة."
 _MSG_REACTIVATE_EXPIRED = "انتهت مهلة الاسترجاع (٣٠ يومًا). تواصل مع الدعم."
 _MSG_DOWNLOAD_INVALID = "رابط التنزيل غير صالح أو منتهي الصلاحية."
+_MSG_DOWNLOAD_IDENTITY = "لا يحق لك تنزيل هذا الملف."
+_MSG_DOWNLOAD_AUTH_REQUIRED = "يجب تسجيل الدخول لتنزيل ملف التصدير."
 _MSG_RATE_LIMITED = "عدد المحاولات تجاوز الحد المسموح. حاول لاحقًا."
 _MSG_ERASURE_PENDING = "تم تسجيل طلب الحذف النهائي مسبقًا — لا يمكن إعادة التفعيل."
 _MSG_ALREADY_ERASURE = "تم تسجيل طلب الحذف النهائي مسبقًا."
@@ -739,6 +755,71 @@ async def create_workspace_export(
 
 # -- Endpoint: GET /public/workspace-export/{token} -----------------------
 
+
+async def _authenticate_export_download(request: Request) -> str:
+    """Authenticate the caller for the workspace export download endpoint.
+
+    This is a deliberate, narrower variant of ``get_current_user`` that:
+
+    * Requires a valid Bearer access token (type, signature, expiry, revocation).
+    * Intentionally skips the ``is_active`` flag check — the erasure flow
+      sets ``users.is_active = False`` in the same transaction that mints the
+      exit-artefact token, so the downloading user's account is inactive by
+      design at the moment the download is attempted.  The export token's own
+      security properties (single-use hash, 24h expiry, uid+ws binding verified
+      in the calling endpoint) are the sufficient guard here.  Deactivation by
+      an admin should also not strip the user of their data export.
+    * Intentionally skips the IT-archived-workspace gate — the workspace is
+      archived by the time the user downloads the exit artefact.
+    * Checks ``is_locked``: a security lockout (distinct from normal deactivation)
+      signals active compromise and must block the download.
+    * Does NOT check ``last_password_change`` / token IAT — the same reasoning
+      applies: erasure bumps ``last_password_change`` intentionally.
+
+    Returns the validated ``user_id`` string on success.
+    Raises ``HTTPException`` (401/403) for any auth failure — never returns
+    without a verified identity.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=403, detail=_MSG_DOWNLOAD_AUTH_REQUIRED)
+    raw = auth_header[len("Bearer "):].strip()
+    if not raw:
+        raise HTTPException(status_code=403, detail=_MSG_DOWNLOAD_AUTH_REQUIRED)
+
+    try:
+        decoded = _jwt.decode(raw, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except _jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="رمز المصادقة غير صالح أو منتهي الصلاحية.")
+
+    if decoded.get("type") != "access":
+        raise HTTPException(status_code=401, detail="نوع رمز المصادقة غير مقبول.")
+
+    user_id = decoded.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="رمز المصادقة غير صالح.")
+
+    jti = decoded.get("jti")
+    if jti:
+        try:
+            revoked = await gd_find_one(db.session, "revoked_tokens", {"jti": jti})
+            if revoked:
+                raise HTTPException(status_code=401, detail="تم إلغاء الجلسة.")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+    user = await gd_find_one(db.session, "users", {"id": user_id})
+    if not user:
+        raise HTTPException(status_code=401, detail="المستخدم غير موجود.")
+    # is_active is intentionally NOT checked — see docstring.
+    if user.get("is_locked", False):
+        raise HTTPException(status_code=401, detail="الحساب مُعلَّق بسبب مخاوف أمنية.")
+
+    return str(user_id)
+
+
 @router.get("/public/workspace-export/{token}")
 async def download_workspace_export(token: str, request: Request):
     client_ip = extract_client_ip(request)
@@ -767,6 +848,20 @@ async def download_workspace_export(token: str, request: Request):
     school = await gd_find_one(db.session, "schools", {"id": workspace_id})
     if not school or school.get("pending_hard_delete"):
         raise HTTPException(status_code=404, detail=_MSG_DOWNLOAD_INVALID)
+
+    # -- Identity binding (§369 security fix) --------------------------------
+    # All downloads require a valid, user-bound Bearer access token.
+    # ``_authenticate_export_download`` enforces the same guarantees as
+    # ``get_current_user`` (type, revocation, user state) but deliberately
+    # skips the IT-archived-workspace gate so that a user who initiated a
+    # soft-delete or erasure can still redeem the exit-artefact token using
+    # the access token they held at the time of the lifecycle action.
+    # Raises 401/403 on any auth failure — never returns without a verified
+    # identity that we then compare against ``payload["uid"]``.
+    caller_user_id = await _authenticate_export_download(request)
+    if caller_user_id != str(user_id):
+        raise HTTPException(status_code=403, detail=_MSG_DOWNLOAD_IDENTITY)
+    # ------------------------------------------------------------------------
 
     # Single-use enforcement: the token hash must match the most
     # recent mint AND must not have been consumed yet. Atomically
@@ -955,8 +1050,6 @@ async def soft_delete_workspace(
                 to_email=recipient,
                 user_name=current_user.get("full_name") or recipient,
                 workspace_name=(school.get("name") or "").strip() or workspace_id,
-                download_url=download_url,
-                download_expires_at=fresh_expires_at.isoformat(),
                 reactivation_deadline=reactivation_deadline.isoformat(),
                 reactivation_window_days=_REACTIVATE_WINDOW.days,
             )
@@ -1148,8 +1241,6 @@ async def request_workspace_erasure(
                 to_email=recipient,
                 user_name=current_user.get("full_name") or recipient,
                 workspace_name=(school.get("name") or "").strip() or workspace_id,
-                download_url=download_url,
-                download_expires_at=fresh_expires_at.isoformat(),
                 erasure_deadline=erasure_deadline.isoformat(),
                 erasure_window_days=window_days,
             )
