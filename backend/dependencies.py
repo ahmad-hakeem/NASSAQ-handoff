@@ -270,6 +270,44 @@ async def get_current_user(
         if user.get("is_locked", False):
             raise HTTPException(status_code=401, detail="Account is locked")
 
+        # IT §6.8 — defense-in-depth: reject access tokens for IT users whose
+        # workspace has been archived or is pending erasure. The lifecycle
+        # routes bump last_password_change (and is_active for erasure) to
+        # cut existing sessions; this gate catches the narrow window where
+        # an access token was issued within the same second as the archival.
+        _u_role = (user.get("role") or "").lower()
+        _u_acct = (
+            (user.get("account_type") or "")
+            or ((user.get("data") or {}).get("account_type") or "")
+        ).lower()
+        if _u_role == "independent_teacher" or _u_acct == "independent_teacher":
+            _it_ws_id = f"itw_{user_id}"
+            try:
+                _it_ws = await gd_find_one(db.session, "schools", {"id": _it_ws_id})
+                if _it_ws and (
+                    (_it_ws.get("status") or "").lower() == "archived"
+                    or _it_ws.get("pending_hard_delete")
+                ):
+                    raise HTTPException(
+                        status_code=401,
+                        detail="تم أرشفة مساحة العمل. يرجى مراجعة بريدك الإلكتروني.",
+                    )
+            except HTTPException:
+                raise
+            except Exception as _it_err:
+                # Fail closed: an unexpected error querying workspace state
+                # for an IT user must not allow an archived workspace to slip
+                # through. Log the root cause at warning level and reject.
+                logger.warning(
+                    "get_current_user: IT workspace archived check failed, "
+                    "rejecting token for safety: %s",
+                    _it_err,
+                )
+                raise HTTPException(
+                    status_code=401,
+                    detail="تعذّر التحقق من حالة مساحة العمل. يرجى تسجيل الدخول مجدداً.",
+                )
+
         # Task #342: reject access tokens issued before the last password change
         # or reset. This closes the session-invalidation gap where an attacker
         # retains a stolen access token after the victim changes their password.

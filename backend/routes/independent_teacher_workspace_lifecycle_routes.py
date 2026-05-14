@@ -780,10 +780,12 @@ async def download_workspace_export(token: str, request: Request):
         raise HTTPException(status_code=404, detail=_MSG_DOWNLOAD_INVALID)
     try:
         async with db.session.begin_nested():
-            # --- TOCTOU guard: lock the schools row so concurrent requests
-            # using the same export URL serialise here. Re-verify both
-            # conditions after acquiring the lock so only the first
-            # request wins and all others get 404. ---
+            # Task #356 / race-condition hardening: lock the schools row with
+            # SELECT ... FOR UPDATE so that concurrent requests using the same
+            # single-use export URL serialise here. After acquiring the lock,
+            # re-verify that the hash still matches AND last_export_consumed_at
+            # is still NULL — only the first request past this gate commits;
+            # all subsequent requests with the same token get 404.
             locked_school_result = await db.session.execute(
                 _sa_select(_SchoolModel)
                 .where(_SchoolModel.id == workspace_id)
@@ -891,6 +893,16 @@ async def soft_delete_workspace(
                     "last_export_consumed_at": None,
                     "reactivation_reminder_sent_at": None,
                 },
+            )
+            # IT §6.8 session invalidation: bump last_password_change so
+            # every already-issued access token and refresh token is
+            # immediately rejected by the iat-vs-last_password_change check
+            # in get_current_user() and /auth/refresh. This cuts off any
+            # session that was active at the moment of soft-delete without
+            # needing a per-JTI revocation sweep.
+            await gd_update_one(
+                db.session, "users", {"id": current_user["id"]},
+                {"last_password_change": now.isoformat()},
             )
             await audit_engine.log(
                 action=AUDIT_SOFT_DELETE,
@@ -1069,6 +1081,20 @@ async def request_workspace_erasure(
                     "last_export_token_hash": fresh_hash,
                     "last_export_consumed_at": None,
                     "reactivation_reminder_sent_at": None,
+                },
+            )
+            # IT §6.8 session invalidation (erasure path): deactivate the
+            # user account immediately (erasure is one-way and claims to lock
+            # the workspace instantly) and bump last_password_change to
+            # invalidate all outstanding access + refresh tokens. Both checks
+            # fire on every subsequent API call and on the next refresh
+            # attempt, so the user cannot continue using the workspace via
+            # already-issued credentials.
+            await gd_update_one(
+                db.session, "users", {"id": current_user["id"]},
+                {
+                    "is_active": False,
+                    "last_password_change": now.isoformat(),
                 },
             )
             await audit_engine.log(

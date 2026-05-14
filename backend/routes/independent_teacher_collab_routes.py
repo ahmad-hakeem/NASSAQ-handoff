@@ -409,10 +409,33 @@ async def cancel_collab_invitation(
     if orm_row.status != "pending":
         raise HTTPException(status_code=409, detail=_MSG_COLLAB_BAD_STATE)
 
-    orm_row.status = "cancelled"
-    orm_row.updated_at = _utcnow()
-    await db.session.flush()
-    row = _collab_to_dict(orm_row)
+    # TOCTOU guard: re-acquire the row under FOR UPDATE inside a savepoint
+    # so that a concurrent accept() racing this cancel() must serialise here.
+    # Only the first writer to commit wins; the other sees a non-pending status
+    # and gets the appropriate error.
+    try:
+        async with db.session.begin_nested():
+            locked_result = await db.session.execute(
+                select(WorkspaceCollaborator)
+                .where(WorkspaceCollaborator.id == collab_id)
+                .limit(1)
+                .with_for_update()
+            )
+            orm_row_locked = locked_result.scalars().first()
+            if not orm_row_locked:
+                raise HTTPException(status_code=404, detail=_MSG_COLLAB_NOT_FOUND)
+            if orm_row_locked.status != "pending":
+                raise HTTPException(status_code=409, detail=_MSG_COLLAB_BAD_STATE)
+            orm_row_locked.status = "cancelled"
+            orm_row_locked.updated_at = _utcnow()
+            await db.session.flush()
+            row = _collab_to_dict(orm_row_locked)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("cancel_collab_invitation failed id=%s: %s", collab_id, exc)
+        raise HTTPException(status_code=500, detail=_MSG_INTERNAL)
+
     await audit_engine.log(
         action=AUDIT_COLLAB_CANCELLED,
         performed_by=current_user["id"],
@@ -645,13 +668,24 @@ async def accept_collab_invitation(
     now_dt = _utcnow()
     try:
         async with db.session.begin_nested():
-            if orm_row.status != "pending":
+            # TOCTOU guard: re-acquire the row under FOR UPDATE so that a
+            # concurrent cancel() racing this accept() serialises here. Re-verify
+            # status after locking — the in-memory orm_row.status check is
+            # insufficient because it reflects the pre-transaction snapshot.
+            locked_acc_result = await db.session.execute(
+                select(WorkspaceCollaborator)
+                .where(WorkspaceCollaborator.id == row["id"])
+                .limit(1)
+                .with_for_update()
+            )
+            orm_row_locked = locked_acc_result.scalars().first()
+            if not orm_row_locked or orm_row_locked.status != "pending":
                 raise HTTPException(status_code=400, detail=_MSG_COLLAB_INVALID_TOKEN)
-            orm_row.status = "accepted"
-            orm_row.collaborator_school_id = caller_ws
-            orm_row.collaborator_user_id = current_user["id"]
-            orm_row.accepted_at = now_dt
-            orm_row.updated_at = now_dt
+            orm_row_locked.status = "accepted"
+            orm_row_locked.collaborator_school_id = caller_ws
+            orm_row_locked.collaborator_user_id = current_user["id"]
+            orm_row_locked.accepted_at = now_dt
+            orm_row_locked.updated_at = now_dt
             await db.session.flush()
             await audit_engine.log(
                 action=AUDIT_COLLAB_ACCEPTED,

@@ -582,9 +582,13 @@ async def accept_parent_invitation(
 
     try:
         async with db.session.begin_nested():
-            # --- TOCTOU guard: re-acquire both rows under FOR UPDATE so that
-            # concurrent requests using the same token serialise here and
-            # only the first one past this gate actually commits. ---
+            # Task #356 / race-condition hardening: re-acquire BOTH the
+            # invitation row and the student row under SELECT ... FOR UPDATE
+            # before any write so that two concurrent requests using the same
+            # one-time token serialise here. Only the first request to acquire
+            # the lock proceeds; subsequent requests observe status != "pending"
+            # (or parent_id already set) and get 400/409 respectively.
+            # This prevents duplicate parent onboarding from a single invitation.
 
             locked_inv_result = await db.session.execute(
                 select(ParentInvitation)

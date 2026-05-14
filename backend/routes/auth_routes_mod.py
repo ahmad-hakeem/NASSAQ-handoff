@@ -561,6 +561,43 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
     if user.get("is_locked", False):
         raise HTTPException(status_code=401, detail="Account is locked")
 
+    # IT §6.8 — mirror of the get_current_user() gate: block refresh token
+    # rotation for IT users whose workspace has been archived or is pending
+    # erasure. The lifecycle routes bump last_password_change to cut the
+    # current session; this gate prevents a concurrent refresh from minting
+    # a new token pair before the iat check fires.
+    _r_role = (user.get("role") or "").lower()
+    _r_acct = (
+        (user.get("account_type") or "")
+        or ((user.get("data") or {}).get("account_type") or "")
+    ).lower()
+    if _r_role == "independent_teacher" or _r_acct == "independent_teacher":
+        _r_ws_id = f"itw_{user_id}"
+        try:
+            _r_ws = await gd_find_one(db.session, "schools", {"id": _r_ws_id})
+            if _r_ws and (
+                (_r_ws.get("status") or "").lower() == "archived"
+                or _r_ws.get("pending_hard_delete")
+            ):
+                raise HTTPException(
+                    status_code=401,
+                    detail="تم أرشفة مساحة العمل. يرجى مراجعة بريدك الإلكتروني.",
+                )
+        except HTTPException:
+            raise
+        except Exception as _r_ws_err:
+            # Fail closed: an unexpected error querying workspace state must
+            # not allow a refresh rotation through for an archived IT workspace.
+            logger.warning(
+                "refresh: IT workspace archived check failed, "
+                "rejecting refresh for safety: %s",
+                _r_ws_err,
+            )
+            raise HTTPException(
+                status_code=401,
+                detail="تعذّر التحقق من حالة مساحة العمل. يرجى تسجيل الدخول مجدداً.",
+            )
+
     # Reject refresh tokens issued before the last password change.
     # This ensures that after a password change or reset, all previously
     # issued refresh tokens (e.g. on a stolen device) are invalidated.
