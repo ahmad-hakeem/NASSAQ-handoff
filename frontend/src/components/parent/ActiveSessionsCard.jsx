@@ -152,6 +152,8 @@ const ActiveSessionsCard = () => {
                   key={s.id}
                   className="flex items-center gap-3 p-3 rounded-xl border border-border/60"
                   data-testid="parent-session-row"
+                  data-session-id={s.id}
+                  data-session-current={isCurrent ? '1' : '0'}
                 >
                   <span className="w-9 h-9 rounded-xl bg-muted/40 flex items-center justify-center shrink-0">
                     <Monitor className="h-4 w-4 text-muted-foreground" />

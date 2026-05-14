@@ -41,6 +41,14 @@ E2E_IT_PRE_BOOTSTRAP_PASSWORD=...
 E2E_PRINCIPAL_EMAIL=...
 E2E_PRINCIPAL_PASSWORD=...
 
+# Parent (any school parent — used by sign-out-other-devices.spec.ts).
+# The account does NOT need to be MFA-enrolled; the spec drives two
+# real browser contexts as the same parent and asserts the
+# "End session" / "End all other sessions" buttons in
+# Settings → Active Sessions actually bounce the other browser.
+E2E_PARENT_EMAIL=...
+E2E_PARENT_PASSWORD=...
+
 # MFA-enrolled user with a usable recovery code.
 # IMPORTANT: this account MUST be an Independent Teacher whose
 # workspace currently has an active `reactivation_banner` snapshot
@@ -79,6 +87,18 @@ Failures write traces, videos, and screenshots to
 gitignored).
 
 ## What this suite covers
+
+`e2e/auth/sign-out-other-devices.spec.ts` (Task #378) — drives two
+real browser contexts as the same parent and asserts that:
+
+1. Clicking **End session** in Browser A on Browser B's row in
+   Settings → Active Sessions bounces Browser B to `/login` on its
+   next API call (real axios 401 interceptor in `AuthContext.js`).
+2. Clicking **End all other sessions** in Browser A bounces every
+   other browser to `/login`.
+
+It complements — and does not duplicate — the API assertions in
+`backend/tests/test_session_revocation_routes.py`.
 
 The six scenarios in `e2e/auth/post-login-redirect.spec.ts`:
 

@@ -46,6 +46,13 @@ export function getPrincipalCredentials(): Credential {
   };
 }
 
+export function getParentCredentials(): Credential {
+  return {
+    email: readEnv('E2E_PARENT_EMAIL'),
+    password: readEnv('E2E_PARENT_PASSWORD'),
+  };
+}
+
 export function getMfaUserCredentials(): Credential & { recoveryCode: string } {
   return {
     email: readEnv('E2E_MFA_USER_EMAIL'),
