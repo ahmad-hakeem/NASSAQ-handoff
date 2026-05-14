@@ -158,6 +158,8 @@ async def can_view_student(session, current_user: dict, student_id: str) -> bool
     Allowed:
       - Platform admins.
       - School admin roles (principal/admin/sub_admin) within the student's tenant.
+      - Independent teachers for any student inside their own workspace (they are
+        the sole admin of their synthetic school).
       - The student themselves.
       - The student's guardians via `parents.student_ids` or `guardian_links`.
       - Teachers with a `teacher_assignments` or `class_sessions` assignment to
@@ -178,8 +180,18 @@ async def can_view_student(session, current_user: dict, student_id: str) -> bool
     if not student:
         return False
 
-    user_tenant = current_user.get("tenant_id") or current_user.get("school_id")
     student_tenant = student.get("school_id") or student.get("tenant_id")
+
+    # Independent teachers carry no tenant_id; resolve via their synthetic workspace.
+    if role == UserRole.INDEPENDENT_TEACHER.value:
+        from auth_scope import independent_workspace_id  # local: avoid cycle
+        it_workspace = independent_workspace_id(current_user)
+        if not it_workspace or it_workspace != student_tenant:
+            return False
+        # Within their own workspace they have full admin-level access.
+        return True
+
+    user_tenant = current_user.get("tenant_id") or current_user.get("school_id")
     if not user_tenant or user_tenant != student_tenant:
         return False
 
@@ -231,6 +243,56 @@ def require_can_view_student_sync_check(allowed: bool) -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="لا يمكنك الوصول لبيانات هذا الطالب",
+        )
+
+
+async def can_view_class(session, current_user: dict, class_id: str) -> bool:
+    """Return True iff `current_user` is authorized to read class-level data
+    (attendance records, class reports, section summaries) for `class_id`.
+
+    Allowed:
+      - Platform admins.
+      - School admin roles (principal / admin / sub_admin) — already tenant-scoped
+        at the query level, so no extra check needed.
+      - Teachers with a `teacher_assignments` or `class_sessions` row that links
+        them directly to this class within the tenant.
+
+    Same-tenant membership alone is not sufficient for teachers.
+    """
+    from engines.sql_utils import gd_find_one  # local import to avoid cycles
+
+    if not class_id:
+        return False
+
+    role = current_user.get("role", "")
+    if role in _PLATFORM_ROLES:
+        return True
+    if role in _SCHOOL_ADMIN_ROLES:
+        return True
+
+    user_id = current_user.get("id")
+    teacher_id = current_user.get("teacher_id") or user_id
+
+    if role in (UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value):
+        assign = await gd_find_one(
+            session, "teacher_assignments", {"teacher_id": teacher_id, "class_id": class_id}
+        )
+        if assign:
+            return True
+        sess = await gd_find_one(
+            session, "class_sessions", {"teacher_id": teacher_id, "class_id": class_id}
+        )
+        return bool(sess)
+
+    return False
+
+
+def require_can_view_class_sync_check(allowed: bool) -> None:
+    """Raise the canonical 403 when `can_view_class` returned False."""
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="لا يمكنك الوصول لبيانات هذا الفصل",
         )
 
 

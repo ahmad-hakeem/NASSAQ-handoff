@@ -288,14 +288,31 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
     async def get_section_attendance(
         section_id: str,
         attendance_date: str,
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(require_roles([
+            UserRole.PLATFORM_ADMIN,
+            UserRole.SCHOOL_PRINCIPAL,
+            UserRole.SCHOOL_ADMIN,
+            UserRole.SCHOOL_SUB_ADMIN,
+            UserRole.TEACHER,
+            UserRole.INDEPENDENT_TEACHER,
+        ]))
     ):
-        """Get attendance for a section on a specific date"""
+        """Get attendance for a section on a specific date.
+
+        SECURITY: Restricted to staff roles only. Section-level attendance
+        records contain data for every student in the class and must not be
+        accessible to parents, students, or other low-privilege accounts.
+        Teachers must additionally be assigned to the requested section/class.
+        """
         tenant_id = current_user.get("tenant_id") or current_user.get("primary_tenant_id")
         
         if not tenant_id:
             raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
-        
+
+        from utils.tenant_scope import can_view_class, require_can_view_class_sync_check
+        cls_allowed = await can_view_class(db.session, current_user, section_id)
+        require_can_view_class_sync_check(cls_allowed)
+
         records = await engine.get_section_attendance(
             tenant_id=tenant_id,
             section_id=section_id,
@@ -310,14 +327,40 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
     async def get_daily_report(
         attendance_date: str,
         section_id: Optional[str] = None,
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(require_roles([
+            UserRole.PLATFORM_ADMIN,
+            UserRole.SCHOOL_PRINCIPAL,
+            UserRole.SCHOOL_ADMIN,
+            UserRole.SCHOOL_SUB_ADMIN,
+            UserRole.TEACHER,
+            UserRole.INDEPENDENT_TEACHER,
+        ]))
     ):
-        """Get daily attendance report"""
+        """Get daily attendance report.
+
+        SECURITY: Restricted to staff roles only. Daily reports expose
+        aggregate class-level records that must not be accessible to
+        parents or students. Teachers are further restricted: they must
+        supply a specific section_id and be assigned to that section.
+        School-wide daily reports (no section_id) are admin-only.
+        """
         tenant_id = current_user.get("tenant_id") or current_user.get("primary_tenant_id")
         
         if not tenant_id:
             raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
-        
+
+        role = current_user.get("role", "")
+        _TEACHER_ROLES = {UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value}
+        if role in _TEACHER_ROLES:
+            if not section_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="يجب تحديد الفصل الدراسي للوصول إلى تقرير الحضور اليومي"
+                )
+            from utils.tenant_scope import can_view_class, require_can_view_class_sync_check
+            cls_allowed = await can_view_class(db.session, current_user, section_id)
+            require_can_view_class_sync_check(cls_allowed)
+
         report = await engine.get_daily_attendance_report(
             tenant_id=tenant_id,
             attendance_date=attendance_date,
@@ -357,14 +400,31 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
         section_id: str,
         start_date: str,
         end_date: str,
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(require_roles([
+            UserRole.PLATFORM_ADMIN,
+            UserRole.SCHOOL_PRINCIPAL,
+            UserRole.SCHOOL_ADMIN,
+            UserRole.SCHOOL_SUB_ADMIN,
+            UserRole.TEACHER,
+            UserRole.INDEPENDENT_TEACHER,
+        ]))
     ):
-        """Get attendance summary for a section"""
+        """Get attendance summary for a section.
+
+        SECURITY: Restricted to staff roles only. Section-level summaries
+        expose per-student attendance statistics for the whole class and
+        must not be accessible to parents or students. Teachers must
+        additionally be assigned to the requested section/class.
+        """
         tenant_id = current_user.get("tenant_id") or current_user.get("primary_tenant_id")
         
         if not tenant_id:
             raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
-        
+
+        from utils.tenant_scope import can_view_class, require_can_view_class_sync_check
+        cls_allowed = await can_view_class(db.session, current_user, section_id)
+        require_can_view_class_sync_check(cls_allowed)
+
         summary = await engine.get_section_attendance_summary(
             tenant_id=tenant_id,
             section_id=section_id,
@@ -402,12 +462,22 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
         data: ExcuseCreate,
         current_user: dict = Depends(get_current_user)
     ):
-        """Create an attendance excuse"""
+        """Create an attendance excuse.
+
+        SECURITY: The caller must be authorized to act on the target student
+        (admin, assigned teacher, or the student's guardian). Any authenticated
+        tenant user could otherwise file fraudulent excuses for unrelated
+        students.
+        """
         tenant_id = current_user.get("tenant_id") or current_user.get("primary_tenant_id")
         
         if not tenant_id:
             raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
-        
+
+        from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+        allowed = await can_view_student(db.session, current_user, data.student_id)
+        require_can_view_student_sync_check(allowed)
+
         excuse = await engine.create_excuse(
             tenant_id=tenant_id,
             student_id=data.student_id,

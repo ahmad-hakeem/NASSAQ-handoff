@@ -38,10 +38,26 @@ ADMIN_ROLES_SET = {
 }
 
 # ============== SCHOOL REPORTS APIs ==============
+_STAFF_ROLES = [
+    UserRole.PLATFORM_ADMIN,
+    UserRole.SCHOOL_PRINCIPAL,
+    UserRole.SCHOOL_ADMIN,
+    UserRole.SCHOOL_SUB_ADMIN,
+    UserRole.TEACHER,
+    UserRole.INDEPENDENT_TEACHER,
+]
+
+_ADMIN_ONLY_ROLES = [
+    UserRole.PLATFORM_ADMIN,
+    UserRole.SCHOOL_PRINCIPAL,
+    UserRole.SCHOOL_ADMIN,
+    UserRole.SCHOOL_SUB_ADMIN,
+]
+
 @router.get("/reports/school/overview")
 async def get_school_overview_report(
     period: str = "current_term",
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(_STAFF_ROLES))
 ):
     """Get school overview report with statistics"""
     import asyncio
@@ -94,13 +110,30 @@ async def get_school_overview_report(
 async def get_school_attendance_report(
     period: str = "current_term",
     class_id: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(_STAFF_ROLES))
 ):
-    """Get detailed attendance report by class"""
+    """Get detailed attendance report by class.
+
+    SECURITY: Teachers are further restricted — they must supply a class_id
+    and be assigned to that class. School-wide attendance (no class_id) is
+    admin-only to prevent any teacher from reading cross-class data.
+    """
     from auth_scope import independent_workspace_id as _itw_id
     school_id = current_user.get("tenant_id") or _itw_id(current_user)
     if not school_id:
         raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
+
+    role = current_user.get("role", "")
+    _TEACHER_ROLES = {UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value}
+    if role in _TEACHER_ROLES:
+        if not class_id:
+            raise HTTPException(
+                status_code=403,
+                detail="يجب تحديد الفصل الدراسي للوصول إلى تقرير الحضور"
+            )
+        from utils.tenant_scope import can_view_class, require_can_view_class_sync_check
+        cls_allowed = await can_view_class(db.session, current_user, class_id)
+        require_can_view_class_sync_check(cls_allowed)
     
     class_query = {"school_id": school_id}
     if class_id:
@@ -144,7 +177,7 @@ async def get_school_attendance_report(
 async def get_school_grades_report(
     period: str = "current_term",
     subject_id: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(_STAFF_ROLES))
 ):
     """Get grades report by subject"""
     school_id = current_user.get("tenant_id")
@@ -201,7 +234,7 @@ async def get_school_grades_report(
 @router.get("/reports/school/behavior")
 async def get_school_behavior_report(
     period: str = "current_term",
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(_STAFF_ROLES))
 ):
     """Get behavior report with statistics"""
     school_id = current_user.get("tenant_id") or current_user.get("primary_tenant_id") or current_user.get("school_id")
@@ -256,7 +289,7 @@ async def get_school_behavior_report(
 
 @router.get("/reports/school/top-classes")
 async def get_top_performing_classes(
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(_STAFF_ROLES))
 ):
     """Get top performing classes based on attendance and behavior"""
     school_id = current_user.get("tenant_id")
@@ -322,7 +355,7 @@ async def get_top_performing_classes(
 async def export_school_report(
     report_type: str = "overview",
     format: str = "json",
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(_ADMIN_ONLY_ROLES))
 ):
     """Export school report data"""
     school_id = current_user.get("tenant_id")
@@ -431,11 +464,21 @@ async def report_student(
 @router.get("/reports/class/{class_id}")
 async def report_class(
     class_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles(_STAFF_ROLES)),
 ):
+    """Generate a class report.
+
+    SECURITY: Restricted to staff roles only. Class reports include
+    student names and attendance summaries for every student in the
+    class and must not be accessible to parents or students. Teachers
+    must additionally be assigned to the requested class.
+    """
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
+    from utils.tenant_scope import can_view_class, require_can_view_class_sync_check
+    cls_allowed = await can_view_class(db.session, current_user, class_id)
+    require_can_view_class_sync_check(cls_allowed)
     return await reporting_engine.generate_class_report(class_id, school_id)
 
 @router.get("/reports/attendance")
@@ -443,11 +486,30 @@ async def report_attendance(
     start_date: str = Query(...),
     end_date: str = Query(...),
     class_id: Optional[str] = Query(None),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles(_STAFF_ROLES)),
 ):
+    """Generate an attendance report.
+
+    SECURITY: Restricted to staff roles only. Attendance reports contain
+    school- or class-wide breakdowns that must not be accessible to
+    parents or students. Teachers are further restricted: they must
+    supply a class_id and be assigned to that class. School-wide
+    attendance reports (no class_id) are admin-only.
+    """
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
+    role = current_user.get("role", "")
+    _TEACHER_ROLES = {UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value}
+    if role in _TEACHER_ROLES:
+        if not class_id:
+            raise HTTPException(
+                status_code=403,
+                detail="يجب تحديد الفصل الدراسي للوصول إلى تقرير الحضور"
+            )
+        from utils.tenant_scope import can_view_class, require_can_view_class_sync_check
+        cls_allowed = await can_view_class(db.session, current_user, class_id)
+        require_can_view_class_sync_check(cls_allowed)
     return await reporting_engine.generate_attendance_report(school_id, start_date, end_date, class_id)
 
 @router.get("/reports/teacher/{teacher_id}")

@@ -128,7 +128,14 @@ async def create_student(
 async def get_students(
     school_id: Optional[str] = None,
     class_id: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles([
+        UserRole.PLATFORM_ADMIN,
+        UserRole.SCHOOL_PRINCIPAL,
+        UserRole.SCHOOL_ADMIN,
+        UserRole.SCHOOL_SUB_ADMIN,
+        UserRole.TEACHER,
+        UserRole.INDEPENDENT_TEACHER,
+    ]))
 ):
     """Get all students or filter by school/class.
 
@@ -273,9 +280,31 @@ async def get_class_types_options(current_user: dict = Depends(get_current_user)
 @router.get("/classes/{class_id}/students", response_model=List[StudentResponse])
 async def get_class_students(
     class_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles([
+        UserRole.PLATFORM_ADMIN,
+        UserRole.SCHOOL_PRINCIPAL,
+        UserRole.SCHOOL_ADMIN,
+        UserRole.SCHOOL_SUB_ADMIN,
+        UserRole.TEACHER,
+        UserRole.INDEPENDENT_TEACHER,
+    ]))
 ):
-    """Get all students in a specific class"""
+    """Get all students in a specific class.
+
+    SECURITY: Restricted to staff roles only. The full class roster
+    (including PII and family linkage) must not be accessible to
+    parents or students. Regular teachers are additionally checked for
+    class assignment via can_view_class() for parity with attendance
+    and reporting endpoints. The IT §6.7 collab path has its own gate.
+    """
+    # Object-level class authorization for regular TEACHER callers.
+    # INDEPENDENT_TEACHER access is controlled further below via the
+    # §6.7 collab row check (workspace pinning / §8 invariant 3).
+    if current_user.get("role") == UserRole.TEACHER.value:
+        from utils.tenant_scope import can_view_class, require_can_view_class_sync_check
+        cls_allowed = await can_view_class(db.session, current_user, class_id)
+        require_can_view_class_sync_check(cls_allowed)
+
     query = {"class_id": class_id, "is_active": True}
     # IT §6.7 (Task #210) — for an Independent-Teacher caller who holds
     # an accepted cross-workspace collab row on this class, scope the
@@ -377,21 +406,33 @@ async def get_my_student_profile(current_user: dict = Depends(get_current_user))
 
 @router.get("/students/{student_id}", response_model=StudentResponse)
 async def get_student(student_id: str, current_user: dict = Depends(get_current_user)):
-    """Get student by ID"""
+    """Get student by ID.
+
+    SECURITY: Same-tenant membership alone is not enough. The caller must
+    be the student themselves, a guardian of the student, a teacher assigned
+    to the student's class, or an admin role within the tenant. This prevents
+    any low-privilege account from enumerating the full student directory via
+    brute-forced or guessed student IDs.
+    """
     student = await gd_find_one(db.session, "students", {"id": student_id})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
     if current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
-        # Resolve the caller's effective workspace id; for IT this is
-        # the synthetic `itw_{user_id}`. Cross-tenant lookups MUST 404
-        # (not 403) so the route never confirms the existence of a
-        # student in another tenant — see #192 spec §5.6.
+        # Cross-tenant lookup MUST 404 (not 403) so the route never confirms
+        # the existence of a student in another tenant — see #192 spec §5.6.
         from auth_scope import independent_workspace_id
         user_school = current_user.get("tenant_id") or independent_workspace_id(current_user)
         student_school = student.get("school_id")
         if user_school and student_school and student_school != user_school:
             raise HTTPException(status_code=404, detail="الطالب غير موجود")
+
+    # Object-level authorization: verify the caller has a legitimate
+    # relationship to this specific student (self / guardian / assigned teacher
+    # / admin). Tenant membership alone is not sufficient.
+    from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+    allowed = await can_view_student(db.session, current_user, student_id)
+    require_can_view_student_sync_check(allowed)
     
     class_name = None
     if student.get("class_id"):
@@ -679,9 +720,18 @@ async def check_parent_exists(
 
 @router.get("/parents")
 async def get_parents(
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles([
+        UserRole.PLATFORM_ADMIN,
+        UserRole.SCHOOL_PRINCIPAL,
+        UserRole.SCHOOL_ADMIN,
+        UserRole.SCHOOL_SUB_ADMIN,
+    ]))
 ):
     """List parents in the caller's tenant.
+
+    SECURITY: Restricted to admin roles only. The parent directory contains
+    personal and family information (names, phone numbers, linked children)
+    and must not be accessible to teachers, students, or other parents.
 
     Task #335: fail-closed school-id resolution for non-platform callers
     (mirrors `/students`). Platform-admin callers are scoped to
