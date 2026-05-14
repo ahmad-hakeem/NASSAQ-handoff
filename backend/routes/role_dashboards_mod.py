@@ -2263,6 +2263,9 @@ async def get_student_score(
     جلب نقاط الطالب
     Get student score information
     """
+    from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+    allowed = await can_view_student(db.session, current_user, student_id)
+    require_can_view_student_sync_check(allowed)
     result = await session_engine.get_student_score(student_id)
     return result
 

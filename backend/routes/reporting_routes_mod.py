@@ -423,6 +423,9 @@ async def report_student(
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
+    from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+    allowed = await can_view_student(db.session, current_user, student_id)
+    require_can_view_student_sync_check(allowed)
     return await reporting_engine.generate_student_report(student_id, school_id)
 
 @router.get("/reports/class/{class_id}")
