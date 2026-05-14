@@ -1466,6 +1466,385 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "empty_hint_ar": "لا توجد بيانات كافية للأسبوع الحالي",
         }
 
+    # ============= STUDENT INSIGHTS (cohesive parent-facing) =============
+    # GET /parent-portal/child/{child_id}/insights
+    #
+    # One backend-aggregated payload powering the cohesive Parent Portal
+    # Student-Profile insights surface:
+    #   - generalInsights.strengths / weaknesses  (deterministic tags from real data)
+    #   - subjects[] accordion with per-subject score, trend, level, tags, action plan
+    #   - hakimSummary  (grounded narrative; reuses existing hakim_llm_service)
+    #   - parentTips    (Hakim subject-focused tip on the most attention-needing subject)
+    #   - insufficientDataFlags
+    #
+    # Authorization: reuses _verify_parent_access (the sole parent ↔ student
+    # boundary used everywhere in this module). Tenant scoping is enforced
+    # on every signal query. Hakim is called at most twice and falls back
+    # cleanly to deterministic output when unavailable / disabled.
+    @router.get("/child/{child_id}/insights")
+    async def get_child_insights(
+        child_id: str,
+        current_user: dict = Depends(require_roles([UserRole.PARENT]))
+    ):
+        parent_id = current_user.get("id")
+        parent_phone = current_user.get("phone")
+        school_id = current_user.get("tenant_id")
+
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, school_id, current_user=current_user)
+        if not child:
+            raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
+
+        tenant_school_id = child.get("school_id") or school_id
+        now = datetime.now(SAUDI_TZ)
+        today = now.date()
+        # Two ~30-day windows so we have a real "previous" baseline for trend.
+        window_days = 30
+        current_start = today - timedelta(days=window_days - 1)
+        previous_start = today - timedelta(days=2 * window_days - 1)
+        previous_end = current_start - timedelta(days=1)
+
+        # ---- Grades (single bulk fetch, then split into current vs previous) ----
+        all_grades = await gd_find(db.session, "grades", {
+            "student_id": child_id,
+            "school_id": tenant_school_id,
+            "date": {"$gte": previous_start.isoformat(), "$lte": today.isoformat()},
+        }, order_by="date", desc_order=True, limit=500)
+
+        def _pct(g):
+            v = g.get("percentage")
+            if v is None:
+                try:
+                    score = float(g.get("score") or 0)
+                    mx = float(g.get("max_score") or 0)
+                    return (score / mx) * 100 if mx > 0 else None
+                except (TypeError, ValueError):
+                    return None
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+
+        # Group per subject (key on subject_id when present, else name) and
+        # keep both current and previous buckets in one O(N) pass.
+        subjects_acc = {}
+        for g in all_grades:
+            pct = _pct(g)
+            if pct is None:
+                continue
+            subj_id = g.get("subject_id") or ""
+            subj_name = g.get("subject_name") or g.get("subject") or "غير محدد"
+            key = subj_id or subj_name
+            d_str = str(g.get("date") or "")[:10]
+            if not d_str:
+                continue
+            try:
+                d = datetime.fromisoformat(d_str).date()
+            except ValueError:
+                continue
+            bucket = subjects_acc.setdefault(key, {
+                "subject_id": subj_id or None,
+                "subject_name": subj_name,
+                "current": [],
+                "previous": [],
+                "teacher_id": g.get("teacher_id"),
+            })
+            if d >= current_start:
+                bucket["current"].append(pct)
+            elif previous_start <= d <= previous_end:
+                bucket["previous"].append(pct)
+
+        # ---- Bulk teacher-name lookup (no N+1) ----
+        teacher_ids = {b["teacher_id"] for b in subjects_acc.values() if b.get("teacher_id")}
+        teacher_name_map = {}
+        if teacher_ids:
+            try:
+                tch_rows = await gd_find(db.session, "teachers", {
+                    "id": {"$in": list(teacher_ids)},
+                    "school_id": tenant_school_id,
+                }, limit=200)
+                for t in tch_rows:
+                    teacher_name_map[t.get("id")] = t.get("full_name") or t.get("name")
+                # Fallback to users table for any unresolved teacher_id.
+                missing = [tid for tid in teacher_ids if tid not in teacher_name_map]
+                if missing:
+                    # Tenant-scope the users fallback so a foreign-tenant
+                    # teacher_id stamped on a grade row can never resolve to
+                    # a name from another school (PII isolation).
+                    u_rows = await gd_find(db.session, "users", {
+                        "id": {"$in": missing},
+                        "school_id": tenant_school_id,
+                    }, limit=200)
+                    for u in u_rows:
+                        teacher_name_map[u.get("id")] = u.get("full_name") or u.get("name")
+            except Exception as e:
+                logger.debug(f"insights teacher name lookup failed: {e}")
+
+        # ---- Attendance & behaviour (current window only, for general tags) ----
+        attendance_records = await gd_find(db.session, "attendance", {
+            "student_id": child_id,
+            "school_id": tenant_school_id,
+            "date": {"$gte": current_start.isoformat(), "$lte": today.isoformat()},
+        }, limit=500)
+        att_present = sum(1 for r in attendance_records if (r.get("status") or "").lower() == "present")
+        att_late = sum(1 for r in attendance_records if (r.get("status") or "").lower() == "late")
+        att_absent = sum(1 for r in attendance_records if (r.get("status") or "").lower() == "absent")
+        att_total = att_present + att_late + att_absent + sum(
+            1 for r in attendance_records if (r.get("status") or "").lower() == "excused"
+        )
+        att_rate = round(((att_present + att_late) / att_total) * 100) if att_total > 0 else None
+
+        positive_b = await gd_count(db.session, "behaviour_records", {
+            "student_id": child_id,
+            "school_id": tenant_school_id,
+            "type": "positive",
+            "created_at": {"$gte": current_start.isoformat(), "$lt": (today + timedelta(days=1)).isoformat()},
+        })
+        negative_b = await gd_count(db.session, "behaviour_records", {
+            "student_id": child_id,
+            "school_id": tenant_school_id,
+            "type": "negative",
+            "created_at": {"$gte": current_start.isoformat(), "$lt": (today + timedelta(days=1)).isoformat()},
+        })
+
+        # ---- Per-subject deterministic computation ----
+        def _level(score):
+            if score is None:
+                return "insufficient"
+            if score >= 85:
+                return "advanced"        # متقدم
+            if score >= 70:
+                return "intermediate"    # متوسط
+            return "needs_focus"         # يحتاج تركيز
+
+        def _trend(curr_avg, prev_avg):
+            if curr_avg is None or prev_avg is None:
+                return "insufficient"
+            delta = curr_avg - prev_avg
+            if delta >= 3:
+                return "improving"
+            if delta <= -3:
+                return "declining"
+            return "stable"
+
+        subjects_payload = []
+        for key, b in subjects_acc.items():
+            curr_avg = round(sum(b["current"]) / len(b["current"]), 1) if b["current"] else None
+            prev_avg = round(sum(b["previous"]) / len(b["previous"]), 1) if b["previous"] else None
+            level = _level(curr_avg)
+            trend = _trend(curr_avg, prev_avg)
+
+            # Deterministic per-subject tags. Empty by design when there is
+            # not enough evidence — Hakim never invents tags.
+            strengths = []
+            weaknesses = []
+            if curr_avg is not None:
+                if curr_avg >= 90:
+                    strengths.append("أداء متميز")
+                elif curr_avg >= 80:
+                    strengths.append("أداء قوي")
+                if trend == "improving":
+                    strengths.append("اتجاه تحسن")
+                if curr_avg < 60:
+                    weaknesses.append("معدل منخفض")
+                elif curr_avg < 70:
+                    weaknesses.append("يحتاج تعزيز")
+                if trend == "declining":
+                    weaknesses.append("اتجاه تراجع")
+
+            # Deterministic action plan (rule-based; Hakim only refines wording).
+            action_plan = None
+            if curr_avg is not None and len(b["current"]) >= 1:
+                if level == "advanced":
+                    action_plan = {
+                        "type": "enrichment",
+                        "title": "خطة إثرائية",
+                        "description": "اقترحوا أنشطة إثرائية بسيطة في المنزل تواكب تميّز الطالب في هذه المادة.",
+                        "hint": "تحديات إضافية لتنمية الموهبة",
+                    }
+                elif level == "needs_focus":
+                    action_plan = {
+                        "type": "remedial",
+                        "title": "خطة علاجية",
+                        "description": "خصّصوا وقتاً قصيراً يومياً لمراجعة المفاهيم الأساسية بأسلوب هادئ ومتكرر.",
+                        "hint": "خطوات يومية بسيطة في المنزل",
+                    }
+
+            subjects_payload.append({
+                "id": b["subject_id"] or key,
+                "name": b["subject_name"],
+                "score": curr_avg,
+                "previous_score": prev_avg,
+                "trend_status": trend,
+                "level": level,
+                "teacher_name": teacher_name_map.get(b.get("teacher_id")) if b.get("teacher_id") else None,
+                "items_current": len(b["current"]),
+                "items_previous": len(b["previous"]),
+                "strengths": strengths,
+                "weaknesses": weaknesses,
+                "action_plan": action_plan,
+            })
+
+        # Sort: weakest first if any are weak (parent attention), else strongest first.
+        subjects_payload.sort(key=lambda s: (s["score"] is None, s["score"] or 0))
+
+        # ---- General strengths / weaknesses (deterministic only) ----
+        general_strengths = []
+        general_weaknesses = []
+        if att_rate is not None and att_rate >= 90:
+            general_strengths.append("التزام جيد بالحضور")
+        if att_rate is not None and att_rate < 75 and att_total >= 5:
+            general_weaknesses.append("الحضور والانضباط")
+        if positive_b >= 3 and positive_b > negative_b:
+            general_strengths.append("سلوك إيجابي ملحوظ")
+        if negative_b >= 3 and negative_b > positive_b:
+            general_weaknesses.append("ملاحظات سلوكية تحتاج متابعة")
+
+        strong_subjects_names = [s["name"] for s in subjects_payload if s["level"] == "advanced"]
+        weak_subjects_names = [s["name"] for s in subjects_payload if s["level"] == "needs_focus"]
+        improving_names = [s["name"] for s in subjects_payload if s["trend_status"] == "improving"]
+        declining_names = [s["name"] for s in subjects_payload if s["trend_status"] == "declining"]
+
+        if strong_subjects_names:
+            general_strengths.append(f"تميّز في {('، '.join(strong_subjects_names[:2]))}")
+        if improving_names and not strong_subjects_names:
+            general_strengths.append(f"تحسّن في {('، '.join(improving_names[:2]))}")
+        if weak_subjects_names:
+            general_weaknesses.append(f"تركيز إضافي في {('، '.join(weak_subjects_names[:2]))}")
+        if declining_names and not weak_subjects_names:
+            general_weaknesses.append(f"تراجع في {('، '.join(declining_names[:2]))}")
+
+        # Deduplicate while preserving order
+        def _dedupe(lst):
+            seen = set()
+            out = []
+            for x in lst:
+                if x and x not in seen:
+                    seen.add(x)
+                    out.append(x)
+            return out
+        general_strengths = _dedupe(general_strengths)[:4]
+        general_weaknesses = _dedupe(general_weaknesses)[:4]
+
+        # ---- Insufficient-data flags ----
+        insufficient_flags = {
+            "general_strengths": len(general_strengths) == 0,
+            "general_weaknesses": len(general_weaknesses) == 0,
+            "subjects": len(subjects_payload) == 0,
+            "no_grades_at_all": len(all_grades) == 0,
+        }
+
+        overall_trend = "stable"
+        if improving_names and not declining_names:
+            overall_trend = "improving"
+        elif declining_names and not improving_names:
+            overall_trend = "declining"
+        elif not subjects_payload:
+            overall_trend = "insufficient"
+
+        # ---- Hakim narrative + per-subject tip (grounded; safe fallback) ----
+        hakim_summary = {"status": "insufficient_data", "text": None}
+        parent_tips = []
+        try:
+            from services.hakim_llm_service import hakim_generate, is_available as hakim_available
+        except Exception as e:
+            logger.debug(f"insights: hakim service unavailable: {e}")
+            hakim_generate = None
+            hakim_available = lambda: False  # noqa: E731
+
+        # Only call Hakim when we actually have something factual to summarize.
+        has_signal = bool(general_strengths or general_weaknesses or subjects_payload)
+        if has_signal and hakim_generate and hakim_available():
+            summary_ctx = {
+                "grade_level": child.get("grade_level") or child.get("grade") or "",
+                "general_strengths": general_strengths,
+                "general_weaknesses": general_weaknesses,
+                "strong_subjects": strong_subjects_names[:3],
+                "weak_subjects": weak_subjects_names[:3],
+                "overall_trend": {
+                    "improving": "تحسن",
+                    "declining": "تراجع",
+                    "stable": "مستقر",
+                    "insufficient": "غير كافٍ",
+                }.get(overall_trend, "مستقر"),
+            }
+            try:
+                summary_res = await hakim_generate(
+                    mode="generate", field="parent_insights_summary",
+                    text="", context=summary_ctx, language="ar", tone="educational",
+                    tenant_id=tenant_school_id,
+                )
+                if summary_res.get("success") and summary_res.get("text"):
+                    hakim_summary = {"status": "available", "text": summary_res["text"]}
+                else:
+                    hakim_summary = {"status": "unavailable", "text": None}
+            except Exception as e:
+                logger.warning(f"insights: parent_insights_summary failed: {e}")
+                hakim_summary = {"status": "unavailable", "text": None}
+
+            # Single subject-focused tip on the highest-attention subject
+            # (weakest available with at least one current grade).
+            focus_subject = next(
+                (s for s in subjects_payload if s["score"] is not None and s["level"] == "needs_focus"),
+                None,
+            ) or next(
+                (s for s in subjects_payload if s["score"] is not None and s["level"] == "advanced"),
+                None,
+            )
+            if focus_subject:
+                tip_ctx = {
+                    "subject_name": focus_subject["name"],
+                    "subject_score": focus_subject["score"],
+                    "subject_trend": {
+                        "improving": "تحسن",
+                        "declining": "تراجع",
+                        "stable": "مستقر",
+                        "insufficient": "غير كافٍ",
+                    }.get(focus_subject["trend_status"], "مستقر"),
+                    "subject_strengths": focus_subject["strengths"],
+                    "subject_weaknesses": focus_subject["weaknesses"],
+                    "subject_level": {
+                        "advanced": "متقدم",
+                        "intermediate": "متوسط",
+                        "needs_focus": "يحتاج تركيز",
+                    }.get(focus_subject["level"], "متوسط"),
+                }
+                try:
+                    tip_res = await hakim_generate(
+                        mode="generate", field="parent_subject_focus_tip",
+                        text="", context=tip_ctx, language="ar", tone="educational",
+                        tenant_id=tenant_school_id,
+                    )
+                    if tip_res.get("success") and tip_res.get("text"):
+                        parent_tips.append({
+                            "subject": focus_subject["name"],
+                            "text": tip_res["text"],
+                        })
+                except Exception as e:
+                    logger.debug(f"insights: parent_subject_focus_tip failed: {e}")
+        elif has_signal:
+            hakim_summary = {"status": "unavailable", "text": None}
+
+        return {
+            "status": "available" if has_signal else "insufficient_data",
+            "window": {
+                "current_start": current_start.isoformat(),
+                "current_end": today.isoformat(),
+                "previous_start": previous_start.isoformat(),
+                "previous_end": previous_end.isoformat(),
+            },
+            "general_insights": {
+                "strengths": general_strengths,
+                "weaknesses": general_weaknesses,
+            },
+            "overall_trend": overall_trend,
+            "subjects": subjects_payload,
+            "hakim_summary": hakim_summary,
+            "parent_tips": parent_tips,
+            "insufficient_data_flags": insufficient_flags,
+            "empty_hint_ar": "لا توجد بيانات كافية لعرض الرؤى بعد",
+            "last_updated": now.isoformat(),
+        }
+
     # ============= STUDENT PROFILE =============
 
     @router.get("/child/{child_id}/profile")

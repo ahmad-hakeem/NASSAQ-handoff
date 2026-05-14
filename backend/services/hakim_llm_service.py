@@ -311,6 +311,48 @@ FIELD_REGISTRY: Dict[str, Dict[str, Any]] = {
             "participation, or a recent remedial plan). Make it actionable at home and supportive."
         ),
     },
+    # --- Parent Student-Profile insights (narrative + per-subject tip) ----
+    # Used by GET /parent-portal/child/{child_id}/insights. Both fields are
+    # additive: they reuse the existing Hakim sanitization + consent + cache
+    # path; nothing about previously-shipped fields changes.
+    "parent_insights_summary": {
+        "max_tokens": 320,
+        "temp_generate": 0.5,
+        "temp_improve": 0.4,
+        "min_chars": 60,
+        "max_chars": 600,
+        "ar_only": True,
+        "rule_ar": (
+            "اكتب ملخصاً موجزاً لولي أمر الطالب من ٢ إلى ٤ جمل يصف الأداء العام "
+            "للأسبوع/الفترة الأخيرة، مبنياً حصراً على الإشارات المعطاة (نقاط القوة العامة، "
+            "نقاط تحتاج تحسين، أبرز المواد القوية والضعيفة، الاتجاه العام). "
+            "اجعل الأسلوب داعماً وعملياً، ولا تخترع أرقاماً أو أسماء معلمين، ولا تذكر اسم الطالب الكامل."
+        ),
+        "rule_en": (
+            "Write a parent-facing summary in 2-4 sentences describing the student's recent "
+            "overall pattern, grounded ONLY in the provided signals (general strengths, "
+            "improvement areas, strong/weak subjects, overall trend). Be supportive and practical."
+        ),
+    },
+    "parent_subject_focus_tip": {
+        "max_tokens": 180,
+        "temp_generate": 0.55,
+        "temp_improve": 0.45,
+        "min_chars": 30,
+        "max_chars": 280,
+        "ar_only": True,
+        "rule_ar": (
+            "نصيحة عملية واحدة قصيرة لولي الأمر تخص مادة دراسية محددة، في جملة أو جملتين، "
+            "مبنية على المعطيات (اسم المادة، المعدل، الاتجاه، نقاط القوة والضعف). "
+            "إن كان الأداء قوياً اقترح خطوة إثرائية بسيطة، وإن كان ضعيفاً اقترح خطوة علاجية بسيطة "
+            "قابلة للتطبيق في المنزل، ولا تذكر اسم المعلم ولا تخترع أرقاماً."
+        ),
+        "rule_en": (
+            "One short practical parent tip for a specific subject in 1-2 sentences, "
+            "grounded in the provided subject signals. Suggest an enrichment step when the "
+            "performance is strong and a remedial step when weak. No invented numbers or names."
+        ),
+    },
     "communication_evidence": {
         "max_tokens": 350,
         "temp_generate": 0.65,
@@ -382,6 +424,16 @@ def _format_context(context: Optional[Dict[str, Any]], language: str) -> str:
         "weak_subjects": "المواد التي تحتاج تحسين",
         "remedial_plans": "خطط علاجية حديثة",
         "grade_level": "الصف الدراسي",
+        # Parent insights signals (parent_insights_summary / parent_subject_focus_tip)
+        "general_strengths": "أبرز نقاط القوة العامة",
+        "general_weaknesses": "أبرز نقاط تحتاج تحسين",
+        "overall_trend": "الاتجاه العام",
+        "subject_name": "المادة",
+        "subject_score": "معدل المادة",
+        "subject_trend": "اتجاه المادة",
+        "subject_strengths": "نقاط القوة في المادة",
+        "subject_weaknesses": "نقاط تحتاج تحسين في المادة",
+        "subject_level": "مستوى الأداء في المادة",
     }
     label_map_en = {
         "evidence_type": "Evidence type",
@@ -403,6 +455,15 @@ def _format_context(context: Optional[Dict[str, Any]], language: str) -> str:
         "weak_subjects": "Subjects needing improvement",
         "remedial_plans": "Recent remedial plans",
         "grade_level": "Grade level",
+        "general_strengths": "Top general strengths",
+        "general_weaknesses": "Top improvement areas",
+        "overall_trend": "Overall trend",
+        "subject_name": "Subject",
+        "subject_score": "Subject score",
+        "subject_trend": "Subject trend",
+        "subject_strengths": "Subject strengths",
+        "subject_weaknesses": "Subject improvement areas",
+        "subject_level": "Subject performance level",
     }
     labels = label_map_en if language == "en" else label_map_ar
     lines = []

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 const WeeklyAnalysisPanel = lazy(() => import('../../components/parent/WeeklyAnalysisPanel'));
+const StudentInsightsPanel = lazy(() => import('../../components/parent/StudentInsightsPanel'));
 const DetailsPanel = lazy(() => import('../../components/parent/panels/DetailsPanel'));
 const SchedulePanel = lazy(() => import('../../components/parent/panels/SchedulePanel'));
 const HomeworkPanel = lazy(() => import('../../components/parent/panels/HomeworkPanel'));
@@ -201,6 +202,14 @@ const ParentChildrenPage = () => {
                       flashing a skeleton on every switch. */}
                   <Suspense fallback={<Skeleton className="h-40 w-full rounded-2xl" />}>
                     <WeeklyAnalysisPanel childId={activeChild.id} />
+                  </Suspense>
+
+                  {/* Cohesive insights — general strengths/weaknesses, Hakim
+                      narrative, and per-subject accordion. Stays mounted
+                      across child switches; refetch is silent (request-seq
+                      guard inside the component). */}
+                  <Suspense fallback={<Skeleton className="h-56 w-full rounded-2xl" />}>
+                    <StudentInsightsPanel childId={activeChild.id} />
                   </Suspense>
 
                   {/* Tab nav */}
