@@ -91,11 +91,14 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         setFile(null);
         setAmbiguousAccept({});
         const creds = data.credentials_csv || [];
+        const summary = `اكتمل الاستيراد: تمت الإضافة ${data.imported || 0}، تم التحديث ${data.updated || 0}، تم التخطي ${data.skipped || 0}، فشل ${data.failed || 0}.`;
         if (creds.length > 0 && nassaqInfo) {
           nassaqInfo(
-            `تم إنشاء ${creds.length} حساب معلّم. يمكنك تنزيل بيانات الدخول الآن — لن يتم عرضها مرة أخرى.`,
+            `${summary}\nتم إنشاء ${creds.length} حساب معلّم — يمكنك تنزيل بيانات الدخول الآن، لن يتم عرضها مرة أخرى.`,
             { confirmText: 'تنزيل CSV', onConfirm: () => downloadCsv(`noor_import_credentials_${Date.now()}.csv`, creds) },
           );
+        } else if (nassaqInfo) {
+          nassaqInfo(summary);
         }
         if (onComplete) onComplete();
       } catch (err) {
@@ -220,9 +223,14 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
             )}
             {(result.errors || []).length > 0 && (
               <div className="max-h-[160px] overflow-y-auto space-y-1">
-                {result.errors.map((e, i) => (
+                {result.errors.slice(0, 50).map((e, i) => (
                   <div key={i} className="text-xs p-2 rounded bg-red-50 dark:bg-red-950/20 text-red-600">صف {e.row}: {e.message}</div>
                 ))}
+                {result.errors.length > 50 && (
+                  <div className="text-[11px] text-muted-foreground p-2">
+                    عرض أول 50 خطأ من أصل {result.errors.length}
+                  </div>
+                )}
               </div>
             )}
           </div>
