@@ -599,6 +599,17 @@ async def generate_report(
         if role not in allowed_roles and current_user.get("student_id") != student_id:
             raise HTTPException(403, "لا يمكنك عرض تقرير طالب آخر")
 
+    if report_type in ("class_report", "timetable"):
+        allowed_roles = ADMIN_ROLES_SET | {UserRole.TEACHER.value}
+        if role not in allowed_roles:
+            raise HTTPException(403, "ليس لديك صلاحية لعرض هذا التقرير")
+        if report_type == "class_report" and class_id:
+            from utils.tenant_scope import can_view_class, require_can_view_class_sync_check
+            cls_allowed = await can_view_class(db.session, current_user, class_id)
+            require_can_view_class_sync_check(cls_allowed)
+        elif report_type == "class_report" and not class_id and role not in ADMIN_ROLES_SET:
+            raise HTTPException(403, "يجب تحديد الفصل الدراسي لعرض هذا التقرير")
+
     result = await reporting_engine.generate(
         report_type=report_type,
         school_id=school_id,
@@ -661,6 +672,12 @@ async def export_report_file(
         allowed_roles = ADMIN_ROLES_SET | {UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value}
         if role not in allowed_roles:
             raise HTTPException(403, "ليس لديك صلاحية لتصدير تقارير المدرسة")
+        if report_type == "class_report" and role in (UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value):
+            if not class_id:
+                raise HTTPException(403, "يجب تحديد الفصل الدراسي لتصدير تقرير الفصل")
+            from utils.tenant_scope import can_view_class, require_can_view_class_sync_check
+            cls_allowed = await can_view_class(db.session, current_user, class_id)
+            require_can_view_class_sync_check(cls_allowed)
 
     if report_type.startswith("teacher_"):
         if not teacher_id:
@@ -744,6 +761,13 @@ async def export_attendance(
     school_id = current_user.get("tenant_id") or _itw_id(current_user)
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
+    role = current_user.get("role", "")
+    if role in (UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value):
+        if not class_id:
+            raise HTTPException(403, "يجب تحديد الفصل الدراسي لتصدير بيانات الحضور")
+        from utils.tenant_scope import can_view_class, require_can_view_class_sync_check
+        cls_allowed = await can_view_class(db.session, current_user, class_id)
+        require_can_view_class_sync_check(cls_allowed)
     result = await export_engine.export_attendance(school_id, start_date, end_date, class_id, fmt)
     return Response(
         content=result["content"],
@@ -762,6 +786,13 @@ async def export_grades(
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
+    role = current_user.get("role", "")
+    if role == UserRole.TEACHER.value:
+        if not class_id:
+            raise HTTPException(403, "يجب تحديد الفصل الدراسي لتصدير بيانات الدرجات")
+        from utils.tenant_scope import can_view_class, require_can_view_class_sync_check
+        cls_allowed = await can_view_class(db.session, current_user, class_id)
+        require_can_view_class_sync_check(cls_allowed)
     result = await export_engine.export_grades(school_id, class_id, fmt)
     return Response(
         content=result["content"],
