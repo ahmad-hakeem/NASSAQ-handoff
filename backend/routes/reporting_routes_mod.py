@@ -57,7 +57,7 @@ _ADMIN_ONLY_ROLES = [
 @router.get("/reports/school/overview")
 async def get_school_overview_report(
     period: str = "current_term",
-    current_user: dict = Depends(require_roles(_STAFF_ROLES))
+    current_user: dict = Depends(require_roles(_ADMIN_ONLY_ROLES))
 ):
     """Get school overview report with statistics"""
     import asyncio

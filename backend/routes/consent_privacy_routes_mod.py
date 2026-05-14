@@ -18,6 +18,18 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 router = APIRouter()
 
 
+_ADMIN_ROLES = frozenset({
+    UserRole.PLATFORM_ADMIN.value,
+    UserRole.SCHOOL_PRINCIPAL.value,
+    UserRole.SCHOOL_ADMIN.value,
+    UserRole.SCHOOL_SUB_ADMIN.value,
+})
+
+
+def _is_consent_admin(current_user: dict) -> bool:
+    return current_user.get("role", "") in _ADMIN_ROLES
+
+
 class ConsentTypeEnum(str, Enum):
     TERMS_OF_SERVICE = "terms_of_service"
     PRIVACY_POLICY = "privacy_policy"
@@ -56,15 +68,6 @@ class DataDeletionRequest(BaseModel):
     confirmation: bool = False
 
 
-_ADMIN_ROLES = frozenset({
-    "platform_admin", "school_principal", "school_admin", "school_sub_admin"
-})
-
-
-def _is_consent_admin(current_user: dict) -> bool:
-    return current_user.get("role", "") in _ADMIN_ROLES
-
-
 @router.post("/consent/record")
 async def record_consent(
     data: ConsentRecordCreate,
@@ -100,10 +103,10 @@ async def record_consent(
             else:
                 raise HTTPException(status_code=403, detail="غير مصرح")
 
+    target_user = target_user_id or target_student_id or caller_id
+
     consent_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
-
-    target_user = data.user_id or data.student_id or current_user["id"]
 
     consent_doc = {
         "id": consent_id,
@@ -113,7 +116,7 @@ async def record_consent(
         "student_id": data.student_id,
         "target_user": target_user,
         "status": data.status.value,
-        "granted_by": data.granted_by or current_user["id"],
+        "granted_by": caller_id,
         "granted_by_name": current_user.get("full_name"),
         "version": data.version,
         "notes": data.notes,
@@ -141,6 +144,7 @@ async def get_user_consents(
     """
     if not _is_consent_admin(current_user) and current_user["id"] != user_id:
         raise HTTPException(status_code=403, detail="لا يمكنك عرض سجلات موافقة مستخدم آخر")
+
     school_id = current_user.get("tenant_id")
     query = {"tenant_id": school_id, "target_user": user_id}
     if consent_type:
@@ -171,6 +175,7 @@ async def get_student_consents(
         from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
         allowed = await can_view_student(db.session, current_user, student_id)
         require_can_view_student_sync_check(allowed)
+
     school_id = current_user.get("tenant_id")
     records = await gd_find(db.session, "consent_records", {"tenant_id": school_id, "student_id": student_id}, order_by="created_at", desc_order=True, limit=100)
 
@@ -254,6 +259,7 @@ async def check_consent(
     """
     if not _is_consent_admin(current_user) and current_user["id"] != user_id:
         raise HTTPException(status_code=403, detail="لا يمكنك الاستعلام عن حالة موافقة مستخدم آخر")
+
     school_id = current_user.get("tenant_id")
 
     latest = await gd_find_one(db.session, "consent_records", {"tenant_id": school_id, "target_user": user_id, "consent_type": consent_type},
@@ -280,7 +286,10 @@ async def check_consent(
 async def get_pending_consents(
     current_user: dict = Depends(get_current_user)
 ):
-    """Get consents that are pending for the current user"""
+    """Get consents that are pending for the current user.
+
+    SECURITY: Always scoped to the caller's own records.
+    """
     school_id = current_user.get("tenant_id")
 
     all_types = [e.value for e in ConsentTypeEnum]
@@ -409,10 +418,14 @@ async def export_user_data(
     user_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Export all data for a user (data portability)"""
+    """Export all data for a user (data portability).
+
+    SECURITY: Only the user themselves or platform/school admins may export
+    another user's data.
+    """
     school_id = current_user.get("tenant_id")
 
-    if current_user["id"] != user_id and current_user["role"] not in ["platform_admin", "school_principal"]:
+    if current_user["id"] != user_id and current_user.get("role") not in ("platform_admin", "school_principal"):
         raise HTTPException(status_code=403, detail="غير مصرح")
 
     user_data = await gd_find_one(db.session, "users", {"id": user_id})

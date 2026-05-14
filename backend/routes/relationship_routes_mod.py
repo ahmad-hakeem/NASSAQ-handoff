@@ -236,12 +236,39 @@ async def get_parent_children(
     matches their user id) or must be a school admin / platform admin.
     Any other caller receives 403.
     """
-    role = current_user.get("role", "")
-    _admin_roles = frozenset({"platform_admin", "school_principal", "school_admin", "school_sub_admin"})
-    if role not in _admin_roles:
-        caller_id = current_user.get("id", "")
-        if caller_id != parent_ref:
-            raise HTTPException(status_code=403, detail="لا يمكنك عرض بيانات أولياء أمور آخرين")
+    _ADMIN_ROLES = frozenset({
+        UserRole.PLATFORM_ADMIN.value,
+        UserRole.SCHOOL_PRINCIPAL.value,
+        UserRole.SCHOOL_ADMIN.value,
+        UserRole.SCHOOL_SUB_ADMIN.value,
+    })
+    caller_role = current_user.get("role", "")
+    caller_id = current_user.get("id", "")
+    is_admin = caller_role in _ADMIN_ROLES
+
+    if not is_admin:
+        if caller_role != UserRole.PARENT.value:
+            raise HTTPException(
+                status_code=403,
+                detail="لا يمكنك الاطلاع على أبناء ولي أمر آخر"
+            )
+        # parent_ref may be a parent-table row ID or a user ID; check both.
+        is_self_parent = caller_id == parent_ref
+        if not is_self_parent:
+            parent_row = await gd_find_one(db.session, "parents", {"id": parent_ref})
+            if parent_row and parent_row.get("user_id") == caller_id:
+                is_self_parent = True
+        if not is_self_parent:
+            parent_row = await gd_find_one(db.session, "parents", {"user_id": parent_ref})
+            if parent_row and parent_row.get("user_id") == caller_id:
+                is_self_parent = True
+        if not is_self_parent:
+            raise HTTPException(
+                status_code=403,
+                detail="لا يمكنك الاطلاع على أبناء ولي أمر آخر"
+            )
+
+
     school_id = current_user.get("tenant_id")
     links = await gd_find(db.session, "guardian_links", {"tenant_id": school_id, "parent_ref": parent_ref, "is_active": True}, limit=20)
 

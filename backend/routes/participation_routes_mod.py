@@ -82,6 +82,23 @@ QUALITY_POINTS = {
 }
 
 
+_STAFF_ROLES = [
+    UserRole.PLATFORM_ADMIN,
+    UserRole.SCHOOL_PRINCIPAL,
+    UserRole.SCHOOL_ADMIN,
+    UserRole.SCHOOL_SUB_ADMIN,
+    UserRole.TEACHER,
+    UserRole.INDEPENDENT_TEACHER,
+]
+
+_ADMIN_ROLES = [
+    UserRole.PLATFORM_ADMIN,
+    UserRole.SCHOOL_PRINCIPAL,
+    UserRole.SCHOOL_ADMIN,
+    UserRole.SCHOOL_SUB_ADMIN,
+]
+
+
 @router.post("/participation")
 async def record_participation(
     data: ParticipationCreate,
@@ -234,8 +251,8 @@ async def get_student_participation_history(
     """Get participation history for a student.
 
     SECURITY: Student participation data is personal academic information.
-    The caller must be the student themselves, their guardian, an assigned
-    teacher, or a school admin.
+    The caller must be authorized to view the target student's data
+    (self / guardian / assigned teacher / admin).
     """
     from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
     allowed = await can_view_student(db.session, current_user, student_id)
@@ -327,7 +344,7 @@ async def get_class_participation(
 @router.get("/participation/{record_id}")
 async def get_participation_record(
     record_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles(_STAFF_ROLES))
 ):
     """Get a specific participation record.
 
@@ -575,7 +592,8 @@ async def get_student_participation_report(
 ):
     """Generate a comprehensive participation report for a student.
 
-    SECURITY: The caller must be authorized to view the target student's data.
+    SECURITY: Only callers authorized to view this student may access
+    their participation report.
     """
     from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
     allowed = await can_view_student(db.session, current_user, student_id)

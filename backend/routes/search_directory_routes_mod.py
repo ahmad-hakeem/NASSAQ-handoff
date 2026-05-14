@@ -18,6 +18,17 @@ router = APIRouter()
 
 ADMIN_ROLES = [UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]
 
+_STAFF_ROLES = [
+    UserRole.PLATFORM_ADMIN,
+    UserRole.SCHOOL_PRINCIPAL,
+    UserRole.SCHOOL_ADMIN,
+    UserRole.SCHOOL_SUB_ADMIN,
+    UserRole.TEACHER,
+    UserRole.INDEPENDENT_TEACHER,
+]
+
+_STAFF_ROLE_VALUES = frozenset(r.value for r in _STAFF_ROLES)
+
 
 _STAFF_ROLES_SET = frozenset({r.value for r in ADMIN_ROLES} | {"teacher", "independent_teacher"})
 
