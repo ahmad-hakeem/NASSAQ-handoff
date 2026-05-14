@@ -413,6 +413,28 @@ async def review_deletion_request(
     return {"message": f"تم {action} طلب الحذف", "status": new_status}
 
 
+_PRIVACY_EXPORT_SENSITIVE_FIELDS = {
+    "password_hash",
+    "reset_token_hash",
+    "reset_token_created_at",
+    "failed_login_attempts",
+    "locked_until",
+    "mfa_required",
+    "mfa_enrolled_at",
+    "mfa_must_restore_factor",
+    "mfa_secret",
+    "totp_secret",
+    "backup_codes",
+}
+
+
+def _strip_sensitive_user_fields(user: dict | None) -> dict | None:
+    """Return a copy of the user dict with all security-critical fields removed."""
+    if not user:
+        return None
+    return {k: v for k, v in user.items() if k not in _PRIVACY_EXPORT_SENSITIVE_FIELDS}
+
+
 @router.get("/privacy/data-export/{user_id}")
 async def export_user_data(
     user_id: str,
@@ -421,16 +443,36 @@ async def export_user_data(
     """Export all data for a user (data portability).
 
     SECURITY: Only the user themselves or platform/school admins may export
-    another user's data.
+    another user's data. school_principal access is restricted to users
+    within their own tenant. Sensitive account security fields are always
+    stripped from the response.
     """
-    school_id = current_user.get("tenant_id")
+    caller_role = current_user.get("role", "")
+    caller_tenant = current_user.get("tenant_id")
+    is_self = current_user["id"] == user_id
 
-    if current_user["id"] != user_id and current_user.get("role") not in ("platform_admin", "school_principal"):
+    if not is_self and caller_role not in ("platform_admin", "school_principal"):
         raise HTTPException(status_code=403, detail="غير مصرح")
 
-    user_data = await gd_find_one(db.session, "users", {"id": user_id})
+    # Determine the effective tenant for scoping this export.
+    # platform_admin may access any user; everyone else is restricted to their school.
+    if caller_role == "platform_admin":
+        user_data = await gd_find_one(db.session, "users", {"id": user_id})
+        export_tenant = user_data.get("tenant_id") if user_data else caller_tenant
+    else:
+        # For self-export or school_principal: enforce tenant boundary.
+        user_data = await gd_find_one(db.session, "users", {"id": user_id, "tenant_id": caller_tenant})
+        if not user_data:
+            raise HTTPException(status_code=404, detail="المستخدم غير موجود أو لا ينتمي لمدرستك")
+        export_tenant = caller_tenant
+
+    # Always strip security-critical fields before returning.
+    safe_user = _strip_sensitive_user_fields(user_data)
+
+    school_id = export_tenant
     consents = await gd_find(db.session, "consent_records", {"target_user": user_id, "tenant_id": school_id}, limit=100)
-    notifications = await gd_find(db.session, "notifications", {"recipient_id": user_id}, limit=500)
+    # Scope notifications to the resolved tenant so cross-tenant metadata is not leaked.
+    notifications = await gd_find(db.session, "notifications", {"recipient_id": user_id, "tenant_id": school_id}, limit=500)
     audit_logs = await gd_find(db.session, "audit_logs", {"actor_id": user_id, "tenant_id": school_id}, limit=500)
 
     student_data = None
@@ -446,7 +488,7 @@ async def export_user_data(
 
     return {
         "export_id": str(uuid.uuid4()),
-        "user": user_data,
+        "user": safe_user,
         "student_data": student_data,
         "consents": consents,
         "notifications_count": len(notifications),

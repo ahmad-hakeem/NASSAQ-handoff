@@ -1281,16 +1281,60 @@ async def create_behavior_record(
     current_user: dict = Depends(get_current_user)
 ):
     """Create behavior record - تسجيل ملاحظة سلوكية"""
+    _create_beh_role = current_user.get("role", "")
+    _CREATE_BEH_ALLOWED = {
+        "platform_admin", "admin", "super_admin",
+        "school_principal", "school_admin", "school_sub_admin", "teacher"
+    }
+    if _create_beh_role not in _CREATE_BEH_ALLOWED:
+        raise HTTPException(status_code=403, detail="غير مصرح بإضافة سجلات السلوك")
+
+    caller_tenant = current_user.get("tenant_id")
+
+    student_id = data.get("student_id")
+    if not student_id:
+        raise HTTPException(status_code=422, detail="student_id مطلوب")
+
+    # Always resolve the student record to pin school_id canonically and
+    # validate class_id consistency. platform_admin has global scope so no
+    # tenant filter is applied, but we still need the student row.
+    if _create_beh_role == "platform_admin":
+        student = await gd_find_one(db.session, "students", {"id": student_id})
+    else:
+        student = await gd_find_one(db.session, "students", {"id": student_id, "tenant_id": caller_tenant})
+
+    if not student:
+        raise HTTPException(status_code=404, detail="الطالب غير موجود أو لا ينتمي لمدرستك")
+
+    # Derive school_id from the canonical student record — never trust the client.
+    canonical_school_id = student.get("school_id") or student.get("tenant_id")
+
+    # Validate class_id consistency: if the caller supplies a class_id it must
+    # match the student's enrolled class to prevent intra-tenant data poisoning.
+    client_class_id = data.get("class_id")
+    student_class_id = student.get("class_id")
+    if client_class_id and student_class_id and client_class_id != student_class_id:
+        raise HTTPException(status_code=422, detail="class_id لا يتطابق مع فصل الطالب")
+
+    # Pull only the safe, expected fields from the request body;
+    # never trust client-supplied school_id, tenant_id, or created_by.
+    allowed_fields = {"student_id", "class_id", "type", "description", "points", "date"}
+    safe_data = {k: v for k, v in data.items() if k in allowed_fields}
+
+    # Server-side pin: school_id is always derived from the canonical student record.
+    if canonical_school_id:
+        safe_data["school_id"] = canonical_school_id
+
     record = {
         "id": str(uuid.uuid4()),
-        **data,
+        **safe_data,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": current_user["id"]
     }
-    
+
     await gd_insert(db.session, "behavior", record)
     record.pop("_id", None)
-    
+
     return {"message": "تم تسجيل الملاحظة السلوكية", "record": record}
 
 
