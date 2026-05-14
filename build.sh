@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -o pipefail
 
 echo "=========================================="
 echo "NASSAQ Build & Deployment"
@@ -16,8 +17,11 @@ pip install -r requirements.txt --no-cache-dir -q 2>&1 | tail -5
 
 echo "Building frontend..."
 cd /home/runner/workspace/frontend
-npm install --legacy-peer-deps 2>&1 | tail -5
-GENERATE_SOURCEMAP=false DISABLE_ESLINT_PLUGIN=true npx craco build 2>&1 | tail -20
+rm -rf build
+npm install --legacy-peer-deps
+unset DANGEROUSLY_DISABLE_HOST_CHECK
+GENERATE_SOURCEMAP=false DISABLE_ESLINT_PLUGIN=true npx craco build
+test -f build/index.html || { echo "FATAL: frontend build did not produce build/index.html"; exit 1; }
 
 echo "Cleaning up to reduce image size..."
 cd /home/runner/workspace
