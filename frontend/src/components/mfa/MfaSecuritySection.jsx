@@ -136,6 +136,11 @@ export default function MfaSecuritySection({ onChange } = {}) {
   const tierBadge = data?.tier ? TIER_META[data.tier] : null;
   const remaining = data?.unused_recovery_codes ?? 0;
   const acknowledged = !!data?.mfa_recovery_codes_acknowledged;
+  const recoveryGeneratedAt = data?.mfa_recovery_codes_generated_at || null;
+  // Canonical "do recovery codes exist?" predicate. Either a positive
+  // unused count from the live recovery-codes table, or a generated-at
+  // stamp on the user row, proves codes have been minted at least once.
+  const hasRecoveryCodes = remaining > 0 || !!recoveryGeneratedAt;
 
   // ---- TOTP enrolment ----
   const beginTotp = async () => {
@@ -563,10 +568,17 @@ export default function MfaSecuritySection({ onChange } = {}) {
                         <Badge className={`${remaining === 0 ? 'bg-red-100 text-red-700' : remaining <= 3 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'} border-0 text-[10px]`}>
                           {lang === 'ar' ? `${remaining} رمز متبقٍ` : `${remaining} remaining`}
                         </Badge>
-                        {data.mfa_recovery_codes_generated_at == null && (
+                        {!hasRecoveryCodes && (
                           <Badge variant="outline" className="text-[10px] text-muted-foreground">
                             {lang === 'ar' ? 'لم يتم الإنشاء بعد' : 'Not generated yet'}
                           </Badge>
+                        )}
+                        {recoveryGeneratedAt && (
+                          <span className="text-[10px] text-muted-foreground font-tajawal">
+                            {lang === 'ar'
+                              ? `أُنشئت في ${formatDate(recoveryGeneratedAt, lang)}`
+                              : `Generated on ${formatDate(recoveryGeneratedAt, lang)}`}
+                          </span>
                         )}
                         {!acknowledged && remaining > 0 && (
                           <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px]">

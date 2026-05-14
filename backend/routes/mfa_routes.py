@@ -288,6 +288,7 @@ class MfaFactorsResponse(BaseModel):
     unused_recovery_codes: int = 0
     mfa_must_restore_factor: bool = False
     mfa_recovery_codes_acknowledged: bool = False
+    mfa_recovery_codes_generated_at: Optional[str] = None
 
 
 @router.get("/auth/mfa/factors", response_model=MfaFactorsResponse)
@@ -339,6 +340,11 @@ async def list_mfa_factors(
         unused_recovery_codes=unused,
         mfa_must_restore_factor=bool(user.get("mfa_must_restore_factor")),
         mfa_recovery_codes_acknowledged=bool(user.get("mfa_recovery_codes_acknowledged")),
+        mfa_recovery_codes_generated_at=(
+            str(user.get("mfa_recovery_codes_generated_at"))
+            if user.get("mfa_recovery_codes_generated_at")
+            else None
+        ),
     )
 
 

@@ -419,6 +419,54 @@ async def test_mfa_factors_accepts_access_token(client, tenant_a):
     assert "totp" in body["allowed_kinds"]
 
 
+@pytest.mark.asyncio
+async def test_mfa_factors_exposes_recovery_codes_generated_at(client, tenant_a):
+    """Regression: the Account Settings → Security → Recovery Codes card
+    derives its empty-state badge from
+    ``MfaFactorsResponse.mfa_recovery_codes_generated_at``. Before this
+    fix the field was missing from the response, so ``== null`` was
+    always true and the card showed "لم يتم الإنشاء بعد" simultaneously
+    with "10 رمز متبقٍ" — the contradictory state in the bug report.
+
+    Contract pinned here:
+      * field is present (not absent / not undefined),
+      * defaults to ``None`` for users who have never generated codes,
+      * returns the user-row stamp as an ISO-ish string when present.
+    """
+    from engines.sql_utils import gd_update_one
+
+    # Case 1: user has never generated codes → field is present and None.
+    user = await _mk_login_user(UserRole.TEACHER, tenant_a)
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    access = create_access_token({
+        "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
+    }, mfa_recent_at=now_ts)
+    r = await client.get("/auth/mfa/factors", headers={"Authorization": f"Bearer {access}"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "mfa_recovery_codes_generated_at" in body, (
+        "MfaFactorsResponse must expose mfa_recovery_codes_generated_at "
+        "so the FE Recovery Codes card can hide the empty-state badge."
+    )
+    assert body["mfa_recovery_codes_generated_at"] is None
+    assert body["unused_recovery_codes"] == 0
+
+    # Case 2: stamp the user row as if regenerate had succeeded → field
+    # surfaces the stamp, so the FE predicate (remaining > 0 || generatedAt)
+    # flips and the empty-state badge disappears.
+    stamp = datetime.now(timezone.utc)
+    await gd_update_one(db.session, "users", {"id": user["id"]}, {
+        "mfa_recovery_codes_generated_at": stamp,
+        "mfa_recovery_codes_acknowledged": False,
+    })
+    r2 = await client.get("/auth/mfa/factors", headers={"Authorization": f"Bearer {access}"})
+    assert r2.status_code == 200, r2.text
+    body2 = r2.json()
+    assert body2["mfa_recovery_codes_generated_at"] is not None
+    assert isinstance(body2["mfa_recovery_codes_generated_at"], str)
+    assert body2["mfa_recovery_codes_acknowledged"] is False
+
+
 # ---------------------------------------------------------------------------
 # 4. Step-up enforcement on sensitive routes
 # ---------------------------------------------------------------------------
