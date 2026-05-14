@@ -1640,6 +1640,37 @@ export default function UsersClassesManagement() {
             </div>
           </div>
 
+          {activeTab === 'students' && studentsNoClass.length > 0 && activeFilter !== 'noClass' && (
+            <div className="flex items-center gap-3 p-3 px-4 rounded-xl bg-gradient-to-l from-red-50 to-amber-50 dark:from-red-950/30 dark:to-amber-950/20 border border-red-300 dark:border-red-800 shadow-sm">
+              <div className="flex items-center justify-center h-9 w-9 rounded-full bg-red-100 dark:bg-red-900/40 shrink-0">
+                <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-sm text-red-700 dark:text-red-300">
+                    {isRTL ? 'يوجد طلاب بدون فصل' : 'Students without a class'}
+                  </span>
+                  <Badge className="bg-red-600 hover:bg-red-600 text-white text-xs px-2 h-5 rounded-full">
+                    {studentsNoClass.length}
+                  </Badge>
+                </div>
+                <p className="text-xs text-red-700/80 dark:text-red-300/80 mt-0.5">
+                  {isRTL
+                    ? 'هؤلاء الطلاب لن يظهروا في الجداول الدراسية حتى تُعيّن لهم فصلاً.'
+                    : "These students won't appear in any timetable until you assign a class."}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => { setActiveFilter('noClass'); setSearchQuery(''); }}
+                className="bg-red-600 hover:bg-red-700 text-white shrink-0"
+                data-testid="banner-show-no-class"
+              >
+                {isRTL ? 'عرضهم الآن' : 'Show them now'}
+              </Button>
+            </div>
+          )}
+
           {activeFilter && (
             <div className="flex items-center gap-2 p-2.5 px-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
               <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
