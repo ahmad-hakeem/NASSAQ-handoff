@@ -108,6 +108,18 @@ webpackConfig.devServer = (devServerConfig) => {
   devServerConfig.port = 5000;
   devServerConfig.allowedHosts = "all";
 
+  devServerConfig.webSocketServer = {
+    type: "ws",
+    options: { path: "/ws-hmr" },
+  };
+  devServerConfig.client = {
+    ...(devServerConfig.client || {}),
+    webSocketURL: {
+      ...((devServerConfig.client && devServerConfig.client.webSocketURL) || {}),
+      pathname: "/ws-hmr",
+    },
+  };
+
   devServerConfig.headers = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
