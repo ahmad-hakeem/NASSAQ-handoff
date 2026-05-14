@@ -435,6 +435,16 @@ def register_routes(app, api_router: APIRouter):
                             f"decode_token_for_ws: last_password_change parse "
                             f"failed: {_ws_lpc_err}"
                         )
+                # Task #359: Embed the DB-authoritative role and tenant_id so the
+                # WebSocket handler registers the connection under the live DB
+                # values rather than the JWT claims.  For impersonation/role-switch
+                # tokens the token claims are intentionally different from the base
+                # users row, so _db_role/_db_tenant_id still reflect the base user
+                # row — the handler must use the token claims for those sessions
+                # (gated on is_impersonating/is_switched).
+                payload = dict(payload)
+                payload["_db_role"] = user.get("role")
+                payload["_db_tenant_id"] = user.get("tenant_id")
             return payload
         except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, Exception):
             return None

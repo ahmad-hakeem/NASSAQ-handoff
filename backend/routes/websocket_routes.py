@@ -182,9 +182,27 @@ def create_websocket_routes(db, decode_token):
                 return
             
             user_id = payload.get("sub")
-            role = payload.get("role")
-            tenant_id = payload.get("tenant_id")
-            
+
+            # Task #359: Register the connection under the DB-authoritative role
+            # and tenant_id, not the JWT claims.  decode_token_for_ws() embeds
+            # _db_role/_db_tenant_id from the live users row into the payload so
+            # a stale or freshly-changed token claim cannot place the user into
+            # the wrong broadcast channel.
+            # Exception: impersonation/role-switch tokens carry a different role
+            # and tenant_id from the base users row by design — those sessions
+            # must be registered under the impersonated context (from token claims).
+            _is_impersonating_hs = payload.get("is_impersonating") or payload.get("is_switched")
+            if _is_impersonating_hs:
+                role = payload.get("role")
+                tenant_id = payload.get("tenant_id")
+            else:
+                role = payload.get("_db_role") or payload.get("role")
+                tenant_id = (
+                    payload["_db_tenant_id"]
+                    if "_db_tenant_id" in payload
+                    else payload.get("tenant_id")
+                )
+
             if not user_id or not role:
                 await websocket.send_json({"type": "error", "message": "Invalid token payload"})
                 await websocket.close(code=4001, reason="Invalid token payload")
