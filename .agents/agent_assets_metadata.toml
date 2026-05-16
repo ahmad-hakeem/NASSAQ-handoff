@@ -54,3 +54,9 @@ id = "jE2SwL-rpffC2-0ikG7WL"
 uri = "file://docs/audits/2026-05-12-platform-status-report.md"
 type = "text"
 title = "NASSAQ — Platform Status Report (2026-05-12)"
+
+[[outputs]]
+id = "cyTWesmVFFjpmb30ciGaR"
+uri = "file://reports/تقرير_الأمان_نسّق.md"
+type = "text"
+title = "تقرير الأمان والحماية لمنصة نَسَّق"
