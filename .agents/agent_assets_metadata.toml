@@ -60,3 +60,9 @@ id = "cyTWesmVFFjpmb30ciGaR"
 uri = "file://reports/تقرير_الأمان_نسّق.md"
 type = "text"
 title = "تقرير الأمان والحماية لمنصة نَسَّق"
+
+[[outputs]]
+id = "9tA_r-5VpN1jIcH6kcd-U"
+uri = "file://reports/تقرير_الأمان_نسّق.docx"
+type = "word_document"
+title = "تقرير الأمان والحماية لمنصة نَسَّق (Word)"
