@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
-import { Loader2, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Database, Download } from 'lucide-react';
+import { Loader2, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Database, Download, Undo2 } from 'lucide-react';
 
 const ROLE_LABELS = {
   insert: { ar: 'إضافة', cls: 'bg-green-50 text-green-700 dark:bg-green-950/40' },
@@ -39,6 +39,8 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
   const [result, setResult] = useState(null);
   const [ambiguousAccept, setAmbiguousAccept] = useState({}); // { row_index: true }
   const [creatingClasses, setCreatingClasses] = useState(false);
+  const [undoingClasses, setUndoingClasses] = useState(false);
+  const [undoableClasses, setUndoableClasses] = useState([]);
 
   const ambiguousRowIndexes = useMemo(
     () => (preview?.rows || []).filter(r => r.dedupe === 'ambiguous').map(r => r.row_index),
@@ -70,6 +72,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
     setPreview(null);
     setResult(null);
     setAmbiguousAccept({});
+    setUndoableClasses([]);
   };
 
   const onParse = async () => {
@@ -82,6 +85,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
       const res = await api.post('/noor-import/parse', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       setPreview(res.data);
       setAmbiguousAccept({});
+      setUndoableClasses([]);
     } catch (err) {
       nassaqError(err?.response?.data?.detail || 'تعذّر تحليل الملف');
     } finally {
@@ -104,6 +108,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         setPreview(null);
         setFile(null);
         setAmbiguousAccept({});
+        setUndoableClasses([]);
         const creds = data.credentials_csv || [];
         const dupPart = (data.duplicates || 0) > 0 ? `، مكرر في الملف ${data.duplicates}` : '';
         const unclPart = (data.unclassified || 0) > 0 ? `، بدون فصل ${data.unclassified}` : '';
@@ -138,7 +143,9 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
           const res = await api.post(`/noor-import/draft/${preview.import_draft_id}/create-missing-classes`);
           const data = res.data;
           setPreview(prev => prev ? { ...prev, rows: data.rows, counts: data.counts } : prev);
-          const createdN = (data.created_classes || []).length;
+          const created = data.created_classes || [];
+          setUndoableClasses(created);
+          const createdN = created.length;
           const rejectedN = (data.rejected_pairs || []).length;
           const skippedN = (data.skipped_existing_classes || []).length;
           let msg = `تم إنشاء ${createdN} فصلاً وإعادة المطابقة.`;
@@ -152,6 +159,48 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         }
       },
       { title: 'إنشاء الفصول الناقصة', confirmText: 'إنشاء وإعادة المطابقة', cancelText: 'إلغاء' },
+    );
+  };
+
+  const onUndoCreatedClasses = async () => {
+    if (!preview?.import_draft_id) return;
+    if (undoableClasses.length === 0) return;
+    const ids = undoableClasses.map(c => c.class_id).filter(Boolean);
+    const pairsLabel = undoableClasses
+      .map(c => `• ${c.grade_code || '—'} / ${c.section_code || '—'}`)
+      .join('\n');
+    nassaqConfirm(
+      `سيتم حذف ${ids.length} فصلاً تم إنشاؤه للتو، وإعادة الصفوف المرتبطة بها إلى حالة "بدون فصل". يتم رفض الحذف لأي فصل أصبح يحتوي على طلاب.\n\nالفصول:\n${pairsLabel}`,
+      async () => {
+        setUndoingClasses(true);
+        try {
+          const res = await api.post(
+            `/noor-import/draft/${preview.import_draft_id}/undo-created-classes`,
+            { class_ids: ids },
+          );
+          const data = res.data;
+          setPreview(prev => prev ? { ...prev, rows: data.rows, counts: data.counts } : prev);
+          const undoneN = (data.undone_classes || []).length;
+          const refused = data.refused_classes || [];
+          const refusedHas = refused.filter(c => c.reason === 'has_students');
+          let msg = `تم التراجع عن ${undoneN} فصلاً.`;
+          if (refusedHas.length > 0) {
+            msg += ` تعذّر حذف ${refusedHas.length} فصلاً لاحتوائها على طلاب.`;
+          }
+          const otherRefused = refused.length - refusedHas.length;
+          if (otherRefused > 0) msg += ` تعذّر حذف ${otherRefused} فصلاً.`;
+          // Clear the affordance — successfully undone classes are
+          // gone, and anything refused (has students, etc.) is no
+          // longer safely undoable from this flow.
+          setUndoableClasses([]);
+          if (nassaqInfo) nassaqInfo(msg);
+        } catch (err) {
+          nassaqError(err?.response?.data?.detail || 'تعذّر التراجع عن إنشاء الفصول');
+        } finally {
+          setUndoingClasses(false);
+        }
+      },
+      { title: 'التراجع عن إنشاء الفصول', confirmText: 'تراجع', cancelText: 'إبقاء الفصول' },
     );
   };
 
@@ -243,6 +292,46 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                       </Button>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+            {undoableClasses.length > 0 && (
+              <div
+                data-testid="undo-created-classes-banner"
+                className="text-xs p-3 rounded border border-blue-300 bg-blue-50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-100 flex items-start gap-2"
+              >
+                <Undo2 className="h-4 w-4 mt-0.5 shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <p className="font-medium">
+                    تم إنشاء {undoableClasses.length} فصلاً للتو — يمكنك التراجع قبل المتابعة.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {undoableClasses.slice(0, 12).map((c, i) => (
+                      <span
+                        key={c.class_id || i}
+                        className="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 border border-blue-300 dark:border-blue-700 text-[11px]"
+                      >
+                        {c.grade_code || '—'} / {c.section_code || '—'}
+                      </span>
+                    ))}
+                    {undoableClasses.length > 12 && (
+                      <span className="text-[11px] text-blue-800 dark:text-blue-200">
+                        +{undoableClasses.length - 12}
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                    disabled={undoingClasses}
+                    onClick={onUndoCreatedClasses}
+                    data-testid="btn-undo-created-classes"
+                    className="border-blue-500 text-blue-900 hover:bg-blue-100 dark:text-blue-100 dark:hover:bg-blue-900/40"
+                  >
+                    {undoingClasses ? <Loader2 className="h-3.5 w-3.5 animate-spin me-2" /> : <Undo2 className="h-3.5 w-3.5 me-2" />}
+                    تراجع عن إنشاء الفصول
+                  </Button>
                 </div>
               </div>
             )}

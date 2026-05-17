@@ -641,6 +641,148 @@ def create_noor_import_routes(db, get_current_user):
             "rejected_pairs": rejected_pairs,
         }
 
+    @router.post("/draft/{draft_id}/undo-created-classes")
+    async def undo_created_classes_endpoint(
+        draft_id: str,
+        request: Request,
+        current_user: dict = Depends(get_current_user),
+    ):
+        """Undo classes auto-created by `/create-missing-classes` for a
+        live draft.
+
+        Fail-closed contract:
+          • Principal + tenant binding via `load_draft` — cross-tenant
+            or cross-principal lookups 403, identical to every other
+            draft surface.
+          • Only valid for `detected_type == STUDENT_REPORT`.
+          • Each candidate class is verified to belong to the caller's
+            tenant AND to have zero students attached before deletion.
+            Anything that has students (e.g. because /commit already
+            ran or the principal hand-attached students) is REFUSED
+            with a per-class reason — never silently force-deleted.
+          • After deletion the draft is re-annotated so unresolved
+            rows reflect the new class index.
+        """
+        school_id = _require_school_role(current_user)
+        principal_id = str(current_user.get("id") or current_user.get("_id") or "")
+        draft = await load_draft(
+            db.session,
+            draft_id=draft_id,
+            principal_id=principal_id,
+            school_id=school_id,
+        )
+        if not draft:
+            raise HTTPException(status_code=403, detail=_SAFE_DRAFT_DENIED)
+        if draft["detected_type"] != STUDENT_REPORT:
+            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+
+        try:
+            raw = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+        if not isinstance(raw, dict):
+            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+        candidate_ids = raw.get("class_ids") or []
+        if not isinstance(candidate_ids, list) or not all(
+            isinstance(x, str) and x for x in candidate_ids
+        ):
+            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+        # De-dupe while preserving order.
+        seen: set = set()
+        candidate_ids = [c for c in candidate_ids if not (c in seen or seen.add(c))]
+
+        undone: List[Dict[str, Any]] = []
+        refused: List[Dict[str, Any]] = []
+
+        for cid in candidate_ids:
+            row = (
+                await db.session.execute(
+                    text(
+                        """
+                        SELECT id, grade_level, section
+                        FROM classes
+                        WHERE id = :id AND school_id = :sid
+                        """
+                    ),
+                    {"id": cid, "sid": school_id},
+                )
+            ).mappings().first()
+            if not row:
+                # Tenant mismatch or already gone — treat as not-found
+                # rather than leaking which case it is.
+                refused.append({"class_id": cid, "reason": "not_found"})
+                continue
+            student_count = (
+                await db.session.execute(
+                    text(
+                        """
+                        SELECT COUNT(*) FROM students
+                        WHERE class_id = :id AND school_id = :sid
+                        """
+                    ),
+                    {"id": cid, "sid": school_id},
+                )
+            ).scalar() or 0
+            if student_count > 0:
+                refused.append({
+                    "class_id": cid,
+                    "grade_code": row["grade_level"],
+                    "section_code": row["section"],
+                    "reason": "has_students",
+                    "student_count": int(student_count),
+                })
+                continue
+            try:
+                async with db.session.begin_nested():
+                    await db.session.execute(
+                        text(
+                            "DELETE FROM classes WHERE id = :id AND school_id = :sid"
+                        ),
+                        {"id": cid, "sid": school_id},
+                    )
+                undone.append({
+                    "class_id": cid,
+                    "grade_code": row["grade_level"],
+                    "section_code": row["section"],
+                })
+            except Exception as e:  # noqa: BLE001
+                logger.warning("noor undo-created-classes delete failed: %s", e)
+                refused.append({"class_id": cid, "reason": "delete_failed"})
+
+        payload = draft.get("payload") or {}
+        rows: List[Dict[str, Any]] = payload.get("rows") or []
+        reseed_rows = [
+            {"row_index": r.get("row_index"), "data": dict(r.get("data") or {})}
+            for r in rows
+        ]
+        new_annotated = await _annotate_student_rows(
+            db.session, school_id=school_id, parsed_rows=reseed_rows
+        )
+        new_counts = _summarise_counts(new_annotated)
+        updated_ok = await update_draft_rows(
+            db.session,
+            draft_id=draft_id,
+            principal_id=principal_id,
+            school_id=school_id,
+            rows=new_annotated,
+            counts=new_counts,
+        )
+        if not updated_ok:
+            raise HTTPException(status_code=403, detail=_SAFE_DRAFT_DENIED)
+        await db.session.commit()
+
+        return {
+            "import_draft_id": draft_id,
+            "detected_type": draft["detected_type"],
+            "header_row": draft["header_row"],
+            "sheet_name": payload.get("sheet_name"),
+            "mapped_columns": payload.get("mapped_columns") or {},
+            "rows": new_annotated,
+            "counts": new_counts,
+            "undone_classes": undone,
+            "refused_classes": refused,
+        }
+
     return router
 
 
