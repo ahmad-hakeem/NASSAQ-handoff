@@ -189,8 +189,21 @@ function HistoryTab({ api, nassaqError }) {
   );
 }
 
-export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassaqConfirm, nassaqInfo, t, onComplete }) {
+export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassaqConfirm, nassaqInfo, t, onComplete, onHistoryCountChange }) {
   const [activeTab, setActiveTab] = useState('import');
+
+  const refreshHistoryCount = useCallback(async () => {
+    try {
+      const res = await api.get('/noor-import/history');
+      const n = (res.data?.history || []).length;
+      if (typeof onHistoryCountChange === 'function') onHistoryCountChange(n);
+    } catch {
+      // silent — badge is best-effort
+    }
+  }, [api, onHistoryCountChange]);
+
+  useEffect(() => { refreshHistoryCount(); }, [refreshHistoryCount]);
+
   const [file, setFile] = useState(null);
   const [parsing, setParsing] = useState(false);
   const [committing, setCommitting] = useState(false);
@@ -369,6 +382,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
           nassaqInfo(summary);
         }
         if (onComplete) onComplete();
+        refreshHistoryCount();
       } catch (err) {
         nassaqError(err?.response?.data?.detail || 'تعذّر إتمام عملية الاستيراد');
       } finally {

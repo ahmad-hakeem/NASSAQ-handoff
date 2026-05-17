@@ -819,6 +819,7 @@ export default function UsersClassesManagement() {
   const [showTeacherWizard, setShowTeacherWizard] = useState(false);
   const [showClassWizard, setShowClassWizard] = useState(false);
 
+  const [noorImportCount, setNoorImportCount] = useState(null);
   const [importType, setImportType] = useState('students');
   const [selectedFile, setSelectedFile] = useState(null);
   const [importing, setImporting] = useState(false);
@@ -1560,6 +1561,15 @@ export default function UsersClassesManagement() {
                       className="rounded-lg text-xs px-3.5 h-9 transition-all data-[state=active]:bg-[#2BB5A0] data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-[#2BB5A0]">
                       <FileSpreadsheet className="h-3.5 w-3.5 me-1.5" />
                       {t('importexport')}
+                      {noorImportCount > 0 && (
+                        <Badge
+                          variant="secondary"
+                          className={tabBadgeCls('import-export')}
+                          data-testid="noor-import-history-badge"
+                        >
+                          {noorImportCount}
+                        </Badge>
+                      )}
                     </TabsTrigger>
                   </TabsList>
                 </Tabs>
@@ -1709,7 +1719,7 @@ export default function UsersClassesManagement() {
                     </TabsList>
 
                     <TabsContent value="import">
-                      <NoorImportPanel api={api} nassaqError={nassaqError} nassaqWarning={nassaqWarning} nassaqConfirm={nassaqConfirm} nassaqInfo={nassaqInfo} t={t} onComplete={fetchAllData} />
+                      <NoorImportPanel api={api} nassaqError={nassaqError} nassaqWarning={nassaqWarning} nassaqConfirm={nassaqConfirm} nassaqInfo={nassaqInfo} t={t} onComplete={fetchAllData} onHistoryCountChange={setNoorImportCount} />
                       <div className="grid gap-6 lg:grid-cols-2 mt-6">
                         <Card>
                           <CardHeader>
