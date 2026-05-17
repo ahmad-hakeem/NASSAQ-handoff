@@ -145,7 +145,11 @@ export const LoginPage = () => {
       case 'school_admin': return '/principal';
       case 'platform_operations_manager': return '/admin';
       case 'teacher': return '/teacher';
-      case 'student': return '/student';
+      // Student login is platform-wide disabled — backend rejects the
+      // /auth/login attempt before we ever resolve a redirect, but keep
+      // this branch fail-closed so any future role-leak still lands the
+      // user safely on /login with the canonical Arabic error.
+      case 'student': return null;
       case 'parent':
         if (!mfaDisabled && !userData?.mfa_enrolled_at) return '/auth/mfa/enroll';
         return '/parent';

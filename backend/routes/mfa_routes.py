@@ -159,6 +159,12 @@ async def _complete_mfa_login(
     sub/role/tenant claims. Returns a plain dict in step-up mode and a
     full ``TokenResponse`` in login mode.
     """
+    # Defense-in-depth: students are out of every MFA tier today, so this
+    # path should never be reached for a student account, but if a future
+    # policy change ever puts them in a tier we must still refuse to mint
+    # tokens while the platform-wide student-login block is on.
+    from dependencies import assert_student_login_enabled
+    assert_student_login_enabled(user)
     user_id = user["id"]
     token_payload = {"sub": user_id, "role": user["role"]}
     if user.get("tenant_id"):

@@ -554,6 +554,22 @@ export const AuthProvider = ({ children }) => {
       // surface to use (inline banner vs alert dialog).
       let message = 'فشل تسجيل الدخول';
       let kind = 'system';
+      // Temporary platform-wide student-login block. The backend returns a
+      // structured 403 envelope with code STUDENT_LOGIN_DISABLED and a
+      // pre-translated Arabic message; surface it verbatim through the
+      // NassaqAlertDialog instead of the generic 4xx "invalid credentials"
+      // mapping below.
+      const rawDetail = error.response?.data?.detail;
+      const detailCode = (rawDetail && typeof rawDetail === 'object') ? rawDetail.code : null;
+      if (httpStatus === 403 && detailCode === 'STUDENT_LOGIN_DISABLED') {
+        return {
+          success: false,
+          error: rawDetail.message_ar || 'تسجيل دخول الطالب غير متاح حالياً',
+          httpStatus,
+          kind: 'credentials',
+          code: 'STUDENT_LOGIN_DISABLED',
+        };
+      }
       if (httpStatus === 401) {
         message = 'بيانات الدخول غير صحيحة';
         kind = 'credentials';

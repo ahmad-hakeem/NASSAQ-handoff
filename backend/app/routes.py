@@ -373,6 +373,29 @@ def register_routes(app, api_router: APIRouter):
                 if user.get("is_locked", False):
                     logger.info(f"WebSocket auth rejected: locked user={user_id}")
                     return None
+                # Mirror of get_current_user(): refuse WebSocket handshakes
+                # for student accounts while the platform-wide student-login
+                # block is on. Prevents an already-issued student access
+                # token from opening /ws/notifications after HTTP routes
+                # have been locked down.
+                try:
+                    from dependencies import (
+                        STUDENT_LOGIN_DISABLED as _STU_DISABLED,
+                        UserRole as _UR,
+                    )
+                    if _STU_DISABLED and (user.get("role") or "").lower() == _UR.STUDENT.value:
+                        logger.info(
+                            f"WebSocket auth rejected: student-login disabled, user={user_id}"
+                        )
+                        return None
+                except Exception as _stu_err:
+                    # Fail closed only on a real config error — never swallow
+                    # the disable flag.
+                    logger.warning(
+                        f"WebSocket auth: student-disable check errored, "
+                        f"rejecting for safety: {_stu_err}"
+                    )
+                    return None
                 # Task #350: reject tokens whose role or tenant_id no longer
                 # match the current DB row.  Admin-driven role changes and
                 # tenant transfers do not revoke existing JWTs, so an unexpired

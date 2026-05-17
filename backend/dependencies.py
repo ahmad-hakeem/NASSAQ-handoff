@@ -112,6 +112,40 @@ class UserRole(str, Enum):
     TESTING_ACCOUNT = "testing_account"
 
 
+STUDENT_LOGIN_DISABLED = True
+STUDENT_LOGIN_DISABLED_MESSAGE_AR = (
+    "تسجيل دخول الطالب غير متاح حالياً. سيتم تفعيله بعد إعادة بناء حساب الطالب."
+)
+STUDENT_LOGIN_DISABLED_CODE = "STUDENT_LOGIN_DISABLED"
+
+
+def _user_role_value(user) -> str:
+    if not isinstance(user, dict):
+        return ""
+    role = user.get("role")
+    if hasattr(role, "value"):
+        role = role.value
+    return (role or "").lower()
+
+
+def assert_student_login_enabled(user) -> None:
+    """Reject login/refresh/token-issuance for student-role accounts while
+    the student portal is being rebuilt. Surfaces a structured 403 envelope
+    so the FE can render the safe Arabic message verbatim without falling
+    back to the generic credentials error."""
+    if not STUDENT_LOGIN_DISABLED:
+        return
+    if _user_role_value(user) == UserRole.STUDENT.value:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": STUDENT_LOGIN_DISABLED_CODE,
+                "message": "Student login is temporarily unavailable",
+                "message_ar": STUDENT_LOGIN_DISABLED_MESSAGE_AR,
+            },
+        )
+
+
 class SchoolStatus(str, Enum):
     ACTIVE = "active"
     SUSPENDED = "suspended"
@@ -268,6 +302,19 @@ async def get_current_user(
 
         if user.get("is_locked", False):
             raise HTTPException(status_code=401, detail="Account is locked")
+
+        # Temporary platform-wide block: invalidate any already-issued
+        # access token whose subject is a student. Returned as 401 (rather
+        # than the 403 envelope used by the login/refresh gates) so the
+        # FE axios interceptor treats it like any other expired session
+        # and bounces the browser to /login instead of attempting an MFA
+        # step-up replay — there is no way to satisfy this gate from the
+        # browser while the block is on.
+        if STUDENT_LOGIN_DISABLED and _user_role_value(user) == UserRole.STUDENT.value:
+            raise HTTPException(
+                status_code=401,
+                detail=STUDENT_LOGIN_DISABLED_MESSAGE_AR,
+            )
 
         # IT §6.8 — defense-in-depth: reject access tokens for IT users whose
         # workspace has been archived or is pending erasure. The lifecycle

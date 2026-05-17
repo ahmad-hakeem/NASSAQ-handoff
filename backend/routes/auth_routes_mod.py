@@ -14,6 +14,7 @@ import uuid, os, logging, json, random, re, io, base64, jwt
 
 from dependencies import (
     db, get_current_user, require_roles, require_recent_mfa, require_recent_mfa_403, UserRole, SchoolStatus,
+    assert_student_login_enabled,
     hash_password, verify_password, create_access_token, create_refresh_token,
     JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE, security, logger,
     audit_engine, AuditAction, AuditSeverity,
@@ -39,6 +40,11 @@ router = APIRouter()
 async def register(user_data: UserCreate):
     user_data.role = UserRole.STUDENT
     user_data.tenant_id = None
+
+    # Public self-registration only ever creates student accounts. While
+    # student login is platform-wide disabled, refuse the creation up-front
+    # rather than silently minting an unusable account + token pair.
+    assert_student_login_enabled({"role": user_data.role.value})
 
     try:
         validate_password_complexity(user_data.password)
@@ -242,6 +248,26 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
             reason="account_locked"
         )
         raise HTTPException(status_code=401, detail="الحساب مقفل. يرجى التواصل مع الإدارة")
+
+    # Temporary platform-wide block: student-account login is disabled while the
+    # student portal is being rebuilt. Fail closed BEFORE the MFA gate / token
+    # issuance so no access/refresh tokens or MFA challenges are ever minted
+    # for a student-role account.
+    try:
+        assert_student_login_enabled(user)
+    except HTTPException as _student_block:
+        try:
+            await audit_engine.log_auth_event(
+                action=AuditAction.LOGIN_FAILED.value,
+                user_id=str(user.get("id") or user.get("_id") or ""),
+                tenant_id=user.get("tenant_id"),
+                success=False,
+                email=credentials.email,
+                reason="student_login_disabled",
+            )
+        except Exception as _audit_err:
+            logger.debug(f"login: student-block audit failed: {_audit_err}")
+        raise _student_block
 
     # IT §6.8 — workspace archived gate. An IT user whose workspace
     # was soft-deleted cannot log in until they reactivate within the
@@ -589,6 +615,11 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
         raise HTTPException(status_code=401, detail="Account disabled")
     if user.get("is_locked", False):
         raise HTTPException(status_code=401, detail="Account is locked")
+
+    # Temporary platform-wide block: do not rotate refresh tokens for
+    # student-role accounts. Together with the get_current_user kill-switch
+    # this guarantees any already-issued student session dies on next refresh.
+    assert_student_login_enabled(user)
 
     # IT §6.8 — mirror of the get_current_user() gate: block refresh token
     # rotation for IT users whose workspace has been archived or is pending

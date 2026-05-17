@@ -10,7 +10,12 @@ export const ROLE_DASHBOARDS = {
   platform_operations_manager: "/admin",
   teacher: "/teacher",
   independent_teacher: "/teacher",
-  student: "/student",
+  // Student portal is temporarily disabled platform-wide. Mapping the
+  // student role to "/login" instead of "/student" prevents the
+  // PublicRoute → ProtectedRoute bounce that would otherwise pingpong
+  // an authenticated student session between /login and /student now
+  // that /student/* is a Navigate-to-/login redirect.
+  student: "/login",
   parent: "/parent",
 };
 

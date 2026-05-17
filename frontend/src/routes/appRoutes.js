@@ -424,28 +424,16 @@ export default function AppRoutes() {
         <Route path="/teacher/notifications" element={
           <ProtectedRoute allowedRoles={['independent_teacher']}><TeacherNotificationsPage /></ProtectedRoute>
         } />
-        {/* Student Portal Routes */}
-        <Route path="/student" element={
-          <ProtectedRoute allowedRoles={['student']}><StudentPortalDashboard /></ProtectedRoute>
-        } />
-        <Route path="/student/schedule" element={
-          <ProtectedRoute allowedRoles={['student']}><StudentSchedulePage /></ProtectedRoute>
-        } />
-        <Route path="/student/grades" element={
-          <ProtectedRoute allowedRoles={['student']}><StudentGradesPage /></ProtectedRoute>
-        } />
-        <Route path="/student/attendance" element={
-          <ProtectedRoute allowedRoles={['student']}><StudentAttendancePage /></ProtectedRoute>
-        } />
-        <Route path="/student/profile" element={
-          <ProtectedRoute allowedRoles={['student']}><StudentProfilePage /></ProtectedRoute>
-        } />
-        <Route path="/student/progress" element={
-          <ProtectedRoute allowedRoles={['student']}><StudentProgressPage /></ProtectedRoute>
-        } />
-        <Route path="/student/achievements" element={
-          <ProtectedRoute allowedRoles={['student']}><StudentAchievementsPage /></ProtectedRoute>
-        } />
+        {/* Student Portal Routes — TEMPORARILY DISABLED platform-wide while
+            the student experience is being rebuilt. Backend rejects every
+            student-role login/refresh/token-issuance attempt, so these pages
+            can no longer be reached via a normal session. We redirect any
+            deep-link to /login (instead of removing the routes entirely) so
+            the portal can be reinstated without touching the router. The
+            lazy-loaded StudentPortal modules above are intentionally left
+            in place — disabling is reversible by reverting this block. */}
+        <Route path="/student" element={<Navigate to="/login" replace />} />
+        <Route path="/student/*" element={<Navigate to="/login" replace />} />
 
         {/* Parent Portal Routes */}
         <Route path="/parent" element={
