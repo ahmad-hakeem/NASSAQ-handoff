@@ -240,6 +240,7 @@ class Student(Base):
     talents = Column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
     character_traits = Column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
     is_gifted = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    profile_settings = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)

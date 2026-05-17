@@ -12,24 +12,50 @@ import { Skeleton } from '../../components/ui/skeleton';
 import BackgroundRefreshChip from '../../components/parent/BackgroundRefreshChip';
 import { Edit3, Award, ChevronLeft, BarChart3, FileText, GraduationCap, Building, Heart, Eye, Wind, ShieldAlert } from 'lucide-react';
 
+const baseTagColor = 'bg-muted/40 text-foreground';
+const healthColor = 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300';
 const HEALTH_LABELS = {
-  asthma: { ar: 'الربو', en: 'Asthma', icon: Wind, color: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300' },
-  weak_vision: { ar: 'ضعف النظر', en: 'Weak Vision', icon: Eye, color: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
-  allergy: { ar: 'الحساسية', en: 'Allergies', icon: ShieldAlert, color: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
+  asthma: { ar: 'ربو', en: 'Asthma', icon: Wind, color: healthColor },
+  weak_vision: { ar: 'ضعف بصر', en: 'Weak Vision', icon: Eye, color: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
+  weak_hearing: { ar: 'ضعف سمع', en: 'Weak Hearing', icon: null, color: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' },
+  allergy: { ar: 'حساسية', en: 'Allergies', icon: ShieldAlert, color: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
+  food_allergy: { ar: 'حساسية غذائية', en: 'Food Allergy', icon: ShieldAlert, color: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
+  nut_allergy: { ar: 'حساسية من المكسرات', en: 'Nut Allergy', icon: ShieldAlert, color: healthColor },
+  dust_allergy: { ar: 'حساسية من الغبار', en: 'Dust Allergy', icon: ShieldAlert, color: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
+  seasonal_allergy: { ar: 'حساسية موسمية', en: 'Seasonal Allergy', icon: ShieldAlert, color: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
+  diabetes: { ar: 'سكري', en: 'Diabetes', icon: null, color: 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' },
+  epilepsy: { ar: 'صرع', en: 'Epilepsy', icon: null, color: healthColor },
   heart: { ar: 'مشاكل القلب', en: 'Heart Issues', icon: Heart, color: 'bg-pink-50 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300' },
 };
 
 const BEHAVIOR_LABELS = {
-  shyness: { ar: 'الخجل', en: 'Shyness', icon: '🙈' },
-  hyperactivity: { ar: 'فرط الحركة', en: 'Hyperactivity', icon: '⚡' },
-  concentration_difficulty: { ar: 'صعوبة التركيز', en: 'Difficulty Concentrating', icon: '🎯' },
+  shyness: { ar: 'خجل', en: 'Shyness' },
+  severe_shyness: { ar: 'خجل شديد', en: 'Severe Shyness' },
+  hyperactivity: { ar: 'فرط حركة', en: 'Hyperactivity' },
+  motor_anxiety: { ar: 'قلق حركي', en: 'Motor Anxiety' },
+  concentration_difficulty: { ar: 'صعوبة التركيز', en: 'Difficulty Concentrating' },
+  speech_difficulty: { ar: 'صعوبة نطق', en: 'Speech Difficulty' },
+  stuttering: { ar: 'تأتأة', en: 'Stuttering' },
+  aggression: { ar: 'عدوانية', en: 'Aggression' },
+  anger: { ar: 'غضب', en: 'Anger' },
+  sleep_disorder: { ar: 'اضطراب نوم', en: 'Sleep Disorder' },
+  eating_difficulty: { ar: 'صعوبة أكل', en: 'Eating Difficulty' },
 };
 
 const FAMILY_LABELS = {
   both_parents: { ar: 'مع الوالدين', en: 'Both Parents' },
   father_only: { ar: 'مع الأب فقط', en: 'Father Only' },
   mother_only: { ar: 'مع الأم فقط', en: 'Mother Only' },
-  other: { ar: 'طرف آخر', en: 'Other' },
+  other: { ar: 'أخرى', en: 'Other' },
+};
+
+const FAMILY_OTHER_LABELS = {
+  parents_separation: { ar: 'انفصال الوالدين', en: 'Parents Separated' },
+  parent_traveling: { ar: 'سفر أحد الوالدين', en: 'Parent Traveling' },
+  foster_family: { ar: 'أسرة بديلة', en: 'Foster Family' },
+  orphan: { ar: 'يتيم', en: 'Orphan' },
+  second_marriage: { ar: 'زواج ثانٍ', en: 'Second Marriage' },
+  family_problems: { ar: 'مشاكل أسرية', en: 'Family Problems' },
 };
 
 const StudentProfilePage = () => {
@@ -273,16 +299,30 @@ const StudentProfilePage = () => {
                   </div>
                 )}
 
-                {profile?.family_situation && (
+                {(profile?.family_situation || profile?.family_other_situations?.length > 0) && (
                   <div>
                     <p className="text-xs font-medium text-muted-foreground dark:text-muted-foreground mb-1">
                       {isRTL ? 'الوضع العائلي' : 'Family Situation'}
                     </p>
-                    <p className="text-sm text-foreground dark:text-muted-foreground/50">
-                      {FAMILY_LABELS[profile.family_situation]
-                        ? (isRTL ? FAMILY_LABELS[profile.family_situation].ar : FAMILY_LABELS[profile.family_situation].en)
-                        : profile.family_situation}
-                    </p>
+                    {profile?.family_situation && (
+                      <p className="text-sm text-foreground dark:text-muted-foreground/50">
+                        {FAMILY_LABELS[profile.family_situation]
+                          ? (isRTL ? FAMILY_LABELS[profile.family_situation].ar : FAMILY_LABELS[profile.family_situation].en)
+                          : profile.family_situation}
+                      </p>
+                    )}
+                    {profile?.family_other_situations?.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {profile.family_other_situations.map((f) => {
+                          const cfg = FAMILY_OTHER_LABELS[f];
+                          return (
+                            <span key={f} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300 text-xs font-medium">
+                              {cfg ? (isRTL ? cfg.ar : cfg.en) : f}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
 

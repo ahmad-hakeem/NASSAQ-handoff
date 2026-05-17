@@ -1931,13 +1931,51 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "school_name": school_name,
             "is_independent_teacher_workspace": bool(is_it_ws),
             "teacher_display_name": teacher_display_name,
-            "emoji": child.get("emoji", "👦"),
+            "emoji": (child.get("profile_settings") or {}).get("emoji") or child.get("emoji") or "👦",
             "profile_picture": child.get("profile_picture", ""),
             "gender": child.get("gender", ""),
-            "health_conditions": child.get("health_conditions", []),
-            "behavioral_aspects": child.get("behavioral_aspects", []),
-            "family_situation": child.get("family_situation", ""),
+            "health_conditions": (child.get("profile_settings") or {}).get("health_conditions", []),
+            "behavioral_aspects": (child.get("profile_settings") or {}).get("behavioral_aspects", []),
+            "family_situation": (child.get("profile_settings") or {}).get("family_situation", ""),
+            "family_other_situations": (child.get("profile_settings") or {}).get("family_other_situations", []),
         }
+
+    # Whitelist of values allowed in each list/single-value profile field.
+    # Centralised so the FE chip catalogue and BE persisted values cannot
+    # drift apart and so an attacker cannot persist arbitrary tag strings
+    # on another family's child record.
+    _PROFILE_HEALTH_ALLOWED = {
+        "asthma", "weak_vision", "weak_hearing", "allergy", "heart",
+        "food_allergy", "nut_allergy", "dust_allergy", "seasonal_allergy",
+        "diabetes", "epilepsy",
+    }
+    _PROFILE_BEHAVIOR_ALLOWED = {
+        "shyness", "severe_shyness", "hyperactivity", "motor_anxiety",
+        "concentration_difficulty", "speech_difficulty", "stuttering",
+        "aggression", "anger", "sleep_disorder", "eating_difficulty",
+    }
+    _PROFILE_FAMILY_ALLOWED = {
+        "both_parents", "father_only", "mother_only", "other",
+    }
+    _PROFILE_FAMILY_OTHER_ALLOWED = {
+        "parents_separation", "parent_traveling", "foster_family",
+        "orphan", "second_marriage", "family_problems",
+    }
+    _PROFILE_EMOJI_ALLOWED = {
+        "👦", "👧", "🧒", "👨‍🎓", "👩‍🎓", "🦸‍♂️", "🦸‍♀️",
+        "🧑‍💻", "🎨", "⚽", "🎵", "📚", "🌟", "🦋", "🚀", "🎯",
+    }
+
+    def _sanitize_str_list(raw, allowed: set) -> list:
+        if not isinstance(raw, list):
+            return []
+        seen = set()
+        out = []
+        for item in raw:
+            if isinstance(item, str) and item in allowed and item not in seen:
+                seen.add(item)
+                out.append(item)
+        return out
 
     @router.put("/child/{child_id}/profile")
     async def update_child_profile(
@@ -1947,18 +1985,67 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
     ):
         parent_id = current_user.get("id")
         parent_phone = current_user.get("phone")
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"), current_user=current_user)
+        child = await _verify_parent_access(
+            parent_id, parent_phone, child_id,
+            current_user.get("tenant_id"), current_user=current_user,
+        )
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح")
 
-        allowed_fields = {"emoji", "health_conditions", "behavioral_aspects", "family_situation"}
-        update_data = {k: v for k, v in data.items() if k in allowed_fields}
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=400, detail="بيانات غير صالحة")
 
-        if not update_data:
-            raise HTTPException(status_code=400, detail="لا توجد بيانات صالحة للتحديث")
+        # Merge into the existing per-student profile_settings JSONB so a
+        # partial save (e.g. only family_situation) does not clobber the
+        # other groups the parent had previously stored for this child.
+        current_settings = dict(child.get("profile_settings") or {})
 
-        await gd_update_one(db.session, "students", {"id": child_id}, {"$set": update_data})
-        return {"success": True, "message": "تم تحديث الملف بنجاح"}
+        if "emoji" in data:
+            emoji = data.get("emoji")
+            if isinstance(emoji, str) and emoji in _PROFILE_EMOJI_ALLOWED:
+                current_settings["emoji"] = emoji
+        if "health_conditions" in data:
+            current_settings["health_conditions"] = _sanitize_str_list(
+                data.get("health_conditions"), _PROFILE_HEALTH_ALLOWED,
+            )
+        if "behavioral_aspects" in data:
+            current_settings["behavioral_aspects"] = _sanitize_str_list(
+                data.get("behavioral_aspects"), _PROFILE_BEHAVIOR_ALLOWED,
+            )
+        if "family_situation" in data:
+            fs = data.get("family_situation")
+            if fs in _PROFILE_FAMILY_ALLOWED:
+                current_settings["family_situation"] = fs
+            elif fs in (None, ""):
+                current_settings["family_situation"] = ""
+        if "family_other_situations" in data:
+            current_settings["family_other_situations"] = _sanitize_str_list(
+                data.get("family_other_situations"), _PROFILE_FAMILY_OTHER_ALLOWED,
+            )
+
+        if current_settings == (child.get("profile_settings") or {}):
+            return {
+                "success": True,
+                "message": "لا توجد تغييرات",
+                "profile_settings": current_settings,
+            }
+
+        # Write is scoped by students.id AND school_id so a parent cannot
+        # widen the write past the tenant boundary enforced by
+        # _verify_parent_access above (defence-in-depth).
+        write_filter = {"id": child_id}
+        sid = child.get("school_id") or current_user.get("tenant_id")
+        if sid:
+            write_filter["school_id"] = sid
+        await gd_update_one(
+            db.session, "students", write_filter,
+            {"$set": {"profile_settings": current_settings}},
+        )
+        return {
+            "success": True,
+            "message": "تم تحديث الملف بنجاح",
+            "profile_settings": current_settings,
+        }
 
     # ============= ACHIEVEMENTS =============
 
