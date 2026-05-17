@@ -1726,7 +1726,14 @@ class NoorImportHistory(Base):
     credentials_csv = Column(JSONB, nullable=True)    # re-downloadable teacher creds
 
     committed_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("idx_noor_import_history_school_committed", "school_id", "committed_at"),
+        Index(
+            "idx_noor_import_history_school_active",
+            "school_id",
+            "committed_at",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )

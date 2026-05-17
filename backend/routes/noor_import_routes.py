@@ -1280,7 +1280,7 @@ def create_noor_import_routes(db, get_current_user):
                        created_ids, updated_ids, created_class_ids,
                        credentials_csv, committed_at
                 FROM noor_import_history
-                WHERE school_id = :sid
+                WHERE school_id = :sid AND deleted_at IS NULL
                 ORDER BY committed_at DESC
                 LIMIT :cap
                 """
@@ -1289,6 +1289,42 @@ def create_noor_import_routes(db, get_current_user):
         )
         rows = result.mappings().all()
         return {"history": [dict(r) for r in rows]}
+
+    @router.delete("/history/{history_id}")
+    async def delete_import_history_endpoint(
+        history_id: str,
+        current_user: dict = Depends(get_current_user),
+    ):
+        """Soft-delete a single import-history row.
+
+        Tenant-scoped: only an admin/principal of the owning school may
+        hide a row, and only rows that match `school_id = tenant_id`
+        are affected. Already-deleted or unknown rows return 404 so
+        the API does not confirm the existence of foreign-tenant rows.
+        The underlying audit record is preserved — `deleted_at` is set
+        rather than the row being physically removed.
+        """
+        school_id = _require_school_role(current_user)
+        if not history_id or len(history_id) > 128:
+            raise HTTPException(status_code=404, detail="السجل غير موجود")
+        result = await db.session.execute(
+            text(
+                """
+                UPDATE noor_import_history
+                SET deleted_at = NOW()
+                WHERE id = :hid
+                  AND school_id = :sid
+                  AND deleted_at IS NULL
+                RETURNING id
+                """
+            ),
+            {"hid": history_id, "sid": school_id},
+        )
+        row = result.first()
+        if row is None:
+            raise HTTPException(status_code=404, detail="السجل غير موجود")
+        await db.session.commit()
+        return {"deleted": True, "id": row[0]}
 
     return router
 

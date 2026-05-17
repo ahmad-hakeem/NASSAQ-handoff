@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
-import { Loader2, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Database, Download, Undo2, History, RefreshCw } from 'lucide-react';
+import { Loader2, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Database, Download, Undo2, History, RefreshCw, Trash2 } from 'lucide-react';
 
 const ROLE_LABELS = {
   insert: { ar: 'إضافة', cls: 'bg-green-50 text-green-700 dark:bg-green-950/40' },
@@ -48,9 +48,10 @@ function formatDate(isoStr) {
   }
 }
 
-function HistoryTab({ api, nassaqError }) {
+function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const fetchHistory = useCallback(async () => {
     setLoading(true);
@@ -65,6 +66,27 @@ function HistoryTab({ api, nassaqError }) {
   }, [api, nassaqError]);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
+
+  const onDeleteRow = useCallback((row) => {
+    if (!row?.id || !nassaqConfirm) return;
+    const typeLabel = TYPE_LABEL[row.detected_type] || row.detected_type;
+    nassaqConfirm(
+      `سيتم إخفاء سجل استيراد ${typeLabel} بتاريخ ${formatDate(row.committed_at)} من القائمة. لن يؤثر ذلك على الطلاب أو المعلمين الذين تمت إضافتهم سابقاً.`,
+      async () => {
+        setDeletingId(row.id);
+        try {
+          await api.delete(`/noor-import/history/${row.id}`);
+          setHistory((prev) => (prev ? prev.filter((r) => r.id !== row.id) : prev));
+          if (nassaqInfo) nassaqInfo('تم إخفاء سجل الاستيراد.');
+        } catch (err) {
+          nassaqError(err?.response?.data?.detail || 'تعذّر حذف سجل الاستيراد');
+        } finally {
+          setDeletingId(null);
+        }
+      },
+      { title: 'حذف سجل الاستيراد', confirmText: 'حذف السجل', cancelText: 'إلغاء' },
+    );
+  }, [api, nassaqConfirm, nassaqError, nassaqInfo]);
 
   if (loading) {
     return (
@@ -119,18 +141,35 @@ function HistoryTab({ api, nassaqError }) {
                     <p className="text-xs text-muted-foreground">بواسطة: {row.actor_name}</p>
                   )}
                 </div>
-                {creds.length > 0 && (
+                <div className="flex items-center gap-2 shrink-0">
+                  {creds.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      type="button"
+                      onClick={() => downloadCsv(`noor_import_credentials_${row.id}.csv`, creds)}
+                    >
+                      <Download className="h-3.5 w-3.5 me-1.5" />
+                      تنزيل بيانات الدخول ({creds.length})
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"
                     type="button"
-                    onClick={() => downloadCsv(`noor_import_credentials_${row.id}.csv`, creds)}
-                    className="shrink-0"
+                    onClick={() => onDeleteRow(row)}
+                    disabled={deletingId === row.id}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                    aria-label="حذف سجل الاستيراد"
+                    title="حذف سجل الاستيراد"
                   >
-                    <Download className="h-3.5 w-3.5 me-1.5" />
-                    تنزيل بيانات الدخول ({creds.length})
+                    {deletingId === row.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
                   </Button>
-                )}
+                </div>
               </div>
 
               <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center text-xs">
@@ -587,7 +626,12 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         </div>
 
         {activeTab === 'history' && (
-          <HistoryTab api={api} nassaqError={nassaqError} />
+          <HistoryTab
+            api={api}
+            nassaqError={nassaqError}
+            nassaqConfirm={nassaqConfirm}
+            nassaqInfo={nassaqInfo}
+          />
         )}
 
         {activeTab === 'import' && (
