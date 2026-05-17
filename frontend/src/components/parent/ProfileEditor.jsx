@@ -61,6 +61,8 @@ const Chip = ({ active, activeClass, onClick, children }) => (
   </button>
 );
 
+const OTHER_TEXT_MAX = 255;
+
 const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
   const { api } = useAuth();
   const { isRTL } = useTheme();
@@ -77,6 +79,21 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
   const [familyOtherSituations, setFamilyOtherSituations] = useState(
     profile?.family_other_situations || []
   );
+  // Free-text "Other" complements for the curated chip catalogues. The
+  // boolean flags control whether the textarea is revealed (and the
+  // "أخرى" chip is highlighted); the text states hold the actual
+  // content. Hydrated from the backend's other_*_details strings so
+  // re-opening the modal restores the previously typed text.
+  const [otherHealthEnabled, setOtherHealthEnabled] = useState(
+    Boolean(profile?.other_health_details)
+  );
+  const [otherHealthText, setOtherHealthText] = useState(profile?.other_health_details || '');
+  const [otherBehaviorEnabled, setOtherBehaviorEnabled] = useState(
+    Boolean(profile?.other_behavior_details)
+  );
+  const [otherBehaviorText, setOtherBehaviorText] = useState(
+    profile?.other_behavior_details || ''
+  );
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -85,22 +102,50 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
     setBehavioralAspects(profile?.behavioral_aspects || []);
     setFamilySituation(profile?.family_situation || '');
     setFamilyOtherSituations(profile?.family_other_situations || []);
+    setOtherHealthEnabled(Boolean(profile?.other_health_details));
+    setOtherHealthText(profile?.other_health_details || '');
+    setOtherBehaviorEnabled(Boolean(profile?.other_behavior_details));
+    setOtherBehaviorText(profile?.other_behavior_details || '');
   }, [childId, profile]);
 
   const toggleArrayItem = (arr, setArr, item) => {
     setArr((prev) => (prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]));
   };
 
+  // Graceful clearing: deselecting the "أخرى" pill drops the typed
+  // text so it cannot be silently submitted while hidden from view.
+  const toggleOtherHealth = () => {
+    setOtherHealthEnabled((prev) => {
+      const next = !prev;
+      if (!next) setOtherHealthText('');
+      return next;
+    });
+  };
+  const toggleOtherBehavior = () => {
+    setOtherBehaviorEnabled((prev) => {
+      const next = !prev;
+      if (!next) setOtherBehaviorText('');
+      return next;
+    });
+  };
+
   const handleSave = async () => {
     if (!childId) return;
     setSaving(true);
     try {
+      // Only persist the free-text fields when the pill is enabled,
+      // otherwise send an empty string so the backend clears any
+      // previously stored value.
+      const otherHealthPayload = otherHealthEnabled ? otherHealthText.trim() : '';
+      const otherBehaviorPayload = otherBehaviorEnabled ? otherBehaviorText.trim() : '';
       await api.put(`/parent-portal/child/${childId}/profile`, {
         emoji,
         health_conditions: healthConditions,
         behavioral_aspects: behavioralAspects,
         family_situation: familySituation,
         family_other_situations: familyOtherSituations,
+        other_health_details: otherHealthPayload,
+        other_behavior_details: otherBehaviorPayload,
       });
       toast.success(isRTL ? 'تم حفظ التعديلات بنجاح' : 'Changes saved successfully');
       onSave?.();
@@ -183,7 +228,33 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
                 {isRTL ? label_ar : label_en}
               </Chip>
             ))}
+            <Chip
+              active={otherHealthEnabled}
+              activeClass="bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-700"
+              onClick={toggleOtherHealth}
+            >
+              {isRTL ? 'أخرى' : 'Other'}
+            </Chip>
           </div>
+          {otherHealthEnabled && (
+            <div className="mt-3">
+              <textarea
+                value={otherHealthText}
+                onChange={(e) => setOtherHealthText(e.target.value.slice(0, OTHER_TEXT_MAX))}
+                maxLength={OTHER_TEXT_MAX}
+                rows={2}
+                dir={isRTL ? 'rtl' : 'ltr'}
+                placeholder={isRTL ? 'يرجى كتابة التفاصيل...' : 'Please describe...'}
+                className={`w-full p-2.5 text-sm rounded-xl border border-border bg-white dark:bg-gray-800 dark:border-gray-700 text-foreground focus:outline-none focus:ring-2 focus:ring-rose-300 ${
+                  isRTL ? 'text-right' : 'text-left'
+                }`}
+                data-testid="textarea-other-health"
+              />
+              <p className={`mt-1 text-[11px] text-muted-foreground ${isRTL ? 'text-left' : 'text-right'}`}>
+                {otherHealthText.length}/{OTHER_TEXT_MAX}
+              </p>
+            </div>
+          )}
         </section>
 
         <section>
@@ -204,7 +275,33 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
                 {isRTL ? label_ar : label_en}
               </Chip>
             ))}
+            <Chip
+              active={otherBehaviorEnabled}
+              activeClass="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700"
+              onClick={toggleOtherBehavior}
+            >
+              {isRTL ? 'أخرى' : 'Other'}
+            </Chip>
           </div>
+          {otherBehaviorEnabled && (
+            <div className="mt-3">
+              <textarea
+                value={otherBehaviorText}
+                onChange={(e) => setOtherBehaviorText(e.target.value.slice(0, OTHER_TEXT_MAX))}
+                maxLength={OTHER_TEXT_MAX}
+                rows={2}
+                dir={isRTL ? 'rtl' : 'ltr'}
+                placeholder={isRTL ? 'يرجى كتابة التفاصيل...' : 'Please describe...'}
+                className={`w-full p-2.5 text-sm rounded-xl border border-border bg-white dark:bg-gray-800 dark:border-gray-700 text-foreground focus:outline-none focus:ring-2 focus:ring-amber-300 ${
+                  isRTL ? 'text-right' : 'text-left'
+                }`}
+                data-testid="textarea-other-behavior"
+              />
+              <p className={`mt-1 text-[11px] text-muted-foreground ${isRTL ? 'text-left' : 'text-right'}`}>
+                {otherBehaviorText.length}/{OTHER_TEXT_MAX}
+              </p>
+            </div>
+          )}
         </section>
 
         <section className="pt-4 border-t border-border/60 dark:border-gray-800">

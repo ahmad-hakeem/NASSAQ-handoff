@@ -101,8 +101,10 @@ const StudentProfileDialog = ({ childId, open, onOpenChange }) => {
     ? `تساعد هذه المعلومات المدرسة في تقديم الرعاية الأفضل${studentName ? ` لـ${studentName}` : ''}.`
     : `This information helps the school provide better care${studentName ? ` for ${studentName}` : ''}.`;
 
-  const hasHealth = profile?.health_conditions?.length > 0;
-  const hasBehavior = profile?.behavioral_aspects?.length > 0;
+  const otherHealth = profile?.other_health_details || '';
+  const otherBehavior = profile?.other_behavior_details || '';
+  const hasHealth = profile?.health_conditions?.length > 0 || Boolean(otherHealth);
+  const hasBehavior = profile?.behavioral_aspects?.length > 0 || Boolean(otherBehavior);
   const hasFamily = profile?.family_situation || profile?.family_other_situations?.length > 0;
   const hasAnyContent = hasHealth || hasBehavior || hasFamily;
 
@@ -170,7 +172,7 @@ const StudentProfileDialog = ({ childId, open, onOpenChange }) => {
                         {isRTL ? 'المشاكل الصحية' : 'Health Conditions'}
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        {profile.health_conditions.map((c) => {
+                        {(profile.health_conditions || []).map((c) => {
                           const cfg = HEALTH_LABELS[c];
                           const Icon = cfg?.icon;
                           return (
@@ -184,6 +186,18 @@ const StudentProfileDialog = ({ childId, open, onOpenChange }) => {
                           );
                         })}
                       </div>
+                      {otherHealth && (
+                        <p
+                          className="mt-2 text-xs text-foreground/80 bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-900/40 rounded-lg px-3 py-2 whitespace-pre-wrap break-words"
+                          dir={isRTL ? 'rtl' : 'ltr'}
+                          data-testid="view-other-health"
+                        >
+                          <span className="font-semibold">
+                            {isRTL ? 'أخرى: ' : 'Other: '}
+                          </span>
+                          {otherHealth}
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -194,7 +208,7 @@ const StudentProfileDialog = ({ childId, open, onOpenChange }) => {
                         {isRTL ? 'الجوانب السلوكية والتعلم' : 'Behavioral & Learning Aspects'}
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        {profile.behavioral_aspects.map((b) => {
+                        {(profile.behavioral_aspects || []).map((b) => {
                           const cfg = BEHAVIOR_LABELS[b];
                           return (
                             <span
@@ -206,6 +220,18 @@ const StudentProfileDialog = ({ childId, open, onOpenChange }) => {
                           );
                         })}
                       </div>
+                      {otherBehavior && (
+                        <p
+                          className="mt-2 text-xs text-foreground/80 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/40 rounded-lg px-3 py-2 whitespace-pre-wrap break-words"
+                          dir={isRTL ? 'rtl' : 'ltr'}
+                          data-testid="view-other-behavior"
+                        >
+                          <span className="font-semibold">
+                            {isRTL ? 'أخرى: ' : 'Other: '}
+                          </span>
+                          {otherBehavior}
+                        </p>
+                      )}
                     </div>
                   )}
 

@@ -1938,6 +1938,12 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "behavioral_aspects": (child.get("profile_settings") or {}).get("behavioral_aspects", []),
             "family_situation": (child.get("profile_settings") or {}).get("family_situation", ""),
             "family_other_situations": (child.get("profile_settings") or {}).get("family_other_situations", []),
+            # Free-text "Other" details for health and behavior — these
+            # complement the strict enum lists above and let parents
+            # describe conditions/aspects the curated catalogue does not
+            # cover. Bounded by _PROFILE_OTHER_TEXT_MAX on write.
+            "other_health_details": (child.get("profile_settings") or {}).get("other_health_details", ""),
+            "other_behavior_details": (child.get("profile_settings") or {}).get("other_behavior_details", ""),
         }
 
     # Whitelist of values allowed in each list/single-value profile field.
@@ -1965,6 +1971,18 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         "👦", "👧", "🧒", "👨‍🎓", "👩‍🎓", "🦸‍♂️", "🦸‍♀️",
         "🧑‍💻", "🎨", "⚽", "🎵", "📚", "🌟", "🦋", "🚀", "🎯",
     }
+    # Hard cap on the free-text "Other" descriptions so a malicious
+    # parent can't grow the per-student JSONB row indefinitely. 255
+    # matches the FE textarea maxLength.
+    _PROFILE_OTHER_TEXT_MAX = 255
+
+    def _sanitize_other_text(raw) -> str:
+        if not isinstance(raw, str):
+            return ""
+        cleaned = raw.strip()
+        if not cleaned:
+            return ""
+        return cleaned[:_PROFILE_OTHER_TEXT_MAX]
 
     def _sanitize_str_list(raw, allowed: set) -> list:
         if not isinstance(raw, list):
@@ -2021,6 +2039,17 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if "family_other_situations" in data:
             current_settings["family_other_situations"] = _sanitize_str_list(
                 data.get("family_other_situations"), _PROFILE_FAMILY_OTHER_ALLOWED,
+            )
+        # Free-text complements to the strict enum lists. Sending an
+        # empty string clears the prior value so the FE can switch the
+        # "أخرى" pill off without leaving stale text behind.
+        if "other_health_details" in data:
+            current_settings["other_health_details"] = _sanitize_other_text(
+                data.get("other_health_details"),
+            )
+        if "other_behavior_details" in data:
+            current_settings["other_behavior_details"] = _sanitize_other_text(
+                data.get("other_behavior_details"),
             )
 
         if current_settings == (child.get("profile_settings") or {}):
