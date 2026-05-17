@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
-import { Loader2, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Database, Download, Undo2, History, RefreshCw, Trash2 } from 'lucide-react';
+import { Loader2, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Database, Download, Undo2, History, RefreshCw, Trash2, RotateCcw } from 'lucide-react';
 
 const ROLE_LABELS = {
   insert: { ar: 'إضافة', cls: 'bg-green-50 text-green-700 dark:bg-green-950/40' },
@@ -52,11 +52,15 @@ function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [restoringId, setRestoringId] = useState(null);
+  const [showDeleted, setShowDeleted] = useState(false);
 
-  const fetchHistory = useCallback(async () => {
+  const fetchHistory = useCallback(async (includeDeleted) => {
     setLoading(true);
     try {
-      const res = await api.get('/noor-import/history');
+      const res = await api.get('/noor-import/history', {
+        params: includeDeleted ? { include_deleted: true } : undefined,
+      });
       setHistory(res.data.history || []);
     } catch (err) {
       nassaqError(err?.response?.data?.detail || 'تعذّر تحميل سجل الاستيرادات');
@@ -65,7 +69,7 @@ function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
     }
   }, [api, nassaqError]);
 
-  useEffect(() => { fetchHistory(); }, [fetchHistory]);
+  useEffect(() => { fetchHistory(showDeleted); }, [fetchHistory, showDeleted]);
 
   const onDeleteRow = useCallback((row) => {
     if (!row?.id || !nassaqConfirm) return;
@@ -76,7 +80,15 @@ function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
         setDeletingId(row.id);
         try {
           await api.delete(`/noor-import/history/${row.id}`);
-          setHistory((prev) => (prev ? prev.filter((r) => r.id !== row.id) : prev));
+          setHistory((prev) => {
+            if (!prev) return prev;
+            if (showDeleted) {
+              return prev.map((r) => (
+                r.id === row.id ? { ...r, deleted_at: new Date().toISOString() } : r
+              ));
+            }
+            return prev.filter((r) => r.id !== row.id);
+          });
           if (nassaqInfo) nassaqInfo('تم إخفاء سجل الاستيراد.');
         } catch (err) {
           nassaqError(err?.response?.data?.detail || 'تعذّر حذف سجل الاستيراد');
@@ -86,7 +98,23 @@ function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
       },
       { title: 'حذف سجل الاستيراد', confirmText: 'حذف السجل', cancelText: 'إلغاء' },
     );
-  }, [api, nassaqConfirm, nassaqError, nassaqInfo]);
+  }, [api, nassaqConfirm, nassaqError, nassaqInfo, showDeleted]);
+
+  const onRestoreRow = useCallback(async (row) => {
+    if (!row?.id) return;
+    setRestoringId(row.id);
+    try {
+      await api.post(`/noor-import/history/${row.id}/restore`);
+      setHistory((prev) => (
+        prev ? prev.map((r) => (r.id === row.id ? { ...r, deleted_at: null } : r)) : prev
+      ));
+      if (nassaqInfo) nassaqInfo('تمت استعادة سجل الاستيراد.');
+    } catch (err) {
+      nassaqError(err?.response?.data?.detail || 'تعذّر استعادة سجل الاستيراد');
+    } finally {
+      setRestoringId(null);
+    }
+  }, [api, nassaqError, nassaqInfo]);
 
   if (loading) {
     return (
@@ -99,20 +127,46 @@ function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
 
   if (!history) return null;
 
+  const toggle = (
+    <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+      <input
+        type="checkbox"
+        checked={showDeleted}
+        onChange={(e) => setShowDeleted(e.target.checked)}
+        className="h-3.5 w-3.5"
+      />
+      عرض السجلات المخفية
+    </label>
+  );
+
   if (history.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
-        <History className="h-8 w-8 opacity-40" />
-        <p className="text-sm">لا توجد عمليات استيراد مسجّلة بعد.</p>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          {toggle}
+          <Button size="sm" variant="outline" onClick={() => fetchHistory(showDeleted)} disabled={loading} type="button">
+            <RefreshCw className="h-3.5 w-3.5 me-1.5" />
+            تحديث
+          </Button>
+        </div>
+        <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
+          <History className="h-8 w-8 opacity-40" />
+          <p className="text-sm">
+            {showDeleted ? 'لا توجد سجلات مخفية.' : 'لا توجد عمليات استيراد مسجّلة بعد.'}
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">{history.length} عملية استيراد — الأحدث أولاً</p>
-        <Button size="sm" variant="outline" onClick={fetchHistory} disabled={loading} type="button">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
+          <p className="text-xs text-muted-foreground">{history.length} عملية استيراد — الأحدث أولاً</p>
+          {toggle}
+        </div>
+        <Button size="sm" variant="outline" onClick={() => fetchHistory(showDeleted)} disabled={loading} type="button">
           <RefreshCw className="h-3.5 w-3.5 me-1.5" />
           تحديث
         </Button>
@@ -124,25 +178,35 @@ function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
           const createdIds = row.created_ids || [];
           const updatedIds = row.updated_ids || [];
           const typeLabel = TYPE_LABEL[row.detected_type] || row.detected_type;
+          const isDeleted = !!row.deleted_at;
           return (
             <div
               key={row.id}
-              className="rounded-xl border p-4 bg-background space-y-3"
+              className={`rounded-xl border p-4 space-y-3 ${
+                isDeleted
+                  ? 'bg-muted/40 border-dashed opacity-80'
+                  : 'bg-background'
+              }`}
             >
               <div className="flex flex-wrap items-start gap-2 justify-between">
                 <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Badge variant="outline" className="text-xs">
                       {typeLabel}
                     </Badge>
                     <span className="text-xs text-muted-foreground">{formatDate(row.committed_at)}</span>
+                    {isDeleted && (
+                      <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30">
+                        مخفي — {formatDate(row.deleted_at)}
+                      </Badge>
+                    )}
                   </div>
                   {row.actor_name && (
                     <p className="text-xs text-muted-foreground">بواسطة: {row.actor_name}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {creds.length > 0 && (
+                  {creds.length > 0 && !isDeleted && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -153,22 +217,42 @@ function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
                       تنزيل بيانات الدخول ({creds.length})
                     </Button>
                   )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    type="button"
-                    onClick={() => onDeleteRow(row)}
-                    disabled={deletingId === row.id}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
-                    aria-label="حذف سجل الاستيراد"
-                    title="حذف سجل الاستيراد"
-                  >
-                    {deletingId === row.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-3.5 w-3.5" />
-                    )}
-                  </Button>
+                  {isDeleted ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      type="button"
+                      onClick={() => onRestoreRow(row)}
+                      disabled={restoringId === row.id}
+                      className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                      aria-label="استعادة سجل الاستيراد"
+                      title="استعادة سجل الاستيراد"
+                    >
+                      {restoringId === row.id ? (
+                        <Loader2 className="h-3.5 w-3.5 me-1.5 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-3.5 w-3.5 me-1.5" />
+                      )}
+                      استعادة
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      type="button"
+                      onClick={() => onDeleteRow(row)}
+                      disabled={deletingId === row.id}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                      aria-label="حذف سجل الاستيراد"
+                      title="حذف سجل الاستيراد"
+                    >
+                      {deletingId === row.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
 

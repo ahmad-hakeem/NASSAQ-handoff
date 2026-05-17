@@ -1262,12 +1262,15 @@ def create_noor_import_routes(db, get_current_user):
     async def get_import_history_endpoint(
         current_user: dict = Depends(get_current_user),
         limit: int = 50,
+        include_deleted: bool = False,
     ):
         """Return the last N committed Noor imports for this school.
 
         Returns rows newest-first, capped at 200 to keep the payload
         manageable. Credentials CSV is included so the principal can
-        re-download teacher login credentials.
+        re-download teacher login credentials. When `include_deleted`
+        is true, soft-deleted rows are also returned with `deleted_at`
+        populated so the UI can mark them and offer a restore action.
         """
         school_id = _require_school_role(current_user)
         cap = min(max(1, limit), 200)
@@ -1278,17 +1281,52 @@ def create_noor_import_routes(db, get_current_user):
                        imported_count, updated_count, skipped_count,
                        failed_count, duplicates_count, unclassified_count,
                        created_ids, updated_ids, created_class_ids,
-                       credentials_csv, committed_at
+                       credentials_csv, committed_at, deleted_at
                 FROM noor_import_history
-                WHERE school_id = :sid AND deleted_at IS NULL
+                WHERE school_id = :sid
+                  AND (:include_deleted OR deleted_at IS NULL)
                 ORDER BY committed_at DESC
                 LIMIT :cap
                 """
             ),
-            {"sid": school_id, "cap": cap},
+            {"sid": school_id, "cap": cap, "include_deleted": include_deleted},
         )
         rows = result.mappings().all()
         return {"history": [dict(r) for r in rows]}
+
+    @router.post("/history/{history_id}/restore")
+    async def restore_import_history_endpoint(
+        history_id: str,
+        current_user: dict = Depends(get_current_user),
+    ):
+        """Restore a soft-deleted import-history row (clear deleted_at).
+
+        Tenant-scoped: only an admin/principal of the owning school may
+        restore one of their own rows. Unknown, foreign-tenant, or
+        already-active rows return 404 so the API does not confirm the
+        existence of foreign-tenant rows.
+        """
+        school_id = _require_school_role(current_user)
+        if not history_id or len(history_id) > 128:
+            raise HTTPException(status_code=404, detail="السجل غير موجود")
+        result = await db.session.execute(
+            text(
+                """
+                UPDATE noor_import_history
+                SET deleted_at = NULL
+                WHERE id = :hid
+                  AND school_id = :sid
+                  AND deleted_at IS NOT NULL
+                RETURNING id
+                """
+            ),
+            {"hid": history_id, "sid": school_id},
+        )
+        row = result.first()
+        if row is None:
+            raise HTTPException(status_code=404, detail="السجل غير موجود")
+        await db.session.commit()
+        return {"restored": True, "id": row[0]}
 
     @router.delete("/history/{history_id}")
     async def delete_import_history_endpoint(
