@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Save, X, HeartPulse, Brain, Home } from 'lucide-react';
 import { toast } from 'sonner';
+import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 
 const EMOJI_OPTIONS = ['👦', '👧', '🧒', '👨‍🎓', '👩‍🎓', '🦸‍♂️', '🦸‍♀️', '🧑‍💻', '🎨', '⚽', '🎵', '📚', '🌟', '🦋', '🚀', '🎯'];
 
@@ -63,6 +64,7 @@ const Chip = ({ active, activeClass, onClick, children }) => (
 const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
   const { api } = useAuth();
   const { isRTL } = useTheme();
+  const { nassaqError } = useNassaqAlert();
 
   // Re-seed local form state from the active student's profile whenever
   // the parent switches between siblings (childId change) or the underlying
@@ -103,7 +105,7 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
       toast.success(isRTL ? 'تم حفظ التعديلات بنجاح' : 'Changes saved successfully');
       onSave?.();
     } catch {
-      toast.error(isRTL ? 'حدث خطأ أثناء الحفظ' : 'Error saving changes');
+      nassaqError(isRTL ? 'حدث خطأ أثناء الحفظ' : 'Error saving changes');
     } finally {
       setSaving(false);
     }
