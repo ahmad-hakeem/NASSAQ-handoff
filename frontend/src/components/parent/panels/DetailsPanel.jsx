@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme, useTranslation } from '../../../contexts/ThemeContext';
 import { Card, CardContent } from '../../ui/card';
 import { Badge } from '../../ui/badge';
+import { Button } from '../../ui/button';
 import { Progress } from '../../ui/progress';
 import { Skeleton } from '../../ui/skeleton';
 import { ScrollArea } from '../../ui/scroll-area';
 import CumulativeAnalytics from '../CumulativeAnalytics';
 import StudentInsightsPanel from '../StudentInsightsPanel';
 import {
-  BookOpen, CheckCircle, XCircle, AlertCircle, Clock, Award, Calendar,
+  BookOpen, CheckCircle, XCircle, AlertCircle, Clock, Award, Calendar, Pencil,
 } from 'lucide-react';
 
 const DetailsPanel = ({ childId }) => {
@@ -67,6 +69,25 @@ const DetailsPanel = ({ childId }) => {
 
   return (
     <div className="space-y-4">
+      {/* Edit Student Profile CTA — opens the per-child profile editor
+          (/parent/child/:childId/profile). Scoped strictly to the active
+          child via the `childId` prop passed by ParentChildrenPage from
+          ParentActiveStudentContext, so sibling switching swaps the
+          target automatically. */}
+      <Button
+        asChild
+        variant="outline"
+        className="w-full rounded-xl gap-2 font-cairo"
+      >
+        <Link
+          to={`/parent/child/${childId}/profile`}
+          data-testid="link-edit-student-profile"
+        >
+          <Pencil className="h-4 w-4" />
+          {isRTL ? 'تعديل ملف الطالب' : 'Edit Student Profile'}
+        </Link>
+      </Button>
+
       {/* Quick stats */}
       <div className="grid grid-cols-2 gap-3">
         {/* Honest KPI rendering: backend returns null for attendance_rate
