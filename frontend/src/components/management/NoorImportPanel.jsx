@@ -50,26 +50,105 @@ function formatDate(isoStr) {
 
 function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [history, setHistory] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [restoringId, setRestoringId] = useState(null);
   const [showDeleted, setShowDeleted] = useState(false);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [actorFilter, setActorFilter] = useState('');
+  const [actors, setActors] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [nextCursor, setNextCursor] = useState(null);
+  const [nextCursorId, setNextCursorId] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
+  // The filters actually in effect for the current result set.
+  // Editing the controls only stages new values; clicking Apply (or
+  // toggling include-deleted) is what swaps them in and triggers a
+  // fetch. This keeps a noisy "type-then-pause" flow from spamming
+  // the server while filters are mid-edit.
+  const [appliedFilters, setAppliedFilters] = useState({
+    dateFrom: '', dateTo: '', typeFilter: '', actorFilter: '',
+  });
+  const PAGE_SIZE = 50;
 
-  const fetchHistory = useCallback(async (includeDeleted) => {
+  const buildParams = useCallback((filters, includeDeleted, cursor, cursorId) => {
+    const params = { limit: PAGE_SIZE };
+    if (includeDeleted) params.include_deleted = true;
+    if (filters.dateFrom) params.date_from = filters.dateFrom;
+    // Inclusive "to": cover the entire selected day, including
+    // sub-second timestamps (rows committed at HH:MM:59.xxx).
+    if (filters.dateTo) params.date_to = `${filters.dateTo}T23:59:59.999999`;
+    if (filters.typeFilter) params.detected_type = filters.typeFilter;
+    if (filters.actorFilter) params.actor_id = filters.actorFilter;
+    if (cursor) {
+      params.before = cursor;
+      if (cursorId) params.before_id = cursorId;
+    }
+    return params;
+  }, []);
+
+  const fetchHistory = useCallback(async (filters, includeDeleted) => {
     setLoading(true);
     try {
-      const res = await api.get('/noor-import/history', {
-        params: includeDeleted ? { include_deleted: true } : undefined,
-      });
+      const res = await api.get('/noor-import/history', { params: buildParams(filters, includeDeleted) });
       setHistory(res.data.history || []);
+      setActors(res.data.actors || []);
+      setTotal(res.data.total || 0);
+      setNextCursor(res.data.next_cursor || null);
+      setNextCursorId(res.data.next_cursor_id || null);
+      setHasMore(!!res.data.has_more);
     } catch (err) {
       nassaqError(err?.response?.data?.detail || 'تعذّر تحميل سجل الاستيرادات');
     } finally {
       setLoading(false);
     }
-  }, [api, nassaqError]);
+  }, [api, nassaqError, buildParams]);
 
-  useEffect(() => { fetchHistory(showDeleted); }, [fetchHistory, showDeleted]);
+  const loadMore = useCallback(async () => {
+    if (!hasMore || !nextCursor) return;
+    setLoadingMore(true);
+    try {
+      const res = await api.get('/noor-import/history', {
+        params: buildParams(appliedFilters, showDeleted, nextCursor, nextCursorId),
+      });
+      setHistory((prev) => ([...(prev || []), ...(res.data.history || [])]));
+      setNextCursor(res.data.next_cursor || null);
+      setNextCursorId(res.data.next_cursor_id || null);
+      setHasMore(!!res.data.has_more);
+    } catch (err) {
+      nassaqError(err?.response?.data?.detail || 'تعذّر تحميل المزيد');
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [api, buildParams, appliedFilters, showDeleted, hasMore, nextCursor, nextCursorId, nassaqError]);
+
+  useEffect(() => { fetchHistory(appliedFilters, showDeleted); }, [fetchHistory, appliedFilters, showDeleted]);
+
+  const applyFilters = () => {
+    setAppliedFilters({ dateFrom, dateTo, typeFilter, actorFilter });
+  };
+
+  const resetFilters = () => {
+    setDateFrom('');
+    setDateTo('');
+    setTypeFilter('');
+    setActorFilter('');
+    setAppliedFilters({ dateFrom: '', dateTo: '', typeFilter: '', actorFilter: '' });
+  };
+
+  const hasActiveFilters = !!(
+    appliedFilters.dateFrom || appliedFilters.dateTo
+    || appliedFilters.typeFilter || appliedFilters.actorFilter
+  );
+  const hasStagedChanges = (
+    dateFrom !== appliedFilters.dateFrom
+    || dateTo !== appliedFilters.dateTo
+    || typeFilter !== appliedFilters.typeFilter
+    || actorFilter !== appliedFilters.actorFilter
+  );
 
   const onDeleteRow = useCallback((row) => {
     if (!row?.id || !nassaqConfirm) return;
@@ -89,6 +168,9 @@ function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
             }
             return prev.filter((r) => r.id !== row.id);
           });
+          if (!showDeleted) {
+            setTotal((t) => Math.max(0, t - 1));
+          }
           if (nassaqInfo) nassaqInfo('تم إخفاء سجل الاستيراد.');
         } catch (err) {
           nassaqError(err?.response?.data?.detail || 'تعذّر حذف سجل الاستيراد');
@@ -108,13 +190,16 @@ function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
       setHistory((prev) => (
         prev ? prev.map((r) => (r.id === row.id ? { ...r, deleted_at: null } : r)) : prev
       ));
+      if (!showDeleted) {
+        setTotal((t) => t + 1);
+      }
       if (nassaqInfo) nassaqInfo('تمت استعادة سجل الاستيراد.');
     } catch (err) {
       nassaqError(err?.response?.data?.detail || 'تعذّر استعادة سجل الاستيراد');
     } finally {
       setRestoringId(null);
     }
-  }, [api, nassaqError, nassaqInfo]);
+  }, [api, nassaqError, nassaqInfo, showDeleted]);
 
   if (loading) {
     return (
@@ -139,20 +224,90 @@ function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
     </label>
   );
 
+  const filterBar = (
+    <div className="rounded-xl border bg-muted/30 p-3 space-y-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">من تاريخ</label>
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="h-8 text-xs"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">إلى تاريخ</label>
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="h-8 text-xs"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">النوع</label>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+          >
+            <option value="">الكل</option>
+            <option value="teachers">معلمون</option>
+            <option value="students">طلاب</option>
+          </select>
+        </div>
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">المنفّذ</label>
+          <select
+            value={actorFilter}
+            onChange={(e) => setActorFilter(e.target.value)}
+            className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+          >
+            <option value="">الكل</option>
+            {actors.map((a) => (
+              <option key={a.actor_id} value={a.actor_id}>
+                {a.actor_name || a.actor_id} ({a.import_count})
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            size="sm"
+            type="button"
+            onClick={applyFilters}
+            disabled={loading || !hasStagedChanges}
+          >
+            تطبيق
+          </Button>
+          {(hasActiveFilters || hasStagedChanges) && (
+            <Button size="sm" variant="ghost" type="button" onClick={resetFilters} disabled={loading}>
+              مسح
+            </Button>
+          )}
+          {toggle}
+        </div>
+        <Button size="sm" variant="outline" onClick={() => fetchHistory(appliedFilters, showDeleted)} disabled={loading} type="button">
+          <RefreshCw className="h-3.5 w-3.5 me-1.5" />
+          تحديث
+        </Button>
+      </div>
+    </div>
+  );
+
   if (history.length === 0) {
     return (
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          {toggle}
-          <Button size="sm" variant="outline" onClick={() => fetchHistory(showDeleted)} disabled={loading} type="button">
-            <RefreshCw className="h-3.5 w-3.5 me-1.5" />
-            تحديث
-          </Button>
-        </div>
+        {filterBar}
         <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
           <History className="h-8 w-8 opacity-40" />
           <p className="text-sm">
-            {showDeleted ? 'لا توجد سجلات مخفية.' : 'لا توجد عمليات استيراد مسجّلة بعد.'}
+            {hasActiveFilters
+              ? 'لا توجد سجلات تطابق عوامل التصفية المحددة.'
+              : (showDeleted ? 'لا توجد سجلات مخفية.' : 'لا توجد عمليات استيراد مسجّلة بعد.')}
           </p>
         </div>
       </div>
@@ -161,15 +316,11 @@ function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
 
   return (
     <div className="space-y-3">
+      {filterBar}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3 flex-wrap">
-          <p className="text-xs text-muted-foreground">{history.length} عملية استيراد — الأحدث أولاً</p>
-          {toggle}
-        </div>
-        <Button size="sm" variant="outline" onClick={() => fetchHistory(showDeleted)} disabled={loading} type="button">
-          <RefreshCw className="h-3.5 w-3.5 me-1.5" />
-          تحديث
-        </Button>
+        <p className="text-xs text-muted-foreground">
+          عرض {history.length} من أصل {total} عملية استيراد — الأحدث أولاً
+        </p>
       </div>
       <div className="space-y-2">
         {history.map((row) => {
@@ -308,6 +459,22 @@ function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
           );
         })}
       </div>
+      {hasMore && (
+        <div className="flex justify-center pt-2">
+          <Button
+            size="sm"
+            variant="outline"
+            type="button"
+            onClick={loadMore}
+            disabled={loadingMore}
+          >
+            {loadingMore ? (
+              <Loader2 className="h-3.5 w-3.5 me-1.5 animate-spin" />
+            ) : null}
+            تحميل المزيد
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

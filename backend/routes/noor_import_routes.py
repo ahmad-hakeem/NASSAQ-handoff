@@ -1263,36 +1263,176 @@ def create_noor_import_routes(db, get_current_user):
         current_user: dict = Depends(get_current_user),
         limit: int = 50,
         include_deleted: bool = False,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        detected_type: Optional[str] = None,
+        actor_id: Optional[str] = None,
+        before: Optional[str] = None,
+        before_id: Optional[str] = None,
     ):
-        """Return the last N committed Noor imports for this school.
+        """Return committed Noor imports for this school, newest-first.
 
-        Returns rows newest-first, capped at 200 to keep the payload
-        manageable. Credentials CSV is included so the principal can
-        re-download teacher login credentials. When `include_deleted`
-        is true, soft-deleted rows are also returned with `deleted_at`
-        populated so the UI can mark them and offer a restore action.
+        Filters:
+          • date_from / date_to  — ISO date or datetime strings (inclusive).
+          • detected_type        — 'teachers' | 'students'.
+          • actor_id             — restrict to a specific principal/admin.
+          • before               — keyset pagination cursor: ISO timestamp;
+                                   returns rows strictly older than this.
+          • include_deleted      — also return soft-deleted rows.
+
+        `limit` is per-page (1..200). Response also includes a
+        school-scoped list of distinct actors (independent of the
+        date/type/actor filters, but honouring `include_deleted`) so
+        the actor picker stays stable as the user changes filters.
         """
+        from datetime import datetime as _dt, timezone as _tz
+
+        def _parse_dt(v: Optional[str], *, end_of_day: bool = False) -> Optional[Any]:
+            if not v:
+                return None
+            s = str(v).strip()
+            if not s:
+                return None
+            try:
+                if s.endswith("Z"):
+                    s = s[:-1] + "+00:00"
+                # Date-only inputs ("YYYY-MM-DD") are normalised:
+                # date_from → 00:00:00, date_to → 23:59:59.999999 so
+                # the comparison is inclusive end-of-day for callers
+                # that don't append a time component.
+                if len(s) == 10 and s.count("-") == 2:
+                    s = f"{s}T23:59:59.999999" if end_of_day else f"{s}T00:00:00"
+                dt = _dt.fromisoformat(s)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=_tz.utc)
+                return dt
+            except ValueError:
+                raise HTTPException(status_code=400, detail="تنسيق التاريخ غير صالح")
+
         school_id = _require_school_role(current_user)
         cap = min(max(1, limit), 200)
+
+        dt_from = _parse_dt(date_from)
+        dt_to = _parse_dt(date_to, end_of_day=True)
+        if dt_from is not None and dt_to is not None and dt_from > dt_to:
+            raise HTTPException(status_code=400, detail="نطاق التاريخ غير صالح")
+        dt_before = _parse_dt(before)
+        bid = (before_id or "").strip() or None
+        if bid and len(bid) > 128:
+            raise HTTPException(status_code=400, detail="معرّف المؤشّر غير صالح")
+        dtype = (detected_type or "").strip().lower() or None
+        if dtype and dtype not in {"teachers", "students"}:
+            raise HTTPException(status_code=400, detail="نوع الاستيراد غير معروف")
+        actor = (actor_id or "").strip() or None
+        if actor and len(actor) > 128:
+            raise HTTPException(status_code=400, detail="معرّف المنفّذ غير صالح")
+
+        base_params: Dict[str, Any] = {
+            "sid": school_id,
+            "include_deleted": include_deleted,
+            "dt_from": dt_from,
+            "dt_to": dt_to,
+            "dtype": dtype,
+            "actor": actor,
+        }
+
+        base_filter_sql = """
+            WHERE school_id = :sid
+              AND (:include_deleted OR deleted_at IS NULL)
+              AND (CAST(:dt_from AS TIMESTAMPTZ) IS NULL OR committed_at >= CAST(:dt_from AS TIMESTAMPTZ))
+              AND (CAST(:dt_to AS TIMESTAMPTZ) IS NULL OR committed_at <= CAST(:dt_to AS TIMESTAMPTZ))
+              AND (CAST(:dtype AS TEXT) IS NULL OR detected_type = CAST(:dtype AS TEXT))
+              AND (CAST(:actor AS TEXT) IS NULL OR actor_id = CAST(:actor AS TEXT))
+        """
+
+        # Composite keyset cursor: ORDER BY is (committed_at DESC, id DESC),
+        # so the next page must be strictly less than the prior tail on
+        # the same composite key. Otherwise rows sharing `committed_at`
+        # at a page boundary can be silently skipped. `before_id` is
+        # REQUIRED whenever `before` is supplied so non-UI clients can't
+        # paginate into a gap.
+        if dt_before is not None and not bid:
+            raise HTTPException(status_code=400, detail="مؤشّر الصفحة غير مكتمل")
+        list_params = dict(base_params)
+        list_params["cap"] = cap
+        cursor_sql = ""
+        if dt_before is not None:
+            list_params["dt_before"] = dt_before
+            list_params["before_id"] = bid
+            cursor_sql = """
+              AND (
+                committed_at < CAST(:dt_before AS TIMESTAMPTZ)
+                OR (committed_at = CAST(:dt_before AS TIMESTAMPTZ) AND id < CAST(:before_id AS TEXT))
+              )
+            """
+
+        # Over-fetch by 1 so `has_more` is exact: if we get cap+1, there's
+        # at least one more page; if we get cap or fewer, this is the last.
         result = await db.session.execute(
             text(
-                """
+                f"""
                 SELECT id, school_id, actor_id, actor_name, detected_type,
                        imported_count, updated_count, skipped_count,
                        failed_count, duplicates_count, unclassified_count,
                        created_ids, updated_ids, created_class_ids,
                        credentials_csv, committed_at, deleted_at
                 FROM noor_import_history
-                WHERE school_id = :sid
-                  AND (:include_deleted OR deleted_at IS NULL)
-                ORDER BY committed_at DESC
+                {base_filter_sql}
+                {cursor_sql}
+                ORDER BY committed_at DESC, id DESC
                 LIMIT :cap
                 """
             ),
-            {"sid": school_id, "cap": cap, "include_deleted": include_deleted},
+            {**list_params, "cap": cap + 1},
         )
-        rows = result.mappings().all()
-        return {"history": [dict(r) for r in rows]}
+        all_rows = [dict(r) for r in result.mappings().all()]
+        has_more = len(all_rows) > cap
+        rows = all_rows[:cap]
+
+        # Distinct actors for this school (independent of date/type/actor
+        # filters so the picker stays stable). Soft-deleted rows are
+        # included only when `include_deleted` is on, matching the list.
+        actors_result = await db.session.execute(
+            text(
+                """
+                SELECT actor_id, MAX(actor_name) AS actor_name,
+                       COUNT(*) AS import_count
+                FROM noor_import_history
+                WHERE school_id = :sid
+                  AND (:include_deleted OR deleted_at IS NULL)
+                  AND actor_id IS NOT NULL AND actor_id <> ''
+                GROUP BY actor_id
+                ORDER BY MAX(committed_at) DESC
+                LIMIT 100
+                """
+            ),
+            {"sid": school_id, "include_deleted": include_deleted},
+        )
+        actors = [dict(r) for r in actors_result.mappings().all()]
+
+        # Total count for the active filter set (excluding the keyset
+        # `before` cursor) so the UI can show "X of Y matching".
+        total_result = await db.session.execute(
+            text(f"SELECT COUNT(*) AS n FROM noor_import_history {base_filter_sql}"),
+            base_params,
+        )
+        total = int(total_result.scalar() or 0)
+
+        if has_more and rows and rows[-1].get("committed_at"):
+            next_cursor = rows[-1]["committed_at"].isoformat()
+            next_cursor_id = rows[-1]["id"]
+        else:
+            next_cursor = None
+            next_cursor_id = None
+
+        return {
+            "history": rows,
+            "actors": actors,
+            "total": total,
+            "next_cursor": next_cursor,
+            "next_cursor_id": next_cursor_id,
+            "has_more": has_more,
+        }
 
     @router.post("/history/{history_id}/restore")
     async def restore_import_history_endpoint(
