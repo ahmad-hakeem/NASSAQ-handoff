@@ -38,11 +38,26 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
   const [ambiguousAccept, setAmbiguousAccept] = useState({}); // { row_index: true }
+  const [creatingClasses, setCreatingClasses] = useState(false);
 
   const ambiguousRowIndexes = useMemo(
     () => (preview?.rows || []).filter(r => r.dedupe === 'ambiguous').map(r => r.row_index),
     [preview],
   );
+
+  const missingClassPairs = useMemo(() => {
+    const seen = new Map();
+    for (const r of (preview?.rows || [])) {
+      if (!r.class_unresolved) continue;
+      const g = (r.data?.grade_code || '').trim();
+      const s = (r.data?.section_code || '').trim();
+      const key = `${g}||${s}`;
+      const cur = seen.get(key) || { grade_code: g, section_code: s, rows: 0 };
+      cur.rows += 1;
+      seen.set(key, cur);
+    }
+    return Array.from(seen.values()).sort((a, b) => b.rows - a.rows);
+  }, [preview]);
 
   const onSelect = (e) => {
     const f = e.target.files?.[0];
@@ -109,6 +124,37 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
       }
   };
 
+  const onCreateMissingClasses = async () => {
+    if (!preview?.import_draft_id) return;
+    if (missingClassPairs.length === 0) return;
+    const pairsLabel = missingClassPairs
+      .map(p => `• ${p.grade_code || '—'} / ${p.section_code || '—'}  (${p.rows} صف)`)
+      .join('\n');
+    nassaqConfirm(
+      `سيتم إنشاء ${missingClassPairs.length} فصلاً جديداً بإعدادات افتراضية (سعة 30) ثم إعادة مطابقة الطلاب تلقائياً.\n\nالفصول المقترحة:\n${pairsLabel}`,
+      async () => {
+        setCreatingClasses(true);
+        try {
+          const res = await api.post(`/noor-import/draft/${preview.import_draft_id}/create-missing-classes`);
+          const data = res.data;
+          setPreview(prev => prev ? { ...prev, rows: data.rows, counts: data.counts } : prev);
+          const createdN = (data.created_classes || []).length;
+          const rejectedN = (data.rejected_pairs || []).length;
+          const skippedN = (data.skipped_existing_classes || []).length;
+          let msg = `تم إنشاء ${createdN} فصلاً وإعادة المطابقة.`;
+          if (skippedN > 0) msg += ` تم تجاهل ${skippedN} مكرراً مع فصول موجودة.`;
+          if (rejectedN > 0) msg += ` تعذّر إنشاء ${rejectedN} لتعذر تحديد الصف/الفصل بشكل قاطع.`;
+          if (nassaqInfo) nassaqInfo(msg);
+        } catch (err) {
+          nassaqError(err?.response?.data?.detail || 'تعذّر إنشاء الفصول الناقصة');
+        } finally {
+          setCreatingClasses(false);
+        }
+      },
+      { title: 'إنشاء الفصول الناقصة', confirmText: 'إنشاء وإعادة المطابقة', cancelText: 'إلغاء' },
+    );
+  };
+
   const onCommit = () => {
     if (!preview?.import_draft_id) return;
     const unclassified = preview?.counts?.unclassified || 0;
@@ -163,11 +209,40 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                 className="sticky top-0 z-10 text-xs p-3 rounded border border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30 text-yellow-900 dark:text-yellow-100 flex items-start gap-2"
               >
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                <div>
+                <div className="flex-1">
                   <p className="font-medium">سيتم استيراد {preview.counts.unclassified} صفاً بدون ربطه بفصل دراسي.</p>
                   <p className="text-yellow-800 dark:text-yellow-200 mt-0.5">
-                    تعذّر مطابقة قيم "رقم الصف" / "الفصل" في الملف مع فصول المدرسة الحالية. أنشئ الفصول المناسبة في إدارة الفصول ثم أعد الاستيراد لربط الطلاب تلقائياً.
+                    تعذّر مطابقة قيم "رقم الصف" / "الفصل" في الملف مع فصول المدرسة الحالية.
                   </p>
+                  {missingClassPairs.length > 0 && preview?.detected_type === 'students' && (
+                    <div className="mt-2 space-y-2">
+                      <div className="flex flex-wrap gap-1.5" data-testid="missing-class-pairs">
+                        {missingClassPairs.slice(0, 12).map((p, i) => (
+                          <span
+                            key={i}
+                            className="px-2 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900/40 border border-yellow-300 dark:border-yellow-700 text-[11px]"
+                          >
+                            {p.grade_code || '—'} / {p.section_code || '—'} · {p.rows}
+                          </span>
+                        ))}
+                        {missingClassPairs.length > 12 && (
+                          <span className="text-[11px] text-yellow-800 dark:text-yellow-200">+{missingClassPairs.length - 12}</span>
+                        )}
+                      </div>
+                      <Button
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                        disabled={creatingClasses}
+                        onClick={onCreateMissingClasses}
+                        data-testid="btn-create-missing-classes"
+                        className="border-yellow-500 text-yellow-900 hover:bg-yellow-100 dark:text-yellow-100 dark:hover:bg-yellow-900/40"
+                      >
+                        {creatingClasses ? <Loader2 className="h-3.5 w-3.5 animate-spin me-2" /> : <Database className="h-3.5 w-3.5 me-2" />}
+                        إنشاء الفصول الناقصة وإعادة المطابقة
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

@@ -41,7 +41,9 @@ from engines.noor_import.draft_store import (
     delete_draft,
     load_draft,
     purge_expired,
+    update_draft_rows,
 )
+from engines.noor_import.class_match import normalize_grade, normalize_section
 from engines.noor_import.teacher_mapper import (
     build_create_teacher_request,
     resolve_login_email,
@@ -473,6 +475,171 @@ def create_noor_import_routes(db, get_current_user):
         await delete_draft(db.session, draft_id=body.import_draft_id)
         await db.session.commit()
         return outcome
+
+    @router.post("/draft/{draft_id}/create-missing-classes")
+    async def create_missing_classes_endpoint(
+        draft_id: str,
+        current_user: dict = Depends(get_current_user),
+    ):
+        """Create the classes referenced by `class_unresolved` rows in a
+        live student draft, then re-annotate the draft against the new
+        class index. No second upload needed.
+
+        Fail-closed contract (matches /commit's authority model):
+          • Only valid for `detected_type == STUDENT_REPORT`.
+          • Pairs whose grade or section can't be canonicalised
+            (`normalize_*` returns empty / out-of-range) are REJECTED
+            and never silently invented.
+          • Pairs that already resolve against an existing class are
+            skipped — re-annotation will pick them up.
+          • Pairs that would collide on the unique
+            (school_id, grade_level, section) shape are skipped too.
+        """
+        school_id = _require_school_role(current_user)
+        principal_id = str(current_user.get("id") or current_user.get("_id") or "")
+        draft = await load_draft(
+            db.session,
+            draft_id=draft_id,
+            principal_id=principal_id,
+            school_id=school_id,
+        )
+        if not draft:
+            raise HTTPException(status_code=403, detail=_SAFE_DRAFT_DENIED)
+        if draft["detected_type"] != STUDENT_REPORT:
+            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+
+        payload = draft.get("payload") or {}
+        rows: List[Dict[str, Any]] = payload.get("rows") or []
+
+        # Collect missing (grade, section) pairs from unresolved rows.
+        # Key by NORMALISED form so `"١"` / `"1"` / `"أ"` collapse to one
+        # pair. Keep the first raw values seen for the human label.
+        proposed: Dict[str, Dict[str, Any]] = {}
+        rejected_pairs: List[Dict[str, Any]] = []
+        for r in rows:
+            if not r.get("class_unresolved"):
+                continue
+            data = r.get("data") or {}
+            raw_grade = (data.get("grade_code") or "").strip()
+            raw_section = (data.get("section_code") or "").strip()
+            ng = normalize_grade(raw_grade)
+            ns = normalize_section(raw_section)
+            # Fail closed on either side: empty result, or grade not in 1..12,
+            # or section that didn't fold to a digit string.
+            if not ng or not ns or not ng.isdigit() or not (1 <= int(ng) <= 12) or not ns.isdigit():
+                key = f"{raw_grade}|{raw_section}"
+                if key not in {p["_raw_key"] for p in rejected_pairs}:
+                    rejected_pairs.append({
+                        "_raw_key": key,
+                        "grade_code": raw_grade,
+                        "section_code": raw_section,
+                    })
+                continue
+            key = f"{ng}|{ns}"
+            proposed.setdefault(key, {
+                "grade_norm": ng,
+                "section_norm": ns,
+                "grade_label": raw_grade or ng,
+                "section_label": raw_section or ns,
+            })
+        for p in rejected_pairs:
+            p.pop("_raw_key", None)
+
+        # Re-load class index so we can skip pairs that already resolve.
+        classes = await load_school_class_index(db.session, school_id)
+        existing_norm: set = set()
+        for c in classes:
+            cg = normalize_grade(c.get("grade_level") or c.get("grade_id"))
+            cs = normalize_section(c.get("section"))
+            if cg and cs:
+                existing_norm.add(f"{cg}|{cs}")
+
+        created_pairs: List[Dict[str, Any]] = []
+        skipped_existing: List[Dict[str, Any]] = []
+        import uuid as _uuid
+        from datetime import datetime as _dt, timezone as _tz
+        now = _dt.now(_tz.utc)
+        for key, p in proposed.items():
+            if key in existing_norm:
+                skipped_existing.append({
+                    "grade_code": p["grade_label"],
+                    "section_code": p["section_label"],
+                })
+                continue
+            new_id = str(_uuid.uuid4())
+            try:
+                async with db.session.begin_nested():
+                    await db.session.execute(
+                        text(
+                            """
+                            INSERT INTO classes
+                                (id, name, school_id, grade_level, section,
+                                 capacity, current_students, is_active,
+                                 created_at, updated_at)
+                            VALUES
+                                (:id, :name, :sid, :grade, :section,
+                                 :cap, 0, TRUE, :now, :now)
+                            """
+                        ),
+                        {
+                            "id": new_id,
+                            "name": f"{p['grade_label']} - {p['section_label']}",
+                            "sid": school_id,
+                            "grade": p["grade_norm"],
+                            "section": p["section_norm"],
+                            "cap": 30,
+                            "now": now,
+                        },
+                    )
+                existing_norm.add(key)
+                created_pairs.append({
+                    "class_id": new_id,
+                    "grade_code": p["grade_label"],
+                    "section_code": p["section_label"],
+                })
+            except Exception as e:  # noqa: BLE001
+                logger.warning("noor create-missing-classes insert failed: %s", e)
+                rejected_pairs.append({
+                    "grade_code": p["grade_label"],
+                    "section_code": p["section_label"],
+                })
+
+        # Re-annotate the draft's rows server-side. The helper expects
+        # parse-shape inputs (`{row_index, data}`); annotated extras are
+        # stripped so the verdicts are recomputed from scratch.
+        reseed_rows = [
+            {"row_index": r.get("row_index"), "data": dict(r.get("data") or {})}
+            for r in rows
+        ]
+        new_annotated = await _annotate_student_rows(
+            db.session, school_id=school_id, parsed_rows=reseed_rows
+        )
+        new_counts = _summarise_counts(new_annotated)
+
+        updated_ok = await update_draft_rows(
+            db.session,
+            draft_id=draft_id,
+            principal_id=principal_id,
+            school_id=school_id,
+            rows=new_annotated,
+            counts=new_counts,
+        )
+        if not updated_ok:
+            raise HTTPException(status_code=403, detail=_SAFE_DRAFT_DENIED)
+        await db.session.commit()
+
+        return {
+            "import_draft_id": draft_id,
+            "detected_type": draft["detected_type"],
+            "header_row": draft["header_row"],
+            "sheet_name": payload.get("sheet_name"),
+            "mapped_columns": payload.get("mapped_columns") or {},
+            "rows": new_annotated,
+            "counts": new_counts,
+            "created_classes": created_pairs,
+            "skipped_existing_classes": skipped_existing,
+            "rejected_pairs": rejected_pairs,
+        }
 
     return router
 

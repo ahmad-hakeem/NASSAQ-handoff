@@ -101,6 +101,48 @@ async def load_draft(
     return dict(row)
 
 
+async def update_draft_rows(
+    session,
+    *,
+    draft_id: str,
+    principal_id: str,
+    school_id: str,
+    rows: list,
+    counts: Dict[str, int],
+) -> bool:
+    """Replace the annotated rows + counts of a live draft in-place.
+
+    Tenant- and principal-bound; returns False when no matching live
+    draft is found (caller surfaces a safe 403). Does NOT extend the
+    TTL — the original 1h window still applies.
+    """
+    now = datetime.now(timezone.utc)
+    payload_patch = json.dumps({"rows": rows}, ensure_ascii=False)
+    counts_json = json.dumps(counts, ensure_ascii=False)
+    result = await session.execute(
+        text(
+            """
+            UPDATE noor_import_drafts
+            SET payload = payload || CAST(:payload_patch AS JSONB),
+                counts  = CAST(:counts AS JSONB)
+            WHERE id = :id
+              AND principal_id = :pid
+              AND school_id = :sid
+              AND expires_at > :now
+            """
+        ),
+        {
+            "id": draft_id,
+            "pid": principal_id,
+            "sid": school_id,
+            "now": now,
+            "payload_patch": payload_patch,
+            "counts": counts_json,
+        },
+    )
+    return (result.rowcount or 0) > 0
+
+
 async def delete_draft(session, *, draft_id: str) -> None:
     await session.execute(
         text("DELETE FROM noor_import_drafts WHERE id = :id"),
