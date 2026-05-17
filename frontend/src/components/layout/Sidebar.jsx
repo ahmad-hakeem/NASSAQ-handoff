@@ -734,12 +734,20 @@ export const Sidebar = ({ children }) => {
             </p>
             <p className="text-[10px] text-white/50 truncate max-w-[60px]">
               {isRTL
-                ? user.role === 'platform_admin'
+                ? user.role === 'platform_admin' || user.role === 'platform_operations_manager'
                   ? 'مدير المنصة'
                   : user.role === 'school_principal' || user.role === 'school_admin'
                   ? 'مدير المدرسة'
+                  : user.role === 'school_sub_admin'
+                  ? 'مساعد المدير'
                   : user.role === 'teacher'
                   ? 'معلم'
+                  : user.role === 'independent_teacher'
+                  ? 'معلم مستقل'
+                  : user.role === 'parent'
+                  ? 'ولي أمر'
+                  : user.role === 'student'
+                  ? 'طالب'
                   : user.role?.replace('_', ' ')
                 : user.role?.replace('_', ' ')}
             </p>
@@ -889,14 +897,20 @@ export const Sidebar = ({ children }) => {
                   {(() => {
                     const effectiveRole = getEffectiveRole ? getEffectiveRole() : user.role;
                     if (isRTL) {
-                      return effectiveRole === 'platform_admin'
+                      return effectiveRole === 'platform_admin' || effectiveRole === 'platform_operations_manager'
                         ? 'مدير المنصة'
                         : effectiveRole === 'school_principal' || effectiveRole === 'school_admin'
                         ? 'مدير المدرسة'
+                        : effectiveRole === 'school_sub_admin'
+                        ? 'مساعد المدير'
                         : effectiveRole === 'teacher'
                         ? 'معلم'
                         : effectiveRole === 'independent_teacher'
-                        ? 'مساحتك التعليمية الخاصة'
+                        ? 'معلم مستقل'
+                        : effectiveRole === 'parent'
+                        ? 'ولي أمر'
+                        : effectiveRole === 'student'
+                        ? 'طالب'
                         : effectiveRole;
                     }
                     return effectiveRole?.replace('_', ' ');
