@@ -40,6 +40,7 @@ from engines.noor_import.draft_store import (
     create_draft,
     delete_draft,
     load_draft,
+    patch_draft_payload,
     purge_expired,
     update_draft_rows,
 )
@@ -472,6 +473,7 @@ def create_noor_import_routes(db, get_current_user):
         else:
             raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
 
+        created_class_ids = (draft.get("payload") or {}).get("created_class_ids") or []
         await delete_draft(db.session, draft_id=body.import_draft_id)
 
         # Normalise: both id-list keys are always present regardless of
@@ -521,6 +523,15 @@ def create_noor_import_routes(db, get_current_user):
                 },
             )
 
+        await _write_import_history(
+            db.session,
+            school_id=school_id,
+            actor_id=principal_id,
+            actor_name=str(current_user.get("full_name") or current_user.get("name") or ""),
+            detected_type=detected_type,
+            outcome=outcome,
+            created_class_ids=created_class_ids,
+        )
         await db.session.commit()
         outcome["undo_token"] = undo_token
         return outcome
@@ -803,6 +814,20 @@ def create_noor_import_routes(db, get_current_user):
         )
         if not updated_ok:
             raise HTTPException(status_code=403, detail=_SAFE_DRAFT_DENIED)
+
+        # Persist created class IDs in the draft payload so commit can
+        # include them in the history row even if the browser navigates away
+        # and back.
+        all_created_class_ids = [p["class_id"] for p in created_pairs]
+        if all_created_class_ids:
+            await patch_draft_payload(
+                db.session,
+                draft_id=draft_id,
+                principal_id=principal_id,
+                school_id=school_id,
+                patch={"created_class_ids": all_created_class_ids},
+            )
+
         await db.session.commit()
 
         return {
@@ -1233,7 +1258,103 @@ def create_noor_import_routes(db, get_current_user):
             "refused_teachers": refused_teachers,
         }
 
+    @router.get("/history")
+    async def get_import_history_endpoint(
+        current_user: dict = Depends(get_current_user),
+        limit: int = 50,
+    ):
+        """Return the last N committed Noor imports for this school.
+
+        Returns rows newest-first, capped at 200 to keep the payload
+        manageable. Credentials CSV is included so the principal can
+        re-download teacher login credentials.
+        """
+        school_id = _require_school_role(current_user)
+        cap = min(max(1, limit), 200)
+        result = await db.session.execute(
+            text(
+                """
+                SELECT id, school_id, actor_id, actor_name, detected_type,
+                       imported_count, updated_count, skipped_count,
+                       failed_count, duplicates_count, unclassified_count,
+                       created_ids, updated_ids, created_class_ids,
+                       credentials_csv, committed_at
+                FROM noor_import_history
+                WHERE school_id = :sid
+                ORDER BY committed_at DESC
+                LIMIT :cap
+                """
+            ),
+            {"sid": school_id, "cap": cap},
+        )
+        rows = result.mappings().all()
+        return {"history": [dict(r) for r in rows]}
+
     return router
+
+
+# ---------------------------------------------------------------------------
+# History writer
+# ---------------------------------------------------------------------------
+
+
+async def _write_import_history(
+    session,
+    *,
+    school_id: str,
+    actor_id: str,
+    actor_name: str,
+    detected_type: str,
+    outcome: Dict[str, Any],
+    created_class_ids: List[str],
+) -> None:
+    """Insert one row into noor_import_history.
+
+    Errors are swallowed and logged — the caller has already committed
+    the actual import data so we must never roll back that work just
+    because the audit write failed.
+    """
+    import json as _json
+    try:
+        await session.execute(
+            text(
+                """
+                INSERT INTO noor_import_history
+                    (id, school_id, actor_id, actor_name, detected_type,
+                     imported_count, updated_count, skipped_count,
+                     failed_count, duplicates_count, unclassified_count,
+                     created_ids, updated_ids, created_class_ids,
+                     credentials_csv, committed_at)
+                VALUES
+                    (:id, :sid, :actor_id, :actor_name, :dt,
+                     :imp, :upd, :skp, :fld, :dup, :unc,
+                     CAST(:created_ids AS JSONB),
+                     CAST(:updated_ids AS JSONB),
+                     CAST(:class_ids AS JSONB),
+                     CAST(:creds AS JSONB),
+                     NOW())
+                """
+            ),
+            {
+                "id": str(__import__("uuid").uuid4()),
+                "sid": school_id,
+                "actor_id": actor_id,
+                "actor_name": actor_name,
+                "dt": detected_type,
+                "imp": outcome.get("imported") or 0,
+                "upd": outcome.get("updated") or 0,
+                "skp": outcome.get("skipped") or 0,
+                "fld": outcome.get("failed") or 0,
+                "dup": outcome.get("duplicates") or 0,
+                "unc": outcome.get("unclassified") or 0,
+                "created_ids": _json.dumps(outcome.get("created_ids") or []),
+                "updated_ids": _json.dumps(outcome.get("updated_ids") or []),
+                "class_ids": _json.dumps(created_class_ids or []),
+                "creds": _json.dumps(outcome.get("credentials_csv") or []),
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("noor import history write failed (non-fatal): %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -1265,6 +1386,8 @@ async def _commit_teachers(
     errors: List[Dict[str, Any]] = []
     credentials_csv: List[Dict[str, str]] = []
     imported_teacher_ids: List[str] = []
+    created_ids: List[str] = []
+    updated_ids: List[str] = []
 
     # Track ids we've ALREADY accepted into this batch (whether the
     # first sighting was an insert or a live UPDATE). A second row
@@ -1369,6 +1492,7 @@ async def _commit_teachers(
                             "sid": school_id,
                         },
                     )
+                    updated_ids.append(live_existing_id)
                     updated += 1
                     continue
 
@@ -1396,6 +1520,8 @@ async def _commit_teachers(
                     raise _RowAbort()
                 imported += 1
                 imported_teacher_ids.append(str(result.get("teacher_id") or ""))
+                if result.get("teacher_id"):
+                    created_ids.append(str(result["teacher_id"]))
                 # Track in-batch insertion so later rows with the same
                 # national_id (or name+phone) are rejected as
                 # in-file duplicates, NOT silently overwritten.
@@ -1448,6 +1574,8 @@ async def _commit_teachers(
         "errors": errors,
         "credentials_csv": credentials_csv,
         "imported_teacher_ids": [tid for tid in imported_teacher_ids if tid],
+        "created_ids": created_ids,
+        "updated_ids": updated_ids,
     }
 
 
@@ -1481,6 +1609,8 @@ async def _commit_students(
     unclassified = 0
     errors: List[Dict[str, Any]] = []
     imported_student_ids: List[str] = []
+    created_ids: List[str] = []
+    updated_ids: List[str] = []
 
     # Track student_numbers we ACCEPTED in this batch (insert OR live
     # UPDATE). A second row with the same number is an in-file
@@ -1587,6 +1717,7 @@ async def _commit_students(
                         class_id=class_id,
                         mobile=mobile,
                     )
+                    updated_ids.append(str(existing["id"]))
                     updated += 1
                     # Use post-update class for unclassified accounting:
                     # if the row brought a new class_id, that's the
@@ -1609,6 +1740,7 @@ async def _commit_students(
                 )
                 imported += 1
                 imported_student_ids.append(new_id)
+                created_ids.append(str(new_id))
                 if class_id is None and (grade_code or section_code):
                     unclassified += 1
                 if num:
@@ -1637,4 +1769,6 @@ async def _commit_students(
         "unclassified": unclassified,
         "errors": errors,
         "imported_student_ids": imported_student_ids,
+        "created_ids": created_ids,
+        "updated_ids": updated_ids,
     }

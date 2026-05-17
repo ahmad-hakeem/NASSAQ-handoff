@@ -1694,3 +1694,39 @@ class MfaWebauthnChallenge(Base):
     __table_args__ = (
         Index("idx_mfa_webauthn_challenges_expires", "expires_at"),
     )
+
+
+class NoorImportHistory(Base):
+    """Persistent record of every committed Noor import.
+
+    Written at /noor-import/commit time (after the outer transaction
+    succeeds). Never mutated after creation. Credentials CSV is stored
+    here to allow re-download; it only contains one-time passwords that
+    teachers must change on first login.
+    """
+
+    __tablename__ = "noor_import_history"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    school_id = Column(String, nullable=False, index=True)
+    actor_id = Column(String, nullable=False)
+    actor_name = Column(String, nullable=True)
+    detected_type = Column(String, nullable=False)  # "teachers" | "students"
+
+    imported_count = Column(Integer, nullable=False, default=0)
+    updated_count = Column(Integer, nullable=False, default=0)
+    skipped_count = Column(Integer, nullable=False, default=0)
+    failed_count = Column(Integer, nullable=False, default=0)
+    duplicates_count = Column(Integer, nullable=False, default=0)
+    unclassified_count = Column(Integer, nullable=False, default=0)
+
+    created_ids = Column(JSONB, nullable=True)        # entity UUIDs inserted
+    updated_ids = Column(JSONB, nullable=True)        # entity UUIDs updated
+    created_class_ids = Column(JSONB, nullable=True)  # class UUIDs from create-missing-classes
+    credentials_csv = Column(JSONB, nullable=True)    # re-downloadable teacher creds
+
+    committed_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_noor_import_history_school_committed", "school_id", "committed_at"),
+    )

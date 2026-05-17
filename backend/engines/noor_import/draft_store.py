@@ -143,6 +143,44 @@ async def update_draft_rows(
     return (result.rowcount or 0) > 0
 
 
+async def patch_draft_payload(
+    session,
+    *,
+    draft_id: str,
+    principal_id: str,
+    school_id: str,
+    patch: Dict[str, Any],
+) -> bool:
+    """Merge arbitrary keys into the draft payload JSONB.
+
+    Used by create-missing-classes to persist created_class_ids so
+    they can be retrieved at commit time and written to the history row.
+    Returns False if no live matching draft is found.
+    """
+    now = datetime.now(timezone.utc)
+    patch_json = json.dumps(patch, ensure_ascii=False)
+    result = await session.execute(
+        text(
+            """
+            UPDATE noor_import_drafts
+            SET payload = payload || CAST(:patch AS JSONB)
+            WHERE id = :id
+              AND principal_id = :pid
+              AND school_id = :sid
+              AND expires_at > :now
+            """
+        ),
+        {
+            "id": draft_id,
+            "pid": principal_id,
+            "sid": school_id,
+            "now": now,
+            "patch": patch_json,
+        },
+    )
+    return (result.rowcount or 0) > 0
+
+
 async def delete_draft(session, *, draft_id: str) -> None:
     await session.execute(
         text("DELETE FROM noor_import_drafts WHERE id = :id"),

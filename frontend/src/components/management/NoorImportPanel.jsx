@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
-import { Loader2, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Database, Download, Undo2 } from 'lucide-react';
+import { Loader2, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Database, Download, Undo2, History, RefreshCw } from 'lucide-react';
 
 const ROLE_LABELS = {
   insert: { ar: 'إضافة', cls: 'bg-green-50 text-green-700 dark:bg-green-950/40' },
@@ -11,6 +11,11 @@ const ROLE_LABELS = {
   skip: { ar: 'تخطي', cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40' },
   ambiguous: { ar: 'مطابقة غير مؤكدة', cls: 'bg-orange-50 text-orange-700 dark:bg-orange-950/40' },
   duplicate_in_file: { ar: 'مكرر في الملف', cls: 'bg-red-50 text-red-700 dark:bg-red-950/40' },
+};
+
+const TYPE_LABEL = {
+  teachers: 'معلمون',
+  students: 'طلاب',
 };
 
 function csvEscape(v) {
@@ -31,7 +36,161 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
+function formatDate(isoStr) {
+  if (!isoStr) return '—';
+  try {
+    return new Date(isoStr).toLocaleString('ar-SA', {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+  } catch {
+    return isoStr;
+  }
+}
+
+function HistoryTab({ api, nassaqError }) {
+  const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState(null);
+
+  const fetchHistory = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/noor-import/history');
+      setHistory(res.data.history || []);
+    } catch (err) {
+      nassaqError(err?.response?.data?.detail || 'تعذّر تحميل سجل الاستيرادات');
+    } finally {
+      setLoading(false);
+    }
+  }, [api, nassaqError]);
+
+  useEffect(() => { fetchHistory(); }, [fetchHistory]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        جاري التحميل…
+      </div>
+    );
+  }
+
+  if (!history) return null;
+
+  if (history.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
+        <History className="h-8 w-8 opacity-40" />
+        <p className="text-sm">لا توجد عمليات استيراد مسجّلة بعد.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">{history.length} عملية استيراد — الأحدث أولاً</p>
+        <Button size="sm" variant="outline" onClick={fetchHistory} disabled={loading} type="button">
+          <RefreshCw className="h-3.5 w-3.5 me-1.5" />
+          تحديث
+        </Button>
+      </div>
+      <div className="space-y-2">
+        {history.map((row) => {
+          const creds = row.credentials_csv || [];
+          const classIds = row.created_class_ids || [];
+          const createdIds = row.created_ids || [];
+          const updatedIds = row.updated_ids || [];
+          const typeLabel = TYPE_LABEL[row.detected_type] || row.detected_type;
+          return (
+            <div
+              key={row.id}
+              className="rounded-xl border p-4 bg-background space-y-3"
+            >
+              <div className="flex flex-wrap items-start gap-2 justify-between">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">
+                      {typeLabel}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">{formatDate(row.committed_at)}</span>
+                  </div>
+                  {row.actor_name && (
+                    <p className="text-xs text-muted-foreground">بواسطة: {row.actor_name}</p>
+                  )}
+                </div>
+                {creds.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    type="button"
+                    onClick={() => downloadCsv(`noor_import_credentials_${row.id}.csv`, creds)}
+                    className="shrink-0"
+                  >
+                    <Download className="h-3.5 w-3.5 me-1.5" />
+                    تنزيل بيانات الدخول ({creds.length})
+                  </Button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center text-xs">
+                <div className="p-1.5 rounded bg-green-50 dark:bg-green-950/30">
+                  <p className="text-base font-bold text-green-600">{row.imported_count}</p>
+                  <p className="text-muted-foreground">أُضيف</p>
+                </div>
+                <div className="p-1.5 rounded bg-blue-50 dark:bg-blue-950/30">
+                  <p className="text-base font-bold text-blue-600">{row.updated_count}</p>
+                  <p className="text-muted-foreground">حُدِّث</p>
+                </div>
+                <div className="p-1.5 rounded bg-amber-50 dark:bg-amber-950/30">
+                  <p className="text-base font-bold text-amber-600">{row.skipped_count}</p>
+                  <p className="text-muted-foreground">تخطّى</p>
+                </div>
+                <div className="p-1.5 rounded bg-red-50 dark:bg-red-950/30">
+                  <p className="text-base font-bold text-red-600">{row.failed_count}</p>
+                  <p className="text-muted-foreground">فشل</p>
+                </div>
+                <div className="p-1.5 rounded bg-red-50 dark:bg-red-950/30">
+                  <p className="text-base font-bold text-red-700">{row.duplicates_count}</p>
+                  <p className="text-muted-foreground">مكرر</p>
+                </div>
+                {row.detected_type === 'students' && (
+                  <div className="p-1.5 rounded bg-yellow-50 dark:bg-yellow-950/30">
+                    <p className="text-base font-bold text-yellow-700">{row.unclassified_count}</p>
+                    <p className="text-muted-foreground">بلا فصل</p>
+                  </div>
+                )}
+              </div>
+
+              {(classIds.length > 0 || createdIds.length > 0 || updatedIds.length > 0) && (
+                <div className="text-xs text-muted-foreground flex flex-wrap gap-3">
+                  {createdIds.length > 0 && (
+                    <span>
+                      <span className="font-medium text-foreground">{createdIds.length}</span> {row.detected_type === 'teachers' ? 'معلم جديد' : 'طالب جديد'}
+                    </span>
+                  )}
+                  {updatedIds.length > 0 && (
+                    <span>
+                      <span className="font-medium text-foreground">{updatedIds.length}</span> {row.detected_type === 'teachers' ? 'معلم محدَّث' : 'طالب محدَّث'}
+                    </span>
+                  )}
+                  {classIds.length > 0 && (
+                    <span>
+                      <span className="font-medium text-foreground">{classIds.length}</span> فصل أُنشئ تلقائياً
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassaqConfirm, nassaqInfo, t, onComplete }) {
+  const [activeTab, setActiveTab] = useState('import');
   const [file, setFile] = useState(null);
   const [parsing, setParsing] = useState(false);
   const [committing, setCommitting] = useState(false);
@@ -320,9 +479,6 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
           }
           const otherRefused = refused.length - refusedHas.length;
           if (otherRefused > 0) msg += ` تعذّر حذف ${otherRefused} فصلاً.`;
-          // Clear the affordance — successfully undone classes are
-          // gone, and anything refused (has students, etc.) is no
-          // longer safely undoable from this flow.
           setUndoableClasses([]);
           if (nassaqInfo) nassaqInfo(msg);
         } catch (err) {
@@ -391,6 +547,13 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
 
   const detectedLabel = preview?.detected_type === 'teachers' ? 'تقرير المعلمين (نور)' : preview?.detected_type === 'students' ? 'إرشاد الطلاب (نور)' : '';
 
+  const tabCls = (key) =>
+    `px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+      activeTab === key
+        ? 'bg-brand-turquoise text-white shadow-sm'
+        : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+    }`;
+
   return (
     <Card className="mb-2 border-brand-turquoise/40">
       <CardHeader>
@@ -398,296 +561,315 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         <CardDescription>ارفع تقرير نور كما هو دون تعديل — سيتم اكتشاف نوع التقرير ومعاينته قبل التنفيذ.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <Input type="file" accept=".xlsx,.xls" onChange={onSelect} className="max-w-sm" />
-          {file && <Badge variant="outline">{file.name}</Badge>}
-          <Button onClick={onParse} disabled={parsing || !file} type="button">
-            {parsing ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <FileSpreadsheet className="h-4 w-4 me-2" />}
-            معاينة
-          </Button>
+        <div className="flex gap-1 p-1 bg-muted/60 rounded-xl w-fit">
+          <button type="button" className={tabCls('import')} onClick={() => setActiveTab('import')}>
+            <Upload className="inline h-3.5 w-3.5 me-1.5 -mt-0.5" />
+            استيراد جديد
+          </button>
+          <button type="button" className={tabCls('history')} onClick={() => setActiveTab('history')}>
+            <History className="inline h-3.5 w-3.5 me-1.5 -mt-0.5" />
+            سجل الاستيرادات
+          </button>
         </div>
 
-        {preview && (
-          <div className="space-y-3 border rounded-xl p-4 bg-muted/30">
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <Badge className="bg-brand-turquoise/15 text-brand-turquoise">{detectedLabel}</Badge>
-              <span className="text-muted-foreground">صف العناوين: {preview.header_row}</span>
-              {preview.sheet_name && <span className="text-muted-foreground">| الورقة: {preview.sheet_name}</span>}
+        {activeTab === 'history' && (
+          <HistoryTab api={api} nassaqError={nassaqError} />
+        )}
+
+        {activeTab === 'import' && (
+          <>
+            <div className="flex flex-wrap items-center gap-3">
+              <Input type="file" accept=".xlsx,.xls" onChange={onSelect} className="max-w-sm" />
+              {file && <Badge variant="outline">{file.name}</Badge>}
+              <Button onClick={onParse} disabled={parsing || !file} type="button">
+                {parsing ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <FileSpreadsheet className="h-4 w-4 me-2" />}
+                معاينة
+              </Button>
             </div>
-            <div className="grid grid-cols-4 md:grid-cols-7 gap-2 text-center text-xs">
-              <div className="p-2 rounded bg-background border"><p className="text-lg font-bold">{preview.counts?.total || 0}</p><p className="text-muted-foreground">الإجمالي</p></div>
-              <div className="p-2 rounded bg-green-50 dark:bg-green-950/30" data-testid="bucket-insert"><p className="text-lg font-bold text-green-600">{preview.counts?.insert || 0}</p><p className="text-muted-foreground">جاهز للإضافة</p></div>
-              <div className="p-2 rounded bg-blue-50 dark:bg-blue-950/30" data-testid="bucket-update"><p className="text-lg font-bold text-blue-600">{preview.counts?.update || 0}</p><p className="text-muted-foreground">تحديث الموجود</p></div>
-              <div className="p-2 rounded bg-red-50 dark:bg-red-950/30" data-testid="bucket-duplicate"><p className="text-lg font-bold text-red-600">{preview.counts?.duplicate_in_file || 0}</p><p className="text-muted-foreground">مكرر في الملف (سيتم تجاهله)</p></div>
-              <div className="p-2 rounded bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-300" data-testid="bucket-unclassified"><p className="text-lg font-bold text-yellow-700">{preview.counts?.unclassified || 0}</p><p className="text-muted-foreground">بدون فصل</p></div>
-              <div className="p-2 rounded bg-orange-50 dark:bg-orange-950/30"><p className="text-lg font-bold text-orange-600">{preview.counts?.ambiguous || 0}</p><p className="text-muted-foreground">غير مؤكد</p></div>
-              <div className="p-2 rounded bg-amber-50 dark:bg-amber-950/30"><p className="text-lg font-bold text-amber-600">{preview.counts?.skip || 0}</p><p className="text-muted-foreground">تخطي</p></div>
-            </div>
-            {(preview.counts?.unclassified || 0) > 0 && (
-              <div
-                data-testid="unclassified-banner"
-                className="sticky top-0 z-10 text-xs p-3 rounded border border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30 text-yellow-900 dark:text-yellow-100 flex items-start gap-2"
-              >
-                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                <div className="flex-1">
-                  <p className="font-medium">سيتم استيراد {preview.counts.unclassified} صفاً بدون ربطه بفصل دراسي.</p>
-                  <p className="text-yellow-800 dark:text-yellow-200 mt-0.5">
-                    تعذّر مطابقة قيم "رقم الصف" / "الفصل" في الملف مع فصول المدرسة الحالية.
-                  </p>
-                  {needsClassEditor && (
-                    <div className="mt-2 space-y-2">
-                      <p className="text-[11px] text-yellow-800 dark:text-yellow-200">
-                        راجع السعة واختر رائد الفصل والقاعة لكل صف قبل الإنشاء (السعة الافتراضية 30، يمكنك تركها كما هي).
+
+            {preview && (
+              <div className="space-y-3 border rounded-xl p-4 bg-muted/30">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <Badge className="bg-brand-turquoise/15 text-brand-turquoise">{detectedLabel}</Badge>
+                  <span className="text-muted-foreground">صف العناوين: {preview.header_row}</span>
+                  {preview.sheet_name && <span className="text-muted-foreground">| الورقة: {preview.sheet_name}</span>}
+                </div>
+                <div className="grid grid-cols-4 md:grid-cols-7 gap-2 text-center text-xs">
+                  <div className="p-2 rounded bg-background border"><p className="text-lg font-bold">{preview.counts?.total || 0}</p><p className="text-muted-foreground">الإجمالي</p></div>
+                  <div className="p-2 rounded bg-green-50 dark:bg-green-950/30" data-testid="bucket-insert"><p className="text-lg font-bold text-green-600">{preview.counts?.insert || 0}</p><p className="text-muted-foreground">جاهز للإضافة</p></div>
+                  <div className="p-2 rounded bg-blue-50 dark:bg-blue-950/30" data-testid="bucket-update"><p className="text-lg font-bold text-blue-600">{preview.counts?.update || 0}</p><p className="text-muted-foreground">تحديث الموجود</p></div>
+                  <div className="p-2 rounded bg-red-50 dark:bg-red-950/30" data-testid="bucket-duplicate"><p className="text-lg font-bold text-red-600">{preview.counts?.duplicate_in_file || 0}</p><p className="text-muted-foreground">مكرر في الملف (سيتم تجاهله)</p></div>
+                  <div className="p-2 rounded bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-300" data-testid="bucket-unclassified"><p className="text-lg font-bold text-yellow-700">{preview.counts?.unclassified || 0}</p><p className="text-muted-foreground">بدون فصل</p></div>
+                  <div className="p-2 rounded bg-orange-50 dark:bg-orange-950/30"><p className="text-lg font-bold text-orange-600">{preview.counts?.ambiguous || 0}</p><p className="text-muted-foreground">غير مؤكد</p></div>
+                  <div className="p-2 rounded bg-amber-50 dark:bg-amber-950/30"><p className="text-lg font-bold text-amber-600">{preview.counts?.skip || 0}</p><p className="text-muted-foreground">تخطي</p></div>
+                </div>
+                {(preview.counts?.unclassified || 0) > 0 && (
+                  <div
+                    data-testid="unclassified-banner"
+                    className="sticky top-0 z-10 text-xs p-3 rounded border border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30 text-yellow-900 dark:text-yellow-100 flex items-start gap-2"
+                  >
+                    <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-medium">سيتم استيراد {preview.counts.unclassified} صفاً بدون ربطه بفصل دراسي.</p>
+                      <p className="text-yellow-800 dark:text-yellow-200 mt-0.5">
+                        تعذّر مطابقة قيم "رقم الصف" / "الفصل" في الملف مع فصول المدرسة الحالية.
                       </p>
-                      <div className="max-h-[220px] overflow-auto border border-yellow-300 dark:border-yellow-700 rounded">
-                        <table className="w-full text-[11px]" data-testid="missing-class-pairs">
-                          <thead className="bg-yellow-100 dark:bg-yellow-900/40">
-                            <tr>
-                              <th className="p-1.5 text-start">الصف / الفصل</th>
-                              <th className="p-1.5 text-start">عدد الطلاب</th>
-                              <th className="p-1.5 text-start">السعة</th>
-                              <th className="p-1.5 text-start">رائد الفصل</th>
-                              <th className="p-1.5 text-start">القاعة</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {missingClassPairs.map((p, i) => {
-                              const key = `${p.grade_code}||${p.section_code}`;
-                              const ov = classOverrides[key] || {};
-                              return (
-                                <tr key={i} className="border-t border-yellow-200 dark:border-yellow-800">
-                                  <td className="p-1.5 font-medium">{p.grade_code || '—'} / {p.section_code || '—'}</td>
-                                  <td className="p-1.5">{p.rows}</td>
-                                  <td className="p-1.5">
-                                    <input
-                                      type="number"
-                                      min={1}
-                                      max={500}
-                                      placeholder="30"
-                                      value={ov.capacity ?? ''}
-                                      onChange={(e) => setOverride(key, { capacity: e.target.value })}
-                                      data-testid={`capacity-input-${i}`}
-                                      className="w-16 px-1.5 py-0.5 rounded border border-yellow-300 dark:border-yellow-700 bg-white dark:bg-yellow-950/60 text-[11px]"
-                                    />
-                                  </td>
-                                  <td className="p-1.5">
-                                    <select
-                                      value={ov.homeroom_teacher_id || ''}
-                                      onChange={(e) => setOverride(key, { homeroom_teacher_id: e.target.value || undefined })}
-                                      disabled={loadingTeachers}
-                                      data-testid={`homeroom-select-${i}`}
-                                      className="max-w-[180px] px-1.5 py-0.5 rounded border border-yellow-300 dark:border-yellow-700 bg-white dark:bg-yellow-950/60 text-[11px]"
-                                    >
-                                      <option value="">{loadingTeachers ? 'جارٍ التحميل…' : 'بدون'}</option>
-                                      {teachersList.map(t => (
-                                        <option key={t.id} value={t.id}>{t.full_name}</option>
-                                      ))}
-                                    </select>
-                                  </td>
-                                  <td className="p-1.5">
-                                    <select
-                                      value={ov.classroom_id || ''}
-                                      onChange={(e) => setOverride(key, { classroom_id: e.target.value || undefined })}
-                                      disabled={loadingClassrooms}
-                                      data-testid={`classroom-select-${i}`}
-                                      className="max-w-[160px] px-1.5 py-0.5 rounded border border-yellow-300 dark:border-yellow-700 bg-white dark:bg-yellow-950/60 text-[11px]"
-                                    >
-                                      <option value="">{loadingClassrooms ? 'جارٍ التحميل…' : 'بدون'}</option>
-                                      {classroomsList.map(c => (
-                                        <option key={c.id} value={c.id}>{c.name}</option>
-                                      ))}
-                                    </select>
-                                  </td>
+                      {needsClassEditor && (
+                        <div className="mt-2 space-y-2">
+                          <p className="text-[11px] text-yellow-800 dark:text-yellow-200">
+                            راجع السعة واختر رائد الفصل والقاعة لكل صف قبل الإنشاء (السعة الافتراضية 30، يمكنك تركها كما هي).
+                          </p>
+                          <div className="max-h-[220px] overflow-auto border border-yellow-300 dark:border-yellow-700 rounded">
+                            <table className="w-full text-[11px]" data-testid="missing-class-pairs">
+                              <thead className="bg-yellow-100 dark:bg-yellow-900/40">
+                                <tr>
+                                  <th className="p-1.5 text-start">الصف / الفصل</th>
+                                  <th className="p-1.5 text-start">عدد الطلاب</th>
+                                  <th className="p-1.5 text-start">السعة</th>
+                                  <th className="p-1.5 text-start">رائد الفصل</th>
+                                  <th className="p-1.5 text-start">القاعة</th>
                                 </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
+                              </thead>
+                              <tbody>
+                                {missingClassPairs.map((p, i) => {
+                                  const key = `${p.grade_code}||${p.section_code}`;
+                                  const ov = classOverrides[key] || {};
+                                  return (
+                                    <tr key={i} className="border-t border-yellow-200 dark:border-yellow-800">
+                                      <td className="p-1.5 font-medium">{p.grade_code || '—'} / {p.section_code || '—'}</td>
+                                      <td className="p-1.5">{p.rows}</td>
+                                      <td className="p-1.5">
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          max={500}
+                                          placeholder="30"
+                                          value={ov.capacity ?? ''}
+                                          onChange={(e) => setOverride(key, { capacity: e.target.value })}
+                                          data-testid={`capacity-input-${i}`}
+                                          className="w-16 px-1.5 py-0.5 rounded border border-yellow-300 dark:border-yellow-700 bg-white dark:bg-yellow-950/60 text-[11px]"
+                                        />
+                                      </td>
+                                      <td className="p-1.5">
+                                        <select
+                                          value={ov.homeroom_teacher_id || ''}
+                                          onChange={(e) => setOverride(key, { homeroom_teacher_id: e.target.value || undefined })}
+                                          disabled={loadingTeachers}
+                                          data-testid={`homeroom-select-${i}`}
+                                          className="max-w-[180px] px-1.5 py-0.5 rounded border border-yellow-300 dark:border-yellow-700 bg-white dark:bg-yellow-950/60 text-[11px]"
+                                        >
+                                          <option value="">{loadingTeachers ? 'جارٍ التحميل…' : 'بدون'}</option>
+                                          {teachersList.map(t => (
+                                            <option key={t.id} value={t.id}>{t.full_name}</option>
+                                          ))}
+                                        </select>
+                                      </td>
+                                      <td className="p-1.5">
+                                        <select
+                                          value={ov.classroom_id || ''}
+                                          onChange={(e) => setOverride(key, { classroom_id: e.target.value || undefined })}
+                                          disabled={loadingClassrooms}
+                                          data-testid={`classroom-select-${i}`}
+                                          className="max-w-[160px] px-1.5 py-0.5 rounded border border-yellow-300 dark:border-yellow-700 bg-white dark:bg-yellow-950/60 text-[11px]"
+                                        >
+                                          <option value="">{loadingClassrooms ? 'جارٍ التحميل…' : 'بدون'}</option>
+                                          {classroomsList.map(c => (
+                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                          ))}
+                                        </select>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                          <Button
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                            disabled={creatingClasses}
+                            onClick={onCreateMissingClasses}
+                            data-testid="btn-create-missing-classes"
+                            className="border-yellow-500 text-yellow-900 hover:bg-yellow-100 dark:text-yellow-100 dark:hover:bg-yellow-900/40"
+                          >
+                            {creatingClasses ? <Loader2 className="h-3.5 w-3.5 animate-spin me-2" /> : <Database className="h-3.5 w-3.5 me-2" />}
+                            إنشاء الفصول الناقصة وإعادة المطابقة
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {undoableClasses.length > 0 && (
+                  <div
+                    data-testid="undo-created-classes-banner"
+                    className="text-xs p-3 rounded border border-blue-300 bg-blue-50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-100 flex items-start gap-2"
+                  >
+                    <Undo2 className="h-4 w-4 mt-0.5 shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <p className="font-medium">
+                        تم إنشاء {undoableClasses.length} فصلاً للتو — يمكنك التراجع قبل المتابعة.
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {undoableClasses.slice(0, 12).map((c, i) => (
+                          <span
+                            key={c.class_id || i}
+                            className="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 border border-blue-300 dark:border-blue-700 text-[11px]"
+                          >
+                            {c.grade_code || '—'} / {c.section_code || '—'}
+                          </span>
+                        ))}
+                        {undoableClasses.length > 12 && (
+                          <span className="text-[11px] text-blue-800 dark:text-blue-200">
+                            +{undoableClasses.length - 12}
+                          </span>
+                        )}
                       </div>
                       <Button
                         size="sm"
                         type="button"
                         variant="outline"
-                        disabled={creatingClasses}
-                        onClick={onCreateMissingClasses}
-                        data-testid="btn-create-missing-classes"
-                        className="border-yellow-500 text-yellow-900 hover:bg-yellow-100 dark:text-yellow-100 dark:hover:bg-yellow-900/40"
+                        disabled={undoingClasses}
+                        onClick={onUndoCreatedClasses}
+                        data-testid="btn-undo-created-classes"
+                        className="border-blue-500 text-blue-900 hover:bg-blue-100 dark:text-blue-100 dark:hover:bg-blue-900/40"
                       >
-                        {creatingClasses ? <Loader2 className="h-3.5 w-3.5 animate-spin me-2" /> : <Database className="h-3.5 w-3.5 me-2" />}
-                        إنشاء الفصول الناقصة وإعادة المطابقة
+                        {undoingClasses ? <Loader2 className="h-3.5 w-3.5 animate-spin me-2" /> : <Undo2 className="h-3.5 w-3.5 me-2" />}
+                        تراجع عن إنشاء الفصول
                       </Button>
                     </div>
-                  )}
-                </div>
-              </div>
-            )}
-            {undoableClasses.length > 0 && (
-              <div
-                data-testid="undo-created-classes-banner"
-                className="text-xs p-3 rounded border border-blue-300 bg-blue-50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-100 flex items-start gap-2"
-              >
-                <Undo2 className="h-4 w-4 mt-0.5 shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <p className="font-medium">
-                    تم إنشاء {undoableClasses.length} فصلاً للتو — يمكنك التراجع قبل المتابعة.
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {undoableClasses.slice(0, 12).map((c, i) => (
-                      <span
-                        key={c.class_id || i}
-                        className="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 border border-blue-300 dark:border-blue-700 text-[11px]"
-                      >
-                        {c.grade_code || '—'} / {c.section_code || '—'}
-                      </span>
-                    ))}
-                    {undoableClasses.length > 12 && (
-                      <span className="text-[11px] text-blue-800 dark:text-blue-200">
-                        +{undoableClasses.length - 12}
-                      </span>
-                    )}
                   </div>
-                  <Button
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                    disabled={undoingClasses}
-                    onClick={onUndoCreatedClasses}
-                    data-testid="btn-undo-created-classes"
-                    className="border-blue-500 text-blue-900 hover:bg-blue-100 dark:text-blue-100 dark:hover:bg-blue-900/40"
-                  >
-                    {undoingClasses ? <Loader2 className="h-3.5 w-3.5 animate-spin me-2" /> : <Undo2 className="h-3.5 w-3.5 me-2" />}
-                    تراجع عن إنشاء الفصول
+                )}
+                {ambiguousRowIndexes.length > 0 && (
+                  <div className="text-xs p-2 rounded bg-orange-50 dark:bg-orange-950/20 text-orange-800 dark:text-orange-200">
+                    توجد {ambiguousRowIndexes.length} مطابقة غير مؤكدة — فعّل الخانة لكل صف تريد معالجته كصف جديد، وإلا سيتم تخطيه.
+                  </div>
+                )}
+                <div className="max-h-[280px] overflow-y-auto border rounded">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted sticky top-0"><tr>
+                      <th className="p-2 text-start">#</th>
+                      <th className="p-2 text-start">الاسم</th>
+                      <th className="p-2 text-start">المعرّف</th>
+                      <th className="p-2 text-start">الإجراء</th>
+                      <th className="p-2 text-start">ملاحظات</th>
+                    </tr></thead>
+                    <tbody>
+                      {(preview.rows || []).slice(0, 200).map((r, i) => {
+                        const role = ROLE_LABELS[r.dedupe] || ROLE_LABELS.skip;
+                        const id = r.data?.national_id || r.data?.student_number || '';
+                        const isAmb = r.dedupe === 'ambiguous';
+                        return (
+                          <tr key={i} className="border-t">
+                            <td className="p-2 text-muted-foreground">{r.row_index}</td>
+                            <td className="p-2">{r.data?.full_name || '—'}</td>
+                            <td className="p-2 font-mono text-[11px]">{id || '—'}</td>
+                            <td className="p-2">
+                              <span className={`px-2 py-0.5 rounded text-[11px] ${role.cls}`}>{role.ar}</span>
+                              {isAmb && (
+                                <label className="ms-2 inline-flex items-center gap-1 text-[11px] cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!ambiguousAccept[r.row_index]}
+                                    onChange={(e) => setAmbiguousAccept(s => ({ ...s, [r.row_index]: e.target.checked }))}
+                                  />
+                                  معالجة كصف جديد
+                                </label>
+                              )}
+                            </td>
+                            <td className="p-2 text-amber-700">
+                              {(r.issues || []).length > 0 && <AlertTriangle className="inline h-3 w-3 me-1" />}
+                              {(r.issues || []).join('، ')}
+                              {r.class_unresolved && <span className="ms-1 text-amber-600">(تعذّر مطابقة الفصل)</span>}
+                              {r.student_number_generated && <span className="ms-1 text-blue-600">(رقم داخلي مُولّد)</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex justify-end">
+                  <Button onClick={onCommit} disabled={committing} type="button" className="bg-brand-turquoise hover:bg-brand-turquoise/90">
+                    {committing ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Upload className="h-4 w-4 me-2" />}
+                    تنفيذ الاستيراد
                   </Button>
                 </div>
               </div>
             )}
-            {ambiguousRowIndexes.length > 0 && (
-              <div className="text-xs p-2 rounded bg-orange-50 dark:bg-orange-950/20 text-orange-800 dark:text-orange-200">
-                توجد {ambiguousRowIndexes.length} مطابقة غير مؤكدة — فعّل الخانة لكل صف تريد معالجته كصف جديد، وإلا سيتم تخطيه.
-              </div>
-            )}
-            <div className="max-h-[280px] overflow-y-auto border rounded">
-              <table className="w-full text-xs">
-                <thead className="bg-muted sticky top-0"><tr>
-                  <th className="p-2 text-start">#</th>
-                  <th className="p-2 text-start">الاسم</th>
-                  <th className="p-2 text-start">المعرّف</th>
-                  <th className="p-2 text-start">الإجراء</th>
-                  <th className="p-2 text-start">ملاحظات</th>
-                </tr></thead>
-                <tbody>
-                  {(preview.rows || []).slice(0, 200).map((r, i) => {
-                    const role = ROLE_LABELS[r.dedupe] || ROLE_LABELS.skip;
-                    const id = r.data?.national_id || r.data?.student_number || '';
-                    const isAmb = r.dedupe === 'ambiguous';
-                    return (
-                      <tr key={i} className="border-t">
-                        <td className="p-2 text-muted-foreground">{r.row_index}</td>
-                        <td className="p-2">{r.data?.full_name || '—'}</td>
-                        <td className="p-2 font-mono text-[11px]">{id || '—'}</td>
-                        <td className="p-2">
-                          <span className={`px-2 py-0.5 rounded text-[11px] ${role.cls}`}>{role.ar}</span>
-                          {isAmb && (
-                            <label className="ms-2 inline-flex items-center gap-1 text-[11px] cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={!!ambiguousAccept[r.row_index]}
-                                onChange={(e) => setAmbiguousAccept(s => ({ ...s, [r.row_index]: e.target.checked }))}
-                              />
-                              معالجة كصف جديد
-                            </label>
-                          )}
-                        </td>
-                        <td className="p-2 text-amber-700">
-                          {(r.issues || []).length > 0 && <AlertTriangle className="inline h-3 w-3 me-1" />}
-                          {(r.issues || []).join('، ')}
-                          {r.class_unresolved && <span className="ms-1 text-amber-600">(تعذّر مطابقة الفصل)</span>}
-                          {r.student_number_generated && <span className="ms-1 text-blue-600">(رقم داخلي مُولّد)</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div className="flex justify-end">
-              <Button onClick={onCommit} disabled={committing} type="button" className="bg-brand-turquoise hover:bg-brand-turquoise/90">
-                {committing ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Upload className="h-4 w-4 me-2" />}
-                تنفيذ الاستيراد
-              </Button>
-            </div>
-          </div>
-        )}
 
-        {result && (
-          <div className="border rounded-xl p-4 bg-green-50/40 dark:bg-green-950/10 space-y-2">
-            <div className="flex items-center gap-2 font-medium text-green-700"><CheckCircle2 className="h-5 w-5" />اكتمل الاستيراد</div>
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-center text-xs">
-              <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-green-600">{result.imported || 0}</p><p className="text-muted-foreground">تمت الإضافة</p></div>
-              <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-blue-600">{result.updated || 0}</p><p className="text-muted-foreground">تم التحديث</p></div>
-              <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-red-700">{result.duplicates || 0}</p><p className="text-muted-foreground">مكرر في الملف (تم تجاهله)</p></div>
-              <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-yellow-700">{result.unclassified || 0}</p><p className="text-muted-foreground">حُفظ بدون فصل</p></div>
-              <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-amber-600">{result.skipped || 0}</p><p className="text-muted-foreground">تم التخطي</p></div>
-              <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-red-600">{result.failed || 0}</p><p className="text-muted-foreground">فشل</p></div>
-            </div>
-            {undoToken && (undoableStudentIds.length > 0 || undoableTeacherIds.length > 0) && (
-              <div
-                data-testid="undo-committed-banner"
-                className="text-xs p-3 rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-100 flex items-start gap-2"
-              >
-                <Undo2 className="h-4 w-4 mt-0.5 shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <p className="font-medium">
-                    {[
-                      undoableStudentIds.length > 0 && `${undoableStudentIds.length} طالباً`,
-                      undoableTeacherIds.length > 0 && `${undoableTeacherIds.length} معلماً`,
-                    ].filter(Boolean).join(' و')}
-                    {' '}تم استيرادهم للتو — يمكنك التراجع قبل إغلاق هذا القسم.
-                  </p>
-                  <p className="text-amber-800 dark:text-amber-200">
-                    لن يتم حذف أي سجل له بيانات حضور أو درجات أو مهام — ستظهر حالات الرفض بوضوح.
-                  </p>
-                  <Button
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                    disabled={undoingCommitted}
-                    onClick={onUndoImported}
-                    data-testid="btn-undo-committed"
-                    className="border-amber-500 text-amber-900 hover:bg-amber-100 dark:text-amber-100 dark:hover:bg-amber-900/40"
-                  >
-                    {undoingCommitted ? <Loader2 className="h-3.5 w-3.5 animate-spin me-2" /> : <Undo2 className="h-3.5 w-3.5 me-2" />}
-                    تراجع عن استيراد السجلات
-                  </Button>
+            {result && (
+              <div className="border rounded-xl p-4 bg-green-50/40 dark:bg-green-950/10 space-y-2">
+                <div className="flex items-center gap-2 font-medium text-green-700"><CheckCircle2 className="h-5 w-5" />اكتمل الاستيراد</div>
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-center text-xs">
+                  <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-green-600">{result.imported || 0}</p><p className="text-muted-foreground">تمت الإضافة</p></div>
+                  <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-blue-600">{result.updated || 0}</p><p className="text-muted-foreground">تم التحديث</p></div>
+                  <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-red-700">{result.duplicates || 0}</p><p className="text-muted-foreground">مكرر في الملف (تم تجاهله)</p></div>
+                  <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-yellow-700">{result.unclassified || 0}</p><p className="text-muted-foreground">حُفظ بدون فصل</p></div>
+                  <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-amber-600">{result.skipped || 0}</p><p className="text-muted-foreground">تم التخطي</p></div>
+                  <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-red-600">{result.failed || 0}</p><p className="text-muted-foreground">فشل</p></div>
                 </div>
-              </div>
-            )}
-            {(result.credentials_csv || []).length > 0 && (
-              <div className="flex justify-end">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  type="button"
-                  onClick={() => downloadCsv(`noor_import_credentials_${Date.now()}.csv`, result.credentials_csv)}
-                >
-                  <Download className="h-4 w-4 me-2" />
-                  تنزيل بيانات الدخول ({result.credentials_csv.length})
-                </Button>
-              </div>
-            )}
-            {(result.errors || []).length > 0 && (
-              <div className="max-h-[160px] overflow-y-auto space-y-1">
-                {result.errors.slice(0, 50).map((e, i) => (
-                  <div key={i} className="text-xs p-2 rounded bg-red-50 dark:bg-red-950/20 text-red-600">صف {e.row}: {e.message}</div>
-                ))}
-                {result.errors.length > 50 && (
-                  <div className="text-[11px] text-muted-foreground p-2">
-                    عرض أول 50 خطأ من أصل {result.errors.length}
+                {undoToken && (undoableStudentIds.length > 0 || undoableTeacherIds.length > 0) && (
+                  <div
+                    data-testid="undo-committed-banner"
+                    className="text-xs p-3 rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-100 flex items-start gap-2"
+                  >
+                    <Undo2 className="h-4 w-4 mt-0.5 shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <p className="font-medium">
+                        {[
+                          undoableStudentIds.length > 0 && `${undoableStudentIds.length} طالباً`,
+                          undoableTeacherIds.length > 0 && `${undoableTeacherIds.length} معلماً`,
+                        ].filter(Boolean).join(' و')}
+                        {' '}تم استيرادهم للتو — يمكنك التراجع قبل إغلاق هذا القسم.
+                      </p>
+                      <p className="text-amber-800 dark:text-amber-200">
+                        لن يتم حذف أي سجل له بيانات حضور أو درجات أو مهام — ستظهر حالات الرفض بوضوح.
+                      </p>
+                      <Button
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                        disabled={undoingCommitted}
+                        onClick={onUndoImported}
+                        data-testid="btn-undo-committed"
+                        className="border-amber-500 text-amber-900 hover:bg-amber-100 dark:text-amber-100 dark:hover:bg-amber-900/40"
+                      >
+                        {undoingCommitted ? <Loader2 className="h-3.5 w-3.5 animate-spin me-2" /> : <Undo2 className="h-3.5 w-3.5 me-2" />}
+                        تراجع عن استيراد السجلات
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {(result.credentials_csv || []).length > 0 && (
+                  <div className="flex justify-end">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      type="button"
+                      onClick={() => downloadCsv(`noor_import_credentials_${Date.now()}.csv`, result.credentials_csv)}
+                    >
+                      <Download className="h-4 w-4 me-2" />
+                      تنزيل بيانات الدخول ({result.credentials_csv.length})
+                    </Button>
+                  </div>
+                )}
+                {(result.errors || []).length > 0 && (
+                  <div className="max-h-[160px] overflow-y-auto space-y-1">
+                    {result.errors.slice(0, 50).map((e, i) => (
+                      <div key={i} className="text-xs p-2 rounded bg-red-50 dark:bg-red-950/20 text-red-600">صف {e.row}: {e.message}</div>
+                    ))}
+                    {result.errors.length > 50 && (
+                      <div className="text-[11px] text-muted-foreground p-2">
+                        عرض أول 50 خطأ من أصل {result.errors.length}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
-          </div>
+          </>
         )}
       </CardContent>
     </Card>
