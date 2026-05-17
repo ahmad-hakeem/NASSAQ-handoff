@@ -219,7 +219,34 @@ describe('NoorImportPanel inline class-detail editor (Task #390)', () => {
     expect(within(hrSelect).getByText('الأستاذة منى')).toBeInTheDocument();
   });
 
-  test('out-of-range capacity is rejected client-side and no POST is fired', async () => {
+  test('editor table renders one row per unclassified pair with capacity input and homeroom select', async () => {
+    const api = {
+      post: jest.fn(),
+      get: jest.fn().mockResolvedValue({ data: [
+        { id: 'ta', full_name: 'أستاذ أحمد', is_active: true },
+        { id: 'tb', full_name: 'أستاذة نور', is_active: true },
+      ] }),
+    };
+    renderWithProviders(api);
+    await seedPreview(api, _previewWithPair());
+
+    const table = await screen.findByTestId('missing-class-pairs');
+    expect(table).toBeInTheDocument();
+
+    // Exactly one data row for the single grade/section pair.
+    const rows = table.querySelectorAll('tbody tr');
+    expect(rows).toHaveLength(1);
+
+    // That row must contain a capacity input and a homeroom select.
+    expect(screen.getByTestId('capacity-input-0')).toBeInTheDocument();
+    expect(screen.getByTestId('homeroom-select-0')).toBeInTheDocument();
+
+    // Teachers are lazily fetched and must populate the dropdown.
+    await screen.findByText('أستاذ أحمد');
+    await screen.findByText('أستاذة نور');
+  });
+
+  test('out-of-range capacity surfaces a NassaqAlertDialog warning and does not POST', async () => {
     const api = {
       post: jest.fn(),
       get: jest.fn().mockResolvedValue({ data: [] }),
@@ -233,6 +260,36 @@ describe('NoorImportPanel inline class-detail editor (Task #390)', () => {
     });
     const createBtn = screen.getByRole('button', { name: /إنشاء الفصول الناقصة/ });
     await act(async () => { fireEvent.click(createBtn); });
+
+    // A NassaqAlertDialog warning must appear with the Arabic capacity message.
+    const dialog = await screen.findByTestId('nassaq-alert-dialog');
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveAttribute('data-nassaq-alert', 'warning');
+    expect(dialog.textContent).toMatch(/السعة يجب أن تكون رقماً صحيحاً بين 1 و 500/);
+
+    // The create-missing-classes endpoint must NOT have been called.
+    const createCalls = api.post.mock.calls.filter(c => String(c[0]).includes('/create-missing-classes'));
+    expect(createCalls).toHaveLength(0);
+  });
+
+  test('zero capacity is also rejected with a NassaqAlertDialog warning and does not POST', async () => {
+    const api = {
+      post: jest.fn(),
+      get: jest.fn().mockResolvedValue({ data: [] }),
+    };
+    renderWithProviders(api);
+    await seedPreview(api, _previewWithPair());
+
+    const capInput = await screen.findByTestId('capacity-input-0');
+    await act(async () => {
+      fireEvent.change(capInput, { target: { value: '0' } });
+    });
+    const createBtn = screen.getByRole('button', { name: /إنشاء الفصول الناقصة/ });
+    await act(async () => { fireEvent.click(createBtn); });
+
+    const dialog = await screen.findByTestId('nassaq-alert-dialog');
+    expect(dialog).toHaveAttribute('data-nassaq-alert', 'warning');
+    expect(dialog.textContent).toMatch(/السعة يجب أن تكون رقماً صحيحاً بين 1 و 500/);
 
     const createCalls = api.post.mock.calls.filter(c => String(c[0]).includes('/create-missing-classes'));
     expect(createCalls).toHaveLength(0);
