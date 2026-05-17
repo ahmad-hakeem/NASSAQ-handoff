@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -41,6 +41,9 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
   const [creatingClasses, setCreatingClasses] = useState(false);
   const [undoingClasses, setUndoingClasses] = useState(false);
   const [undoableClasses, setUndoableClasses] = useState([]);
+  const [classOverrides, setClassOverrides] = useState({}); // key: `${grade}||${section}` -> {capacity, homeroom_teacher_id}
+  const [teachersList, setTeachersList] = useState([]);
+  const [loadingTeachers, setLoadingTeachers] = useState(false);
 
   const ambiguousRowIndexes = useMemo(
     () => (preview?.rows || []).filter(r => r.dedupe === 'ambiguous').map(r => r.row_index),
@@ -60,6 +63,61 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
     }
     return Array.from(seen.values()).sort((a, b) => b.rows - a.rows);
   }, [preview]);
+
+  // Lazy-load active teachers the first time the editor is shown so the
+  // homeroom dropdown isn't fetched for imports that don't need it.
+  // A ref guards against double-fetch — depending on the state flags in
+  // the effect dep array would cancel our own in-flight request when
+  // `setLoadingTeachers(true)` triggers a re-render.
+  const needsClassEditor = missingClassPairs.length > 0 && preview?.detected_type === 'students';
+  const teachersFetchedRef = useRef(false);
+  useEffect(() => {
+    if (!needsClassEditor) return;
+    if (teachersFetchedRef.current) return;
+    teachersFetchedRef.current = true;
+    setLoadingTeachers(true);
+    api.get('/teachers', { params: { limit: 100 } })
+      .then(res => {
+        // `/teachers` has two registered handlers (academics_teacher_routes
+        // returns a raw array, teacher_management_routes returns
+        // `{teachers, total, ...}`) — accept both shapes, then keep only
+        // active rows so the dropdown never lets the principal pick
+        // someone the backend will hard-reject (active-only validation).
+        const raw = Array.isArray(res?.data)
+          ? res.data
+          : (Array.isArray(res?.data?.teachers) ? res.data.teachers : []);
+        const active = raw.filter(t => t && t.id && t.is_active !== false && t.status !== 'closed');
+        setTeachersList(active);
+      })
+      .catch(() => { setTeachersList([]); })
+      .finally(() => { setLoadingTeachers(false); });
+  }, [needsClassEditor, api]);
+  // Reset the fetched-once guard when the panel is reset to a fresh
+  // import (no preview) so a follow-up import re-pulls the teacher list.
+  useEffect(() => {
+    if (!preview) {
+      teachersFetchedRef.current = false;
+      setTeachersList([]);
+    }
+  }, [preview]);
+
+  // Reset overrides whenever the proposed pair set changes (e.g. after
+  // re-annotation following a successful create) so stale rows don't
+  // leak into the next round.
+  useEffect(() => {
+    setClassOverrides(prev => {
+      const validKeys = new Set(missingClassPairs.map(p => `${p.grade_code}||${p.section_code}`));
+      const next = {};
+      for (const k of Object.keys(prev)) {
+        if (validKeys.has(k)) next[k] = prev[k];
+      }
+      return next;
+    });
+  }, [missingClassPairs]);
+
+  const setOverride = (key, patch) => {
+    setClassOverrides(prev => ({ ...prev, [key]: { ...(prev[key] || {}), ...patch } }));
+  };
 
   const onSelect = (e) => {
     const f = e.target.files?.[0];
@@ -132,15 +190,52 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
   const onCreateMissingClasses = async () => {
     if (!preview?.import_draft_id) return;
     if (missingClassPairs.length === 0) return;
+    // Build the overrides body from the inline editor state. Only emit
+    // an entry when the principal actually changed something — bare
+    // pairs fall back to the server's hardcoded defaults (capacity 30,
+    // no homeroom).
+    const overrides = missingClassPairs
+      .map(p => {
+        const key = `${p.grade_code}||${p.section_code}`;
+        const ov = classOverrides[key] || {};
+        const hasCap = ov.capacity !== undefined && ov.capacity !== '' && ov.capacity !== null;
+        const hasHr = !!ov.homeroom_teacher_id;
+        if (!hasCap && !hasHr) return null;
+        const entry = { grade_code: p.grade_code, section_code: p.section_code };
+        if (hasCap) entry.capacity = Number(ov.capacity);
+        if (hasHr) entry.homeroom_teacher_id = ov.homeroom_teacher_id;
+        return entry;
+      })
+      .filter(Boolean);
+    // Client-side capacity validation — mirror the backend's 1..500
+    // range so the principal sees an Arabic error instead of a 400.
+    for (const o of overrides) {
+      if (o.capacity !== undefined && (!Number.isInteger(o.capacity) || o.capacity < 1 || o.capacity > 500)) {
+        nassaqWarning('السعة يجب أن تكون رقماً صحيحاً بين 1 و 500');
+        return;
+      }
+    }
     const pairsLabel = missingClassPairs
-      .map(p => `• ${p.grade_code || '—'} / ${p.section_code || '—'}  (${p.rows} صف)`)
+      .map(p => {
+        const key = `${p.grade_code}||${p.section_code}`;
+        const ov = classOverrides[key] || {};
+        const cap = (ov.capacity !== undefined && ov.capacity !== '' && ov.capacity !== null) ? Number(ov.capacity) : 30;
+        const teacher = ov.homeroom_teacher_id
+          ? (teachersList.find(t => t.id === ov.homeroom_teacher_id)?.full_name || '')
+          : '';
+        const hrLabel = teacher ? ` · رائد: ${teacher}` : '';
+        return `• ${p.grade_code || '—'} / ${p.section_code || '—'}  (${p.rows} صف، سعة ${cap}${hrLabel})`;
+      })
       .join('\n');
     nassaqConfirm(
-      `سيتم إنشاء ${missingClassPairs.length} فصلاً جديداً بإعدادات افتراضية (سعة 30) ثم إعادة مطابقة الطلاب تلقائياً.\n\nالفصول المقترحة:\n${pairsLabel}`,
+      `سيتم إنشاء ${missingClassPairs.length} فصلاً جديداً ثم إعادة مطابقة الطلاب تلقائياً.\n\nالفصول المقترحة:\n${pairsLabel}`,
       async () => {
         setCreatingClasses(true);
         try {
-          const res = await api.post(`/noor-import/draft/${preview.import_draft_id}/create-missing-classes`);
+          const res = await api.post(
+            `/noor-import/draft/${preview.import_draft_id}/create-missing-classes`,
+            overrides.length > 0 ? { overrides } : {},
+          );
           const data = res.data;
           setPreview(prev => prev ? { ...prev, rows: data.rows, counts: data.counts } : prev);
           const created = data.created_classes || [];
@@ -263,20 +358,60 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                   <p className="text-yellow-800 dark:text-yellow-200 mt-0.5">
                     تعذّر مطابقة قيم "رقم الصف" / "الفصل" في الملف مع فصول المدرسة الحالية.
                   </p>
-                  {missingClassPairs.length > 0 && preview?.detected_type === 'students' && (
+                  {needsClassEditor && (
                     <div className="mt-2 space-y-2">
-                      <div className="flex flex-wrap gap-1.5" data-testid="missing-class-pairs">
-                        {missingClassPairs.slice(0, 12).map((p, i) => (
-                          <span
-                            key={i}
-                            className="px-2 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900/40 border border-yellow-300 dark:border-yellow-700 text-[11px]"
-                          >
-                            {p.grade_code || '—'} / {p.section_code || '—'} · {p.rows}
-                          </span>
-                        ))}
-                        {missingClassPairs.length > 12 && (
-                          <span className="text-[11px] text-yellow-800 dark:text-yellow-200">+{missingClassPairs.length - 12}</span>
-                        )}
+                      <p className="text-[11px] text-yellow-800 dark:text-yellow-200">
+                        راجع السعة واختر رائد الفصل لكل صف قبل الإنشاء (السعة الافتراضية 30، يمكنك تركها كما هي).
+                      </p>
+                      <div className="max-h-[220px] overflow-auto border border-yellow-300 dark:border-yellow-700 rounded">
+                        <table className="w-full text-[11px]" data-testid="missing-class-pairs">
+                          <thead className="bg-yellow-100 dark:bg-yellow-900/40">
+                            <tr>
+                              <th className="p-1.5 text-start">الصف / الفصل</th>
+                              <th className="p-1.5 text-start">عدد الطلاب</th>
+                              <th className="p-1.5 text-start">السعة</th>
+                              <th className="p-1.5 text-start">رائد الفصل</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {missingClassPairs.map((p, i) => {
+                              const key = `${p.grade_code}||${p.section_code}`;
+                              const ov = classOverrides[key] || {};
+                              return (
+                                <tr key={i} className="border-t border-yellow-200 dark:border-yellow-800">
+                                  <td className="p-1.5 font-medium">{p.grade_code || '—'} / {p.section_code || '—'}</td>
+                                  <td className="p-1.5">{p.rows}</td>
+                                  <td className="p-1.5">
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={500}
+                                      placeholder="30"
+                                      value={ov.capacity ?? ''}
+                                      onChange={(e) => setOverride(key, { capacity: e.target.value })}
+                                      data-testid={`capacity-input-${i}`}
+                                      className="w-16 px-1.5 py-0.5 rounded border border-yellow-300 dark:border-yellow-700 bg-white dark:bg-yellow-950/60 text-[11px]"
+                                    />
+                                  </td>
+                                  <td className="p-1.5">
+                                    <select
+                                      value={ov.homeroom_teacher_id || ''}
+                                      onChange={(e) => setOverride(key, { homeroom_teacher_id: e.target.value || undefined })}
+                                      disabled={loadingTeachers}
+                                      data-testid={`homeroom-select-${i}`}
+                                      className="max-w-[180px] px-1.5 py-0.5 rounded border border-yellow-300 dark:border-yellow-700 bg-white dark:bg-yellow-950/60 text-[11px]"
+                                    >
+                                      <option value="">{loadingTeachers ? 'جارٍ التحميل…' : 'بدون'}</option>
+                                      {teachersList.map(t => (
+                                        <option key={t.id} value={t.id}>{t.full_name}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                       <Button
                         size="sm"

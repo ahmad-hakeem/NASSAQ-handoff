@@ -479,6 +479,7 @@ def create_noor_import_routes(db, get_current_user):
     @router.post("/draft/{draft_id}/create-missing-classes")
     async def create_missing_classes_endpoint(
         draft_id: str,
+        request: Request,
         current_user: dict = Depends(get_current_user),
     ):
         """Create the classes referenced by `class_unresolved` rows in a
@@ -508,6 +509,80 @@ def create_noor_import_routes(db, get_current_user):
         if draft["detected_type"] != STUDENT_REPORT:
             raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
 
+        # Optional per-pair overrides — `{overrides: [{grade_code,
+        # section_code, capacity?, homeroom_teacher_id?}]}`. The body
+        # is OPTIONAL (a bare POST keeps the old hardcoded-defaults
+        # behaviour). Anything malformed is rejected with a safe
+        # Arabic 400 — zero writes, zero draft mutation.
+        override_by_raw: Dict[str, Dict[str, Any]] = {}
+        try:
+            raw_body = await request.json()
+        except Exception:
+            raw_body = None
+        if raw_body is not None:
+            if not isinstance(raw_body, dict):
+                raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+            ov_list = raw_body.get("overrides")
+            if ov_list is not None:
+                if not isinstance(ov_list, list):
+                    raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+                # Validate homeroom_teacher_ids in one tenant-scoped query.
+                requested_teacher_ids: set = set()
+                for item in ov_list:
+                    if not isinstance(item, dict):
+                        raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+                    tid = item.get("homeroom_teacher_id")
+                    if tid:
+                        requested_teacher_ids.add(str(tid))
+                valid_teachers: Dict[str, str] = {}
+                if requested_teacher_ids:
+                    res = await db.session.execute(
+                        text(
+                            """
+                            SELECT id, full_name
+                            FROM teachers
+                            WHERE school_id = :sid
+                              AND COALESCE(is_active, TRUE) = TRUE
+                              AND id = ANY(:ids)
+                            """
+                        ),
+                        {"sid": school_id, "ids": list(requested_teacher_ids)},
+                    )
+                    for row in res.mappings().all():
+                        valid_teachers[str(row["id"])] = (row.get("full_name") or "").strip()
+                for item in ov_list:
+                    g = (item.get("grade_code") or "").strip()
+                    s = (item.get("section_code") or "").strip()
+                    if not g and not s:
+                        continue
+                    cap_raw = item.get("capacity")
+                    cap_val: Optional[int] = None
+                    if cap_raw is not None and cap_raw != "":
+                        try:
+                            cap_val = int(cap_raw)
+                        except (TypeError, ValueError):
+                            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+                        if cap_val < 1 or cap_val > 500:
+                            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+                    tid = item.get("homeroom_teacher_id")
+                    tid_resolved: Optional[str] = None
+                    tname_resolved: Optional[str] = None
+                    if tid:
+                        tid_str = str(tid)
+                        if tid_str not in valid_teachers:
+                            # Tenant-isolation: any teacher id that isn't
+                            # an active teacher of THIS school is rejected
+                            # (no silent drop — the principal explicitly
+                            # picked them).
+                            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+                        tid_resolved = tid_str
+                        tname_resolved = valid_teachers[tid_str] or None
+                    override_by_raw[f"{g}||{s}"] = {
+                        "capacity": cap_val,
+                        "homeroom_teacher_id": tid_resolved,
+                        "homeroom_teacher_name": tname_resolved,
+                    }
+
         payload = draft.get("payload") or {}
         rows: List[Dict[str, Any]] = payload.get("rows") or []
 
@@ -536,11 +611,15 @@ def create_noor_import_routes(db, get_current_user):
                     })
                 continue
             key = f"{ng}|{ns}"
+            ov = override_by_raw.get(f"{raw_grade}||{raw_section}") or {}
             proposed.setdefault(key, {
                 "grade_norm": ng,
                 "section_norm": ns,
                 "grade_label": raw_grade or ng,
                 "section_label": raw_section or ns,
+                "capacity": ov.get("capacity"),
+                "homeroom_teacher_id": ov.get("homeroom_teacher_id"),
+                "homeroom_teacher_name": ov.get("homeroom_teacher_name"),
             })
         for p in rejected_pairs:
             p.pop("_raw_key", None)
@@ -567,6 +646,9 @@ def create_noor_import_routes(db, get_current_user):
                 })
                 continue
             new_id = str(_uuid.uuid4())
+            cap_value = p.get("capacity") if p.get("capacity") is not None else 30
+            hr_id = p.get("homeroom_teacher_id")
+            hr_name = p.get("homeroom_teacher_name")
             try:
                 async with db.session.begin_nested():
                     await db.session.execute(
@@ -574,11 +656,14 @@ def create_noor_import_routes(db, get_current_user):
                             """
                             INSERT INTO classes
                                 (id, name, school_id, grade_level, section,
-                                 capacity, current_students, is_active,
-                                 created_at, updated_at)
+                                 capacity, current_students,
+                                 homeroom_teacher_id, homeroom_teacher_name,
+                                 is_active, created_at, updated_at)
                             VALUES
                                 (:id, :name, :sid, :grade, :section,
-                                 :cap, 0, TRUE, :now, :now)
+                                 :cap, 0,
+                                 :hr_id, :hr_name,
+                                 TRUE, :now, :now)
                             """
                         ),
                         {
@@ -587,7 +672,9 @@ def create_noor_import_routes(db, get_current_user):
                             "sid": school_id,
                             "grade": p["grade_norm"],
                             "section": p["section_norm"],
-                            "cap": 30,
+                            "cap": cap_value,
+                            "hr_id": hr_id,
+                            "hr_name": hr_name,
                             "now": now,
                         },
                     )
@@ -596,6 +683,9 @@ def create_noor_import_routes(db, get_current_user):
                     "class_id": new_id,
                     "grade_code": p["grade_label"],
                     "section_code": p["section_label"],
+                    "capacity": cap_value,
+                    "homeroom_teacher_id": hr_id,
+                    "homeroom_teacher_name": hr_name,
                 })
             except Exception as e:  # noqa: BLE001
                 logger.warning("noor create-missing-classes insert failed: %s", e)

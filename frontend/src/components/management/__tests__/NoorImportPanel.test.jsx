@@ -14,7 +14,7 @@
  * A regression here would re-introduce a quiet partial import.
  */
 import React from 'react';
-import { render, screen, fireEvent, act, within } from '@testing-library/react';
+import { render, screen, fireEvent, act, within, waitFor } from '@testing-library/react';
 import { NassaqAlertProvider, useNassaqAlert } from '../../ui/NassaqAlertDialog';
 import NoorImportPanel from '../NoorImportPanel';
 
@@ -139,5 +139,102 @@ describe('NoorImportPanel preview contracts (Task #387)', () => {
     });
     const commitCallsAfterCancel = api.post.mock.calls.filter(c => String(c[0]).includes('/noor-import/commit'));
     expect(commitCallsAfterCancel).toHaveLength(0);
+  });
+});
+
+// ---- Task #390 — inline class-detail editor in the unclassified banner ----
+const _previewWithPair = () => ({
+  import_draft_id: 'draft-xyz',
+  detected_type: 'students',
+  header_row: 2,
+  sheet_name: 'Sheet1',
+  counts: { total: 2, insert: 0, update: 0, duplicate_in_file: 0, unclassified: 2, ambiguous: 0, skip: 0 },
+  rows: [
+    { row_index: 1, dedupe: 'insert', class_unresolved: true, data: { grade_code: '7', section_code: 'A' } },
+    { row_index: 2, dedupe: 'insert', class_unresolved: true, data: { grade_code: '7', section_code: 'A' } },
+  ],
+});
+
+describe('NoorImportPanel inline class-detail editor (Task #390)', () => {
+  test('populates the homeroom dropdown from /teachers (raw-array shape) and sends overrides on confirm', async () => {
+    const api = {
+      post: jest.fn(),
+      // academics_teacher_routes.py raw-array shape
+      get: jest.fn().mockResolvedValue({ data: [
+        { id: 't1', full_name: 'الأستاذة سارة', is_active: true },
+        { id: 't2', full_name: 'مغادر', is_active: false },
+      ] }),
+    };
+    renderWithProviders(api);
+    await seedPreview(api, _previewWithPair());
+
+    const capInput = await screen.findByTestId('capacity-input-0');
+    expect(capInput).toBeInTheDocument();
+    // Wait for the lazy teachers fetch to resolve and populate options.
+    await screen.findByText('الأستاذة سارة');
+    const hrSelect = screen.getByTestId('homeroom-select-0');
+    // Active teachers only — inactive option must NOT appear.
+    expect(within(hrSelect).queryByText('مغادر')).toBeNull();
+    expect(within(hrSelect).getByText('الأستاذة سارة')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.change(capInput, { target: { value: '25' } });
+      fireEvent.change(hrSelect, { target: { value: 't1' } });
+    });
+
+    // Click the create-missing-classes button, then confirm the dialog.
+    const createBtn = screen.getByRole('button', { name: /إنشاء الفصول الناقصة/ });
+    api.post.mockResolvedValueOnce({ data: { created_classes: [{ id: 'c1', grade_code: '7', section_code: 'A', capacity: 25, homeroom_teacher_id: 't1', homeroom_teacher_name: 'الأستاذة سارة' }] } });
+    api.post.mockResolvedValueOnce({ data: _previewWithPair() }); // re-annotation
+    await act(async () => { fireEvent.click(createBtn); });
+    const dialog = await screen.findByTestId('nassaq-alert-dialog');
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'إنشاء وإعادة المطابقة' }));
+    });
+
+    await waitFor(() => {
+      const createCalls = api.post.mock.calls.filter(c => String(c[0]).includes('/create-missing-classes'));
+      expect(createCalls.length).toBeGreaterThanOrEqual(1);
+    });
+    const createCall = api.post.mock.calls.find(c => String(c[0]).includes('/create-missing-classes'));
+    expect(createCall[1]).toEqual({ overrides: [
+      { grade_code: '7', section_code: 'A', capacity: 25, homeroom_teacher_id: 't1' },
+    ]});
+  });
+
+  test('also accepts the {teachers} envelope shape', async () => {
+    const api = {
+      post: jest.fn(),
+      // teacher_management_routes.py envelope shape
+      get: jest.fn().mockResolvedValue({ data: { teachers: [
+        { id: 't9', full_name: 'الأستاذة منى', is_active: true },
+      ], total: 1 } }),
+    };
+    renderWithProviders(api);
+    await seedPreview(api, _previewWithPair());
+
+    await screen.findByTestId('homeroom-select-0');
+    await screen.findByText('الأستاذة منى');
+    const hrSelect = screen.getByTestId('homeroom-select-0');
+    expect(within(hrSelect).getByText('الأستاذة منى')).toBeInTheDocument();
+  });
+
+  test('out-of-range capacity is rejected client-side and no POST is fired', async () => {
+    const api = {
+      post: jest.fn(),
+      get: jest.fn().mockResolvedValue({ data: [] }),
+    };
+    renderWithProviders(api);
+    await seedPreview(api, _previewWithPair());
+
+    const capInput = await screen.findByTestId('capacity-input-0');
+    await act(async () => {
+      fireEvent.change(capInput, { target: { value: '9999' } });
+    });
+    const createBtn = screen.getByRole('button', { name: /إنشاء الفصول الناقصة/ });
+    await act(async () => { fireEvent.click(createBtn); });
+
+    const createCalls = api.post.mock.calls.filter(c => String(c[0]).includes('/create-missing-classes'));
+    expect(createCalls).toHaveLength(0);
   });
 });

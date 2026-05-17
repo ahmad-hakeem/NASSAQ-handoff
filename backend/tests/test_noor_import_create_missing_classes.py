@@ -161,6 +161,112 @@ async def test_teacher_draft_rejected(client, _db_session):
     assert r.status_code == 400
 
 
+async def test_overrides_apply_capacity_and_homeroom(client, _db_session):
+    """Task #390 — per-pair overrides set capacity + homeroom on the
+    newly-created classes, tenant-scoped on the homeroom_teacher_id."""
+    from datetime import datetime, timezone
+    user, school_id = await _seed_principal()
+    # Seed an active teacher in this school so the override resolves.
+    tid = str(uuid.uuid4())
+    await db.session.execute(
+        text(
+            """
+            INSERT INTO teachers (id, school_id, full_name, national_id,
+                                  email, phone, is_active,
+                                  created_at, updated_at)
+            VALUES (:id, :sid, 'الأستاذة سارة', '1234567890',
+                    :em, '0500000000', TRUE, :now, :now)
+            """
+        ),
+        {"id": tid, "sid": school_id, "em": f"t{tid[:6]}@x.test",
+         "now": datetime.now(timezone.utc)},
+    )
+    rows = [_row(1, "S1", "طالب", "1", "أ")]
+    draft_id = await _seed_student_draft(user["id"], school_id, rows)
+    await db.session.commit()
+
+    r = await client.post(
+        f"/noor-import/draft/{draft_id}/create-missing-classes",
+        headers=_headers(user),
+        json={"overrides": [
+            {"grade_code": "1", "section_code": "أ",
+             "capacity": 25, "homeroom_teacher_id": tid},
+        ]},
+    )
+    await db.session.commit()
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["created_classes"]) == 1
+    created = body["created_classes"][0]
+    assert created["capacity"] == 25
+    assert created["homeroom_teacher_id"] == tid
+    row = (await db.session.execute(
+        text("SELECT capacity, homeroom_teacher_id, homeroom_teacher_name "
+             "FROM classes WHERE id = :cid"),
+        {"cid": created["class_id"]},
+    )).mappings().one()
+    assert row["capacity"] == 25
+    assert row["homeroom_teacher_id"] == tid
+    assert row["homeroom_teacher_name"] == "الأستاذة سارة"
+
+
+async def test_overrides_reject_cross_tenant_homeroom(client, _db_session):
+    """Picking a teacher from a different school must hard-reject (no
+    silent drop) — tenant-isolation invariant."""
+    user_a, school_a = await _seed_principal()
+    user_b, school_b = await _seed_principal()
+    from datetime import datetime, timezone
+    tid_b = str(uuid.uuid4())
+    await db.session.execute(
+        text(
+            """
+            INSERT INTO teachers (id, school_id, full_name, national_id,
+                                  email, phone, is_active,
+                                  created_at, updated_at)
+            VALUES (:id, :sid, 'مدرس آخر', '9999999999',
+                    :em, '0511111111', TRUE, :now, :now)
+            """
+        ),
+        {"id": tid_b, "sid": school_b, "em": f"t{tid_b[:6]}@x.test",
+         "now": datetime.now(timezone.utc)},
+    )
+    rows = [_row(1, "S1", "طالب", "1", "1")]
+    draft_id = await _seed_student_draft(user_a["id"], school_a, rows)
+    await db.session.commit()
+
+    r = await client.post(
+        f"/noor-import/draft/{draft_id}/create-missing-classes",
+        headers=_headers(user_a),
+        json={"overrides": [
+            {"grade_code": "1", "section_code": "1",
+             "homeroom_teacher_id": tid_b},
+        ]},
+    )
+    assert r.status_code == 400
+    # No class created.
+    n = (await db.session.execute(
+        text("SELECT count(*) FROM classes WHERE school_id = :sid"),
+        {"sid": school_a},
+    )).scalar()
+    assert n == 0
+
+
+async def test_overrides_reject_invalid_capacity(client, _db_session):
+    user, school_id = await _seed_principal()
+    rows = [_row(1, "S1", "طالب", "1", "1")]
+    draft_id = await _seed_student_draft(user["id"], school_id, rows)
+    await db.session.commit()
+
+    r = await client.post(
+        f"/noor-import/draft/{draft_id}/create-missing-classes",
+        headers=_headers(user),
+        json={"overrides": [
+            {"grade_code": "1", "section_code": "1", "capacity": 0},
+        ]},
+    )
+    assert r.status_code == 400
+
+
 async def test_skips_pair_when_class_already_exists(client, _db_session):
     user, school_id = await _seed_principal()
     # Pre-create the class that the row would resolve to.
