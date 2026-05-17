@@ -559,8 +559,8 @@ def create_noor_import_routes(db, get_current_user):
             raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
 
         # Optional per-pair overrides — `{overrides: [{grade_code,
-        # section_code, capacity?, homeroom_teacher_id?}]}`. The body
-        # is OPTIONAL (a bare POST keeps the old hardcoded-defaults
+        # section_code, capacity?, homeroom_teacher_id?, classroom_id?}]}`.
+        # The body is OPTIONAL (a bare POST keeps the old hardcoded-defaults
         # behaviour). Anything malformed is rejected with a safe
         # Arabic 400 — zero writes, zero draft mutation.
         override_by_raw: Dict[str, Dict[str, Any]] = {}
@@ -575,14 +575,18 @@ def create_noor_import_routes(db, get_current_user):
             if ov_list is not None:
                 if not isinstance(ov_list, list):
                     raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
-                # Validate homeroom_teacher_ids in one tenant-scoped query.
+                # Collect ids to validate in bulk, tenant-scoped.
                 requested_teacher_ids: set = set()
+                requested_classroom_ids: set = set()
                 for item in ov_list:
                     if not isinstance(item, dict):
                         raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
                     tid = item.get("homeroom_teacher_id")
                     if tid:
                         requested_teacher_ids.add(str(tid))
+                    cid = item.get("classroom_id")
+                    if cid:
+                        requested_classroom_ids.add(str(cid))
                 valid_teachers: Dict[str, str] = {}
                 if requested_teacher_ids:
                     res = await db.session.execute(
@@ -599,6 +603,25 @@ def create_noor_import_routes(db, get_current_user):
                     )
                     for row in res.mappings().all():
                         valid_teachers[str(row["id"])] = (row.get("full_name") or "").strip()
+                # Validate classroom_ids in one tenant-scoped query.
+                # Reject classrooms that don't belong to this school or are
+                # marked unavailable — mirrors the active-only check on teachers.
+                valid_classrooms: set = set()
+                if requested_classroom_ids:
+                    res2 = await db.session.execute(
+                        text(
+                            """
+                            SELECT id
+                            FROM physical_classrooms
+                            WHERE tenant_id = :sid
+                              AND COALESCE(is_available, TRUE) = TRUE
+                              AND id = ANY(:ids)
+                            """
+                        ),
+                        {"sid": school_id, "ids": list(requested_classroom_ids)},
+                    )
+                    for row in res2.mappings().all():
+                        valid_classrooms.add(str(row["id"]))
                 for item in ov_list:
                     g = (item.get("grade_code") or "").strip()
                     s = (item.get("section_code") or "").strip()
@@ -626,10 +649,19 @@ def create_noor_import_routes(db, get_current_user):
                             raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
                         tid_resolved = tid_str
                         tname_resolved = valid_teachers[tid_str] or None
+                    cid = item.get("classroom_id")
+                    cid_resolved: Optional[str] = None
+                    if cid:
+                        cid_str = str(cid)
+                        if cid_str not in valid_classrooms:
+                            # Tenant-isolation: classroom must belong to this school.
+                            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+                        cid_resolved = cid_str
                     override_by_raw[f"{g}||{s}"] = {
                         "capacity": cap_val,
                         "homeroom_teacher_id": tid_resolved,
                         "homeroom_teacher_name": tname_resolved,
+                        "classroom_id": cid_resolved,
                     }
 
         payload = draft.get("payload") or {}
@@ -669,6 +701,7 @@ def create_noor_import_routes(db, get_current_user):
                 "capacity": ov.get("capacity"),
                 "homeroom_teacher_id": ov.get("homeroom_teacher_id"),
                 "homeroom_teacher_name": ov.get("homeroom_teacher_name"),
+                "classroom_id": ov.get("classroom_id"),
             })
         for p in rejected_pairs:
             p.pop("_raw_key", None)
@@ -698,6 +731,7 @@ def create_noor_import_routes(db, get_current_user):
             cap_value = p.get("capacity") if p.get("capacity") is not None else 30
             hr_id = p.get("homeroom_teacher_id")
             hr_name = p.get("homeroom_teacher_name")
+            cr_id = p.get("classroom_id")
             try:
                 async with db.session.begin_nested():
                     await db.session.execute(
@@ -707,11 +741,13 @@ def create_noor_import_routes(db, get_current_user):
                                 (id, name, school_id, grade_level, section,
                                  capacity, current_students,
                                  homeroom_teacher_id, homeroom_teacher_name,
+                                 classroom_id,
                                  is_active, created_at, updated_at)
                             VALUES
                                 (:id, :name, :sid, :grade, :section,
                                  :cap, 0,
                                  :hr_id, :hr_name,
+                                 :cr_id,
                                  TRUE, :now, :now)
                             """
                         ),
@@ -724,6 +760,7 @@ def create_noor_import_routes(db, get_current_user):
                             "cap": cap_value,
                             "hr_id": hr_id,
                             "hr_name": hr_name,
+                            "cr_id": cr_id,
                             "now": now,
                         },
                     )
@@ -735,6 +772,7 @@ def create_noor_import_routes(db, get_current_user):
                     "capacity": cap_value,
                     "homeroom_teacher_id": hr_id,
                     "homeroom_teacher_name": hr_name,
+                    "classroom_id": cr_id,
                 })
             except Exception as e:  # noqa: BLE001
                 logger.warning("noor create-missing-classes insert failed: %s", e)

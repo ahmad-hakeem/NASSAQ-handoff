@@ -267,6 +267,110 @@ async def test_overrides_reject_invalid_capacity(client, _db_session):
     assert r.status_code == 400
 
 
+async def test_overrides_apply_classroom_id(client, _db_session):
+    """Task #392 — classroom_id override is persisted on the new class."""
+    from datetime import datetime, timezone
+    user, school_id = await _seed_principal()
+    # Seed a physical classroom that belongs to this school.
+    cr_id = str(uuid.uuid4())
+    await db.session.execute(
+        text(
+            """
+            INSERT INTO physical_classrooms
+                (id, tenant_id, name, is_available, created_at)
+            VALUES (:id, :sid, 'قاعة 101', TRUE, :now)
+            """
+        ),
+        {"id": cr_id, "sid": school_id, "now": datetime.now(timezone.utc)},
+    )
+    rows = [_row(1, "S1", "طالب", "1", "أ")]
+    draft_id = await _seed_student_draft(user["id"], school_id, rows)
+    await db.session.commit()
+
+    r = await client.post(
+        f"/noor-import/draft/{draft_id}/create-missing-classes",
+        headers=_headers(user),
+        json={"overrides": [
+            {"grade_code": "1", "section_code": "أ", "classroom_id": cr_id},
+        ]},
+    )
+    await db.session.commit()
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["created_classes"]) == 1
+    created = body["created_classes"][0]
+    assert created["classroom_id"] == cr_id
+    db_row = (await db.session.execute(
+        text("SELECT classroom_id FROM classes WHERE id = :cid"),
+        {"cid": created["class_id"]},
+    )).mappings().one()
+    assert db_row["classroom_id"] == cr_id
+
+
+async def test_overrides_reject_cross_tenant_classroom(client, _db_session):
+    """Picking a classroom from a different school must hard-reject (400)."""
+    from datetime import datetime, timezone
+    user_a, school_a = await _seed_principal()
+    _user_b, school_b = await _seed_principal()
+    cr_id = str(uuid.uuid4())
+    await db.session.execute(
+        text(
+            """
+            INSERT INTO physical_classrooms
+                (id, tenant_id, name, is_available, created_at)
+            VALUES (:id, :sid, 'قاعة أجنبية', TRUE, :now)
+            """
+        ),
+        {"id": cr_id, "sid": school_b, "now": datetime.now(timezone.utc)},
+    )
+    rows = [_row(1, "S1", "طالب", "1", "1")]
+    draft_id = await _seed_student_draft(user_a["id"], school_a, rows)
+    await db.session.commit()
+
+    r = await client.post(
+        f"/noor-import/draft/{draft_id}/create-missing-classes",
+        headers=_headers(user_a),
+        json={"overrides": [
+            {"grade_code": "1", "section_code": "1", "classroom_id": cr_id},
+        ]},
+    )
+    assert r.status_code == 400
+    n = (await db.session.execute(
+        text("SELECT count(*) FROM classes WHERE school_id = :sid"),
+        {"sid": school_a},
+    )).scalar()
+    assert n == 0
+
+
+async def test_overrides_reject_unavailable_classroom(client, _db_session):
+    """A classroom with is_available=FALSE must be rejected (400)."""
+    from datetime import datetime, timezone
+    user, school_id = await _seed_principal()
+    cr_id = str(uuid.uuid4())
+    await db.session.execute(
+        text(
+            """
+            INSERT INTO physical_classrooms
+                (id, tenant_id, name, is_available, created_at)
+            VALUES (:id, :sid, 'قاعة محجوزة', FALSE, :now)
+            """
+        ),
+        {"id": cr_id, "sid": school_id, "now": datetime.now(timezone.utc)},
+    )
+    rows = [_row(1, "S1", "طالب", "1", "1")]
+    draft_id = await _seed_student_draft(user["id"], school_id, rows)
+    await db.session.commit()
+
+    r = await client.post(
+        f"/noor-import/draft/{draft_id}/create-missing-classes",
+        headers=_headers(user),
+        json={"overrides": [
+            {"grade_code": "1", "section_code": "1", "classroom_id": cr_id},
+        ]},
+    )
+    assert r.status_code == 400
+
+
 async def test_skips_pair_when_class_already_exists(client, _db_session):
     user, school_id = await _seed_principal()
     # Pre-create the class that the row would resolve to.

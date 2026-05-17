@@ -363,18 +363,40 @@ async def create_classroom(
 
 @router.get("/academic/classrooms")
 async def get_classrooms(
-    school_id: str,
+    school_id: Optional[str] = None,
     room_type: Optional[str] = None,
     available_only: bool = False,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get physical classrooms"""
-    query = {"tenant_id": school_id}
+    """Get physical classrooms.
+
+    `school_id` is optional — when omitted the endpoint resolves the tenant
+    from the authenticated user's token (same pattern as other school-scoped
+    routes).  Callers that already supply `school_id` continue to work as
+    before provided it matches the caller's own tenant.
+    """
+    # Derive resolved_school_id from auth token; fall back to query param only
+    # for platform admins who legitimately pass a target school.
+    user_tenant = current_user.get("tenant_id")
+    role = current_user.get("role") or ""
+    if school_id is None:
+        if not user_tenant:
+            raise HTTPException(status_code=403, detail="يجب تحديد المدرسة")
+        resolved_school_id = user_tenant
+    else:
+        # Non-platform roles may not query a foreign school, and must always
+        # carry a tenant_id in their token (fail-closed: no token tenant → deny).
+        if role not in ("platform_admin", "platform_support"):
+            if not user_tenant or school_id != user_tenant:
+                raise HTTPException(status_code=403, detail="يجب تحديد المدرسة")
+        resolved_school_id = school_id
+
+    query: Dict[str, Any] = {"tenant_id": resolved_school_id}
     if room_type:
         query["room_type"] = room_type
     if available_only:
         query["is_available"] = True
-    
+
     classrooms = await gd_find(db.session, "physical_classrooms", query, order_by="name", desc_order=False, limit=1000)
     return {"classrooms": classrooms, "total": len(classrooms)}
 

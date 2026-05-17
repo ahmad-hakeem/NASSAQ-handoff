@@ -41,13 +41,15 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
   const [creatingClasses, setCreatingClasses] = useState(false);
   const [undoingClasses, setUndoingClasses] = useState(false);
   const [undoableClasses, setUndoableClasses] = useState([]);
-  const [classOverrides, setClassOverrides] = useState({}); // key: `${grade}||${section}` -> {capacity, homeroom_teacher_id}
+  const [classOverrides, setClassOverrides] = useState({}); // key: `${grade}||${section}` -> {capacity, homeroom_teacher_id, classroom_id}
   const [teachersList, setTeachersList] = useState([]);
   const [loadingTeachers, setLoadingTeachers] = useState(false);
   const [undoableStudentIds, setUndoableStudentIds] = useState([]);
   const [undoableTeacherIds, setUndoableTeacherIds] = useState([]);
   const [undoToken, setUndoToken] = useState(null);
   const [undoingCommitted, setUndoingCommitted] = useState(false);
+  const [classroomsList, setClassroomsList] = useState([]);
+  const [loadingClassrooms, setLoadingClassrooms] = useState(false);
 
   const ambiguousRowIndexes = useMemo(
     () => (preview?.rows || []).filter(r => r.dedupe === 'ambiguous').map(r => r.row_index),
@@ -68,40 +70,55 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
     return Array.from(seen.values()).sort((a, b) => b.rows - a.rows);
   }, [preview]);
 
-  // Lazy-load active teachers the first time the editor is shown so the
-  // homeroom dropdown isn't fetched for imports that don't need it.
+  // Lazy-load active teachers and classrooms the first time the editor is
+  // shown so the dropdowns aren't fetched for imports that don't need it.
   // A ref guards against double-fetch — depending on the state flags in
   // the effect dep array would cancel our own in-flight request when
   // `setLoadingTeachers(true)` triggers a re-render.
   const needsClassEditor = missingClassPairs.length > 0 && preview?.detected_type === 'students';
   const teachersFetchedRef = useRef(false);
+  const classroomsFetchedRef = useRef(false);
   useEffect(() => {
     if (!needsClassEditor) return;
-    if (teachersFetchedRef.current) return;
-    teachersFetchedRef.current = true;
-    setLoadingTeachers(true);
-    api.get('/teachers', { params: { limit: 100 } })
-      .then(res => {
-        // `/teachers` has two registered handlers (academics_teacher_routes
-        // returns a raw array, teacher_management_routes returns
-        // `{teachers, total, ...}`) — accept both shapes, then keep only
-        // active rows so the dropdown never lets the principal pick
-        // someone the backend will hard-reject (active-only validation).
-        const raw = Array.isArray(res?.data)
-          ? res.data
-          : (Array.isArray(res?.data?.teachers) ? res.data.teachers : []);
-        const active = raw.filter(t => t && t.id && t.is_active !== false && t.status !== 'closed');
-        setTeachersList(active);
-      })
-      .catch(() => { setTeachersList([]); })
-      .finally(() => { setLoadingTeachers(false); });
+    if (!teachersFetchedRef.current) {
+      teachersFetchedRef.current = true;
+      setLoadingTeachers(true);
+      api.get('/teachers', { params: { limit: 100 } })
+        .then(res => {
+          // `/teachers` has two registered handlers (academics_teacher_routes
+          // returns a raw array, teacher_management_routes returns
+          // `{teachers, total, ...}`) — accept both shapes, then keep only
+          // active rows so the dropdown never lets the principal pick
+          // someone the backend will hard-reject (active-only validation).
+          const raw = Array.isArray(res?.data)
+            ? res.data
+            : (Array.isArray(res?.data?.teachers) ? res.data.teachers : []);
+          const active = raw.filter(t => t && t.id && t.is_active !== false && t.status !== 'closed');
+          setTeachersList(active);
+        })
+        .catch(() => { setTeachersList([]); })
+        .finally(() => { setLoadingTeachers(false); });
+    }
+    if (!classroomsFetchedRef.current) {
+      classroomsFetchedRef.current = true;
+      setLoadingClassrooms(true);
+      api.get('/academic/classrooms', { params: { available_only: true } })
+        .then(res => {
+          const raw = Array.isArray(res?.data?.classrooms) ? res.data.classrooms : [];
+          setClassroomsList(raw.filter(c => c && c.id));
+        })
+        .catch(() => { setClassroomsList([]); })
+        .finally(() => { setLoadingClassrooms(false); });
+    }
   }, [needsClassEditor, api]);
-  // Reset the fetched-once guard when the panel is reset to a fresh
-  // import (no preview) so a follow-up import re-pulls the teacher list.
+  // Reset the fetched-once guards when the panel is reset to a fresh
+  // import (no preview) so a follow-up import re-pulls both lists.
   useEffect(() => {
     if (!preview) {
       teachersFetchedRef.current = false;
+      classroomsFetchedRef.current = false;
       setTeachersList([]);
+      setClassroomsList([]);
     }
   }, [preview]);
 
@@ -213,10 +230,12 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         const ov = classOverrides[key] || {};
         const hasCap = ov.capacity !== undefined && ov.capacity !== '' && ov.capacity !== null;
         const hasHr = !!ov.homeroom_teacher_id;
-        if (!hasCap && !hasHr) return null;
+        const hasCr = !!ov.classroom_id;
+        if (!hasCap && !hasHr && !hasCr) return null;
         const entry = { grade_code: p.grade_code, section_code: p.section_code };
         if (hasCap) entry.capacity = Number(ov.capacity);
         if (hasHr) entry.homeroom_teacher_id = ov.homeroom_teacher_id;
+        if (hasCr) entry.classroom_id = ov.classroom_id;
         return entry;
       })
       .filter(Boolean);
@@ -236,8 +255,12 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         const teacher = ov.homeroom_teacher_id
           ? (teachersList.find(t => t.id === ov.homeroom_teacher_id)?.full_name || '')
           : '';
+        const room = ov.classroom_id
+          ? (classroomsList.find(c => c.id === ov.classroom_id)?.name || '')
+          : '';
         const hrLabel = teacher ? ` · رائد: ${teacher}` : '';
-        return `• ${p.grade_code || '—'} / ${p.section_code || '—'}  (${p.rows} صف، سعة ${cap}${hrLabel})`;
+        const roomLabel = room ? ` · قاعة: ${room}` : '';
+        return `• ${p.grade_code || '—'} / ${p.section_code || '—'}  (${p.rows} صف، سعة ${cap}${hrLabel}${roomLabel})`;
       })
       .join('\n');
     nassaqConfirm(
@@ -414,7 +437,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                   {needsClassEditor && (
                     <div className="mt-2 space-y-2">
                       <p className="text-[11px] text-yellow-800 dark:text-yellow-200">
-                        راجع السعة واختر رائد الفصل لكل صف قبل الإنشاء (السعة الافتراضية 30، يمكنك تركها كما هي).
+                        راجع السعة واختر رائد الفصل والقاعة لكل صف قبل الإنشاء (السعة الافتراضية 30، يمكنك تركها كما هي).
                       </p>
                       <div className="max-h-[220px] overflow-auto border border-yellow-300 dark:border-yellow-700 rounded">
                         <table className="w-full text-[11px]" data-testid="missing-class-pairs">
@@ -424,6 +447,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                               <th className="p-1.5 text-start">عدد الطلاب</th>
                               <th className="p-1.5 text-start">السعة</th>
                               <th className="p-1.5 text-start">رائد الفصل</th>
+                              <th className="p-1.5 text-start">القاعة</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -457,6 +481,20 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                                       <option value="">{loadingTeachers ? 'جارٍ التحميل…' : 'بدون'}</option>
                                       {teachersList.map(t => (
                                         <option key={t.id} value={t.id}>{t.full_name}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td className="p-1.5">
+                                    <select
+                                      value={ov.classroom_id || ''}
+                                      onChange={(e) => setOverride(key, { classroom_id: e.target.value || undefined })}
+                                      disabled={loadingClassrooms}
+                                      data-testid={`classroom-select-${i}`}
+                                      className="max-w-[160px] px-1.5 py-0.5 rounded border border-yellow-300 dark:border-yellow-700 bg-white dark:bg-yellow-950/60 text-[11px]"
+                                    >
+                                      <option value="">{loadingClassrooms ? 'جارٍ التحميل…' : 'بدون'}</option>
+                                      {classroomsList.map(c => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
                                       ))}
                                     </select>
                                   </td>
