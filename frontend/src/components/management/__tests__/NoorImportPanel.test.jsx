@@ -272,6 +272,77 @@ describe('NoorImportPanel inline class-detail editor (Task #390)', () => {
     expect(createCalls).toHaveLength(0);
   });
 
+  test('undo-created-classes banner appears, POSTs class_ids, and disappears after success', async () => {
+    const api = {
+      post: jest.fn(),
+      get: jest.fn().mockResolvedValue({ data: [
+        { id: 't1', full_name: 'الأستاذة سارة', is_active: true },
+      ] }),
+    };
+    renderWithProviders(api);
+    await seedPreview(api, _previewWithPair());
+
+    const capInput = await screen.findByTestId('capacity-input-0');
+    await screen.findByText('الأستاذة سارة');
+    const hrSelect = screen.getByTestId('homeroom-select-0');
+    await act(async () => {
+      fireEvent.change(capInput, { target: { value: '25' } });
+      fireEvent.change(hrSelect, { target: { value: 't1' } });
+    });
+
+    // Run the create-missing-classes happy path so undoableClasses is populated.
+    const createBtn = screen.getByRole('button', { name: /إنشاء الفصول الناقصة/ });
+    api.post.mockResolvedValueOnce({ data: {
+      created_classes: [
+        { class_id: 'c1', grade_code: '7', section_code: 'A', capacity: 25, homeroom_teacher_id: 't1' },
+      ],
+      rows: [],
+      counts: { total: 2, insert: 2, update: 0, duplicate_in_file: 0, unclassified: 0, ambiguous: 0, skip: 0 },
+    } });
+    await act(async () => { fireEvent.click(createBtn); });
+    const createDialog = await screen.findByTestId('nassaq-alert-dialog');
+    await act(async () => {
+      fireEvent.click(within(createDialog).getByRole('button', { name: 'إنشاء وإعادة المطابقة' }));
+    });
+
+    // Banner appears and lists the newly created class.
+    const banner = await screen.findByTestId('undo-created-classes-banner');
+    expect(banner).toBeInTheDocument();
+    expect(banner.textContent).toMatch(/7/);
+    expect(banner.textContent).toMatch(/A/);
+
+    // Click the undo button and confirm the dialog.
+    const undoBtn = within(banner).getByTestId('btn-undo-created-classes');
+    api.post.mockResolvedValueOnce({ data: {
+      undone_classes: [{ class_id: 'c1' }],
+      refused_classes: [],
+      rows: [
+        { row_index: 1, dedupe: 'insert', class_unresolved: true, data: { grade_code: '7', section_code: 'A' } },
+        { row_index: 2, dedupe: 'insert', class_unresolved: true, data: { grade_code: '7', section_code: 'A' } },
+      ],
+      counts: { total: 2, insert: 0, update: 0, duplicate_in_file: 0, unclassified: 2, ambiguous: 0, skip: 0 },
+    } });
+    await act(async () => { fireEvent.click(undoBtn); });
+    const undoDialog = await screen.findByTestId('nassaq-alert-dialog');
+    await act(async () => {
+      fireEvent.click(within(undoDialog).getByRole('button', { name: 'تراجع' }));
+    });
+
+    // POST to /undo-created-classes carried the expected payload.
+    await waitFor(() => {
+      const undoCalls = api.post.mock.calls.filter(c => String(c[0]).includes('/undo-created-classes'));
+      expect(undoCalls.length).toBeGreaterThanOrEqual(1);
+    });
+    const undoCall = api.post.mock.calls.find(c => String(c[0]).includes('/undo-created-classes'));
+    expect(undoCall[0]).toMatch(/\/noor-import\/draft\/draft-xyz\/undo-created-classes$/);
+    expect(undoCall[1]).toEqual({ class_ids: ['c1'] });
+
+    // Banner disappears after the successful undo response.
+    await waitFor(() => {
+      expect(screen.queryByTestId('undo-created-classes-banner')).toBeNull();
+    });
+  });
+
   test('zero capacity is also rejected with a NassaqAlertDialog warning and does not POST', async () => {
     const api = {
       post: jest.fn(),
