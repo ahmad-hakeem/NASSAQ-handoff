@@ -74,9 +74,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
     }
   };
 
-  const onCommit = async () => {
-    if (!preview?.import_draft_id) return;
-    nassaqConfirm('سيتم الآن تنفيذ عملية الاستيراد. هل تريد المتابعة؟', async () => {
+  const doCommit = async () => {
       setCommitting(true);
       try {
         const ambiguous_treat_as_new = Object.entries(ambiguousAccept)
@@ -109,7 +107,20 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
       } finally {
         setCommitting(false);
       }
-    });
+  };
+
+  const onCommit = () => {
+    if (!preview?.import_draft_id) return;
+    const unclassified = preview?.counts?.unclassified || 0;
+    if (unclassified > 0) {
+      nassaqConfirm(
+        `سيتم استيراد ${unclassified} صفاً بدون ربطه بفصل دراسي (تعذّر مطابقة الفصل). يمكنك إنشاء الفصول أولاً ثم إعادة الاستيراد لربط الطلاب تلقائياً، أو المتابعة الآن وربطهم لاحقاً يدوياً.`,
+        doCommit,
+        { title: 'تأكيد الاستيراد بدون فصل', confirmText: 'أكمل بدون فصل', cancelText: 'إلغاء' },
+      );
+      return;
+    }
+    nassaqConfirm('سيتم الآن تنفيذ عملية الاستيراد. هل تريد المتابعة؟', doCommit);
   };
 
   const detectedLabel = preview?.detected_type === 'teachers' ? 'تقرير المعلمين (نور)' : preview?.detected_type === 'students' ? 'إرشاد الطلاب (نور)' : '';
@@ -139,13 +150,27 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
             </div>
             <div className="grid grid-cols-4 md:grid-cols-7 gap-2 text-center text-xs">
               <div className="p-2 rounded bg-background border"><p className="text-lg font-bold">{preview.counts?.total || 0}</p><p className="text-muted-foreground">الإجمالي</p></div>
-              <div className="p-2 rounded bg-green-50 dark:bg-green-950/30"><p className="text-lg font-bold text-green-600">{preview.counts?.insert || 0}</p><p className="text-muted-foreground">إضافة</p></div>
-              <div className="p-2 rounded bg-blue-50 dark:bg-blue-950/30"><p className="text-lg font-bold text-blue-600">{preview.counts?.update || 0}</p><p className="text-muted-foreground">تحديث</p></div>
+              <div className="p-2 rounded bg-green-50 dark:bg-green-950/30" data-testid="bucket-insert"><p className="text-lg font-bold text-green-600">{preview.counts?.insert || 0}</p><p className="text-muted-foreground">جاهز للإضافة</p></div>
+              <div className="p-2 rounded bg-blue-50 dark:bg-blue-950/30" data-testid="bucket-update"><p className="text-lg font-bold text-blue-600">{preview.counts?.update || 0}</p><p className="text-muted-foreground">تحديث الموجود</p></div>
+              <div className="p-2 rounded bg-red-50 dark:bg-red-950/30" data-testid="bucket-duplicate"><p className="text-lg font-bold text-red-600">{preview.counts?.duplicate_in_file || 0}</p><p className="text-muted-foreground">مكرر في الملف (سيتم تجاهله)</p></div>
+              <div className="p-2 rounded bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-300" data-testid="bucket-unclassified"><p className="text-lg font-bold text-yellow-700">{preview.counts?.unclassified || 0}</p><p className="text-muted-foreground">بدون فصل</p></div>
               <div className="p-2 rounded bg-orange-50 dark:bg-orange-950/30"><p className="text-lg font-bold text-orange-600">{preview.counts?.ambiguous || 0}</p><p className="text-muted-foreground">غير مؤكد</p></div>
-              <div className="p-2 rounded bg-red-50 dark:bg-red-950/30"><p className="text-lg font-bold text-red-600">{preview.counts?.duplicate_in_file || 0}</p><p className="text-muted-foreground">مكرر في الملف</p></div>
               <div className="p-2 rounded bg-amber-50 dark:bg-amber-950/30"><p className="text-lg font-bold text-amber-600">{preview.counts?.skip || 0}</p><p className="text-muted-foreground">تخطي</p></div>
-              <div className="p-2 rounded bg-yellow-50 dark:bg-yellow-950/30"><p className="text-lg font-bold text-yellow-700">{preview.counts?.unclassified || 0}</p><p className="text-muted-foreground">بدون فصل</p></div>
             </div>
+            {(preview.counts?.unclassified || 0) > 0 && (
+              <div
+                data-testid="unclassified-banner"
+                className="sticky top-0 z-10 text-xs p-3 rounded border border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30 text-yellow-900 dark:text-yellow-100 flex items-start gap-2"
+              >
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-medium">سيتم استيراد {preview.counts.unclassified} صفاً بدون ربطه بفصل دراسي.</p>
+                  <p className="text-yellow-800 dark:text-yellow-200 mt-0.5">
+                    تعذّر مطابقة قيم "رقم الصف" / "الفصل" في الملف مع فصول المدرسة الحالية. أنشئ الفصول المناسبة في إدارة الفصول ثم أعد الاستيراد لربط الطلاب تلقائياً.
+                  </p>
+                </div>
+              </div>
+            )}
             {ambiguousRowIndexes.length > 0 && (
               <div className="text-xs p-2 rounded bg-orange-50 dark:bg-orange-950/20 text-orange-800 dark:text-orange-200">
                 توجد {ambiguousRowIndexes.length} مطابقة غير مؤكدة — فعّل الخانة لكل صف تريد معالجته كصف جديد، وإلا سيتم تخطيه.
@@ -210,8 +235,8 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
             <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-center text-xs">
               <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-green-600">{result.imported || 0}</p><p className="text-muted-foreground">تمت الإضافة</p></div>
               <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-blue-600">{result.updated || 0}</p><p className="text-muted-foreground">تم التحديث</p></div>
-              <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-yellow-700">{result.unclassified || 0}</p><p className="text-muted-foreground">بدون فصل</p></div>
-              <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-red-700">{result.duplicates || 0}</p><p className="text-muted-foreground">مكرر في الملف</p></div>
+              <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-red-700">{result.duplicates || 0}</p><p className="text-muted-foreground">مكرر في الملف (تم تجاهله)</p></div>
+              <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-yellow-700">{result.unclassified || 0}</p><p className="text-muted-foreground">حُفظ بدون فصل</p></div>
               <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-amber-600">{result.skipped || 0}</p><p className="text-muted-foreground">تم التخطي</p></div>
               <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-red-600">{result.failed || 0}</p><p className="text-muted-foreground">فشل</p></div>
             </div>

@@ -76,22 +76,26 @@ def resolve_class(
     class_index: List[Dict[str, Any]],
 ) -> Optional[str]:
     """
-    Deterministic match: a class matches when BOTH grade and section
-    align. Returns the class id on a unique match; None otherwise.
-    Never invents a class.
+    Deterministic match on the NORMALISED (grade, section) pair.
+    Returns the class id on a unique match; None otherwise (including
+    ambiguity — fail closed, never invent or guess a class).
+
+    Tolerates the common Noor ↔ school shape differences (Arabic-Indic
+    digits, stage prefixes like `الأول الابتدائي`, equivalent section
+    labels `أ↔A↔١↔1`) via `class_match.normalize_*`.
     """
-    g = (grade_code or "").strip()
-    s = (section_code or "").strip()
+    from .class_match import normalize_grade, normalize_section
+
+    g = normalize_grade(grade_code)
+    s = normalize_section(section_code)
     if not g or not s:
-        # Strict spec: BOTH grade and section are required for a match.
-        # Anything weaker would risk attaching a student to the wrong
-        # class (e.g. grade "1" vs grade "11" via prefix/suffix slop).
+        # BOTH grade and section are required for a match.
         return None
     matches = []
     for cls in class_index:
-        cls_grade = (cls.get("grade_level") or cls.get("grade_id") or "").strip()
-        cls_section = (cls.get("section") or "").strip()
-        if g == cls_grade and s == cls_section:
+        cls_grade = normalize_grade(cls.get("grade_level") or cls.get("grade_id"))
+        cls_section = normalize_section(cls.get("section"))
+        if g and s and g == cls_grade and s == cls_section:
             matches.append(cls["id"])
     if len(matches) == 1:
         return matches[0]
