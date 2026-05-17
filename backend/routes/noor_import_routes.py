@@ -473,7 +473,56 @@ def create_noor_import_routes(db, get_current_user):
             raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
 
         await delete_draft(db.session, draft_id=body.import_draft_id)
+
+        # Normalise: both id-list keys are always present regardless of
+        # which report type was processed, so the client contract is stable.
+        outcome.setdefault("imported_student_ids", [])
+        outcome.setdefault("imported_teacher_ids", [])
+
+        # Create a short-lived undo manifest (1 h TTL) so the principal
+        # can undo these specific records via /undo-committed.  The
+        # manifest is principal-bound + school-bound (same guarantees as
+        # import drafts) and the token is a random URL-safe secret that
+        # the client must round-trip back — it cannot enumerate or forge
+        # it.  Only stored when there is actually something to undo.
+        undo_token: Optional[str] = None
+        undo_sids: List[str] = outcome["imported_student_ids"]
+        undo_tids: List[str] = outcome["imported_teacher_ids"]
+        if undo_sids or undo_tids:
+            import json as _json
+            import secrets as _secrets
+            from datetime import datetime as _dt2, timedelta as _td2, timezone as _tz2
+            undo_token = _secrets.token_urlsafe(24)
+            _now2 = _dt2.now(_tz2.utc)
+            _exp2 = _now2 + _td2(hours=1)
+            _undo_payload = _json.dumps(
+                {"student_ids": undo_sids, "teacher_ids": undo_tids},
+                ensure_ascii=False,
+            )
+            await db.session.execute(
+                text(
+                    """
+                    INSERT INTO noor_import_drafts
+                        (id, principal_id, school_id, detected_type,
+                         header_row, payload, counts, created_at, expires_at)
+                    VALUES
+                        (:id, :pid, :sid, 'undo_manifest',
+                         0, CAST(:payload AS JSONB), '{}'::JSONB,
+                         :now, :exp)
+                    """
+                ),
+                {
+                    "id": undo_token,
+                    "pid": principal_id,
+                    "sid": school_id,
+                    "payload": _undo_payload,
+                    "now": _now2,
+                    "exp": _exp2,
+                },
+            )
+
         await db.session.commit()
+        outcome["undo_token"] = undo_token
         return outcome
 
     @router.post("/draft/{draft_id}/create-missing-classes")
@@ -873,6 +922,279 @@ def create_noor_import_routes(db, get_current_user):
             "refused_classes": refused,
         }
 
+    @router.post("/undo-committed")
+    async def undo_committed_endpoint(
+        request: Request,
+        current_user: dict = Depends(get_current_user),
+    ):
+        """Delete students/teachers that were just imported, provided they
+        have no downstream data (attendance, grades, links, assignments, etc.).
+
+        Security contract:
+          • Caller must be school_principal / school_admin / platform_admin.
+          • `school_id` is always pinned from `current_user.tenant_id`.
+          • `undo_token` is REQUIRED — issued by /commit for the specific
+            import batch. It binds the undo operation to the exact IDs
+            produced by that commit, this caller, and this school (TTL 1 h).
+            Without a valid token the endpoint returns 403 with zero writes.
+          • Only IDs listed in the undo manifest (from the token) may be
+            deleted. Any ID not in the manifest is silently skipped.
+          • Every remaining candidate id is re-verified against the caller's
+            school_id; cross-tenant ids appear as 'not_found' (§8 invariant).
+          • Student safety guard: refuses any student with attendance,
+            assessment_submissions, behaviour_records, or parent links
+            (parent_id IS NOT NULL or parent_invitations rows).
+          • Teacher safety guard: refuses any teacher with teacher_assignments,
+            teacher_class_assignments, or teacher_sessions rows.
+          • Refusals are returned per-row; successfully deleted rows confirmed.
+        """
+        school_id = _require_school_role(current_user)
+        principal_id = str(current_user.get("id") or current_user.get("_id") or "")
+
+        try:
+            raw = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+        if not isinstance(raw, dict):
+            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+
+        undo_token = raw.get("undo_token") or ""
+        if not isinstance(undo_token, str) or not undo_token:
+            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+
+        # Load the undo manifest — principal + school + TTL bound.
+        manifest = await load_draft(
+            db.session,
+            draft_id=undo_token,
+            principal_id=principal_id,
+            school_id=school_id,
+        )
+        if not manifest or manifest.get("detected_type") != "undo_manifest":
+            raise HTTPException(status_code=403, detail=_SAFE_DRAFT_DENIED)
+
+        import json as _json2
+        manifest_payload = manifest.get("payload") or {}
+        if isinstance(manifest_payload, str):
+            try:
+                manifest_payload = _json2.loads(manifest_payload)
+            except Exception:
+                manifest_payload = {}
+        allowed_student_ids: set = set(manifest_payload.get("student_ids") or [])
+        allowed_teacher_ids: set = set(manifest_payload.get("teacher_ids") or [])
+
+        # Use manifest as the authoritative set — process all allowed IDs.
+        # The client may pass a subset via student_ids / teacher_ids;
+        # anything not in the manifest is ignored regardless.
+        client_sids = raw.get("student_ids")
+        client_tids = raw.get("teacher_ids")
+        if isinstance(client_sids, list):
+            candidate_student_ids = [x for x in client_sids if isinstance(x, str) and x in allowed_student_ids]
+        else:
+            candidate_student_ids = list(allowed_student_ids)
+        if isinstance(client_tids, list):
+            candidate_teacher_ids = [x for x in client_tids if isinstance(x, str) and x in allowed_teacher_ids]
+        else:
+            candidate_teacher_ids = list(allowed_teacher_ids)
+
+        # De-dupe while preserving order.
+        def _dedup(ids: list) -> List[str]:
+            seen: set = set()
+            return [x for x in ids if not (x in seen or seen.add(x))]
+
+        candidate_student_ids = _dedup(candidate_student_ids)
+        candidate_teacher_ids = _dedup(candidate_teacher_ids)
+
+        undone_students: List[Dict[str, Any]] = []
+        refused_students: List[Dict[str, Any]] = []
+        undone_teachers: List[Dict[str, Any]] = []
+        refused_teachers: List[Dict[str, Any]] = []
+
+        # --- Students ---
+        for sid in candidate_student_ids:
+            row = (
+                await db.session.execute(
+                    text(
+                        """
+                        SELECT id, full_name, student_number, parent_id
+                        FROM students
+                        WHERE id = :id AND school_id = :school
+                        """
+                    ),
+                    {"id": sid, "school": school_id},
+                )
+            ).mappings().first()
+            if not row:
+                # 404-style: do not confirm cross-tenant existence.
+                refused_students.append({"student_id": sid, "reason": "not_found"})
+                continue
+
+            # Safety check — any downstream data or link blocks deletion.
+            downstream = (
+                await db.session.execute(
+                    text(
+                        """
+                        SELECT
+                            (SELECT COUNT(*) FROM attendance
+                             WHERE student_id = :id) AS att,
+                            (SELECT COUNT(*) FROM assessment_submissions
+                             WHERE student_id = :id) AS sub,
+                            (SELECT COUNT(*) FROM behaviour_records
+                             WHERE student_id = :id) AS beh,
+                            (SELECT COUNT(*) FROM parent_invitations
+                             WHERE student_id = :id) AS inv
+                        """
+                    ),
+                    {"id": sid},
+                )
+            ).mappings().first()
+
+            if (downstream["att"] or 0) > 0:
+                refused_students.append({
+                    "student_id": sid,
+                    "full_name": row["full_name"],
+                    "reason": "has_attendance",
+                    "count": int(downstream["att"]),
+                })
+                continue
+            if (downstream["sub"] or 0) > 0:
+                refused_students.append({
+                    "student_id": sid,
+                    "full_name": row["full_name"],
+                    "reason": "has_grades",
+                    "count": int(downstream["sub"]),
+                })
+                continue
+            if (downstream["beh"] or 0) > 0:
+                refused_students.append({
+                    "student_id": sid,
+                    "full_name": row["full_name"],
+                    "reason": "has_behaviour",
+                    "count": int(downstream["beh"]),
+                })
+                continue
+            if row.get("parent_id"):
+                refused_students.append({
+                    "student_id": sid,
+                    "full_name": row["full_name"],
+                    "reason": "has_parent_link",
+                })
+                continue
+            if (downstream["inv"] or 0) > 0:
+                refused_students.append({
+                    "student_id": sid,
+                    "full_name": row["full_name"],
+                    "reason": "has_parent_invitation",
+                    "count": int(downstream["inv"]),
+                })
+                continue
+
+            try:
+                async with db.session.begin_nested():
+                    await db.session.execute(
+                        text("DELETE FROM students WHERE id = :id AND school_id = :school"),
+                        {"id": sid, "school": school_id},
+                    )
+                undone_students.append({
+                    "student_id": sid,
+                    "full_name": row["full_name"],
+                    "student_number": row["student_number"],
+                })
+            except Exception as e:  # noqa: BLE001
+                logger.warning("noor undo-committed student delete failed: %s", e)
+                refused_students.append({"student_id": sid, "reason": "delete_failed"})
+
+        # --- Teachers ---
+        for tid in candidate_teacher_ids:
+            row = (
+                await db.session.execute(
+                    text(
+                        """
+                        SELECT id, full_name, user_id
+                        FROM teachers
+                        WHERE id = :id AND school_id = :school
+                        """
+                    ),
+                    {"id": tid, "school": school_id},
+                )
+            ).mappings().first()
+            if not row:
+                refused_teachers.append({"teacher_id": tid, "reason": "not_found"})
+                continue
+
+            # Safety check — refuse if the teacher has any active
+            # assignments, class assignments, or recorded sessions.
+            downstream = (
+                await db.session.execute(
+                    text(
+                        """
+                        SELECT
+                            (SELECT COUNT(*) FROM teacher_assignments
+                             WHERE teacher_id = :id) AS asgn,
+                            (SELECT COUNT(*) FROM teacher_class_assignments
+                             WHERE teacher_id = :id) AS casgn,
+                            (SELECT COUNT(*) FROM teacher_sessions
+                             WHERE teacher_id = :id) AS sess
+                        """
+                    ),
+                    {"id": tid},
+                )
+            ).mappings().first()
+
+            if (downstream["asgn"] or 0) > 0:
+                refused_teachers.append({
+                    "teacher_id": tid,
+                    "full_name": row["full_name"],
+                    "reason": "has_assignments",
+                    "count": int(downstream["asgn"]),
+                })
+                continue
+            if (downstream["casgn"] or 0) > 0:
+                refused_teachers.append({
+                    "teacher_id": tid,
+                    "full_name": row["full_name"],
+                    "reason": "has_class_assignments",
+                    "count": int(downstream["casgn"]),
+                })
+                continue
+            if (downstream["sess"] or 0) > 0:
+                refused_teachers.append({
+                    "teacher_id": tid,
+                    "full_name": row["full_name"],
+                    "reason": "has_sessions",
+                    "count": int(downstream["sess"]),
+                })
+                continue
+
+            user_id = row.get("user_id")
+            try:
+                async with db.session.begin_nested():
+                    await db.session.execute(
+                        text("DELETE FROM teachers WHERE id = :id AND school_id = :school"),
+                        {"id": tid, "school": school_id},
+                    )
+                    if user_id:
+                        await db.session.execute(
+                            text("DELETE FROM users WHERE id = :uid"),
+                            {"uid": user_id},
+                        )
+                undone_teachers.append({
+                    "teacher_id": tid,
+                    "full_name": row["full_name"],
+                })
+            except Exception as e:  # noqa: BLE001
+                logger.warning("noor undo-committed teacher delete failed: %s", e)
+                refused_teachers.append({"teacher_id": tid, "reason": "delete_failed"})
+
+        # Consume the undo manifest so each token is single-use.
+        await delete_draft(db.session, draft_id=undo_token)
+        await db.session.commit()
+        return {
+            "undone_students": undone_students,
+            "refused_students": refused_students,
+            "undone_teachers": undone_teachers,
+            "refused_teachers": refused_teachers,
+        }
+
     return router
 
 
@@ -904,6 +1226,7 @@ async def _commit_teachers(
     duplicates = 0
     errors: List[Dict[str, Any]] = []
     credentials_csv: List[Dict[str, str]] = []
+    imported_teacher_ids: List[str] = []
 
     # Track ids we've ALREADY accepted into this batch (whether the
     # first sighting was an insert or a live UPDATE). A second row
@@ -1034,6 +1357,7 @@ async def _commit_teachers(
                     )
                     raise _RowAbort()
                 imported += 1
+                imported_teacher_ids.append(str(result.get("teacher_id") or ""))
                 # Track in-batch insertion so later rows with the same
                 # national_id (or name+phone) are rejected as
                 # in-file duplicates, NOT silently overwritten.
@@ -1085,6 +1409,7 @@ async def _commit_teachers(
         "duplicates": duplicates,
         "errors": errors,
         "credentials_csv": credentials_csv,
+        "imported_teacher_ids": [tid for tid in imported_teacher_ids if tid],
     }
 
 
@@ -1117,6 +1442,7 @@ async def _commit_students(
     duplicates = 0
     unclassified = 0
     errors: List[Dict[str, Any]] = []
+    imported_student_ids: List[str] = []
 
     # Track student_numbers we ACCEPTED in this batch (insert OR live
     # UPDATE). A second row with the same number is an in-file
@@ -1244,6 +1570,7 @@ async def _commit_students(
                     created_by=created_by,
                 )
                 imported += 1
+                imported_student_ids.append(new_id)
                 if class_id is None and (grade_code or section_code):
                     unclassified += 1
                 if num:
@@ -1271,4 +1598,5 @@ async def _commit_students(
         "duplicates": duplicates,
         "unclassified": unclassified,
         "errors": errors,
+        "imported_student_ids": imported_student_ids,
     }

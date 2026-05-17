@@ -44,6 +44,10 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
   const [classOverrides, setClassOverrides] = useState({}); // key: `${grade}||${section}` -> {capacity, homeroom_teacher_id}
   const [teachersList, setTeachersList] = useState([]);
   const [loadingTeachers, setLoadingTeachers] = useState(false);
+  const [undoableStudentIds, setUndoableStudentIds] = useState([]);
+  const [undoableTeacherIds, setUndoableTeacherIds] = useState([]);
+  const [undoToken, setUndoToken] = useState(null);
+  const [undoingCommitted, setUndoingCommitted] = useState(false);
 
   const ambiguousRowIndexes = useMemo(
     () => (preview?.rows || []).filter(r => r.dedupe === 'ambiguous').map(r => r.row_index),
@@ -131,6 +135,9 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
     setResult(null);
     setAmbiguousAccept({});
     setUndoableClasses([]);
+    setUndoableStudentIds([]);
+    setUndoableTeacherIds([]);
+    setUndoToken(null);
   };
 
   const onParse = async () => {
@@ -144,6 +151,9 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
       setPreview(res.data);
       setAmbiguousAccept({});
       setUndoableClasses([]);
+      setUndoableStudentIds([]);
+      setUndoableTeacherIds([]);
+      setUndoToken(null);
     } catch (err) {
       nassaqError(err?.response?.data?.detail || 'تعذّر تحليل الملف');
     } finally {
@@ -167,6 +177,9 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         setFile(null);
         setAmbiguousAccept({});
         setUndoableClasses([]);
+        setUndoableStudentIds(data.imported_student_ids || []);
+        setUndoableTeacherIds(data.imported_teacher_ids || []);
+        setUndoToken(data.undo_token || null);
         const creds = data.credentials_csv || [];
         const dupPart = (data.duplicates || 0) > 0 ? `، مكرر في الملف ${data.duplicates}` : '';
         const unclPart = (data.unclassified || 0) > 0 ? `، بدون فصل ${data.unclassified}` : '';
@@ -296,6 +309,46 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         }
       },
       { title: 'التراجع عن إنشاء الفصول', confirmText: 'تراجع', cancelText: 'إبقاء الفصول' },
+    );
+  };
+
+  const onUndoImported = async () => {
+    const hasStudents = undoableStudentIds.length > 0;
+    const hasTeachers = undoableTeacherIds.length > 0;
+    if ((!hasStudents && !hasTeachers) || !undoToken) return;
+
+    const parts = [];
+    if (hasStudents) parts.push(`${undoableStudentIds.length} طالباً`);
+    if (hasTeachers) parts.push(`${undoableTeacherIds.length} معلماً`);
+    nassaqConfirm(
+      `سيتم حذف ${parts.join(' و')} تم استيرادهم للتو. لن يتم حذف أي سجل له بيانات حضور أو درجات أو روابط أولياء أمور أو مهام — سيتم إبلاغك بالحالات المرفوضة.`,
+      async () => {
+        setUndoingCommitted(true);
+        try {
+          const res = await api.post('/noor-import/undo-committed', {
+            undo_token: undoToken,
+          });
+          const data = res.data;
+          const undoneS = (data.undone_students || []).length;
+          const undoneT = (data.undone_teachers || []).length;
+          const refusedS = (data.refused_students || []).filter(r => r.reason !== 'not_found');
+          const refusedT = (data.refused_teachers || []).filter(r => r.reason !== 'not_found');
+          setUndoableStudentIds([]);
+          setUndoableTeacherIds([]);
+          setUndoToken(null);
+          let msg = '';
+          if (undoneS > 0) msg += `تم حذف ${undoneS} طالباً. `;
+          if (undoneT > 0) msg += `تم حذف ${undoneT} معلماً. `;
+          if (refusedS.length > 0) msg += `تعذّر حذف ${refusedS.length} طالباً (لديهم بيانات مرتبطة). `;
+          if (refusedT.length > 0) msg += `تعذّر حذف ${refusedT.length} معلماً (لديهم بيانات مرتبطة). `;
+          if (nassaqInfo) nassaqInfo(msg.trim() || 'تم التراجع عن الاستيراد.');
+        } catch (err) {
+          nassaqError(err?.response?.data?.detail || 'تعذّر التراجع عن الاستيراد');
+        } finally {
+          setUndoingCommitted(false);
+        }
+      },
+      { title: 'التراجع عن الاستيراد', confirmText: 'تراجع عن الاستيراد', cancelText: 'إبقاء السجلات' },
     );
   };
 
@@ -539,6 +592,38 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
               <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-amber-600">{result.skipped || 0}</p><p className="text-muted-foreground">تم التخطي</p></div>
               <div className="p-2 rounded bg-background border"><p className="text-lg font-bold text-red-600">{result.failed || 0}</p><p className="text-muted-foreground">فشل</p></div>
             </div>
+            {undoToken && (undoableStudentIds.length > 0 || undoableTeacherIds.length > 0) && (
+              <div
+                data-testid="undo-committed-banner"
+                className="text-xs p-3 rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-100 flex items-start gap-2"
+              >
+                <Undo2 className="h-4 w-4 mt-0.5 shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <p className="font-medium">
+                    {[
+                      undoableStudentIds.length > 0 && `${undoableStudentIds.length} طالباً`,
+                      undoableTeacherIds.length > 0 && `${undoableTeacherIds.length} معلماً`,
+                    ].filter(Boolean).join(' و')}
+                    {' '}تم استيرادهم للتو — يمكنك التراجع قبل إغلاق هذا القسم.
+                  </p>
+                  <p className="text-amber-800 dark:text-amber-200">
+                    لن يتم حذف أي سجل له بيانات حضور أو درجات أو مهام — ستظهر حالات الرفض بوضوح.
+                  </p>
+                  <Button
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                    disabled={undoingCommitted}
+                    onClick={onUndoImported}
+                    data-testid="btn-undo-committed"
+                    className="border-amber-500 text-amber-900 hover:bg-amber-100 dark:text-amber-100 dark:hover:bg-amber-900/40"
+                  >
+                    {undoingCommitted ? <Loader2 className="h-3.5 w-3.5 animate-spin me-2" /> : <Undo2 className="h-3.5 w-3.5 me-2" />}
+                    تراجع عن استيراد السجلات
+                  </Button>
+                </div>
+              </div>
+            )}
             {(result.credentials_csv || []).length > 0 && (
               <div className="flex justify-end">
                 <Button
