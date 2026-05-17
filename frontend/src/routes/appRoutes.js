@@ -138,7 +138,6 @@ const ParentMeetingRequestPage = lazy(() => import("../pages/ParentPortal").then
 const ParentSettingsPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentSettingsPage })));
 const ParentLegalDocumentPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentLegalDocumentPage })));
 const ParentCommunicationCenter = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentCommunicationCenter })));
-const ParentStudentProfilePage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.StudentProfilePage })));
 const ParentStudentAnalyticsPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.StudentAnalyticsPage })));
 
 const SCHOOL_ROLES = ['school_principal', 'school_admin', 'school_sub_admin'];
@@ -494,8 +493,15 @@ export default function AppRoutes() {
         <Route path="/parent/communication" element={
           <ProtectedRoute allowedRoles={['parent']}><ParentCommunicationCenter /></ProtectedRoute>
         } />
+        {/* Legacy standalone student-profile route — collapsed into the
+            unified /parent/children hub with the Details tab active. The
+            old StudentProfilePage was removed; chips moved into a modal
+            opened from /parent/children header. See spec
+            2026-05-17-parent-single-student-profile-design.md. */}
         <Route path="/parent/child/:childId/profile" element={
-          <ProtectedRoute allowedRoles={['parent']}><ParentStudentProfilePage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['parent']}>
+            <ParentStudentTabRedirect tab="details" />
+          </ProtectedRoute>
         } />
         <Route path="/parent/child/:childId/analytics" element={
           <ProtectedRoute allowedRoles={['parent']}><ParentStudentAnalyticsPage /></ProtectedRoute>

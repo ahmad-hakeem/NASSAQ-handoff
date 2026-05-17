@@ -1,14 +1,16 @@
-import React, { useEffect, useCallback, lazy, Suspense } from 'react';
+import React, { useEffect, useCallback, useState, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { useParentActiveStudent } from '../../contexts/ParentActiveStudentContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent } from '../../components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
+import { Button } from '../../components/ui/button';
 import { Skeleton } from '../../components/ui/skeleton';
+import StudentProfileDialog from '../../components/parent/StudentProfileDialog';
 import {
   User as UserIcon, GraduationCap, CheckCircle, TrendingUp, Calendar,
-  ClipboardList, Heart,
+  ClipboardList, Heart, Pencil,
 } from 'lucide-react';
 
 const WeeklyAnalysisPanel = lazy(() => import('../../components/parent/WeeklyAnalysisPanel'));
@@ -37,6 +39,21 @@ const ParentChildrenPage = () => {
   const urlChildId = searchParams.get('child');
   const urlTabRaw = searchParams.get('tab');
   const activeTab = VALID_TABS.includes(urlTabRaw) ? urlTabRaw : 'details';
+
+  // Unified Student Profile editor (chips for health, behavior, family)
+  // opens from the header CTA. Lives at the page level so it can be
+  // re-keyed per child to guarantee sibling isolation.
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+
+  // Force-close the dialog when the parent switches to a different
+  // child via the shell switcher. The dialog is also re-keyed by
+  // activeChild.id below so internal state is reset, but explicitly
+  // closing here satisfies the spec acceptance criterion that sibling
+  // switching dismisses the open profile modal rather than keeping it
+  // open against a freshly mounted child.
+  useEffect(() => {
+    setProfileDialogOpen(false);
+  }, [activeChild?.id]);
 
   const updateParams = useCallback((patch) => {
     setSearchParams(prev => {
@@ -158,6 +175,21 @@ const ParentChildrenPage = () => {
                           : activeChild.school_name}
                       </p>
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setProfileDialogOpen(true)}
+                      className="shrink-0 rounded-xl gap-1.5 font-cairo bg-card/80 hover:bg-card"
+                      data-testid="link-edit-student-profile"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">
+                        {isRTL ? 'تعديل ملف الطالب' : 'Edit Student Profile'}
+                      </span>
+                      <span className="sm:hidden">
+                        {isRTL ? 'تعديل' : 'Edit'}
+                      </span>
+                    </Button>
                   </div>
                 </div>
 
@@ -264,6 +296,19 @@ const ParentChildrenPage = () => {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Per-child key guarantees the dialog unmounts on sibling
+                switch, so child A's in-progress edit state cannot leak
+                into child B (ProfileEditor's own sibling-reset test
+                still covers this at the editor level). */}
+            {activeChild && (
+              <StudentProfileDialog
+                key={`profile-${activeChild.id}`}
+                childId={activeChild.id}
+                open={profileDialogOpen}
+                onOpenChange={setProfileDialogOpen}
+              />
             )}
           </>
         )}

@@ -10,5 +10,4 @@ export { default as ParentMeetingRequestPage } from './ParentMeetingRequestPage'
 export { default as ParentSettingsPage } from './ParentSettingsPage';
 export { default as ParentLegalDocumentPage } from './LegalDocumentPage';
 export { default as ParentCommunicationCenter } from './ParentCommunicationCenter';
-export { default as StudentProfilePage } from './StudentProfilePage';
 export { default as StudentAnalyticsPage } from './StudentAnalyticsPage';
