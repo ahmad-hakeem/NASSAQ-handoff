@@ -194,6 +194,8 @@ export function OverviewTab({ hook }) {
         </Card>
       </div>
 
+      <ParentProvidedNotesCard student={student} isRTL={isRTL} />
+
       {(student.talents?.length > 0) && (
         <Card>
           <CardContent className="p-5">
@@ -1197,5 +1199,127 @@ export function LongitudinalTab({ hook }) {
         </>
       )}
     </TabsContent>
+  );
+}
+const PARENT_HEALTH_LABELS = {
+  seasonal_allergy: { ar: 'حساسية موسمية', en: 'Seasonal Allergy' },
+  nut_allergy: { ar: 'حساسية من المكسرات', en: 'Nut Allergy' },
+  dust_allergy: { ar: 'حساسية من الغبار', en: 'Dust Allergy' },
+  asthma: { ar: 'ربو', en: 'Asthma' },
+  diabetes: { ar: 'سكري', en: 'Diabetes' },
+  epilepsy: { ar: 'صرع', en: 'Epilepsy' },
+  weak_vision: { ar: 'ضعف بصر', en: 'Weak Vision' },
+  weak_hearing: { ar: 'ضعف سمع', en: 'Weak Hearing' },
+  food_allergy: { ar: 'حساسية غذائية', en: 'Food Allergy' },
+};
+
+const PARENT_BEHAVIOURAL_LABELS = {
+  hyperactivity: { ar: 'فرط حركة', en: 'Hyperactivity' },
+  motor_anxiety: { ar: 'قلق حركي', en: 'Motor Anxiety' },
+  speech_difficulty: { ar: 'صعوبة نطق', en: 'Speech Difficulty' },
+  severe_shyness: { ar: 'خجل شديد', en: 'Severe Shyness' },
+  aggression: { ar: 'عدوانية', en: 'Aggression' },
+  stuttering: { ar: 'تأتأة', en: 'Stuttering' },
+  anger: { ar: 'غضب', en: 'Anger' },
+  sleep_disorder: { ar: 'اضطراب نوم', en: 'Sleep Disorder' },
+  eating_difficulty: { ar: 'صعوبة أكل', en: 'Eating Difficulty' },
+};
+
+const PARENT_FAMILY_PRIMARY_LABELS = {
+  both_parents: { ar: 'مع الوالدين', en: 'Both Parents' },
+  mother_only: { ar: 'الأم فقط', en: 'Mother Only' },
+  father_only: { ar: 'الأب فقط', en: 'Father Only' },
+  other: { ar: 'أخرى', en: 'Other' },
+};
+
+const PARENT_FAMILY_OTHER_LABELS = {
+  parents_separation: { ar: 'انفصال الوالدين', en: 'Parents Separated' },
+  parent_traveling: { ar: 'سفر أحد الوالدين', en: 'Parent Traveling' },
+  foster_family: { ar: 'أسرة بديلة', en: 'Foster Family' },
+  orphan: { ar: 'يتيم', en: 'Orphan' },
+  second_marriage: { ar: 'زواج ثانٍ', en: 'Second Marriage' },
+  family_problems: { ar: 'مشاكل أسرية', en: 'Family Problems' },
+};
+
+function ParentChipGroup({ icon: Icon, iconClass, title, items, chipClass }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div>
+      <h4 className="text-xs font-cairo text-muted-foreground mb-2 flex items-center gap-1.5">
+        <Icon className={`h-3.5 w-3.5 ${iconClass}`} />
+        {title}
+      </h4>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((label, idx) => (
+          <span key={`${label}-${idx}`} className={`px-2.5 py-1 rounded-full text-[11px] font-cairo border ${chipClass}`}>
+            {label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ParentProvidedNotesCard({ student, isRTL }) {
+  const ps = student?.profile_settings || {};
+  const lang = isRTL ? 'ar' : 'en';
+
+  const resolve = (ids, map) =>
+    (Array.isArray(ids) ? ids : [])
+      .map((id) => (map[id] ? map[id][lang] : id))
+      .filter(Boolean);
+
+  const health = resolve(ps.health_conditions, PARENT_HEALTH_LABELS);
+  const behavioural = resolve(ps.behavioral_aspects, PARENT_BEHAVIOURAL_LABELS);
+
+  const familyItems = [];
+  if (ps.family_situation && PARENT_FAMILY_PRIMARY_LABELS[ps.family_situation]) {
+    familyItems.push(PARENT_FAMILY_PRIMARY_LABELS[ps.family_situation][lang]);
+  } else if (ps.family_situation) {
+    familyItems.push(ps.family_situation);
+  }
+  familyItems.push(...resolve(ps.family_other_situations, PARENT_FAMILY_OTHER_LABELS));
+
+  if (health.length === 0 && behavioural.length === 0 && familyItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <Card className="border-brand-purple/20 bg-gradient-to-r from-brand-purple/5 to-brand-turquoise/5 dark:from-brand-purple/10 dark:to-brand-turquoise/10">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between mb-4 gap-3">
+          <h3 className="font-bold text-sm font-cairo flex items-center gap-2">
+            <Heart className="h-4 w-4 text-brand-purple" />
+            {isRTL ? 'ملاحظات من ولي الأمر' : 'Notes from Parent'}
+          </h3>
+          <Badge variant="outline" className="text-[10px] font-cairo border-brand-purple/40 text-brand-purple bg-white/60 dark:bg-transparent">
+            {isRTL ? 'مُقدَّمة من ولي الأمر' : 'Provided by parent'}
+          </Badge>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <ParentChipGroup
+            icon={Heart}
+            iconClass="text-rose-500"
+            title={isRTL ? 'المشاكل الصحية' : 'Health Conditions'}
+            items={health}
+            chipClass="bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-800"
+          />
+          <ParentChipGroup
+            icon={Brain}
+            iconClass="text-violet-500"
+            title={isRTL ? 'الجوانب السلوكية والتعلم' : 'Behavioural & Learning'}
+            items={behavioural}
+            chipClass="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800"
+          />
+          <ParentChipGroup
+            icon={User}
+            iconClass="text-sky-500"
+            title={isRTL ? 'الوضع العائلي' : 'Family Situation'}
+            items={familyItems}
+            chipClass="bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-800"
+          />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
