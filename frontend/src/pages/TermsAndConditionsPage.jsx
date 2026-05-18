@@ -366,7 +366,7 @@ const TermsAndConditionsPage = () => {
             <p>
               لأي استفسار أو ملاحظة بشأن هذه الشروط، يمكنك التواصل عبر قنوات الدعم
               الرسمية المعتمدة داخل المنصة، أو عبر البريد الإلكتروني المخصّص:
-              <span className="text-muted-foreground"> [يحدَّد قبل النشر]</span>.
+              <span className="text-muted-foreground"> [info@nassaqapp.com]</span>.
             </p>
             <p className="text-sm text-muted-foreground">
               يُعدّ استخدامك للمنصة إقراراً باطلاعك على هذه الشروط والموافقة عليها ضمن

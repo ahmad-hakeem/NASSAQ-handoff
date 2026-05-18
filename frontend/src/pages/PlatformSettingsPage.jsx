@@ -108,7 +108,11 @@ import {
 const SETTINGS_TABS = [
   { id: 'general', icon: Settings, label_ar: 'الإعدادات العامة', label_en: 'General' },
   { id: 'brand', icon: Palette, label_ar: 'الهوية البصرية', label_en: 'Branding' },
-  { id: 'terms', icon: FileText, label_ar: 'الشروط والأحكام', label_en: 'Terms' },
+  // T&C is now centrally maintained in `frontend/src/pages/TermsAndConditionsPage.jsx`
+  // and served at the public `/terms` route, unified across the whole platform. The
+  // per-tenant editor tab (and its `/settings/terms/versions` API) is intentionally
+  // unreachable from the sidebar so platform admins do not author content that is
+  // not surfaced to end users. Endpoints and legacy records remain intact.
   { id: 'privacy', icon: Shield, label_ar: 'سياسة الخصوصية', label_en: 'Privacy' },
   { id: 'contact', icon: Mail, label_ar: 'بيانات التواصل', label_en: 'Contact' },
   { id: 'security', icon: Lock, label_ar: 'سياسات الأمان والجلسات', label_en: 'Security & Sessions Policy' },
