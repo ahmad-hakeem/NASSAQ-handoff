@@ -564,7 +564,7 @@ export const RegisterPage = () => {
                     />
                     <Label htmlFor="acceptPrivacy" className="font-tajawal text-sm cursor-pointer leading-relaxed">
                       {t('iAgreeToThePrivacyPolicyAndTermsOfUse')}
-                      {' '}
+                      {' — '}
                       <a
                         href="/privacy"
                         target="_blank"
@@ -572,7 +572,17 @@ export const RegisterPage = () => {
                         className="text-brand-turquoise hover:underline font-cairo"
                         data-testid="link-open-privacy-policy"
                       >
-                        ({t('privacyPolicy')})
+                        {t('privacyPolicy')}
+                      </a>
+                      {' · '}
+                      <a
+                        href="/terms"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-brand-turquoise hover:underline font-cairo"
+                        data-testid="link-open-terms"
+                      >
+                        {t('termsOfService') || 'الشروط والأحكام'}
                       </a>
                     </Label>
                   </div>

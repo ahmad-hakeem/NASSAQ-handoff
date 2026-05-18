@@ -11,11 +11,12 @@ import { ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 const ParentLegalDocumentPage = ({ docType: docTypeProp }) => {
   const { docType: docTypeParam } = useParams();
   const requested = (docTypeProp || docTypeParam || 'terms').toLowerCase();
-  // Privacy is now served by the unified public /privacy page across the
-  // whole platform — redirect any legacy parent-portal privacy URLs there
-  // so school-published addenda surface only for Terms & Conditions.
+  // Both Privacy and Terms are now served by the unified public pages
+  // (/privacy and /terms) across the whole platform — redirect any legacy
+  // parent-portal legal URLs there.
   const isPrivacyRedirect = requested === 'privacy';
-  const docType = requested === 'terms' ? requested : null;
+  const isTermsRedirect = requested === 'terms';
+  const docType = null;
   const navigate = useNavigate();
   const { api } = useAuth();
   const { t } = useTranslation();
@@ -37,10 +38,13 @@ const ParentLegalDocumentPage = ({ docType: docTypeProp }) => {
     return () => { cancelled = true; };
   }, [api, docType]);
 
-  // Hooks have all run — safe to redirect legacy /parent/legal/privacy
-  // to the unified public /privacy page.
+  // Hooks have all run — safe to redirect legacy /parent/legal/*
+  // routes to the unified public pages.
   if (isPrivacyRedirect) {
     return <Navigate to="/privacy" replace />;
+  }
+  if (isTermsRedirect) {
+    return <Navigate to="/terms" replace />;
   }
 
   const Icon = FileText;

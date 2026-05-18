@@ -167,12 +167,12 @@ export const Footer = () => {
                 </Link>
               </li>
               <li>
-                <a
-                  href="#"
+                <Link
+                  to="/terms"
                   className="text-white/70 hover:text-brand-turquoise transition-colors text-sm font-tajawal"
                 >
                   {t('termsOfService')}
-                </a>
+                </Link>
               </li>
             </ul>
           </div>

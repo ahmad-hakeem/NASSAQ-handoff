@@ -342,7 +342,7 @@ const ParentSettingsPage = () => {
                 iconBg="bg-amber-50 dark:bg-amber-900/30"
                 iconColor="text-amber-600 dark:text-amber-400"
                 label={t('termsAndConditions') || t('termsConditions') || 'Terms & Conditions'}
-                onClick={() => navigate('/parent/legal/terms')}
+                onClick={() => navigate('/terms')}
                 isRTL={isRTL}
                 testId="settings-row-terms"
               />

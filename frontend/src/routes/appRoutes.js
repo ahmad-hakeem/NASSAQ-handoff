@@ -36,6 +36,7 @@ const ParentInvitationAcceptPage = lazy(() => import("../pages/ParentInvitationA
 const CollabInvitationAcceptPage = lazy(() => import("../pages/CollabInvitationAcceptPage"));
 const AccountErasedPage = lazy(() => import("../pages/AccountErasedPage"));
 const PrivacyPolicyPage = lazy(() => import("../pages/PrivacyPolicyPage"));
+const TermsAndConditionsPage = lazy(() => import("../pages/TermsAndConditionsPage"));
 
 // Heavy: AdminDashboard pulls recharts
 const AdminDashboard = lazy(() => import("../pages/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
@@ -184,6 +185,7 @@ export default function AppRoutes() {
         {/* Public Routes */}
         <Route path="/" element={<LandingPage />} />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        <Route path="/terms" element={<TermsAndConditionsPage />} />
         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
         <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
         <Route path="/registration-confirmation" element={<RegistrationConfirmationPage />} />

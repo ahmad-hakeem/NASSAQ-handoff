@@ -58,6 +58,7 @@ import {
   RotateCcw,
   Users2,
   Trash2,
+  FileText,
 } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -968,7 +969,7 @@ export const AccountSettingsPage = () => {
     { id: 'security', icon: Shield, label: t('security'), desc: t('passwordSessions') },
     { id: 'notifications', icon: Bell, label: t('notifications'), desc: t('emailSmsAlerts') },
     { id: 'preferences', icon: Palette, label: t('preferences'), desc: t('languageThemeTime') },
-    { id: 'legal', icon: Shield, label: t('privacyPolicy') || 'Privacy Policy', desc: t('privacyPolicyAndLegal') || 'سياسة الخصوصية والوثائق القانونية' },
+    { id: 'legal', icon: Shield, label: t('legalDocuments') || 'الوثائق القانونية', desc: t('privacyPolicyAndLegal') || 'سياسة الخصوصية والشروط والأحكام' },
     // Task #200 §5.8 — IT-only sections appended at the end of the nav.
     ...(isIndependentTeacher ? [
       { id: 'workspace', icon: Briefcase, label: t('itWorkspaceSection'), desc: t('itWorkspaceSectionDesc') },
@@ -1546,13 +1547,13 @@ export const AccountSettingsPage = () => {
                   <CardHeader className="pb-4">
                     <CardTitle className="font-cairo flex items-center gap-2 text-lg">
                       <Shield className="h-5 w-5 text-brand-turquoise" />
-                      {t('privacyPolicy') || 'Privacy Policy'}
+                      {t('legalDocuments') || 'الوثائق القانونية'}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <p className="text-sm text-muted-foreground font-tajawal leading-relaxed">
-                      {t('privacyPolicyHubBlurb') ||
-                        'تطبّق منصة نسّق سياسة خصوصية موحّدة لجميع الحسابات (الإدارة، المعلم، ولي الأمر، الطالب، المعلم المستقل). تنطبق نفس الضوابط على بيانات الجميع، مع تخصيصات لكل دور بحسب الصلاحيات.'}
+                      {t('legalDocumentsHubBlurb') ||
+                        'تطبّق منصة نسّق سياسة خصوصية وشروطاً وأحكاماً موحّدة لجميع الحسابات (الإدارة، المعلم، ولي الأمر، الطالب، المعلم المستقل). تنطبق نفس الضوابط على بيانات الجميع، مع تخصيصات لكل دور بحسب الصلاحيات.'}
                     </p>
                     <div className="rounded-xl border border-border/60 bg-card divide-y divide-border/40">
                       <a
@@ -1570,10 +1571,25 @@ export const AccountSettingsPage = () => {
                         </span>
                         {isRTL ? <ChevronLeft className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                       </a>
+                      <a
+                        href="/terms"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between gap-3 p-4 hover:bg-muted/40 transition-colors"
+                        data-testid="link-account-terms"
+                      >
+                        <span className="flex items-center gap-3">
+                          <FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                          <span className="font-cairo text-sm">
+                            {t('viewTermsAndConditions') || (isRTL ? 'عرض الشروط والأحكام' : 'View Terms & Conditions')}
+                          </span>
+                        </span>
+                        {isRTL ? <ChevronLeft className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                      </a>
                     </div>
                     <p className="text-xs text-muted-foreground font-tajawal">
-                      {t('privacyPolicyOpensInNewTab') ||
-                        'تُفتح السياسة في نافذة جديدة، ويمكنك طباعتها أو حفظها بصيغة PDF.'}
+                      {t('legalDocumentsOpenInNewTab') ||
+                        'تُفتح الوثائق في نافذة جديدة، ويمكنك طباعتها أو حفظها بصيغة PDF.'}
                     </p>
                   </CardContent>
                 </Card>
