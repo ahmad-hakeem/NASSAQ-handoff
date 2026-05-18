@@ -105,18 +105,12 @@ import {
 // exclusively by `/account/settings` (AccountSettingsPage). Platform
 // admins reach it via the new sidebar entry. Platform Settings is now
 // platform/system configuration only.
-const SETTINGS_TABS = [
-  { id: 'general', icon: Settings, label_ar: 'الإعدادات العامة', label_en: 'General' },
-  { id: 'brand', icon: Palette, label_ar: 'الهوية البصرية', label_en: 'Branding' },
-  // T&C is now centrally maintained in `frontend/src/pages/TermsAndConditionsPage.jsx`
-  // and served at the public `/terms` route, unified across the whole platform. The
-  // per-tenant editor tab (and its `/settings/terms/versions` API) is intentionally
-  // unreachable from the sidebar so platform admins do not author content that is
-  // not surfaced to end users. Endpoints and legacy records remain intact.
-  { id: 'privacy', icon: Shield, label_ar: 'سياسة الخصوصية', label_en: 'Privacy' },
-  { id: 'contact', icon: Mail, label_ar: 'بيانات التواصل', label_en: 'Contact' },
-  { id: 'security', icon: Lock, label_ar: 'سياسات الأمان والجلسات', label_en: 'Security & Sessions Policy' },
-];
+// SETTINGS_TABS lives in its own pure module (`./platformSettingsTabs`) so the
+// regression test can import it without dragging in router/auth/axios. The
+// re-export here keeps any prior `import { SETTINGS_TABS } from '.../PlatformSettingsPage'`
+// callers working.
+export { SETTINGS_TABS } from './platformSettingsTabs';
+import { SETTINGS_TABS } from './platformSettingsTabs';
 
 // Active sessions - fetched from API (empty by default)
 const INITIAL_ACTIVE_SESSIONS = [];
@@ -271,22 +265,8 @@ export const PlatformSettingsPage = () => {
         }
         
         // Task #173: account/title fetches moved to AccountSettingsPage.
-        
-        // Fetch terms versions
-        const termsResponse = await api.get('/settings/terms/versions');
-        if (termsResponse.data?.length > 0) {
-          const publishedVersion = termsResponse.data.find(v => v.is_published);
-          if (publishedVersion) {
-            setTermsData({
-              content: publishedVersion.content_ar || '',
-              version: `${publishedVersion.version_number}.0`,
-              lastUpdated: publishedVersion.created_at,
-              effectiveDate: publishedVersion.published_at,
-            });
-          }
-          setVersionHistory(termsResponse.data);
-        }
-        
+        // Terms versions fetch removed: T&C is now centrally maintained at /terms.
+
         // Fetch privacy versions
         const privacyResponse = await api.get('/settings/privacy/versions');
         if (privacyResponse.data?.length > 0) {
@@ -359,31 +339,8 @@ export const PlatformSettingsPage = () => {
     accentColor: '#10b981',
   });
   
-  // Terms and Privacy
-  const [termsData, setTermsData] = useState({
-    content: `الشروط والأحكام الخاصة باستخدام منصة نَسَّق التعليمية
+  // T&C state removed — public /terms page owns the canonical content.
 
-1. مقدمة
-مرحباً بكم في منصة نَسَّق التعليمية. باستخدامكم لهذه المنصة، فإنكم توافقون على الالتزام بهذه الشروط والأحكام.
-
-2. التعريفات
-- "المنصة": تشير إلى منصة نَسَّق الإلكترونية وجميع خدماتها.
-- "المستخدم": أي شخص يستخدم المنصة بأي صفة.
-- "المدرسة": المؤسسة التعليمية المشتركة في المنصة.
-
-3. الاستخدام المقبول
-يتعهد المستخدم بعدم استخدام المنصة لأي أغراض غير مشروعة أو محظورة.
-
-4. الخصوصية وحماية البيانات
-نلتزم بحماية بيانات المستخدمين وفقاً لسياسة الخصوصية المعمول بها.
-
-5. حقوق الملكية الفكرية
-جميع حقوق الملكية الفكرية للمنصة محفوظة لشركة نَسَّق.`,
-    version: '2.1',
-    lastUpdated: '2026-03-01T00:00:00Z',
-    effectiveDate: '2026-03-15T00:00:00Z',
-  });
-  
   const [privacyData, setPrivacyData] = useState({
     content: `سياسة الخصوصية لمنصة نَسَّق التعليمية
 
@@ -531,25 +488,8 @@ export const PlatformSettingsPage = () => {
   // from AccountSettingsPage via /users/me/profile and /users/me/avatar
   // (self-scoped). This page no longer mutates any user-owned data.
 
-  // Save terms version
-  const handleSaveTermsVersion = async () => {
-    setLoading(true);
-    try {
-      const response = await api.post('/settings/terms', null, {
-        params: { content_ar: termsData.content, content_en: '' }
-      });
-      if (response.data?.version_number) {
-        setTermsData(prev => ({ ...prev, version: `${response.data.version_number}.0` }));
-        toast.success(t('newTermsVersionSaved'));
-      }
-    } catch (error) {
-      console.error('Error saving terms:', error);
-      nassaqError(t('failedToSaveTerms'));
-    } finally {
-      setLoading(false);
-    }
-  };
-  
+  // handleSaveTermsVersion removed — public /terms page owns the canonical content.
+
   // Save privacy version
   const handleSavePrivacyVersion = async () => {
     setLoading(true);
@@ -583,9 +523,6 @@ export const PlatformSettingsPage = () => {
         break;
       case 'security':
         await handleSaveSecuritySettings();
-        break;
-      case 'terms':
-        await handleSaveTermsVersion();
         break;
       case 'privacy':
         await handleSavePrivacyVersion();
@@ -636,11 +573,12 @@ export const PlatformSettingsPage = () => {
     navigate('/login');
   };
   
-  // Publish new version (terms or privacy)
+  // Publish new privacy version. (Terms publishing was removed — /terms is
+  // centrally maintained.)
   const handlePublishVersion = async (docType = null) => {
-    const type = docType || (activeTab === 'terms' ? 'terms' : 'privacy');
-    const data = type === 'terms' ? termsData : privacyData;
-    const setData = type === 'terms' ? setTermsData : setPrivacyData;
+    const type = docType || 'privacy';
+    const data = privacyData;
+    const setData = setPrivacyData;
     
     setLoading(true);
     try {
@@ -1183,58 +1121,8 @@ export const PlatformSettingsPage = () => {
                 </div>
               )}
               
-              {/* Terms & Conditions */}
-              {activeTab === 'terms' && (
-                <div className="space-y-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <FileText className="h-5 w-5 text-brand-navy" />
-                        {t('termsConditions')}
-                      </CardTitle>
-                      <CardDescription>
-                        {t('managePlatformTermsAndConditions')}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                      {/* Version Info */}
-                      <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
-                        <div className="flex items-center gap-6">
-                          <div>
-                            <p className="text-sm text-muted-foreground">{t('currentVersion')}</p>
-                            <p className="font-bold">{termsData.version}</p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-muted-foreground">{t('lastUpdated')}</p>
-                            <p className="font-medium">{formatDateTime(termsData.lastUpdated)}</p>
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button variant="outline" className="rounded-xl" onClick={() => setShowVersionHistoryDialog(true)}>
-                            <History className="h-4 w-4 me-2" />
-                            {t('versionHistory')}
-                          </Button>
-                          <Button className="rounded-xl bg-brand-navy" onClick={() => setShowPublishDialog(true)}>
-                            {t('publishVersion')}
-                          </Button>
-                        </div>
-                      </div>
-                      
-                      {/* Content Editor */}
-                      <div className="space-y-2">
-                        <Label>{t('termsText')}</Label>
-                        <Textarea
-                          value={termsData.content}
-                          onChange={(e) => setTermsData({ ...termsData, content: e.target.value })}
-                          rows={20}
-                          className="rounded-xl font-tajawal"
-                        />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              )}
-              
+              {/* Terms & Conditions tab removed — see /terms (public) for the unified content. */}
+
               {/* Privacy Policy */}
               {activeTab === 'privacy' && (
                 <div className="space-y-6">
@@ -1262,7 +1150,7 @@ export const PlatformSettingsPage = () => {
                           </div>
                         </div>
                         <div className="flex gap-2">
-                          <Button variant="outline" className="rounded-xl" onClick={() => setShowVersionHistoryDialog(true)}>
+                          <Button variant="outline" className="rounded-xl" onClick={() => loadVersionHistory('privacy')}>
                             <History className="h-4 w-4 me-2" />
                             {t('versionHistory')}
                           </Button>
