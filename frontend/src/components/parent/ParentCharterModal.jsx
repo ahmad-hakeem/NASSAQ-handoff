@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 
 /**
  * Mandatory parent charter blocking screen ("ميثاق ولي الأمر").
