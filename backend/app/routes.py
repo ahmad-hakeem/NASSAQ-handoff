@@ -181,6 +181,16 @@ def register_routes(app, api_router: APIRouter):
         router as it_workspace_lifecycle_router,
     )
     api_router.include_router(it_workspace_lifecycle_router)
+    # IT teacher-readable Excel export (parallel to the lifecycle/compliance
+    # JSON-ZIP export above). Separate router so its semantics — no
+    # last_export_at stamping, no signed-token roundtrip, inline xlsx
+    # response body — cannot regress the soft-delete pre-condition that
+    # the lifecycle export guarantees. Same IT-only + MFA + workspace-
+    # pinning guards apply per-endpoint.
+    from routes.independent_teacher_workspace_excel_export_routes import (
+        router as it_workspace_excel_export_router,
+    )
+    api_router.include_router(it_workspace_excel_export_router)
     # Phase 2 §6.4 (#209) — IT-only light AI lesson-planning assistant.
     # Mounted WITHOUT _full_tenant_dep; the router enforces the IT role
     # gate per-endpoint, pins workspace_school_id == itw_{user_id} +

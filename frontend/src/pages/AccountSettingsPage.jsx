@@ -59,6 +59,7 @@ import {
   Users2,
   Trash2,
   FileText,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -769,12 +770,76 @@ export const AccountSettingsPage = () => {
     URL.revokeObjectURL(objectUrl);
   };
 
-  // Task #211 §6.8 — Workspace export & soft-delete.
+  // Primary "Export My Data as Excel" — POSTs to
+  // /independent-teacher/workspace/export-excel and streams the .xlsx
+  // workbook back inline. The response is a binary blob (xlsx); we
+  // wrap it in a Blob, derive a filename from the Content-Disposition
+  // header when available, and trigger a normal anchor download.
+  //
+  // This endpoint deliberately does NOT touch schools.last_export_at
+  // — that column gates the soft-delete pre-condition and only the
+  // lifecycle archive export (handleExportWorkspace below) is allowed
+  // to bump it. So this product export can be run as often as the
+  // teacher likes without affecting their archive cadence.
+  const handleExportWorkspaceExcel = async () => {
+    setSaving(true);
+    try {
+      const response = await api.post(
+        '/independent-teacher/workspace/export-excel',
+        null,
+        { responseType: 'blob' },
+      );
+      const blob = new Blob([response.data], {
+        type:
+          response.headers?.['content-type']
+          || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      // Try to honour the server-provided filename, fall back to a
+      // sensibly-dated default so the user always gets a recognisable
+      // name in their Downloads folder.
+      let filename = `Nassaq_Export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const cd = response.headers?.['content-disposition'] || '';
+      const m = cd.match(/filename="?([^";]+)"?/i);
+      if (m && m[1]) filename = m[1];
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(objectUrl);
+      nassaqSuccess(t('itExportExcelReadyMessage'), {
+        title: t('itExportExcelReadyTitle'),
+      });
+    } catch (error) {
+      // The xlsx response is a Blob, so error payloads sent as JSON
+      // need to be read back from the blob before we can show the
+      // server's Arabic detail to the user.
+      let detail = null;
+      try {
+        const raw = error?.response?.data;
+        if (raw instanceof Blob) {
+          const text = await raw.text();
+          try { detail = JSON.parse(text)?.detail || null; } catch (_p) { /* not json */ }
+        } else if (raw && typeof raw === 'object') {
+          detail = raw.detail || null;
+        }
+      } catch (_e) { /* ignore — fall back to generic copy */ }
+      nassaqError(detail || t('itExportExcelFailed'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Secondary "Download archive copy" — Task #211 §6.8 lifecycle export.
   // Right-to-export: POSTs to /independent-teacher/workspace/export
   // and surfaces the 24h signed download URL through nassaqSuccess
   // (no toast.error, no native window.confirm). The download URL is
   // bound to the caller's workspace + user id server-side; opening it
-  // streams the zip bundle directly.
+  // streams the zip bundle directly. This is the JSON/ZIP archive
+  // intended for portability / pre-soft-delete and is no longer the
+  // primary teacher-facing CTA.
   const handleExportWorkspace = async () => {
     setSaving(true);
     try {
@@ -2312,16 +2377,52 @@ export const AccountSettingsPage = () => {
                       </p>
                     </CardHeader>
                     <CardContent className="space-y-4 pt-5">
-                      <div className="rounded-xl bg-muted/30 border border-border/40 p-5 flex items-start gap-3">
+                      {/* Primary teacher-facing product export: Excel workbook
+                          (.xlsx) with Arabic worksheets. The 2026-05-18 UX
+                          refactor promoted this over the JSON/ZIP archive so
+                          teachers see a readable spreadsheet by default. */}
+                      <div className="rounded-xl bg-brand-turquoise/5 border border-brand-turquoise/30 p-5 flex items-start gap-3">
                         <div className="w-10 h-10 rounded-xl bg-brand-turquoise/15 flex items-center justify-center flex-shrink-0">
-                          <Download className="h-5 w-5 text-brand-turquoise" />
+                          <FileSpreadsheet className="h-5 w-5 text-brand-turquoise" />
                         </div>
                         <div className="flex-1">
                           <p className="font-cairo font-semibold text-foreground">
-                            {t('itExportCardTitle')}
+                            {t('itExportExcelCardTitle')}
                           </p>
                           <p className="text-sm text-muted-foreground font-tajawal mt-1">
-                            {t('itExportCardHint')}
+                            {t('itExportExcelCardHint')}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end pt-2">
+                        <Button
+                          type="button"
+                          onClick={handleExportWorkspaceExcel}
+                          disabled={saving}
+                          className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white rounded-xl gap-2"
+                          data-testid="it-export-excel-btn"
+                        >
+                          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+                          {t('itExportExcelRun')}
+                        </Button>
+                      </div>
+
+                      {/* Secondary: technical/archive JSON-ZIP export. Kept
+                          because it satisfies the §6.8 soft-delete pre-
+                          condition (last_export_at within 24h) and the
+                          right-to-portability artefact. Demoted to a
+                          collapsed secondary card so the primary CTA is
+                          unambiguous. */}
+                      <div className="rounded-xl bg-muted/30 border border-border/40 p-5 flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-brand-navy/10 flex items-center justify-center flex-shrink-0">
+                          <Download className="h-5 w-5 text-brand-navy" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-cairo font-semibold text-foreground">
+                            {t('itExportArchiveCardTitle')}
+                          </p>
+                          <p className="text-sm text-muted-foreground font-tajawal mt-1">
+                            {t('itExportArchiveCardHint')}
                           </p>
                           {lastExportAt && (
                             <p
@@ -2336,13 +2437,14 @@ export const AccountSettingsPage = () => {
                       <div className="flex items-center justify-end pt-2 border-t border-border/30">
                         <Button
                           type="button"
+                          variant="outline"
                           onClick={handleExportWorkspace}
                           disabled={saving}
-                          className="bg-brand-navy rounded-xl gap-2"
+                          className="rounded-xl gap-2 border-brand-navy/30 text-brand-navy hover:bg-brand-navy/5"
                           data-testid="it-export-run-btn"
                         >
                           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                          {t('itExportRun')}
+                          {t('itExportArchiveRun')}
                         </Button>
                       </div>
                     </CardContent>
