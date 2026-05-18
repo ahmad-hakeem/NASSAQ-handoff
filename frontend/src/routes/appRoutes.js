@@ -389,13 +389,17 @@ export default function AppRoutes() {
           <ProtectedRoute allowedRoles={['independent_teacher']}><TeacherPersonalCalendarPage /></ProtectedRoute>
         } />
         {/* Task #209 §6.4 — IT-only light AI lesson-planning assistant.
-            Backend pins workspace + author and bumps the daily counter
-            on workspace_quota.lesson_plans_today. No MFA step-up. */}
+            2026-05-18: relocated into the "فصولي" tabs. The historical
+            standalone route now redirects to the tab so bookmarks /
+            external links keep working. The ProtectedRoute wrapper
+            preserves the original `ai.lesson_plans` gate — users who
+            lack the permission see the standard fallback before the
+            redirect fires (matches the audit-log relocation pattern). */}
         <Route path="/teacher/lesson-planner" element={
           <ProtectedRoute
             allowedRoles={['independent_teacher']}
             requiredPermission="ai.lesson_plans"
-          ><LessonPlannerPage /></ProtectedRoute>
+          ><Navigate to="/teacher/classes?tab=lesson-planner" replace /></ProtectedRoute>
         } />
         {/* Task #190 §5.3 — Independent-Teacher only: workspace subjects
             CRUD. Backend pins school_id == itw_{user_id} on every write

@@ -95,7 +95,14 @@ function PlanPreview({ plan }) {
   );
 }
 
-export default function LessonPlannerPage() {
+// 2026-05-18 — Lesson planner relocated from the main sidebar into a
+// tab inside "فصولي" (Teacher Classes Page). The panel below is now
+// rendered headless from that tab; the default export keeps the
+// standalone shell (Sidebar + main) so the historical
+// /teacher/lesson-planner route + any external entry points still
+// work without rewriting the entire body. AccountSettings audit-log
+// relocation (same day) follows the identical Panel/Page split.
+export function LessonPlannerPanel({ embedded = false } = {}) {
   const { api, user } = useAuth();
   const { t } = useTranslation();
   const { nassaqError, nassaqInfo, nassaqConfirm } = useNassaqAlert();
@@ -344,10 +351,19 @@ export default function LessonPlannerPage() {
       ? 'bg-amber-500'
       : 'bg-emerald-500';
 
-  return (
-    <div className="flex min-h-screen bg-gray-50" dir="rtl">
-      <Sidebar />
-      <main className="flex-1 p-4 sm:p-6 space-y-6 max-w-5xl mx-auto w-full">
+  // When embedded inside the Classes-page tab we drop the page-level
+  // chrome (no second Sidebar, no min-h-screen flex shell, no big
+  // header — the tab itself already provides title/breadcrumb).
+  //
+  // Note: we render the body once and wrap it with a conditional JSX
+  // tree rather than defining an inline `Shell` component. Inline
+  // components recreate their identity on every render and remount
+  // the entire subtree (losing focus, form state, AI response panels)
+  // on each parent re-render — that's exactly what the spec's
+  // "State Preservation" guardrail forbids.
+  const body = (
+    <>
+      {!embedded && (
         <header className="space-y-1">
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Sparkles className="w-6 h-6 text-amber-500" /> مساعد خطط الدروس
@@ -356,6 +372,7 @@ export default function LessonPlannerPage() {
             وَلِّد مسودة خطة درس قصيرة باستخدام الذكاء الاصطناعي. النتائج لمساعدتك فقط — راجعها قبل الاستخدام.
           </p>
         </header>
+      )}
 
         <Card>
           <CardHeader>
@@ -672,7 +689,34 @@ export default function LessonPlannerPage() {
             </CardContent>
           </Card>
         )}
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div
+        className="w-full space-y-6"
+        dir="rtl"
+        data-testid="lesson-planner-panel-embedded"
+      >
+        {body}
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-h-screen bg-gray-50" dir="rtl">
+      <Sidebar />
+      <main className="flex-1 p-4 sm:p-6 space-y-6 max-w-5xl mx-auto w-full">
+        {body}
       </main>
     </div>
   );
+}
+
+// Default export keeps the historical standalone route working
+// (Sidebar + main shell). The Classes-page tab uses the named
+// LessonPlannerPanel export with embedded=true so we don't render
+// a second Sidebar inside the tab.
+export default function LessonPlannerPage() {
+  return <LessonPlannerPanel embedded={false} />;
 }

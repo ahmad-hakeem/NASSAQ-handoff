@@ -20,7 +20,7 @@ import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import {
   Users, BookOpen, Search, RefreshCw, Loader2,
-  GraduationCap, ClipboardCheck, BarChart3, Calendar, Hourglass,
+  GraduationCap, ClipboardCheck, BarChart3, Calendar, Hourglass, Sparkles,
   TrendingUp, LayoutGrid, List, Clock, Play,
   ChevronLeft, Star, AlertTriangle, CheckCircle2,
   ArrowUpDown, Settings, Plus, FileSpreadsheet,
@@ -28,6 +28,12 @@ import {
 } from 'lucide-react';
 import SessionsManageTab from './SessionsManageTab';
 import StandbyTab from './StandbyTab';
+// 2026-05-18 — Lesson planner was relocated from the main sidebar
+// into a tab here. We import the named headless panel (NOT the
+// default page export) so we don't render a nested Sidebar inside
+// the Classes-page layout. Same Panel/Page split used for the IT
+// activity-log relocation into Account Settings (same day).
+import { LessonPlannerPanel } from './LessonPlannerPage';
 import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialog';
 import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 
@@ -47,7 +53,32 @@ const GRADE_COLORS = {
 const getGradeColor = (grade) => GRADE_COLORS[String(grade)] || GRADE_COLORS['1'];
 
 export default function TeacherClassesPage() {
-  const { user, api, isRTL } = useAuth();
+  const { user, api, isRTL, token, fetchPermissions } = useAuth();
+  // 2026-05-18 — Mirror the Sidebar's Phase 0 §4.B-6 permission gate
+  // for the new "lesson-planner" tab. Items that require a backend
+  // RBAC slice (here: `ai.lesson_plans`) are hidden until the lazy
+  // /auth/me/permissions fetch resolves. Fail-closed while loading.
+  const [perms, setPerms] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!token || !fetchPermissions) return undefined;
+    (async () => {
+      try {
+        const data = await fetchPermissions();
+        if (cancelled) return;
+        const list = Array.isArray(data?.permissions)
+          ? data.permissions
+          : Array.isArray(data?.effective_permissions)
+            ? data.effective_permissions
+            : Array.isArray(data) ? data : [];
+        setPerms(new Set(list.map((p) => String(p))));
+      } catch {
+        if (!cancelled) setPerms(new Set());
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token, fetchPermissions]);
+  const canUseLessonPlanner = !!(perms && perms.has('ai.lesson_plans'));
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const _rawTab = searchParams.get('tab');
@@ -58,8 +89,14 @@ export default function TeacherClassesPage() {
   // feature can be re-enabled later — we only suppress the entry
   // point + URL deep-link here.
   const _isITUser = user?.role === 'independent_teacher';
+  // 2026-05-18 — `lesson-planner` is an IT-only tab. The activeTab
+  // resolver mirrors the standby-tab IT guard: if a non-IT user
+  // somehow lands on ?tab=lesson-planner we silently fall back to
+  // the default "classes" view rather than rendering a forbidden
+  // panel. (Backend RBAC still gates the underlying AI route.)
   const activeTab = _rawTab === 'sessions' ? 'sessions'
     : (_rawTab === 'standby' && !_isITUser) ? 'standby'
+    : (_rawTab === 'lesson-planner' && _isITUser && canUseLessonPlanner) ? 'lesson-planner'
     : 'classes';
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
@@ -147,10 +184,13 @@ export default function TeacherClassesPage() {
     // Guard: even if a stale link tries to navigate an IT user to the
     // standby tab, fall through to the default "classes" view rather
     // than surfacing the "ميزة غير متاحة" modal.
-    const safeTab = (tab === 'standby' && _isITUser) ? 'classes' : tab;
+    const safeTab = (tab === 'standby' && _isITUser) ? 'classes'
+      : (tab === 'lesson-planner' && (!_isITUser || !canUseLessonPlanner)) ? 'classes'
+      : tab;
     setSearchParams(
       safeTab === 'sessions' ? { tab: 'sessions' }
       : safeTab === 'standby' ? { tab: 'standby' }
+      : safeTab === 'lesson-planner' ? { tab: 'lesson-planner' }
       : {}
     );
   };
@@ -1297,6 +1337,29 @@ export default function TeacherClassesPage() {
                 )}
               </button>
             )}
+            {/* 2026-05-18 — IT-only "مساعد خطط الدروس" tab. The
+                old sidebar entry was removed; this tab is the
+                primary entry point now. Sparkles icon mirrors the
+                spec's "with a sparkle icon if possible" hint. */}
+            {_isITUser && canUseLessonPlanner && (
+              <button
+                onClick={() => handleTabChange('lesson-planner')}
+                className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative ${
+                  activeTab === 'lesson-planner'
+                    ? 'text-brand-navy dark:text-brand-turquoise'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                data-testid="teacher-classes-lesson-planner-tab"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="h-4 w-4 text-amber-500" />
+                  مساعد خطط الدروس
+                </span>
+                {activeTab === 'lesson-planner' && (
+                  <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -1305,6 +1368,8 @@ export default function TeacherClassesPage() {
           <SessionsManageTab />
         ) : activeTab === 'standby' ? (
           <StandbyTab />
+        ) : activeTab === 'lesson-planner' ? (
+          <LessonPlannerPanel embedded />
         ) : (
           <>
           {!loading && stats && (

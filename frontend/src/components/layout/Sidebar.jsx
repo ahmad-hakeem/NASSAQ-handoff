@@ -513,17 +513,14 @@ export const Sidebar = ({ children }) => {
         roles: ['independent_teacher'],
         dataTour: 'sidebar-subjects',
       },
-      // Task #209 §6.4 — IT-only light AI lesson-planning assistant.
-      // Permission-gated on `ai.lesson_plans` so the link only appears
-      // when the backend RBAC slice exposes the route to this user.
-      {
-        icon: Sparkles,
-        label: 'مساعد خطط الدروس',
-        href: '/teacher/lesson-planner',
-        roles: ['independent_teacher'],
-        permission: 'ai.lesson_plans',
-        dataTour: 'sidebar-lesson-planner',
-      },
+      // 2026-05-18 — IT "مساعد خطط الدروس" (lesson planner) was
+      // relocated into the "فصولي" tabs as `?tab=lesson-planner`
+      // (alongside فصولي / إدارة الحصص). The standalone sidebar
+      // entry is removed to avoid duplicate nav; deep links to
+      // /teacher/lesson-planner redirect to /teacher/classes?tab=
+      // lesson-planner in appRoutes.js so historical bookmarks
+      // continue to work. Permission gating (ai.lesson_plans) is
+      // preserved at both the redirect route and the tab itself.
       // 2026-05-18 — IT "سجل النشاط" was relocated into the unified
       // Account Settings page (tab id `activity`). The sidebar entry
       // is removed to eliminate the duplicate nav item; deep links to
