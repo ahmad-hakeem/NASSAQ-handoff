@@ -179,7 +179,16 @@ def allowed_factor_kinds(user: dict) -> frozenset[str]:
         # because email delivery is unreliable in this deployment and many
         # stored parent email addresses are placeholders.
         return frozenset({"webauthn", "totp", "recovery_code"})
-    return frozenset()
+    # Opt-in MFA: when MFA is not required for this user's role (or the
+    # global enforcement kill switch is on), the user can still voluntarily
+    # enrol an authenticator app, passkey, or recovery codes from the
+    # Security settings page. We expose the standard opt-in factor set so
+    # the Security UI can render the enrolment rows and so the enrolment
+    # gates (``_ensure_totp_kind_allowed`` / ``_ensure_webauthn_kind_allowed``
+    # / ``_ensure_recovery_allowed``) accept the request. Login is NOT
+    # affected: ``required_for(user)`` is still ``None``, so the login
+    # challenge gate is skipped regardless of whether factors exist.
+    return frozenset({"webauthn", "totp", "recovery_code"})
 
 
 # ---- Tier A "must hold a passkey" enforcement -----------------------------

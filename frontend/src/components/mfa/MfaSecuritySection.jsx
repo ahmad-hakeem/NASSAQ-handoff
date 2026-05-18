@@ -451,14 +451,63 @@ export default function MfaSecuritySection({ onChange } = {}) {
                 </span>
               </div>
             )}
-            {!tierBadge && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/30 text-muted-foreground">
-                <ShieldCheck className="h-4 w-4 flex-shrink-0" />
-                <span className="font-cairo text-sm">
-                  {lang === 'ar' ? 'الحساب لا يتطلب تحققاً بخطوتين.' : 'Your account does not require MFA.'}
-                </span>
-              </div>
-            )}
+            {!tierBadge && (() => {
+              // Opt-in MFA banner. When the user's role does not mandate MFA,
+              // we replace the passive "not required" pill with an active CTA
+              // that lets them voluntarily enrol an authenticator app. Once
+              // at least one factor is active, we flip the banner to a green
+              // confirmation state — the factor rows below still surface the
+              // Reset / Disable actions for managing the enrolled factor(s).
+              const anyActiveFactor = (data?.factors || []).some((f) => f.is_active !== false);
+              if (anyActiveFactor) {
+                return (
+                  <div
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300"
+                    data-testid="mfa-optin-active-banner"
+                  >
+                    <CheckCircle className="h-4 w-4 flex-shrink-0" />
+                    <span className="font-cairo text-sm font-semibold">
+                      {lang === 'ar'
+                        ? 'التحقق بخطوتين مفعّل لحسابك.'
+                        : 'Two-step verification is active on your account.'}
+                    </span>
+                  </div>
+                );
+              }
+              return (
+                <div
+                  className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-xl bg-brand-turquoise/10 border border-brand-turquoise/30"
+                  data-testid="mfa-optin-cta"
+                >
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-brand-turquoise/20 text-brand-turquoise flex items-center justify-center flex-shrink-0">
+                      <ShieldCheck className="h-5 w-5" />
+                    </div>
+                    <div className={`flex-1 min-w-0 ${isRTL ? 'text-right' : 'text-left'}`}>
+                      <p className="font-cairo font-semibold text-sm text-foreground">
+                        {lang === 'ar'
+                          ? 'أضف طبقة حماية إضافية لحسابك.'
+                          : 'Add an extra layer of security to your account.'}
+                      </p>
+                      <p className="font-tajawal text-xs text-muted-foreground mt-1">
+                        {lang === 'ar'
+                          ? 'فعّل التحقق بخطوتين باستخدام تطبيق مصادقة لحماية حسابك حتى لو سُرقت كلمة المرور.'
+                          : 'Turn on two-step verification with an authenticator app so your account stays safe even if your password is stolen.'}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={beginTotp}
+                    disabled={totpBusy}
+                    className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white rounded-xl gap-1.5 flex-shrink-0"
+                    data-testid="mfa-optin-enable-btn"
+                  >
+                    {totpBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                    {lang === 'ar' ? 'تفعيل التحقق بخطوتين' : 'Enable two-step verification'}
+                  </Button>
+                </div>
+              );
+            })()}
 
             {data.mfa_must_restore_factor && (
               <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-800/60 text-amber-900 dark:text-amber-200" data-testid="mfa-restore-required-banner">
