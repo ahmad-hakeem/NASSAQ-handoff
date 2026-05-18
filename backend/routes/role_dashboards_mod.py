@@ -362,17 +362,42 @@ async def get_teacher_dashboard(
     # Use teacher's id from teachers collection for lookups
     actual_teacher_id = teacher.get("id")
     school_id = teacher.get("school_id")
-    
+
     # Get teacher assignments using actual_teacher_id
     assignments = await gd_find(db.session, "teacher_assignments", {
         "teacher_id": actual_teacher_id,
         "is_active": True
     }, limit=100)
-    
+
     class_ids = list(set(a.get("class_id") for a in assignments if a.get("class_id")))
     subject_ids = list(set(a.get("subject_id") for a in assignments if a.get("subject_id")))
-    
-    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=50)
+
+    # Bug fix (Task: IT home empty-state stuck) — for Independent Teachers
+    # the canonical source of truth for "my classes" is the workspace
+    # `classes` table scoped to `itw_{user_id}`, NOT `teacher_assignments`:
+    # `POST /classes/create` for IT only inserts the class row and does
+    # not synthesize an assignment, so counting via assignments always
+    # returned 0 and the homepage empty-state ("أنشئ فصلك الأول") stayed
+    # visible after the first class was created. We re-derive class_ids
+    # from the workspace classes here so dashboard stats match the
+    # Classes page (`GET /classes`) and the empty-state flips off the
+    # moment a class exists. Tenant scoping is preserved: we use the
+    # IT's resolved workspace id (`itw_{user_id}`) — never widen scope.
+    from auth_scope import is_independent_teacher as _is_it, independent_workspace_id as _itw_id
+    if _is_it(current_user):
+        _it_workspace = _itw_id(current_user) or school_id
+        _it_classes = await gd_find(
+            db.session, "classes",
+            {"school_id": _it_workspace, "is_active": True},
+            limit=500,
+        )
+        class_ids = [c.get("id") for c in _it_classes if c.get("id")]
+        # Pin school_id to the workspace so downstream reads (today's
+        # schedule, audit log) stay scoped correctly even if the
+        # teachers-row school_id is stale or missing.
+        school_id = _it_workspace
+
+    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=500) if class_ids else []
     total_students = 0
     for cls_item in classes:
         count = await gd_count(db.session, "students", {"class_id": cls_item.get("id"), "is_active": True})
