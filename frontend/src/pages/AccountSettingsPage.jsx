@@ -302,7 +302,11 @@ export const AccountSettingsPage = () => {
     // 2026-05-18: inbox_prefs was merged into notifications; redirect
     // any lingering deep links so users don't land on an empty section.
     if (raw === 'inbox_prefs') return 'notifications';
-    return ['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export', 'workspace-hub'].includes(raw)
+    // 2026-05-18: workspace-hub was merged into the unified `workspace`
+    // section (name card + <hr/> + quota/export/auto-export/collab/lifecycle).
+    // Redirect any lingering deep links so users land on the merged tab.
+    if (raw === 'workspace-hub') return 'workspace';
+    return ['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export'].includes(raw)
       ? raw
       : 'profile';
   })();
@@ -320,7 +324,11 @@ export const AccountSettingsPage = () => {
         setActiveSection('notifications');
         return;
       }
-      if (['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export', 'workspace-hub'].includes(raw)) {
+      if (raw === 'workspace-hub') {
+        setActiveSection('workspace');
+        return;
+      }
+      if (['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export'].includes(raw)) {
         setActiveSection(raw);
       }
     };
@@ -1072,8 +1080,11 @@ export const AccountSettingsPage = () => {
       // sidebar entry is removed to eliminate the duplicate nav item;
       // `inbox_prefs` deep links now redirect to `notifications`.
       { id: 'export', icon: Download, label: t('itDataExportSection'), desc: t('itDataExportSectionDesc') },
-      // Task #252 — at-a-glance hub: quota + export + collaborators + lifecycle.
-      { id: 'workspace-hub', icon: ShieldAlert, label: t('itHubSection'), desc: t('itHubSectionDesc') },
+      // 2026-05-18: the standalone `workspace-hub` sidebar entry was
+      // removed. Its cards (quota, backup/export, auto-export, collaborators,
+      // lifecycle) now render inline under the unified `workspace` (مساحتي)
+      // tab, separated from the name/logo card by an <hr/>. Deep links to
+      // #workspace-hub redirect to #workspace.
     ] : []),
   ];
 
@@ -1081,7 +1092,11 @@ export const AccountSettingsPage = () => {
   // the hub section, so non-IT users + IT users on other sections pay no
   // network cost. The hook fans out to lifecycle + classes + per-class
   // collaborators in parallel.
-  const hubEnabled = isIndependentTeacher && activeSection === 'workspace-hub';
+  // 2026-05-18: hub data now loads when the IT user is on the unified
+  // `workspace` (مساحتي) tab, since the hub cards render inline under
+  // it. Non-IT users + IT users on other sections still pay no network
+  // cost (gated by `isIndependentTeacher`).
+  const hubEnabled = isIndependentTeacher && activeSection === 'workspace';
   const hub = useWorkspaceHubData(api, hubEnabled);
 
   // Task #275 — opt-in weekly auto-export. Local state mirrors the
@@ -1950,8 +1965,16 @@ export const AccountSettingsPage = () => {
                   through useWorkspaceHubData; destructive actions route
                   through nassaqConfirm per the project rule against
                   native confirms / toast.error. */}
-              {activeSection === 'workspace-hub' && isIndependentTeacher && (
+              {/* 2026-05-18 — workspace-hub merged into the unified
+                  `workspace` (مساحتي) tab. The name/logo Card above and the
+                  hub sub-cards below now share one tab, separated by an
+                  <hr/>. Sidebar entry + standalone section removed; deep
+                  links to #workspace-hub redirect to #workspace. Save
+                  handlers remain independent per endpoint (name vs auto-
+                  export vs one-shot export vs lifecycle). */}
+              {activeSection === 'workspace' && isIndependentTeacher && (
                 <div className="space-y-6" data-testid="it-workspace-hub-section">
+                  <hr className="my-2 border-gray-200" />
                   <Card className="card-nassaq">
                     <CardHeader className="pb-4 border-b border-border/40 bg-gradient-to-r from-brand-navy/5 to-brand-turquoise/5">
                       <div className="flex items-center justify-between">
