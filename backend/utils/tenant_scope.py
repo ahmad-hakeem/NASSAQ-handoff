@@ -1,8 +1,11 @@
+import logging
 from typing import Optional, Any, Dict
 
 from fastapi import HTTPException, status
 
 from models.enums import UserRole  # backend/ is on sys.path; matches existing convention
+
+_logger = logging.getLogger("nassaq.tenant_scope")
 
 
 _PLATFORM_ROLES = frozenset({
@@ -300,19 +303,31 @@ def assert_school_access(current_user: dict, school_id: str) -> None:
     """Raise 403 unless the caller belongs to school_id (or is platform admin).
 
     The single authoritative tenant guard for every timetable route.
+
+    User-facing ``detail`` strings are safe Arabic copy (spec: no raw
+    technical phrases like ``tenant`` / ``caller`` reach the UI). The
+    underlying technical reason is captured in the server log so we can
+    still debug. HTTP status codes are unchanged — fail-closed behavior
+    is preserved exactly.
     """
     if not school_id:
+        _logger.debug("assert_school_access: missing school_id for user=%s role=%s",
+                      (current_user or {}).get("id"), (current_user or {}).get("role"))
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="school_id is required",
+            detail="معرّف المدرسة مطلوب لإتمام هذه العملية",
         )
     if _is_platform_admin(current_user):
         return
     user_tenant = current_user.get("tenant_id") or current_user.get("school_id")
     if not user_tenant or str(user_tenant) != str(school_id):
+        _logger.debug(
+            "assert_school_access: tenant mismatch user=%s user_tenant=%s target=%s",
+            (current_user or {}).get("id"), user_tenant, school_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied: school does not match caller's tenant",
+            detail="لا يمكن الوصول إلى بيانات هذه المدرسة من هذا الحساب",
         )
 
 
@@ -357,13 +372,26 @@ def resolve_school_id(current_user: dict, override: Optional[str]) -> Optional[s
         return override
     user_tenant = current_user.get("tenant_id") or current_user.get("school_id")
     if override is not None and str(override) != str(user_tenant):
+        _logger.debug(
+            "resolve_school_id: override mismatch user=%s user_tenant=%s override=%s",
+            (current_user or {}).get("id"), user_tenant, override,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied: school does not match caller's tenant",
+            detail="لا يمكن الوصول إلى بيانات هذه المدرسة من هذا الحساب",
         )
     if not user_tenant:
+        # Most common product cause for this branch is a school-side role
+        # (e.g. teacher) whose account has not yet been linked to a real
+        # school tenant. Keep the 403 (fail-closed) but surface a
+        # friendly, actionable Arabic message — never the raw
+        # ``caller has no tenant`` phrase.
+        _logger.info(
+            "resolve_school_id: caller has no tenant (likely unlinked account) user=%s role=%s",
+            (current_user or {}).get("id"), (current_user or {}).get("role"),
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied: caller has no tenant",
+            detail="هذا الحساب غير مرتبط بمدرسة حاليًا. يرجى التواصل مع إدارة المدرسة لإكمال ربط الحساب.",
         )
     return str(user_tenant)
