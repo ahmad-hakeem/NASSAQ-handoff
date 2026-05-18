@@ -11,10 +11,19 @@ import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { Checkbox } from '../../components/ui/checkbox';
 
+// 2026-05-18 — Student accounts are globally disabled platform-wide,
+// so sending direct messages to "طلابي" is a dead end. We keep the
+// cohort definition intact (icon + i18n key + backend contract) and
+// only filter it out of the rendered cohort tabs via HIDDEN_COHORTS
+// below. Restoring the option when student accounts come back online
+// is a one-line revert: clear the HIDDEN_COHORTS set.
 const COHORTS = [
   { id: 'my_students', icon: Users, labelKey: 'itCohortMyStudents' },
   { id: 'my_parents', icon: UserPlus, labelKey: 'itCohortMyParents' },
 ];
+const HIDDEN_COHORTS = new Set(['my_students']);
+const VISIBLE_COHORTS = COHORTS.filter((c) => !HIDDEN_COHORTS.has(c.id));
+const DEFAULT_COHORT = VISIBLE_COHORTS[0]?.id || 'my_parents';
 
 // 2026-05-18 — Composer relocated into the unified
 // "التواصل والإشعارات" hub as the "إرسال رسالة" tab. The named
@@ -27,7 +36,11 @@ export function IndependentTeacherCommunicationPanel({ embedded = false } = {}) 
   const { t } = useTranslation();
   const { nassaqError, nassaqSuccess } = useNassaqAlert();
 
-  const [cohort, setCohort] = useState('my_students');
+  // Defaults to the first VISIBLE cohort (currently "my_parents")
+  // so the form is never mounted on a hidden tab while students are
+  // disabled. Falls back to 'my_parents' literal if every cohort is
+  // ever hidden.
+  const [cohort, setCohort] = useState(DEFAULT_COHORT);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(new Set());
@@ -141,7 +154,7 @@ export function IndependentTeacherCommunicationPanel({ embedded = false } = {}) 
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-2">
-              {COHORTS.map(c => {
+              {VISIBLE_COHORTS.map(c => {
                 const Icon = c.icon;
                 const on = cohort === c.id;
                 return (
