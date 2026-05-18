@@ -50,7 +50,13 @@ function formatRowDate(value, isAr) {
   }
 }
 
-export default function TeacherNotificationsPage() {
+// 2026-05-18 — IT inbox merged into the unified
+// "التواصل والإشعارات" hub. The named `TeacherNotificationsPanel`
+// export is the headless body the hub mounts as its Inbox tab; the
+// default `TeacherNotificationsPage` keeps the historical
+// /teacher/notifications shell working (Sidebar + main) until the
+// redirect in appRoutes.js phases external bookmarks over.
+export function TeacherNotificationsPanel({ embedded = false } = {}) {
   const { api, user } = useAuth();
   const navigate = useNavigate();
   const { nassaqError, nassaqInfo } = useNassaqAlert();
@@ -144,11 +150,11 @@ export default function TeacherNotificationsPage() {
 
   const filtered = useMemo(() => items, [items]);
 
-  return (
-    <div className="flex h-screen bg-gray-50" dir={isAr ? 'rtl' : 'ltr'}>
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto p-4 sm:p-6">
-        <div className="max-w-4xl mx-auto space-y-6">
+  // Body content is built once; we only swap the outer chrome based
+  // on `embedded` so React keeps the same element identity across
+  // parent re-renders (no remount, no input-focus loss).
+  const body = (
+    <div className={embedded ? 'w-full space-y-6' : 'max-w-4xl mx-auto space-y-6'}>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <Bell className="h-6 w-6 text-blue-600 shrink-0" />
@@ -329,7 +335,32 @@ export default function TeacherNotificationsPage() {
             </CardContent>
           </Card>
         </div>
+  );
+
+  if (embedded) {
+    return (
+      <div
+        className="w-full"
+        dir={isAr ? 'rtl' : 'ltr'}
+        data-testid="teacher-notifications-panel-embedded"
+      >
+        {body}
+      </div>
+    );
+  }
+  return (
+    <div className="flex h-screen bg-gray-50" dir={isAr ? 'rtl' : 'ltr'}>
+      <Sidebar />
+      <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        {body}
       </main>
     </div>
   );
+}
+
+// Default export keeps the historical standalone route working;
+// /teacher/notifications now redirects to the unified hub but this
+// component remains exported in case anything else imports it.
+export default function TeacherNotificationsPage() {
+  return <TeacherNotificationsPanel embedded={false} />;
 }

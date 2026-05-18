@@ -115,6 +115,39 @@ export const Sidebar = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // 2026-05-18 — IT unread inbox counter for the unified
+  // "التواصل والإشعارات" entry (Phase-1 badge migration). Polled
+  // from the same IT-scoped endpoint NotificationBell uses so the
+  // bell and the sidebar badge never diverge; the global
+  // `notifications:refresh` event lets bulk mark-as-read in the
+  // hub flush the badge immediately.
+  const [unreadInbox, setUnreadInbox] = useState(0);
+  const isIndependentTeacher = (user?.role || '').toLowerCase() === 'independent_teacher';
+  useEffect(() => {
+    if (!isIndependentTeacher || !token) {
+      setUnreadInbox(0);
+      return undefined;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await api.get('/independent-teacher/notifications/unread-count');
+        if (!cancelled) setUnreadInbox(Number(res?.data?.unread_count) || 0);
+      } catch {
+        if (!cancelled) setUnreadInbox(0);
+      }
+    };
+    load();
+    const interval = setInterval(load, 60000);
+    const onRefresh = () => load();
+    window.addEventListener('notifications:refresh', onRefresh);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      window.removeEventListener('notifications:refresh', onRefresh);
+    };
+  }, [api, token, isIndependentTeacher]);
+
   // Fetch available roles on mount
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   useEffect(() => {
@@ -427,6 +460,13 @@ export const Sidebar = ({ children }) => {
         href: '/teacher/communication',
         roles: ['teacher', 'independent_teacher'],
         dataTour: 'sidebar-communication',
+        // 2026-05-18 — surface the IT unread inbox count next to
+        // this single unified entry now that the standalone
+        // "الإشعارات" item is gone. The sidebar polls the same
+        // IT-scoped /independent-teacher/notifications/unread-count
+        // endpoint NotificationBell uses, so the bell and the
+        // sidebar badge never disagree.
+        showUnreadBadge: true,
       },
       {
         icon: Network,
@@ -537,14 +577,14 @@ export const Sidebar = ({ children }) => {
         permission: 'analytics.read_own_workspace',
         dataTour: 'sidebar-analytics',
       },
-      // Task #249 — IT-only inbox for collaborator invites, parent
-      // accepts, workspace lifecycle, quota and lesson-plan events.
-      {
-        icon: Bell,
-        label: 'الإشعارات',
-        href: '/teacher/notifications',
-        roles: ['independent_teacher'],
-      },
+      // 2026-05-18 — Standalone IT "الإشعارات" entry removed. The
+      // inbox now lives inside the unified "التواصل والإشعارات"
+      // hub as its default "البريد الوارد" tab; the unread counter
+      // moved onto the kept communication entry above
+      // (`showUnreadBadge: true`). Deep links to
+      // /teacher/notifications redirect to
+      // /teacher/communication?tab=inbox in appRoutes.js so
+      // historical bookmarks continue to work.
     ];
 
     // Parent Menu Items — mirrors the historical Parent Portal navigation so
@@ -803,7 +843,21 @@ export const Sidebar = ({ children }) => {
                 }`}
               >
                 <item.icon className="h-5 w-5 flex-shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
+                {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+                {/* 2026-05-18 — unread badge for sidebar items that
+                    opt in via `showUnreadBadge`. Currently used by
+                    the IT unified communications entry. Renders in
+                    both collapsed and expanded modes so the cue is
+                    never hidden behind the rail. */}
+                {item.showUnreadBadge && unreadInbox > 0 && (
+                  <Badge
+                    variant="destructive"
+                    className={`h-5 min-w-[1.25rem] px-1.5 text-[10px] font-semibold flex items-center justify-center rounded-full ${collapsed ? 'absolute top-1 end-1' : 'ms-auto'}`}
+                    data-testid={`sidebar-badge-${item.href.replace(/\//g, '-')}`}
+                  >
+                    {unreadInbox > 99 ? '99+' : unreadInbox}
+                  </Badge>
+                )}
               </Link>
             );
           })}

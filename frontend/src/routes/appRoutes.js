@@ -435,8 +435,15 @@ export default function AppRoutes() {
           ><TeacherAnalyticsPage /></ProtectedRoute>
         } />
         {/* Task #249 — IT-only notifications inbox. */}
+        {/* 2026-05-18 — IT Notifications Inbox merged into the
+            unified "التواصل والإشعارات" hub. The historical
+            standalone route now redirects to the hub's Inbox tab
+            so existing bookmarks and email deep-links keep working.
+            Role gate is preserved via ProtectedRoute. */}
         <Route path="/teacher/notifications" element={
-          <ProtectedRoute allowedRoles={['independent_teacher']}><TeacherNotificationsPage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['independent_teacher']}>
+            <Navigate to="/teacher/communication?tab=inbox" replace />
+          </ProtectedRoute>
         } />
         {/* Student Portal Routes — TEMPORARILY DISABLED platform-wide while
             the student experience is being rebuilt. Backend rejects every

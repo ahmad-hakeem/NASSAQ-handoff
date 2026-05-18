@@ -25,6 +25,11 @@ import {
 } from 'lucide-react';
 import { useTranslation } from '../../contexts/ThemeContext';
 import IndependentTeacherCommunicationPage from './IndependentTeacherCommunicationPage';
+// 2026-05-18 — IT users now land on the unified inbox+composer hub
+// instead of the bare composer page. The hub mounts the composer
+// (IndependentTeacherCommunicationPanel) inside its "إرسال رسالة"
+// tab so the IT composer code path is unchanged.
+import UnifiedCommunicationsHub from './UnifiedCommunicationsHub';
 
 // Each template explicitly declares which recipient cohorts it can
 // target. The "Choose Recipients" step (Step 2) renders only these
@@ -70,7 +75,11 @@ const STAFF_ROLES = [
 export default function TeacherCommunicationPage() {
   const { user } = useAuth();
   if ((user?.role || '').toLowerCase() === 'independent_teacher') {
-    return <IndependentTeacherCommunicationPage />;
+    // 2026-05-18 — render the unified hub (Inbox default + Composer
+    // tab) instead of the standalone composer. The standalone
+    // composer page is still exported so direct importers continue
+    // to work; we just no longer wire it into the IT route.
+    return <UnifiedCommunicationsHub />;
   }
   return <TeacherCommunicationPageInner />;
 }

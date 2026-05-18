@@ -16,7 +16,12 @@ const COHORTS = [
   { id: 'my_parents', icon: UserPlus, labelKey: 'itCohortMyParents' },
 ];
 
-export default function IndependentTeacherCommunicationPage() {
+// 2026-05-18 — Composer relocated into the unified
+// "التواصل والإشعارات" hub as the "إرسال رسالة" tab. The named
+// `IndependentTeacherCommunicationPanel` export is the headless
+// body the hub mounts; the default export keeps the existing
+// standalone shell intact for any direct importer.
+export function IndependentTeacherCommunicationPanel({ embedded = false } = {}) {
   const { api } = useAuth();
   const { isRTL } = useTheme();
   const { t } = useTranslation();
@@ -110,13 +115,17 @@ export default function IndependentTeacherCommunicationPage() {
   const inputDir = isRTL ? 'rtl' : 'ltr';
   const inputAlign = isRTL ? 'text-right' : 'text-left';
 
-  return (
-    <div dir={dir} className="min-h-screen bg-slate-50 py-6 px-4">
-      <div className="mx-auto max-w-4xl space-y-6">
+  // Same single-`body` / conditional-wrapper pattern used by the
+  // lesson-planner relocation and the IT inbox panel so the form
+  // state (subject, body, selected recipients) survives tab toggles.
+  const content = (
+    <div className={embedded ? 'w-full space-y-6' : 'mx-auto max-w-4xl space-y-6'}>
+      {!embedded && (
         <div>
           <h1 className="text-2xl font-bold text-emerald-800">{t('itCommHubTitle')}</h1>
           <p className="text-sm text-slate-500 mt-1">{t('itCommHubSubtitle')}</p>
         </div>
+      )}
 
         <Card className="bg-white shadow-sm border-emerald-100">
           <CardHeader className="pb-3">
@@ -229,7 +238,27 @@ export default function IndependentTeacherCommunicationPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
     </div>
   );
+
+  if (embedded) {
+    return (
+      <div
+        dir={dir}
+        className="w-full"
+        data-testid="it-communication-panel-embedded"
+      >
+        {content}
+      </div>
+    );
+  }
+  return (
+    <div dir={dir} className="min-h-screen bg-slate-50 py-6 px-4">
+      {content}
+    </div>
+  );
+}
+
+export default function IndependentTeacherCommunicationPage() {
+  return <IndependentTeacherCommunicationPanel embedded={false} />;
 }

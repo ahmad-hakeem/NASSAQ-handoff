@@ -22,6 +22,11 @@ export { default as ImportStudentsPage } from './ImportStudentsPage';
 export { default as BulkImportPage } from './BulkImportPage';
 export { default as TeacherAchievementsPage } from './TeacherAchievementsPage';
 export { default as TeacherCommunicationPage } from './TeacherCommunicationPage';
+// 2026-05-18 — Unified "التواصل والإشعارات" hub (IT-only) merges
+// the inbox + composer under one route. The IT branch in
+// TeacherCommunicationPage renders this hub directly.
+export { default as UnifiedCommunicationsHub } from './UnifiedCommunicationsHub';
+export { IndependentTeacherCommunicationPanel } from './IndependentTeacherCommunicationPage';
 export { default as TeacherResourcesPage } from './TeacherResourcesPage';
 export { default as TeacherSettingsPage } from './TeacherSettingsPage';
 // Independent-Teacher only: reduced workspace settings (Task #189 §5.2).
@@ -41,4 +46,4 @@ export { default as TeacherAuditLogPage, TeacherAuditLogPanel } from './TeacherA
 // Independent-Teacher only: workspace analytics dashboard (Task #273).
 export { default as TeacherAnalyticsPage } from './TeacherAnalyticsPage';
 // Independent-Teacher only: notifications inbox (Task #249).
-export { default as TeacherNotificationsPage } from './TeacherNotificationsPage';
+export { default as TeacherNotificationsPage, TeacherNotificationsPanel } from './TeacherNotificationsPage';
