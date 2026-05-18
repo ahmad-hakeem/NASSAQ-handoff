@@ -142,11 +142,74 @@ function readStoredCsvColumns(userId) {
 function severityClass(sev) {
   switch ((sev || '').toLowerCase()) {
     case 'critical': return 'bg-red-100 text-red-800 border-red-200';
-    case 'high': return 'bg-orange-100 text-orange-800 border-orange-200';
+    case 'high': return 'bg-red-100 text-red-800 border-red-200';
     case 'medium': return 'bg-amber-100 text-amber-800 border-amber-200';
     case 'low': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
     default: return 'bg-gray-100 text-gray-700 border-gray-200';
   }
+}
+
+// 2026-05-18 — translate severity enum to a user-facing Arabic label.
+// Backend returns raw enums (low/medium/high/critical) on rows where
+// the localised label hasn't been precomputed; we never want to leak
+// those raw English keys into the UI.
+function severityLabel(t, sev) {
+  const key = (sev || '').toLowerCase();
+  const fallbacks = {
+    low: 'عادي',
+    medium: 'متوسط',
+    high: 'هام/حرج',
+    critical: 'هام/حرج',
+  };
+  if (!key) return '—';
+  const i18n = t(`auditSeverity_${key}`);
+  if (i18n && i18n !== `auditSeverity_${key}`) return i18n;
+  return fallbacks[key] || sev;
+}
+
+// 2026-05-18 — translate a raw backend event enum (e.g.
+// "INDEPENDENT_TEACHER_EXPORT_EXCEL") into a user-friendly Arabic
+// string when the backend didn't populate `action_label_ar`. The
+// first lookup is the i18n bundle (key: `auditEvent_<lowercase>`);
+// the dictionary below is the in-code fallback for the common events;
+// finally, an unknown enum is humanised by Title-Casing the snake_case
+// token so the table never displays raw ALL_CAPS strings.
+const AUDIT_EVENT_FALLBACKS_AR = {
+  INDEPENDENT_TEACHER_EXPORT_EXCEL: 'تصدير بيانات المعلم إلى إكسيل',
+  INDEPENDENT_TEACHER_EXPORT_CSV: 'تصدير بيانات المعلم إلى CSV',
+  INDEPENDENT_TEACHER_EXPORT: 'تصدير بيانات مساحة العمل',
+  INDEPENDENT_TEACHER_WORKSPACE_ARCHIVE: 'أرشفة مساحة العمل',
+  INDEPENDENT_TEACHER_WORKSPACE_REACTIVATE: 'إعادة تنشيط مساحة العمل',
+  INDEPENDENT_TEACHER_INVITE_PARENT: 'دعوة وليّ أمر',
+  INDEPENDENT_TEACHER_INVITE_COLLABORATOR: 'دعوة معلم متعاون',
+  USER_LOGIN: 'تسجيل دخول',
+  USER_LOGOUT: 'تسجيل خروج',
+  USER_PASSWORD_CHANGED: 'تغيير كلمة المرور',
+  USER_MFA_ENABLED: 'تفعيل التحقق الثنائي',
+  USER_MFA_DISABLED: 'إلغاء التحقق الثنائي',
+  DATA_UPDATED: 'تعديل بيانات',
+  DATA_CREATED: 'إضافة بيانات',
+  DATA_DELETED: 'حذف بيانات',
+};
+
+function humaniseEnum(raw) {
+  if (!raw || typeof raw !== 'string') return raw || '';
+  // Lowercase, replace underscores with spaces, then Title-Case each
+  // word. Keeps short particles capitalised for readability.
+  return raw
+    .toLowerCase()
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function formatAuditEvent(t, raw) {
+  if (!raw) return '';
+  const i18n = t(`auditEvent_${raw.toLowerCase()}`);
+  if (i18n && i18n !== `auditEvent_${raw.toLowerCase()}`) return i18n;
+  if (AUDIT_EVENT_FALLBACKS_AR[raw]) return AUDIT_EVENT_FALLBACKS_AR[raw];
+  return humaniseEnum(raw);
 }
 
 function formatTimestamp(iso) {
@@ -155,10 +218,17 @@ function formatTimestamp(iso) {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return iso;
     const hijri = formatHijriDate(d);
+    // Natural Arabic Gregorian date — "الثلاثاء، ١٩ مايو". We pass the
+    // plain `ar` locale (Gregorian); the project guardrail forbids
+    // `ar-SA-u-ca-islamic`, but the standard `ar` locale formats
+    // Gregorian dates correctly with Arabic-Indic digits + weekday.
+    const gregorian = d.toLocaleDateString('ar', {
+      weekday: 'long', day: 'numeric', month: 'long',
+    });
     const time = d.toLocaleTimeString('ar-SA', {
       hour: '2-digit', minute: '2-digit',
     });
-    return `${hijri} — ${time}`;
+    return `${gregorian} • ${hijri} — ${time}`;
   } catch {
     return iso;
   }
@@ -214,7 +284,14 @@ function DetailsBlock({ details }) {
   );
 }
 
-export default function TeacherAuditLogPage() {
+// 2026-05-18 — the standalone /teacher/audit-log route has been
+// relocated into the Account Settings page (tab id `activity`). The
+// inner content (header + filters + table) is exported as
+// `TeacherAuditLogPanel` so AccountSettingsPage can embed it without
+// double-rendering the Sidebar / app chrome. The default export keeps
+// the historical route working as a fallback for deep links and is
+// also kept available for the page-level snapshot tests.
+export function TeacherAuditLogPanel({ embedded = false }) {
   const { api, user } = useAuth();
   const { nassaqError } = useNassaqAlert();
   const { t } = useTranslation();
@@ -232,6 +309,20 @@ export default function TeacherAuditLogPage() {
   const [exporting, setExporting] = useState(false);
   const [csvColumns, setCsvColumnsState] = useState(() => readStoredCsvColumns(userId));
   const [expanded, setExpanded] = useState({});
+
+  // 2026-05-18 — debounce the actor search input so each keystroke
+  // doesn't fire a backend round-trip. The explicit "بحث" button still
+  // works (and short-circuits the debounce on submit); typing alone
+  // now triggers a server refetch after a 400ms idle window.
+  useEffect(() => {
+    const trimmed = actorInput.trim();
+    if (trimmed === actorQuery) return undefined;
+    const handle = setTimeout(() => {
+      setCursor(null);
+      setActorQuery(trimmed);
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [actorInput, actorQuery]);
 
   const csvPreset = useMemo(() => presetMatching(csvColumns), [csvColumns]);
 
@@ -419,11 +510,11 @@ export default function TeacherAuditLogPage() {
     setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
+  // 2026-05-18 — when embedded inside AccountSettingsPage we render the
+  // inner content only (the parent already supplies the page chrome
+  // + Sidebar). Standalone route mounts the full page layout below.
   return (
-    <div className="flex min-h-screen bg-gray-50" dir="rtl">
-      <Sidebar />
-      <main className="flex-1 p-4 sm:p-6 lg:p-10">
-        <div className="max-w-5xl mx-auto space-y-6">
+    <AuditLogShell embedded={embedded}>
           <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3">
               <History className="w-6 h-6 text-emerald-700" />
@@ -735,14 +826,14 @@ export default function TeacherAuditLogPage() {
                   columns={[
                     {
                       key: 'severity',
-                      header: t('severity') || 'الخطورة',
+                      header: t('severity') || 'الأهمية',
                       cellClassName: 'whitespace-nowrap',
                       render: (row) => (
                         <Badge
                           variant="outline"
                           className={severityClass(row.severity)}
                         >
-                          {row.severity}
+                          {severityLabel(t, row.severity)}
                         </Badge>
                       ),
                     },
@@ -757,7 +848,7 @@ export default function TeacherAuditLogPage() {
                           <div className="space-y-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="font-semibold text-gray-900">
-                                {row.action_label_ar || row.action}
+                                {row.action_label_ar || formatAuditEvent(t, row.action)}
                               </span>
                               {(row.actor_name || role) && (
                                 <span className="text-xs text-gray-500">
@@ -812,8 +903,33 @@ export default function TeacherAuditLogPage() {
               )}
             </CardContent>
           </Card>
+    </AuditLogShell>
+  );
+}
+
+// Outer shell: standalone route gets Sidebar + main; embedded mode
+// (inside AccountSettingsPage) just yields the content unchanged so
+// the parent's section card supplies the visual frame.
+function AuditLogShell({ embedded, children }) {
+  if (embedded) {
+    return <div className="space-y-6" data-testid="teacher-audit-log-panel">{children}</div>;
+  }
+  return (
+    <div className="flex min-h-screen bg-gray-50" dir="rtl">
+      <Sidebar />
+      <main className="flex-1 p-4 sm:p-6 lg:p-10">
+        <div className="max-w-5xl mx-auto space-y-6">
+          {children}
         </div>
       </main>
     </div>
   );
+}
+
+// Default export: the standalone page used by the (legacy) /teacher/
+// audit-log route. The Settings tab imports `TeacherAuditLogPanel`
+// directly with `embedded={true}` so it inherits the settings shell
+// without rendering a second Sidebar.
+export default function TeacherAuditLogPage() {
+  return <TeacherAuditLogPanel />;
 }

@@ -524,16 +524,11 @@ export const Sidebar = ({ children }) => {
         permission: 'ai.lesson_plans',
         dataTour: 'sidebar-lesson-planner',
       },
-      // Task #248 — IT-only workspace audit-log view. Permission-gated
-      // on `audit.read_own_workspace` so the link mirrors the backend
-      // RBAC slice exactly.
-      {
-        icon: History,
-        label: 'سجل النشاط',
-        href: '/teacher/audit-log',
-        roles: ['independent_teacher'],
-        permission: 'audit.read_own_workspace',
-      },
+      // 2026-05-18 — IT "سجل النشاط" was relocated into the unified
+      // Account Settings page (tab id `activity`). The sidebar entry
+      // is removed to eliminate the duplicate nav item; deep links to
+      // /teacher/audit-log redirect to /account/settings#activity in
+      // appRoutes.js so historical bookmarks continue to work.
       // Task #273 — IT-only workspace analytics dashboard. Permission-
       // gated on `analytics.read_own_workspace` so the link mirrors the
       // backend RBAC slice exactly.

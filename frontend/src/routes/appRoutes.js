@@ -406,12 +406,19 @@ export default function AppRoutes() {
         {/* Task #248 — IT-only workspace audit-log view. Backend pins
             school_id == itw_{user_id} on every read, strips sensitive
             keys from details, and returns 404 for cross-workspace ids
-            per spec §8 inv. 3. Read-only, no MFA step-up. */}
+            per spec §8 inv. 3. Read-only, no MFA step-up.
+
+            2026-05-18: the page was relocated into Account Settings
+            (tab id `activity`). We keep the route registered so it
+            still permission-gates the destination, but the standalone
+            page now mounts inside Settings via the deep-link redirect
+            below — historical bookmarks land on the new tab without a
+            broken-link experience. */}
         <Route path="/teacher/audit-log" element={
           <ProtectedRoute
             allowedRoles={['independent_teacher']}
             requiredPermission="audit.read_own_workspace"
-          ><TeacherAuditLogPage /></ProtectedRoute>
+          ><Navigate to="/account/settings#activity" replace /></ProtectedRoute>
         } />
         {/* Task #273 — IT-only workspace analytics dashboard. Backend
             pins tenant_id == itw_{user_id} on every aggregation and

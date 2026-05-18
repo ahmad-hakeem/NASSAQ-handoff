@@ -35,7 +35,9 @@ export { default as LessonPlannerPage } from './LessonPlannerPage';
 // Independent-Teacher only: workspace subject management (Task #190 §5.3).
 export { default as TeacherSubjectsPage } from './TeacherSubjectsPage';
 // Independent-Teacher only: workspace audit-log view (Task #248).
-export { default as TeacherAuditLogPage } from './TeacherAuditLogPage';
+// 2026-05-18: also exports the headless `TeacherAuditLogPanel` so the
+// Account Settings page can embed the same content inline.
+export { default as TeacherAuditLogPage, TeacherAuditLogPanel } from './TeacherAuditLogPage';
 // Independent-Teacher only: workspace analytics dashboard (Task #273).
 export { default as TeacherAnalyticsPage } from './TeacherAnalyticsPage';
 // Independent-Teacher only: notifications inbox (Task #249).

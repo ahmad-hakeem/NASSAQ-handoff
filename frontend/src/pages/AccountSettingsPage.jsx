@@ -91,6 +91,11 @@ import {
 } from '../components/ui/alert-dialog';
 import { ImageCropModal } from '../components/ui/ImageCropModal';
 import MfaSecuritySection from '../components/mfa/MfaSecuritySection';
+// 2026-05-18 — IT "سجل النشاط" was relocated from the main sidebar
+// into a new Settings tab. We embed the existing audit-log panel
+// (headless variant) so the content stays in one place and the page
+// inherits the settings shell instead of double-rendering Sidebar.
+import { TeacherAuditLogPanel } from './TeacherModule';
 
 const PasswordStrength = ({ password, isRTL }) => {
   const { t } = useTranslation();
@@ -306,7 +311,7 @@ export const AccountSettingsPage = () => {
     // section (name card + <hr/> + quota/export/auto-export/collab/lifecycle).
     // Redirect any lingering deep links so users land on the merged tab.
     if (raw === 'workspace-hub') return 'workspace';
-    return ['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export'].includes(raw)
+    return ['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export', 'activity', 'legal'].includes(raw)
       ? raw
       : 'profile';
   })();
@@ -328,7 +333,7 @@ export const AccountSettingsPage = () => {
         setActiveSection('workspace');
         return;
       }
-      if (['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export'].includes(raw)) {
+      if (['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export', 'activity', 'legal'].includes(raw)) {
         setActiveSection(raw);
       }
     };
@@ -1080,6 +1085,10 @@ export const AccountSettingsPage = () => {
       // sidebar entry is removed to eliminate the duplicate nav item;
       // `inbox_prefs` deep links now redirect to `notifications`.
       { id: 'export', icon: Download, label: t('itDataExportSection'), desc: t('itDataExportSectionDesc') },
+      // 2026-05-18 — IT "سجل النشاط" (audit log) was relocated here
+      // from the main sidebar. The panel is lazy-imported below so
+      // non-IT users + IT users on other sections pay no bundle cost.
+      { id: 'activity', icon: History, label: t('itActivityLogSection') || 'سجل النشاط', desc: t('itActivityLogSectionDesc') || 'سجلّ أحداث مساحة العمل (دخول، تصدير، تعديلات).' },
       // 2026-05-18: the standalone `workspace-hub` sidebar entry was
       // removed. Its cards (quota, backup/export, auto-export, collaborators,
       // lifecycle) now render inline under the unified `workspace` (مساحتي)
@@ -2541,6 +2550,30 @@ export const AccountSettingsPage = () => {
                           {t('itSoftDeleteOpen')}
                         </Button>
                       </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+
+              {/* 2026-05-18 — IT "سجل النشاط" relocated from the main
+                  sidebar. The headless panel inherits the settings
+                  shell (no double Sidebar) and renders inside a
+                  branded card so it feels native to the Settings UX. */}
+              {activeSection === 'activity' && isIndependentTeacher && (
+                <div className="space-y-6" data-testid="it-activity-section">
+                  <Card className="card-nassaq border-brand-turquoise/20">
+                    <CardHeader className="pb-4 border-b border-border/40 bg-brand-turquoise/5">
+                      <CardTitle className="font-cairo flex items-center gap-2 text-lg text-brand-navy">
+                        <History className="h-5 w-5 text-brand-turquoise" />
+                        {t('itActivityLogSection') || 'سجل النشاط'}
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground font-tajawal mt-1">
+                        {t('itActivityLogSectionDesc')
+                          || 'سجلّ أحداث مساحة العمل (دخول، تصدير، تعديلات).'}
+                      </p>
+                    </CardHeader>
+                    <CardContent className="pt-5">
+                      <TeacherAuditLogPanel embedded />
                     </CardContent>
                   </Card>
                 </div>
