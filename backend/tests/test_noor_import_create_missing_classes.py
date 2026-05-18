@@ -403,3 +403,82 @@ async def test_skips_pair_when_class_already_exists(client, _db_session):
     # Row now resolves to the pre-existing class.
     assert body["rows"][0]["class_id"] == cid
     assert body["counts"]["unclassified"] == 0
+
+
+async def test_overrides_apply_grade_and_section_corrections(client, _db_session):
+    """Principal-supplied grade/section overrides REPLACE the raw parsed
+    values before normalisation. Lets a real Noor file whose
+    `رقم الصف` column carries a 4-digit composite code (e.g. "0125")
+    be corrected to grade=1, section=25 without re-uploading.
+    """
+    user, school_id = await _seed_principal()
+    # Raw file values that the backend would otherwise reject —
+    # normalize_grade("0125") strips the leading zero to "125" which
+    # is outside the 1..12 grade range.
+    rows = [
+        _row(1, "S1", "طالب أ", "0125", "1"),
+        _row(2, "S2", "طالب ب", "0430", "1"),
+    ]
+    draft_id = await _seed_student_draft(user["id"], school_id, rows)
+    await db.session.commit()
+
+    # Without overrides — both pairs are rejected.
+    r = await client.post(
+        f"/noor-import/draft/{draft_id}/create-missing-classes",
+        headers=_headers(user),
+    )
+    await db.session.commit()
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["created_classes"] == []
+    assert len(body["rejected_pairs"]) == 2
+
+    # With overrides — both pairs are split into grade+section and created.
+    r = await client.post(
+        f"/noor-import/draft/{draft_id}/create-missing-classes",
+        headers=_headers(user),
+        json={"overrides": [
+            {"grade_code": "0125", "section_code": "1",
+             "grade_override": "1", "section_override": "25"},
+            {"grade_code": "0430", "section_code": "1",
+             "grade_override": "4", "section_override": "30"},
+        ]},
+    )
+    await db.session.commit()
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["rejected_pairs"] == []
+    assert len(body["created_classes"]) == 2
+    created_pairs = {(c["grade_code"], c["section_code"]) for c in body["created_classes"]}
+    assert created_pairs == {("1", "25"), ("4", "30")}
+    db_pairs = (await db.session.execute(
+        text("SELECT grade_level, section FROM classes WHERE school_id = :sid"),
+        {"sid": school_id},
+    )).mappings().all()
+    assert {(c["grade_level"], c["section"]) for c in db_pairs} == {("1", "25"), ("4", "30")}
+    # Re-annotation now resolves both rows.
+    assert body["counts"]["unclassified"] == 0
+
+
+async def test_overrides_grade_section_still_fail_closed(client, _db_session):
+    """A bad override (still un-normalisable) is rejected the same way
+    a bad raw value is — no silent invention."""
+    user, school_id = await _seed_principal()
+    rows = [_row(1, "S1", "طالب", "0125", "1")]
+    draft_id = await _seed_student_draft(user["id"], school_id, rows)
+    await db.session.commit()
+
+    r = await client.post(
+        f"/noor-import/draft/{draft_id}/create-missing-classes",
+        headers=_headers(user),
+        json={"overrides": [
+            {"grade_code": "0125", "section_code": "1",
+             "grade_override": "خرابيش", "section_override": "??"},
+        ]},
+    )
+    await db.session.commit()
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["created_classes"] == []
+    assert len(body["rejected_pairs"]) == 1
+    assert body["counts"]["unclassified"] == 1

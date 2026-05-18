@@ -365,4 +365,104 @@ describe('NoorImportPanel inline class-detail editor (Task #390)', () => {
     const createCalls = api.post.mock.calls.filter(c => String(c[0]).includes('/create-missing-classes'));
     expect(createCalls).toHaveLength(0);
   });
+
+  test('grade/section overrides emit only when the principal types a value different from the parsed one', async () => {
+    // Noor file whose "رقم الصف" column holds a composite "0125" that
+    // the backend would otherwise reject as grade=125 (out of 1..12).
+    // The inline editor must let the principal correct it to grade=1,
+    // section=25 and the override payload must reflect that without
+    // emitting bogus overrides for untouched fields.
+    const preview = {
+      import_draft_id: 'draft-comp',
+      detected_type: 'students',
+      header_row: 2,
+      sheet_name: 'Sheet1',
+      counts: { total: 1, insert: 0, update: 0, duplicate_in_file: 0, unclassified: 1, ambiguous: 0, skip: 0 },
+      rows: [
+        { row_index: 1, dedupe: 'insert', class_unresolved: true, data: { grade_code: '0125', section_code: '1' } },
+      ],
+    };
+    const api = {
+      post: jest.fn(),
+      get: jest.fn().mockResolvedValue({ data: [] }),
+    };
+    renderWithProviders(api);
+    await seedPreview(api, preview);
+
+    const gInput = await screen.findByTestId('grade-input-0');
+    const sInput = screen.getByTestId('section-input-0');
+    // Inputs are pre-filled with the parsed (raw) values.
+    expect(gInput).toHaveValue('0125');
+    expect(sInput).toHaveValue('1');
+
+    await act(async () => {
+      fireEvent.change(gInput, { target: { value: '1' } });
+      fireEvent.change(sInput, { target: { value: '25' } });
+    });
+
+    const createBtn = screen.getByRole('button', { name: /إنشاء الفصول الناقصة/ });
+    api.post.mockResolvedValueOnce({ data: { created_classes: [{ id: 'c1', grade_code: '1', section_code: '25' }] } });
+    api.post.mockResolvedValueOnce({ data: preview });
+    await act(async () => { fireEvent.click(createBtn); });
+    const dialog = await screen.findByTestId('nassaq-alert-dialog');
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'إنشاء وإعادة المطابقة' }));
+    });
+
+    await waitFor(() => {
+      const calls = api.post.mock.calls.filter(c => String(c[0]).includes('/create-missing-classes'));
+      expect(calls.length).toBeGreaterThanOrEqual(1);
+    });
+    const createCall = api.post.mock.calls.find(c => String(c[0]).includes('/create-missing-classes'));
+    // Body carries the raw key for matching + the corrections only.
+    // No capacity/homeroom/classroom keys are emitted because the
+    // principal didn't touch them.
+    expect(createCall[1]).toEqual({ overrides: [
+      { grade_code: '0125', section_code: '1', grade_override: '1', section_override: '25' },
+    ]});
+  });
+
+  test('typing the same value as the parsed one (or whitespace) emits no override entry', async () => {
+    const preview = {
+      import_draft_id: 'draft-noop',
+      detected_type: 'students',
+      header_row: 2,
+      sheet_name: 'Sheet1',
+      counts: { total: 1, insert: 0, update: 0, duplicate_in_file: 0, unclassified: 1, ambiguous: 0, skip: 0 },
+      rows: [
+        { row_index: 1, dedupe: 'insert', class_unresolved: true, data: { grade_code: '7', section_code: 'A' } },
+      ],
+    };
+    const api = {
+      post: jest.fn(),
+      get: jest.fn().mockResolvedValue({ data: [] }),
+    };
+    renderWithProviders(api);
+    await seedPreview(api, preview);
+
+    const gInput = await screen.findByTestId('grade-input-0');
+    const sInput = screen.getByTestId('section-input-0');
+    // Re-type the same parsed value into grade; type whitespace into section.
+    await act(async () => {
+      fireEvent.change(gInput, { target: { value: '7' } });
+      fireEvent.change(sInput, { target: { value: '   ' } });
+    });
+
+    const createBtn = screen.getByRole('button', { name: /إنشاء الفصول الناقصة/ });
+    api.post.mockResolvedValueOnce({ data: { created_classes: [] } });
+    api.post.mockResolvedValueOnce({ data: preview });
+    await act(async () => { fireEvent.click(createBtn); });
+    const dialog = await screen.findByTestId('nassaq-alert-dialog');
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'إنشاء وإعادة المطابقة' }));
+    });
+
+    await waitFor(() => {
+      const calls = api.post.mock.calls.filter(c => String(c[0]).includes('/create-missing-classes'));
+      expect(calls.length).toBeGreaterThanOrEqual(1);
+    });
+    const createCall = api.post.mock.calls.find(c => String(c[0]).includes('/create-missing-classes'));
+    // No overrides[] entry — bare POST keeps the server defaults path.
+    expect(createCall[1]).toEqual({});
+  });
 });

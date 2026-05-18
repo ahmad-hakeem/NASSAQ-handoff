@@ -638,6 +638,32 @@ def create_noor_import_routes(db, get_current_user):
                     s = (item.get("section_code") or "").strip()
                     if not g and not s:
                         continue
+                    # Optional principal-supplied corrections for the
+                    # grade/section. When present they REPLACE the raw
+                    # parsed values for normalisation, but the raw key
+                    # still identifies the source pair so a mistyped
+                    # file column can be corrected without re-uploading.
+                    # Empty strings are treated as "not provided" so the
+                    # raw value is used unchanged. Length is bounded to
+                    # keep the override harmless on the audit/label path.
+                    g_ov_raw = item.get("grade_override")
+                    s_ov_raw = item.get("section_override")
+                    g_ov: Optional[str] = None
+                    s_ov: Optional[str] = None
+                    if g_ov_raw is not None:
+                        if not isinstance(g_ov_raw, str):
+                            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+                        gv = g_ov_raw.strip()
+                        if len(gv) > 32:
+                            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+                        g_ov = gv or None
+                    if s_ov_raw is not None:
+                        if not isinstance(s_ov_raw, str):
+                            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+                        sv = s_ov_raw.strip()
+                        if len(sv) > 32:
+                            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+                        s_ov = sv or None
                     cap_raw = item.get("capacity")
                     cap_val: Optional[int] = None
                     if cap_raw is not None and cap_raw != "":
@@ -673,6 +699,8 @@ def create_noor_import_routes(db, get_current_user):
                         "homeroom_teacher_id": tid_resolved,
                         "homeroom_teacher_name": tname_resolved,
                         "classroom_id": cid_resolved,
+                        "grade_override": g_ov,
+                        "section_override": s_ov,
                     }
 
         payload = draft.get("payload") or {}
@@ -689,8 +717,15 @@ def create_noor_import_routes(db, get_current_user):
             data = r.get("data") or {}
             raw_grade = (data.get("grade_code") or "").strip()
             raw_section = (data.get("section_code") or "").strip()
-            ng = normalize_grade(raw_grade)
-            ns = normalize_section(raw_section)
+            ov = override_by_raw.get(f"{raw_grade}||{raw_section}") or {}
+            # Principal-supplied corrections (per-pair) take precedence
+            # over the raw parsed values. Normalisation still applies so
+            # the fail-closed contract is preserved: a bad override is
+            # rejected the same way a bad raw value is.
+            eff_grade = ov.get("grade_override") or raw_grade
+            eff_section = ov.get("section_override") or raw_section
+            ng = normalize_grade(eff_grade)
+            ns = normalize_section(eff_section)
             # Fail closed on either side: empty result, or grade not in 1..12,
             # or section that didn't fold to a digit string.
             if not ng or not ns or not ng.isdigit() or not (1 <= int(ng) <= 12) or not ns.isdigit():
@@ -703,12 +738,11 @@ def create_noor_import_routes(db, get_current_user):
                     })
                 continue
             key = f"{ng}|{ns}"
-            ov = override_by_raw.get(f"{raw_grade}||{raw_section}") or {}
             proposed.setdefault(key, {
                 "grade_norm": ng,
                 "section_norm": ns,
-                "grade_label": raw_grade or ng,
-                "section_label": raw_section or ns,
+                "grade_label": eff_grade or ng,
+                "section_label": eff_section or ns,
                 "capacity": ov.get("capacity"),
                 "homeroom_teacher_id": ov.get("homeroom_teacher_id"),
                 "homeroom_teacher_name": ov.get("homeroom_teacher_name"),
@@ -795,10 +829,21 @@ def create_noor_import_routes(db, get_current_user):
         # Re-annotate the draft's rows server-side. The helper expects
         # parse-shape inputs (`{row_index, data}`); annotated extras are
         # stripped so the verdicts are recomputed from scratch.
-        reseed_rows = [
-            {"row_index": r.get("row_index"), "data": dict(r.get("data") or {})}
-            for r in rows
-        ]
+        # When a principal supplied a grade/section override for a raw
+        # pair, also rewrite the row data so the re-annotation can match
+        # the newly-created class (whose grade_level/section reflect the
+        # override, not the raw file values).
+        reseed_rows = []
+        for r in rows:
+            d = dict(r.get("data") or {})
+            raw_g = (d.get("grade_code") or "").strip()
+            raw_s = (d.get("section_code") or "").strip()
+            ov = override_by_raw.get(f"{raw_g}||{raw_s}") or {}
+            if ov.get("grade_override"):
+                d["grade_code"] = ov["grade_override"]
+            if ov.get("section_override"):
+                d["section_code"] = ov["section_override"]
+            reseed_rows.append({"row_index": r.get("row_index"), "data": d})
         new_annotated = await _annotate_student_rows(
             db.session, school_id=school_id, parsed_rows=reseed_rows
         )

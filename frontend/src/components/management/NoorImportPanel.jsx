@@ -694,11 +694,19 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         const hasCap = ov.capacity !== undefined && ov.capacity !== '' && ov.capacity !== null;
         const hasHr = !!ov.homeroom_teacher_id;
         const hasCr = !!ov.classroom_id;
-        if (!hasCap && !hasHr && !hasCr) return null;
+        // A grade/section override only counts when the principal
+        // actually typed something different from the parsed value.
+        const gTrim = (ov.grade_override ?? '').trim();
+        const sTrim = (ov.section_override ?? '').trim();
+        const hasG = gTrim !== '' && gTrim !== (p.grade_code || '');
+        const hasS = sTrim !== '' && sTrim !== (p.section_code || '');
+        if (!hasCap && !hasHr && !hasCr && !hasG && !hasS) return null;
         const entry = { grade_code: p.grade_code, section_code: p.section_code };
         if (hasCap) entry.capacity = Number(ov.capacity);
         if (hasHr) entry.homeroom_teacher_id = ov.homeroom_teacher_id;
         if (hasCr) entry.classroom_id = ov.classroom_id;
+        if (hasG) entry.grade_override = gTrim;
+        if (hasS) entry.section_override = sTrim;
         return entry;
       })
       .filter(Boolean);
@@ -723,7 +731,11 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
           : '';
         const hrLabel = teacher ? ` · رائد: ${teacher}` : '';
         const roomLabel = room ? ` · قاعة: ${room}` : '';
-        return `• ${p.grade_code || '—'} / ${p.section_code || '—'}  (${p.rows} صف، سعة ${cap}${hrLabel}${roomLabel})`;
+        const gTrim = (ov.grade_override ?? '').trim();
+        const sTrim = (ov.section_override ?? '').trim();
+        const effG = gTrim || p.grade_code || '—';
+        const effS = sTrim || p.section_code || '—';
+        return `• ${effG} / ${effS}  (${p.rows} صف، سعة ${cap}${hrLabel}${roomLabel})`;
       })
       .join('\n');
     nassaqConfirm(
@@ -926,13 +938,14 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                       {needsClassEditor && (
                         <div className="mt-2 space-y-2">
                           <p className="text-[11px] text-yellow-800 dark:text-yellow-200">
-                            راجع السعة واختر رائد الفصل والقاعة لكل صف قبل الإنشاء (السعة الافتراضية 30، يمكنك تركها كما هي).
+                            راجع الصف والفصل لكل سطر (يمكنك تصحيحهما إن كانت قيم الملف غير صحيحة)، ثم اختر السعة ورائد الفصل والقاعة (السعة الافتراضية 30، يمكنك تركها كما هي).
                           </p>
                           <div className="max-h-[220px] overflow-auto border border-yellow-300 dark:border-yellow-700 rounded">
                             <table className="w-full text-[11px]" data-testid="missing-class-pairs">
                               <thead className="bg-yellow-100 dark:bg-yellow-900/40">
                                 <tr>
-                                  <th className="p-1.5 text-start">الصف / الفصل</th>
+                                  <th className="p-1.5 text-start">الصف</th>
+                                  <th className="p-1.5 text-start">الفصل</th>
                                   <th className="p-1.5 text-start">عدد الطلاب</th>
                                   <th className="p-1.5 text-start">السعة</th>
                                   <th className="p-1.5 text-start">رائد الفصل</th>
@@ -943,9 +956,32 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                                 {missingClassPairs.map((p, i) => {
                                   const key = `${p.grade_code}||${p.section_code}`;
                                   const ov = classOverrides[key] || {};
+                                  const gVal = ov.grade_override !== undefined ? ov.grade_override : (p.grade_code || '');
+                                  const sVal = ov.section_override !== undefined ? ov.section_override : (p.section_code || '');
                                   return (
                                     <tr key={i} className="border-t border-yellow-200 dark:border-yellow-800">
-                                      <td className="p-1.5 font-medium">{p.grade_code || '—'} / {p.section_code || '—'}</td>
+                                      <td className="p-1.5">
+                                        <input
+                                          type="text"
+                                          value={gVal}
+                                          onChange={(e) => setOverride(key, { grade_override: e.target.value })}
+                                          placeholder={p.grade_code || '—'}
+                                          maxLength={32}
+                                          data-testid={`grade-input-${i}`}
+                                          className="w-16 px-1.5 py-0.5 rounded border border-yellow-300 dark:border-yellow-700 bg-white dark:bg-yellow-950/60 text-[11px]"
+                                        />
+                                      </td>
+                                      <td className="p-1.5">
+                                        <input
+                                          type="text"
+                                          value={sVal}
+                                          onChange={(e) => setOverride(key, { section_override: e.target.value })}
+                                          placeholder={p.section_code || '—'}
+                                          maxLength={32}
+                                          data-testid={`section-input-${i}`}
+                                          className="w-16 px-1.5 py-0.5 rounded border border-yellow-300 dark:border-yellow-700 bg-white dark:bg-yellow-950/60 text-[11px]"
+                                        />
+                                      </td>
                                       <td className="p-1.5">{p.rows}</td>
                                       <td className="p-1.5">
                                         <input
