@@ -35,6 +35,7 @@ const ParentInvitationAcceptPage = lazy(() => import("../pages/ParentInvitationA
 // Task #210 — IT §6.7 cross-workspace collaborator accept landing.
 const CollabInvitationAcceptPage = lazy(() => import("../pages/CollabInvitationAcceptPage"));
 const AccountErasedPage = lazy(() => import("../pages/AccountErasedPage"));
+const PrivacyPolicyPage = lazy(() => import("../pages/PrivacyPolicyPage"));
 
 // Heavy: AdminDashboard pulls recharts
 const AdminDashboard = lazy(() => import("../pages/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
@@ -182,6 +183,7 @@ export default function AppRoutes() {
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<LandingPage />} />
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
         <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
         <Route path="/registration-confirmation" element={<RegistrationConfirmationPage />} />

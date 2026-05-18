@@ -159,12 +159,12 @@ export const Footer = () => {
                 </Link>
               </li>
               <li>
-                <a
-                  href="#"
+                <Link
+                  to="/privacy"
                   className="text-white/70 hover:text-brand-turquoise transition-colors text-sm font-tajawal"
                 >
                   {t('privacyPolicy')}
-                </a>
+                </Link>
               </li>
               <li>
                 <a
