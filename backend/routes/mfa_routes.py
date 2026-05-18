@@ -242,6 +242,11 @@ async def _complete_mfa_login(
         student_id=user.get("student_id"),
         parent_id=user.get("parent_id"),
         mfa_enrolled_at=user.get("mfa_enrolled_at"),
+        charter_accepted_at=(
+            user["charter_accepted_at"].isoformat()
+            if isinstance(user.get("charter_accepted_at"), datetime)
+            else (user.get("charter_accepted_at") if user.get("charter_accepted_at") else None)
+        ),
     )
 
     # Surface the "show recovery codes again" hint if the user has never

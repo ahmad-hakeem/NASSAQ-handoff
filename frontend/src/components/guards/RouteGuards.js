@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
+import ParentCharterModal from "../parent/ParentCharterModal";
 
 export const ROLE_DASHBOARDS = {
   platform_admin: "/admin",
@@ -144,6 +145,19 @@ export const ProtectedRoute = ({
     !location.pathname.startsWith("/auth/mfa")
   ) {
     return <Navigate to="/auth/mfa/enroll" replace />;
+  }
+
+  // Mandatory Parent Charter (ميثاق ولي الأمر) blocking guard.
+  // Every authenticated parent must explicitly accept the charter
+  // before reaching any /parent/* surface. The check runs AFTER the
+  // password and MFA gates so a parent who still has those pending
+  // sees them first, but it deliberately runs BEFORE the permission
+  // check so a deep-link to a permissioned page (or any future child
+  // route) cannot bypass the charter. Backward-compat: existing
+  // parents have charter_accepted_at = NULL and will be intercepted
+  // on their next request.
+  if (effectiveRole === "parent" && !user?.charter_accepted_at) {
+    return <ParentCharterModal />;
   }
 
   if (requiredPermission) {

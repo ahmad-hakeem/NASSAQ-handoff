@@ -94,6 +94,13 @@ class User(Base):
     # IT-only).
     it_onboarding_completed_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Parent Charter (ميثاق ولي الأمر) blocking guard. NULL means the
+    # parent has not accepted the mandatory charter yet; the FE
+    # ``CharterGuard`` intercepts every /parent/* route until this is
+    # set. Stored as a timestamp (rather than a boolean) so the
+    # acceptance moment is auditable.
+    charter_accepted_at = Column(DateTime(timezone=True), nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 

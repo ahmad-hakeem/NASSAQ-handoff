@@ -34,6 +34,18 @@ from services import mfa_policy as _mfa_policy_module
 router = APIRouter()
 
 
+def _iso(value):
+    """Coerce a datetime (or str/None) coming out of the users row into an
+    ISO-8601 string suitable for the FE. Pydantic's UserResponse declares
+    timestamp fields as ``Optional[str]`` so passing a raw ``datetime``
+    would fail validation under Pydantic v2."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
 
 # ============== AUTH ROUTES ==============
 @router.post("/auth/register", response_model=TokenResponse)
@@ -542,6 +554,7 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
         student_id=user.get("student_id"),
         parent_id=user.get("parent_id"),
         mfa_enrolled_at=user.get("mfa_enrolled_at"),
+        charter_accepted_at=_iso(user.get("charter_accepted_at")),
     )
     
     # Task #231 — embed the IT workspace lifecycle snapshot (including the
@@ -825,7 +838,8 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
         created_at=user.get("created_at") or "",
         teacher_id=user.get("teacher_id"),
         student_id=user.get("student_id"),
-        parent_id=user.get("parent_id")
+        parent_id=user.get("parent_id"),
+        charter_accepted_at=_iso(user.get("charter_accepted_at")),
     )
 
     return TokenResponse(access_token=new_access, refresh_token=new_refresh, user=user_response)
@@ -969,6 +983,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         original_role=current_user.get("original_role"),
         mfa_enrolled_at=current_user.get("mfa_enrolled_at"),
         mfa_enforcement_disabled=_mfa_policy_module.is_enforcement_disabled(),
+        charter_accepted_at=_iso(current_user.get("charter_accepted_at")),
     )
 
 @router.get("/auth/me/permissions")

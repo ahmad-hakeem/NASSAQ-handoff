@@ -145,6 +145,11 @@ class UserResponse(BaseModel):
     # response is built. Defaults to False so production behaviour is
     # unchanged when the env flag is not set.
     mfa_enforcement_disabled: Optional[bool] = False
+    # Parent Charter acceptance timestamp. NULL/None means the
+    # authenticated parent has not yet accepted the mandatory charter;
+    # the FE CharterGuard uses this to gate every /parent/* route.
+    # Non-parent roles always carry None.
+    charter_accepted_at: Optional[str] = None
 
 class TokenResponse(BaseModel):
     access_token: Optional[str] = None

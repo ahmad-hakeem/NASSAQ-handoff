@@ -32,6 +32,47 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
     router = APIRouter(prefix="/parent-portal", tags=["Parent Portal"])
 
+    @router.post("/accept-charter")
+    async def accept_parent_charter(
+        current_user: dict = Depends(require_roles([UserRole.PARENT])),
+    ):
+        """Mark the authenticated parent as having accepted the mandatory
+        ميثاق ولي الأمر. The FE CharterGuard blocks every /parent/* route
+        until ``charter_accepted_at`` is non-NULL, so this is the single
+        gateway out of the blocking modal. Idempotent — re-accepting
+        keeps the original acceptance timestamp."""
+        user_id = current_user.get("id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="غير مصرح")
+
+        now = datetime.now(timezone.utc)
+        # Atomic "set only if currently NULL" so two concurrent accept
+        # requests cannot overwrite the original acceptance timestamp.
+        await gd_update_one(
+            db.session, "users",
+            {"id": user_id, "charter_accepted_at": None},
+            {"$set": {"charter_accepted_at": now}},
+        )
+
+        # Re-read so we return whatever value is actually persisted —
+        # either ``now`` (we won the race / first acceptance) or the
+        # previously stored timestamp (idempotent re-accept).
+        existing = await gd_find_one(db.session, "users", {"id": user_id})
+        if not existing:
+            raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+
+        accepted_at = existing.get("charter_accepted_at") or now
+        if isinstance(accepted_at, datetime):
+            iso = accepted_at.isoformat()
+        else:
+            iso = str(accepted_at)
+
+        return {
+            "success": True,
+            "charter_accepted_at": iso,
+            "message": "تم قبول الميثاق",
+        }
+
     def _parent_or_conditions(parent_user_id: str, parent_phone: Optional[str] = None, parent_record_id: Optional[str] = None, parent_email: Optional[str] = None) -> list:
         """Build an $or list that matches students based solely on canonical
         parent identifiers (user.id / parents.id).  Mutable contact fields
