@@ -4685,5 +4685,12 @@
   "accountErasedHome": "Back to home",
   "itPerimeterFinishSetupTitle": "Finish setting up your workspace",
   "itPerimeterFinishSetupBody": "Your teaching workspace isn't fully set up yet. Complete the setup steps now to access your teacher dashboard.",
-  "itPerimeterFinishSetupCta": "Continue setup"
+  "itPerimeterFinishSetupCta": "Continue setup",
+  "independent_teacher": "Independent Teacher",
+  "legalDocuments": "Legal Documents",
+  "legalDocumentsHubBlurb": "Nassaq applies one unified Privacy Policy and Terms & Conditions to every account. You can review them at any time from the links below.",
+  "viewPrivacyPolicy": "View Privacy Policy",
+  "viewTermsAndConditions": "View Terms & Conditions",
+  "legalDocumentsOpenInNewTab": "Documents open in a new tab — you can print them or save as PDF.",
+  "privacyPolicyAndLegal": "Privacy policy and terms"
 }

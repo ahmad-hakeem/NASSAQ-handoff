@@ -953,10 +953,14 @@ export const AccountSettingsPage = () => {
       school_sub_admin: { ar: 'مساعد المدير', en: 'Sub Admin' },
       school_admin: { ar: 'مشرف المدرسة', en: 'School Admin' },
       teacher: { ar: 'معلم', en: 'Teacher' },
+      independent_teacher: { ar: 'معلم مستقل', en: 'Independent Teacher' },
       student: { ar: 'طالب', en: 'Student' },
       parent: { ar: 'ولي أمر', en: 'Parent' },
     };
-    return roles[role]?.[isRTL ? 'ar' : 'en'] || role;
+    // Fall back to the i18n dictionary (e.g. `independent_teacher` →
+    // "معلم مستقل") before the raw role key, so the header badge never
+    // leaks a snake_case identifier into the UI.
+    return roles[role]?.[isRTL ? 'ar' : 'en'] || t(role) || role;
   };
 
   const getInitials = (name) => {

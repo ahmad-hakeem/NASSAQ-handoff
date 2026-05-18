@@ -4685,5 +4685,12 @@
   "accountErasedHome": "العودة إلى الصفحة الرئيسية",
   "itPerimeterFinishSetupTitle": "أكمل إعداد مساحتك",
   "itPerimeterFinishSetupBody": "لم تكتمل عملية إنشاء مساحتك التعليمية بعد. أكمل خطوات الإعداد الآن للوصول إلى لوحة المعلم.",
-  "itPerimeterFinishSetupCta": "متابعة الإعداد"
+  "itPerimeterFinishSetupCta": "متابعة الإعداد",
+  "independent_teacher": "معلم مستقل",
+  "legalDocuments": "الوثائق القانونية",
+  "legalDocumentsHubBlurb": "تطبّق منصة نسّق سياسة خصوصية وشروطاً وأحكاماً موحّدة لجميع الحسابات. يمكنك مراجعتها في أي وقت من الروابط أدناه.",
+  "viewPrivacyPolicy": "عرض سياسة الخصوصية",
+  "viewTermsAndConditions": "عرض الشروط والأحكام",
+  "legalDocumentsOpenInNewTab": "تُفتح الوثائق في نافذة جديدة، ويمكنك طباعتها أو حفظها بصيغة PDF.",
+  "privacyPolicyAndLegal": "سياسة الخصوصية والشروط والأحكام"
 }
