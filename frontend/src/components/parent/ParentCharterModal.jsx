@@ -79,15 +79,15 @@ const ParentCharterModal = () => {
   return (
     <div
       ref={dialogRef}
-      className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+      className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="parent-charter-title"
       dir="rtl"
       data-testid="parent-charter-modal"
     >
-      <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-border/40 my-8">
-        <div className="px-6 pt-6 pb-3 text-center border-b border-border/40">
+      <div className="w-full max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-2xl border border-border/40 flex flex-col">
+        <div className="px-6 pt-6 pb-3 text-center border-b border-border/40 shrink-0">
           <h2
             id="parent-charter-title"
             className="text-xl font-bold text-brand-navy font-cairo"
@@ -101,7 +101,7 @@ const ParentCharterModal = () => {
           )}
         </div>
 
-        <div className="px-6 py-5 space-y-4 text-foreground/90 leading-relaxed text-sm md:text-[15px] font-tajawal">
+        <div className="px-6 py-5 space-y-4 text-foreground/90 leading-relaxed text-sm md:text-[15px] font-tajawal overflow-y-auto flex-1 min-h-0">
           <h3 className="text-base md:text-lg font-bold text-foreground font-cairo">
             ميثاق الشفافية والتعاون مع ولي الأمر
           </h3>
@@ -133,7 +133,7 @@ const ParentCharterModal = () => {
           <p>نشكركم على تعاونكم، ونسعد بشراكتكم في دعم رحلة أبنائنا التعليمية.</p>
         </div>
 
-        <div className="px-6 pb-6 pt-2 border-t border-border/40">
+        <div className="px-6 pb-6 pt-3 border-t border-border/40 shrink-0">
           <label className="flex items-start gap-3 cursor-pointer select-none">
             <input
               ref={checkboxRef}
