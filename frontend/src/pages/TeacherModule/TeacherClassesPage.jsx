@@ -51,8 +51,15 @@ export default function TeacherClassesPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const _rawTab = searchParams.get('tab');
+  // 2026-05-18: the "حصص الانتظار" (standby) tab is hidden for
+  // Independent-Teacher accounts because the feature relies on
+  // school-admin assignment which doesn't exist in workspace mode.
+  // The components and API surface are intentionally KEPT so the
+  // feature can be re-enabled later — we only suppress the entry
+  // point + URL deep-link here.
+  const _isITUser = user?.role === 'independent_teacher';
   const activeTab = _rawTab === 'sessions' ? 'sessions'
-    : _rawTab === 'standby' ? 'standby'
+    : (_rawTab === 'standby' && !_isITUser) ? 'standby'
     : 'classes';
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
@@ -137,12 +144,25 @@ export default function TeacherClassesPage() {
   };
 
   const handleTabChange = (tab) => {
+    // Guard: even if a stale link tries to navigate an IT user to the
+    // standby tab, fall through to the default "classes" view rather
+    // than surfacing the "ميزة غير متاحة" modal.
+    const safeTab = (tab === 'standby' && _isITUser) ? 'classes' : tab;
     setSearchParams(
-      tab === 'sessions' ? { tab: 'sessions' }
-      : tab === 'standby' ? { tab: 'standby' }
+      safeTab === 'sessions' ? { tab: 'sessions' }
+      : safeTab === 'standby' ? { tab: 'standby' }
       : {}
     );
   };
+
+  // Route guard for IT users who land on ?tab=standby via a stale
+  // bookmark or external deep-link: silently rewrite the URL to the
+  // default classes view so they don't sit on a blank/error state.
+  useEffect(() => {
+    if (_isITUser && _rawTab === 'standby') {
+      setSearchParams({}, { replace: true });
+    }
+  }, [_isITUser, _rawTab, setSearchParams]);
 
   const fetchClasses = useCallback(async () => {
     if (!teacherId) return;
@@ -1256,22 +1276,27 @@ export default function TeacherClassesPage() {
                 <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
               )}
             </button>
-            <button
-              onClick={() => handleTabChange('standby')}
-              className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative ${
-                activeTab === 'standby'
-                  ? 'text-brand-navy dark:text-brand-turquoise'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <span className="flex items-center gap-1.5">
-                <Hourglass className="h-4 w-4" />
-                حصص الانتظار
-              </span>
-              {activeTab === 'standby' && (
-                <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
-              )}
-            </button>
+            {/* 2026-05-18: standby tab is hidden for Independent-Teacher
+                accounts (feature kept in the codebase for future re-enable). */}
+            {!_isITUser && (
+              <button
+                onClick={() => handleTabChange('standby')}
+                className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative ${
+                  activeTab === 'standby'
+                    ? 'text-brand-navy dark:text-brand-turquoise'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                data-testid="teacher-classes-standby-tab"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Hourglass className="h-4 w-4" />
+                  حصص الانتظار
+                </span>
+                {activeTab === 'standby' && (
+                  <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
+                )}
+              </button>
+            )}
           </div>
         </div>
 
