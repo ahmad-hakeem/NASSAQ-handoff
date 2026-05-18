@@ -351,7 +351,7 @@ const ParentSettingsPage = () => {
                 iconBg="bg-blue-50 dark:bg-blue-900/30"
                 iconColor="text-blue-600 dark:text-blue-400"
                 label={t('privacyPolicy') || 'Privacy Policy'}
-                onClick={() => navigate('/parent/legal/privacy')}
+                onClick={() => navigate('/privacy')}
                 isRTL={isRTL}
                 testId="settings-row-privacy"
               />

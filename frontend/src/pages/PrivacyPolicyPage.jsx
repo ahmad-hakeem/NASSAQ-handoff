@@ -323,7 +323,7 @@ const PrivacyPolicyPage = () => {
           <Section id="contact" title="١٩. كيفية التواصل معنا">
             <p>لأي استفسار أو طلب يتعلّق بالخصوصية، يمكنك التواصل معنا عبر:</p>
             <ul className="list-disc pr-6 space-y-1.5 marker:text-brand-navy">
-              <li>البريد الإلكتروني المخصّص للخصوصية: <span className="text-muted-foreground">[يحدَّد قبل النشر]</span></li>
+              <li>البريد الإلكتروني المخصّص للخصوصية: <span className="text-muted-foreground">[info@nassaqapp.com]</span></li>
               <li>قنوات الدعم الرسمية لمنصة نسّق المتاحة داخل التطبيق.</li>
             </ul>
             <p className="text-sm text-muted-foreground">

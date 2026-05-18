@@ -1,17 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation, useTheme } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent } from '../../components/ui/card';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Button } from '../../components/ui/button';
-import { ChevronLeft, ChevronRight, FileText, Shield } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 
 const ParentLegalDocumentPage = ({ docType: docTypeProp }) => {
   const { docType: docTypeParam } = useParams();
   const requested = (docTypeProp || docTypeParam || 'terms').toLowerCase();
-  const docType = (requested === 'terms' || requested === 'privacy') ? requested : null;
+  // Privacy is now served by the unified public /privacy page across the
+  // whole platform — redirect any legacy parent-portal privacy URLs there
+  // so school-published addenda surface only for Terms & Conditions.
+  const isPrivacyRedirect = requested === 'privacy';
+  const docType = requested === 'terms' ? requested : null;
   const navigate = useNavigate();
   const { api } = useAuth();
   const { t } = useTranslation();
@@ -25,21 +29,24 @@ const ParentLegalDocumentPage = ({ docType: docTypeProp }) => {
     let cancelled = false;
     setLoading(true);
     setDoc(null);
-    const endpoint = docType === 'privacy'
-      ? '/settings/privacy/published'
-      : '/settings/terms/published';
-    api.get(endpoint)
+    // Only Terms & Conditions is served here. Privacy is unified at /privacy.
+    api.get('/settings/terms/published')
       .then((res) => { if (!cancelled) setDoc(res.data || null); })
       .catch(() => { if (!cancelled) setDoc(null); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [api, docType]);
 
-  const isPrivacy = docType === 'privacy';
-  const Icon = isPrivacy ? Shield : FileText;
+  // Hooks have all run — safe to redirect legacy /parent/legal/privacy
+  // to the unified public /privacy page.
+  if (isPrivacyRedirect) {
+    return <Navigate to="/privacy" replace />;
+  }
+
+  const Icon = FileText;
   const title = !docType
     ? (t('notFound') || 'Not Found')
-    : (isPrivacy ? t('privacyPolicy') : t('termsAndConditions'));
+    : t('termsAndConditions');
   const Back = isRTL ? ChevronRight : ChevronLeft;
 
   const hasPublished = !!(doc && doc.version_number);

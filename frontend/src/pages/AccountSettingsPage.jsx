@@ -968,6 +968,7 @@ export const AccountSettingsPage = () => {
     { id: 'security', icon: Shield, label: t('security'), desc: t('passwordSessions') },
     { id: 'notifications', icon: Bell, label: t('notifications'), desc: t('emailSmsAlerts') },
     { id: 'preferences', icon: Palette, label: t('preferences'), desc: t('languageThemeTime') },
+    { id: 'legal', icon: Shield, label: t('privacyPolicy') || 'Privacy Policy', desc: t('privacyPolicyAndLegal') || 'سياسة الخصوصية والوثائق القانونية' },
     // Task #200 §5.8 — IT-only sections appended at the end of the nav.
     ...(isIndependentTeacher ? [
       { id: 'workspace', icon: Briefcase, label: t('itWorkspaceSection'), desc: t('itWorkspaceSectionDesc') },
@@ -1536,6 +1537,44 @@ export const AccountSettingsPage = () => {
                       </p>
                       <SaveButton onClick={handleSavePreferences} sectionKey="preferences" label={t('savePreferences')} />
                     </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {activeSection === 'legal' && (
+                <Card className="card-nassaq" data-testid="account-section-legal">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="font-cairo flex items-center gap-2 text-lg">
+                      <Shield className="h-5 w-5 text-brand-turquoise" />
+                      {t('privacyPolicy') || 'Privacy Policy'}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <p className="text-sm text-muted-foreground font-tajawal leading-relaxed">
+                      {t('privacyPolicyHubBlurb') ||
+                        'تطبّق منصة نسّق سياسة خصوصية موحّدة لجميع الحسابات (الإدارة، المعلم، ولي الأمر، الطالب، المعلم المستقل). تنطبق نفس الضوابط على بيانات الجميع، مع تخصيصات لكل دور بحسب الصلاحيات.'}
+                    </p>
+                    <div className="rounded-xl border border-border/60 bg-card divide-y divide-border/40">
+                      <a
+                        href="/privacy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between gap-3 p-4 hover:bg-muted/40 transition-colors"
+                        data-testid="link-account-privacy-policy"
+                      >
+                        <span className="flex items-center gap-3">
+                          <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                          <span className="font-cairo text-sm">
+                            {t('viewPrivacyPolicy') || (isRTL ? 'عرض سياسة الخصوصية' : 'View Privacy Policy')}
+                          </span>
+                        </span>
+                        {isRTL ? <ChevronLeft className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                      </a>
+                    </div>
+                    <p className="text-xs text-muted-foreground font-tajawal">
+                      {t('privacyPolicyOpensInNewTab') ||
+                        'تُفتح السياسة في نافذة جديدة، ويمكنك طباعتها أو حفظها بصيغة PDF.'}
+                    </p>
                   </CardContent>
                 </Card>
               )}
