@@ -79,7 +79,6 @@ const BulkImportPage = lazy(() => import("../pages/TeacherModule").then(m => ({ 
 const TeacherAchievementsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAchievementsPage })));
 const TeacherCommunicationPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherCommunicationPage })));
 const TeacherResourcesPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherResourcesPage })));
-const TeacherSettingsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherSettingsPage })));
 const WorkspaceSettingsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.WorkspaceSettingsPage })));
 const WorkspaceSchedulePage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.WorkspaceSchedulePage })));
 const TeacherPersonalCalendarPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherPersonalCalendarPage })));
@@ -368,8 +367,14 @@ export default function AppRoutes() {
         <Route path="/teacher/resources" element={
           <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherResourcesPage /></ProtectedRoute>
         } />
+        {/* 2026-05-18 — Legacy teacher settings page consolidated
+            into the canonical /account/settings hub. The redirect
+            keeps historical bookmarks and any in-app links working.
+            Role gate is preserved via ProtectedRoute. */}
         <Route path="/teacher/settings" element={
-          <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherSettingsPage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={TEACHER_ROLES}>
+            <Navigate to="/account/settings" replace />
+          </ProtectedRoute>
         } />
         {/* Task #189 §5.2 — Independent-Teacher only: reduced workspace
             settings page. Backend enforces a deny-by-default allow-list. */}

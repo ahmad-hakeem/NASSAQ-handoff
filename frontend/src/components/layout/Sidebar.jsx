@@ -474,11 +474,19 @@ export const Sidebar = ({ children }) => {
         href: '/ai-insights',
         roles: ['teacher', 'independent_teacher'],
       },
+      // 2026-05-18 — Unified "الملف الشخصي والإعدادات" entry. The
+      // legacy /teacher/settings page has been folded into the
+      // canonical /account/settings hub (AccountSettingsPage), and
+      // the legacy route now redirects there in appRoutes.js. The
+      // bottom-of-sidebar user-card shortcut already points at
+      // /account/settings, so both navigation entry points now land
+      // on the same surface.
       {
         icon: Settings,
         label: t('profileSettings'),
-        href: '/teacher/settings',
+        href: '/account/settings',
         roles: ['teacher', 'independent_teacher'],
+        dataTour: 'sidebar-account-settings',
       },
       // Task #189 §5.2 — Independent-Teacher only: reduced workspace
       // settings (identity + schedule baseline + active year/term).

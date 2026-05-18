@@ -4,6 +4,7 @@ import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { isGenericName } from '../components/GenericNameGuard';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
+import TeachingStatsHero from '../components/teacher/TeachingStatsHero';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -1253,7 +1254,7 @@ export const AccountSettingsPage = () => {
               </div>
               <div>
                 <h1 className="font-cairo text-xl font-bold text-foreground">
-                  {t('accountSettings')}
+                  {t('profileSettings')}
                 </h1>
                 <p className="text-xs text-muted-foreground font-tajawal">
                   {t('manageYourProfileAndPreferences')}
@@ -1362,6 +1363,14 @@ export const AccountSettingsPage = () => {
             <div className="space-y-6">
               {activeSection === 'profile' && (
                 <>
+                  {/* 2026-05-18 — Teaching overview hero migrated
+                      from the legacy /teacher/settings page so the
+                      unified "الملف الشخصي والإعدادات" hub keeps the
+                      read-only stats card that teacher / IT users
+                      relied on. Component self-gates on role and
+                      silently no-ops for non-teachers, so we don't
+                      need a wrapper conditional here. */}
+                  <TeachingStatsHero />
                   <Card className="card-nassaq" data-testid="account-section-profile">
                     <CardHeader className="pb-4">
                       <CardTitle className="font-cairo flex items-center gap-2 text-lg">

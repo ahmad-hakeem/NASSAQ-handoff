@@ -28,7 +28,10 @@ export { default as TeacherCommunicationPage } from './TeacherCommunicationPage'
 export { default as UnifiedCommunicationsHub } from './UnifiedCommunicationsHub';
 export { IndependentTeacherCommunicationPanel } from './IndependentTeacherCommunicationPage';
 export { default as TeacherResourcesPage } from './TeacherResourcesPage';
-export { default as TeacherSettingsPage } from './TeacherSettingsPage';
+// 2026-05-18 — TeacherSettingsPage was folded into the canonical
+// `/account/settings` hub (AccountSettingsPage). The legacy route
+// now redirects there, so we no longer export the page component
+// to keep the bundle clean and prevent accidental re-wiring.
 // Independent-Teacher only: reduced workspace settings (Task #189 §5.2).
 export { default as WorkspaceSettingsPage } from './WorkspaceSettingsPage';
 // Independent-Teacher only: manual schedule editor (Task #193 §5.4).
