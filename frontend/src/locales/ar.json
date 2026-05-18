@@ -4490,6 +4490,8 @@
   "itExportReadyTitle": "تم إنشاء التصدير",
   "itExportReadyMessage": "ابدأ التنزيل من الرابط الذي فُتح في تبويب جديد. الرابط صالح لمدة ٢٤ ساعة.",
   "itExportFailed": "تعذّر إنشاء ملف التصدير. حاول لاحقًا.",
+  "customizeEventAlerts": "تخصيص تنبيهات الأحداث",
+  "failedToSaveNotificationSettings": "تعذّر حفظ إعدادات الإشعارات. حاول مرة أخرى.",
   "itExportExcelCardTitle": "تصدير ملف Excel",
   "itExportExcelCardHint": "ملف Excel جاهز للقراءة يحتوي على أوراق عمل منفصلة للفصول والطلاب والمواد والجدول والحضور والتقييمات والسلوك ودعوات أولياء الأمور.",
   "itExportExcelRun": "تصدير ملف Excel",

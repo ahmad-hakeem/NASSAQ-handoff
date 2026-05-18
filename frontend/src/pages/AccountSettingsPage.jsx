@@ -299,7 +299,10 @@ export const AccountSettingsPage = () => {
   const _initialSection = (() => {
     if (typeof window === 'undefined') return 'profile';
     const raw = (window.location.hash || '').replace(/^#/, '').toLowerCase();
-    return ['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'inbox_prefs', 'export', 'workspace-hub'].includes(raw)
+    // 2026-05-18: inbox_prefs was merged into notifications; redirect
+    // any lingering deep links so users don't land on an empty section.
+    if (raw === 'inbox_prefs') return 'notifications';
+    return ['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export', 'workspace-hub'].includes(raw)
       ? raw
       : 'profile';
   })();
@@ -313,7 +316,11 @@ export const AccountSettingsPage = () => {
   useEffect(() => {
     const onHash = () => {
       const raw = (window.location.hash || '').replace(/^#/, '').toLowerCase();
-      if (['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'inbox_prefs', 'export', 'workspace-hub'].includes(raw)) {
+      if (raw === 'inbox_prefs') {
+        setActiveSection('notifications');
+        return;
+      }
+      if (['profile', 'security', 'notifications', 'preferences', 'workspace', 'communication', 'export', 'workspace-hub'].includes(raw)) {
         setActiveSection(raw);
       }
     };
@@ -646,6 +653,35 @@ export const AccountSettingsPage = () => {
     }
   };
 
+  // 2026-05-18 — unified save for the merged Notifications tab.
+  // Persists the general channel/type toggles AND (for IT users) the
+  // per-category inbox preferences in parallel. Either call failing
+  // surfaces a single safe Arabic error via NassaqAlertDialog; the
+  // save button reflects the slowest of the two requests.
+  const handleSaveNotificationsCombined = async () => {
+    setSaving(true);
+    try {
+      const calls = [api.put('/users/me/notifications', notifications)];
+      if (isIndependentTeacher) {
+        calls.push(
+          api.put('/independent-teacher/notifications/preferences', {
+            categories: itInboxPrefs,
+          }),
+        );
+      }
+      await Promise.all(calls);
+      setSaveSuccess('notifications');
+      nassaqSuccess(t('notificationSettingsSaved'));
+      setTimeout(() => setSaveSuccess(null), 3000);
+    } catch (_error) {
+      nassaqErrorTop(t('failedToSaveNotificationSettings') || t('notificationSettingsSaveFailed') || t('itInboxPrefsSaveFailed'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Kept for callers / tests that still reference the legacy split save.
+  // eslint-disable-next-line no-unused-vars
   const handleSaveNotifications = async () => {
     setSaving(true);
     try {
@@ -732,24 +768,12 @@ export const AccountSettingsPage = () => {
     }
   };
 
-  // Task #249 — IT inbox preferences save. Round-trips through the new
-  // /independent-teacher/notifications/preferences endpoint which
-  // forces in_app=true server-side regardless of the client payload.
-  const handleSaveInboxPrefs = async () => {
-    setSaving(true);
-    try {
-      await api.put('/independent-teacher/notifications/preferences', {
-        categories: itInboxPrefs,
-      });
-      setSaveSuccess('inbox_prefs');
-      nassaqSuccess(t('itInboxPrefsSaved'));
-      setTimeout(() => setSaveSuccess(null), 3000);
-    } catch (error) {
-      nassaqErrorTop(t('itInboxPrefsSaveFailed'));
-    } finally {
-      setSaving(false);
-    }
-  };
+  // 2026-05-18 — handleSaveInboxPrefs deleted as part of the
+  // Notifications tab merge. The IT per-category inbox preferences
+  // are now persisted alongside the general notification toggles via
+  // handleSaveNotificationsCombined (Promise.all). The legacy
+  // /independent-teacher/notifications/preferences endpoint contract
+  // is unchanged — in_app is still forced TRUE server-side.
 
   // §369 security fix — authenticated blob download helper.
   // All workspace export downloads MUST carry the user's Bearer token so
@@ -1043,7 +1067,10 @@ export const AccountSettingsPage = () => {
     ...(isIndependentTeacher ? [
       { id: 'workspace', icon: Briefcase, label: t('itWorkspaceSection'), desc: t('itWorkspaceSectionDesc') },
       { id: 'communication', icon: MessageSquare, label: t('itCommunicationSection'), desc: t('itCommunicationSectionDesc') },
-      { id: 'inbox_prefs', icon: Bell, label: t('itInboxPrefsSection'), desc: t('itInboxPrefsSectionDesc') },
+      // Task 2026-05-18 — IT inbox preferences were merged into the
+      // shared `notifications` section as a sub-block. The dedicated
+      // sidebar entry is removed to eliminate the duplicate nav item;
+      // `inbox_prefs` deep links now redirect to `notifications`.
       { id: 'export', icon: Download, label: t('itDataExportSection'), desc: t('itDataExportSectionDesc') },
       // Task #252 — at-a-glance hub: quota + export + collaborators + lifecycle.
       { id: 'workspace-hub', icon: ShieldAlert, label: t('itHubSection'), desc: t('itHubSectionDesc') },
@@ -1543,11 +1570,72 @@ export const AccountSettingsPage = () => {
                         <NotificationRow title={t('weeklyDigest')} desc={t('comprehensiveWeeklySummary')} checked={notifications.weekly_digest} onChange={(v) => setNotifications({ ...notifications, weekly_digest: v })} />
                       </div>
                     </div>
+                    {/* 2026-05-18 — merged sub-section: per-category inbox
+                        preferences (formerly the separate "تفضيلات صندوق
+                        الإشعارات" sidebar tab). IT-only. Render below the
+                        general toggles, separated by an <hr/> per spec.
+                        Save is unified into handleSaveNotificationsCombined
+                        so the single bottom button persists both blocks. */}
+                    {isIndependentTeacher && (
+                      <>
+                        <hr className="my-6 border-border/40" />
+                        <div data-testid="it-inbox-prefs-merged">
+                          <h3 className="text-sm font-cairo font-semibold mb-1">
+                            {t('customizeEventAlerts')}
+                          </h3>
+                          <p className="text-xs text-muted-foreground font-tajawal mb-3">
+                            {t('itInboxPrefsHint')}
+                          </p>
+                          {!itInboxPrefsLoaded && (
+                            <p className="text-xs text-muted-foreground">{t('loading')}</p>
+                          )}
+                          <div className="space-y-3">
+                            {IT_INBOX_CATEGORIES.map((cat) => {
+                              const pref = itInboxPrefs[cat] || _defaultInboxPref();
+                              return (
+                                <div
+                                  key={cat}
+                                  className="flex items-center justify-between gap-3 rounded-xl border border-border/40 p-3"
+                                  data-testid={`it-inbox-cat-${cat}`}
+                                >
+                                  <div className="font-tajawal text-sm">
+                                    {t(`itInboxCat_${cat}`)}
+                                  </div>
+                                  <div className="flex items-center gap-4">
+                                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                                      <input
+                                        type="checkbox"
+                                        checked
+                                        disabled
+                                        data-testid={`it-inbox-${cat}-in_app`}
+                                      />
+                                      {t('inAppChannel')}
+                                    </label>
+                                    <label className="flex items-center gap-2 text-xs">
+                                      <input
+                                        type="checkbox"
+                                        checked={!!pref.email}
+                                        onChange={(e) => setItInboxPrefs((prev) => ({
+                                          ...prev,
+                                          [cat]: { ...(prev[cat] || _defaultInboxPref()), email: e.target.checked },
+                                        }))}
+                                        data-testid={`it-inbox-${cat}-email`}
+                                      />
+                                      {t('emailChannel')}
+                                    </label>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    )}
                     <div className="flex items-center justify-between pt-2 border-t border-border/30">
                       <p className="text-xs text-muted-foreground font-tajawal">
                         {t('changesAreSavedDirectlyToYourAccount')}
                       </p>
-                      <SaveButton onClick={handleSaveNotifications} sectionKey="notifications" label={t('saveSettings')} />
+                      <SaveButton onClick={handleSaveNotificationsCombined} sectionKey="notifications" label={t('saveSettings')} />
                     </div>
                   </CardContent>
                 </Card>
@@ -1842,70 +1930,13 @@ export const AccountSettingsPage = () => {
                 </Card>
               )}
 
-              {/* Task #249 — IT-only: notifications inbox preferences.
-          Per-category in_app/email toggles. in_app is forced TRUE
-          server-side regardless of payload, so the toggle is shown
-          but disabled to keep the UI honest about the contract. */}
-              {activeSection === 'inbox_prefs' && isIndependentTeacher && (
-                <Card className="card-nassaq border-workspace-accent-border" data-testid="it-inbox-prefs-section">
-                  <CardHeader className="pb-4 border-b border-workspace-accent-border bg-workspace-accent-light/40">
-                    <CardTitle className="font-cairo flex items-center gap-2 text-lg text-workspace-accent-fg">
-                      <Bell className="h-5 w-5 text-workspace-accent" />
-                      {t('itInboxPrefsSection')}
-                    </CardTitle>
-                    <p className="text-xs text-workspace-accent-fg/70 font-tajawal mt-1">
-                      {t('itInboxPrefsHint')}
-                    </p>
-                  </CardHeader>
-                  <CardContent className="space-y-4 pt-5">
-                    {!itInboxPrefsLoaded && (
-                      <p className="text-xs text-muted-foreground">{t('loading')}</p>
-                    )}
-                    <div className="space-y-3">
-                      {IT_INBOX_CATEGORIES.map((cat) => {
-                        const pref = itInboxPrefs[cat] || _defaultInboxPref();
-                        return (
-                          <div
-                            key={cat}
-                            className="flex items-center justify-between gap-3 rounded-xl border border-border/40 p-3"
-                            data-testid={`it-inbox-cat-${cat}`}
-                          >
-                            <div className="font-tajawal text-sm">
-                              {t(`itInboxCat_${cat}`)}
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <input
-                                  type="checkbox"
-                                  checked
-                                  disabled
-                                  data-testid={`it-inbox-${cat}-in_app`}
-                                />
-                                {t('inAppChannel')}
-                              </label>
-                              <label className="flex items-center gap-2 text-xs">
-                                <input
-                                  type="checkbox"
-                                  checked={!!pref.email}
-                                  onChange={(e) => setItInboxPrefs((prev) => ({
-                                    ...prev,
-                                    [cat]: { ...(prev[cat] || _defaultInboxPref()), email: e.target.checked },
-                                  }))}
-                                  data-testid={`it-inbox-${cat}-email`}
-                                />
-                                {t('emailChannel')}
-                              </label>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="flex items-center justify-end pt-2 border-t border-border/30">
-                      <SaveButton onClick={handleSaveInboxPrefs} sectionKey="inbox_prefs" label={t('saveSettings')} />
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+              {/* 2026-05-18 — the former `inbox_prefs` standalone section was
+                  merged into the shared `notifications` Card above. The
+                  per-category checkbox UI now lives inline under an
+                  <hr/> + "تخصيص تنبيهات الأحداث" sub-heading, and
+                  handleSaveNotificationsCombined persists both blocks
+                  via Promise.all. Deep links to #inbox_prefs redirect
+                  to #notifications. */}
 
               {/* Task #211 §6.8 — IT-only: Data export + soft-delete.
                   Two cards per spec: a primary export card (right-to-export)

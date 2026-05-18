@@ -4490,6 +4490,8 @@
   "itExportReadyTitle": "Export ready",
   "itExportReadyMessage": "Your download has opened in a new tab. The link is valid for 24 hours.",
   "itExportFailed": "Could not generate the export. Please try again later.",
+  "customizeEventAlerts": "Customize event alerts",
+  "failedToSaveNotificationSettings": "Could not save notification settings. Please try again.",
   "itExportExcelCardTitle": "Export as Excel",
   "itExportExcelCardHint": "A ready-to-read Excel workbook with separate sheets for classes, students, subjects, schedule, attendance, assessments, behaviour, and parent invitations.",
   "itExportExcelRun": "Export Excel file",
