@@ -34,6 +34,13 @@ import StandbyTab from './StandbyTab';
 // the Classes-page layout. Same Panel/Page split used for the IT
 // activity-log relocation into Account Settings (same day).
 import { LessonPlannerPanel } from './LessonPlannerPage';
+// 2026-05-18 — Embedded "جدولي" tab (IT-only). The standalone
+// /teacher/workspace-schedule sidebar entry has been retired; the
+// route now redirects here with ?tab=schedule so all teacher-slice
+// surfaces (classes / sessions / lesson-planner / schedule) live
+// under one mounted page shell. The panel hits the same backend
+// endpoints with the same auth contract — no permission widening.
+import { WorkspaceSchedulePanel } from './WorkspaceSchedulePage';
 import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialog';
 import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 
@@ -97,6 +104,10 @@ export default function TeacherClassesPage() {
   const activeTab = _rawTab === 'sessions' ? 'sessions'
     : (_rawTab === 'standby' && !_isITUser) ? 'standby'
     : (_rawTab === 'lesson-planner' && _isITUser && canUseLessonPlanner) ? 'lesson-planner'
+    // 2026-05-18 — IT-only "جدولي" tab. Non-IT users fall through
+    // to the default classes view rather than rendering an empty
+    // schedule shell (the backend schedule grid only exists for IT).
+    : (_rawTab === 'schedule' && _isITUser) ? 'schedule'
     : 'classes';
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
@@ -186,11 +197,13 @@ export default function TeacherClassesPage() {
     // than surfacing the "ميزة غير متاحة" modal.
     const safeTab = (tab === 'standby' && _isITUser) ? 'classes'
       : (tab === 'lesson-planner' && (!_isITUser || !canUseLessonPlanner)) ? 'classes'
+      : (tab === 'schedule' && !_isITUser) ? 'classes'
       : tab;
     setSearchParams(
       safeTab === 'sessions' ? { tab: 'sessions' }
       : safeTab === 'standby' ? { tab: 'standby' }
       : safeTab === 'lesson-planner' ? { tab: 'lesson-planner' }
+      : safeTab === 'schedule' ? { tab: 'schedule' }
       : {}
     );
   };
@@ -1360,6 +1373,30 @@ export default function TeacherClassesPage() {
                 )}
               </button>
             )}
+            {/* 2026-05-18 — IT-only "جدولي" tab. Mirrors the
+                sidebar entry that used to point at
+                /teacher/workspace-schedule. The CalendarDays icon
+                matches the retired sidebar item so the visual
+                grammar of the tab matches what IT users learned. */}
+            {_isITUser && (
+              <button
+                onClick={() => handleTabChange('schedule')}
+                className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative ${
+                  activeTab === 'schedule'
+                    ? 'text-brand-navy dark:text-brand-turquoise'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                data-testid="teacher-classes-schedule-tab"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="h-4 w-4" />
+                  جدولي
+                </span>
+                {activeTab === 'schedule' && (
+                  <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -1370,6 +1407,15 @@ export default function TeacherClassesPage() {
           <StandbyTab />
         ) : activeTab === 'lesson-planner' ? (
           <LessonPlannerPanel embedded />
+        ) : activeTab === 'schedule' ? (
+          // Embedded variant drops the gradient page background and
+          // max-width wrapper so the panel inherits the host page's
+          // spacing. The "create a class first" CTA switches to the
+          // classes tab in-place instead of route-navigating to it.
+          <WorkspaceSchedulePanel
+            embedded
+            onNavigateToClasses={() => handleTabChange('classes')}
+          />
         ) : (
           <>
           {!loading && stats && (

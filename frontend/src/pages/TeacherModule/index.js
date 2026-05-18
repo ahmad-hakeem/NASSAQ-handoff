@@ -35,7 +35,9 @@ export { default as TeacherResourcesPage } from './TeacherResourcesPage';
 // Independent-Teacher only: reduced workspace settings (Task #189 §5.2).
 export { default as WorkspaceSettingsPage } from './WorkspaceSettingsPage';
 // Independent-Teacher only: manual schedule editor (Task #193 §5.4).
-export { default as WorkspaceSchedulePage } from './WorkspaceSchedulePage';
+// 2026-05-18 — Also re-exports the headless `WorkspaceSchedulePanel`
+// so TeacherClassesPage can embed it as its fourth "جدولي" tab.
+export { default as WorkspaceSchedulePage, WorkspaceSchedulePanel } from './WorkspaceSchedulePage';
 // Independent-Teacher only: personal calendar (Task #208 §6.3).
 export { default as TeacherPersonalCalendarPage } from './TeacherPersonalCalendarPage';
 // Independent-Teacher only: light AI lesson-planning assistant (Task #209 §6.4).

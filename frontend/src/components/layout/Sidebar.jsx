@@ -499,14 +499,13 @@ export const Sidebar = ({ children }) => {
         roles: ['independent_teacher'],
         dataTour: 'sidebar-workspace-settings',
       },
-      // Task #193 §5.4 — Independent-Teacher only: manual schedule editor.
-      {
-        icon: CalendarDays,
-        label: 'جدولي',
-        href: '/teacher/workspace-schedule',
-        roles: ['independent_teacher'],
-        dataTour: 'sidebar-workspace-schedule',
-      },
+      // Task #193 §5.4 — Independent-Teacher manual schedule editor.
+      // 2026-05-18 — The standalone "جدولي" sidebar entry has been
+      // folded into the "فصولي" page as a fourth tab so IT users
+      // get classes / sessions / lesson-planner / schedule under one
+      // mounted shell. /teacher/workspace-schedule still resolves
+      // (it redirects to /teacher/classes?tab=schedule) so existing
+      // bookmarks and internal links keep working.
       // Task #208 §6.3 — Independent-Teacher only: personal calendar.
       // Role-gated AND permission-gated on the new `events.author_own`
       // permission so the link is only shown when the backend RBAC

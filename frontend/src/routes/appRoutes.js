@@ -381,11 +381,15 @@ export default function AppRoutes() {
         <Route path="/teacher/workspace-settings" element={
           <ProtectedRoute allowedRoles={['independent_teacher']}><WorkspaceSettingsPage /></ProtectedRoute>
         } />
-        {/* Task #193 §5.4 — Independent-Teacher only: manual schedule editor.
-            Backend enforces IT role + workspace scope per-endpoint and uses
-            optimistic concurrency on schedule_sessions.version. */}
+        {/* 2026-05-18 — Legacy standalone IT schedule route. The
+            "جدولي" sidebar entry was removed in favor of a fourth
+            tab inside /teacher/classes, so old bookmarks land on
+            the new embedded surface with the right tab pre-selected.
+            Role gate preserved via ProtectedRoute. */}
         <Route path="/teacher/workspace-schedule" element={
-          <ProtectedRoute allowedRoles={['independent_teacher']}><WorkspaceSchedulePage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['independent_teacher']}>
+            <Navigate to="/teacher/classes?tab=schedule" replace />
+          </ProtectedRoute>
         } />
         {/* Task #208 §6.3 — Independent-Teacher only: personal calendar.
             Backend pins tenant_id=itw_{user_id} + created_by=user.id +
