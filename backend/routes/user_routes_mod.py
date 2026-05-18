@@ -830,10 +830,18 @@ async def update_current_user_preferences(
 async def get_current_user_notification_settings(
     current_user: dict = Depends(get_current_user)
 ):
-    """Get current user's notification settings"""
+    """Get current user's notification settings.
+
+    Independent-Teacher (IT) accounts only support push (in-app) delivery
+    in this release — the email and SMS channels are intentionally
+    suppressed for that role so any downstream dispatcher reading these
+    flags sees ``False`` regardless of whatever historical value sits on
+    the user row. The PUT counterpart enforces the same invariant.
+    """
+    is_independent_teacher = (current_user.get("role") or "").lower() == "independent_teacher"
     return {
-        "email_notifications": current_user.get("email_notifications", True),
-        "sms_notifications": current_user.get("sms_notifications", False),
+        "email_notifications": False if is_independent_teacher else current_user.get("email_notifications", True),
+        "sms_notifications": False if is_independent_teacher else current_user.get("sms_notifications", False),
         "push_notifications": current_user.get("push_notifications", True),
         "attendance_alerts": current_user.get("attendance_alerts", True),
         "grade_alerts": current_user.get("grade_alerts", True),
@@ -847,12 +855,18 @@ async def update_current_user_notification_settings(
     data: UserNotificationSettings,
     current_user: dict = Depends(get_current_user)
 ):
-    """Update current user's notification settings"""
+    """Update current user's notification settings.
+
+    IT accounts cannot opt back into email/SMS from this endpoint — those
+    two fields are silently ignored for that role to keep the GET/PUT
+    invariant aligned with the frontend (push-only channel selector).
+    """
     update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
-    
-    if data.email_notifications is not None:
+    is_independent_teacher = (current_user.get("role") or "").lower() == "independent_teacher"
+
+    if data.email_notifications is not None and not is_independent_teacher:
         update_data["email_notifications"] = data.email_notifications
-    if data.sms_notifications is not None:
+    if data.sms_notifications is not None and not is_independent_teacher:
         update_data["sms_notifications"] = data.sms_notifications
     if data.push_notifications is not None:
         update_data["push_notifications"] = data.push_notifications

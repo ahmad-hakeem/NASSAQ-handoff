@@ -1452,8 +1452,19 @@ export const AccountSettingsPage = () => {
                     <div>
                       <p className="text-sm font-cairo font-medium mb-3">{t('alertChannels')}</p>
                       <div className="space-y-2">
-                        <NotificationRow title={t('emailNotifications')} desc={t('receiveNotificationsViaEmail')} checked={notifications.email_notifications} onChange={(v) => setNotifications({ ...notifications, email_notifications: v })} />
-                        <NotificationRow title={t('smsNotifications')} desc={t('receiveNotificationsViaSms')} checked={notifications.sms_notifications} onChange={(v) => setNotifications({ ...notifications, sms_notifications: v })} />
+                        {/* Email + SMS channels are hidden for the Independent
+                            Teacher portal — push (in-app) is the only
+                            supported delivery channel for IT. The backend
+                            mirrors this: GET /users/me/notifications forces
+                            email/sms to false and PUT ignores them for IT,
+                            so we don't need a frontend-side payload filter.
+                            Other roles still see all three channels. */}
+                        {!isIndependentTeacher && (
+                          <>
+                            <NotificationRow title={t('emailNotifications')} desc={t('receiveNotificationsViaEmail')} checked={notifications.email_notifications} onChange={(v) => setNotifications({ ...notifications, email_notifications: v })} />
+                            <NotificationRow title={t('smsNotifications')} desc={t('receiveNotificationsViaSms')} checked={notifications.sms_notifications} onChange={(v) => setNotifications({ ...notifications, sms_notifications: v })} />
+                          </>
+                        )}
                         <NotificationRow title={t('pushNotifications')} desc={t('instantBrowserPushNotifications')} checked={notifications.push_notifications} onChange={(v) => setNotifications({ ...notifications, push_notifications: v })} />
                       </div>
                     </div>
