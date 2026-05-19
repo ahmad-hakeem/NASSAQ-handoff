@@ -366,7 +366,7 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
     async def return_to_original_role(
         request: Request,
         credentials: _HTTPAuthorizationCredentials = Depends(_bearer_scheme),
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(_switch_mfa_dep)
     ):
         try:
             user_id = current_user.get("id")
