@@ -532,6 +532,13 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
       full_name: student.full_name || '',
       grade: student.grade || '',
       gender: student.gender || '',
+      // 2026-05-19 — Carry the current class_id so the new dropdown
+      // can pre-select it (or fall back to the 'unassigned' sentinel
+      // for freshly imported rows). The sentinel is mapped back to
+      // `null` in `saveEditStudent` so the PUT body matches the
+      // backend contract.
+      class_id: student.class_id || '',
+      _original_class_id: student.class_id || null,
     });
   };
 
@@ -570,7 +577,34 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
       const body = { full_name };
       if (editStudentDialog.grade) body.grade = editStudentDialog.grade;
       if (editStudentDialog.gender) body.gender = editStudentDialog.gender;
+      // 2026-05-19 — Class assignment from the dropdown. The 'unassigned'
+      // sentinel maps to `null` (clears the assignment). A real class_id
+      // is forwarded as-is; the backend validates it belongs to the
+      // teacher's workspace and 404s otherwise. We only send the field
+      // when the user actually changed it to avoid touching unrelated
+      // assignments on edits that only changed name/grade/gender.
+      const nextClassId =
+        editStudentDialog.class_id === 'unassigned'
+          ? null
+          : (editStudentDialog.class_id || null);
+      const originalClassId = editStudentDialog._original_class_id ?? null;
+      if (nextClassId !== originalClassId) {
+        body.class_id = nextClassId;
+      }
       await api.put(`/students/${editStudentDialog.id}`, body);
+      // 2026-05-19 — Optimistic local update so the row reflects the new
+      // class immediately and disappears from the "غير معينين" filter
+      // without waiting for the refetch round-trip. fetchStudents() still
+      // runs to reconcile with server truth (and to drop a row from the
+      // current view if the new class doesn't match the active filter).
+      if ('class_id' in body) {
+        const newClass = workspaceClasses.find((c) => c.id === nextClassId);
+        setStudents((prev) => prev.map((s) =>
+          s.id === editStudentDialog.id
+            ? { ...s, class_id: nextClassId, class_name: newClass?.name || null }
+            : s,
+        ));
+      }
       setEditStudentDialog(null);
       await fetchStudents();
     } catch (err) {
@@ -1770,6 +1804,53 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                     onChange={(e) => setEditStudentDialog((p) => ({ ...p, grade: e.target.value }))}
                   />
                 </div>
+                {/* 2026-05-19 — Class dropdown for IT users. Replaces the
+                    "no way to assign" gap that left imported students stuck
+                    in the "غير معينين" filter. Populated from
+                    `workspaceClasses` (GET /classes, IT-tenant-scoped on
+                    the backend), with an "غير معين" sentinel to clear the
+                    assignment. Disabled with helper copy when the teacher
+                    hasn't created any classes yet. */}
+                {isIndependentTeacher && (
+                  <div className="space-y-2">
+                    <label className="font-cairo text-sm">{isRTL ? 'الفصل' : 'Class'}</label>
+                    {/* 2026-05-19 — Empty-classes state must surface the
+                        helper copy *outside* the Select. Radix `Select`
+                        renders its currently-selected item label, not
+                        the trigger placeholder, when a value is bound —
+                        so the original placeholder-based approach kept
+                        showing "غير معين" instead of guiding the teacher
+                        to create a class first. Render a disabled,
+                        input-styled banner in that case. */}
+                    {workspaceClasses.length === 0 ? (
+                      <div
+                        className="flex h-10 w-full items-center rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+                        data-testid="edit-student-class-empty"
+                      >
+                        {isRTL ? 'لم تقم بإنشاء فصول بعد' : 'No classes created yet'}
+                      </div>
+                    ) : (
+                      <Select
+                        value={editStudentDialog.class_id || 'unassigned'}
+                        onValueChange={(v) => setEditStudentDialog((p) => ({ ...p, class_id: v }))}
+                      >
+                        <SelectTrigger data-testid="edit-student-class-select">
+                          <SelectValue placeholder={isRTL ? 'اختر فصلاً' : 'Select a class'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned">
+                            {isRTL ? 'غير معين' : 'Unassigned'}
+                          </SelectItem>
+                          {workspaceClasses.map((cls) => (
+                            <SelectItem key={cls.id} value={cls.id}>
+                              {cls.name || cls.name_ar || cls.id}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                )}
                 <div className="space-y-2">
                   <label className="font-cairo text-sm">{isRTL ? 'الجنس' : 'Gender'}</label>
                   <Select
