@@ -167,49 +167,154 @@ function severityLabel(t, sev) {
   return fallbacks[key] || sev;
 }
 
-// 2026-05-18 — translate a raw backend event enum (e.g.
-// "INDEPENDENT_TEACHER_EXPORT_EXCEL") into a user-friendly Arabic
-// string when the backend didn't populate `action_label_ar`. The
-// first lookup is the i18n bundle (key: `auditEvent_<lowercase>`);
-// the dictionary below is the in-code fallback for the common events;
-// finally, an unknown enum is humanised by Title-Casing the snake_case
-// token so the table never displays raw ALL_CAPS strings.
+// 2026-05-19 — Arabic labels for raw backend audit event enums.
+//
+// The backend always populates `action_label_ar`, but for enums the
+// backend doesn't recognise the value is just a destructive humanise
+// of the raw token (e.g. `mfa.disabled` → "mfa · disabled",
+// `INDEPENDENT_TEACHER_EXPORT_EXCEL` → "INDEPENDENT TEACHER EXPORT
+// EXCEL"). That fallback leaks raw English/snake_case into the IT
+// activity log UI, which we never want. The dictionary below is the
+// authoritative FE-side translation table — `formatAuditEvent` below
+// consults it BEFORE the backend label so a known enum is always
+// rendered in Arabic, regardless of what the backend humanised.
+//
+// Keys mirror the exact strings the backend emits (verify against
+// `backend/routes/independent_teacher_audit_routes.py::_ACTION_LABELS_AR`,
+// `backend/routes/mfa_routes.py`, `backend/engines/audit_engine.py`).
+// Lookups below are case-insensitive so a backend casing tweak
+// (`mfa.disabled` vs `MFA.DISABLED`) doesn't silently regress.
 const AUDIT_EVENT_FALLBACKS_AR = {
+  // -- Independent-Teacher workspace lifecycle / exports -------------
   INDEPENDENT_TEACHER_EXPORT_EXCEL: 'تصدير بيانات المعلم إلى إكسيل',
   INDEPENDENT_TEACHER_EXPORT_CSV: 'تصدير بيانات المعلم إلى CSV',
   INDEPENDENT_TEACHER_EXPORT: 'تصدير بيانات مساحة العمل',
+  INDEPENDENT_TEACHER_EXPORT_DOWNLOADED: 'تنزيل ملف التصدير',
+  INDEPENDENT_TEACHER_BOOTSTRAP: 'تهيئة مساحة العمل',
+  INDEPENDENT_TEACHER_SOFT_DELETE: 'أرشفة مساحة العمل',
+  INDEPENDENT_TEACHER_REACTIVATE: 'إعادة تفعيل مساحة العمل',
+  INDEPENDENT_TEACHER_PENDING_HARD_DELETE: 'انتهاء مهلة استرجاع المساحة',
+  INDEPENDENT_TEACHER_HARD_DELETED: 'حذف نهائي لمساحة العمل',
   INDEPENDENT_TEACHER_WORKSPACE_ARCHIVE: 'أرشفة مساحة العمل',
   INDEPENDENT_TEACHER_WORKSPACE_REACTIVATE: 'إعادة تنشيط مساحة العمل',
+  INDEPENDENT_TEACHER_COLLAB_INVITED: 'دعوة معلم متعاون',
+  INDEPENDENT_TEACHER_COLLAB_CANCELLED: 'إلغاء دعوة متعاون',
+  INDEPENDENT_TEACHER_COLLAB_ACCEPTED: 'قبول دعوة متعاون',
+  INDEPENDENT_TEACHER_COLLAB_REVOKED: 'إلغاء وصول متعاون',
   INDEPENDENT_TEACHER_INVITE_PARENT: 'دعوة وليّ أمر',
   INDEPENDENT_TEACHER_INVITE_COLLABORATOR: 'دعوة معلم متعاون',
+  INDEPENDENT_TEACHER_BULK_IMPORT_STUDENTS: 'استيراد طلاب بالجملة',
+  // -- Auth (engines/audit_engine.py::AuditAction) ------------------
+  'auth.login': 'تسجيل دخول',
+  'auth.logout': 'تسجيل خروج',
+  'auth.login_failed': 'محاولة دخول فاشلة',
+  'auth.password_changed': 'تغيير كلمة المرور',
+  'auth.password_reset': 'إعادة تعيين كلمة المرور',
+  // -- MFA (routes/mfa_routes.py) -----------------------------------
+  'mfa.disabled': 'تعطيل التحقق بخطوتين',
+  'mfa.disable.denied': 'رفض تعطيل التحقق بخطوتين',
+  'mfa.reset.success': 'إعادة ضبط التحقق بخطوتين',
+  'mfa.reset.failure': 'فشل إعادة ضبط التحقق بخطوتين',
+  'mfa.challenge_issued': 'إصدار تحدّي التحقق بخطوتين',
+  'mfa.login.success': 'نجاح تسجيل الدخول عبر التحقق بخطوتين',
+  'mfa.login.failure': 'فشل تسجيل الدخول عبر التحقق بخطوتين',
+  'mfa.stepup.success': 'نجاح تحقق إضافي (Step-up)',
+  'mfa.stepup.failure': 'فشل تحقق إضافي (Step-up)',
+  'mfa.stepup.challenge_issued': 'إصدار تحدّي تحقق إضافي',
+  'mfa.totp.enroll_begin': 'بدء تسجيل تطبيق المصادقة',
+  'mfa.totp.enroll_success': 'تسجيل تطبيق المصادقة',
+  'mfa.totp.enroll_failure': 'فشل تسجيل تطبيق المصادقة',
+  'mfa.webauthn.register_begin': 'بدء تسجيل مفتاح أمان',
+  'mfa.webauthn.register_success': 'تسجيل مفتاح أمان',
+  'mfa.webauthn.register_failure': 'فشل تسجيل مفتاح أمان',
+  'mfa.email_otp.sent': 'إرسال رمز التحقق بالبريد',
+  'mfa.recovery.regenerated': 'إنشاء رموز استرداد جديدة',
+  'mfa.recovery.regenerate.denied': 'رفض إنشاء رموز استرداد',
+  'mfa.recovery.acknowledged': 'حفظ رموز الاسترداد',
+  'mfa.audit.export': 'تصدير سجل التحقق بخطوتين',
+  // -- Academic / attendance / behaviour / schedule / data ---------
+  'academic.grade_recorded': 'تسجيل درجة',
+  'academic.grade_updated': 'تعديل درجة',
+  'academic.grades_bulk_recorded': 'تسجيل درجات بالجملة',
+  'academic.assessment_created': 'إنشاء تقييم',
+  'academic.assessment_published': 'نشر تقييم',
+  'attendance.recorded': 'تسجيل حضور',
+  'attendance.bulk_recorded': 'تسجيل حضور بالجملة',
+  'behaviour.note_created': 'ملاحظة سلوكية',
+  'behaviour.recorded': 'تسجيل سلوك',
+  'schedule.modified': 'تعديل الجدول',
+  'schedule.published': 'نشر الجدول',
+  'settings.updated': 'تعديل الإعدادات',
+  'data.exported': 'تصدير بيانات',
+  'data.imported': 'استيراد بيانات',
+  // -- Legacy enums kept for backward-compatibility -----------------
   USER_LOGIN: 'تسجيل دخول',
   USER_LOGOUT: 'تسجيل خروج',
   USER_PASSWORD_CHANGED: 'تغيير كلمة المرور',
-  USER_MFA_ENABLED: 'تفعيل التحقق الثنائي',
-  USER_MFA_DISABLED: 'إلغاء التحقق الثنائي',
+  USER_MFA_ENABLED: 'تفعيل التحقق بخطوتين',
+  USER_MFA_DISABLED: 'تعطيل التحقق بخطوتين',
   DATA_UPDATED: 'تعديل بيانات',
   DATA_CREATED: 'إضافة بيانات',
   DATA_DELETED: 'حذف بيانات',
 };
 
+// Pre-compute a lowercase index so callers can resolve a backend
+// enum regardless of casing (`mfa.disabled` vs `MFA.DISABLED`) — the
+// dictionary itself keeps the canonical key for readability.
+const AUDIT_EVENT_FALLBACKS_AR_LOWER = Object.fromEntries(
+  Object.entries(AUDIT_EVENT_FALLBACKS_AR).map(([k, v]) => [k.toLowerCase(), v]),
+);
+
 function humaniseEnum(raw) {
   if (!raw || typeof raw !== 'string') return raw || '';
-  // Lowercase, replace underscores with spaces, then Title-Case each
-  // word. Keeps short particles capitalised for readability.
+  // Lowercase, replace underscores/dots with spaces, then Title-Case
+  // each word. Keeps short particles capitalised for readability.
   return raw
     .toLowerCase()
-    .split(/[_\s]+/)
+    .split(/[_.\s]+/)
     .filter(Boolean)
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
 }
 
-function formatAuditEvent(t, raw) {
-  if (!raw) return '';
-  const i18n = t(`auditEvent_${raw.toLowerCase()}`);
-  if (i18n && i18n !== `auditEvent_${raw.toLowerCase()}`) return i18n;
-  if (AUDIT_EVENT_FALLBACKS_AR[raw]) return AUDIT_EVENT_FALLBACKS_AR[raw];
-  return humaniseEnum(raw);
+// Translate a raw backend audit action into a user-facing Arabic
+// string. Lookup order is:
+//   1. i18n bundle (key: `auditEvent_<normalised>`) — lets product
+//      override a label without a code change.
+//   2. FE dictionary (case-insensitive) — authoritative for known
+//      enums, beats the backend's destructive humanise.
+//   3. Backend-supplied `action_label_ar`, but only if it actually
+//      differs from the raw enum (i.e. the backend recognised it).
+//   4. Our own humaniseEnum as a last-resort safety net so the table
+//      never prints `mfa.disabled` or `INDEPENDENT_TEACHER_…` raw.
+//
+// Step 3 deliberately rejects the backend's "humanise" fallback by
+// comparing against both the raw token and our own humaniseEnum
+// output — if they match, the backend didn't actually know the enum
+// and we'd rather show the Title-Cased version than something that
+// looks like a translation but isn't.
+function formatAuditEvent(t, raw, backendLabel) {
+  if (!raw && !backendLabel) return '';
+  if (!raw) return backendLabel || '';
+  const lower = raw.toLowerCase();
+  const i18nKey = `auditEvent_${lower.replace(/[.]/g, '_')}`;
+  const i18n = t(i18nKey);
+  if (i18n && i18n !== i18nKey) return i18n;
+  if (AUDIT_EVENT_FALLBACKS_AR_LOWER[lower]) {
+    return AUDIT_EVENT_FALLBACKS_AR_LOWER[lower];
+  }
+  const humanised = humaniseEnum(raw);
+  if (
+    backendLabel
+    && backendLabel !== raw
+    && backendLabel !== humanised
+    // backend humanise replaces "." with " · " — strip that out before
+    // comparing so we recognise its fallback shape too.
+    && backendLabel.replace(/\s*·\s*/g, ' ').toLowerCase() !== humanised.toLowerCase()
+  ) {
+    return backendLabel;
+  }
+  return humanised;
 }
 
 function formatTimestamp(iso) {
@@ -848,7 +953,15 @@ export function TeacherAuditLogPanel({ embedded = false }) {
                           <div className="space-y-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="font-semibold text-gray-900">
-                                {row.action_label_ar || formatAuditEvent(t, row.action)}
+                                {/* 2026-05-19 — Prefer the FE dictionary
+                                   over the backend `action_label_ar`
+                                   because backend silently falls back
+                                   to a destructive humanise of the raw
+                                   enum (e.g. `mfa.disabled` → "mfa ·
+                                   disabled") for any action it doesn't
+                                   recognise, which leaked raw English
+                                   into the IT activity log UI. */}
+                                {formatAuditEvent(t, row.action, row.action_label_ar)}
                               </span>
                               {(row.actor_name || role) && (
                                 <span className="text-xs text-gray-500">
