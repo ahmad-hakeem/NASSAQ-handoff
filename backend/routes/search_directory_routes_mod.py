@@ -42,26 +42,29 @@ def _is_admin(current_user: dict) -> bool:
     return current_user.get("role", "") in _ADMIN_ROLE_VALUES
 
 
-async def _get_teacher_class_ids(school_id: str, current_user: dict) -> list:
-    """Return the list of class_ids the calling teacher is assigned to.
-    Returns an empty list if no assignments are found."""
-    teacher_id = current_user.get("teacher_id") or current_user.get("id")
+async def _get_teacher_class_ids(school_id: str, current_user: dict) -> List[str]:
+    """Return the class IDs the calling teacher is assigned to.
+
+    Checks both ``teacher_assignments`` and ``class_sessions`` so that
+    schedule-only assignments are included.  Returns an empty list when the
+    teacher has no assignments — callers must treat that as zero-access.
+    """
+    user_id = current_user.get("id", "")
+    teacher_id = current_user.get("teacher_id") or user_id
     assignments = await gd_find(
-        db.session,
-        "teacher_assignments",
-        {"teacher_id": teacher_id, "tenant_id": school_id, "is_active": True},
-        limit=200,
+        db.session, "teacher_assignments",
+        {"tenant_id": school_id, "teacher_id": teacher_id, "is_active": True},
+        limit=500,
     )
-    class_ids = list({a["class_id"] for a in assignments if a.get("class_id")})
+    class_ids: set = {a["class_id"] for a in assignments if a.get("class_id")}
     if not class_ids:
-        sess_assignments = await gd_find(
-            db.session,
-            "class_sessions",
-            {"teacher_id": teacher_id, "tenant_id": school_id},
-            limit=200,
+        sessions = await gd_find(
+            db.session, "class_sessions",
+            {"tenant_id": school_id, "teacher_id": teacher_id},
+            limit=500,
         )
-        class_ids = list({a["class_id"] for a in sess_assignments if a.get("class_id")})
-    return class_ids
+        class_ids = {s["class_id"] for s in sessions if s.get("class_id")}
+    return list(class_ids)
 
 
 @router.get("/search/global")
@@ -92,12 +95,12 @@ async def global_search(
     if caller_is_staff and (not entity_type or entity_type == "student"):
         student_query = {**tenant_filter, "$or": [
             {"full_name": pattern}, {"national_id": pattern},
-            {"email": pattern}, {"student_number": pattern}
+            {"email": pattern}, {"student_number": pattern},
         ]}
         if not caller_is_admin:
             teacher_class_ids = await _get_teacher_class_ids(school_id, current_user)
             if not teacher_class_ids:
-                teacher_class_ids = ["__no_class__"]
+                teacher_class_ids = ["__no_access__"]
             student_query["class_id"] = {"$in": teacher_class_ids}
         students = await gd_find(db.session, "students", student_query, limit=limit)
         results["students"] = [dict(s, entity_type="student") for s in students]
@@ -156,7 +159,7 @@ async def autocomplete_search(
         if not caller_is_admin:
             teacher_class_ids = await _get_teacher_class_ids(school_id, current_user)
             if not teacher_class_ids:
-                teacher_class_ids = ["__no_class__"]
+                teacher_class_ids = ["__no_access__"]
             student_query["class_id"] = {"$in": teacher_class_ids}
         students = await gd_find(db.session, "students", student_query, limit=limit)
         suggestions.extend([{"id": s["id"], "label": s["full_name"], "type": "student"} for s in students])
@@ -200,15 +203,16 @@ async def directory_students(
     school_id = require_request_school_id(current_user)
     query: dict = {"tenant_id": school_id}
 
-    caller_is_admin = _is_admin(current_user)
+    caller_role = current_user.get("role", "")
+    caller_is_teacher = caller_role in (UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value)
 
-    if not caller_is_admin:
+    if caller_is_teacher:
         teacher_class_ids = await _get_teacher_class_ids(school_id, current_user)
         if not teacher_class_ids:
             return {"students": [], "total": 0, "page": page, "per_page": per_page, "total_pages": 0}
         if class_id:
             if class_id not in teacher_class_ids:
-                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات هذا الفصل")
+                raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على طلاب هذا الفصل")
             query["class_id"] = class_id
         else:
             query["class_id"] = {"$in": teacher_class_ids}
