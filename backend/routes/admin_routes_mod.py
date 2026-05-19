@@ -709,7 +709,7 @@ async def get_activity_summary(current_user: dict = Depends(require_roles([
     }
 
 @router.get("/activity/alerts")
-async def get_activity_alerts(current_user: dict = Depends(get_current_user)):
+async def get_activity_alerts(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
     """Get smart activity alerts"""
     now = datetime.now(timezone.utc)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
