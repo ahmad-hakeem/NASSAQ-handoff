@@ -111,6 +111,13 @@ RATE_LIMITS = {
     "/api/student-wizard/create": {"max": 30, "window": 60},
     "/api/student-wizard/check-parent": {"max": 60, "window": 60},
     "/api/student-wizard/search-parents": {"max": 60, "window": 60},
+    # SECURITY (task #438): parent-portal child routes include AI-backed
+    # endpoints (insights, weekly-story) that trigger LLM calls on every
+    # request.  A per-IP outer limit prevents a single parent account from
+    # running a tight loop and burning shared model quota or degrading
+    # portal responsiveness for other users.  Per-child AI caching
+    # (inside the handler) provides a second, complementary defence.
+    "/api/parent-portal/child/": {"max": 20, "window": 60},
 }
 
 

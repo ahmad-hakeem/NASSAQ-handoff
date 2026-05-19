@@ -1844,7 +1844,31 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
         # Only call Hakim when we actually have something factual to summarize.
         has_signal = bool(general_strengths or general_weaknesses or subjects_payload)
-        if has_signal and hakim_generate and hakim_available():
+
+        # SECURITY (task #438): per-child, per-day AI cache.  Check the
+        # ai_insights table before triggering any LLM calls.  This mirrors
+        # the weekly-story cache pattern and ensures that repeated requests
+        # from the same parent within a calendar day do not re-invoke Hakim.
+        _insights_cache_date_key = today.isoformat()
+        _insights_cached_ai = None
+        if has_signal:
+            try:
+                _cache_row = await gd_find_one(db.session, "ai_insights", {
+                    "insight_type": "parent_insights_daily",
+                    "entity_type": "student",
+                    "entity_id": child_id,
+                    "school_id": tenant_school_id,
+                })
+                if _cache_row and isinstance(_cache_row.get("data"), dict):
+                    if _cache_row["data"].get("cache_date") == _insights_cache_date_key:
+                        _insights_cached_ai = _cache_row["data"]
+            except Exception as _ce:
+                logger.debug(f"insights: ai cache lookup failed: {_ce}")
+
+        if _insights_cached_ai:
+            hakim_summary = _insights_cached_ai.get("hakim_summary", {"status": "insufficient_data", "text": None})
+            parent_tips = _insights_cached_ai.get("parent_tips", [])
+        elif has_signal and hakim_generate and hakim_available():
             summary_ctx = {
                 "grade_level": child.get("grade_level") or child.get("grade") or "",
                 "general_strengths": general_strengths,
@@ -1912,6 +1936,47 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                         })
                 except Exception as e:
                     logger.debug(f"insights: parent_subject_focus_tip failed: {e}")
+
+            # SECURITY (task #438): persist AI results so repeat requests
+            # within the same calendar day are served from cache without
+            # triggering further LLM calls.  Best-effort — never fail the
+            # request on a cache write error.
+            if hakim_summary.get("status") == "available":
+                try:
+                    _cache_payload = {
+                        "cache_date": _insights_cache_date_key,
+                        "hakim_summary": hakim_summary,
+                        "parent_tips": parent_tips,
+                        "generated_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    _existing_cache = await gd_find_one(db.session, "ai_insights", {
+                        "insight_type": "parent_insights_daily",
+                        "entity_type": "student",
+                        "entity_id": child_id,
+                        "school_id": tenant_school_id,
+                    })
+                    if _existing_cache:
+                        await gd_update_one(db.session, "ai_insights", {
+                            "insight_type": "parent_insights_daily",
+                            "entity_type": "student",
+                            "entity_id": child_id,
+                            "school_id": tenant_school_id,
+                        }, {"data": _cache_payload})
+                    else:
+                        await gd_insert(db.session, "ai_insights", {
+                            "id": str(uuid.uuid4()),
+                            "school_id": tenant_school_id,
+                            "entity_type": "student",
+                            "entity_id": child_id,
+                            "insight_type": "parent_insights_daily",
+                            "title": "رؤى الطالب اليومية",
+                            "content": (hakim_summary.get("text") or "")[:500],
+                            "data": _cache_payload,
+                            "severity": "info",
+                            "is_actionable": False,
+                        })
+                except Exception as _cwe:
+                    logger.debug(f"insights: ai cache write failed: {_cwe}")
         elif has_signal:
             hakim_summary = {"status": "unavailable", "text": None}
 
