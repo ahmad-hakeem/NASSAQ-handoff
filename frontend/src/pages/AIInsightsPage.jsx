@@ -2,8 +2,14 @@ import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } fro
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 const StudentPerformanceDashboard = lazy(() =>
   import('../components/student-performance/StudentPerformanceDashboard'));
+// 2026-05-19 — IT analytics panel merged in as the "التحليلات الرقمية"
+// tab. Lazy so the recharts payload only loads when the tab is opened
+// by an Independent Teacher. Self-contained fetching keeps the
+// AI Insights and Analytics tabs from blocking each other's API calls.
+const TeacherAnalyticsPanel = lazy(() =>
+  import('./TeacherModule/TeacherAnalyticsPanel'));
 const STUDENT_PERF_ROLES = ['school_admin', 'school_sub_admin', 'school_principal'];
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
@@ -1104,9 +1110,35 @@ export const AIInsightsPage = () => {
   const { t } = useTranslation();
   const { api, user } = useAuth();
   const canSeeStudentPerf = STUDENT_PERF_ROLES.includes(user?.role);
-  const isTeacher = user?.role === 'teacher';
+  // 2026-05-19 — IT users see the embedded analytics tab. Gated on
+  // role only (the panel's own backend calls re-check the
+  // `analytics.read_own_workspace` permission per request).
+  const isIndependentTeacher = user?.role === 'independent_teacher';
+  // 2026-05-19 — Treat Independent Teachers as teacher-scoped on this
+  // page. Otherwise admitting them to /ai-insights would flip them
+  // into the admin/principal branch, which fires `/teachers`,
+  // `/teacher-attendance`, and `/attendance/report/summary` calls
+  // they have no business making and renders staff-admin sections
+  // that don't apply to a single-workspace teacher. The dedicated
+  // analytics tab below remains the only IT-specific surface.
+  const isTeacher = user?.role === 'teacher' || user?.role === 'independent_teacher';
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const navigate = useNavigate();
+  // 2026-05-19 — Deep-link support: `?tab=analytics` (used by the
+  // /teacher/analytics legacy redirect) opens the new analytics tab
+  // directly so old bookmarks land in the right place.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') === 'analytics' && isIndependentTeacher
+    ? 'analytics'
+    : 'insights';
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const handleTabChange = useCallback((next) => {
+    setActiveTab(next);
+    const params = new URLSearchParams(searchParams);
+    if (next === 'analytics') params.set('tab', 'analytics');
+    else params.delete('tab');
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     const style = document.createElement('style');
@@ -1344,9 +1376,16 @@ export const AIInsightsPage = () => {
         </header>
 
         <div className="relative z-10 p-6 max-w-[1600px] mx-auto space-y-6">
-          <Tabs defaultValue="insights" dir={isRTL ? 'rtl' : 'ltr'}>
+          <Tabs value={activeTab} onValueChange={handleTabChange} dir={isRTL ? 'rtl' : 'ltr'}>
             <TabsList>
-              <TabsTrigger value="insights">{t('aiInsights')}</TabsTrigger>
+              <TabsTrigger value="insights">{t('aiInsightsTabLabel')}</TabsTrigger>
+              {/* 2026-05-19 — IT-only "التحليلات الرقمية" tab. Hosts the
+                  analytics panel relocated from /teacher/analytics. */}
+              {isIndependentTeacher && (
+                <TabsTrigger value="analytics" data-testid="ai-insights-analytics-tab">
+                  {t('digitalAnalyticsTabLabel')}
+                </TabsTrigger>
+              )}
               {canSeeStudentPerf && (
                 <TabsTrigger value="student-performance">{t('studentPerformance')}</TabsTrigger>
               )}
@@ -1587,6 +1626,16 @@ export const AIInsightsPage = () => {
             </div>
           </div>
             </TabsContent>
+            {/* 2026-05-19 — IT analytics tab. The panel owns its own
+                state + fetch hooks, so opening this tab never blocks
+                the AI insights tab's data and vice versa. */}
+            {isIndependentTeacher && (
+              <TabsContent value="analytics" className="mt-6" data-testid="ai-insights-analytics-content">
+                <Suspense fallback={<div className="p-6 text-center">{t('loading')}</div>}>
+                  <TeacherAnalyticsPanel />
+                </Suspense>
+              </TabsContent>
+            )}
             {canSeeStudentPerf && (
               <TabsContent value="student-performance" className="mt-6">
                 <Suspense fallback={<div className="p-6 text-center">{t('loading')}</div>}>

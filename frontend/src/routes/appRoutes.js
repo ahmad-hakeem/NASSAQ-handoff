@@ -84,7 +84,9 @@ const TeacherPersonalCalendarPage = lazy(() => import("../pages/TeacherModule").
 const LessonPlannerPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.LessonPlannerPage })));
 const TeacherSubjectsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherSubjectsPage })));
 const TeacherAuditLogPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAuditLogPage })));
-const TeacherAnalyticsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAnalyticsPage })));
+// 2026-05-19 — TeacherAnalyticsPage was merged into AIInsightsPage as
+// the "التحليلات الرقمية" tab; /teacher/analytics now redirects to
+// /ai-insights so existing bookmarks keep working.
 const TeacherNotificationsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherNotificationsPage })));
 
 const ProductHubPage = lazy(() => import("../pages/ProductHubPage").then(m => ({ default: m.ProductHubPage })));
@@ -445,15 +447,17 @@ export default function AppRoutes() {
             requiredPermission="audit.read_own_workspace"
           ><Navigate to="/account/settings#activity" replace /></ProtectedRoute>
         } />
-        {/* Task #273 — IT-only workspace analytics dashboard. Backend
-            pins tenant_id == itw_{user_id} on every aggregation and
-            returns 404 for cross-workspace class_id (spec §8 inv. 3).
-            Read-only; no MFA step-up. */}
+        {/* 2026-05-19 — Legacy standalone IT analytics route. The
+            page was merged into /ai-insights as a tab; this redirect
+            keeps existing bookmarks and internal links working. The
+            target route enforces the same role gate (independent_teacher
+            is permitted on /ai-insights below), and the embedded panel
+            re-applies the `analytics.read_own_workspace` permission
+            implicitly via the backend on every fetch. */}
         <Route path="/teacher/analytics" element={
-          <ProtectedRoute
-            allowedRoles={['independent_teacher']}
-            requiredPermission="analytics.read_own_workspace"
-          ><TeacherAnalyticsPage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['independent_teacher']}>
+            <Navigate to="/ai-insights?tab=analytics" replace />
+          </ProtectedRoute>
         } />
         {/* Task #249 — IT-only notifications inbox. */}
         {/* 2026-05-18 — IT Notifications Inbox merged into the
@@ -660,11 +664,16 @@ export default function AppRoutes() {
         <Route path="/school/teacher-class-assignments" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><TeacherClassAssignmentPage /></ProtectedRoute>
         } />
+        {/* 2026-05-19 — `independent_teacher` added to the allow-list
+            so the IT sidebar entry actually mounts the page instead of
+            bouncing to the dashboard via ProtectedRoute's role fallback. */}
         <Route path="/principal/ai-insights" element={
-          <ProtectedRoute allowedRoles={[...SCHOOL_ROLES, 'platform_admin', 'teacher']}><AIInsightsPage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={[...SCHOOL_ROLES, 'platform_admin', 'teacher', 'independent_teacher']}><AIInsightsPage /></ProtectedRoute>
         } />
+        {/* 2026-05-19 — Same fix as /principal/ai-insights: include
+            `independent_teacher` so the IT sidebar entry resolves. */}
         <Route path="/ai-insights" element={
-          <ProtectedRoute allowedRoles={[...SCHOOL_ROLES, 'platform_admin', 'teacher']}><AIInsightsPage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={[...SCHOOL_ROLES, 'platform_admin', 'teacher', 'independent_teacher']}><AIInsightsPage /></ProtectedRoute>
         } />
 
         {/* Account Settings - All authenticated users */}

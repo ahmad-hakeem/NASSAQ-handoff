@@ -56,6 +56,12 @@ export { default as LessonPlannerPage, LessonPlannerPanel } from './LessonPlanne
 // Account Settings page can embed the same content inline.
 export { default as TeacherAuditLogPage, TeacherAuditLogPanel } from './TeacherAuditLogPage';
 // Independent-Teacher only: workspace analytics dashboard (Task #273).
-export { default as TeacherAnalyticsPage } from './TeacherAnalyticsPage';
+// 2026-05-19 — Standalone TeacherAnalyticsPage retired. Its panel
+// (date filters, class filter, export buttons, attendance/behavior/
+// lesson-plan charts and top tables) is now embedded as the
+// "التحليلات الرقمية" tab inside /ai-insights. The route
+// /teacher/analytics redirects to /ai-insights so existing bookmarks
+// keep working.
+export { default as TeacherAnalyticsPanel } from './TeacherAnalyticsPanel';
 // Independent-Teacher only: notifications inbox (Task #249).
 export { default as TeacherNotificationsPage, TeacherNotificationsPanel } from './TeacherNotificationsPage';

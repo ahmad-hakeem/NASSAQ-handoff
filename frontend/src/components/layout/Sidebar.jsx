@@ -562,17 +562,11 @@ export const Sidebar = ({ children }) => {
       // is removed to eliminate the duplicate nav item; deep links to
       // /teacher/audit-log redirect to /account/settings#activity in
       // appRoutes.js so historical bookmarks continue to work.
-      // Task #273 — IT-only workspace analytics dashboard. Permission-
-      // gated on `analytics.read_own_workspace` so the link mirrors the
-      // backend RBAC slice exactly.
-      {
-        icon: BarChart3,
-        label: 'التحليلات',
-        href: '/teacher/analytics',
-        roles: ['independent_teacher'],
-        permission: 'analytics.read_own_workspace',
-        dataTour: 'sidebar-analytics',
-      },
+      // 2026-05-19 — Standalone "التحليلات" sidebar entry retired.
+      // Its panel is now embedded in /ai-insights as the
+      // "التحليلات الرقمية" tab so IT users have a single AI/analytics
+      // entry point. /teacher/analytics still redirects there for
+      // legacy bookmarks (see appRoutes.js).
       // 2026-05-18 — Standalone IT "الإشعارات" entry removed. The
       // inbox now lives inside the unified "التواصل والإشعارات"
       // hub as its default "البريد الوارد" tab; the unread counter

@@ -191,6 +191,8 @@
   "aienabledSchools": "AI-enabled schools:",
   "aiFeatures": "AI Features",
   "aiInsights": "AI Insights",
+  "aiInsightsTabLabel": "AI Insights",
+  "digitalAnalyticsTabLabel": "Digital Analytics",
   "aiInsightsRefreshed": "AI insights refreshed",
   "aiIsTheBackboneOfTheSystem": "AI is the backbone of the system",
   "aiModels": "AI Models",

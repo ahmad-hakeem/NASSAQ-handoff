@@ -191,6 +191,8 @@
   "aienabledSchools": "المدارس المفعّل لها AI:",
   "aiFeatures": "ميزات الذكاء الاصطناعي",
   "aiInsights": "رؤى الذكاء الاصطناعي",
+  "aiInsightsTabLabel": "رؤى الذكاء الاصطناعي",
+  "digitalAnalyticsTabLabel": "التحليلات الرقمية",
   "aiInsightsRefreshed": "تم تحديث رؤى الذكاء الاصطناعي",
   "aiIsTheBackboneOfTheSystem": "الذكاء الاصطناعي هو العمود الفقري للنظام",
   "aiModels": "نماذج AI",
