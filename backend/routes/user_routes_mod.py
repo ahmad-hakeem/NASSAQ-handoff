@@ -531,6 +531,36 @@ async def update_user_permissions(
 class PasswordResetRequest(BaseModel):
     new_password: str
 
+
+_ROLES_PROTECTED_FROM_SCHOOL_ADMIN = {
+    "platform_admin",
+    "platform_security_officer",
+    "school_principal",
+    "school_admin",
+}
+
+
+def _assert_role_ceiling(caller_role: str, target_role: str) -> None:
+    """Raise 403 if the caller's role does not outrank the target's role.
+
+    school_admin may only act on users whose role is strictly below theirs in
+    the school hierarchy (teachers, students, parents, school_sub_admin). They
+    must not be able to reset or suspend a school_principal (or any
+    platform-level account), which would be a direct privilege-escalation path.
+    """
+    if caller_role == UserRole.PLATFORM_ADMIN.value:
+        return
+    if caller_role == UserRole.SCHOOL_PRINCIPAL.value:
+        if target_role in {"platform_admin", "platform_security_officer"}:
+            raise HTTPException(status_code=403, detail="غير مصرح لك بتعديل بيانات هذا المستخدم")
+        return
+    if caller_role == UserRole.SCHOOL_ADMIN.value:
+        if target_role in _ROLES_PROTECTED_FROM_SCHOOL_ADMIN:
+            raise HTTPException(status_code=403, detail="غير مصرح لك بتعديل بيانات هذا المستخدم")
+        return
+    raise HTTPException(status_code=403, detail="غير مصرح لك بتعديل بيانات هذا المستخدم")
+
+
 @router.post("/users/{user_id}/reset-password")
 async def reset_user_password(
     user_id: str,
@@ -546,6 +576,8 @@ async def reset_user_password(
     if current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
         if user.get("tenant_id") != current_user.get("tenant_id"):
             raise HTTPException(status_code=403, detail="غير مصرح لك بتعديل بيانات هذا المستخدم")
+
+    _assert_role_ceiling(current_user.get("role", ""), user.get("role", ""))
 
     await gd_update_one(db.session, "users", {"id": user_id}, {
             "password_hash": hash_password(data.new_password),
@@ -595,6 +627,8 @@ async def suspend_user(
     if current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
         if user.get("tenant_id") != current_user.get("tenant_id"):
             raise HTTPException(status_code=403, detail="غير مصرح لك بتعديل بيانات هذا المستخدم")
+
+    _assert_role_ceiling(current_user.get("role", ""), user.get("role", ""))
 
     # Cannot suspend platform_admin
     if user.get("role") == "platform_admin":

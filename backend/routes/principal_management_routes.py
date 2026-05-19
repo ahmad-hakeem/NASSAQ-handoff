@@ -21,6 +21,29 @@ router = APIRouter(prefix="/principal", tags=["Principal Management"])
 
 ADMIN_ROLES = [UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]
 
+_ROLES_PROTECTED_FROM_SCHOOL_ADMIN = {
+    "platform_admin",
+    "platform_security_officer",
+    "school_principal",
+    "school_admin",
+}
+
+
+def _assert_principal_mgmt_role_ceiling(caller_role: str, resolved_user: Optional[dict]) -> None:
+    """Block school_admin / school_sub_admin from modifying credentials or status
+    of a user whose role is at or above theirs (e.g. school_principal).
+
+    This prevents privilege escalation via the principal-management profile
+    routes, which operate on teacher/student/parent profile tables but
+    ultimately write to the shared `users` auth row.
+    """
+    if resolved_user is None:
+        return
+    target_role = resolved_user.get("role", "")
+    if caller_role in {UserRole.SCHOOL_ADMIN.value, UserRole.SCHOOL_SUB_ADMIN.value}:
+        if target_role in _ROLES_PROTECTED_FROM_SCHOOL_ADMIN:
+            raise HTTPException(status_code=403, detail="غير مصرح لك بتعديل بيانات هذا المستخدم")
+
 
 def _entity_tenant_filter(tenant_id: str) -> dict:
     return {"$or": [{"tenant_id": tenant_id}, {"school_id": tenant_id}]}
@@ -336,6 +359,7 @@ async def update_teacher_credentials(
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
 
     user = await _resolve_user_account_with_heal("teacher", teacher, teacher_id, tenant_id)
+    _assert_principal_mgmt_role_ceiling(current_user.get("role", ""), user)
     if data.new_email:
         dup = await gd_find_one(db.session, "users", {"email": data.new_email, "id": {"$ne": (user or {}).get("id", "")}})
         if dup:
@@ -401,8 +425,10 @@ async def update_teacher_account_status(
     old_status = teacher.get("status", "active")
     now = datetime.now(timezone.utc).isoformat()
 
-    await gd_update_one(db.session, "teachers", {"id": teacher_id, **_entity_tenant_filter(tenant_id)}, {"status": data.status, "is_active": data.status == "active", "status_reason": data.reason, "status_updated_at": now, "updated_at": now})
     user_row = await _resolve_user_account_with_heal("teacher", teacher, teacher_id, tenant_id)
+    _assert_principal_mgmt_role_ceiling(current_user.get("role", ""), user_row)
+
+    await gd_update_one(db.session, "teachers", {"id": teacher_id, **_entity_tenant_filter(tenant_id)}, {"status": data.status, "is_active": data.status == "active", "status_reason": data.reason, "status_updated_at": now, "updated_at": now})
     if user_row:
         await gd_update_one(db.session, "users", {"id": user_row["id"]}, {"status": data.status, "is_active": data.status == "active", "updated_at": now})
     else:
@@ -638,6 +664,7 @@ async def update_student_credentials(
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
     user = await _resolve_user_account_with_heal("student", student, student_id, tenant_id)
+    _assert_principal_mgmt_role_ceiling(current_user.get("role", ""), user)
     if data.new_email:
         dup = await gd_find_one(db.session, "users", {"email": data.new_email, "id": {"$ne": (user or {}).get("id", "")}})
         if dup:
@@ -702,8 +729,10 @@ async def update_student_account_status(
     old_status = student.get("status", "active")
     now = datetime.now(timezone.utc).isoformat()
 
-    await gd_update_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)}, {"status": data.status, "is_active": data.status == "active", "status_reason": data.reason, "status_updated_at": now, "updated_at": now})
     user_row = await _resolve_user_account_with_heal("student", student, student_id, tenant_id)
+    _assert_principal_mgmt_role_ceiling(current_user.get("role", ""), user_row)
+
+    await gd_update_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)}, {"status": data.status, "is_active": data.status == "active", "status_reason": data.reason, "status_updated_at": now, "updated_at": now})
     if user_row:
         await gd_update_one(db.session, "users", {"id": user_row["id"]}, {"status": data.status, "is_active": data.status == "active", "updated_at": now})
     else:
@@ -960,6 +989,7 @@ async def update_parent_credentials(
         raise HTTPException(status_code=404, detail="ولي الأمر غير موجود")
 
     user = await _resolve_user_account_with_heal("parent", parent, parent_id, tenant_id)
+    _assert_principal_mgmt_role_ceiling(current_user.get("role", ""), user)
     if data.new_email:
         dup = await gd_find_one(db.session, "users", {"email": data.new_email, "id": {"$ne": (user or {}).get("id", "")}})
         if dup:
@@ -1024,8 +1054,10 @@ async def update_parent_account_status(
     old_status = parent.get("status", "active")
     now = datetime.now(timezone.utc).isoformat()
 
-    await gd_update_one(db.session, "parents", {"id": parent_id, **_entity_tenant_filter(tenant_id)}, {"status": data.status, "is_active": data.status == "active", "status_reason": data.reason, "status_updated_at": now, "updated_at": now})
     user_row = await _resolve_user_account_with_heal("parent", parent, parent_id, tenant_id)
+    _assert_principal_mgmt_role_ceiling(current_user.get("role", ""), user_row)
+
+    await gd_update_one(db.session, "parents", {"id": parent_id, **_entity_tenant_filter(tenant_id)}, {"status": data.status, "is_active": data.status == "active", "status_reason": data.reason, "status_updated_at": now, "updated_at": now})
     if user_row:
         await gd_update_one(db.session, "users", {"id": user_row["id"]}, {"status": data.status, "is_active": data.status == "active", "updated_at": now})
     else:
