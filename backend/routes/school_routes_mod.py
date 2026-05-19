@@ -721,6 +721,10 @@ async def patch_school(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Patch school fields (status, ai_enabled, etc.)"""
+    privileged_roles = {UserRole.PLATFORM_ADMIN.value}
+    if current_user.get("role") not in privileged_roles and school_id != current_user.get("tenant_id"):
+        raise HTTPException(status_code=403, detail="غير مصرح بتعديل بيانات هذه المدرسة")
+
     school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
@@ -748,6 +752,10 @@ async def update_school(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Update school information"""
+    privileged_roles = {UserRole.PLATFORM_ADMIN.value}
+    if current_user.get("role") not in privileged_roles and school_id != current_user.get("tenant_id"):
+        raise HTTPException(status_code=403, detail="غير مصرح بتعديل بيانات هذه المدرسة")
+
     school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
