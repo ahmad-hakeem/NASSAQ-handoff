@@ -520,12 +520,12 @@ function DetailsBlock({ details }) {
   if (!items.length) return null;
   return (
     <div
-      className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3 bg-gray-50 border border-gray-200 rounded-md p-3"
+      className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4 w-full bg-gray-50 border border-gray-200 rounded-md p-4"
       dir="rtl"
     >
       {items.map(({ key, label, value }) => (
         <div key={key} className="flex flex-col min-w-0">
-          <span className="text-xs text-gray-500">{label}</span>
+          <span className="text-xs text-gray-500 whitespace-nowrap">{label}</span>
           <span className="text-sm font-medium text-gray-900 break-words">
             {value}
           </span>
@@ -1074,6 +1074,17 @@ export function TeacherAuditLogPanel({ embedded = false }) {
                   rows={logs}
                   getRowKey={(row) => row.id}
                   rowClassName="align-top"
+                  // 2026-05-19 — render the expanded details panel as
+                  // a full-width sibling row via ResponsiveTable's
+                  // renderExpanded hook (colSpan = columns.length) so
+                  // the key/value grid uses the entire table width
+                  // instead of being squeezed into the action cell.
+                  isRowExpanded={(row) => (
+                    !!expanded[row.id] && hasDisplayableDetails(row.details)
+                  )}
+                  renderExpanded={(row) => (
+                    <DetailsBlock details={row.details} />
+                  )}
                   columns={[
                     {
                       key: 'severity',
@@ -1141,7 +1152,12 @@ export function TeacherAuditLogPanel({ embedded = false }) {
                                 </button>
                               )}
                             </div>
-                            {showToggle && isOpen && <DetailsBlock details={row.details} />}
+                            {/* Expanded details panel is rendered as a
+                               full-width sibling row by ResponsiveTable
+                               via the `renderExpanded` prop (colSpan =
+                               columns.length) so the key/value grid is
+                               no longer trapped inside this narrow
+                               action cell. */}
                           </div>
                         );
                       },

@@ -18,6 +18,16 @@ import { cn } from '@/lib/utils';
  * `rows`: Array<{ id?, ...rowFields }>
  * `getRowKey`: optional fn(row, idx) → key (defaults to row.id || idx)
  * `emptyState`: optional React node shown when rows.length === 0
+ *
+ * Expandable rows (2026-05-19):
+ *   - `isRowExpanded(row)`  → boolean. When true, an extra <tr> is
+ *      rendered immediately under the main row in desktop mode with a
+ *      single <td colSpan={columns.length}> so the expanded content
+ *      spans the full table width instead of being trapped in one
+ *      narrow column.
+ *   - `renderExpanded(row)` → React node rendered inside that cell.
+ *      On mobile (card mode) the same node is appended at the bottom
+ *      of the card (which is already full-width) so the UX matches.
  */
 export function ResponsiveTable({
   columns,
@@ -31,6 +41,8 @@ export function ResponsiveTable({
   onRowClick,
   desktopMode = 'table',
   desktopGridClassName,
+  isRowExpanded,
+  renderExpanded,
 }) {
   const safeRows = Array.isArray(rows) ? rows : [];
   const keyFor = (row, idx) => {
@@ -109,26 +121,47 @@ export function ResponsiveTable({
             </tr>
           </thead>
           <tbody>
-            {safeRows.map((row, idx) => (
-              <tr
-                key={keyFor(row, idx)}
-                className={cn(
-                  'border-b last:border-0 hover:bg-muted/30',
-                  onRowClick && 'cursor-pointer',
-                  rowClassName,
-                )}
-                onClick={onRowClick ? () => onRowClick(row) : undefined}
-              >
-                {columns.map((col) => (
-                  <td
-                    key={col.key}
-                    className={cn('p-2 align-middle', col.cellClassName)}
+            {safeRows.map((row, idx) => {
+              const rowKey = keyFor(row, idx);
+              const expanded = typeof isRowExpanded === 'function'
+                ? !!isRowExpanded(row)
+                : false;
+              return (
+                <React.Fragment key={rowKey}>
+                  <tr
+                    className={cn(
+                      // Drop the bottom border when this row is
+                      // followed by its own expansion <tr> so the two
+                      // read as a single block instead of two stripes.
+                      expanded ? 'hover:bg-muted/30' : 'border-b last:border-0 hover:bg-muted/30',
+                      onRowClick && 'cursor-pointer',
+                      rowClassName,
+                    )}
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
                   >
-                    {col.render ? col.render(row) : row[col.key]}
-                  </td>
-                ))}
-              </tr>
-            ))}
+                    {columns.map((col) => (
+                      <td
+                        key={col.key}
+                        className={cn('p-2 align-middle', col.cellClassName)}
+                      >
+                        {col.render ? col.render(row) : row[col.key]}
+                      </td>
+                    ))}
+                  </tr>
+                  {expanded && typeof renderExpanded === 'function' && (
+                    <tr className="border-b last:border-0 bg-muted/20">
+                      {/* Full-width expansion cell — colSpan equals
+                         the column count so the details block spans
+                         the entire table and isn't squeezed into a
+                         single narrow column. */}
+                      <td colSpan={columns.length} className="p-3 align-top">
+                        {renderExpanded(row)}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -142,6 +175,9 @@ export function ResponsiveTable({
           const visibleCols = columns.filter((c) => !c.hideOnMobile);
           const primaryCol = visibleCols.find((c) => c.primary);
           const rest = visibleCols.filter((c) => !c.primary);
+          const expanded = typeof isRowExpanded === 'function'
+            ? !!isRowExpanded(row)
+            : false;
           return (
             <li
               key={keyFor(row, idx)}
@@ -180,6 +216,11 @@ export function ResponsiveTable({
                     {col.render ? col.render(row) : row[col.key]}
                   </div>
                 ))}
+              {expanded && typeof renderExpanded === 'function' && (
+                <div className="pt-2 w-full">
+                  {renderExpanded(row)}
+                </div>
+              )}
             </li>
           );
         })}
