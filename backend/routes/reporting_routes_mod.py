@@ -576,9 +576,10 @@ async def generate_report(
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
 
+    # Task #418 — school-wide reports are admin-only; teachers may not browse
+    # school_behaviour, school_academic, school_attendance, etc.
     if report_type.startswith("school_"):
-        allowed_roles = ADMIN_ROLES_SET | {UserRole.TEACHER.value}
-        if role not in allowed_roles:
+        if role not in ADMIN_ROLES_SET:
             raise HTTPException(403, "ليس لديك صلاحية لعرض تقارير المدرسة")
 
     if report_type.startswith("teacher_"):
@@ -595,8 +596,16 @@ async def generate_report(
         stu = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
         if not stu:
             raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
-        allowed_roles = ADMIN_ROLES_SET | {UserRole.TEACHER.value}
-        if role not in allowed_roles and current_user.get("student_id") != student_id:
+        if role in ADMIN_ROLES_SET:
+            pass
+        elif current_user.get("student_id") == student_id:
+            pass
+        elif role == UserRole.TEACHER.value:
+            # Task #418 — teachers must be assigned to the student's class.
+            from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+            allowed = await can_view_student(db.session, current_user, student_id)
+            require_can_view_student_sync_check(allowed)
+        else:
             raise HTTPException(403, "لا يمكنك عرض تقرير طالب آخر")
 
     if report_type in ("class_report", "timetable"):
@@ -668,10 +677,16 @@ async def export_report_file(
 
     school_id = resolved_school_id
 
-    if report_type.startswith("school_") or report_type in ("class_report", "timetable"):
+    # Task #418 — school-wide reports are admin-only; teachers may not export
+    # school_behaviour, school_academic, school_attendance, etc.
+    if report_type.startswith("school_"):
+        if role not in ADMIN_ROLES_SET:
+            raise HTTPException(403, "ليس لديك صلاحية لتصدير تقارير المدرسة")
+
+    if report_type in ("class_report", "timetable"):
         allowed_roles = ADMIN_ROLES_SET | {UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value}
         if role not in allowed_roles:
-            raise HTTPException(403, "ليس لديك صلاحية لتصدير تقارير المدرسة")
+            raise HTTPException(403, "ليس لديك صلاحية لتصدير هذا التقرير")
         if report_type == "class_report" and role in (UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value):
             if not class_id:
                 raise HTTPException(403, "يجب تحديد الفصل الدراسي لتصدير تقرير الفصل")
@@ -693,8 +708,16 @@ async def export_report_file(
         stu = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
         if not stu:
             raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
-        allowed_roles = ADMIN_ROLES_SET | {UserRole.TEACHER.value}
-        if role not in allowed_roles and current_user.get("student_id") != student_id:
+        if role in ADMIN_ROLES_SET:
+            pass
+        elif current_user.get("student_id") == student_id:
+            pass
+        elif role in (UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value):
+            # Task #418 — teachers must be assigned to the student's class.
+            from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+            allowed = await can_view_student(db.session, current_user, student_id)
+            require_can_view_student_sync_check(allowed)
+        else:
             raise HTTPException(403, "لا يمكنك تصدير تقرير طالب آخر")
 
     try:
@@ -828,6 +851,8 @@ async def export_report_file_short(
     student_id: Optional[str] = Query(None),
     school_id: Optional[str] = Query(None, description="School ID (platform admins can specify)"),
     current_user: dict = Depends(get_current_user),
+    # Task #418 — alias must carry the same MFA step-up as the canonical route.
+    _mfa: dict = Depends(_REQUIRE_RECENT_MFA_403_IT),
 ):
     return await export_report_file(
         report_type=report_type, format=format,
@@ -835,6 +860,7 @@ async def export_report_file_short(
         class_id=class_id, teacher_id=teacher_id,
         student_id=student_id, school_id=school_id,
         current_user=current_user,
+        _mfa=_mfa,
     )
 
 

@@ -168,13 +168,25 @@ async def get_student_consents(
 ):
     """Get all consent records for a student (given by parent/guardian).
 
-    SECURITY: Only the student's guardians or admin roles may view a
-    student's consent records.  Any other caller receives 403.
+    SECURITY: Only the student's guardians (parent role) or admin roles may
+    view a student's consent records.  Teachers and other roles receive 403
+    even when they are assigned to the student's class, because consent
+    records contain sensitive legal/privacy decisions made by the family.
     """
     if not _is_consent_admin(current_user):
-        from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
-        allowed = await can_view_student(db.session, current_user, student_id)
-        require_can_view_student_sync_check(allowed)
+        caller_id = current_user["id"]
+        role = current_user.get("role", "")
+        # Task #418 — narrow the check to guardian-only; can_view_student()
+        # also grants access to assigned teachers which is too broad here.
+        if role != "parent":
+            raise HTTPException(status_code=403, detail="غير مصرح")
+        parent = await gd_find_one(db.session, "parents", {"user_id": caller_id})
+        linked = parent and student_id in (parent.get("student_ids") or [])
+        if not linked:
+            link = await gd_find_one(db.session, "guardian_links", {"parent_user_id": caller_id, "student_id": student_id})
+            linked = bool(link)
+        if not linked:
+            raise HTTPException(status_code=403, detail="لا يمكنك عرض سجلات موافقة طالب غير مرتبط بحسابك")
 
     school_id = current_user.get("tenant_id")
     records = await gd_find(db.session, "consent_records", {"tenant_id": school_id, "student_id": student_id}, order_by="created_at", desc_order=True, limit=100)
