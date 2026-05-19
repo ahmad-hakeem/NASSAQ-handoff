@@ -509,8 +509,17 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         """Get received messages for current user"""
         user_id = current_user.get("id")
         user_role = current_user.get("role")
-        school_id = current_user.get("tenant_id")
-        
+
+        # Resolve the caller's workspace using the canonical helper so that
+        # independent-teacher accounts (tenant_id=None) get their synthetic
+        # workspace id instead of falling through to an unscoped query.
+        school_id = _resolve_caller_workspace(current_user)
+
+        # Non-platform-admin callers must always resolve to a workspace.
+        # Fail closed if we cannot determine one to prevent cross-tenant leaks.
+        if not school_id and user_role != "platform_admin":
+            raise HTTPException(status_code=403, detail="تعذّر تحديد مساحة العمل")
+
         # Build query based on user's role and school
         query = {"status": "sent"}
         
@@ -572,14 +581,55 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
     ):
         """Mark message as read"""
         user_id = current_user.get("id")
-        
+        user_role = current_user.get("role")
+
+        # Resolve the caller's workspace using the canonical helper so that
+        # independent-teacher accounts get their synthetic workspace id.
+        caller_workspace = _resolve_caller_workspace(current_user)
+
+        # Non-platform-admin callers must always resolve to a workspace.
+        if not caller_workspace and user_role != "platform_admin":
+            raise HTTPException(status_code=403, detail="تعذّر تحديد مساحة العمل")
+
         msg = await gd_find_one(db.session, "messages", {"id": message_id})
-        if msg:
-            read_by = msg.get("read_by") or []
-            if user_id not in read_by:
-                read_by.append(user_id)
-                await gd_update_one(db.session, "messages", {"id": message_id}, {"read_by": read_by})
-        
+        if not msg:
+            # Return success silently so callers cannot enumerate foreign ids.
+            return {"success": True, "message": "تم تعيين الرسالة كمقروءة"}
+
+        # --- Object-level authorization ---
+        # The caller must be a valid recipient of this message.
+        # 1. Tenant check: message must belong to the caller's workspace or be
+        #    a platform-wide message (school_id is None).
+        msg_school_id = msg.get("school_id")
+        if user_role != "platform_admin":
+            if msg_school_id is not None and msg_school_id != caller_workspace:
+                raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول إلى هذه الرسالة")
+
+        # 2. Audience check: the caller's role or user id must be in the intended audience.
+        audience = msg.get("audience")
+        audience_ids = msg.get("audience_ids") or []
+        role_audience_map = {
+            "teacher": "teachers",
+            "independent_teacher": "teachers",
+            "school_teacher": "teachers",
+            "student": "students",
+            "parent": "parents",
+        }
+        caller_audience_label = role_audience_map.get(user_role)
+        is_valid_recipient = (
+            audience == "all"
+            or (caller_audience_label and audience == caller_audience_label)
+            or (audience == "custom" and user_id in audience_ids)
+            or user_role in ("school_principal", "school_admin", "platform_admin")
+        )
+        if not is_valid_recipient:
+            raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول إلى هذه الرسالة")
+
+        read_by = msg.get("read_by") or []
+        if user_id not in read_by:
+            read_by.append(user_id)
+            await gd_update_one(db.session, "messages", {"id": message_id}, {"read_by": read_by})
+
         return {"success": True, "message": "تم تعيين الرسالة كمقروءة"}
     
     @router.put("/{message_id}")
