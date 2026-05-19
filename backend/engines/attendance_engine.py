@@ -674,7 +674,8 @@ class AttendanceEngine:
         tenant_id: str,
         threshold: float = 85.0,
         start_date: str = None,
-        end_date: str = None
+        end_date: str = None,
+        section_ids: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         from pg_models import Attendance
         conditions = [Attendance.school_id == tenant_id]
@@ -682,6 +683,8 @@ class AttendanceEngine:
             conditions.append(Attendance.date >= start_date)
         if end_date:
             conditions.append(Attendance.date <= end_date)
+        if section_ids is not None:
+            conditions.append(Attendance.class_id.in_(section_ids))
 
         stmt = select(Attendance).where(*conditions).limit(10000)
         result = await self.session.execute(stmt)
@@ -717,18 +720,23 @@ class AttendanceEngine:
     async def get_consecutive_absences(
         self,
         tenant_id: str,
-        min_days: int = 3
+        min_days: int = 3,
+        section_ids: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         from pg_models import Attendance
         end_dt = datetime.now(timezone.utc).date()
         start_dt = end_dt - timedelta(days=30)
 
-        stmt = select(Attendance).where(
+        conditions = [
             Attendance.school_id == tenant_id,
             Attendance.date >= start_dt.isoformat(),
             Attendance.date <= end_dt.isoformat(),
             Attendance.status == AttendanceStatus.ABSENT.value,
-        ).order_by(Attendance.student_id, Attendance.date).limit(10000)
+        ]
+        if section_ids is not None:
+            conditions.append(Attendance.class_id.in_(section_ids))
+
+        stmt = select(Attendance).where(*conditions).order_by(Attendance.student_id, Attendance.date).limit(10000)
         result = await self.session.execute(stmt)
         records = result.scalars().all()
 

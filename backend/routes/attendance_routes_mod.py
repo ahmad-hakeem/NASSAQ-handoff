@@ -695,7 +695,21 @@ async def get_attendance_summary(
     end_date: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get attendance summary for a period"""
+    """Get attendance summary for a period.
+
+    SECURITY: School-wide summaries must only be visible to authorized staff.
+    Parents, students, and other low-privilege roles must not access aggregate
+    school attendance data.
+    """
+    _allowed_summary_roles = {
+        'teacher', 'school_principal', 'school_sub_admin',
+        'school_admin', 'platform_admin', 'independent_teacher',
+    }
+    if current_user.get('role') not in _allowed_summary_roles:
+        raise HTTPException(
+            status_code=403,
+            detail="لا يمكنك الوصول إلى ملخص الحضور"
+        )
     # Task #155 (audit row #14, post-review): fail-closed scope. Previously
     # this endpoint allowed `query = {}` plus a tenant filter only when one
     # was present, leaking cross-tenant attendance summaries to any caller
@@ -864,12 +878,29 @@ async def create_excuse(
     data: ExcuseCreate,
     current_user: dict = Depends(get_current_user)
 ):
-    """Create an attendance excuse request"""
+    """Create an attendance excuse request.
+
+    SECURITY: The caller must be a guardian of the target student, an admin
+    role within the tenant, or a teacher assigned to the student's class.
+    Student-role users and unrelated same-tenant callers are rejected.
+    """
+    # Students may not file excuses — only guardians and authorized staff may.
+    if current_user.get("role") == "student":
+        raise HTTPException(
+            status_code=403,
+            detail="لا يمكن للطلاب تقديم الأعذار"
+        )
+
     school_id = current_user.get("tenant_id")
 
     student = await gd_find_one(db.session, "students", {"id": data.student_id, "school_id": school_id})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
+
+    # Verify the caller has an authorized relationship with this student.
+    from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
+    allowed = await can_view_student(db.session, current_user, data.student_id)
+    require_can_view_student_sync_check(allowed)
 
     excuse_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -945,7 +976,22 @@ async def list_excuses(
     student_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """List attendance excuses"""
+    """List attendance excuses.
+
+    SECURITY: School-wide excuse lists expose other families' absence reasons,
+    attachment URLs, and workflow status. Access is restricted to authorized
+    staff roles. Parents and students should use the student-specific excuse
+    endpoints which enforce per-student relationship checks.
+    """
+    _allowed_excuse_list_roles = {
+        'teacher', 'school_principal', 'school_sub_admin',
+        'school_admin', 'platform_admin', 'independent_teacher',
+    }
+    if current_user.get('role') not in _allowed_excuse_list_roles:
+        raise HTTPException(
+            status_code=403,
+            detail="لا يمكنك الاطلاع على قائمة الأعذار"
+        )
     # Task #155 (audit row #15, post-review): fail-closed scope. The previous
     # `query = {}` + optional tenant filter would surface every tenant's
     # excuses when `tenant_id` was missing from the caller's identity.

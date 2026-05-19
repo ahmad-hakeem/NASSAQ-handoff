@@ -554,17 +554,42 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
             UserRole.TEACHER
         ]))
     ):
-        """Get students with attendance below threshold"""
+        """Get students with attendance below threshold.
+
+        SECURITY: Teachers may only see alerts for students in their own
+        assigned sections. School-wide results are restricted to admin roles
+        (principal / platform_admin).
+        """
         tenant_id = current_user.get("tenant_id") or current_user.get("primary_tenant_id")
         
         if not tenant_id:
             raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
-        
+
+        section_ids = None
+        _TEACHER_ROLES = {UserRole.TEACHER.value}
+        if current_user.get("role") in _TEACHER_ROLES:
+            teacher_id = current_user.get("teacher_id") or current_user.get("id")
+            from engines.sql_utils import gd_find as _gd_find
+            assignments = await _gd_find(
+                db.session, "teacher_assignments",
+                {"teacher_id": teacher_id}, limit=200
+            )
+            sessions = await _gd_find(
+                db.session, "class_sessions",
+                {"teacher_id": teacher_id}, limit=200
+            )
+            section_ids = list({
+                a["class_id"] for a in assignments if a.get("class_id")
+            } | {
+                s["class_id"] for s in sessions if s.get("class_id")
+            })
+
         students = await engine.get_students_with_low_attendance(
             tenant_id=tenant_id,
             threshold=threshold,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            section_ids=section_ids,
         )
         
         return {
@@ -582,15 +607,40 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
             UserRole.TEACHER
         ]))
     ):
-        """Get students with consecutive absences"""
+        """Get students with consecutive absences.
+
+        SECURITY: Teachers may only see alerts for students in their own
+        assigned sections. School-wide results are restricted to admin roles
+        (principal / platform_admin).
+        """
         tenant_id = current_user.get("tenant_id") or current_user.get("primary_tenant_id")
         
         if not tenant_id:
             raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
-        
+
+        section_ids = None
+        _TEACHER_ROLES = {UserRole.TEACHER.value}
+        if current_user.get("role") in _TEACHER_ROLES:
+            teacher_id = current_user.get("teacher_id") or current_user.get("id")
+            from engines.sql_utils import gd_find as _gd_find
+            assignments = await _gd_find(
+                db.session, "teacher_assignments",
+                {"teacher_id": teacher_id}, limit=200
+            )
+            sessions = await _gd_find(
+                db.session, "class_sessions",
+                {"teacher_id": teacher_id}, limit=200
+            )
+            section_ids = list({
+                a["class_id"] for a in assignments if a.get("class_id")
+            } | {
+                s["class_id"] for s in sessions if s.get("class_id")
+            })
+
         alerts = await engine.get_consecutive_absences(
             tenant_id=tenant_id,
-            min_days=min_days
+            min_days=min_days,
+            section_ids=section_ids,
         )
         
         return {
