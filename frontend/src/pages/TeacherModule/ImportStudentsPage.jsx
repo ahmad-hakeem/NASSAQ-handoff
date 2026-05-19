@@ -65,7 +65,7 @@ export function ImportStudentsPanel() {
       setParseResult(res.data);
     } catch (err) {
       const msg = err?.response?.data?.detail || err?.response?.data?.error?.message ||
-        'تعذّر قراءة الملف. تحقّق من الصيغة والأعمدة المطلوبة.';
+        'تعذّر قراءة الملف. تحقّق من الصيغة والأعمدة المطلوبة (CSV أو ملف نور .xls/.xlsx).';
       nassaqError(String(msg), { title: 'فشل التحقق من الملف' });
     } finally {
       setParsing(false);
@@ -119,7 +119,7 @@ export function ImportStudentsPanel() {
   return (
     <div className="space-y-6" data-testid="it-import-students-panel">
       <p className="text-sm text-gray-600">
-        استيراد قائمة طلابك من ملف CSV — الأعمدة باللغة العربية فقط، بدون تعيين فصول.
+        استيراد قائمة طلابك من ملف CSV أو ملف Excel من نظام نور (.xls/.xlsx) — بدون تعيين فصول.
       </p>
 
       <Card>
@@ -130,8 +130,11 @@ export function ImportStudentsPanel() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-gray-600">
-            الأعمدة المتوقعة:&nbsp;
+            أعمدة قالب CSV:&nbsp;
             <span className="font-mono">{SAMPLE_HEADERS.join(' | ')}</span>
+          </p>
+          <p className="text-xs text-gray-500">
+            أو حمّل تقرير «بيانات الطلاب» من نظام نور كما هو — سيُكتشف تلقائيًا (اسم الطالب، رقم الطالب، الصف، الفصل).
           </p>
           <div className="flex flex-wrap gap-3">
             <Button
@@ -140,7 +143,7 @@ export function ImportStudentsPanel() {
               disabled={parsing || committing}
             >
               {parsing ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Upload className="w-4 h-4 ml-2" />}
-              اختيار ملف CSV
+              اختيار ملف (CSV أو نور)
             </Button>
             <Button variant="ghost" onClick={downloadSampleCsv}>
               تنزيل قالب جاهز
@@ -148,7 +151,7 @@ export function ImportStudentsPanel() {
             <input
               ref={fileRef}
               type="file"
-              accept=".csv,text/csv"
+              accept=".csv,text/csv,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               className="hidden"
               onChange={handleFile}
             />

@@ -70,11 +70,12 @@ router = APIRouter()
 # -- Safe Arabic copy -----------------------------------------------------
 
 _MSG_INTERNAL = "تعذّر استيراد الطلاب — حاول لاحقًا."
-_MSG_FILE_REQUIRED = "الرجاء إرفاق ملف CSV."
-_MSG_FILE_TYPE = "صيغة الملف غير مدعومة — استخدم CSV."
+_MSG_FILE_REQUIRED = "الرجاء إرفاق ملف."
+_MSG_FILE_TYPE = "صيغة الملف غير مدعومة — استخدم CSV أو ملف Excel من نظام نور (.xls/.xlsx)."
 _MSG_FILE_EMPTY = "الملف فارغ — لا توجد صفوف للاستيراد."
 _MSG_FILE_TOO_LARGE = "الملف كبير جدًا — الحد الأقصى ٢٠٠ صف."
 _MSG_HEADER_MISSING = "العمود «الاسم الكامل» مطلوب في رأس الملف."
+_MSG_NOOR_NOT_STUDENT = "الملف ليس تقرير طلاب من نظام نور — حمّل تقرير «بيانات الطلاب»."
 _MSG_QUOTA_DAILY = (
     "تجاوزت الحد اليومي لعمليات الاستيراد. حاول غدًا أو راسل الدعم."
 )
@@ -412,6 +413,56 @@ def _read_csv(content: bytes) -> List[Dict[str, str]]:
     return rows
 
 
+def _read_noor_workbook(content: bytes, filename: str) -> List[Dict[str, str]]:
+    """Parse a Noor .xls/.xlsx student-report workbook and map each row to
+    the IT bulk-import shape (full_name / national_id / grade_level).
+
+    Noor reports have no gender or date-of-birth columns; those fields are
+    left blank. Noor `رقم الطالب` (school student number) is mapped into
+    the `national_id` slot — IT has only one student-id slot in its schema
+    and the validator only requires the value to be digits.
+    """
+    from engines.noor_import.parser import (  # local import — cold path
+        NoorParseError,
+        STUDENT_REPORT,
+        parse_workbook_bytes,
+    )
+
+    try:
+        result = parse_workbook_bytes(content, filename)
+    except NoorParseError as exc:
+        diag = getattr(exc, "diagnostics", None)
+        if diag:
+            logger.warning("noor parse failed for IT upload: %s", diag)
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 — never leak raw parser errors
+        logger.warning("noor parse crashed for IT upload: %s", exc)
+        raise HTTPException(status_code=422, detail=_MSG_FILE_TYPE) from exc
+
+    if (result.get("detected_type") or "") != STUDENT_REPORT:
+        raise HTTPException(status_code=422, detail=_MSG_NOOR_NOT_STUDENT)
+
+    bulk_rows: List[Dict[str, str]] = []
+    for entry in result.get("rows") or []:
+        data = entry.get("data") or {}
+        full_name = (data.get("full_name") or "").strip()
+        student_number = (data.get("student_number") or "").strip()
+        grade_code = (data.get("grade_code") or "").strip()
+        section_code = (data.get("section_code") or "").strip()
+        if grade_code and section_code:
+            grade_label = f"الصف {grade_code} / الفصل {section_code}"
+        else:
+            grade_label = grade_code or section_code or ""
+        bulk_rows.append({
+            "full_name": full_name,
+            "national_id": student_number,
+            "gender": "",
+            "date_of_birth": "",
+            "grade_level": grade_label,
+        })
+    return bulk_rows
+
+
 # -- Endpoints ------------------------------------------------------------
 
 
@@ -423,8 +474,12 @@ async def parse_csv(
     file: UploadFile = File(...),
     current_user: dict = Depends(_require_independent_teacher),
 ) -> ParseResponse:
-    """Validate a CSV upload and return per-row diagnostics. NO writes."""
-    if not file or not (file.filename or "").lower().endswith(".csv"):
+    """Validate a CSV or Noor .xls/.xlsx upload and return per-row
+    diagnostics. NO writes."""
+    name = ((file.filename if file else None) or "").lower()
+    is_csv = name.endswith(".csv")
+    is_excel = name.endswith(".xls") or name.endswith(".xlsx")
+    if not file or not (is_csv or is_excel):
         raise HTTPException(status_code=422, detail=_MSG_FILE_TYPE)
 
     content = await file.read()
@@ -437,7 +492,7 @@ async def parse_csv(
     quota = await _load_quota(workspace_id)
     max_rows = int(quota.get("max_rows_per_import") or 200)
 
-    rows = _read_csv(content)
+    rows = _read_noor_workbook(content, name) if is_excel else _read_csv(content)
     if not rows:
         raise HTTPException(status_code=422, detail=_MSG_FILE_EMPTY)
     if len(rows) > max_rows:
