@@ -2568,8 +2568,8 @@ async def _ensure_class_linked_to_all_teachers(school_id: str, class_id: str):
 
 @router.get("/teacher-class-assignments")
 async def get_teacher_class_assignments(
-    request: Request,
     current_user: dict = Depends(get_current_user),
+    x_school_context: str = Header(default=None, alias="X-School-Context"),
     page: int = Query(1, ge=1),
     page_size: int = Query(200, ge=1, le=50000),
     teacher_id: str = Query(None),
@@ -2580,7 +2580,7 @@ async def get_teacher_class_assignments(
     Get teacher-class assignments for the school (paginated).
     Auto-populates all teacher×class pairs on first access.
     """
-    school_id = request.headers.get("X-School-Context") or current_user.get("tenant_id")
+    school_id = await get_school_id_from_context(current_user, x_school_context)
     if not school_id:
         raise HTTPException(status_code=400, detail="Missing school context")
     
@@ -2638,16 +2638,24 @@ async def get_teacher_class_assignments(
 @router.post("/teacher-class-assignments")
 async def create_teacher_class_assignment(
     assignment: TeacherClassAssignmentCreate,
-    request: Request,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    x_school_context: str = Header(default=None, alias="X-School-Context"),
 ):
     """
     إنشاء إسناد جديد للمعلم بالفصل
     Create a new teacher-class assignment
     """
-    school_id = request.headers.get("X-School-Context") or current_user.get("tenant_id")
+    school_id = await get_school_id_from_context(current_user, x_school_context)
     if not school_id:
         raise HTTPException(status_code=400, detail="Missing school context")
+
+    # Verify referenced objects belong to the resolved school
+    teacher = await gd_find_one(db.session, "teachers", {"id": assignment.teacher_id, "school_id": school_id})
+    if not teacher:
+        raise HTTPException(status_code=404, detail="المعلم غير موجود في هذه المدرسة")
+    class_doc = await gd_find_one(db.session, "classes", {"id": assignment.class_id, "school_id": school_id})
+    if not class_doc:
+        raise HTTPException(status_code=404, detail="الفصل غير موجود في هذه المدرسة")
     
     # Check if assignment already exists (model has no academic_year_id column)
     existing = await gd_find_one(db.session, "teacher_class_assignments", {
@@ -2679,10 +2687,6 @@ async def create_teacher_class_assignment(
     
     await gd_insert(db.session, "teacher_class_assignments", new_assignment)
     
-    # Get teacher and class names for response
-    teacher = await gd_find_one(db.session, "teachers", {"id": assignment.teacher_id})
-    class_doc = await gd_find_one(db.session, "classes", {"id": assignment.class_id})
-    
     return {
         "message": "تم إنشاء الإسناد بنجاح",
         "assignment": {
@@ -2700,14 +2704,14 @@ async def create_teacher_class_assignment(
 @router.delete("/teacher-class-assignments/{assignment_id}")
 async def delete_teacher_class_assignment(
     assignment_id: str,
-    request: Request,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    x_school_context: str = Header(default=None, alias="X-School-Context"),
 ):
     """
     حذف إسناد معلم من فصل
     Delete a teacher-class assignment
     """
-    school_id = request.headers.get("X-School-Context") or current_user.get("tenant_id")
+    school_id = await get_school_id_from_context(current_user, x_school_context)
     if not school_id:
         raise HTTPException(status_code=400, detail="Missing school context")
     
@@ -2723,14 +2727,14 @@ async def delete_teacher_class_assignment(
 
 @router.get("/teacher-class-assignments/classes-without-teachers")
 async def get_classes_without_teachers(
-    request: Request,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    x_school_context: str = Header(default=None, alias="X-School-Context"),
 ):
     """
     جلب الفصول التي ليس لها معلمون مسندون
     Get classes without any teacher assignments
     """
-    school_id = request.headers.get("X-School-Context") or current_user.get("tenant_id")
+    school_id = await get_school_id_from_context(current_user, x_school_context)
     if not school_id:
         raise HTTPException(status_code=400, detail="Missing school context")
     
@@ -2768,13 +2772,13 @@ class TeacherSubjectAssignmentCreate(BaseModel):
 
 @router.get("/teacher-assignments")
 async def list_teacher_subject_assignments(
-    request: Request,
     current_user: dict = Depends(get_current_user),
+    x_school_context: str = Header(default=None, alias="X-School-Context"),
     teacher_id: Optional[str] = Query(None),
     subject_id: Optional[str] = Query(None),
 ):
     """قائمة إسنادات المعلمين بالمواد — Teacher ↔ Subject assignments."""
-    school_id = request.headers.get("X-School-Context") or current_user.get("tenant_id")
+    school_id = await get_school_id_from_context(current_user, x_school_context)
     if not school_id:
         raise HTTPException(status_code=400, detail="Missing school context")
 
@@ -2812,17 +2816,24 @@ async def list_teacher_subject_assignments(
 @router.post("/teacher-assignments")
 async def create_teacher_subject_assignment(
     payload: TeacherSubjectAssignmentCreate,
-    request: Request,
     current_user: dict = Depends(get_current_user),
+    x_school_context: str = Header(default=None, alias="X-School-Context"),
 ):
     """إنشاء إسناد مادة لمعلم — Assign a subject to a teacher."""
-    school_id = (
-        request.headers.get("X-School-Context")
-        or payload.school_id
-        or current_user.get("tenant_id")
-    )
+    school_id = await get_school_id_from_context(current_user, x_school_context)
     if not school_id:
         raise HTTPException(status_code=400, detail="Missing school context")
+
+    # Verify referenced objects belong to the resolved school
+    teacher = await gd_find_one(db.session, "teachers", {"id": payload.teacher_id, "school_id": school_id})
+    if not teacher:
+        raise HTTPException(status_code=404, detail="المعلم غير موجود في هذه المدرسة")
+    subject = await gd_find_one(db.session, "subjects", {
+        "id": payload.subject_id,
+        "$or": [{"school_id": school_id}, {"is_global": True}],
+    })
+    if not subject:
+        raise HTTPException(status_code=404, detail="المادة غير موجودة في هذه المدرسة")
 
     existing = await gd_find_one(db.session, "teacher_assignments", {
         "school_id": school_id,
@@ -2840,9 +2851,6 @@ async def create_teacher_subject_assignment(
                 "school_id": existing.get("school_id"),
             },
         }
-
-    teacher = await gd_find_one(db.session, "teachers", {"id": payload.teacher_id})
-    subject = await gd_find_one(db.session, "subjects", {"id": payload.subject_id})
 
     new_assignment = {
         "id": str(uuid.uuid4()),
@@ -2865,11 +2873,11 @@ async def create_teacher_subject_assignment(
 @router.delete("/teacher-assignments/{assignment_id}")
 async def delete_teacher_subject_assignment(
     assignment_id: str,
-    request: Request,
     current_user: dict = Depends(get_current_user),
+    x_school_context: str = Header(default=None, alias="X-School-Context"),
 ):
     """حذف إسناد مادة من معلم — Remove a teacher↔subject assignment."""
-    school_id = request.headers.get("X-School-Context") or current_user.get("tenant_id")
+    school_id = await get_school_id_from_context(current_user, x_school_context)
     if not school_id:
         raise HTTPException(status_code=400, detail="Missing school context")
 
@@ -2885,14 +2893,14 @@ async def delete_teacher_subject_assignment(
 @router.get("/teacher-class-assignments/teacher/{teacher_id}")
 async def get_teacher_assignments(
     teacher_id: str,
-    request: Request,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    x_school_context: str = Header(default=None, alias="X-School-Context"),
 ):
     """
     جلب الفصول المسندة لمعلم معين
     Get all class assignments for a specific teacher
     """
-    school_id = request.headers.get("X-School-Context") or current_user.get("tenant_id")
+    school_id = await get_school_id_from_context(current_user, x_school_context)
     if not school_id:
         raise HTTPException(status_code=400, detail="Missing school context")
     

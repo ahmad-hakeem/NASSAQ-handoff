@@ -358,7 +358,8 @@ async def create_subject(
     if is_independent_teacher(current_user):
         target_school_id = independent_workspace_id(current_user)
     else:
-        target_school_id = subject_data.school_id or current_user.get("tenant_id")
+        from utils.tenant_scope import resolve_school_id
+        target_school_id = resolve_school_id(current_user, subject_data.school_id) or current_user.get("tenant_id")
 
     await _assert_subject_name_unique(target_school_id, subject_data.name)
 

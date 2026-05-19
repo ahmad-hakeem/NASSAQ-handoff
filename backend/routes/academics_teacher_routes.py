@@ -673,12 +673,10 @@ async def create_teacher(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """Create a new teacher"""
-    school_id = getattr(teacher_data, 'school_id', None) or current_user.get("tenant_id")
+    from utils.tenant_scope import resolve_school_id
+    school_id = resolve_school_id(current_user, getattr(teacher_data, 'school_id', None)) or current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(status_code=400, detail="يجب تحديد المدرسة / School context is required")
-    user_tenant = current_user.get("tenant_id")
-    if user_tenant and school_id != user_tenant:
-        raise HTTPException(status_code=403, detail="لا يمكنك إنشاء معلم في مدرسة أخرى / Cannot create teacher in another school")
     teacher_data.school_id = school_id
 
     # Check if email already exists
@@ -749,11 +747,11 @@ async def get_teachers(
     current_user: dict = Depends(get_current_user)
 ):
     """Get all teachers or filter by school"""
+    from utils.tenant_scope import resolve_school_id
+    effective_school_id = resolve_school_id(current_user, school_id) or current_user.get("tenant_id")
     query = {"status": {"$ne": "closed"}}
-    if school_id:
-        query["school_id"] = school_id
-    elif current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
-        query["school_id"] = current_user.get("tenant_id")
+    if effective_school_id:
+        query["school_id"] = effective_school_id
     
     teachers = await gd_find(db.session, "teachers", query, limit=1000)
     
@@ -802,9 +800,11 @@ async def get_my_teacher_profile(current_user: dict = Depends(get_current_user))
 @router.get("/teachers/{teacher_id}", response_model=TeacherResponse)
 async def get_teacher(teacher_id: str, current_user: dict = Depends(get_current_user)):
     """Get teacher by ID"""
+    from utils.tenant_scope import assert_school_access
     teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
     if not teacher:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
+    assert_school_access(current_user, teacher.get("school_id"))
     # Normalize field names
     if not teacher.get("full_name") and teacher.get("full_name_ar"):
         teacher["full_name"] = teacher["full_name_ar"]
@@ -819,6 +819,11 @@ async def update_teacher(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """Update teacher"""
+    from utils.tenant_scope import assert_school_access
+    existing_teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+    if not existing_teacher:
+        raise HTTPException(status_code=404, detail="المعلم غير موجود")
+    assert_school_access(current_user, existing_teacher.get("school_id"))
     # Build update dict with only provided fields
     update_fields = {"updated_at": datetime.now(timezone.utc).isoformat()}
     
@@ -862,9 +867,11 @@ async def delete_teacher(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Delete teacher — full removal from system"""
+    from utils.tenant_scope import assert_school_access
     teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
     if not teacher:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
+    assert_school_access(current_user, teacher.get("school_id"))
     
     school_id = teacher.get("school_id")
     user_id = teacher.get("user_id")

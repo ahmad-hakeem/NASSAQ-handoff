@@ -97,7 +97,8 @@ async def create_academic_year(
 
     from auth_scope import independent_workspace_id
     from quotas.independent_teacher import enforce_academic_year_quota
-    school_id = current_user.get("tenant_id") or independent_workspace_id(current_user) or data.school_id
+    from utils.tenant_scope import resolve_school_id
+    school_id = current_user.get("tenant_id") or independent_workspace_id(current_user) or resolve_school_id(current_user, data.school_id)
     if not school_id:
         raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
     # Phase 0 §4.B-5 — IT v1 academic-year quota (single year).
@@ -131,11 +132,11 @@ async def get_academic_years(
     current_user: dict = Depends(get_current_user)
 ):
     """Get all academic years for a school"""
+    from utils.tenant_scope import resolve_school_id
+    effective_school_id = resolve_school_id(current_user, school_id) or current_user.get("tenant_id")
     query = {}
-    if school_id:
-        query["school_id"] = school_id
-    elif current_user.get("tenant_id"):
-        query["school_id"] = current_user["tenant_id"]
+    if effective_school_id:
+        query["school_id"] = effective_school_id
     
     academic_years = await gd_find(db.session, "academic_years", query, order_by="start_date", desc_order=True, limit=100)
     return [AcademicYearResponse(**normalize_academic_year(ay)) for ay in academic_years]
@@ -238,7 +239,8 @@ async def create_term(
 
     from auth_scope import independent_workspace_id
     from quotas.independent_teacher import enforce_term_quota
-    effective_school_id = current_user.get("tenant_id") or current_user.get("school_id") or independent_workspace_id(current_user) or data.school_id
+    from utils.tenant_scope import resolve_school_id
+    effective_school_id = current_user.get("tenant_id") or current_user.get("school_id") or independent_workspace_id(current_user) or resolve_school_id(current_user, data.school_id)
     if not effective_school_id:
         raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
     # Phase 0 §4.B-5 — IT v1 term quota (max 2).
@@ -273,11 +275,11 @@ async def get_terms(
     current_user: dict = Depends(get_current_user)
 ):
     """Get all terms for a school"""
+    from utils.tenant_scope import resolve_school_id
+    effective_school_id = resolve_school_id(current_user, school_id) or current_user.get("tenant_id")
     query = {}
-    if school_id:
-        query["school_id"] = school_id
-    elif current_user.get("tenant_id"):
-        query["school_id"] = current_user["tenant_id"]
+    if effective_school_id:
+        query["school_id"] = effective_school_id
     
     if academic_year_id:
         query["academic_year_id"] = academic_year_id
@@ -383,9 +385,13 @@ async def create_grade_level(
     # the create-class dialog. Force the row into their synthetic
     # workspace regardless of any client-supplied `school_id`.
     from auth_scope import is_independent_teacher, independent_workspace_id
-    target_school_id = data.school_id
+    from utils.tenant_scope import resolve_school_id
     if is_independent_teacher(current_user):
         target_school_id = independent_workspace_id(current_user)
+    else:
+        target_school_id = resolve_school_id(current_user, data.school_id) or current_user.get("tenant_id")
+    if not target_school_id:
+        raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
 
     grade_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -412,11 +418,11 @@ async def get_grade_levels(
     current_user: dict = Depends(get_current_user)
 ):
     """Get all grade levels for a school"""
+    from utils.tenant_scope import resolve_school_id
+    effective_school_id = resolve_school_id(current_user, school_id) or current_user.get("tenant_id")
     query = {}
-    if school_id:
-        query["school_id"] = school_id
-    elif current_user.get("tenant_id"):
-        query["school_id"] = current_user["tenant_id"]
+    if effective_school_id:
+        query["school_id"] = effective_school_id
     
     grade_levels = await gd_find(db.session, "grade_levels", query, order_by="order", desc_order=False, limit=100)
     return [GradeLevelResponse(**gl) for gl in grade_levels]

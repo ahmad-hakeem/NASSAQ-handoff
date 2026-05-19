@@ -127,13 +127,15 @@ async def get_educational_stages(
     current_user: dict = Depends(get_current_user)
 ):
     """Get educational stages"""
+    from utils.tenant_scope import resolve_school_id
+    effective_school_id = resolve_school_id(current_user, school_id) or current_user.get("tenant_id")
     query = {"is_active": True}
     
-    if school_id:
+    if effective_school_id:
         if include_global:
-            query["$or"] = [{"tenant_id": school_id}, {"is_global": True}]
+            query["$or"] = [{"tenant_id": effective_school_id}, {"is_global": True}]
         else:
-            query["tenant_id"] = school_id
+            query["tenant_id"] = effective_school_id
     else:
         query["is_global"] = True
     
@@ -147,6 +149,11 @@ async def seed_default_grades(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Seed default grades for a school"""
+    from utils.tenant_scope import resolve_school_id
+    effective_school_id = resolve_school_id(current_user, school_id)
+    if not effective_school_id:
+        raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
+    school_id = effective_school_id
     stages = await gd_find(db.session, "educational_stages", {"$or": [{"tenant_id": school_id}, {"is_global": True}], "is_active": True}, limit=100)
     
     grade_names_ar = {1: "الأول", 2: "الثاني", 3: "الثالث", 4: "الرابع", 5: "الخامس", 6: "السادس"}
@@ -199,6 +206,11 @@ async def get_grades(
     current_user: dict = Depends(get_current_user)
 ):
     """Get grades for a school"""
+    from utils.tenant_scope import resolve_school_id
+    effective_school_id = resolve_school_id(current_user, school_id) or current_user.get("tenant_id")
+    if not effective_school_id:
+        raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
+    school_id = effective_school_id
     query = {"tenant_id": school_id, "is_active": True}
     if stage_code:
         query["stage_code"] = stage_code
@@ -214,6 +226,11 @@ async def create_grade(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Create a new grade"""
+    from utils.tenant_scope import resolve_school_id
+    effective_school_id = resolve_school_id(current_user, school_id)
+    if not effective_school_id:
+        raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
+    school_id = effective_school_id
     # Get stage info
     stage = await gd_find_one(db.session, "educational_stages", {
         "$or": [{"code": data.stage_code, "tenant_id": school_id}, {"code": data.stage_code, "is_global": True}]
@@ -250,6 +267,11 @@ async def create_section(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Create a new section/class"""
+    from utils.tenant_scope import resolve_school_id
+    effective_school_id = resolve_school_id(current_user, school_id)
+    if not effective_school_id:
+        raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
+    school_id = effective_school_id
     # Get grade info
     grade = await gd_find_one(db.session, "grades", {"id": data.grade_id, "tenant_id": school_id})
     if not grade:
@@ -286,6 +308,11 @@ async def get_sections(
     current_user: dict = Depends(get_current_user)
 ):
     """Get sections for a school"""
+    from utils.tenant_scope import resolve_school_id
+    effective_school_id = resolve_school_id(current_user, school_id) or current_user.get("tenant_id")
+    if not effective_school_id:
+        raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
+    school_id = effective_school_id
     query = {"tenant_id": school_id, "is_active": True}
     if grade_id:
         query["grade_id"] = grade_id
@@ -303,6 +330,11 @@ async def update_section(
     current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Update a section"""
+    from utils.tenant_scope import assert_school_access
+    existing_section = await gd_find_one(db.session, "sections", {"id": section_id})
+    if not existing_section:
+        raise HTTPException(status_code=404, detail="القسم غير موجود")
+    assert_school_access(current_user, existing_section.get("tenant_id"))
     protected = ["id", "tenant_id", "created_at", "created_by"]
     for field in protected:
         updates.pop(field, None)
@@ -321,6 +353,11 @@ async def assign_homeroom_teacher(
     current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL]))
 ):
     """Assign homeroom teacher to section"""
+    from utils.tenant_scope import assert_school_access
+    existing_section = await gd_find_one(db.session, "sections", {"id": section_id})
+    if not existing_section:
+        raise HTTPException(status_code=404, detail="القسم غير موجود")
+    assert_school_access(current_user, existing_section.get("tenant_id"))
     now = datetime.now(timezone.utc).isoformat()
     
     await gd_update_one(db.session, "sections", {"id": section_id}, {
@@ -339,6 +376,11 @@ async def create_classroom(
     current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Create a physical classroom"""
+    from utils.tenant_scope import resolve_school_id
+    effective_school_id = resolve_school_id(current_user, school_id)
+    if not effective_school_id:
+        raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
+    school_id = effective_school_id
     classroom_doc = {
         "id": str(uuid.uuid4()),
         "tenant_id": school_id,
@@ -408,6 +450,11 @@ async def update_classroom(
     current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Update a classroom"""
+    from utils.tenant_scope import assert_school_access
+    existing_classroom = await gd_find_one(db.session, "physical_classrooms", {"id": classroom_id})
+    if not existing_classroom:
+        raise HTTPException(status_code=404, detail="الفصل غير موجود")
+    assert_school_access(current_user, existing_classroom.get("tenant_id"))
     protected = ["id", "tenant_id", "created_at", "created_by"]
     for field in protected:
         updates.pop(field, None)
@@ -465,13 +512,15 @@ async def get_subjects(
     current_user: dict = Depends(get_current_user)
 ):
     """Get subjects"""
+    from utils.tenant_scope import resolve_school_id
+    effective_school_id = resolve_school_id(current_user, school_id) or current_user.get("tenant_id")
     query = {"is_active": True}
     
-    if school_id:
+    if effective_school_id:
         if include_global:
-            query["$or"] = [{"tenant_id": school_id}, {"is_global": True}]
+            query["$or"] = [{"tenant_id": effective_school_id}, {"is_global": True}]
         else:
-            query["tenant_id"] = school_id
+            query["tenant_id"] = effective_school_id
     else:
         query["is_global"] = True
     
@@ -494,6 +543,9 @@ async def create_subject(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Create a new subject"""
+    from utils.tenant_scope import resolve_school_id
+    effective_school_id = resolve_school_id(current_user, school_id) or current_user.get("tenant_id")
+    school_id = effective_school_id
     subject_doc = {
         "id": str(uuid.uuid4()),
         "tenant_id": school_id,
@@ -520,6 +572,8 @@ async def get_academic_structure(
     current_user: dict = Depends(get_current_user)
 ):
     """Get complete academic structure for a school"""
+    from utils.tenant_scope import assert_school_access
+    assert_school_access(current_user, school_id)
     stages = await gd_find(db.session, "educational_stages", {"$or": [{"tenant_id": school_id}, {"is_global": True}], "is_active": True}, order_by="order", desc_order=False, limit=100)
     
     grades = await gd_find(db.session, "grades", {"tenant_id": school_id, "is_active": True}, limit=100)
