@@ -123,7 +123,25 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
         
         if not tenant_id:
             raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
-        
+
+        # Task #428: teachers must own the target section/class before writing
+        # attendance. Same-school membership alone is not sufficient.
+        # Additionally, the target student must belong to that section so a
+        # teacher cannot use their own valid class_id but supply a foreign
+        # student_id to tamper with another class's records.
+        _teacher_write_roles = {UserRole.TEACHER.value}
+        if current_user.get("role") in _teacher_write_roles:
+            from utils.tenant_scope import can_view_class
+            if not await can_view_class(db.session, current_user, data.section_id):
+                raise HTTPException(status_code=403, detail="لا يمكنك تسجيل الحضور لهذا الفصل")
+            # Verify student is enrolled in the supplied section (class).
+            _target_student = await gd_find_one(
+                db.session, "students",
+                {"id": data.student_id, "school_id": tenant_id, "class_id": data.section_id}
+            )
+            if not _target_student:
+                raise HTTPException(status_code=403, detail="الطالب غير مسجل في هذا الفصل")
+
         record = await engine.record_attendance(
             tenant_id=tenant_id,
             student_id=data.student_id,
@@ -220,7 +238,28 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
         
         if not tenant_id:
             raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
-        
+
+        # Task #428: teachers must own the target section/class before bulk-writing
+        # attendance. Same-school membership alone is not sufficient.
+        # Additionally all submitted student_ids must belong to that section so a
+        # teacher cannot use their own valid class_id but inject foreign student_ids.
+        _teacher_write_roles = {UserRole.TEACHER.value}
+        if current_user.get("role") in _teacher_write_roles:
+            from utils.tenant_scope import can_view_class
+            if not await can_view_class(db.session, current_user, data.section_id):
+                raise HTTPException(status_code=403, detail="لا يمكنك تسجيل الحضور لهذا الفصل")
+            if data.student_ids:
+                # Fetch students that are enrolled in this section within this tenant.
+                _enrolled = await gd_find(
+                    db.session, "students",
+                    {"class_id": data.section_id, "school_id": tenant_id},
+                    limit=5000,
+                )
+                _enrolled_ids = {s["id"] for s in _enrolled if s.get("id")}
+                _foreign_ids = [sid for sid in data.student_ids if sid not in _enrolled_ids]
+                if _foreign_ids:
+                    raise HTTPException(status_code=403, detail="بعض الطلاب غير مسجلين في هذا الفصل")
+
         results = await engine.mark_class_present(
             tenant_id=tenant_id,
             section_id=data.section_id,

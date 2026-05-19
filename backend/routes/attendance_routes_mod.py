@@ -700,12 +700,16 @@ async def get_attendance_summary(
     SECURITY: School-wide attendance summaries are restricted to staff roles.
     Parents and students must not access aggregate reporting that belongs to
     authorized staff only.
+    Teachers and independent teachers must supply a class_id that they own;
+    they cannot access school-wide or arbitrary-class summaries.
     """
     _allowed_summary_roles = {
         "platform_admin", "school_admin", "school_principal",
         "school_sub_admin", "teacher", "independent_teacher",
     }
-    if current_user.get("role") not in _allowed_summary_roles:
+    _teacher_roles = {"teacher", "independent_teacher"}
+    role = current_user.get("role")
+    if role not in _allowed_summary_roles:
         raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على تقارير الحضور")
     # Task #155 (audit row #14, post-review): fail-closed scope. Previously
     # this endpoint allowed `query = {}` plus a tenant filter only when one
@@ -713,6 +717,15 @@ async def get_attendance_summary(
     # whose `tenant_id` was missing. Use the canonical adapter instead.
     school_id = require_request_school_id(current_user)
     query = {'tenant_id': school_id}
+
+    # Task #428: teachers must provide a class_id they are assigned to;
+    # school-wide or cross-class queries are admin-only.
+    if role in _teacher_roles:
+        if not class_id:
+            raise HTTPException(status_code=403, detail="يجب تحديد الفصل الدراسي للاطلاع على تقرير الحضور")
+        from utils.tenant_scope import can_view_class
+        if not await can_view_class(db.session, current_user, class_id):
+            raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على بيانات هذا الفصل")
 
     if class_id:
         query['class_id'] = class_id
@@ -971,12 +984,17 @@ async def list_excuses(
     SECURITY: School-wide excuse listing is restricted to staff roles.
     Parents and students must not be able to enumerate other families'
     excuse records, absence reasons, or attachment URLs.
+    Teachers and independent teachers are further restricted to students in
+    their own assigned classes; they cannot enumerate excuses school-wide or
+    for students in classes they do not teach.
     """
     _allowed_excuse_roles = {
         "platform_admin", "school_admin", "school_principal",
         "school_sub_admin", "teacher", "independent_teacher",
     }
-    if current_user.get("role") not in _allowed_excuse_roles:
+    _teacher_roles = {"teacher", "independent_teacher"}
+    role = current_user.get("role")
+    if role not in _allowed_excuse_roles:
         raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على سجلات الأعذار")
     # Task #155 (audit row #15, post-review): fail-closed scope. The previous
     # `query = {}` + optional tenant filter would surface every tenant's
@@ -985,8 +1003,47 @@ async def list_excuses(
     query = {"school_id": school_id}
     if status_filter:
         query["status"] = status_filter
-    if student_id:
-        query["student_id"] = student_id
+
+    # Task #428: teachers must be limited to their own students.
+    # Same-school membership alone is not sufficient — a teacher who can reach
+    # this endpoint must only see excuses for students in classes they teach.
+    if role in _teacher_roles:
+        from utils.tenant_scope import can_view_student
+        if student_id:
+            # Object-level authorization for the requested student.
+            allowed = await can_view_student(db.session, current_user, student_id)
+            if not allowed:
+                raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على بيانات هذا الطالب")
+            query["student_id"] = student_id
+        else:
+            # No specific student — scope to students in the teacher's classes.
+            user_id = current_user.get("id")
+            teacher_id = current_user.get("teacher_id") or user_id
+            assigned_classes = await gd_find(
+                db.session, "teacher_assignments", {"teacher_id": teacher_id}, limit=500
+            )
+            session_classes = await gd_find(
+                db.session, "class_sessions", {"teacher_id": teacher_id}, limit=500
+            )
+            class_ids = list({
+                row["class_id"]
+                for row in (assigned_classes + session_classes)
+                if row.get("class_id")
+            })
+            if not class_ids:
+                return []
+            teacher_students = await gd_find(
+                db.session, "students",
+                {"class_id": {"$in": class_ids}, "school_id": school_id},
+                limit=5000,
+            )
+            allowed_student_ids = [s["id"] for s in teacher_students if s.get("id")]
+            if not allowed_student_ids:
+                return []
+            query["student_id"] = {"$in": allowed_student_ids}
+    else:
+        if student_id:
+            query["student_id"] = student_id
 
     excuses = await gd_find(db.session, "attendance_excuses", query, order_by="created_at", desc_order=True, limit=100)
 
@@ -1108,14 +1165,30 @@ async def get_attendance_statistics(
     class_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get comprehensive attendance statistics"""
+    """Get comprehensive attendance statistics.
+
+    SECURITY: Teachers and independent teachers must supply a class_id they
+    own; school-wide or cross-class statistics are admin-only.
+    """
     # Security: school-wide statistics must only be visible to staff.
     _allowed_stats_roles = {'teacher', 'school_principal', 'school_sub_admin', 'school_admin', 'platform_admin', 'independent_teacher'}
-    if current_user.get('role') not in _allowed_stats_roles:
+    _teacher_roles = {'teacher', 'independent_teacher'}
+    role = current_user.get('role')
+    if role not in _allowed_stats_roles:
         raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على إحصائيات الحضور")
     # Task #155: fail-closed school-id resolution; see audit row #2.
     school_id = require_request_school_id(current_user)
     q = {"school_id": school_id}
+
+    # Task #428: teachers must provide and own the class_id they query;
+    # same-school membership alone is not sufficient.
+    if role in _teacher_roles:
+        if not class_id:
+            raise HTTPException(status_code=403, detail="يجب تحديد الفصل الدراسي للاطلاع على الإحصائيات")
+        from utils.tenant_scope import can_view_class
+        if not await can_view_class(db.session, current_user, class_id):
+            raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على بيانات هذا الفصل")
+
     if class_id:
         q["class_id"] = class_id
 
