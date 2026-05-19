@@ -46,8 +46,9 @@ export { default as TeacherSubjectsPage, TeacherSubjectsPanel } from './TeacherS
 export { default as TeacherPersonalCalendarPage } from './TeacherPersonalCalendarPage';
 // Independent-Teacher only: light AI lesson-planning assistant (Task #209 §6.4).
 export { default as LessonPlannerPage, LessonPlannerPanel } from './LessonPlannerPage';
-// Independent-Teacher only: workspace subject management (Task #190 §5.3).
-export { default as TeacherSubjectsPage } from './TeacherSubjectsPage';
+// 2026-05-18 — Duplicate `TeacherSubjectsPage` export removed; the
+// canonical re-export (with `TeacherSubjectsPanel`) lives above so
+// barrel consumers resolve a single named export.
 // Independent-Teacher only: workspace audit-log view (Task #248).
 // 2026-05-18: also exports the headless `TeacherAuditLogPanel` so the
 // Account Settings page can embed the same content inline.

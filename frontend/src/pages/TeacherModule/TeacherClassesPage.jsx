@@ -1087,8 +1087,13 @@ export default function TeacherClassesPage() {
                         variant="outline"
                         className="font-cairo gap-1 w-full"
                         onClick={() => {
+                          // 2026-05-18 — Was navigate('/teacher/subjects')
+                          // which now redirects to ?tab=subjects on the
+                          // same page; swap to an in-page tab switch so
+                          // we avoid an extra route hop and keep all
+                          // mounted state inside this shell.
                           setShowAddClassDialog(false);
-                          navigate('/teacher/subjects');
+                          handleTabChange('subjects');
                         }}
                       >
                         <Plus className="h-3.5 w-3.5" />
