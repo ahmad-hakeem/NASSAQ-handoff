@@ -95,7 +95,7 @@ async def create_academic_year(
     academic_year_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
 
-    from auth_scope import independent_workspace_id
+    from auth_scope import independent_workspace_id, is_independent_teacher
     from quotas.independent_teacher import enforce_academic_year_quota
     from utils.tenant_scope import resolve_school_id
     school_id = current_user.get("tenant_id") or independent_workspace_id(current_user) or resolve_school_id(current_user, data.school_id)
@@ -237,7 +237,7 @@ async def create_term(
     term_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
 
-    from auth_scope import independent_workspace_id
+    from auth_scope import independent_workspace_id, is_independent_teacher
     from quotas.independent_teacher import enforce_term_quota
     from utils.tenant_scope import resolve_school_id
     effective_school_id = current_user.get("tenant_id") or current_user.get("school_id") or independent_workspace_id(current_user) or resolve_school_id(current_user, data.school_id)

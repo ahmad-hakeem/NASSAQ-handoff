@@ -359,13 +359,13 @@ async def assign_homeroom_teacher(
         raise HTTPException(status_code=404, detail="القسم غير موجود")
     assert_school_access(current_user, existing_section.get("tenant_id"))
     now = datetime.now(timezone.utc).isoformat()
-    
+
     await gd_update_one(db.session, "sections", {"id": section_id}, {
             "homeroom_teacher_id": teacher_id,
             "homeroom_assigned_at": now,
             "homeroom_assigned_by": current_user["id"]
         })
-    
+
     return await gd_find_one(db.session, "sections", {"id": section_id})
 
 
@@ -458,10 +458,10 @@ async def update_classroom(
     protected = ["id", "tenant_id", "created_at", "created_by"]
     for field in protected:
         updates.pop(field, None)
-    
+
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     updates["updated_by"] = current_user["id"]
-    
+
     await gd_update_one(db.session, "physical_classrooms", {"id": classroom_id}, updates)
     return await gd_find_one(db.session, "physical_classrooms", {"id": classroom_id})
 
@@ -548,14 +548,14 @@ async def create_subject(
     school_id = effective_school_id
     subject_doc = {
         "id": str(uuid.uuid4()),
-        "tenant_id": school_id,
+        "tenant_id": resolved_school_id,
         "name_ar": data.name_ar,
         "name_en": data.name_en,
         "code": data.code,
         "category": data.category,
         "default_periods": data.default_periods,
         "stages": data.stages,
-        "is_global": school_id is None,
+        "is_global": resolved_school_id is None,
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": current_user["id"]
