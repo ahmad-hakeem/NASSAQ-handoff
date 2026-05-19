@@ -1669,7 +1669,13 @@ export default function TeacherClassesPage() {
             </>
           )}
 
-          {!loading && (
+          {/* 2026-05-19 — Hide the "data is linked to the school
+             administration and updates automatically" banner for
+             independent-teacher accounts. The statement is false for
+             that role: ITs manage their own rosters via the import
+             tools and have no school admin syncing data on their
+             behalf. Regular school teachers still see it. */}
+          {!loading && !isIndependentTeacher && (
             <div className="mt-6 flex items-start gap-3 p-4 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-800/40">
               <div className="w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0">
                 <Info className="h-4.5 w-4.5 text-blue-600 dark:text-blue-300" />
