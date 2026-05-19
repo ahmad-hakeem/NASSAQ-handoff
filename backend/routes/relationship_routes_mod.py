@@ -396,7 +396,11 @@ async def get_relationship_graph(
         sibling_ids = list(sibling_ids)
         siblings = []
         if sibling_ids:
-            siblings = await gd_find(db.session, "students", {"id": {"$in": sibling_ids}}, limit=20)
+            from utils.tenant_scope import can_view_student
+            raw_siblings = await gd_find(db.session, "students", {"id": {"$in": sibling_ids}}, limit=20)
+            for sib in raw_siblings:
+                if await can_view_student(db.session, current_user, sib["id"]):
+                    siblings.append(sib)
 
         return {
             "entity_type": "student",
@@ -540,10 +544,11 @@ async def get_siblings(
     for s in also_siblings:
         sibling_ids.add(s["id"])
 
+    from utils.tenant_scope import can_view_student
     siblings = []
     for sid in sibling_ids:
         s = await gd_find_one(db.session, "students", {"id": sid, "school_id": school_id})
-        if s:
+        if s and await can_view_student(db.session, current_user, sid):
             siblings.append(s)
 
     return {"siblings": siblings, "total": len(siblings)}
