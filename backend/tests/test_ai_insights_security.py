@@ -66,7 +66,7 @@ AI_INSIGHTS_ENDPOINTS = (
 )
 
 OVERVIEW_TOP_KEYS = {
-    "overall_score", "trend", "trend_value", "has_data",
+    "overall_score", "trend", "trend_value", "has_data", "score_available",
     "last_updated", "metrics",
 }
 OVERVIEW_METRIC_KEYS = {

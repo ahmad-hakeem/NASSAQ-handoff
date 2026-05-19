@@ -924,6 +924,7 @@ def _empty_insights_overview() -> Dict[str, Any]:
         "trend": "flat",
         "trend_value": 0,
         "has_data": False,
+        "score_available": False,
         "last_updated": datetime.now(timezone.utc).isoformat(),
         "metrics": {
             "attendance_rate": 0,
@@ -1157,7 +1158,16 @@ async def get_ai_insights_overview(
         eng_bonus = min(10, eng_rate / 10) if eng_rate > 0 else 0
         return int(min(100, base + att_bonus + ratio_bonus + eng_bonus))
 
-    if has_any_data:
+    # The Smart Performance Index is only meaningful once the workspace
+    # has both enrolled students AND recorded attendance — without those
+    # signals the score collapses to its 70-point base value and gives
+    # users a hallucinated "good" reading on a brand-new empty account.
+    # Gate computation on the real prerequisites and surface a
+    # ``score_available`` flag so the UI can render an "insufficient
+    # data" empty state instead of a fake number.
+    score_available = total_students > 0 and has_attendance_data
+
+    if score_available:
         overall_score = _score_from(attendance_rate, student_teacher_ratio, engagement_rate)
 
         # Real month-over-month trend: recompute the same score using last month's data.
@@ -1192,6 +1202,7 @@ async def get_ai_insights_overview(
         "trend": trend,
         "trend_value": trend_value,
         "has_data": has_any_data,
+        "score_available": score_available,
         "last_updated": now_utc.isoformat(),
         "metrics": {
             "attendance_rate": attendance_rate,

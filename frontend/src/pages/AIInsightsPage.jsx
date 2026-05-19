@@ -63,35 +63,45 @@ const NeuralBackground = () => (
   </div>
 );
 
-const AnimatedGauge = ({ score, size = 180, label }) => {
-  const { t } = useTranslation();
+const AnimatedGauge = ({ score, size = 180, label, available = true }) => {
+  const safeScore = available && Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : 0;
   const [animatedScore, setAnimatedScore] = useState(0);
   const radius = (size - 24) / 2;
   const circumference = 2 * Math.PI * radius;
   const center = size / 2;
 
   useEffect(() => {
+    if (!available) {
+      setAnimatedScore(0);
+      return undefined;
+    }
     let frame;
     const duration = 2000;
     const start = performance.now();
     const animate = (now) => {
       const progress = Math.min((now - start) / duration, 1);
       const eased = 1 - Math.pow(1 - progress, 4);
-      setAnimatedScore(Math.round(score * eased));
+      setAnimatedScore(Math.round(safeScore * eased));
       if (progress < 1) frame = requestAnimationFrame(animate);
     };
     frame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frame);
-  }, [score]);
+  }, [safeScore, available]);
 
   const glowColor = animatedScore >= 80 ? '#46C1BE' : animatedScore >= 60 ? '#615090' : '#1C3D74';
-  const offset = circumference - (animatedScore / 100) * circumference;
+  const offset = available
+    ? circumference - (animatedScore / 100) * circumference
+    : circumference;
 
   return (
     <div className="relative inline-flex items-center justify-center">
       <svg width={size} height={size} className="transform -rotate-90">
         <circle cx={center} cy={center} r={radius} fill="none" stroke="currentColor" className="text-white/10" strokeWidth="12" />
-        <circle cx={center} cy={center} r={radius} fill="none" stroke="url(#gaugeGradMain)" strokeWidth="12" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} className="transition-all duration-1000 ease-out" style={{ filter: `drop-shadow(0 0 8px ${glowColor}50)` }} />
+        {available ? (
+          <circle cx={center} cy={center} r={radius} fill="none" stroke="url(#gaugeGradMain)" strokeWidth="12" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} className="transition-all duration-1000 ease-out" style={{ filter: `drop-shadow(0 0 8px ${glowColor}50)` }} />
+        ) : (
+          <circle cx={center} cy={center} r={radius} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="12" strokeLinecap="round" strokeDasharray="6 10" />
+        )}
         <defs>
           <linearGradient id="gaugeGradMain" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#46C1BE" />
@@ -101,11 +111,17 @@ const AnimatedGauge = ({ score, size = 180, label }) => {
         </defs>
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <BrainCircuit className="h-6 w-6 text-brand-turquoise mb-0.5 ai-brain-pulse" />
-        <span className="text-4xl font-bold font-cairo bg-gradient-to-br from-brand-turquoise via-white to-brand-purple bg-clip-text text-transparent">
-          {animatedScore}
-        </span>
-        <span className="text-[10px] text-white font-tajawal">{label}</span>
+        <BrainCircuit className={`h-6 w-6 mb-0.5 ${available ? 'text-brand-turquoise ai-brain-pulse' : 'text-white/40'}`} />
+        {available ? (
+          <span className="text-4xl font-bold font-cairo bg-gradient-to-br from-brand-turquoise via-white to-brand-purple bg-clip-text text-transparent">
+            {animatedScore}
+          </span>
+        ) : (
+          <span className="text-4xl font-bold font-cairo text-white/50" aria-label="insufficient-data">
+            --
+          </span>
+        )}
+        <span className={`text-[10px] font-tajawal ${available ? 'text-white' : 'text-white/40'}`}>{label}</span>
       </div>
     </div>
   );
@@ -1183,7 +1199,7 @@ export const AIInsightsPage = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const [insights, setInsights] = useState({ overall_score: 0, trend: 'up', trend_value: 0, metrics: {} });
+  const [insights, setInsights] = useState({ overall_score: 0, trend: 'up', trend_value: 0, score_available: false, metrics: {} });
   const [predictions, setPredictions] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -1251,6 +1267,7 @@ export const AIInsightsPage = () => {
           overall_score: overviewRes.data.overall_score || 0,
           trend: overviewRes.data.trend || 'stable',
           trend_value: overviewRes.data.trend_value || 0,
+          score_available: overviewRes.data.score_available === true,
           last_updated: overviewRes.data.last_updated || new Date().toISOString(),
           metrics: overviewRes.data.metrics || {},
         });
@@ -1272,7 +1289,7 @@ export const AIInsightsPage = () => {
   // header, filters and shell stay mounted (Task #154 / M1).
   useEffect(() => {
     fetchReqIdRef.current += 1;
-    setInsights({ overall_score: 0, trend: 'up', trend_value: 0, metrics: {} });
+    setInsights({ overall_score: 0, trend: 'up', trend_value: 0, score_available: false, metrics: {} });
     setPredictions([]);
     setRecommendations([]);
     setAlerts([]);
@@ -1424,29 +1441,33 @@ export const AIInsightsPage = () => {
                       {t('smartPerformanceIndex')}
                     </h2>
                     <p className="text-sm text-white font-tajawal max-w-md leading-relaxed">
-                      {isTeacher
-                        ? t('comprehensiveTeachingPerformanceBasedOnAiAnalysis')
-                        : t('comprehensiveSchoolPerformanceBasedOnAiAnalysis')}
+                      {insights.score_available
+                        ? (isTeacher
+                            ? t('comprehensiveTeachingPerformanceBasedOnAiAnalysis')
+                            : t('comprehensiveSchoolPerformanceBasedOnAiAnalysis'))
+                        : t('smartPerformanceIndexInsufficientData')}
                     </p>
 
-                    <div className="flex items-center gap-3 mt-5 justify-center lg:justify-start">
-                      <div className={`flex items-center gap-2 px-4 py-2 rounded-xl backdrop-blur-sm ${
-                        insights.trend === 'up'
-                          ? 'bg-emerald-500/15 border border-emerald-400/25'
-                          : 'bg-red-500/15 border border-red-400/25'
-                      }`}>
-                        {insights.trend === 'up'
-                          ? <ArrowUpRight className="h-4 w-4 text-emerald-400" />
-                          : <ArrowDownRight className="h-4 w-4 text-red-400" />
-                        }
-                        <span className={`text-base font-bold font-cairo ${insights.trend === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>
-                          {insights.trend_value}%
-                        </span>
-                        <span className="text-[10px] text-white font-tajawal">
-                          {t('vsLastMonth')}
-                        </span>
+                    {insights.score_available && (
+                      <div className="flex items-center gap-3 mt-5 justify-center lg:justify-start">
+                        <div className={`flex items-center gap-2 px-4 py-2 rounded-xl backdrop-blur-sm ${
+                          insights.trend === 'up'
+                            ? 'bg-emerald-500/15 border border-emerald-400/25'
+                            : 'bg-red-500/15 border border-red-400/25'
+                        }`}>
+                          {insights.trend === 'up'
+                            ? <ArrowUpRight className="h-4 w-4 text-emerald-400" />
+                            : <ArrowDownRight className="h-4 w-4 text-red-400" />
+                          }
+                          <span className={`text-base font-bold font-cairo ${insights.trend === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {insights.trend_value}%
+                          </span>
+                          <span className="text-[10px] text-white font-tajawal">
+                            {t('vsLastMonth')}
+                          </span>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
 
                   <div className="ai-float shrink-0">
@@ -1454,6 +1475,7 @@ export const AIInsightsPage = () => {
                       score={insights.overall_score}
                       size={200}
                       label={t('outOf100')}
+                      available={insights.score_available}
                     />
                   </div>
 

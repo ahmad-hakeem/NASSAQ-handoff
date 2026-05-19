@@ -3067,6 +3067,7 @@
   "slowQueries": "Slow Queries",
   "smartAlerts": "Smart Alerts",
   "smartEducationManagement": "Smart Education Management",
+  "smartPerformanceIndexInsufficientData": "Not enough data for evaluation. Add students and record attendance to begin analysis.",
   "smartPerformanceIndex": "Smart Performance Index",
   "smartRecommendations": "Smart Recommendations",
   "smartTransformationJourney": "Smart Transformation Journey",

@@ -3069,6 +3069,7 @@
   "slowQueries": "استعلامات بطيئة",
   "smartAlerts": "التنبيهات الذكية",
   "smartEducationManagement": "منصة إدارة التعليم الذكية",
+  "smartPerformanceIndexInsufficientData": "لا توجد بيانات كافية للتقييم. قم بإضافة طلاب وتسجيل الحضور لبدء التحليل.",
   "smartPerformanceIndex": "مؤشر الأداء الذكي",
   "smartRecommendations": "توصيات ذكية",
   "smartTransformationJourney": "رحلة التحول الذكي",
