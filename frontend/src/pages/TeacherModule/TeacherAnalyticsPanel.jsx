@@ -21,7 +21,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { BarChart3, Download, FileText, Loader2, RefreshCw } from 'lucide-react';
+import { BarChart3, FileText, FileSpreadsheet, Loader2, RefreshCw } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -84,7 +84,7 @@ export default function TeacherAnalyticsPanel() {
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
-  const [exporting, setExporting] = useState(null); // 'pdf' | 'csv' | null
+  const [exporting, setExporting] = useState(null); // 'pdf' | 'xlsx' | null
 
   const loadClasses = useCallback(async () => {
     try {
@@ -133,9 +133,11 @@ export default function TeacherAnalyticsPanel() {
       if (classId && classId !== 'all') params.class_id = classId;
       const path = fmt === 'pdf'
         ? '/independent-teacher/analytics/export.pdf'
-        : '/independent-teacher/analytics/export.csv';
+        : '/independent-teacher/analytics/export.xlsx';
       const res = await api.get(path, { params, responseType: 'blob' });
-      const mime = fmt === 'pdf' ? 'application/pdf' : 'text/csv;charset=utf-8';
+      const mime = fmt === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       const blob = res?.data instanceof Blob
         ? res.data
         : new Blob([res?.data ?? ''], { type: mime });
@@ -186,14 +188,14 @@ export default function TeacherAnalyticsPanel() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => handleExport('csv')}
+            onClick={() => handleExport('xlsx')}
             disabled={loading || !!exporting}
-            data-testid="analytics-export-csv"
+            data-testid="analytics-export-xlsx"
           >
-            {exporting === 'csv'
+            {exporting === 'xlsx'
               ? <Loader2 className="h-4 w-4 animate-spin" />
-              : <Download className="h-4 w-4" />}
-            <span className="mx-1">{t('teacherAnalyticsExportCsv')}</span>
+              : <FileSpreadsheet className="h-4 w-4" />}
+            <span className="mx-1">{t('teacherAnalyticsExportExcel')}</span>
           </Button>
           <Button
             variant="outline"

@@ -4693,6 +4693,7 @@
   "teacherAnalyticsRefresh": "Refresh",
   "teacherAnalyticsExportPdf": "Export PDF",
   "teacherAnalyticsExportCsv": "Export CSV",
+  "teacherAnalyticsExportExcel": "Export Excel",
   "teacherAnalyticsExportFailed": "Failed to export analytics — please try again.",
   "teacherAnalyticsFrom": "From",
   "teacherAnalyticsTo": "To",

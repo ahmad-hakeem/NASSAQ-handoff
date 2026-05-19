@@ -419,6 +419,185 @@ async def _aggregate_all(
     }
 
 
+def _fmt_pct(value: Any) -> str:
+    """Render a 0..1 ratio as a localized percentage string (``95%``)."""
+    try:
+        return f"{round(float(value or 0) * 100)}%"
+    except (TypeError, ValueError):
+        return "0%"
+
+
+def _fmt_date(value: Any) -> str:
+    """Strip any time/zone tail from an ISO timestamp so the workbook
+    shows a clean ``YYYY-MM-DD`` instead of ``2026-04-19T00:00:00Z``."""
+    if not value:
+        return ""
+    s = str(value)
+    return s[:10] if len(s) >= 10 else s
+
+
+_UUID_LIKE_RE = __import__("re").compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+
+
+def _safe_person_name(value: Any, fallback: str = "طالب غير مسمى") -> str:
+    """Return a display-safe person name.
+
+    Upstream SQL falls back to ``COALESCE(full_name, id)`` so a missing
+    name can leak a UUID. The export must show an Arabic placeholder
+    instead — the spec is explicit that no raw IDs reach the workbook.
+    """
+    s = "" if value is None else str(value).strip()
+    if not s or _UUID_LIKE_RE.match(s):
+        return fallback
+    return s
+
+
+def _safe_class_name(value: Any) -> str:
+    return _safe_person_name(value, fallback="فصل غير مسمى")
+
+
+def _render_analytics_xlsx(
+    payload: Dict[str, Any], start: datetime, end: datetime, cid: Optional[str],
+    workspace_id: str, class_label: Optional[str] = None,
+) -> bytes:
+    """Render the analytics dashboard as a multi-sheet Arabic workbook.
+
+    One worksheet per data category, Arabic headers, localized dates
+    and percentages, no raw IDs. Header row is bold/coloured, sheets
+    are RTL, the first row is frozen and column widths are pre-sized.
+    """
+    import io
+    import pandas as pd  # type: ignore
+
+    attendance_rows = [
+        {
+            "اليوم": _fmt_date(r.get("day")),
+            "حاضر": int(r.get("present") or 0),
+            "غائب": int(r.get("absent") or 0),
+            "متأخر": int(r.get("late") or 0),
+            "بعذر": int(r.get("excused") or 0),
+            "الإجمالي": int(r.get("total") or 0),
+            "نسبة الحضور": _fmt_pct(
+                ((int(r.get("present") or 0) + int(r.get("late") or 0))
+                 / int(r.get("total") or 0))
+                if int(r.get("total") or 0) else 0
+            ),
+        }
+        for r in payload["attendance"]
+    ]
+
+    behavior_rows = [
+        {
+            "بداية الأسبوع": _fmt_date(r.get("week")),
+            "إيجابي": int(r.get("positive") or 0),
+            "سلبي": int(r.get("negative") or 0),
+            "الإجمالي": int(r.get("positive") or 0) + int(r.get("negative") or 0),
+        }
+        for r in payload["behavior"]
+    ]
+
+    lesson_plan_rows = [
+        {
+            "اليوم": _fmt_date(r.get("day")),
+            "تم التوليد": int(r.get("generated") or 0),
+            "تم الحفظ": int(r.get("saved") or 0),
+        }
+        for r in payload["lesson_plans"]
+    ]
+
+    top_absence_rows = [
+        {
+            "الاسم": _safe_person_name(r.get("name")),
+            "عدد مرات الغياب": int(r.get("absent_count") or 0),
+            "إجمالي الأيام": int(r.get("total_count") or 0),
+            "نسبة الغياب": _fmt_pct(r.get("absence_rate")),
+        }
+        for r in payload["top_students_absence"]
+    ]
+
+    top_behavior_rows = [
+        {
+            "الاسم": _safe_person_name(r.get("name")),
+            "عدد السلوكيات السلبية": int(r.get("negative_count") or 0),
+        }
+        for r in payload["top_students_behavior"]
+    ]
+
+    top_classes_rows = [
+        {
+            "الفصل": _safe_class_name(r.get("name")),
+            "الحضور": int(r.get("present_count") or 0),
+            "الإجمالي": int(r.get("total_count") or 0),
+            "نسبة الحضور": _fmt_pct(r.get("attendance_rate")),
+        }
+        for r in payload["top_classes_attendance"]
+    ]
+
+    summary_class = "كل الفصول"
+    if cid:
+        summary_class = _safe_class_name(class_label) if class_label else "فصل محدد"
+
+    summary_rows = [
+        {"البند": "تقرير", "القيمة": "تحليلات مساحة نَسَّق"},
+        {"البند": "من تاريخ", "القيمة": _fmt_date(start.isoformat())},
+        {"البند": "إلى تاريخ", "القيمة": _fmt_date(end.isoformat())},
+        {"البند": "الفصل", "القيمة": summary_class},
+        {"البند": "تاريخ التصدير", "القيمة": _hijri_stamp()},
+    ]
+
+    # Ordered (sheet_name -> rows, column_widths)
+    sheets: List[tuple[str, List[Dict[str, Any]], List[int]]] = [
+        ("ملخص التقرير",       summary_rows,       [22, 32]),
+        ("ملخص الحضور",        attendance_rows,    [14, 10, 10, 10, 10, 12, 16]),
+        ("تقارير السلوك",      behavior_rows,      [18, 12, 12, 14]),
+        ("خطط الدروس",        lesson_plan_rows,    [14, 16, 14]),
+        ("أكثر الطلاب غياباً", top_absence_rows,   [28, 18, 16, 14]),
+        ("السلوكيات السلبية",  top_behavior_rows,  [28, 24]),
+        ("أفضل الفصول حضوراً", top_classes_rows,   [24, 12, 12, 14]),
+    ]
+
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
+        workbook = writer.book
+        header_fmt = workbook.add_format({
+            "bold": True,
+            "bg_color": "#1F3A5F",
+            "font_color": "#FFFFFF",
+            "border": 1,
+            "align": "center",
+            "valign": "vcenter",
+        })
+        empty_fmt = workbook.add_format({
+            "italic": True,
+            "font_color": "#6B7280",
+            "align": "center",
+        })
+        for sheet_name, rows, widths in sheets:
+            safe_name = sheet_name[:31]
+            if rows:
+                df = pd.DataFrame(rows)
+            else:
+                df = pd.DataFrame(columns=["لا توجد بيانات"])
+            df.to_excel(writer, sheet_name=safe_name, index=False)
+            ws = writer.sheets[safe_name]
+            ws.freeze_panes(1, 0)
+            try:
+                ws.right_to_left()
+            except Exception:  # noqa: BLE001
+                pass
+            for idx, col in enumerate(df.columns):
+                width = widths[idx] if idx < len(widths) else 18
+                ws.set_column(idx, idx, width)
+                ws.write(0, idx, col, header_fmt)
+            if not rows:
+                ws.write(1, 0, "لا توجد بيانات لهذه الفترة", empty_fmt)
+
+    return buf.getvalue()
+
+
 def _render_analytics_csv(
     payload: Dict[str, Any], start: datetime, end: datetime, cid: Optional[str],
 ) -> bytes:
@@ -762,6 +941,44 @@ async def export_workspace_analytics_csv(
     return StreamingResponse(
         iter([body]),
         media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@router.get("/export.xlsx")
+async def export_workspace_analytics_xlsx(
+    from_: Optional[str] = Query(default=None, alias="from"),
+    to: Optional[str] = Query(default=None),
+    class_id: Optional[str] = Query(default=None),
+    current_user: dict = Depends(_require_independent_teacher),
+):
+    workspace_id = _workspace_id(current_user)
+    start, end = _resolve_range(from_, to)
+    cid = await _resolve_class_filter(workspace_id, class_id)
+    class_label: Optional[str] = None
+    if cid:
+        cls_row = await gd_find_one(
+            db.session, "classes", {"id": cid, "school_id": workspace_id},
+        )
+        if cls_row:
+            class_label = cls_row.get("name") or None
+    try:
+        payload = await _aggregate_all(workspace_id, start, end, cid)
+        body = _render_analytics_xlsx(
+            payload, start, end, cid, workspace_id, class_label=class_label,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("workspace analytics XLSX export failed: %s", exc)
+        raise HTTPException(status_code=500, detail=_MSG_EXPORT_FAILED)
+
+    fname = f"nassaq-analytics-{_hijri_stamp()}.xlsx"
+    return StreamingResponse(
+        iter([body]),
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
 
