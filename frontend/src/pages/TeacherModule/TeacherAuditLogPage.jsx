@@ -378,14 +378,160 @@ function roleLabel(t, role) {
   return localised && localised !== key ? localised : role;
 }
 
+// 2026-05-19 — UX refactor: stop rendering raw JSON in the
+// "عرض التفاصيل" panel. Filter internal UUID/identifier keys (they
+// mean nothing to a teacher), translate the remaining keys to Arabic,
+// and format timestamp-shaped values as human-readable date+time.
+//
+// `formatAuditDetails` returns an ordered array of {key, label, value}
+// triplets — empty when the row has no displayable info. The toggle
+// button uses `hasDisplayableDetails` (a thin wrapper) to decide
+// whether to render the chevron at all, satisfying the spec's
+// "hide the button if there's no useful data" requirement.
+
+// Keys we never expose to the teacher: raw UUIDs and other
+// internal plumbing. Suffix-based rules catch the broad family
+// (`*_id`, `*_uuid`, `*_token`, `*_hash`) without an explicit
+// per-key allowlist; the literal set catches the rest.
+const _AUDIT_DETAILS_HIDDEN_LITERAL = new Set([
+  'id', 'uuid', 'token', 'hash', 'jti', 'trace_id',
+  'request_id', 'session_id', 'csrf', 'csrf_token',
+  'ip', 'ip_address', 'user_agent', 'sig', 'signature',
+  'workspace_id', 'object_id', 'target_id', 'source_id',
+  'parent_id', 'child_id', 'related_id',
+]);
+function _isHiddenAuditKey(key) {
+  if (!key || typeof key !== 'string') return true;
+  const lower = key.toLowerCase();
+  if (_AUDIT_DETAILS_HIDDEN_LITERAL.has(lower)) return true;
+  if (lower.endsWith('_id') || lower.endsWith('_uuid')) return true;
+  if (lower.endsWith('_token') || lower.endsWith('_hash')) return true;
+  return false;
+}
+
+// Arabic labels for known meaningful keys. Unknown keys fall through
+// to a destructive humanise so the panel never prints raw snake_case.
+const AUDIT_DETAILS_LABELS_AR = {
+  ttl_hours: 'مدة الصلاحية (ساعات)',
+  ttl_minutes: 'مدة الصلاحية (دقائق)',
+  ttl: 'مدة الصلاحية',
+  expires_at: 'تاريخ الانتهاء',
+  expiry: 'تاريخ الانتهاء',
+  issued_at: 'تاريخ الإصدار',
+  created_at: 'تاريخ الإنشاء',
+  updated_at: 'تاريخ التحديث',
+  completed_at: 'تاريخ الإكمال',
+  started_at: 'تاريخ البداية',
+  ended_at: 'تاريخ الانتهاء',
+  status: 'الحالة',
+  reason: 'السبب',
+  note: 'ملاحظة',
+  notes: 'ملاحظات',
+  message: 'الرسالة',
+  file_name: 'اسم الملف',
+  filename: 'اسم الملف',
+  format: 'الصيغة',
+  file_size: 'حجم الملف',
+  count: 'العدد',
+  total: 'المجموع',
+  rows: 'عدد السجلات',
+  records: 'عدد السجلات',
+  exported_rows: 'عدد السجلات المُصدَّرة',
+  email: 'البريد الإلكتروني',
+  phone: 'رقم الجوال',
+  name: 'الاسم',
+  role: 'الدور',
+  category: 'التصنيف',
+  action: 'الحدث',
+  scope: 'النطاق',
+  changes: 'التغييرات',
+  before: 'القيمة السابقة',
+  after: 'القيمة الجديدة',
+};
+
+function _looksLikeIso(value) {
+  if (typeof value !== 'string') return false;
+  // ISO-8601-ish: 2026-05-19T22:22:42... — be generous so we catch
+  // both Z-suffixed and offset-suffixed variants.
+  return /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(value);
+}
+
+function _formatAuditDetailValue(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'نعم' : 'لا';
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string') {
+    if (_looksLikeIso(value)) {
+      const d = new Date(value);
+      if (!isNaN(d.getTime())) return formatTimestamp(value);
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (!value.length) return '—';
+    return value.map(v => (
+      typeof v === 'object' ? JSON.stringify(v) : String(v)
+    )).join('، ');
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+function _humaniseAuditKey(key) {
+  return key
+    .replace(/[_.]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function formatAuditDetails(details) {
+  if (!details || typeof details !== 'object' || Array.isArray(details)) {
+    return [];
+  }
+  const out = [];
+  for (const [key, value] of Object.entries(details)) {
+    if (_isHiddenAuditKey(key)) continue;
+    if (value === null || value === undefined || value === '') continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    if (
+      typeof value === 'object'
+      && !Array.isArray(value)
+      && Object.keys(value).length === 0
+    ) continue;
+    const label = AUDIT_DETAILS_LABELS_AR[key.toLowerCase()] || _humaniseAuditKey(key);
+    out.push({ key, label, value: _formatAuditDetailValue(value) });
+  }
+  return out;
+}
+
+function hasDisplayableDetails(details) {
+  return formatAuditDetails(details).length > 0;
+}
+
 function DetailsBlock({ details }) {
-  if (!details || typeof details !== 'object') return null;
-  const entries = Object.entries(details);
-  if (!entries.length) return null;
+  const items = formatAuditDetails(details);
+  if (!items.length) return null;
   return (
-    <pre className="mt-2 text-xs bg-gray-50 border border-gray-200 rounded p-3 overflow-x-auto whitespace-pre-wrap leading-relaxed">
-      {JSON.stringify(details, null, 2)}
-    </pre>
+    <div
+      className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3 bg-gray-50 border border-gray-200 rounded-md p-3"
+      dir="rtl"
+    >
+      {items.map(({ key, label, value }) => (
+        <div key={key} className="flex flex-col min-w-0">
+          <span className="text-xs text-gray-500">{label}</span>
+          <span className="text-sm font-medium text-gray-900 break-words">
+            {value}
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -949,6 +1095,13 @@ export function TeacherAuditLogPanel({ embedded = false }) {
                       render: (row) => {
                         const isOpen = !!expanded[row.id];
                         const role = roleLabel(t, row.actor_role);
+                        // 2026-05-19 — Hide the "عرض التفاصيل" toggle
+                        // entirely when the row has no displayable
+                        // details. A row whose `details` only contains
+                        // internal IDs (which we strip in
+                        // formatAuditDetails) counts as "empty" too,
+                        // so the chevron disappears in that case.
+                        const showToggle = hasDisplayableDetails(row.details);
                         return (
                           <div className="space-y-1">
                             <div className="flex flex-wrap items-center gap-2">
@@ -974,18 +1127,21 @@ export function TeacherAuditLogPanel({ embedded = false }) {
                                   ) : null}
                                 </span>
                               )}
-                              <button
-                                type="button"
-                                onClick={() => toggleExpanded(row.id)}
-                                className="text-xs text-emerald-700 hover:underline flex items-center gap-1 ms-auto"
-                              >
-                                {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                                {isOpen
-                                  ? (t('hideDetails') || 'إخفاء التفاصيل')
-                                  : (t('showDetails') || 'عرض التفاصيل')}
-                              </button>
+                              {showToggle && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpanded(row.id)}
+                                  className="text-xs text-emerald-700 hover:underline flex items-center gap-1 ms-auto"
+                                  aria-expanded={isOpen}
+                                >
+                                  {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                  {isOpen
+                                    ? (t('hideDetails') || 'إخفاء التفاصيل')
+                                    : (t('showDetails') || 'عرض التفاصيل')}
+                                </button>
+                              )}
                             </div>
-                            {isOpen && <DetailsBlock details={row.details} />}
+                            {showToggle && isOpen && <DetailsBlock details={row.details} />}
                           </div>
                         );
                       },
