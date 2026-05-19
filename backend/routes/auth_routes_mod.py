@@ -1060,14 +1060,16 @@ class ActiveRoleContextResponse(BaseModel):
 @router.post("/auth/set-active-role", response_model=ActiveRoleContextResponse)
 async def set_active_role_context(
     context: ActiveRoleContextRequest,
-    current_user: dict = Depends(get_current_user)
+    request: Request,
+    current_user: dict = Depends(require_recent_mfa()),
 ):
     """
     Set the active role context for the current session.
     تعيين سياق الدور النشط للجلسة الحالية
     """
     user_id = current_user["id"]
-    now = datetime.now(timezone.utc).isoformat()
+    now_dt = datetime.now(timezone.utc)
+    now = now_dt.isoformat()
     
     # Validate user has this role
     user_roles = current_user.get("linked_roles", [])
@@ -1123,6 +1125,9 @@ async def set_active_role_context(
         })
     
     original_role = current_user.get("original_role") or current_user.get("role")
+    # Task #419: enforce short TTL matching the hardened impersonation cap so that
+    # this self-service switch token cannot outlive the 15-minute window.
+    expires_at = now_dt + timedelta(minutes=IMPERSONATION_TOKEN_TTL_MINUTES)
     new_token = create_access_token({
         "sub": user_id,
         "role": context.role_id,
@@ -1130,7 +1135,42 @@ async def set_active_role_context(
         "email": current_user.get("email", ""),
         "is_switched": True,
         "original_role": original_role,
-    })
+    }, expires_delta=timedelta(minutes=IMPERSONATION_TOKEN_TTL_MINUTES))
+
+    # Task #419: persist a revocable session record so the switch can be audited
+    # and the JTI blocked independently of token expiry if needed.
+    try:
+        new_jti = jwt.decode(new_token, JWT_SECRET, algorithms=[JWT_ALGORITHM]).get("jti")
+        from utils.trusted_proxy import extract_client_ip as _ip
+        from sqlalchemy import text as _sa_text
+        await db.session.execute(
+            _sa_text(
+                """
+                INSERT INTO impersonation_sessions
+                  (id, jti, original_user_id, original_role, target_user_id,
+                   target_role, target_tenant_id, reason, started_at, expires_at,
+                   ip_address)
+                VALUES
+                  (:id, :jti, :ouid, :orole, :tuid, :trole, :ttid, :reason,
+                   :started_at, :expires_at, :ip)
+                """
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "jti": new_jti,
+                "ouid": user_id,
+                "orole": original_role,
+                "tuid": user_id,
+                "trole": context.role_id,
+                "ttid": school_id,
+                "reason": "self-service role switch via /auth/set-active-role",
+                "started_at": now_dt,
+                "expires_at": expires_at,
+                "ip": request.client.host if request.client else None,
+            },
+        )
+    except Exception as _imp_err:
+        logger.warning(f"set_active_role: failed to persist impersonation_sessions row: {_imp_err}")
 
     return ActiveRoleContextResponse(
         user_identity_id=user_id,
@@ -1465,8 +1505,9 @@ async def get_user_roles(
 async def switch_user_role(
     user_id: str,
     target_role: str,
+    request: Request,
     target_tenant_id: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_recent_mfa()),
 ):
     """Switch active role for a user"""
     # Only allow self
@@ -1501,7 +1542,8 @@ async def switch_user_role(
         raise HTTPException(status_code=400, detail="ليس لديك صلاحية الوصول لهذا الدور")
     
     # Audit log
-    now = datetime.now(timezone.utc).isoformat()
+    now_dt = datetime.now(timezone.utc)
+    now = now_dt.isoformat()
     await gd_insert(db.session, "audit_logs", {
         "id": str(uuid.uuid4()),
         "action": "role_switched",
@@ -1518,6 +1560,9 @@ async def switch_user_role(
         "timestamp": now
     })
     
+    # Task #419: enforce short TTL matching the hardened impersonation cap so that
+    # this self-service switch token cannot outlive the 15-minute window.
+    expires_at = now_dt + timedelta(minutes=IMPERSONATION_TOKEN_TTL_MINUTES)
     new_token = create_access_token({
         "sub": user_id,
         "role": target_role,
@@ -1525,7 +1570,42 @@ async def switch_user_role(
         "email": user.get("email", ""),
         "is_switched": True,
         "original_role": primary_role,
-    })
+    }, expires_delta=timedelta(minutes=IMPERSONATION_TOKEN_TTL_MINUTES))
+
+    # Task #419: persist a revocable session record so the switch can be audited
+    # and the JTI blocked independently of token expiry if needed.
+    try:
+        new_jti = jwt.decode(new_token, JWT_SECRET, algorithms=[JWT_ALGORITHM]).get("jti")
+        from utils.trusted_proxy import extract_client_ip as _ip
+        from sqlalchemy import text as _sa_text
+        await db.session.execute(
+            _sa_text(
+                """
+                INSERT INTO impersonation_sessions
+                  (id, jti, original_user_id, original_role, target_user_id,
+                   target_role, target_tenant_id, reason, started_at, expires_at,
+                   ip_address)
+                VALUES
+                  (:id, :jti, :ouid, :orole, :tuid, :trole, :ttid, :reason,
+                   :started_at, :expires_at, :ip)
+                """
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "jti": new_jti,
+                "ouid": user_id,
+                "orole": primary_role,
+                "tuid": user_id,
+                "trole": target_role,
+                "ttid": target_tenant_id,
+                "reason": "self-service role switch via /users/{user_id}/switch-role",
+                "started_at": now_dt,
+                "expires_at": expires_at,
+                "ip": request.client.host if request.client else None,
+            },
+        )
+    except Exception as _imp_err:
+        logger.warning(f"switch_user_role: failed to persist impersonation_sessions row: {_imp_err}")
 
     return {
         "message": "تم تبديل الدور بنجاح",

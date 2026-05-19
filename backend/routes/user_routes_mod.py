@@ -442,6 +442,18 @@ async def update_user(
         old_role = user.get("role", "")
         updates["role"] = user_data.role
     
+    # Task #419: when role or tenant_id changes, bump last_password_change to
+    # invalidate all outstanding tokens — including switched/impersonation ones.
+    # Both get_current_user() and decode_token_for_ws() reject tokens whose
+    # iat < last_password_change, so this ensures entitlement changes take
+    # effect immediately even for already-issued switched tokens.
+    _role_or_tenant_changed = (
+        ("role" in updates and updates["role"] != user.get("role"))
+        or ("tenant_id" in updates and updates["tenant_id"] != user.get("tenant_id"))
+    )
+    if _role_or_tenant_changed:
+        updates["last_password_change"] = datetime.now(timezone.utc).isoformat()
+
     await gd_update_one(db.session, "users", {"id": user_id}, updates)
     
     field_changes = {}
