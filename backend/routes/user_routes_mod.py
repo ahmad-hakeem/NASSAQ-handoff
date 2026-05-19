@@ -21,6 +21,7 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code,
     require_recent_mfa_403_if_independent_teacher,
+    require_recent_mfa,
 )
 
 from shared_models import (
@@ -71,7 +72,8 @@ class PlatformUserResponse(BaseModel):
 @router.post("/users/create", response_model=PlatformUserResponse)
 async def create_platform_user(
     user_data: PlatformUserCreate,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+    _mfa: dict = Depends(require_recent_mfa()),
 ):
     """
     Create a new platform user (admin or teacher) - Platform Admin only
@@ -399,7 +401,8 @@ class UserUpdateRequest(BaseModel):
 async def update_user(
     user_id: str,
     user_data: UserUpdateRequest,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+    _mfa: dict = Depends(require_recent_mfa()),
 ):
     """Update user information"""
     user = await gd_find_one(db.session, "users", {"id": user_id})
@@ -532,7 +535,8 @@ class PasswordResetRequest(BaseModel):
 async def reset_user_password(
     user_id: str,
     data: PasswordResetRequest,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN])),
+    _mfa: dict = Depends(require_recent_mfa()),
 ):
     """Reset user password (admin only)"""
     user = await gd_find_one(db.session, "users", {"id": user_id})

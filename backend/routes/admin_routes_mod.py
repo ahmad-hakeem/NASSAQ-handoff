@@ -391,7 +391,15 @@ async def seed_test_accounts(current_user: dict = Depends(require_roles([UserRol
     """
     إنشاء حسابات اختبار للنظام - Platform Admin only.
     Passwords are read from TEST_PRINCIPAL_PASSWORD and TEST_TEACHER_PASSWORD env vars.
+    Only available in development environments.
     """
+    from config import NassaqConfig
+    if not NassaqConfig.seed_allowed():
+        raise HTTPException(
+            status_code=403,
+            detail="عملية الإعداد التجريبي غير مسموح بها في بيئة الإنتاج أو التجهيز"
+        )
+
     test_principal_password = os.getenv("TEST_PRINCIPAL_PASSWORD", "NassaqPrincipal2026")
     test_teacher_password = os.getenv("TEST_TEACHER_PASSWORD", "NassaqTeacher2026")
 

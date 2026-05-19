@@ -23,7 +23,8 @@ from dependencies import (
     smart_scheduling_engine, TimetableRunStatus, TimetableStatus,
     ConflictType, ConflictSeverity, PreValidationResult, GenerationResult,
     hakim_engine, reporting_engine, export_engine, session_engine,
-    REPORT_TYPES, generate_student_qr_code
+    REPORT_TYPES, generate_student_qr_code,
+    require_recent_mfa,
 )
 
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
@@ -615,7 +616,8 @@ class SchoolCredentialsRequest(BaseModel):
 async def manage_school_credentials(
     school_id: str,
     body: SchoolCredentialsRequest,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+    _mfa: dict = Depends(require_recent_mfa()),
 ):
     """Create or update the school principal account credentials (email + password)"""
     school = await gd_find_one(db.session, "schools", {"id": school_id})
