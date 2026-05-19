@@ -79,7 +79,6 @@ const BulkImportPage = lazy(() => import("../pages/TeacherModule").then(m => ({ 
 const TeacherAchievementsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAchievementsPage })));
 const TeacherCommunicationPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherCommunicationPage })));
 const TeacherResourcesPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherResourcesPage })));
-const WorkspaceSettingsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.WorkspaceSettingsPage })));
 const WorkspaceSchedulePage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.WorkspaceSchedulePage })));
 const TeacherPersonalCalendarPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherPersonalCalendarPage })));
 const LessonPlannerPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.LessonPlannerPage })));
@@ -376,10 +375,15 @@ export default function AppRoutes() {
             <Navigate to="/account/settings" replace />
           </ProtectedRoute>
         } />
-        {/* Task #189 §5.2 — Independent-Teacher only: reduced workspace
-            settings page. Backend enforces a deny-by-default allow-list. */}
+        {/* 2026-05-19 — Legacy standalone IT workspace-settings route.
+            The page was split: identity moved into Account Settings,
+            schedule + active year/term moved into /teacher/classes
+            as the "إعدادات الجدول" tab. The redirect keeps existing
+            bookmarks and internal links working. Role gate preserved. */}
         <Route path="/teacher/workspace-settings" element={
-          <ProtectedRoute allowedRoles={['independent_teacher']}><WorkspaceSettingsPage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['independent_teacher']}>
+            <Navigate to="/teacher/classes?tab=settings" replace />
+          </ProtectedRoute>
         } />
         {/* 2026-05-18 — Legacy standalone IT schedule route. The
             "جدولي" sidebar entry was removed in favor of a fourth

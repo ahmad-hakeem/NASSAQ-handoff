@@ -37,13 +37,19 @@ export const TOUR_STEPS = [
   },
   {
     id: 'export-workspace',
-    target: '[data-tour="sidebar-workspace-settings"]',
+    // 2026-05-19 — `sidebar-workspace-settings` was retired when
+    // the standalone IT workspace-settings page was split: identity
+    // moved into Account Settings, schedule + year/term into the
+    // فصولي page as a new tab. Both tour steps now point at the
+    // Account Settings sidebar entry, which is the canonical home
+    // for workspace identity + export + tour replay.
+    target: '[data-tour="sidebar-account-settings"]',
     titleKey: 'itTourStep7Title',
     bodyKey: 'itTourStep7Body',
   },
   {
     id: 'account-settings',
-    target: '[data-tour="sidebar-workspace-settings"]',
+    target: '[data-tour="sidebar-account-settings"]',
     titleKey: 'itTourStep8Title',
     bodyKey: 'itTourStep8Body',
   },

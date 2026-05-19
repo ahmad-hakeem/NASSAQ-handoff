@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
+import { Checkbox } from '../../components/ui/checkbox';
 import { Progress } from '../../components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
 import {
@@ -24,7 +25,7 @@ import {
   TrendingUp, LayoutGrid, List, Clock, Play,
   ChevronLeft, Star, AlertTriangle, CheckCircle2,
   ArrowUpDown, Settings, Plus, FileSpreadsheet,
-  FileImage, FileText, Upload, Info, X, Pencil, Trash2
+  FileImage, FileText, Upload, Info, X, Pencil, Trash2, Save
 } from 'lucide-react';
 import SessionsManageTab from './SessionsManageTab';
 import StandbyTab from './StandbyTab';
@@ -54,6 +55,31 @@ import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 import { useTranslation } from '../../contexts/ThemeContext';
 
 const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'];
+
+// 2026-05-19 — IT-only "إعدادات الجدول" tab. Mirrors the now-retired
+// standalone WorkspaceSettingsPage's schedule baseline + active
+// year/term cards. WEEKDAYS keys mirror the backend's working_days
+// payload contract ('sun'..'sat'); the Arabic label is sourced from
+// the canonical i18n weekday keys so we don't hardcode RTL strings.
+const IT_SETTINGS_WEEKDAYS = [
+  { key: 'sun', i18n: 'sunday' },
+  { key: 'mon', i18n: 'monday' },
+  { key: 'tue', i18n: 'tuesday' },
+  { key: 'wed', i18n: 'wednesday' },
+  { key: 'thu', i18n: 'thursday' },
+  { key: 'fri', i18n: 'friday' },
+  { key: 'sat', i18n: 'saturday' },
+];
+
+const IT_SETTINGS_TIMEZONES = [
+  'Asia/Riyadh',
+  'Asia/Dubai',
+  'Asia/Kuwait',
+  'Asia/Baghdad',
+  'Asia/Amman',
+  'Africa/Cairo',
+  'UTC',
+];
 
 const GRADE_COLORS = {
   '1': { bg: 'from-sky-500 to-sky-600', light: 'bg-sky-50 dark:bg-sky-900/20', text: 'text-sky-700 dark:text-sky-300', border: 'border-sky-200 dark:border-sky-800' },
@@ -119,6 +145,11 @@ export default function TeacherClassesPage() {
     // pinned to school_id == itw_{user_id}; non-IT users have no
     // workspace subjects to manage, so we silently coerce back.
     : (_rawTab === 'subjects' && _isITUser) ? 'subjects'
+    // 2026-05-19 — IT-only "إعدادات الجدول" tab. Hosts the schedule
+    // baseline + active year/term form (relocated from the standalone
+    // WorkspaceSettingsPage). Non-IT users have no workspace schedule
+    // to manage, so we coerce back to the default classes view.
+    : (_rawTab === 'settings' && _isITUser) ? 'settings'
     : 'classes';
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
@@ -175,6 +206,27 @@ export default function TeacherClassesPage() {
   const fileInputRef = useRef(null);
   const [importType, setImportType] = useState('');
 
+  // 2026-05-19 — IT-only "إعدادات الجدول" tab state. Mirrors the now-
+  // retired standalone WorkspaceSettingsPage's schedule baseline +
+  // active year/term form. Persisted via the existing PATCH-style
+  // PUT /independent-teacher/workspace/settings endpoint with ONLY
+  // the schedule + year/term keys — identity (name_ar/name_en/logo)
+  // is owned by AccountSettingsPage's workspace section, so we never
+  // send those keys here (partial PUT prevents one half from nulling
+  // the other).
+  const [itSettingsLoaded, setItSettingsLoaded] = useState(false);
+  // 2026-05-19 — Tracks a transient failure of the settings GET so the
+  // tab can offer an in-place retry instead of leaving the form
+  // permanently disabled.
+  const [itSettingsLoadError, setItSettingsLoadError] = useState(false);
+  const [itSettingsSaving, setItSettingsSaving] = useState(false);
+  const [itWorkingDays, setItWorkingDays] = useState([]);
+  const [itPeriodsPerDay, setItPeriodsPerDay] = useState(7);
+  const [itPeriodMinutes, setItPeriodMinutes] = useState(45);
+  const [itTimezone, setItTimezone] = useState('Asia/Riyadh');
+  const [itYearLabel, setItYearLabel] = useState('');
+  const [itTermLabel, setItTermLabel] = useState('');
+
   const { t } = useTranslation();
   const { nassaqError, nassaqWarning, nassaqConfirm, nassaqInfo } = useNassaqAlert();
   const [editClassDialog, setEditClassDialog] = useState(null); // { id, name, capacity }
@@ -210,6 +262,7 @@ export default function TeacherClassesPage() {
       : (tab === 'lesson-planner' && (!_isITUser || !canUseLessonPlanner)) ? 'classes'
       : (tab === 'schedule' && !_isITUser) ? 'classes'
       : (tab === 'subjects' && !_isITUser) ? 'classes'
+      : (tab === 'settings' && !_isITUser) ? 'classes'
       : tab;
     setSearchParams(
       safeTab === 'sessions' ? { tab: 'sessions' }
@@ -217,6 +270,7 @@ export default function TeacherClassesPage() {
       : safeTab === 'lesson-planner' ? { tab: 'lesson-planner' }
       : safeTab === 'schedule' ? { tab: 'schedule' }
       : safeTab === 'subjects' ? { tab: 'subjects' }
+      : safeTab === 'settings' ? { tab: 'settings' }
       : {}
     );
   };
@@ -419,6 +473,79 @@ export default function TeacherClassesPage() {
       fetchWorkspaceClassCount();
     }
   }, [isIndependentTeacher, fetchWorkspaceSubjects, fetchGradeOptions, fetchWorkspaceClassCount]);
+
+  // 2026-05-19 — Load the IT workspace settings row for the new
+  // "إعدادات الجدول" tab. Only the schedule + year/term subset is
+  // bound here; identity (name_ar/name_en/logo_url) is loaded and
+  // saved by AccountSettingsPage's workspace section. Extracted into
+  // a callback so the in-tab retry button can re-invoke it after a
+  // transient load failure without forcing a full page refresh.
+  const loadItScheduleSettings = useCallback(async () => {
+    if (!isIndependentTeacher || !api) return;
+    setItSettingsLoadError(false);
+    try {
+      const { data } = await api.get('/independent-teacher/workspace/settings');
+      if (!data) return;
+      setItWorkingDays(Array.isArray(data.working_days) ? data.working_days : []);
+      setItPeriodsPerDay(Number(data.periods_per_day) || 7);
+      setItPeriodMinutes(Number(data.period_minutes) || 45);
+      setItTimezone(data.timezone || 'Asia/Riyadh');
+      setItYearLabel(data.academic_year_label || '');
+      setItTermLabel(data.academic_term_label || '');
+      setItSettingsLoaded(true);
+    } catch (err) {
+      const msg = err?.response?.data?.detail || t('failedToLoadWorkspaceSettings');
+      nassaqError(msg);
+      setItSettingsLoadError(true);
+    }
+  }, [isIndependentTeacher, api, nassaqError, t]);
+
+  useEffect(() => {
+    if (isIndependentTeacher && api) {
+      loadItScheduleSettings();
+    }
+  }, [isIndependentTeacher, api, loadItScheduleSettings]);
+
+  const toggleItWorkingDay = (key) => {
+    setItWorkingDays(prev => prev.includes(key) ? prev.filter(d => d !== key) : [...prev, key]);
+  };
+
+  // Partial PUT — ONLY the schedule + year/term keys are sent so the
+  // identity half (name_ar/name_en/logo_url) owned by AccountSettings
+  // is never overwritten. Backend `_ALLOWED_FIELDS` mask drops any
+  // unknown keys, but client-side discipline keeps the contract clear.
+  const handleSaveItScheduleSettings = async () => {
+    if (!itWorkingDays.length) {
+      nassaqError(t('workingDaysRequired'));
+      return;
+    }
+    if (itPeriodsPerDay < 1 || itPeriodsPerDay > 12) {
+      nassaqError(t('periodsPerDayRange'));
+      return;
+    }
+    if (itPeriodMinutes < 10 || itPeriodMinutes > 120) {
+      nassaqError(t('periodMinutesRange'));
+      return;
+    }
+    setItSettingsSaving(true);
+    try {
+      const payload = {
+        working_days: itWorkingDays,
+        periods_per_day: Number(itPeriodsPerDay),
+        period_minutes: Number(itPeriodMinutes),
+        timezone: itTimezone,
+      };
+      if (itYearLabel?.trim()) payload.academic_year_label = itYearLabel.trim();
+      if (itTermLabel?.trim()) payload.academic_term_label = itTermLabel.trim();
+      await api.put('/independent-teacher/workspace/settings', payload);
+      toast.success(t('workspaceSettingsSaved'));
+    } catch (err) {
+      const msg = err?.response?.data?.detail || t('failedToSaveWorkspaceSettings');
+      nassaqError(msg);
+    } finally {
+      setItSettingsSaving(false);
+    }
+  };
 
   const handleOpenAddClassDialog = () => {
     // Independent-Teacher (workspace mode): open the simplified create-class
@@ -1438,6 +1565,31 @@ export default function TeacherClassesPage() {
                 )}
               </button>
             )}
+            {/* 2026-05-19 — IT-only "إعدادات الجدول" tab. Hosts the
+                schedule baseline + active year/term form relocated
+                from the standalone WorkspaceSettingsPage. Backend
+                endpoint and auth contract are unchanged — partial
+                PUT keeps identity (managed in Account Settings) and
+                schedule halves independent. */}
+            {_isITUser && (
+              <button
+                onClick={() => handleTabChange('settings')}
+                className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative ${
+                  activeTab === 'settings'
+                    ? 'text-brand-navy dark:text-brand-turquoise'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                data-testid="teacher-classes-settings-tab"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Settings className="h-4 w-4" />
+                  {t('itScheduleTabLabel')}
+                </span>
+                {activeTab === 'settings' && (
+                  <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -1463,6 +1615,169 @@ export default function TeacherClassesPage() {
           // a duplicate page-level header. Dialog renders via Radix
           // portal so the tab's overflow doesn't clip the modal.
           <TeacherSubjectsPanel embedded />
+        ) : activeTab === 'settings' ? (
+          // 2026-05-19 — IT-only "إعدادات الجدول" panel. Schedule
+          // baseline + active year/term, relocated from the standalone
+          // WorkspaceSettingsPage. Identity (name/logo) is owned by
+          // AccountSettingsPage's workspace section; we PUT only the
+          // schedule + year/term keys so the two halves stay isolated.
+          <div className="max-w-4xl mx-auto space-y-6" data-testid="it-schedule-settings-panel">
+            {itSettingsLoadError && !itSettingsLoaded && (
+              <Card className="card-nassaq border-red-200 bg-red-50/40">
+                <CardContent className="pt-5 pb-5 flex items-center justify-between gap-3">
+                  <span className="text-sm font-cairo text-red-700">
+                    {t('failedToLoadWorkspaceSettings')}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={loadItScheduleSettings}
+                    className="rounded-xl gap-2"
+                    data-testid="retry-it-schedule-settings"
+                  >
+                    <Loader2 className="h-4 w-4" />
+                    {t('retry')}
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+            <Card className="card-nassaq border-workspace-accent-border">
+              <CardHeader className="pb-4 border-b border-workspace-accent-border bg-workspace-accent-light/40">
+                <CardTitle className="font-cairo flex items-center gap-2 text-lg text-workspace-accent-fg">
+                  <Clock className="h-5 w-5 text-workspace-accent" />
+                  {t('itScheduleSettingsTitle')}
+                </CardTitle>
+                <p className="text-xs text-workspace-accent-fg/70 font-tajawal mt-1">
+                  {t('itScheduleSettingsDesc')}
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-5 pt-5">
+                <div>
+                  <Label className="mb-3 block font-cairo text-sm">{t('workingDaysLabel')}</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {IT_SETTINGS_WEEKDAYS.map(d => {
+                      const on = itWorkingDays.includes(d.key);
+                      return (
+                        <label
+                          key={d.key}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition ${on
+                            ? 'bg-workspace-accent-light border-workspace-accent text-workspace-accent-fg'
+                            : 'bg-white border-slate-200 text-slate-600 hover:border-workspace-accent/50'
+                          }`}
+                          data-testid={`it-workspace-day-${d.key}`}
+                        >
+                          <Checkbox
+                            checked={on}
+                            onCheckedChange={() => toggleItWorkingDay(d.key)}
+                            disabled={!itSettingsLoaded}
+                          />
+                          <span className="text-sm font-medium font-cairo">{t(d.i18n)}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label className="mb-2 block font-cairo text-sm">{t('periodsPerDayLabel')}</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={12}
+                      value={itPeriodsPerDay}
+                      onChange={e => setItPeriodsPerDay(parseInt(e.target.value || '0', 10))}
+                      className="h-11 rounded-xl"
+                      data-testid="it-workspace-periods-input"
+                      disabled={!itSettingsLoaded}
+                    />
+                  </div>
+                  <div>
+                    <Label className="mb-2 block font-cairo text-sm">{t('periodMinutesLabel')}</Label>
+                    <Input
+                      type="number"
+                      min={10}
+                      max={120}
+                      value={itPeriodMinutes}
+                      onChange={e => setItPeriodMinutes(parseInt(e.target.value || '0', 10))}
+                      className="h-11 rounded-xl"
+                      data-testid="it-workspace-period-minutes-input"
+                      disabled={!itSettingsLoaded}
+                    />
+                  </div>
+                  <div>
+                    <Label className="mb-2 block font-cairo text-sm">{t('timezone')}</Label>
+                    <Select
+                      value={itTimezone}
+                      onValueChange={setItTimezone}
+                      disabled={!itSettingsLoaded}
+                    >
+                      <SelectTrigger
+                        className="h-11 rounded-xl"
+                        data-testid="it-workspace-timezone-select"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {IT_SETTINGS_TIMEZONES.map(z => (
+                          <SelectItem key={z} value={z}>{z}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="card-nassaq border-workspace-accent-border">
+              <CardHeader className="pb-4 border-b border-workspace-accent-border bg-workspace-accent-light/40">
+                <CardTitle className="font-cairo flex items-center gap-2 text-lg text-workspace-accent-fg">
+                  <Calendar className="h-5 w-5 text-workspace-accent" />
+                  {t('academicYearSectionTitle')}
+                </CardTitle>
+                <p className="text-xs text-workspace-accent-fg/70 font-tajawal mt-1">
+                  {t('academicYearSectionDesc')}
+                </p>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-5">
+                <div>
+                  <Label className="mb-2 block font-cairo text-sm">{t('academicYearNameLabel')}</Label>
+                  <Input
+                    dir={isRTL ? 'rtl' : 'ltr'}
+                    value={itYearLabel}
+                    onChange={e => setItYearLabel(e.target.value)}
+                    className="h-11 rounded-xl"
+                    placeholder={t('academicYearNamePlaceholder')}
+                    data-testid="it-workspace-year-label-input"
+                    disabled={!itSettingsLoaded}
+                  />
+                </div>
+                <div>
+                  <Label className="mb-2 block font-cairo text-sm">{t('academicTermNameLabel')}</Label>
+                  <Input
+                    dir={isRTL ? 'rtl' : 'ltr'}
+                    value={itTermLabel}
+                    onChange={e => setItTermLabel(e.target.value)}
+                    className="h-11 rounded-xl"
+                    placeholder={t('academicTermNamePlaceholder')}
+                    data-testid="it-workspace-term-label-input"
+                    disabled={!itSettingsLoaded}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-end">
+              <Button
+                onClick={handleSaveItScheduleSettings}
+                disabled={itSettingsSaving || !itSettingsLoaded}
+                className="bg-workspace-accent hover:bg-workspace-accent-fg text-white rounded-xl gap-2 min-w-[160px] h-11"
+                data-testid="save-it-schedule-settings"
+              >
+                {itSettingsSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {t('saveChanges2')}
+              </Button>
+            </div>
+          </div>
         ) : (
           <>
           {!loading && stats && (

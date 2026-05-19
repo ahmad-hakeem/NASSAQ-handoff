@@ -32,8 +32,10 @@ export { default as TeacherResourcesPage } from './TeacherResourcesPage';
 // `/account/settings` hub (AccountSettingsPage). The legacy route
 // now redirects there, so we no longer export the page component
 // to keep the bundle clean and prevent accidental re-wiring.
-// Independent-Teacher only: reduced workspace settings (Task #189 §5.2).
-export { default as WorkspaceSettingsPage } from './WorkspaceSettingsPage';
+// 2026-05-19 — Standalone WorkspaceSettingsPage retired. Identity
+// moved to AccountSettingsPage's "My Workspace" section; schedule
+// + active year/term moved to TeacherClassesPage's "إعدادات الجدول"
+// tab. /teacher/workspace-settings now redirects to that tab.
 // Independent-Teacher only: manual schedule editor (Task #193 §5.4).
 // 2026-05-18 — Also re-exports the headless `WorkspaceSchedulePanel`
 // so TeacherClassesPage can embed it as its fourth "جدولي" tab.

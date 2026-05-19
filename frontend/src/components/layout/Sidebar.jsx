@@ -488,17 +488,13 @@ export const Sidebar = ({ children }) => {
         roles: ['teacher', 'independent_teacher'],
         dataTour: 'sidebar-account-settings',
       },
-      // Task #189 §5.2 — Independent-Teacher only: reduced workspace
-      // settings (identity + schedule baseline + active year/term).
-      // Restricted to `independent_teacher` so regular teachers (whose
-      // workspace is the school tenant) never see this entry.
-      {
-        icon: Building2,
-        label: 'إعدادات مساحتي',
-        href: '/teacher/workspace-settings',
-        roles: ['independent_teacher'],
-        dataTour: 'sidebar-workspace-settings',
-      },
+      // 2026-05-19 — The standalone "إعدادات مساحتي" sidebar entry
+      // has been retired. Its two halves now live in their natural
+      // homes: identity (name/logo) under Account Settings → My
+      // Workspace, and schedule baseline + active year/term under
+      // فصولي → "إعدادات الجدول" tab. /teacher/workspace-settings
+      // still resolves (it redirects to /teacher/classes?tab=settings)
+      // so existing bookmarks and internal links keep working.
       // Task #193 §5.4 — Independent-Teacher manual schedule editor.
       // 2026-05-18 — The standalone "جدولي" sidebar entry has been
       // folded into the "فصولي" page as a fourth tab so IT users
