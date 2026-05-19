@@ -2540,47 +2540,11 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         child_id: Optional[str] = None,
         current_user: dict = Depends(require_roles([UserRole.PARENT]))
     ):
-        """إرسال رسالة من ولي الأمر"""
-        school_id = current_user.get("tenant_id")
-        receiver = await gd_find_one(db.session, "users", {"id": receiver_id})
-        if not receiver:
-            receiver = await gd_find_one(db.session, "teachers", {"id": receiver_id})
-
-        if not receiver:
-            raise HTTPException(status_code=404, detail="المستلم غير موجود")
-
-        receiver_school = receiver.get("tenant_id") or receiver.get("school_id")
-        if receiver_school and receiver_school != school_id:
-            raise HTTPException(status_code=403, detail="لا يمكنك مراسلة مستخدمين خارج مدرستك")
-
-        message = {
-            "id": str(uuid.uuid4()),
-            "subject": subject,
-            "content": content,
-            "sender_id": current_user.get("id"),
-            "sender_name": current_user.get("full_name"),
-            "sender_role": "parent",
-            "receiver_id": receiver_id,
-            "receiver_name": receiver.get("full_name") or receiver.get("name"),
-            "child_id": child_id,
-            "read_status": False,
-            "status": "sent",
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-
-        await gd_insert(db.session, "messages", message)
-
-        await gd_insert(db.session, "notifications", {
-            "id": str(uuid.uuid4()),
-            "recipient_id": receiver_id,
-            "notification_type": "message",
-            "title": f"رسالة جديدة من ولي أمر: {current_user.get('full_name')}",
-            "message": subject,
-            "read_status": False,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        })
-
-        return {"success": True, "message_id": message["id"]}
+        """هذا المسار القديم مغلق — يُرجى استخدام /parent-portal/quick-message"""
+        raise HTTPException(
+            status_code=410,
+            detail="هذا المسار غير متاح. يُرجى استخدام نقطة النهاية المعتمدة /parent-portal/quick-message"
+        )
 
     # ============= CHILD TEACHERS =============
 

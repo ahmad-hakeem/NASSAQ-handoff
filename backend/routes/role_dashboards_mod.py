@@ -1689,6 +1689,13 @@ async def send_message(
 ):
     """Send message to parents - إرسال رسالة لأولياء الأمور"""
     sender_user_id = current_user.get("id")
+    _snd_role = current_user.get("role", "")
+
+    if _snd_role == "parent":
+        raise HTTPException(
+            status_code=403,
+            detail="أولياء الأمور يجب أن يستخدموا نقطة النهاية /parent-portal/quick-message لإرسال الرسائل"
+        )
 
     raw_recipients = data.get("recipient_ids") or []
     if isinstance(raw_recipients, str):
@@ -1698,7 +1705,6 @@ async def send_message(
         raw_recipients.append(single)
 
     _snd_tenant = current_user.get("tenant_id")
-    _snd_role = current_user.get("role", "")
 
     resolved_recipient_id = None
     for rid in raw_recipients:
