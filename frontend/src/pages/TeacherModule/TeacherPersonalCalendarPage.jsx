@@ -13,12 +13,48 @@ import { AdminCalendar } from '../../components/dashboard/AdminCalendar';
  * Imports/templates are disabled here because the IT route does not
  * (currently) accept bulk CSV uploads — every personal event is
  * authored manually inside the caller's own workspace.
+ *
+ * 2026-05-19 — IA refactor: the standalone /teacher/calendar route is
+ * now a redirect to /teacher/classes?tab=calendar. The page header +
+ * AdminCalendar body was extracted into the named
+ * `TeacherPersonalCalendarPanel` export so it can be embedded as a tab
+ * inside TeacherClassesPage without rendering a nested page shell. The
+ * default export is preserved as a thin wrapper for back-compat.
  */
+export function TeacherPersonalCalendarPanel() {
+  const { t } = useTranslation();
+  return (
+    <div className="mx-auto max-w-4xl space-y-6" data-testid="it-personal-calendar-panel">
+      <div data-testid="teacher-personal-calendar-header">
+        <p className="text-xs font-semibold text-workspace-accent uppercase tracking-wide">
+          مساحتك التعليمية الخاصة
+        </p>
+        <h1 className="text-2xl font-bold text-workspace-accent-fg">
+          تقويمي الشخصي
+        </h1>
+        <p className="text-sm text-slate-500 mt-1">
+          أحداث شخصية لمعلمك المستقل — لا تظهر لأي معلم آخر.
+        </p>
+      </div>
+      <AdminCalendar
+        basePath="/independent-teacher/calendar"
+        importEnabled={false}
+        titleAr="تقويمي الشخصي"
+        titleEn="My Personal Calendar"
+        emptyState={{
+          title: t('itEmptyPersonalCalendarTitle'),
+          description: t('itEmptyPersonalCalendarDescription'),
+          ctaLabel: t('itEmptyPersonalCalendarCta'),
+        }}
+      />
+    </div>
+  );
+}
+
 export default function TeacherPersonalCalendarPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { isRTL } = useTheme();
-  const { t } = useTranslation();
   const isIndependent = (user?.role || '').toLowerCase() === 'independent_teacher';
 
   useEffect(() => {
@@ -29,30 +65,7 @@ export default function TeacherPersonalCalendarPage() {
 
   return (
     <div dir={isRTL ? 'rtl' : 'ltr'} className="min-h-screen bg-slate-50 py-6 px-4">
-      <div className="mx-auto max-w-4xl space-y-6">
-        <div data-testid="teacher-personal-calendar-header">
-          <p className="text-xs font-semibold text-workspace-accent uppercase tracking-wide">
-            مساحتك التعليمية الخاصة
-          </p>
-          <h1 className="text-2xl font-bold text-workspace-accent-fg">
-            تقويمي الشخصي
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            أحداث شخصية لمعلمك المستقل — لا تظهر لأي معلم آخر.
-          </p>
-        </div>
-        <AdminCalendar
-          basePath="/independent-teacher/calendar"
-          importEnabled={false}
-          titleAr="تقويمي الشخصي"
-          titleEn="My Personal Calendar"
-          emptyState={{
-            title: t('itEmptyPersonalCalendarTitle'),
-            description: t('itEmptyPersonalCalendarDescription'),
-            ctaLabel: t('itEmptyPersonalCalendarCta'),
-          }}
-        />
-      </div>
+      <TeacherPersonalCalendarPanel />
     </div>
   );
 }

@@ -2049,7 +2049,7 @@ export const AccountSettingsPage = () => {
                           <QuotaBar label={t('itHubQuotaLessonPlansToday')} used={hub.quota.lesson_plans_today} max={hub.quota.max_lesson_plans_per_day} t={t} testid="it-hub-quota-lesson-plans" history={hub.quotaHistory?.lesson_plans} />
                           <div className="flex justify-end pt-2 border-t border-border/30">
                             <a
-                              href="/teacher/import-students"
+                              href="/teacher/classes?tab=import"
                               className="inline-flex items-center gap-2 text-xs font-cairo text-brand-navy hover:text-brand-turquoise underline-offset-4 hover:underline"
                               data-testid="it-hub-quota-bulk-import-link"
                             >

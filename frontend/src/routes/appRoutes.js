@@ -74,13 +74,21 @@ const TeacherAttendanceManagePage = lazy(() => import("../pages/TeacherModule").
 const TeacherAssessmentsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAssessmentsPage })));
 const TeacherBehaviorPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherBehaviorPage })));
 const TeacherStudentsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherStudentsPage })));
-const ImportStudentsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.ImportStudentsPage })));
-const BulkImportPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.BulkImportPage })));
+// 2026-05-19 — IA refactor: ImportStudentsPage / BulkImportPage default
+// page exports are no longer rendered from any route. The standalone
+// /teacher/import-students and /teacher/bulk-import routes now redirect
+// to /teacher/classes?tab=import, which embeds the headless
+// BulkImportPanel directly. The lazy imports were removed to drop dead
+// code from the route bundle.
 const TeacherAchievementsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAchievementsPage })));
 const TeacherCommunicationPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherCommunicationPage })));
 const TeacherResourcesPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherResourcesPage })));
 const WorkspaceSchedulePage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.WorkspaceSchedulePage })));
-const TeacherPersonalCalendarPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherPersonalCalendarPage })));
+// 2026-05-19 — IA refactor: TeacherPersonalCalendarPage default export
+// is no longer rendered from any route. /teacher/calendar now redirects
+// to /teacher/classes?tab=calendar, which embeds the headless
+// TeacherPersonalCalendarPanel directly. The lazy import was removed
+// to drop dead code from the route bundle.
 const LessonPlannerPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.LessonPlannerPage })));
 const TeacherSubjectsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherSubjectsPage })));
 const TeacherAuditLogPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAuditLogPage })));
@@ -342,21 +350,30 @@ export default function AppRoutes() {
             permission. The FE guard mirrors that contract via
             requiredPermission so a future rbac change that grants the
             permission to additional roles flows through automatically. */}
+        {/* 2026-05-19 — IA refactor: the standalone IT import routes
+            (/teacher/import-students and /teacher/bulk-import) were
+            merged into a single "استيراد البيانات" tab inside
+            /teacher/classes. Both legacy routes now redirect to
+            /teacher/classes?tab=import so existing bookmarks and
+            in-app links keep working. Role + permission gates are
+            preserved via ProtectedRoute, so a user without the
+            relevant RBAC slice still gets the same access decision
+            before the redirect resolves. */}
         <Route path="/teacher/import-students" element={
           <ProtectedRoute
             allowedRoles={['independent_teacher']}
             requiredPermission="students.bulk_import_workspace"
-          ><ImportStudentsPage /></ProtectedRoute>
+          >
+            <Navigate to="/teacher/classes?tab=import" replace />
+          </ProtectedRoute>
         } />
-        {/* Task #278 — IT-only bulk import hub (students / classes /
-            subjects / duplicate-week). Permission-gated on the new
-            `classes.bulk_import_workspace` slice so the link only shows
-            when the user has at least one of the new bulk capabilities. */}
         <Route path="/teacher/bulk-import" element={
           <ProtectedRoute
             allowedRoles={['independent_teacher']}
             requiredPermission="classes.bulk_import_workspace"
-          ><BulkImportPage /></ProtectedRoute>
+          >
+            <Navigate to="/teacher/classes?tab=import" replace />
+          </ProtectedRoute>
         } />
         <Route path="/teacher/sessions" element={<Navigate to="/teacher/classes?tab=sessions" replace />} />
         <Route path="/teacher/achievements" element={
@@ -398,10 +415,16 @@ export default function AppRoutes() {
           </ProtectedRoute>
         } />
         {/* Task #208 §6.3 — Independent-Teacher only: personal calendar.
-            Backend pins tenant_id=itw_{user_id} + created_by=user.id +
+            2026-05-19 — IA refactor: the standalone /teacher/calendar
+            sidebar entry was folded into /teacher/classes as the
+            "تقويمي الشخصي" tab. The legacy route now redirects there
+            so existing bookmarks keep working. Backend still pins
+            tenant_id=itw_{user_id} + created_by=user.id +
             is_personal=True on every read/write. */}
         <Route path="/teacher/calendar" element={
-          <ProtectedRoute allowedRoles={['independent_teacher']}><TeacherPersonalCalendarPage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['independent_teacher']}>
+            <Navigate to="/teacher/classes?tab=calendar" replace />
+          </ProtectedRoute>
         } />
         {/* Task #209 §6.4 — IT-only light AI lesson-planning assistant.
             2026-05-18: relocated into the "فصولي" tabs. The historical

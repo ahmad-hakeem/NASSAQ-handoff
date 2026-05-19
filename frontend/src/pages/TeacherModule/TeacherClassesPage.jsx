@@ -49,6 +49,15 @@ import { WorkspaceSchedulePanel } from './WorkspaceSchedulePage';
 // under one mounted page shell. Same backend contract — no
 // permission widening.
 import { TeacherSubjectsPanel } from './TeacherSubjectsPage';
+// 2026-05-19 — IA refactor: the standalone "استيراد الطلاب" and
+// "الاستيراد الجماعي" sidebar entries were merged into a single
+// "استيراد البيانات" tab here; "تقويمي الشخصي" was folded in as a
+// dedicated tab. We import the named headless panels (NOT the default
+// page exports) so the embedded tab doesn't render a nested Sidebar /
+// page-header shell. Backend contracts, RBAC slices and MFA step-up
+// envelopes are unchanged — the tabs are purely a frontend IA refactor.
+import { BulkImportPanel } from './BulkImportPage';
+import { TeacherPersonalCalendarPanel } from './TeacherPersonalCalendarPage';
 import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialog';
 import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 
@@ -119,6 +128,21 @@ export default function TeacherClassesPage() {
     return () => { cancelled = true; };
   }, [token, fetchPermissions]);
   const canUseLessonPlanner = !!(perms && perms.has('ai.lesson_plans'));
+  // 2026-05-19 — IA refactor: the "استيراد البيانات" and "تقويمي الشخصي"
+  // tabs replace standalone sidebar entries that were each permission-
+  // gated. Mirror those gates here so merging them into TeacherClasses
+  // doesn't widen the FE authorization surface for users who lack the
+  // underlying RBAC slices (the redirect routes still gate too).
+  //  - import tab: shown if the user has EITHER of the two bulk-import
+  //    permissions the retired sidebar entries required, matching
+  //    BulkImportPanel's four sub-tab surface.
+  //  - calendar tab: shown only when `events.author_own` is granted,
+  //    matching the retired /teacher/calendar sidebar entry.
+  const canBulkImport = !!(perms && (
+    perms.has('students.bulk_import_workspace') ||
+    perms.has('classes.bulk_import_workspace')
+  ));
+  const canUsePersonalCalendar = !!(perms && perms.has('events.author_own'));
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const _rawTab = searchParams.get('tab');
@@ -150,6 +174,19 @@ export default function TeacherClassesPage() {
     // WorkspaceSettingsPage). Non-IT users have no workspace schedule
     // to manage, so we coerce back to the default classes view.
     : (_rawTab === 'settings' && _isITUser) ? 'settings'
+    // 2026-05-19 — IT-only "استيراد البيانات" tab. Merges the two
+    // retired sidebar entries ("استيراد الطلاب" + "الاستيراد الجماعي")
+    // into one unified import surface (students / classes / subjects /
+    // duplicate-week). Backend RBAC (students.bulk_import_workspace,
+    // classes.bulk_import_workspace) still gates the individual sub-
+    // tab actions server-side; the tab itself is IT-only so non-IT
+    // users silently fall through to the default classes view.
+    : (_rawTab === 'import' && _isITUser && canBulkImport) ? 'import'
+    // 2026-05-19 — IT-only "تقويمي الشخصي" tab. Hosts the personal
+    // AdminCalendar previously at /teacher/calendar. Backend pins
+    // tenant_id=itw_{user_id} + is_personal=True so non-IT users have
+    // no surface to render and silently coerce back to classes.
+    : (_rawTab === 'calendar' && _isITUser && canUsePersonalCalendar) ? 'calendar'
     : 'classes';
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
@@ -263,6 +300,13 @@ export default function TeacherClassesPage() {
       : (tab === 'schedule' && !_isITUser) ? 'classes'
       : (tab === 'subjects' && !_isITUser) ? 'classes'
       : (tab === 'settings' && !_isITUser) ? 'classes'
+      // 2026-05-19 — IT-only "استيراد البيانات" / "تقويمي الشخصي"
+      // guard: users without the underlying permission (or non-IT
+      // users) silently fall through to the default classes view
+      // rather than landing on an empty/forbidden tab, mirroring the
+      // gating the retired sidebar entries used to enforce.
+      : (tab === 'import' && (!_isITUser || !canBulkImport)) ? 'classes'
+      : (tab === 'calendar' && (!_isITUser || !canUsePersonalCalendar)) ? 'classes'
       : tab;
     setSearchParams(
       safeTab === 'sessions' ? { tab: 'sessions' }
@@ -271,6 +315,8 @@ export default function TeacherClassesPage() {
       : safeTab === 'schedule' ? { tab: 'schedule' }
       : safeTab === 'subjects' ? { tab: 'subjects' }
       : safeTab === 'settings' ? { tab: 'settings' }
+      : safeTab === 'import' ? { tab: 'import' }
+      : safeTab === 'calendar' ? { tab: 'calendar' }
       : {}
     );
   };
@@ -1441,7 +1487,15 @@ export default function TeacherClassesPage() {
               )}
             </div>
           </div>
-          <div className="px-4 sm:px-6 flex gap-0 border-t border-border/30">
+          {/* 2026-05-19 — IA refactor: the tab strip now hosts up to
+              seven IT-only entries (classes / sessions / lesson-planner
+              / schedule / subjects / settings / import / calendar) plus
+              the role-gated "حصص الانتظار". `overflow-x-auto flex-nowrap`
+              keeps the strip a single horizontal scroller in RTL on
+              narrow viewports instead of wrapping into a second row
+              that breaks the sticky-band layout. `scrollbar-thin`
+              keeps the scrollbar unobtrusive when it does appear. */}
+          <div className="px-4 sm:px-6 flex gap-0 border-t border-border/30 overflow-x-auto flex-nowrap scrollbar-thin">
             <button
               onClick={() => handleTabChange('classes')}
               className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative ${
@@ -1574,7 +1628,7 @@ export default function TeacherClassesPage() {
             {_isITUser && (
               <button
                 onClick={() => handleTabChange('settings')}
-                className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative ${
+                className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative whitespace-nowrap ${
                   activeTab === 'settings'
                     ? 'text-brand-navy dark:text-brand-turquoise'
                     : 'text-muted-foreground hover:text-foreground'
@@ -1586,6 +1640,60 @@ export default function TeacherClassesPage() {
                   {t('itScheduleTabLabel')}
                 </span>
                 {activeTab === 'settings' && (
+                  <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
+                )}
+              </button>
+            )}
+            {/* 2026-05-19 — IT-only "استيراد البيانات" tab. Merges the
+                two retired sidebar entries ("استيراد الطلاب" +
+                "الاستيراد الجماعي") into one unified import surface
+                rendered by BulkImportPanel (which itself hosts the
+                four sub-tabs: students / classes / subjects /
+                duplicate-week). The Upload icon matches the retired
+                sidebar items so the visual grammar carries over.
+                Permission-gated on EITHER bulk-import slice so a user
+                with only one of the two retired sidebar entries still
+                sees the merged tab (BulkImportPanel sub-tabs continue
+                to be gated server-side per action). */}
+            {_isITUser && canBulkImport && (
+              <button
+                onClick={() => handleTabChange('import')}
+                className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative whitespace-nowrap ${
+                  activeTab === 'import'
+                    ? 'text-brand-navy dark:text-brand-turquoise'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                data-testid="teacher-classes-import-tab"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Upload className="h-4 w-4" />
+                  {t('itImportDataTab')}
+                </span>
+                {activeTab === 'import' && (
+                  <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
+                )}
+              </button>
+            )}
+            {/* 2026-05-19 — IT-only "تقويمي الشخصي" tab. Hosts the
+                personal AdminCalendar previously at /teacher/calendar.
+                Calendar icon matches the retired sidebar entry.
+                Permission-gated on `events.author_own` to mirror the
+                Sidebar gate the standalone entry used. */}
+            {_isITUser && canUsePersonalCalendar && (
+              <button
+                onClick={() => handleTabChange('calendar')}
+                className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative whitespace-nowrap ${
+                  activeTab === 'calendar'
+                    ? 'text-brand-navy dark:text-brand-turquoise'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                data-testid="teacher-classes-calendar-tab"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="h-4 w-4" />
+                  {t('itPersonalCalendarTab')}
+                </span>
+                {activeTab === 'calendar' && (
                   <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
                 )}
               </button>
@@ -1615,6 +1723,29 @@ export default function TeacherClassesPage() {
           // a duplicate page-level header. Dialog renders via Radix
           // portal so the tab's overflow doesn't clip the modal.
           <TeacherSubjectsPanel embedded />
+        ) : activeTab === 'import' ? (
+          // 2026-05-19 — Unified IT import surface. BulkImportPanel
+          // already exposes its own sub-tabs (students / classes /
+          // subjects / duplicate-week); the students sub-tab uses the
+          // headless ImportStudentsPanel directly so no nested Sidebar
+          // or page header is rendered. Backend RBAC + MFA step-up
+          // are enforced server-side per sub-tab as before.
+          <div className="max-w-5xl mx-auto" data-testid="it-import-data-tab">
+            {/* Pass the full perms Set so sub-tab visibility matches
+                the per-permission Sidebar gating the retired entries
+                used to enforce: students sub-tab requires
+                students.bulk_import_workspace; classes/subjects/
+                duplicate-week sub-tabs require
+                classes.bulk_import_workspace. */}
+            <BulkImportPanel permissions={perms} />
+          </div>
+        ) : activeTab === 'calendar' ? (
+          // 2026-05-19 — Personal calendar panel. Headless variant
+          // (no min-h-screen wrapper, no isIndependent redirect — the
+          // tab is already IT-gated via _isITUser at the resolver
+          // level above). Backend pins tenant_id=itw_{user_id} +
+          // is_personal=True so the data is naturally workspace-scoped.
+          <TeacherPersonalCalendarPanel />
         ) : activeTab === 'settings' ? (
           // 2026-05-19 — IT-only "إعدادات الجدول" panel. Schedule
           // baseline + active year/term, relocated from the standalone

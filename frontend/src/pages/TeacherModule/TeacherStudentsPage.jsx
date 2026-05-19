@@ -649,7 +649,7 @@ export default function TeacherStudentsPage() {
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => _navigate('/teacher/import-students')}
+                      onClick={() => _navigate('/teacher/classes?tab=import')}
                       className="rounded-xl gap-2 px-5 border-workspace-accent-border text-workspace-accent-fg hover:bg-workspace-accent-light/60"
                       data-testid="teacher-students-empty-state-import-cta"
                     >

@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -12,6 +11,14 @@ import { Loader2, Upload, FileSpreadsheet, CheckCircle, AlertTriangle } from 'lu
 // CSV headers (Arabic-only per spec): الاسم الكامل, رقم الهوية, الجنس, تاريخ الميلاد, الصف.
 // No classroom column. /commit is gated server-side by require_recent_mfa_403,
 // and the global axios interceptor in AuthContext replays after passkey assertion.
+//
+// 2026-05-19 — IA refactor: the standalone "استيراد الطلاب" page was
+// folded into /teacher/classes as a sub-tab inside "استيراد البيانات".
+// The page-level shell (Sidebar + main + page header) was removed and
+// the form was extracted into the named `ImportStudentsPanel` export
+// so it can be embedded as a sub-tab inside BulkImportPanel without
+// rendering a nested page shell. The default export is preserved as a
+// thin wrapper so any historical lazy import keeps resolving.
 
 const SAMPLE_HEADERS = ['الاسم الكامل', 'رقم الهوية', 'الجنس', 'تاريخ الميلاد', 'الصف'];
 
@@ -32,7 +39,7 @@ function downloadSampleCsv() {
   URL.revokeObjectURL(url);
 }
 
-export default function ImportStudentsPage() {
+export function ImportStudentsPanel() {
   const { api } = useAuth();
   const { nassaqError, nassaqInfo, nassaqConfirm } = useNassaqAlert();
   const fileRef = useRef(null);
@@ -110,140 +117,141 @@ export default function ImportStudentsPage() {
   const quota = parseResult?.quota || {};
 
   return (
-    <div className="flex min-h-screen bg-gray-50" dir="rtl">
-      <Sidebar />
-      <main className="flex-1 p-6 space-y-6 max-w-5xl mx-auto">
-        <header className="space-y-1">
-          <h1 className="text-2xl font-bold text-gray-900">استيراد الطلاب</h1>
-          <p className="text-sm text-gray-600">
-            استيراد قائمة طلابك من ملف CSV — الأعمدة باللغة العربية فقط، بدون تعيين فصول.
-          </p>
-        </header>
+    <div className="space-y-6" data-testid="it-import-students-panel">
+      <p className="text-sm text-gray-600">
+        استيراد قائمة طلابك من ملف CSV — الأعمدة باللغة العربية فقط، بدون تعيين فصول.
+      </p>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FileSpreadsheet className="w-5 h-5" /> الخطوة 1 — اختيار الملف
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-gray-600">
+            الأعمدة المتوقعة:&nbsp;
+            <span className="font-mono">{SAMPLE_HEADERS.join(' | ')}</span>
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="outline"
+              onClick={() => fileRef.current?.click()}
+              disabled={parsing || committing}
+            >
+              {parsing ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Upload className="w-4 h-4 ml-2" />}
+              اختيار ملف CSV
+            </Button>
+            <Button variant="ghost" onClick={downloadSampleCsv}>
+              تنزيل قالب جاهز
+            </Button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={handleFile}
+            />
+            {fileName && (
+              <span className="text-xs text-gray-500 self-center">{fileName}</span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {parseResult && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <FileSpreadsheet className="w-5 h-5" /> الخطوة 1 — اختيار الملف
+              <CheckCircle className="w-5 h-5" /> الخطوة 2 — مراجعة وتأكيد
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-gray-600">
-              الأعمدة المتوقعة:&nbsp;
-              <span className="font-mono">{SAMPLE_HEADERS.join(' | ')}</span>
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <Button
-                variant="outline"
-                onClick={() => fileRef.current?.click()}
-                disabled={parsing || committing}
-              >
-                {parsing ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Upload className="w-4 h-4 ml-2" />}
-                اختيار ملف CSV
-              </Button>
-              <Button variant="ghost" onClick={downloadSampleCsv}>
-                تنزيل قالب جاهز
-              </Button>
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".csv,text/csv"
-                className="hidden"
-                onChange={handleFile}
-              />
-              {fileName && (
-                <span className="text-xs text-gray-500 self-center">{fileName}</span>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="secondary">إجمالي الصفوف: {parseResult.total_rows}</Badge>
+              <Badge className="bg-green-100 text-green-800">صحيحة: {parseResult.valid_count}</Badge>
+              <Badge className="bg-red-100 text-red-800">غير صحيحة: {parseResult.invalid_count}</Badge>
+              {quota?.max_students != null && (
+                <Badge variant="outline">
+                  الطلاب الحاليون: {quota.current_students ?? 0} / {quota.max_students}
+                </Badge>
               )}
+              {quota?.max_imports_per_day != null && (
+                <Badge variant="outline">
+                  استيراد اليوم: {quota.imports_today ?? 0} / {quota.max_imports_per_day}
+                </Badge>
+              )}
+            </div>
+
+            <div className="border rounded-md overflow-hidden">
+              <ResponsiveTable
+                ariaLabel="معاينة الطلاب المستوردين"
+                rows={parseResult.rows || []}
+                getRowKey={(r) => r.row_number}
+                rowClassName=""
+                columns={[
+                  {
+                    key: 'full_name',
+                    header: 'الاسم الكامل',
+                    primary: true,
+                    render: (r) => (
+                      <span className={r.is_valid ? '' : 'text-red-700'}>
+                        {`#${r.row_number} — ${r.full_name || '—'}`}
+                      </span>
+                    ),
+                  },
+                  { key: 'national_id', header: 'رقم الهوية', render: (r) => r.national_id || '—' },
+                  {
+                    key: 'gender',
+                    header: 'الجنس',
+                    render: (r) => (r.gender === 'male' ? 'ذكر' : r.gender === 'female' ? 'أنثى' : '—'),
+                  },
+                  { key: 'date_of_birth', header: 'تاريخ الميلاد', render: (r) => r.date_of_birth || '—' },
+                  { key: 'grade_level', header: 'الصف', render: (r) => r.grade_level || '—' },
+                  {
+                    key: 'status',
+                    header: 'الحالة',
+                    render: (r) => (
+                      r.is_valid ? (
+                        <span className="inline-flex items-center gap-1 text-green-700">
+                          <CheckCircle className="w-4 h-4" /> جاهز
+                        </span>
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1 text-red-700"
+                          title={(r.errors || []).join('، ')}
+                        >
+                          <AlertTriangle className="w-4 h-4" /> {(r.errors || [])[0] || 'غير صالح'}
+                        </span>
+                      )
+                    ),
+                  },
+                ]}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => { setParseResult(null); setFileName(''); }}>
+                إلغاء
+              </Button>
+              <Button
+                onClick={onCommit}
+                disabled={committing || !validRows.length}
+              >
+                {committing && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
+                تأكيد الاستيراد ({validRows.length})
+              </Button>
             </div>
           </CardContent>
         </Card>
-
-        {parseResult && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <CheckCircle className="w-5 h-5" /> الخطوة 2 — مراجعة وتأكيد
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary">إجمالي الصفوف: {parseResult.total_rows}</Badge>
-                <Badge className="bg-green-100 text-green-800">صحيحة: {parseResult.valid_count}</Badge>
-                <Badge className="bg-red-100 text-red-800">غير صحيحة: {parseResult.invalid_count}</Badge>
-                {quota?.max_students != null && (
-                  <Badge variant="outline">
-                    الطلاب الحاليون: {quota.current_students ?? 0} / {quota.max_students}
-                  </Badge>
-                )}
-                {quota?.max_imports_per_day != null && (
-                  <Badge variant="outline">
-                    استيراد اليوم: {quota.imports_today ?? 0} / {quota.max_imports_per_day}
-                  </Badge>
-                )}
-              </div>
-
-              <div className="border rounded-md overflow-hidden">
-                <ResponsiveTable
-                  ariaLabel="معاينة الطلاب المستوردين"
-                  rows={parseResult.rows || []}
-                  getRowKey={(r) => r.row_number}
-                  rowClassName=""
-                  columns={[
-                    {
-                      key: 'full_name',
-                      header: 'الاسم الكامل',
-                      primary: true,
-                      render: (r) => (
-                        <span className={r.is_valid ? '' : 'text-red-700'}>
-                          {`#${r.row_number} — ${r.full_name || '—'}`}
-                        </span>
-                      ),
-                    },
-                    { key: 'national_id', header: 'رقم الهوية', render: (r) => r.national_id || '—' },
-                    {
-                      key: 'gender',
-                      header: 'الجنس',
-                      render: (r) => (r.gender === 'male' ? 'ذكر' : r.gender === 'female' ? 'أنثى' : '—'),
-                    },
-                    { key: 'date_of_birth', header: 'تاريخ الميلاد', render: (r) => r.date_of_birth || '—' },
-                    { key: 'grade_level', header: 'الصف', render: (r) => r.grade_level || '—' },
-                    {
-                      key: 'status',
-                      header: 'الحالة',
-                      render: (r) => (
-                        r.is_valid ? (
-                          <span className="inline-flex items-center gap-1 text-green-700">
-                            <CheckCircle className="w-4 h-4" /> جاهز
-                          </span>
-                        ) : (
-                          <span
-                            className="inline-flex items-center gap-1 text-red-700"
-                            title={(r.errors || []).join('، ')}
-                          >
-                            <AlertTriangle className="w-4 h-4" /> {(r.errors || [])[0] || 'غير صالح'}
-                          </span>
-                        )
-                      ),
-                    },
-                  ]}
-                />
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={() => { setParseResult(null); setFileName(''); }}>
-                  إلغاء
-                </Button>
-                <Button
-                  onClick={onCommit}
-                  disabled={committing || !validRows.length}
-                >
-                  {committing && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
-                  تأكيد الاستيراد ({validRows.length})
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </main>
+      )}
     </div>
   );
+}
+
+// Back-compat default export. The standalone route has been retired and
+// now redirects to /teacher/classes?tab=import, but downstream code that
+// still imports the default keeps working by rendering the panel.
+export default function ImportStudentsPage() {
+  return <ImportStudentsPanel />;
 }

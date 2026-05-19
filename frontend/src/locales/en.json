@@ -4378,6 +4378,8 @@
   "uploadWorkspaceLogo": "Upload workspace logo",
   "removeLogo": "Remove logo",
   "itScheduleTabLabel": "Schedule Settings",
+  "itImportDataTab": "Import Data",
+  "itPersonalCalendarTab": "My Calendar",
   "itScheduleSettingsTitle": "Schedule Settings",
   "itScheduleSettingsDesc": "Working days, periods per day, and their duration.",
   "workingDaysLabel": "Working days",

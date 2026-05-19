@@ -12,7 +12,11 @@ import {
   Loader2, Upload, FileSpreadsheet, CheckCircle, AlertTriangle,
   Users, Layers, BookOpen, Calendar,
 } from 'lucide-react';
-import ImportStudentsPage from './ImportStudentsPage';
+// 2026-05-19 — IA refactor: import the headless panel directly so the
+// students sub-tab no longer renders a nested Sidebar + main shell via
+// the old `[&_aside]:hidden` CSS hack. ImportStudentsPage still exports
+// a default for back-compat, but we want the clean panel surface here.
+import { ImportStudentsPanel } from './ImportStudentsPage';
 
 // Task #278 — IT bulk-import hub with four tabs (students / classes /
 // subjects / duplicate-week). Re-uses the existing students importer
@@ -495,54 +499,99 @@ function DuplicateWeekTab() {
   );
 }
 
+// 2026-05-19 — IA refactor: extracted the inner Tabs block into a
+// headless panel so /teacher/classes can embed it as the "استيراد
+// البيانات" tab without rendering a nested page shell. The standalone
+// route (/teacher/bulk-import) is now a redirect to ?tab=import; the
+// default `BulkImportPage` is preserved as a thin wrapper only for
+// back-compat with any lazy import that still references it.
+//
+// Per-subtab permission gating (mirrors the retired Sidebar entries):
+//   - "students"   sub-tab → `students.bulk_import_workspace`
+//                            (the old "استيراد الطلاب" sidebar entry)
+//   - "classes"  / "subjects" / "duplicate-week" sub-tabs →
+//                            `classes.bulk_import_workspace`
+//                            (the old "الاستيراد الجماعي" hub entry)
+// `permissions` is an optional Set passed from TeacherClassesPage. When
+// omitted (e.g. legacy back-compat callers) all sub-tabs render so
+// existing screenshots / tests keep working; the backend always remains
+// the authoritative enforcement boundary on the /parse and /commit
+// endpoints regardless of FE visibility.
+export function BulkImportPanel({ permissions = null } = {}) {
+  const hasPerm = (key) => (permissions ? permissions.has(key) : true);
+  const canStudents = hasPerm('students.bulk_import_workspace');
+  const canClasses = hasPerm('classes.bulk_import_workspace');
+  // Default to the highest-priority allowed sub-tab so users who only
+  // have students-import don't land on a disabled "classes" panel.
+  const defaultTab = canStudents
+    ? 'students'
+    : canClasses ? 'classes' : 'students';
+  const [tab, setTab] = useState(defaultTab);
+  return (
+    <div className="space-y-6" dir="rtl" data-testid="it-bulk-import-panel">
+      <p className="text-sm text-gray-600">
+        استيراد طلاب وفصول ومواد من ملفات CSV، أو نسخ جدول أسبوع كامل
+        إلى الأسبوع التالي. كل العمليات تخضع لحدود حسابك المستقل.
+      </p>
+
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList className="flex flex-wrap gap-1">
+          {canStudents && (
+            <TabsTrigger value="students" className="gap-2" data-testid="it-bulk-import-tab-students">
+              <Users className="w-4 h-4" /> الطلاب
+            </TabsTrigger>
+          )}
+          {canClasses && (
+            <TabsTrigger value="classes" className="gap-2" data-testid="it-bulk-import-tab-classes">
+              <Layers className="w-4 h-4" /> الفصول
+            </TabsTrigger>
+          )}
+          {canClasses && (
+            <TabsTrigger value="subjects" className="gap-2" data-testid="it-bulk-import-tab-subjects">
+              <BookOpen className="w-4 h-4" /> المواد
+            </TabsTrigger>
+          )}
+          {canClasses && (
+            <TabsTrigger value="duplicate-week" className="gap-2" data-testid="it-bulk-import-tab-duplicate-week">
+              <Calendar className="w-4 h-4" /> نسخ الأسبوع
+            </TabsTrigger>
+          )}
+        </TabsList>
+
+        {canStudents && (
+          <TabsContent value="students" className="mt-4">
+            <ImportStudentsPanel />
+          </TabsContent>
+        )}
+        {canClasses && (
+          <TabsContent value="classes" className="mt-4">
+            <ClassesTab />
+          </TabsContent>
+        )}
+        {canClasses && (
+          <TabsContent value="subjects" className="mt-4">
+            <SubjectsTab />
+          </TabsContent>
+        )}
+        {canClasses && (
+          <TabsContent value="duplicate-week" className="mt-4">
+            <DuplicateWeekTab />
+          </TabsContent>
+        )}
+      </Tabs>
+    </div>
+  );
+}
+
 export default function BulkImportPage() {
-  const [tab, setTab] = useState('students');
   return (
     <div className="flex min-h-screen bg-gray-50" dir="rtl">
       <Sidebar />
       <main className="flex-1 p-6 space-y-6 max-w-5xl mx-auto">
         <header className="space-y-1">
           <h1 className="text-2xl font-bold text-gray-900">الاستيراد الجماعي</h1>
-          <p className="text-sm text-gray-600">
-            استيراد طلاب وفصول ومواد من ملفات CSV، أو نسخ جدول أسبوع كامل
-            إلى الأسبوع التالي. كل العمليات تخضع لحدود حسابك المستقل.
-          </p>
         </header>
-
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="flex flex-wrap gap-1">
-            <TabsTrigger value="students" className="gap-2">
-              <Users className="w-4 h-4" /> الطلاب
-            </TabsTrigger>
-            <TabsTrigger value="classes" className="gap-2">
-              <Layers className="w-4 h-4" /> الفصول
-            </TabsTrigger>
-            <TabsTrigger value="subjects" className="gap-2">
-              <BookOpen className="w-4 h-4" /> المواد
-            </TabsTrigger>
-            <TabsTrigger value="duplicate-week" className="gap-2">
-              <Calendar className="w-4 h-4" /> نسخ الأسبوع
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="students" className="mt-4">
-            {/* Reuse the existing standalone page so we don't fork its
-                logic; it includes its own Sidebar shell which is hidden
-                inside the tab via CSS overrides on the wrapper. */}
-            <div className="[&_aside]:hidden [&>div]:!block [&>div>main]:!p-0 [&>div>main]:!max-w-none">
-              <ImportStudentsPage />
-            </div>
-          </TabsContent>
-          <TabsContent value="classes" className="mt-4">
-            <ClassesTab />
-          </TabsContent>
-          <TabsContent value="subjects" className="mt-4">
-            <SubjectsTab />
-          </TabsContent>
-          <TabsContent value="duplicate-week" className="mt-4">
-            <DuplicateWeekTab />
-          </TabsContent>
-        </Tabs>
+        <BulkImportPanel />
       </main>
     </div>
   );

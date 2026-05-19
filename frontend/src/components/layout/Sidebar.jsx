@@ -503,17 +503,12 @@ export const Sidebar = ({ children }) => {
       // (it redirects to /teacher/classes?tab=schedule) so existing
       // bookmarks and internal links keep working.
       // Task #208 §6.3 — Independent-Teacher only: personal calendar.
-      // Role-gated AND permission-gated on the new `events.author_own`
-      // permission so the link is only shown when the backend RBAC
-      // slice actually exposes the route to this user.
-      {
-        icon: CalendarDays,
-        label: 'تقويمي الشخصي',
-        href: '/teacher/calendar',
-        roles: ['independent_teacher'],
-        permission: 'events.author_own',
-        dataTour: 'sidebar-calendar',
-      },
+      // 2026-05-19 — The standalone "تقويمي الشخصي" sidebar entry has
+      // been folded into the "فصولي" page as a "تقويمي الشخصي" tab so
+      // IT users get one mounted shell for everything class-adjacent.
+      // /teacher/calendar still resolves (it redirects to
+      // /teacher/classes?tab=calendar) so existing bookmarks and
+      // permission gating (events.author_own) keep working.
       // Task #190 §5.3 — IT-only workspace subjects CRUD.
       // 2026-05-18 — The standalone "المواد" sidebar entry has been
       // folded into the "فصولي" page as a fifth tab so IT users
@@ -521,29 +516,17 @@ export const Sidebar = ({ children }) => {
       // under one mounted shell. /teacher/subjects still resolves
       // (redirects to /teacher/classes?tab=subjects) so old bookmarks
       // and the create-class dialog dropdown keep working.
-      // Task #207 §6.1 — IT-only workspace-aware bulk student import.
-      // Permission-gated on `students.bulk_import_workspace` so a
-      // future RBAC change that grants the permission to additional
-      // roles surfaces the link automatically.
-      {
-        icon: Upload,
-        label: 'استيراد الطلاب',
-        href: '/teacher/import-students',
-        roles: ['independent_teacher'],
-        permission: 'students.bulk_import_workspace',
-        dataTour: 'sidebar-import-students',
-      },
-      // Task #278 — IT-only bulk-import hub (students / classes /
-      // subjects / duplicate-week). Permission-gated on the new
-      // `classes.bulk_import_workspace` slice.
-      {
-        icon: Upload,
-        label: 'الاستيراد الجماعي',
-        href: '/teacher/bulk-import',
-        roles: ['independent_teacher'],
-        permission: 'classes.bulk_import_workspace',
-        dataTour: 'sidebar-bulk-import',
-      },
+      // Task #207 §6.1 / Task #278 — IT-only bulk imports.
+      // 2026-05-19 — Both standalone IT import entries ("استيراد الطلاب"
+      // and "الاستيراد الجماعي") have been merged into a single
+      // "استيراد البيانات" tab inside /teacher/classes. The merged tab
+      // hosts the four sub-tabs (الطلاب / الفصول / المواد / نسخ الأسبوع)
+      // and reuses the same headless panels — backend contracts,
+      // permission gates (students.bulk_import_workspace,
+      // classes.bulk_import_workspace) and MFA step-up are unchanged.
+      // /teacher/import-students and /teacher/bulk-import still resolve
+      // (they redirect to /teacher/classes?tab=import) so historical
+      // bookmarks and in-app links keep working.
       // Task #185 — IT-only subjects CRUD page (workspace-scoped).
       // 2026-05-18 — Duplicate "موادي" sidebar entry removed; the
       // primary entry point is now the "المواد" tab inside

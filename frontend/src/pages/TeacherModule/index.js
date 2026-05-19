@@ -17,9 +17,14 @@ export { default as TeacherAttendanceManagePage } from './TeacherAttendanceManag
 export { default as TeacherAssessmentsPage } from './TeacherAssessmentsPage';
 export { default as TeacherBehaviorPage } from './TeacherBehaviorPage';
 export { default as TeacherStudentsPage } from './TeacherStudentsPage';
-export { default as ImportStudentsPage } from './ImportStudentsPage';
+// 2026-05-19 — IA refactor: standalone /teacher/import-students and
+// /teacher/bulk-import routes were folded into TeacherClassesPage as
+// a single "استيراد البيانات" tab. The default page exports remain
+// for back-compat; the embedded surface uses the headless panels
+// `ImportStudentsPanel` and `BulkImportPanel`.
+export { default as ImportStudentsPage, ImportStudentsPanel } from './ImportStudentsPage';
 // Task #278 — IT bulk-import hub (students / classes / subjects / duplicate-week).
-export { default as BulkImportPage } from './BulkImportPage';
+export { default as BulkImportPage, BulkImportPanel } from './BulkImportPage';
 export { default as TeacherAchievementsPage } from './TeacherAchievementsPage';
 export { default as TeacherCommunicationPage } from './TeacherCommunicationPage';
 // 2026-05-18 — Unified "التواصل والإشعارات" hub (IT-only) merges
@@ -45,7 +50,11 @@ export { default as WorkspaceSchedulePage, WorkspaceSchedulePanel } from './Work
 // as a fifth "المواد" tab without rendering a nested Sidebar.
 export { default as TeacherSubjectsPage, TeacherSubjectsPanel } from './TeacherSubjectsPage';
 // Independent-Teacher only: personal calendar (Task #208 §6.3).
-export { default as TeacherPersonalCalendarPage } from './TeacherPersonalCalendarPage';
+// 2026-05-19 — IA refactor: also re-exports the headless
+// `TeacherPersonalCalendarPanel` so TeacherClassesPage can embed it
+// as the "تقويمي الشخصي" tab. /teacher/calendar redirects to
+// /teacher/classes?tab=calendar so existing bookmarks keep working.
+export { default as TeacherPersonalCalendarPage, TeacherPersonalCalendarPanel } from './TeacherPersonalCalendarPage';
 // Independent-Teacher only: light AI lesson-planning assistant (Task #209 §6.4).
 export { default as LessonPlannerPage, LessonPlannerPanel } from './LessonPlannerPage';
 // 2026-05-18 — Duplicate `TeacherSubjectsPage` export removed; the

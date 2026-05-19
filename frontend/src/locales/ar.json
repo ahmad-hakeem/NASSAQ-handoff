@@ -4378,6 +4378,8 @@
   "uploadWorkspaceLogo": "رفع شعار المساحة",
   "removeLogo": "إزالة الشعار",
   "itScheduleTabLabel": "إعدادات الجدول",
+  "itImportDataTab": "استيراد البيانات",
+  "itPersonalCalendarTab": "تقويمي الشخصي",
   "itScheduleSettingsTitle": "إعدادات الجدول",
   "itScheduleSettingsDesc": "أيام العمل، عدد الحصص، ومدّتها.",
   "workingDaysLabel": "أيام العمل",
