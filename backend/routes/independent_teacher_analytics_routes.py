@@ -468,73 +468,69 @@ def _render_analytics_xlsx(
     One worksheet per data category, Arabic headers, localized dates
     and percentages, no raw IDs. Header row is bold/coloured, sheets
     are RTL, the first row is frozen and column widths are pre-sized.
+
+    Defensive: every ``payload[...]`` slice is normalised to a list
+    via ``payload.get(key) or []`` so an upstream None / missing key
+    cannot crash the workbook with ``TypeError: 'NoneType' is not
+    iterable``. Each per-sheet row build is also wrapped in a guard
+    so one bad slice degrades to an empty sheet instead of killing
+    the entire export (Phase-1 + graceful-degradation guardrails).
     """
     import io
     import pandas as pd  # type: ignore
 
-    attendance_rows = [
-        {
-            "اليوم": _fmt_date(r.get("day")),
-            "حاضر": int(r.get("present") or 0),
-            "غائب": int(r.get("absent") or 0),
-            "متأخر": int(r.get("late") or 0),
-            "بعذر": int(r.get("excused") or 0),
-            "الإجمالي": int(r.get("total") or 0),
-            "نسبة الحضور": _fmt_pct(
-                ((int(r.get("present") or 0) + int(r.get("late") or 0))
-                 / int(r.get("total") or 0))
-                if int(r.get("total") or 0) else 0
-            ),
-        }
-        for r in payload["attendance"]
-    ]
+    def _safe_rows(key: str, builder):
+        try:
+            return [builder(r) for r in (payload.get(key) or []) if isinstance(r, dict)]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("xlsx sheet '%s' degraded to empty: %s", key, exc)
+            return []
 
-    behavior_rows = [
-        {
-            "بداية الأسبوع": _fmt_date(r.get("week")),
-            "إيجابي": int(r.get("positive") or 0),
-            "سلبي": int(r.get("negative") or 0),
-            "الإجمالي": int(r.get("positive") or 0) + int(r.get("negative") or 0),
-        }
-        for r in payload["behavior"]
-    ]
+    attendance_rows = _safe_rows("attendance", lambda r: {
+        "اليوم": _fmt_date(r.get("day")),
+        "حاضر": int(r.get("present") or 0),
+        "غائب": int(r.get("absent") or 0),
+        "متأخر": int(r.get("late") or 0),
+        "بعذر": int(r.get("excused") or 0),
+        "الإجمالي": int(r.get("total") or 0),
+        "نسبة الحضور": _fmt_pct(
+            ((int(r.get("present") or 0) + int(r.get("late") or 0))
+             / int(r.get("total") or 0))
+            if int(r.get("total") or 0) else 0
+        ),
+    })
 
-    lesson_plan_rows = [
-        {
-            "اليوم": _fmt_date(r.get("day")),
-            "تم التوليد": int(r.get("generated") or 0),
-            "تم الحفظ": int(r.get("saved") or 0),
-        }
-        for r in payload["lesson_plans"]
-    ]
+    behavior_rows = _safe_rows("behavior", lambda r: {
+        "بداية الأسبوع": _fmt_date(r.get("week")),
+        "إيجابي": int(r.get("positive") or 0),
+        "سلبي": int(r.get("negative") or 0),
+        "الإجمالي": int(r.get("positive") or 0) + int(r.get("negative") or 0),
+    })
 
-    top_absence_rows = [
-        {
-            "الاسم": _safe_person_name(r.get("name")),
-            "عدد مرات الغياب": int(r.get("absent_count") or 0),
-            "إجمالي الأيام": int(r.get("total_count") or 0),
-            "نسبة الغياب": _fmt_pct(r.get("absence_rate")),
-        }
-        for r in payload["top_students_absence"]
-    ]
+    lesson_plan_rows = _safe_rows("lesson_plans", lambda r: {
+        "اليوم": _fmt_date(r.get("day")),
+        "تم التوليد": int(r.get("generated") or 0),
+        "تم الحفظ": int(r.get("saved") or 0),
+    })
 
-    top_behavior_rows = [
-        {
-            "الاسم": _safe_person_name(r.get("name")),
-            "عدد السلوكيات السلبية": int(r.get("negative_count") or 0),
-        }
-        for r in payload["top_students_behavior"]
-    ]
+    top_absence_rows = _safe_rows("top_students_absence", lambda r: {
+        "الاسم": _safe_person_name(r.get("name")),
+        "عدد مرات الغياب": int(r.get("absent_count") or 0),
+        "إجمالي الأيام": int(r.get("total_count") or 0),
+        "نسبة الغياب": _fmt_pct(r.get("absence_rate")),
+    })
 
-    top_classes_rows = [
-        {
-            "الفصل": _safe_class_name(r.get("name")),
-            "الحضور": int(r.get("present_count") or 0),
-            "الإجمالي": int(r.get("total_count") or 0),
-            "نسبة الحضور": _fmt_pct(r.get("attendance_rate")),
-        }
-        for r in payload["top_classes_attendance"]
-    ]
+    top_behavior_rows = _safe_rows("top_students_behavior", lambda r: {
+        "الاسم": _safe_person_name(r.get("name")),
+        "عدد السلوكيات السلبية": int(r.get("negative_count") or 0),
+    })
+
+    top_classes_rows = _safe_rows("top_classes_attendance", lambda r: {
+        "الفصل": _safe_class_name(r.get("name")),
+        "الحضور": int(r.get("present_count") or 0),
+        "الإجمالي": int(r.get("total_count") or 0),
+        "نسبة الحضور": _fmt_pct(r.get("attendance_rate")),
+    })
 
     summary_class = "كل الفصول"
     if cid:
@@ -577,23 +573,42 @@ def _render_analytics_xlsx(
         })
         for sheet_name, rows, widths in sheets:
             safe_name = sheet_name[:31]
-            if rows:
-                df = pd.DataFrame(rows)
-            else:
-                df = pd.DataFrame(columns=["لا توجد بيانات"])
-            df.to_excel(writer, sheet_name=safe_name, index=False)
-            ws = writer.sheets[safe_name]
-            ws.freeze_panes(1, 0)
+            # Per-sheet guard: one bad slice must not kill the whole
+            # workbook (graceful degradation). On failure we still
+            # emit a placeholder sheet so the user gets a complete
+            # download instead of an error modal.
             try:
-                ws.right_to_left()
-            except Exception:  # noqa: BLE001
-                pass
-            for idx, col in enumerate(df.columns):
-                width = widths[idx] if idx < len(widths) else 18
-                ws.set_column(idx, idx, width)
-                ws.write(0, idx, col, header_fmt)
-            if not rows:
-                ws.write(1, 0, "لا توجد بيانات لهذه الفترة", empty_fmt)
+                if rows:
+                    df = pd.DataFrame(rows)
+                else:
+                    df = pd.DataFrame(columns=["لا توجد بيانات"])
+                df.to_excel(writer, sheet_name=safe_name, index=False)
+                ws = writer.sheets[safe_name]
+                ws.freeze_panes(1, 0)
+                try:
+                    ws.right_to_left()
+                except Exception:  # noqa: BLE001
+                    pass
+                for idx, col in enumerate(df.columns):
+                    width = widths[idx] if idx < len(widths) else 18
+                    ws.set_column(idx, idx, width)
+                    ws.write(0, idx, col, header_fmt)
+                if not rows:
+                    ws.write(1, 0, "لا توجد بيانات لهذه الفترة", empty_fmt)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "xlsx sheet '%s' failed to render, emitting placeholder: %s",
+                    sheet_name, exc,
+                )
+                fallback = pd.DataFrame(columns=["لا توجد بيانات"])
+                fallback.to_excel(writer, sheet_name=safe_name, index=False)
+                ws = writer.sheets[safe_name]
+                try:
+                    ws.right_to_left()
+                except Exception:  # noqa: BLE001
+                    pass
+                ws.write(0, 0, "لا توجد بيانات", header_fmt)
+                ws.write(1, 0, "تعذّر تجهيز هذه الورقة", empty_fmt)
 
     return buf.getvalue()
 

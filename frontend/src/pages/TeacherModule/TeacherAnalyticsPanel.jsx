@@ -153,10 +153,30 @@ export default function TeacherAnalyticsPanel() {
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(href), 0);
     } catch (err) {
-      const msg = err?.response?.data?.error?.message
-        || err?.response?.data?.detail
-        || t('teacherAnalyticsExportFailed');
-      nassaqError(msg);
+      // The request uses responseType: 'blob', so a JSON error
+      // payload arrives as a Blob and the usual
+      // `err.response.data.error.message` access is undefined.
+      // Read the blob as text and try to parse the standard
+      // {error:{message}}/{detail} envelope before falling back
+      // to the generic Arabic export-failed message.
+      let msg = '';
+      try {
+        const body = err?.response?.data;
+        if (body instanceof Blob) {
+          const txt = await body.text();
+          try {
+            const parsed = JSON.parse(txt);
+            msg = parsed?.error?.message || parsed?.detail || '';
+          } catch {
+            msg = '';
+          }
+        } else {
+          msg = body?.error?.message || body?.detail || '';
+        }
+      } catch {
+        msg = '';
+      }
+      nassaqError(msg || t('teacherAnalyticsExportFailed'));
     } finally {
       setExporting(null);
     }
