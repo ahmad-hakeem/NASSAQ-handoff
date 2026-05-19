@@ -118,7 +118,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
     
     @router.get("/stats")
     async def get_communication_stats(
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
     ):
         """Get communication statistics"""
         school_id = current_user.get("tenant_id")
@@ -268,7 +268,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         status: Optional[str] = None,
         skip: int = 0,
         limit: int = 20,
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
     ):
         """Get list of messages"""
         school_id = current_user.get("tenant_id")
@@ -292,7 +292,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
     
     @router.get("/templates")
     async def get_message_templates(
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
     ):
         """Get message templates"""
         school_id = current_user.get("tenant_id")
@@ -342,7 +342,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
     
     @router.get("/audience")
     async def get_audience_stats(
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
     ):
         """Get audience statistics for messaging"""
         school_id = current_user.get("tenant_id")
