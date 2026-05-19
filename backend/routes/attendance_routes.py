@@ -557,47 +557,38 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
         """Get students with attendance below threshold.
 
         SECURITY: Teachers may only see alerts for students in their own
-        assigned sections. School-wide results are restricted to admin roles
-        (principal / platform_admin).
+        assigned classes. School-wide alerts are restricted to admin roles.
         """
         tenant_id = current_user.get("tenant_id") or current_user.get("primary_tenant_id")
-        
+
         if not tenant_id:
             raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
 
-        section_ids = None
-        _TEACHER_ROLES = {UserRole.TEACHER.value}
-        if current_user.get("role") in _TEACHER_ROLES:
+        section_ids_filter = None
+        if current_user.get("role") == UserRole.TEACHER.value:
             teacher_id = current_user.get("teacher_id") or current_user.get("id")
-            from engines.sql_utils import gd_find as _gd_find
-            assignments = await _gd_find(
-                db.session, "teacher_assignments",
-                {"teacher_id": teacher_id}, limit=200
-            )
-            sessions = await _gd_find(
-                db.session, "class_sessions",
-                {"teacher_id": teacher_id}, limit=200
-            )
-            section_ids = list({
-                a["class_id"] for a in assignments if a.get("class_id")
-            } | {
-                s["class_id"] for s in sessions if s.get("class_id")
-            })
+            ta_rows = await gd_find(db.session, "teacher_assignments",
+                                    {"teacher_id": teacher_id}, limit=500)
+            cs_rows = await gd_find(db.session, "class_sessions",
+                                    {"teacher_id": teacher_id}, limit=500)
+            section_ids_filter = list({r["class_id"] for r in ta_rows + cs_rows if r.get("class_id")})
+            if not section_ids_filter:
+                return {"threshold": threshold, "students": [], "total": 0}
 
         students = await engine.get_students_with_low_attendance(
             tenant_id=tenant_id,
             threshold=threshold,
             start_date=start_date,
             end_date=end_date,
-            section_ids=section_ids,
+            section_ids=section_ids_filter,
         )
-        
+
         return {
             "threshold": threshold,
             "students": students,
             "total": len(students)
         }
-    
+
     @router.get("/alerts/consecutive-absences")
     async def get_consecutive_absences(
         min_days: int = 3,
@@ -610,39 +601,30 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
         """Get students with consecutive absences.
 
         SECURITY: Teachers may only see alerts for students in their own
-        assigned sections. School-wide results are restricted to admin roles
-        (principal / platform_admin).
+        assigned classes. School-wide alerts are restricted to admin roles.
         """
         tenant_id = current_user.get("tenant_id") or current_user.get("primary_tenant_id")
-        
+
         if not tenant_id:
             raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
 
-        section_ids = None
-        _TEACHER_ROLES = {UserRole.TEACHER.value}
-        if current_user.get("role") in _TEACHER_ROLES:
+        section_ids_filter = None
+        if current_user.get("role") == UserRole.TEACHER.value:
             teacher_id = current_user.get("teacher_id") or current_user.get("id")
-            from engines.sql_utils import gd_find as _gd_find
-            assignments = await _gd_find(
-                db.session, "teacher_assignments",
-                {"teacher_id": teacher_id}, limit=200
-            )
-            sessions = await _gd_find(
-                db.session, "class_sessions",
-                {"teacher_id": teacher_id}, limit=200
-            )
-            section_ids = list({
-                a["class_id"] for a in assignments if a.get("class_id")
-            } | {
-                s["class_id"] for s in sessions if s.get("class_id")
-            })
+            ta_rows = await gd_find(db.session, "teacher_assignments",
+                                    {"teacher_id": teacher_id}, limit=500)
+            cs_rows = await gd_find(db.session, "class_sessions",
+                                    {"teacher_id": teacher_id}, limit=500)
+            section_ids_filter = list({r["class_id"] for r in ta_rows + cs_rows if r.get("class_id")})
+            if not section_ids_filter:
+                return {"min_days": min_days, "alerts": [], "total": 0}
 
         alerts = await engine.get_consecutive_absences(
             tenant_id=tenant_id,
             min_days=min_days,
-            section_ids=section_ids,
+            section_ids=section_ids_filter,
         )
-        
+
         return {
             "min_days": min_days,
             "alerts": alerts,
