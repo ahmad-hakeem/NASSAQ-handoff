@@ -76,7 +76,21 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
-  const [selectedClass, setSelectedClass] = useState('');
+  // 2026-05-19 — IT-only: default to the workspace-wide pool ("الكل")
+  // so newly-imported students with `class_id = null` are visible
+  // immediately in the IT "طلابي" tab. Sentinel values:
+  //   'all'        → every workspace student
+  //   'unassigned' → only rows with `class_id` null/empty
+  //   <classId>    → the legacy class-scoped path
+  // Regular `teacher` callers (school tenants) keep the legacy
+  // empty-default + auto-select-first-class behavior. Switching them
+  // to `/students` would widen their view beyond assigned classes,
+  // because `/classes/{id}/students` does the per-teacher object-
+  // level check via `can_view_class` while `/students` only enforces
+  // tenant scope. Gate strictly on `isIndependentTeacher`.
+  const [selectedClass, setSelectedClass] = useState(
+    isIndependentTeacher ? 'all' : ''
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
@@ -170,8 +184,16 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
     try {
       const classesRes = await api.get(`/teacher/classes/${teacherId}`).catch(() => ({ data: [] }));
       setClasses(classesRes.data || []);
-      
-      if (classesRes.data?.length > 0 && !selectedClass) {
+      // 2026-05-19 — Auto-select-first-class is preserved for non-IT
+      // teachers (school tenants), who must stay on the class-scoped
+      // `/classes/{id}/students` path. IT workspaces skip this so the
+      // 'all' default (workspace pool) sticks and unassigned imported
+      // students remain visible.
+      if (
+        !isIndependentTeacher
+        && classesRes.data?.length > 0
+        && !selectedClass
+      ) {
         setSelectedClass(classesRes.data[0].id);
       }
     } catch (error) {
@@ -179,29 +201,63 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [api, teacherId, selectedClass]);
+  }, [api, teacherId, isIndependentTeacher, selectedClass]);
 
   const fetchStudents = useCallback(async () => {
-    if (!selectedClass) return;
-    
+    // 2026-05-19 — Non-IT teachers must stay on the class-scoped
+    // path; without a concrete class selected, render nothing rather
+    // than calling `/students` (which is tenant-scoped but not
+    // class-assignment-scoped and would widen their view).
+    if (!selectedClass) {
+      setStudents([]);
+      return;
+    }
     setLoading(true);
     try {
-      const [studentsRes, statsRes] = await Promise.all([
-        api.get(`/classes/${selectedClass}/students`),
-        api.get(`/classes/${selectedClass}/student-stats`).catch(() => ({ data: {} }))
-      ]);
+      // 2026-05-19 — Three filter modes (IT-only pool routes; non-IT
+      // never reaches `isPool` because the sentinel values are not
+      // selectable for them and the early return above guards `''`):
+      //   'all'        → GET /students (workspace pool, includes
+      //                  unassigned rows; backend returns `class_name`).
+      //   'unassigned' → GET /students then client-side filter on
+      //                  `class_id` null/empty so the IT teacher can
+      //                  isolate the newly-imported batch and assign
+      //                  them to a class.
+      //   <classId>    → GET /classes/{id}/students (existing path,
+      //                  keeps per-class stats endpoint usable).
+      // Stats endpoint is class-scoped so we only call it for a
+      // concrete class; pool views render the raw rows.
+      const isPool =
+        isIndependentTeacher
+        && (selectedClass === 'all' || selectedClass === 'unassigned');
+      let rawStudents = [];
+      let statsMap = {};
 
-      const statsMap = statsRes.data || {};
-      const enrichedStudents = (studentsRes.data || []).map(student => {
+      if (isPool) {
+        const studentsRes = await api.get('/students');
+        rawStudents = Array.isArray(studentsRes.data) ? studentsRes.data : [];
+        if (selectedClass === 'unassigned') {
+          rawStudents = rawStudents.filter((s) => !s.class_id);
+        }
+      } else {
+        const [studentsRes, statsRes] = await Promise.all([
+          api.get(`/classes/${selectedClass}/students`),
+          api.get(`/classes/${selectedClass}/student-stats`).catch(() => ({ data: {} })),
+        ]);
+        rawStudents = Array.isArray(studentsRes.data) ? studentsRes.data : [];
+        statsMap = statsRes.data || {};
+      }
+
+      const enrichedStudents = rawStudents.map((student) => {
         const s = statsMap[student.id] || {};
         return {
           ...student,
-          attendance_rate: s.attendance_rate ?? 0,
-          average_grade: s.average_grade ?? 0,
-          behavior_points: s.behavior_points ?? 0
+          attendance_rate: s.attendance_rate ?? student.attendance_rate ?? 0,
+          average_grade: s.average_grade ?? student.average_grade ?? 0,
+          behavior_points: s.behavior_points ?? student.behavior_points ?? 0,
         };
       });
-      
+
       setStudents(enrichedStudents);
     } catch (error) {
       console.error('Error:', error);
@@ -209,16 +265,16 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [api, selectedClass, nassaqError, t]);
+  }, [api, selectedClass, isIndependentTeacher, nassaqError, t]);
 
   useEffect(() => {
     fetchClasses();
   }, [fetchClasses]);
 
   useEffect(() => {
-    if (selectedClass) {
-      fetchStudents();
-    }
+    // 2026-05-19 — fetchStudents handles the "no class selected" case
+    // internally (clears the list for non-IT, fetches pool for IT).
+    fetchStudents();
   }, [selectedClass, fetchStudents]);
 
   // Task #206 — fetch the latest parent-invitation row for every
@@ -584,10 +640,27 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                 </>
               )}
               <Select value={selectedClass} onValueChange={setSelectedClass}>
-                <SelectTrigger className="w-full sm:w-[180px]" data-testid="class-select">
+                <SelectTrigger className="w-full sm:w-[200px]" data-testid="class-select">
                   <SelectValue placeholder={t('selectClass')} />
                 </SelectTrigger>
                 <SelectContent>
+                  {/* 2026-05-19 — Workspace pool + unassigned sentinels
+                      are IT-only. Regular teachers must stay on the
+                      class-scoped `/classes/{id}/students` path which
+                      enforces per-teacher object-level checks; the
+                      pool endpoint only enforces tenant scope and
+                      would widen their view to every student in the
+                      school. */}
+                  {isIndependentTeacher && (
+                    <>
+                      <SelectItem value="all" data-testid="class-filter-all">
+                        {isRTL ? 'الكل' : 'All'}
+                      </SelectItem>
+                      <SelectItem value="unassigned" data-testid="class-filter-unassigned">
+                        {isRTL ? 'غير معينين' : 'Unassigned'}
+                      </SelectItem>
+                    </>
+                  )}
                   {classes.map(cls => (
                     <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
                   ))}
@@ -689,8 +762,15 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                 <CardContent className="text-center py-16">
                   <Users className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
                   <h3 className="font-bold mb-2">{t('noStudents')}</h3>
+                  {/* 2026-05-19 — Replaced "اختر فصلاً لعرض الطلاب"
+                      copy. The pool/unassigned views render even with
+                      zero matches, so the message must reflect a
+                      genuinely empty result rather than asking the
+                      teacher to pick a class. */}
                   <p className="text-muted-foreground">
-                    {t('selectAClassToViewStudents')}
+                    {isRTL
+                      ? 'لا يوجد طلاب يطابقون التصفية الحالية.'
+                      : 'No students match the current filter.'}
                   </p>
                 </CardContent>
               </Card>
@@ -712,7 +792,30 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                       </Avatar>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold truncate">{student.full_name || `طالب ${idx + 1}`}</p>
-                        <p className="text-xs text-muted-foreground">{student.student_id || `#${idx + 1}`}</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-xs text-muted-foreground">{student.student_id || `#${idx + 1}`}</p>
+                          {/* 2026-05-19 — Class badge. Imported students
+                              with `class_id = null` get a visually
+                              distinct "غير معين" amber badge so the
+                              teacher can spot the unassigned batch and
+                              use the per-row edit dialog to assign
+                              them to a class. */}
+                          {student.class_id ? (
+                            student.class_name && (
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                                {student.class_name}
+                              </Badge>
+                            )
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] px-1.5 py-0 h-4 border-amber-400 text-amber-700 bg-amber-50 dark:bg-amber-900/20"
+                              data-testid={`student-unassigned-${student.id}`}
+                            >
+                              {isRTL ? 'غير معين' : 'Unassigned'}
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                       <ChevronLeft className="h-5 w-5 text-muted-foreground" />
                     </div>
