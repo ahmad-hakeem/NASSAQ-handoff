@@ -198,6 +198,12 @@ async def _complete_mfa_login(
             from routes.auth_routes_mod import _record_session_from_token
             ip = request.client.host if request and request.client else None
             ua = request.headers.get("user-agent") if request else None
+            # Pass the refresh token so _record_session_from_token persists
+            # refresh_jti / refresh_family_id / refresh_expires_at on the
+            # user_sessions row.  Without this, device-revocation endpoints
+            # (_revoke_session_refresh_chain) see NULL refresh fields and
+            # degrade to access-token-only invalidation, leaving the refresh
+            # token live even after the victim ends the session.
             await _record_session_from_token(db.session, access, user_id, ip, ua, refresh_token_str=refresh)
         except Exception as exc:
             logger.debug(f"_complete_mfa_login: session record failed: {exc}")

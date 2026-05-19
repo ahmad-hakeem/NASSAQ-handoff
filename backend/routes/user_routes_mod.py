@@ -441,9 +441,9 @@ async def update_user(
             raise HTTPException(status_code=400, detail=f"الدور غير صالح. الأدوار المسموحة: {', '.join(valid_roles)}")
         old_role = user.get("role", "")
         updates["role"] = user_data.role
-    
-    # Task #419: when role or tenant_id changes, bump last_password_change to
-    # invalidate all outstanding tokens — including switched/impersonation ones.
+
+    # When role or tenant_id changes, bump last_password_change to invalidate
+    # all outstanding tokens — including switched/impersonation ones.
     # Both get_current_user() and decode_token_for_ws() reject tokens whose
     # iat < last_password_change, so this ensures entitlement changes take
     # effect immediately even for already-issued switched tokens.
