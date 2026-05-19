@@ -327,11 +327,41 @@ async def request_data_deletion(
     data: DataDeletionRequest,
     current_user: dict = Depends(get_current_user)
 ):
-    """Request data deletion (right to be forgotten)"""
+    """Request data deletion (right to be forgotten)
+
+    SECURITY: A caller may only request deletion of records they own or are
+    authorized to act on.  Admin roles (principal, school_admin, sub_admin,
+    platform_admin) may file on behalf of any entity in their tenant.
+    Non-admin callers:
+      - entity_type "user"    → entity_id must equal the caller's own user id.
+      - entity_type "student" → caller must be a parent/guardian with a verified
+                                link to that student.
+    Any other entity_type is restricted to admin roles.
+    """
     school_id = current_user.get("tenant_id")
+    caller_id = current_user["id"]
+    role = current_user.get("role", "")
 
     if not data.confirmation:
         raise HTTPException(status_code=400, detail="يجب تأكيد طلب الحذف")
+
+    if not _is_consent_admin(current_user):
+        if data.entity_type == "user":
+            if data.entity_id != caller_id:
+                raise HTTPException(status_code=403, detail="لا يمكنك تقديم طلب حذف لمستخدم آخر")
+        elif data.entity_type == "student":
+            if role == "parent":
+                parent = await gd_find_one(db.session, "parents", {"user_id": caller_id})
+                linked = parent and data.entity_id in (parent.get("student_ids") or [])
+                if not linked:
+                    link = await gd_find_one(db.session, "guardian_links", {"parent_user_id": caller_id, "student_id": data.entity_id})
+                    linked = bool(link)
+                if not linked:
+                    raise HTTPException(status_code=403, detail="لا يمكنك تقديم طلب حذف لطالب غير مرتبط بحسابك")
+            else:
+                raise HTTPException(status_code=403, detail="غير مصرح")
+        else:
+            raise HTTPException(status_code=403, detail="غير مصرح")
 
     request_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -343,7 +373,7 @@ async def request_data_deletion(
         "entity_id": data.entity_id,
         "reason": data.reason,
         "status": "pending",
-        "requested_by": current_user["id"],
+        "requested_by": caller_id,
         "requested_by_name": current_user.get("full_name"),
         "requested_at": now,
         "reviewed_at": None,
@@ -391,14 +421,22 @@ async def review_deletion_request(
     if action not in ("approve", "reject"):
         raise HTTPException(status_code=400, detail="الإجراء يجب أن يكون approve أو reject")
 
-    req = await gd_find_one(db.session, "data_deletion_requests", {"id": request_id})
+    # SECURITY: Build the lookup filter with tenant scoping for school principals.
+    # PLATFORM_ADMIN has no tenant_id and may review any tenant's request;
+    # SCHOOL_PRINCIPAL is scoped to their own tenant and must not touch foreign rows.
+    role = current_user.get("role", "")
+    lookup_filter: dict = {"id": request_id}
+    if role == UserRole.SCHOOL_PRINCIPAL.value and school_id:
+        lookup_filter["tenant_id"] = school_id
+
+    req = await gd_find_one(db.session, "data_deletion_requests", lookup_filter)
     if not req:
         raise HTTPException(status_code=404, detail="الطلب غير موجود")
 
     now = datetime.now(timezone.utc).isoformat()
     new_status = "approved" if action == "approve" else "rejected"
 
-    await gd_update_one(db.session, "data_deletion_requests", {"id": request_id}, {
+    await gd_update_one(db.session, "data_deletion_requests", lookup_filter, {
             "status": new_status,
             "reviewed_by": current_user["id"],
             "reviewed_at": now,
@@ -422,7 +460,7 @@ async def review_deletion_request(
                     "anonymized_at": now
                 })
 
-        await gd_update_one(db.session, "data_deletion_requests", {"id": request_id}, {"completed_at": now, "status": "completed"})
+        await gd_update_one(db.session, "data_deletion_requests", lookup_filter, {"completed_at": now, "status": "completed"})
 
     return {"message": f"تم {action} طلب الحذف", "status": new_status}
 
