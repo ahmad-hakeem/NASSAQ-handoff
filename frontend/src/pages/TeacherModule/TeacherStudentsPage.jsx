@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Sidebar } from '../../components/layout/Sidebar';
@@ -53,7 +53,19 @@ function getStudentParentDisplay(student) {
 
 import { useTranslation } from '../../contexts/ThemeContext';
 import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
-export default function TeacherStudentsPage() {
+
+// 2026-05-19 — Headless `TeacherStudentsPanel` wrapper. Mirrors the
+// `TeacherSubjectsPanel` / `BulkImportPanel` / `WorkspaceSchedulePanel`
+// pattern so the same student-directory surface can be embedded as a
+// sub-tab inside فصولي (TeacherClassesPage) without rendering a nested
+// `<Sidebar>` shell or a second page-level header. `embedded` collapses
+// the page chrome; default-false preserves the standalone /teacher/students
+// route exactly.
+export function TeacherStudentsPanel(props) {
+  return <TeacherStudentsPage embedded {...props} />;
+}
+
+export default function TeacherStudentsPage({ embedded = false } = {}) {
   const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const isIndependentTeacher = user?.role === 'independent_teacher';
@@ -520,11 +532,24 @@ export default function TeacherStudentsPage() {
     return 'text-red-600';
   };
 
+  // 2026-05-19 — `embedded` mode skips the Sidebar shell, the floating
+  // HakimAssistant, and the gradient page-background so the panel can be
+  // rendered as a sub-tab inside another page (TeacherClassesPage) without
+  // double-rendering the layout chrome. Behavior is otherwise identical.
+  const Shell = embedded ? React.Fragment : Sidebar;
+  const shellProps = embedded ? {} : undefined;
+  const outerClassName = embedded
+    ? ''
+    : 'min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800';
+  const headerClassName = embedded
+    ? 'bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b p-4 rounded-md'
+    : 'sticky top-0 z-20 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b p-4';
+
   return (
-    <Sidebar>
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800" dir={isRTL ? 'rtl' : 'ltr'}>
+    <Shell {...(shellProps || {})}>
+      <div className={outerClassName} dir={isRTL ? 'rtl' : 'ltr'}>
         {/* Header */}
-        <div className="sticky top-0 z-20 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b p-4">
+        <div className={headerClassName}>
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-2xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo">
@@ -1682,7 +1707,7 @@ export default function TeacherStudentsPage() {
           />
         )}
       </div>
-      <HakimAssistant />
-    </Sidebar>
+      {!embedded && <HakimAssistant />}
+    </Shell>
   );
 }

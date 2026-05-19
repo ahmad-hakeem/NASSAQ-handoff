@@ -20,7 +20,10 @@ export { default as TeacherClassDetailPage } from './TeacherClassDetailPage';
 export { default as TeacherAttendanceManagePage } from './TeacherAttendanceManagePage';
 export { default as TeacherAssessmentsPage } from './TeacherAssessmentsPage';
 export { default as TeacherBehaviorPage } from './TeacherBehaviorPage';
-export { default as TeacherStudentsPage } from './TeacherStudentsPage';
+// 2026-05-19 — Also re-exports the headless `TeacherStudentsPanel` so
+// TeacherClassesPage can embed the student directory as the "الطلاب" tab
+// without rendering a nested Sidebar shell.
+export { default as TeacherStudentsPage, TeacherStudentsPanel } from './TeacherStudentsPage';
 // 2026-05-19 — IA refactor: standalone /teacher/import-students and
 // /teacher/bulk-import routes were folded into TeacherClassesPage as
 // a single "استيراد البيانات" tab. The default page exports remain

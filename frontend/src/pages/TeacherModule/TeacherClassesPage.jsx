@@ -56,6 +56,13 @@ import { TeacherSubjectsPanel } from './TeacherSubjectsPage';
 // `WorkspaceSchedulePanel` and `TeacherPersonalCalendarPanel`
 // imports were removed alongside the related state and tab buttons.
 import { BulkImportPanel } from './BulkImportPage';
+// 2026-05-19 — IT-only "الطلاب" tab. Embeds the existing student
+// directory (CRUD, class filter, edit/delete, add-student wizard)
+// from TeacherStudentsPage as a sub-tab inside فصولي so imported
+// students from the bulk-import flow are immediately viewable and
+// assignable to classes without leaving the page. Headless variant
+// skips the nested Sidebar shell; backend RBAC / quotas unchanged.
+import { TeacherStudentsPanel } from './TeacherStudentsPage';
 import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialog';
 import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 
@@ -148,6 +155,10 @@ export default function TeacherClassesPage() {
     // 2026-05-19 — IT-only "استيراد البيانات" tab. Merges the two
     // retired sidebar entries into one unified import surface.
     : (_rawTab === 'import' && _isITUser && canBulkImport) ? 'import'
+    // 2026-05-19 — IT-only "الطلاب" tab. Surfaces the workspace
+    // student directory inline so imported students are immediately
+    // visible / editable / assignable to classes.
+    : (_rawTab === 'students' && _isITUser) ? 'students'
     : 'classes';
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
@@ -243,6 +254,7 @@ export default function TeacherClassesPage() {
       : (tab === 'lesson-planner' && (!_isITUser || !canUseLessonPlanner)) ? 'classes'
       : (tab === 'subjects' && !_isITUser) ? 'classes'
       : (tab === 'import' && (!_isITUser || !canBulkImport)) ? 'classes'
+      : (tab === 'students' && !_isITUser) ? 'classes'
       : tab;
     setSearchParams(
       safeTab === 'sessions' ? { tab: 'sessions' }
@@ -250,6 +262,7 @@ export default function TeacherClassesPage() {
       : safeTab === 'lesson-planner' ? { tab: 'lesson-planner' }
       : safeTab === 'subjects' ? { tab: 'subjects' }
       : safeTab === 'import' ? { tab: 'import' }
+      : safeTab === 'students' ? { tab: 'students' }
       : {}
     );
   };
@@ -1491,6 +1504,29 @@ export default function TeacherClassesPage() {
                 with only one of the two retired sidebar entries still
                 sees the merged tab (BulkImportPanel sub-tabs continue
                 to be gated server-side per action). */}
+            {/* 2026-05-19 — IT-only "الطلاب" tab. Lives next to فصولي
+                so the imported student directory is one click away.
+                Server-side scoping (school_id == itw_{user_id}) is
+                unchanged; this tab is purely an IA addition. */}
+            {_isITUser && (
+              <button
+                onClick={() => handleTabChange('students')}
+                className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative ${
+                  activeTab === 'students'
+                    ? 'text-brand-navy dark:text-brand-turquoise'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                data-testid="teacher-classes-students-tab"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Users className="h-4 w-4" />
+                  {t('myStudents') || 'الطلاب'}
+                </span>
+                {activeTab === 'students' && (
+                  <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
+                )}
+              </button>
+            )}
             {_isITUser && canBulkImport && (
               <button
                 onClick={() => handleTabChange('import')}
@@ -1530,6 +1566,13 @@ export default function TeacherClassesPage() {
           // a duplicate page-level header. Dialog renders via Radix
           // portal so the tab's overflow doesn't clip the modal.
           <TeacherSubjectsPanel embedded />
+        ) : activeTab === 'students' ? (
+          // 2026-05-19 — Embedded student directory. Same CRUD, class
+          // filter, search, AddStudentWizard, and per-row edit/delete
+          // as the standalone /teacher/students route, minus the
+          // nested Sidebar shell. Backend tenant scoping
+          // (school_id == itw_{user_id}) is unchanged.
+          <TeacherStudentsPanel />
         ) : activeTab === 'import' ? (
           // 2026-05-19 — Unified IT import surface. BulkImportPanel
           // already exposes its own sub-tabs (students / classes /
