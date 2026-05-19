@@ -518,17 +518,13 @@ export const Sidebar = ({ children }) => {
         permission: 'events.author_own',
         dataTour: 'sidebar-calendar',
       },
-      // Task #190 §5.3 — IT-only workspace subjects CRUD. Independent-
-      // Teacher accounts have no school directory to pull subjects from,
-      // so they manage their own list here. Surfaced in the create-class
-      // dialog dropdown immediately on save.
-      {
-        icon: BookOpen,
-        label: 'المواد',
-        href: '/teacher/subjects',
-        roles: ['independent_teacher'],
-        dataTour: 'sidebar-workspace-subjects',
-      },
+      // Task #190 §5.3 — IT-only workspace subjects CRUD.
+      // 2026-05-18 — The standalone "المواد" sidebar entry has been
+      // folded into the "فصولي" page as a fifth tab so IT users
+      // get classes / sessions / lesson-planner / schedule / subjects
+      // under one mounted shell. /teacher/subjects still resolves
+      // (redirects to /teacher/classes?tab=subjects) so old bookmarks
+      // and the create-class dialog dropdown keep working.
       // Task #207 §6.1 — IT-only workspace-aware bulk student import.
       // Permission-gated on `students.bulk_import_workspace` so a
       // future RBAC change that grants the permission to additional
@@ -553,13 +549,10 @@ export const Sidebar = ({ children }) => {
         dataTour: 'sidebar-bulk-import',
       },
       // Task #185 — IT-only subjects CRUD page (workspace-scoped).
-      {
-        icon: BookOpen,
-        label: 'موادي',
-        href: '/teacher/subjects',
-        roles: ['independent_teacher'],
-        dataTour: 'sidebar-subjects',
-      },
+      // 2026-05-18 — Duplicate "موادي" sidebar entry removed; the
+      // primary entry point is now the "المواد" tab inside
+      // /teacher/classes (?tab=subjects). See the redirect in
+      // appRoutes.js — old bookmarks land on the new embedded tab.
       // 2026-05-18 — IT "مساعد خطط الدروس" (lesson planner) was
       // relocated into the "فصولي" tabs as `?tab=lesson-planner`
       // (alongside فصولي / إدارة الحصص). The standalone sidebar

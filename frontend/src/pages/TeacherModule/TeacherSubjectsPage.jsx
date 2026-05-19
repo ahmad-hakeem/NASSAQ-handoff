@@ -20,7 +20,14 @@ import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 
 const EMPTY_FORM = { name: '', name_en: '', code: '', weekly_periods: 4 };
 
-export default function TeacherSubjectsPage() {
+// 2026-05-18 — Reusable subjects panel. The standalone page below
+// keeps the legacy /teacher/subjects route working (it renders the
+// panel inside the workspace shell); TeacherClassesPage embeds the
+// same panel as its fifth "المواد" tab. When `embedded`, the panel
+// drops the outer page chrome (sidebar + main wrapper + max-width)
+// so it inherits the host tab's spacing. Backend authz is unchanged
+// — every CRUD call still hits the IT-scoped /subjects endpoints.
+export function TeacherSubjectsPanel({ embedded = false }) {
   const navigate = useNavigate();
   const { api, user, isRTL } = useAuth();
   const { t } = useTranslation();
@@ -37,10 +44,14 @@ export default function TeacherSubjectsPage() {
   const [deletingId, setDeletingId] = useState(null);
 
   useEffect(() => {
-    if (!isIndependentTeacher) {
+    // Embedded callers (TeacherClassesPage) already gate the tab on
+    // IT role, so the redirect would never fire there. Keep it scoped
+    // to the standalone page so we don't yank IT users out of the
+    // tabs shell on a transient role-context refresh.
+    if (!embedded && !isIndependentTeacher) {
       navigate('/teacher', { replace: true });
     }
-  }, [isIndependentTeacher, navigate]);
+  }, [embedded, isIndependentTeacher, navigate]);
 
   const fetchSubjects = useCallback(async () => {
     if (!api || !isIndependentTeacher) return;
@@ -168,23 +179,30 @@ export default function TeacherSubjectsPage() {
   }, [subjects]);
 
   const dir = isRTL ? 'rtl' : 'ltr';
+  if (!isIndependentTeacher) return null;
 
-  return (
-    <div className="min-h-screen bg-background flex" dir={dir}>
-      <Sidebar />
-      <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-x-hidden">
-        <div className="max-w-5xl mx-auto space-y-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-bold font-cairo flex items-center gap-2">
-                <BookOpen className="h-6 w-6 text-primary" />
-                {t('subjects') || 'المواد'}
-              </h1>
-              <p className="text-sm text-muted-foreground font-tajawal mt-1">
-                {t('workspaceSubjectsHint')
-                  || 'أضف وعدّل وأحذف المواد الدراسية في مساحتك. تظهر المواد فورًا في نافذة إنشاء الفصل.'}
-              </p>
-            </div>
+  // When embedded inside the Classes tabs, the host already renders
+  // an h1 / icon strip for the page, so the panel shows a tighter
+  // h2 header (no duplicate page-level title) and skips the outer
+  // sidebar/main shell entirely.
+  const HeadingTag = embedded ? 'h2' : 'h1';
+  const headingClass = embedded
+    ? 'text-xl font-bold font-cairo flex items-center gap-2'
+    : 'text-2xl font-bold font-cairo flex items-center gap-2';
+
+  const body = (
+    <div className={embedded ? 'space-y-6' : 'max-w-5xl mx-auto space-y-6'} dir={dir}>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <HeadingTag className={headingClass}>
+            <BookOpen className={embedded ? 'h-5 w-5 text-primary' : 'h-6 w-6 text-primary'} />
+            {t('subjects') || 'المواد'}
+          </HeadingTag>
+          <p className="text-sm text-muted-foreground font-tajawal mt-1">
+            {t('workspaceSubjectsHint')
+              || 'أضف وعدّل وأحذف المواد الدراسية في مساحتك. تظهر المواد فورًا في نافذة إنشاء الفصل.'}
+          </p>
+        </div>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -277,8 +295,9 @@ export default function TeacherSubjectsPage() {
             </CardContent>
           </Card>
         </div>
-      </main>
+  );
 
+  const dialog = (
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent dir={dir}>
           <DialogHeader>
@@ -352,6 +371,33 @@ export default function TeacherSubjectsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+  );
+
+  if (embedded) {
+    return (
+      <>
+        {body}
+        {dialog}
+      </>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background flex" dir={dir}>
+      <Sidebar />
+      <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-x-hidden">
+        {body}
+      </main>
+      {dialog}
     </div>
   );
+}
+
+// 2026-05-18 — Standalone page wrapper kept for the legacy
+// /teacher/subjects route. The "المواد" sidebar entry was retired
+// in favor of a tab inside /teacher/classes (?tab=subjects), and
+// the route now redirects there. We keep the default export so any
+// historical lazy import resolves without ripple changes.
+export default function TeacherSubjectsPage() {
+  return <TeacherSubjectsPanel />;
 }

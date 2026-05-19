@@ -412,9 +412,17 @@ export default function AppRoutes() {
         } />
         {/* Task #190 §5.3 — Independent-Teacher only: workspace subjects
             CRUD. Backend pins school_id == itw_{user_id} on every write
-            and returns 404 for cross-workspace ids per spec §8 inv. 3. */}
+            and returns 404 for cross-workspace ids per spec §8 inv. 3.
+
+            2026-05-18 — The standalone "المواد" sidebar entry was
+            retired in favor of a fifth tab inside /teacher/classes,
+            so old bookmarks (and the create-class dialog deep links)
+            land on the new embedded surface with the right tab pre-
+            selected. Role gate preserved via ProtectedRoute. */}
         <Route path="/teacher/subjects" element={
-          <ProtectedRoute allowedRoles={['independent_teacher']}><TeacherSubjectsPage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['independent_teacher']}>
+            <Navigate to="/teacher/classes?tab=subjects" replace />
+          </ProtectedRoute>
         } />
         {/* Task #248 — IT-only workspace audit-log view. Backend pins
             school_id == itw_{user_id} on every read, strips sensitive

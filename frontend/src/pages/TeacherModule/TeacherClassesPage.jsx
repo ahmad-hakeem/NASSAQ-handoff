@@ -41,6 +41,13 @@ import { LessonPlannerPanel } from './LessonPlannerPage';
 // under one mounted page shell. The panel hits the same backend
 // endpoints with the same auth contract — no permission widening.
 import { WorkspaceSchedulePanel } from './WorkspaceSchedulePage';
+// 2026-05-18 — Embedded "المواد" tab (IT-only). The standalone
+// /teacher/subjects sidebar entry has been retired; the route now
+// redirects here with ?tab=subjects so all teacher-slice surfaces
+// (classes / sessions / lesson-planner / schedule / subjects) live
+// under one mounted page shell. Same backend contract — no
+// permission widening.
+import { TeacherSubjectsPanel } from './TeacherSubjectsPage';
 import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialog';
 import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 
@@ -108,6 +115,10 @@ export default function TeacherClassesPage() {
     // to the default classes view rather than rendering an empty
     // schedule shell (the backend schedule grid only exists for IT).
     : (_rawTab === 'schedule' && _isITUser) ? 'schedule'
+    // 2026-05-18 — IT-only "المواد" tab. Backend /subjects CRUD is
+    // pinned to school_id == itw_{user_id}; non-IT users have no
+    // workspace subjects to manage, so we silently coerce back.
+    : (_rawTab === 'subjects' && _isITUser) ? 'subjects'
     : 'classes';
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
@@ -198,12 +209,14 @@ export default function TeacherClassesPage() {
     const safeTab = (tab === 'standby' && _isITUser) ? 'classes'
       : (tab === 'lesson-planner' && (!_isITUser || !canUseLessonPlanner)) ? 'classes'
       : (tab === 'schedule' && !_isITUser) ? 'classes'
+      : (tab === 'subjects' && !_isITUser) ? 'classes'
       : tab;
     setSearchParams(
       safeTab === 'sessions' ? { tab: 'sessions' }
       : safeTab === 'standby' ? { tab: 'standby' }
       : safeTab === 'lesson-planner' ? { tab: 'lesson-planner' }
       : safeTab === 'schedule' ? { tab: 'schedule' }
+      : safeTab === 'subjects' ? { tab: 'subjects' }
       : {}
     );
   };
@@ -1397,6 +1410,29 @@ export default function TeacherClassesPage() {
                 )}
               </button>
             )}
+            {/* 2026-05-18 — IT-only "المواد" tab. Mirrors the retired
+                sidebar entry that pointed at /teacher/subjects. The
+                BookOpen icon matches the old sidebar item so IT
+                users recognize the same surface in its new location. */}
+            {_isITUser && (
+              <button
+                onClick={() => handleTabChange('subjects')}
+                className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative ${
+                  activeTab === 'subjects'
+                    ? 'text-brand-navy dark:text-brand-turquoise'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                data-testid="teacher-classes-subjects-tab"
+              >
+                <span className="flex items-center gap-1.5">
+                  <BookOpen className="h-4 w-4" />
+                  {t('subjects') || 'المواد'}
+                </span>
+                {activeTab === 'subjects' && (
+                  <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -1416,6 +1452,12 @@ export default function TeacherClassesPage() {
             embedded
             onNavigateToClasses={() => handleTabChange('classes')}
           />
+        ) : activeTab === 'subjects' ? (
+          // Embedded variant drops the Sidebar + main wrapper so the
+          // panel inherits the host page's spacing and doesn't render
+          // a duplicate page-level header. Dialog renders via Radix
+          // portal so the tab's overflow doesn't clip the modal.
+          <TeacherSubjectsPanel embedded />
         ) : (
           <>
           {!loading && stats && (

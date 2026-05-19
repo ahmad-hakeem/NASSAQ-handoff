@@ -38,6 +38,10 @@ export { default as WorkspaceSettingsPage } from './WorkspaceSettingsPage';
 // 2026-05-18 — Also re-exports the headless `WorkspaceSchedulePanel`
 // so TeacherClassesPage can embed it as its fourth "جدولي" tab.
 export { default as WorkspaceSchedulePage, WorkspaceSchedulePanel } from './WorkspaceSchedulePage';
+// 2026-05-18 — IT-only workspace subjects CRUD. Also re-exports the
+// headless `TeacherSubjectsPanel` so TeacherClassesPage can embed it
+// as a fifth "المواد" tab without rendering a nested Sidebar.
+export { default as TeacherSubjectsPage, TeacherSubjectsPanel } from './TeacherSubjectsPage';
 // Independent-Teacher only: personal calendar (Task #208 §6.3).
 export { default as TeacherPersonalCalendarPage } from './TeacherPersonalCalendarPage';
 // Independent-Teacher only: light AI lesson-planning assistant (Task #209 §6.4).
