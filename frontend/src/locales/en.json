@@ -4379,6 +4379,8 @@
   "uploadWorkspaceLogo": "Upload workspace logo",
   "removeLogo": "Remove logo",
   "itScheduleTabLabel": "Schedule Settings",
+  "timeManagementHub": "Schedule & Calendar",
+  "timeManagementHubSubtitle": "Your weekly schedule, personal calendar and schedule settings in one place.",
   "itImportDataTab": "Import Data",
   "itPersonalCalendarTab": "My Calendar",
   "itScheduleSettingsTitle": "Schedule Settings",

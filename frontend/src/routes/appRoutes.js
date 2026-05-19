@@ -68,6 +68,10 @@ const SessionStartPage = lazy(() => import("../pages/TeacherModule").then(m => (
 const SessionTeachPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.SessionTeachPage })));
 const TeacherSchedulePage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherSchedulePage })));
 const TeacherClassesPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherClassesPage })));
+// 2026-05-19 — Time Management Hub: dedicated IT-only page hosting
+// the schedule / personal calendar / schedule settings tabs that
+// were previously cluttering the "فصولي" page.
+const TimeManagementHubPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TimeManagementHubPage })));
 const TeacherClassDetailPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherClassDetailPage })));
 const TeacherTasksPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherTasksPage })));
 const TeacherAttendanceManagePage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAttendanceManagePage })));
@@ -325,6 +329,15 @@ export default function AppRoutes() {
         <Route path="/teacher/classes" element={
           <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherClassesPage /></ProtectedRoute>
         } />
+        {/* 2026-05-19 — Time Management Hub. Dedicated IT-only surface
+            for the three time-management tabs (جدولي / تقويمي الشخصي /
+            إعدادات الجدول) that were previously rendered inside the
+            "فصولي" page. The legacy ?tab= deep links into /teacher/
+            classes redirect here so existing bookmarks and internal
+            links keep working. */}
+        <Route path="/teacher/planning" element={
+          <ProtectedRoute allowedRoles={['independent_teacher']}><TimeManagementHubPage /></ProtectedRoute>
+        } />
         <Route path="/teacher/class/:classId" element={
           <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherClassDetailPage /></ProtectedRoute>
         } />
@@ -401,7 +414,7 @@ export default function AppRoutes() {
             bookmarks and internal links working. Role gate preserved. */}
         <Route path="/teacher/workspace-settings" element={
           <ProtectedRoute allowedRoles={['independent_teacher']}>
-            <Navigate to="/teacher/classes?tab=settings" replace />
+            <Navigate to="/teacher/planning?tab=settings" replace />
           </ProtectedRoute>
         } />
         {/* 2026-05-18 — Legacy standalone IT schedule route. The
@@ -411,7 +424,7 @@ export default function AppRoutes() {
             Role gate preserved via ProtectedRoute. */}
         <Route path="/teacher/workspace-schedule" element={
           <ProtectedRoute allowedRoles={['independent_teacher']}>
-            <Navigate to="/teacher/classes?tab=schedule" replace />
+            <Navigate to="/teacher/planning" replace />
           </ProtectedRoute>
         } />
         {/* Task #208 §6.3 — Independent-Teacher only: personal calendar.
@@ -423,7 +436,7 @@ export default function AppRoutes() {
             is_personal=True on every read/write. */}
         <Route path="/teacher/calendar" element={
           <ProtectedRoute allowedRoles={['independent_teacher']}>
-            <Navigate to="/teacher/classes?tab=calendar" replace />
+            <Navigate to="/teacher/planning?tab=calendar" replace />
           </ProtectedRoute>
         } />
         {/* Task #209 §6.4 — IT-only light AI lesson-planning assistant.

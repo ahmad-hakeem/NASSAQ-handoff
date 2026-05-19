@@ -12,6 +12,10 @@ export { default as SessionTeachPage } from './SessionTeachPage';
 export { default as TeacherTasksPage } from './TeacherTasksPage';
 export { default as TeacherSchedulePage } from './TeacherSchedulePage';
 export { default as TeacherClassesPage } from './TeacherClassesPage';
+// 2026-05-19 — Time Management Hub: extracted the three time-management
+// tabs (جدولي / تقويمي الشخصي / إعدادات الجدول) out of فصولي into a
+// dedicated sidebar surface at /teacher/planning.
+export { default as TimeManagementHubPage } from './TimeManagementHubPage';
 export { default as TeacherClassDetailPage } from './TeacherClassDetailPage';
 export { default as TeacherAttendanceManagePage } from './TeacherAttendanceManagePage';
 export { default as TeacherAssessmentsPage } from './TeacherAssessmentsPage';

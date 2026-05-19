@@ -448,6 +448,19 @@ export const Sidebar = ({ children }) => {
         roles: ['teacher', 'independent_teacher'],
         dataTour: 'sidebar-my-classes',
       },
+      // 2026-05-19 — IA refactor: "الجدول والتقويم" (Time Management
+      // Hub). The three time-management tabs that used to live in the
+      // "فصولي" page (جدولي / تقويمي الشخصي / إعدادات الجدول) were
+      // extracted into a dedicated sidebar surface so the classes page
+      // can focus on class management. IT-only — non-IT teachers have
+      // no workspace schedule/calendar/settings surface to manage.
+      {
+        icon: CalendarDays,
+        label: t('timeManagementHub'),
+        href: '/teacher/planning',
+        roles: ['independent_teacher'],
+        dataTour: 'sidebar-time-management',
+      },
       {
         icon: Award,
         label: t('myAchievements'),

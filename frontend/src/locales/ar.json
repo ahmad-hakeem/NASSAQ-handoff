@@ -4379,6 +4379,8 @@
   "uploadWorkspaceLogo": "رفع شعار المساحة",
   "removeLogo": "إزالة الشعار",
   "itScheduleTabLabel": "إعدادات الجدول",
+  "timeManagementHub": "الجدول والتقويم",
+  "timeManagementHubSubtitle": "جدولك الأسبوعي، تقويمك الشخصي وإعدادات الجدول في مكان واحد.",
   "itImportDataTab": "استيراد البيانات",
   "itPersonalCalendarTab": "تقويمي الشخصي",
   "itScheduleSettingsTitle": "إعدادات الجدول",
