@@ -576,11 +576,14 @@ async def generate_report(
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
 
-    # Task #418 — school-wide reports are admin-only; teachers may not browse
-    # school_behaviour, school_academic, school_attendance, etc.
     if report_type.startswith("school_"):
+        # Task #423 — school-wide reports (behaviour incidents, rankings,
+        # attendance summaries, academic standings) expose data for the
+        # entire school and must be restricted to admin roles.  Allowing
+        # ordinary teachers to pull these reports is a least-privilege
+        # failure; teachers should use class-scoped routes instead.
         if role not in ADMIN_ROLES_SET:
-            raise HTTPException(403, "ليس لديك صلاحية لعرض تقارير المدرسة")
+            raise HTTPException(403, "ليس لديك صلاحية لعرض تقارير المدرسة — مخصصة للإداريين فقط")
 
     if report_type.startswith("teacher_"):
         if not teacher_id:
@@ -596,17 +599,14 @@ async def generate_report(
         stu = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
         if not stu:
             raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
-        if role in ADMIN_ROLES_SET:
-            pass
-        elif current_user.get("student_id") == student_id:
-            pass
-        elif role == UserRole.TEACHER.value:
-            # Task #418 — teachers must be assigned to the student's class.
+        # Task #423 — same-tenant presence is not sufficient authorization.
+        # Teachers must be object-level authorized (assigned to the student's
+        # class) before they can access detailed student reports such as
+        # progress, attendance history, performance, and AI risk data.
+        if role not in ADMIN_ROLES_SET:
             from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
             allowed = await can_view_student(db.session, current_user, student_id)
             require_can_view_student_sync_check(allowed)
-        else:
-            raise HTTPException(403, "لا يمكنك عرض تقرير طالب آخر")
 
     if report_type in ("class_report", "timetable"):
         allowed_roles = ADMIN_ROLES_SET | {UserRole.TEACHER.value}
@@ -677,11 +677,13 @@ async def export_report_file(
 
     school_id = resolved_school_id
 
-    # Task #418 — school-wide reports are admin-only; teachers may not export
-    # school_behaviour, school_academic, school_attendance, etc.
     if report_type.startswith("school_"):
+        # Task #423 — school-wide exports expose data for the entire school
+        # (behaviour incidents with names, academic rankings, attendance
+        # summaries, participation).  Restrict to admin roles; teachers may
+        # only export class-scoped data via the class_report/timetable paths.
         if role not in ADMIN_ROLES_SET:
-            raise HTTPException(403, "ليس لديك صلاحية لتصدير تقارير المدرسة")
+            raise HTTPException(403, "ليس لديك صلاحية لتصدير تقارير المدرسة — مخصصة للإداريين فقط")
 
     if report_type in ("class_report", "timetable"):
         allowed_roles = ADMIN_ROLES_SET | {UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value}
@@ -708,17 +710,14 @@ async def export_report_file(
         stu = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
         if not stu:
             raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
-        if role in ADMIN_ROLES_SET:
-            pass
-        elif current_user.get("student_id") == student_id:
-            pass
-        elif role in (UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value):
-            # Task #418 — teachers must be assigned to the student's class.
+        # Task #423 — same-tenant presence is not sufficient authorization.
+        # Teachers must be object-level authorized (assigned to the student's
+        # class) before they can export detailed student data such as
+        # attendance history, performance scores, and AI risk data.
+        if role not in ADMIN_ROLES_SET:
             from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
             allowed = await can_view_student(db.session, current_user, student_id)
             require_can_view_student_sync_check(allowed)
-        else:
-            raise HTTPException(403, "لا يمكنك تصدير تقرير طالب آخر")
 
     try:
         buf, media_type, filename = await export_engine.export(
@@ -851,7 +850,10 @@ async def export_report_file_short(
     student_id: Optional[str] = Query(None),
     school_id: Optional[str] = Query(None, description="School ID (platform admins can specify)"),
     current_user: dict = Depends(get_current_user),
-    # Task #418 — alias must carry the same MFA step-up as the canonical route.
+    # Task #423 — alias must carry the same IT step-up protection as the
+    # canonical /export/report/{report_type} route. Calling export_report_file
+    # as a plain Python function bypasses FastAPI dependency resolution, so
+    # the MFA guard must be declared directly on this route too.
     _mfa: dict = Depends(_REQUIRE_RECENT_MFA_403_IT),
 ):
     return await export_report_file(

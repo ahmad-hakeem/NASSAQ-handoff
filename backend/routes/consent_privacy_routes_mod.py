@@ -168,22 +168,24 @@ async def get_student_consents(
 ):
     """Get all consent records for a student (given by parent/guardian).
 
-    SECURITY: Only the student's guardians (parent role) or admin roles may
-    view a student's consent records.  Teachers and other roles receive 403
-    even when they are assigned to the student's class, because consent
-    records contain sensitive legal/privacy decisions made by the family.
+    SECURITY: Only the student's guardians or admin roles may view a
+    student's consent records.  Teachers — even those assigned to the
+    student's class — must NOT have access because consent records contain
+    sensitive family privacy decisions (medical, photo, data-sharing, etc.)
+    that are materially more sensitive than ordinary grade or attendance data.
+    Any non-admin, non-guardian caller receives 403.
     """
     if not _is_consent_admin(current_user):
-        caller_id = current_user["id"]
         role = current_user.get("role", "")
-        # Task #418 — narrow the check to guardian-only; can_view_student()
-        # also grants access to assigned teachers which is too broad here.
+        caller_id = current_user["id"]
         if role != "parent":
-            raise HTTPException(status_code=403, detail="غير مصرح")
-        parent = await gd_find_one(db.session, "parents", {"user_id": caller_id})
+            raise HTTPException(status_code=403, detail="غير مصرح — يُسمح فقط للوالدين أو الأوصياء والإداريين بعرض سجلات الموافقة")
+        # Verify the parent is a guardian of this specific student.
+        from engines.sql_utils import gd_find_one as _gd1
+        parent = await _gd1(db.session, "parents", {"user_id": caller_id})
         linked = parent and student_id in (parent.get("student_ids") or [])
         if not linked:
-            link = await gd_find_one(db.session, "guardian_links", {"parent_user_id": caller_id, "student_id": student_id})
+            link = await _gd1(db.session, "guardian_links", {"parent_user_id": caller_id, "student_id": student_id})
             linked = bool(link)
         if not linked:
             raise HTTPException(status_code=403, detail="لا يمكنك عرض سجلات موافقة طالب غير مرتبط بحسابك")
