@@ -462,7 +462,15 @@ export default function TeacherMainDashboard() {
                 size="sm"
                 variant="ghost"
                 className="rounded-xl gap-2 font-tajawal text-xs hover:bg-brand-turquoise/10 hover:text-brand-turquoise"
-                onClick={() => navigate('/teacher/schedule')}
+                /* 2026-05-19 — IA refactor: the IT "جدولي" surface moved
+                   into the unified Schedule & Calendar hub at
+                   /teacher/planning, where "schedule" is the default
+                   tab (TimeManagementHubPage maps an empty ?tab= to
+                   the schedule view, so no query string is needed).
+                   Regular teachers keep the legacy /teacher/schedule
+                   route — /teacher/planning is gated to
+                   `independent_teacher` only and would 403 them. */
+                onClick={() => navigate(isIndependentTeacher ? '/teacher/planning' : '/teacher/schedule')}
               >
                 <Calendar className="h-4 w-4" />
                 {t('mySchedule')}
