@@ -572,39 +572,39 @@ export const LandingPage = () => {
 
             {/* RTL Start = Right: Content */}
             <div className="space-y-8 text-start order-2 lg:order-1 lg:[&]:order-none">
-              {/* Eyebrow badge */}
+              {/* Eyebrow badge — names the audience, not the product */}
               <div className="inline-flex items-center gap-2 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full ps-2 pe-4 py-1.5 backdrop-blur-sm">
                 <CheckCircle2 className="h-4 w-4 text-brand-turquoise" />
                 <span className="font-tajawal text-sm text-brand-turquoise">
-                  {isRTL ? 'نظام تشغيلي للمؤسسات التعليمية' : 'An operating system for educational institutions'}
+                  {isRTL ? 'لمدراء المدارس · معاهد التعليم · المعلمين المستقلين' : 'For principals, training institutes & independent teachers'}
                 </span>
               </div>
 
-              {/* H1 */}
+              {/* H1 — outcome-specific, pain-aware */}
               <h1
                 className="font-cairo font-bold text-white leading-tight text-4xl sm:text-5xl lg:text-6xl"
                 data-testid="platform-name"
               >
                 {isRTL ? (
                   <>
-                    كل إشارة تعليمية
+                    اكتشف <span className="text-brand-turquoise">تراجع طلابك</span>
                     <br />
-                    <span className="text-brand-turquoise">تتحول إلى</span> قرار.
+                    قبل فوات الأوان.
                   </>
                 ) : (
                   <>
-                    Every educational signal
+                    Catch <span className="text-brand-turquoise">student decline</span>
                     <br />
-                    <span className="text-brand-turquoise">turns into</span> a decision.
+                    before it's too late.
                   </>
                 )}
               </h1>
 
-              {/* Sub-heading */}
-              <p className="font-tajawal text-lg text-white/75 leading-relaxed max-w-xl">
+              {/* Sub-heading — names the mechanism, doesn't repeat the headline */}
+              <p className="font-tajawal text-lg text-white/80 leading-relaxed max-w-xl">
                 {isRTL
-                  ? 'نسق يحول البيانات التعليمية اليومية إلى رؤى تنفيذية — اكتشاف التراجع مبكرًا، ترتيب الأولويات، والقرار في الوقت المناسب.'
-                  : 'NASSAQ turns everyday educational data into executive insights — catch decline early, prioritize what matters, and decide at the right moment.'}
+                  ? 'نَسَّق يجمع الحضور والدرجات والسلوك في صورة واحدة، فيُنبّهك للطلاب الذين يحتاجون تدخّلك — وللمعلمين الذين يحتاجون دعمك — قبل أن تتحول الإشارة إلى أزمة.'
+                  : 'NASSAQ joins attendance, grades and behavior into one picture, then flags the students who need your intervention — and the teachers who need your support — before a signal turns into a crisis.'}
               </p>
 
               {/* CTAs */}
@@ -615,7 +615,7 @@ export const LandingPage = () => {
                   data-testid="hero-cta-btn"
                 >
                   <Link to="/register" className="flex items-center gap-2">
-                    {isRTL ? 'احجز تجربة' : 'Book a demo'}
+                    {isRTL ? 'ابدأ تجربتك المجانية' : 'Start your free trial'}
                     {isRTL ? <ArrowLeft className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
                   </Link>
                 </Button>
@@ -626,10 +626,17 @@ export const LandingPage = () => {
                   data-testid="hero-secondary-cta"
                 >
                   <a href="#how-it-works" className="flex items-center gap-2">
-                    {isRTL ? 'شاهد كيف يعمل' : 'See how it works'}
+                    {isRTL ? 'شاهد كيف يعمل (دقيقتان)' : 'See how it works (2 min)'}
                   </a>
                 </Button>
               </div>
+
+              {/* Risk-reversal microcopy under CTA */}
+              <p className="font-tajawal text-xs text-white/60 -mt-4">
+                {isRTL
+                  ? 'بدون بطاقة ائتمان · إعداد خلال 24 ساعة · إلغاء في أي وقت'
+                  : 'No credit card · Setup in 24 hours · Cancel anytime'}
+              </p>
 
               {/* Social proof — only renders when we have real platform numbers */}
               {platformStats.schools > 0 && (
@@ -721,6 +728,81 @@ export const LandingPage = () => {
               </p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* ========== PAIN SECTION — funnel step 1: agitate the problem ========== */}
+      <section
+        className="relative bg-slate-50 py-20 lg:py-28"
+        data-testid="pain-section"
+      >
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center max-w-2xl mx-auto mb-14">
+            <div className="inline-flex items-center gap-2 bg-amber-50 border border-amber-100 rounded-full ps-2 pe-4 py-1.5 mb-5">
+              <Bell className="h-4 w-4 text-amber-600" />
+              <span className="font-tajawal text-sm text-amber-700">
+                {isRTL ? 'إشارات تعرفها كل مدرسة' : 'Signals every school knows'}
+              </span>
+            </div>
+            <h2 className="font-cairo font-bold text-brand-navy text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
+              {isRTL ? (
+                <>هل تواجه هذه الإشارات <span className="text-amber-600">كل أسبوع؟</span></>
+              ) : (
+                <>Are these signals showing up <span className="text-amber-600">every week?</span></>
+              )}
+            </h2>
+            <p className="font-tajawal text-base text-slate-600 leading-relaxed">
+              {isRTL
+                ? 'لو تكررت أي اثنتين منها، فأنت تخسر وقتًا وقرارات وفُرص تدخّل — والبيانات موجودة، لكنها مبعثرة.'
+                : 'If any two of these recur, you are losing time, decisions and intervention windows — the data exists, but it is scattered.'}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {[
+              {
+                icon: TrendingUp,
+                ar: 'تكتشف تراجع طالب فقط حين يصل كشف الدرجات إلى ولي أمره.',
+                en: "You only spot a student's decline when the grade report reaches the parent.",
+              },
+              {
+                icon: Calendar,
+                ar: 'ساعات تُستهلك أسبوعيًا في الجداول والتقارير اليدوية بدل القرار.',
+                en: 'Hours wasted weekly on manual timetables and reports instead of decisions.',
+              },
+              {
+                icon: Database,
+                ar: 'ملاحظات المعلمين، الحضور، والسلوك مبعثرة بين دفاتر وملفات إكسل ومجموعات واتساب.',
+                en: 'Teacher notes, attendance and behavior scattered across notebooks, Excel files and WhatsApp groups.',
+              },
+              {
+                icon: Lightbulb,
+                ar: 'قرارات تربوية مهمة تُتخذ بناءً على انطباع — لأن البيانات لا تصل في الوقت المناسب.',
+                en: "Important academic decisions made on gut feel — because data doesn't arrive on time.",
+              },
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <div
+                  key={i}
+                  className="flex items-start gap-4 bg-white border border-slate-200 rounded-2xl p-6 hover:border-amber-200 hover:shadow-md transition-all"
+                >
+                  <div className="shrink-0 w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center">
+                    <Icon className="h-5 w-5 text-amber-600" />
+                  </div>
+                  <p className="font-tajawal text-base text-slate-700 leading-relaxed">
+                    {isRTL ? item.ar : item.en}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="font-tajawal text-center text-slate-500 text-sm mt-10">
+            {isRTL
+              ? 'نَسَّق بُني خصيصًا ليُغلق هذه الفجوات — واحدة تلو الأخرى.'
+              : 'NASSAQ was built specifically to close these gaps — one by one.'}
+          </p>
         </div>
       </section>
 
@@ -1210,6 +1292,172 @@ export const LandingPage = () => {
               </div>
             </div>
           </Card>
+        </div>
+      </section>
+
+      {/* ========== PROOF SECTION — funnel step 3: build trust ========== */}
+      <section
+        className="relative bg-white py-20 lg:py-28 border-t border-slate-100"
+        data-testid="proof-section"
+      >
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center max-w-2xl mx-auto mb-14">
+            <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-full ps-2 pe-4 py-1.5 mb-5">
+              <Shield className="h-4 w-4 text-emerald-600" />
+              <span className="font-tajawal text-sm text-emerald-700">
+                {isRTL ? 'لماذا تثق بنا المدارس' : 'Why schools trust us'}
+              </span>
+            </div>
+            <h2 className="font-cairo font-bold text-brand-navy text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
+              {isRTL ? (
+                <>منصة سعودية، مبنية لـ <span className="text-brand-turquoise">المدارس السعودية.</span></>
+              ) : (
+                <>A Saudi platform, built for <span className="text-brand-turquoise">Saudi schools.</span></>
+              )}
+            </h2>
+          </div>
+
+          {/* Live stat strip — real numbers only */}
+          {platformStats.schools > 0 && (
+            <div className="bg-gradient-to-br from-brand-navy to-brand-navy-light rounded-2xl px-8 py-10 mb-12 text-center shadow-xl">
+              <p className="font-tajawal text-white/70 text-sm mb-3">
+                {isRTL ? 'مدارس فعّلت نَسَّق حتى اليوم' : 'Schools live on NASSAQ today'}
+              </p>
+              <div className="font-cairo font-black text-white text-6xl lg:text-7xl mb-3">
+                <AnimatedCounter target={platformStats.schools} />
+                <span className="text-brand-turquoise">+</span>
+              </div>
+              <p className="font-tajawal text-white/70 text-sm">
+                {isRTL
+                  ? 'ينمو الرقم كل أسبوع · بيانات حية من المنصة'
+                  : 'Growing weekly · live count from the platform'}
+              </p>
+            </div>
+          )}
+
+          {/* Trust pillars — factual claims about architecture, not fake testimonials */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {[
+              {
+                icon: Shield,
+                titleAr: 'بُنيت بمعايير حماية البيانات',
+                titleEn: 'Built to data-protection standards',
+                bodyAr: 'نَسَّق مصمَّمة بما يتوافق مع متطلبات نظام حماية البيانات الشخصية (PDPL)، مع تشفير كامل أثناء النقل والتخزين، ونسخ احتياطي يومي لبيانات كل مدرسة.',
+                bodyEn: 'NASSAQ is designed in line with the Personal Data Protection Law (PDPL): full encryption in transit and at rest, with daily backups for every school.',
+              },
+              {
+                icon: Building2,
+                titleAr: 'فصل صارم بين المدارس',
+                titleEn: 'Strict tenant separation',
+                bodyAr: 'كل استعلام على بيانات الطلاب أو المعلمين مرتبط بمعرّف مدرستك — لا يمكن لأي مستخدم من مدرسة أخرى الوصول إلى صفك أو طالبك، حتى بالخطأ.',
+                bodyEn: 'Every query on student or teacher data is bound to your school’s tenant ID — no user from another school can reach your class or your student, even by mistake.',
+              },
+              {
+                icon: Zap,
+                titleAr: 'جاهز خلال 24 ساعة',
+                titleEn: 'Ready in 24 hours',
+                bodyAr: 'لا حاجة لخادم أو تركيب. نُجهّز مساحة مدرستك ونستورد طلابك ومعلميك في أقل من يوم عمل واحد.',
+                bodyEn: 'No server, no installation. We set up your school space and import your students and teachers in less than one working day.',
+              },
+            ].map((pillar, i) => {
+              const Icon = pillar.icon;
+              return (
+                <div
+                  key={i}
+                  className="bg-slate-50 border border-slate-200 rounded-2xl p-7 hover:border-brand-turquoise/30 hover:bg-white hover:shadow-md transition-all"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-brand-turquoise/10 flex items-center justify-center mb-5">
+                    <Icon className="h-6 w-6 text-brand-turquoise" />
+                  </div>
+                  <h3 className="font-cairo font-bold text-brand-navy text-lg mb-2">
+                    {isRTL ? pillar.titleAr : pillar.titleEn}
+                  </h3>
+                  <p className="font-tajawal text-sm text-slate-600 leading-relaxed">
+                    {isRTL ? pillar.bodyAr : pillar.bodyEn}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Honesty note — we don't have testimonials yet, so we say so */}
+          <p className="font-tajawal text-center text-slate-400 text-xs mt-10">
+            {isRTL
+              ? 'قصص شركائنا من المدارس الرائدة قيد الإعداد للنشر — بإذنهم وبلا تجميل.'
+              : "Stories from our early partner schools are being prepared for publication — with their consent, unedited."}
+          </p>
+        </div>
+      </section>
+
+      {/* ========== FAQ SECTION — funnel step 4: handle objections ========== */}
+      <section
+        className="relative bg-slate-50 py-20 lg:py-28"
+        data-testid="faq-section"
+      >
+        <div className="max-w-3xl mx-auto px-6">
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center gap-2 bg-slate-100 border border-slate-200 rounded-full ps-2 pe-4 py-1.5 mb-5">
+              <Lightbulb className="h-4 w-4 text-slate-600" />
+              <span className="font-tajawal text-sm text-slate-600">
+                {isRTL ? 'الأسئلة التي يطرحها المدراء قبل البدء' : 'Questions principals ask before starting'}
+              </span>
+            </div>
+            <h2 className="font-cairo font-bold text-brand-navy text-3xl sm:text-4xl lg:text-5xl leading-tight">
+              {isRTL ? 'إجابات صريحة على ما يقلقك.' : 'Straight answers to what worries you.'}
+            </h2>
+          </div>
+
+          <div className="space-y-3">
+            {[
+              {
+                qAr: 'أخشى أن تكون التكلفة عالية على ميزانية المدرسة.',
+                qEn: 'I worry the cost is too high for our school budget.',
+                aAr: 'باقات نَسَّق مرنة وتُحسب لكل طالب شهريًا — تبدأ بسعر أقل من تكلفة موظف إداري واحد، وتشمل التحديثات والدعم بدون رسوم خفية. يمكنك إلغاء اشتراكك في أي وقت دون التزام.',
+                aEn: 'NASSAQ plans are flexible and priced per-student per-month — starting below the cost of a single admin staffer, including updates and support with no hidden fees. Cancel anytime, no commitment.',
+              },
+              {
+                qAr: 'موظفونا غير متخصصين تقنيًا. هل سيستطيعون استخدامها؟',
+                qEn: 'Our staff are not tech specialists. Can they use it?',
+                aAr: 'صُممت كل شاشة في نَسَّق لتعمل بدون تدريب — معلم يدخل غيابه في ٣٠ ثانية، ولي أمر يرى تقرير طفله بضغطة. نُقدّم جلسة تأهيل أونلاين لفريقك مجانًا في أول أسبوع، وفريق دعم باللغة العربية متاح طوال أيام العمل.',
+                aEn: 'Every screen in NASSAQ is designed to work without training — a teacher logs attendance in 30 seconds, a parent sees their child\'s report in one tap. We onboard your team online free in the first week, and our Arabic-speaking support is available every working day.',
+              },
+              {
+                qAr: 'هل بياناتنا آمنة، ومحفوظة داخل المملكة؟',
+                qEn: 'Is our data safe and kept inside the Kingdom?',
+                aAr: 'نَسَّق مصمَّمة بما يتوافق مع متطلبات نظام حماية البيانات الشخصية (PDPL): تشفير كامل أثناء النقل والتخزين، نسخ احتياطي يومي، وفصل صارم لبيانات كل مدرسة على مستوى الاستعلام. نعمل حاليًا على اعتماد الاستضافة السيادية داخل المملكة ونُحدّث صفحة الخصوصية فور اكتمالها.',
+                aEn: 'NASSAQ is designed in line with the Personal Data Protection Law (PDPL): full encryption in transit and at rest, daily backups, and strict per-school separation enforced at query level. Sovereign hosting inside Saudi Arabia is in progress, and we update the privacy page the moment it is finalized.',
+              },
+              {
+                qAr: 'ماذا لو لم تناسبنا المنصة بعد التجربة؟',
+                qEn: "What if the platform doesn't fit us after trying it?",
+                aAr: 'تجربة نَسَّق مجانية بالكامل، بدون بطاقة ائتمان وبدون التزام. لو قررت عدم المتابعة، نُساعدك على تصدير بيانات مدرستك كاملة في ملفات قياسية — تبقى ملكك أنت.',
+                aEn: 'The NASSAQ trial is fully free, no credit card and no commitment. If you decide not to continue, we help you export all your school data in standard files — it stays yours.',
+              },
+              {
+                qAr: 'هل تتكامل نَسَّق مع نظامنا الحالي (نور، مدرستي…)؟',
+                qEn: 'Does NASSAQ integrate with our current system (Noor, Madrasati…)?',
+                aAr: 'نعم. نَسَّق يدعم استيراد بيانات الطلاب والمعلمين من نظام نور بصيغ Excel/CSV، ويعمل بجانب مدرستي بدون تعارض. هدفنا أن نُكمّل أدواتك لا أن نستبدلها.',
+                aEn: 'Yes. NASSAQ supports importing student and teacher data from Noor via Excel/CSV, and runs alongside Madrasati without conflict. We complement your existing tools, not replace them.',
+              },
+            ].map((faq, i) => (
+              <details
+                key={i}
+                className="group bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-brand-turquoise/30 transition-colors"
+              >
+                <summary className="flex items-center justify-between gap-4 px-6 py-5 cursor-pointer list-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-2 rounded-xl">
+                  <span className="font-cairo font-bold text-brand-navy text-base text-start">
+                    {isRTL ? faq.qAr : faq.qEn}
+                  </span>
+                  <ChevronDown className="h-5 w-5 text-slate-400 group-open:rotate-180 transition-transform shrink-0" />
+                </summary>
+                <div className="px-6 pb-5 -mt-1">
+                  <p className="font-tajawal text-sm text-slate-600 leading-relaxed">
+                    {isRTL ? faq.aAr : faq.aEn}
+                  </p>
+                </div>
+              </details>
+            ))}
+          </div>
         </div>
       </section>
 
