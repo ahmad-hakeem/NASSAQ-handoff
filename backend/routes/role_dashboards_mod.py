@@ -2,26 +2,26 @@
 NASSAQ Route Module: Teacher, student, parent dashboards, contact teacher
 Auto-consolidated during Phase 8 modularization.
 """
-from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Body, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import Response
-from starlette.responses import StreamingResponse
-from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
+from fastapi import APIRouter, HTTPException, Depends, Query, Body, Request
 from typing import List, Optional, Any, Dict
-from datetime import datetime, timezone, timedelta
-import uuid, os, logging, json, random, re, io, base64
+from datetime import datetime, timezone
+import uuid
 
+# Task #473 — Audit of role_dashboards_mod.py:
+# Credential / session helpers (hash_password, verify_password,
+# create_access_token, JWT_*, security, ACCESS_TOKEN_EXPIRE) are
+# intentionally NOT imported here. The legacy PUT /users/{user_id}/password
+# handler that referenced an unbound `pwd_context` (Task #470) was a symptom
+# of those primitives being available in this catch-all router. Any new
+# password change, role flip, account-state change, or credential-mint
+# surface MUST live in auth_routes_mod.py / user_routes_mod.py where the
+# canonical MFA, audit, and session-revocation side-effects are enforced.
 from dependencies import (
-    db, get_current_user, require_roles, UserRole, SchoolStatus,
-    hash_password, verify_password, create_access_token,
-    JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE, security, logger,
-    audit_engine, AuditAction, AuditSeverity,
-    smart_scheduling_engine, TimetableRunStatus, TimetableStatus,
-    ConflictType, ConflictSeverity, PreValidationResult, GenerationResult,
-    hakim_engine, reporting_engine, export_engine, session_engine,
-    REPORT_TYPES, generate_student_qr_code
+    db, get_current_user, require_roles, UserRole, logger,
+    audit_engine, AuditAction,
+    session_engine,
 )
-from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_aggregate
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, _gd_aggregate
 
 
 from shared_models import (
