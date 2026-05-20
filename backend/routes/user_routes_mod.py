@@ -1025,11 +1025,35 @@ async def update_user_profile_extended(
         existing = await gd_find_one(db.session, "users", {"email": data.email, "id": {"$ne": current_user["id"]}})
         if existing:
             raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم مسبقاً")
+        # Extra guard for teacher accounts: block updates that would collide with
+        # a teachers row not already linked to this user.  Without this check a
+        # teacher could update their email to an orphaned teacher record's email
+        # and trigger the auto-link in get_current_user(), hijacking that record.
+        if current_user.get("role") == "teacher":
+            _caller_teacher_id = current_user.get("teacher_id")
+            _tenant = current_user.get("tenant_id")
+            _q: dict = {"email": str(data.email)}
+            if _tenant:
+                _q["school_id"] = _tenant
+            _teacher_collision = await gd_find_one(db.session, "teachers", _q)
+            if _teacher_collision and _teacher_collision.get("id") != _caller_teacher_id:
+                raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم مسبقاً")
         update_data["email"] = data.email
     if data.phone is not None and data.phone:
         existing = await gd_find_one(db.session, "users", {"phone": data.phone, "id": {"$ne": current_user["id"]}})
         if existing:
             raise HTTPException(status_code=400, detail="رقم الهاتف مستخدم مسبقاً")
+        # Same guard as email: block phone values that exist on a teachers row
+        # not owned by this user to prevent identity-hijack via auto-link.
+        if current_user.get("role") == "teacher":
+            _caller_teacher_id = current_user.get("teacher_id")
+            _tenant = current_user.get("tenant_id")
+            _q = {"phone": data.phone}
+            if _tenant:
+                _q["school_id"] = _tenant
+            _teacher_collision = await gd_find_one(db.session, "teachers", _q)
+            if _teacher_collision and _teacher_collision.get("id") != _caller_teacher_id:
+                raise HTTPException(status_code=400, detail="رقم الهاتف مستخدم مسبقاً")
         update_data["phone"] = data.phone
     if data.avatar_url is not None:
         update_data["avatar_url"] = data.avatar_url

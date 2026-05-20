@@ -422,8 +422,21 @@ async def get_current_user(
             if not teacher:
                 teacher = await _scoped_lookup("teachers", "national_id", user.get("national_id"))
             if teacher:
-                user["teacher_id"] = teacher.get("id")
-                await _persist_link("teacher_id", teacher.get("id"))
+                # Guard: only auto-link via mutable contact fields if the teacher
+                # record is truly orphaned (no user_id set) or already points at
+                # this exact user.  If teacher.user_id belongs to someone else the
+                # lookup matched a record legitimately owned by another account —
+                # binding would hijack that teacher's identity.
+                existing_uid = teacher.get("user_id")
+                if existing_uid and existing_uid != user.get("id"):
+                    logger.warning(
+                        "Auto-link blocked: teacher %s already has user_id %s; "
+                        "refusing to rebind to user %s",
+                        teacher.get("id"), existing_uid, user.get("id"),
+                    )
+                else:
+                    user["teacher_id"] = teacher.get("id")
+                    await _persist_link("teacher_id", teacher.get("id"))
 
         if user.get("role") == UserRole.STUDENT.value and not user.get("student_id"):
             # students table has no user_id column → use email/phone/national_id, tenant-scoped.
