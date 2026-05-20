@@ -615,31 +615,41 @@ export const LandingPage = () => {
                 </Button>
               </div>
 
-              {/* Social proof */}
-              <div className="flex items-center gap-3" data-testid="traction-section">
-                <div className="flex -space-x-2 rtl:space-x-reverse">
-                  {['#1C3D74', '#46C1BE', '#615090', '#D4A23C'].map((bg, i) => (
-                    <div
-                      key={i}
-                      className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white text-xs font-cairo font-bold shadow-sm"
-                      style={{ backgroundColor: bg }}
-                    >
-                      ن
-                    </div>
-                  ))}
+              {/* Social proof — only renders when we have real platform numbers */}
+              {platformStats.schools > 0 && (
+                <div className="flex items-center gap-3" data-testid="traction-section">
+                  <div className="flex -space-x-2 rtl:space-x-reverse">
+                    {['#1C3D74', '#46C1BE', '#615090', '#D4A23C'].map((bg, i) => (
+                      <div
+                        key={i}
+                        className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white text-xs font-cairo font-bold shadow-sm"
+                        style={{ backgroundColor: bg }}
+                      >
+                        ن
+                      </div>
+                    ))}
+                  </div>
+                  <p className="font-tajawal text-sm text-slate-600" data-testid="hero-school-count">
+                    {isRTL ? (
+                      <>
+                        <span className="font-bold text-brand-navy">
+                          <AnimatedCounter target={platformStats.schools} />
+                          {' '}مدرسة
+                        </span>{' '}
+                        تستخدم نسق الآن
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-bold text-brand-navy">
+                          <AnimatedCounter target={platformStats.schools} />
+                          {' '}schools
+                        </span>{' '}
+                        use NASSAQ today
+                      </>
+                    )}
+                  </p>
                 </div>
-                <p className="font-tajawal text-sm text-slate-600">
-                  {isRTL ? (
-                    <>
-                      <span className="font-bold text-brand-navy">+{Math.max(platformStats.schools, 32)} مدرسة</span> تستخدم نسق الآن
-                    </>
-                  ) : (
-                    <>
-                      <span className="font-bold text-brand-navy">+{Math.max(platformStats.schools, 32)} schools</span> use NASSAQ today
-                    </>
-                  )}
-                </p>
-              </div>
+              )}
 
               {/* Features ticker */}
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-4 border-t border-slate-100">
@@ -659,16 +669,18 @@ export const LandingPage = () => {
             {/* RTL End = Left: Dashboard mockup */}
             <div className="order-1 lg:order-2">
               <div
-                className="relative w-full aspect-[4/3] bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transform hover:scale-[1.02] transition-transform duration-500"
+                className="relative w-full bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transform hover:scale-[1.02] transition-transform duration-500"
                 data-testid="hero-mockup"
               >
-                {/* Mock browser chrome */}
+                {/* Browser chrome */}
                 <div className="flex items-center justify-between gap-2 px-4 h-9 bg-slate-50 border-b border-slate-100">
                   <div className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                     <span className="font-tajawal text-[11px] text-slate-500">{isRTL ? 'مباشر' : 'Live'}</span>
                   </div>
-                  <span className="font-tajawal text-[11px] text-slate-500">{isRTL ? 'نسق · مركز العمل اليومي' : 'NASSAQ · Daily Ops Hub'}</span>
+                  <span className="font-tajawal text-[11px] text-slate-500">
+                    {isRTL ? 'نسق · لوحة مدير المدرسة' : 'NASSAQ · Principal Dashboard'}
+                  </span>
                   <div className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-slate-200" />
                     <span className="w-2 h-2 rounded-full bg-slate-200" />
@@ -676,92 +688,20 @@ export const LandingPage = () => {
                   </div>
                 </div>
 
-                {/* Mock content */}
-                <div className="grid grid-cols-12 h-[calc(100%-2.25rem)]">
-                  {/* Sidebar */}
-                  <div className="col-span-3 border-s border-slate-100 bg-slate-50/50 py-4 px-3 space-y-1.5">
-                    {[
-                      { label: isRTL ? 'الرئيسية' : 'Home' },
-                      { label: isRTL ? 'الأولويات' : 'Priorities', active: true },
-                      { label: isRTL ? 'الطلاب' : 'Students' },
-                      { label: isRTL ? 'التقارير' : 'Reports' },
-                      { label: isRTL ? 'الإعدادات' : 'Settings' },
-                    ].map((item, i) => (
-                      <div
-                        key={i}
-                        className={`font-tajawal text-[12px] text-end px-3 py-1.5 rounded-md ${
-                          item.active
-                            ? 'bg-white text-brand-navy font-bold border-e-2 border-brand-turquoise shadow-sm'
-                            : 'text-slate-500'
-                        }`}
-                      >
-                        {item.label}
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Main panel */}
-                  <div className="col-span-9 p-4 space-y-3 overflow-hidden">
-                    {/* KPI tiles */}
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { v: '+18%', l: isRTL ? 'تحسن التفاعل' : 'Engagement up', bg: 'bg-emerald-50', tx: 'text-emerald-700', br: 'border-emerald-100' },
-                        { v: '1h', l: isRTL ? 'وقت وُفِّر' : 'Time saved', bg: 'bg-sky-50', tx: 'text-sky-700', br: 'border-sky-100' },
-                        { v: '4', l: isRTL ? 'حالات مكتشفة' : 'Cases found', bg: 'bg-rose-50', tx: 'text-rose-700', br: 'border-rose-100' },
-                      ].map((k, i) => (
-                        <div key={i} className={`${k.bg} ${k.br} border rounded-xl p-2.5 text-center`}>
-                          <div className={`font-cairo font-black text-lg ${k.tx}`}>{k.v}</div>
-                          <div className={`font-tajawal text-[10px] ${k.tx} opacity-80`}>{k.l}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Priorities header */}
-                    <div className="flex items-center justify-between pt-1">
-                      <span className="font-tajawal text-[10px] text-rose-600 inline-flex items-center gap-1">
-                        <Bell className="h-3 w-3" />
-                        {isRTL ? '٣ تنبيهات' : '3 alerts'}
-                      </span>
-                      <span className="font-cairo font-bold text-[12px] text-brand-navy">
-                        {isRTL ? 'أولويات اليوم' : "Today's priorities"}
-                      </span>
-                    </div>
-
-                    {/* Priority rows */}
-                    <div className="space-y-1.5">
-                      {[
-                        { tag: isRTL ? 'تدخل فوري' : 'Act now', tagBg: 'bg-rose-100 text-rose-700', text: isRTL ? 'أحمد محمد — تراجع حاد في الرياضيات' : 'Ahmed M. — sharp decline in Math' },
-                        { tag: isRTL ? 'متابعة' : 'Follow', tagBg: 'bg-amber-100 text-amber-700', text: isRTL ? 'نورة عبدالله — غياب متكرر هذا الأسبوع' : 'Noura A. — repeated absences this week' },
-                        { tag: isRTL ? 'مراقبة' : 'Watch', tagBg: 'bg-slate-100 text-slate-600', text: isRTL ? 'فيصل الشمري — تراجع ١١٪ في الأداء' : 'Faisal S. — 11% performance drop' },
-                      ].map((row, i) => (
-                        <div key={i} className="flex items-center justify-between gap-2 bg-white border border-slate-100 rounded-lg px-2.5 py-1.5 shadow-sm">
-                          <span className={`font-tajawal text-[10px] px-2 py-0.5 rounded-full ${row.tagBg}`}>{row.tag}</span>
-                          <span className="font-tajawal text-[11px] text-slate-700 truncate">{row.text}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Hakim recommendation */}
-                    <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-2.5 flex items-start gap-2">
-                      <div className="w-6 h-6 rounded-full bg-brand-navy text-white flex items-center justify-center font-cairo text-[10px] font-bold shrink-0">ح</div>
-                      <div className="min-w-0">
-                        <p className="font-cairo font-bold text-[11px] text-brand-navy mb-0.5">
-                          {isRTL ? 'حكيم يقترح تدخلاً أكاديميًا مبكرًا' : 'Hakim suggests an early academic intervention'}
-                        </p>
-                        <p className="font-tajawal text-[10px] text-slate-600 leading-snug">
-                          {isRTL ? 'جلسة دعم فردية + إشعار لولي الأمر خلال ٤٨ ساعة' : 'A 1:1 support session + parent notice within 48 hours'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                {/* Real product screenshot */}
+                <img
+                  src="/images/landing-dashboard-preview.png"
+                  alt={isRTL ? 'لقطة من لوحة مدير المدرسة في نَسَّق' : 'NASSAQ principal dashboard screenshot'}
+                  className="block w-full h-auto"
+                  loading="lazy"
+                />
               </div>
 
               {/* Footnote below mockup */}
               <p className="font-tajawal text-xs text-slate-500 text-center mt-4">
                 {isRTL
-                  ? 'وفّرت ١ ساعات هذا الأسبوع من العمل الإداري'
-                  : 'Saved 1+ hours of admin work this week'}
+                  ? 'لقطة حقيقية من لوحة مدير المدرسة'
+                  : 'Real screenshot from the principal dashboard'}
               </p>
             </div>
           </div>
