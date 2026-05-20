@@ -837,18 +837,31 @@ export const LandingPage = () => {
       {/* ========== HOW IT WORKS — compact 4-step strip (merged from client demo) ========== */}
       <section
         id="how-it-works"
-        className="relative bg-white py-20 lg:py-24 border-t border-slate-100 scroll-mt-24"
+        className="relative bg-brand-navy py-20 lg:py-24 overflow-hidden scroll-mt-24"
         data-testid="how-it-works-steps"
       >
-        <div className="max-w-6xl mx-auto px-6">
+        {/* nassaq background image — same treatment as hero */}
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-100"
+          style={{ backgroundImage: `url('/nassaq-background.png')` }}
+          aria-hidden="true"
+        />
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center top' }}
+          aria-hidden="true"
+        />
+        <div className="absolute inset-0 bg-brand-navy/70" aria-hidden="true" />
+
+        <div className="relative max-w-6xl mx-auto px-6">
           <div className="text-center max-w-2xl mx-auto mb-12">
-            <div className="inline-flex items-center gap-2 bg-brand-turquoise/10 border border-brand-turquoise/20 rounded-full ps-2 pe-4 py-1.5 mb-5">
-              <Zap className="h-4 w-4 text-brand-turquoise" />
+            <div className="inline-flex items-center gap-2 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full ps-2 pe-4 py-1.5 mb-5 backdrop-blur-sm">
+              <Zap className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
               <span className="font-tajawal text-sm text-brand-turquoise">
                 {isRTL ? 'العمل اليومي في نَسَّق' : 'The daily NASSAQ loop'}
               </span>
             </div>
-            <h2 className="font-cairo font-bold text-brand-navy text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
+            <h2 className="font-cairo font-bold text-white text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
               {isRTL ? (
                 <>أربع خطوات تحوّل الإشارات اليومية إلى <span className="text-brand-turquoise">قرارات واضحة.</span></>
               ) : (
@@ -886,15 +899,15 @@ export const LandingPage = () => {
             ].map((step, i) => (
               <div
                 key={i}
-                className="relative bg-slate-50 border border-slate-200 rounded-2xl p-6 hover:border-brand-turquoise/30 hover:bg-white hover:shadow-md transition-all"
+                className="relative bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-sm transition-all duration-300 ease-out hover:bg-white/10 hover:border-brand-turquoise/40 hover:-translate-y-1.5 hover:shadow-xl motion-reduce:transition-none motion-reduce:hover:translate-y-0"
               >
-                <div className="font-cairo font-black text-brand-turquoise/30 text-5xl leading-none mb-4">
+                <div className="font-cairo font-black text-brand-turquoise/50 text-5xl leading-none mb-4">
                   {String(i + 1).padStart(2, '0')}
                 </div>
-                <h3 className="font-cairo font-bold text-brand-navy text-base mb-2 leading-snug">
+                <h3 className="font-cairo font-bold text-white text-base mb-2 leading-snug">
                   {isRTL ? step.titleAr : step.titleEn}
                 </h3>
-                <p className="font-tajawal text-sm text-slate-600 leading-relaxed">
+                <p className="font-tajawal text-sm text-white/70 leading-relaxed">
                   {isRTL ? step.bodyAr : step.bodyEn}
                 </p>
               </div>
