@@ -165,6 +165,48 @@ export const LandingPage = () => {
   const [aiPaused, setAIPaused] = useState(false);
   const [ecosystemPaused, setEcosystemPaused] = useState(false);
 
+  // Landing-page anchor sections — kept in nav order so the navbar can render
+  // and IntersectionObserver can highlight the active section in sync.
+  const navSections = useMemo(() => ([
+    { id: 'how-it-works', ar: 'كيف يعمل', en: 'How it works' },
+    { id: 'solutions',    ar: 'الحلول',  en: 'Solutions' },
+    { id: 'ecosystem',    ar: 'الأدوار',  en: 'Roles' },
+    { id: 'proof',        ar: 'النتائج', en: 'Results' },
+    { id: 'plans',        ar: 'الباقات', en: 'Plans' },
+    { id: 'faq',          ar: 'الأسئلة الشائعة', en: 'FAQ' },
+  ]), []);
+
+  const [activeSection, setActiveSection] = useState('');
+
+  useEffect(() => {
+    const targets = navSections
+      .map(({ id }) => document.getElementById(id))
+      .filter(Boolean);
+    if (!targets.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+        if (visible.length) setActiveSection(visible[0].target.id);
+      },
+      { rootMargin: '-80px 0px -55% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] },
+    );
+
+    targets.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [navSections]);
+
+  const handleNavClick = (e, id) => {
+    e.preventDefault();
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setActiveSection(id);
+    }
+  };
+
   // Fixed welcome pose for hero (no rotation)
   const heroHakim = { currentSrc: HAKIM_HERO_WELCOME };
 
@@ -473,21 +515,25 @@ export const LandingPage = () => {
 
           {/* Center: Anchor Links + IT pill */}
           <div className="hidden lg:flex items-center gap-1">
-            {[
-              { href: '#how-it-works', label: isRTL ? 'كيف يعمل' : 'How it works' },
-              { href: '#solutions', label: isRTL ? 'الحلول' : 'Solutions' },
-              { href: '#results', label: isRTL ? 'النتائج' : 'Results' },
-              { href: '#plans', label: isRTL ? 'الباقات' : 'Plans' },
-              { href: '#how-it-works', label: isRTL ? 'عن نسق' : 'About' },
-            ].map((item, i) => (
-              <a
-                key={i}
-                href={item.href}
-                className="font-tajawal text-sm font-medium px-4 py-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
-              >
-                {item.label}
-              </a>
-            ))}
+            {navSections.map(({ id, ar, en }) => {
+              const isActive = activeSection === id;
+              return (
+                <a
+                  key={id}
+                  href={`#${id}`}
+                  onClick={(e) => handleNavClick(e, id)}
+                  aria-current={isActive ? 'true' : undefined}
+                  className={`font-tajawal text-sm font-medium px-4 py-2 rounded-lg transition-colors ${
+                    isActive
+                      ? 'bg-brand-navy text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                  data-testid={`nav-link-${id}`}
+                >
+                  {isRTL ? ar : en}
+                </a>
+              );
+            })}
             <Link
               to="/teacher-register"
               className="ms-2 inline-flex items-center gap-2 font-tajawal text-sm font-medium px-4 py-2 rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-brand-navy shadow-sm transition-all"
@@ -1070,7 +1116,7 @@ export const LandingPage = () => {
       {/* ========== AI INTELLIGENCE SECTION ========== */}
       <section
         ref={aiRef}
-        className="py-24 lg:py-32 bg-brand-navy relative overflow-hidden"
+        className="py-24 lg:py-32 bg-brand-navy relative overflow-hidden scroll-mt-24"
         id="solutions"
         data-testid="ai-section"
       >
@@ -1252,8 +1298,8 @@ export const LandingPage = () => {
       {/* ========== ECOSYSTEM SECTION ========== */}
       <section
         ref={ecoRef}
-        className="py-24 lg:py-32 bg-gradient-to-b from-background via-background to-background relative overflow-hidden"
-        id="results"
+        className="py-24 lg:py-32 bg-gradient-to-b from-background via-background to-background relative overflow-hidden scroll-mt-24"
+        id="ecosystem"
         data-testid="ecosystem-section"
       >
         <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center center' }} />
@@ -1404,7 +1450,8 @@ export const LandingPage = () => {
 
       {/* ========== PROOF SECTION — funnel step 3: build trust ========== */}
       <section
-        className="relative bg-brand-navy py-20 lg:py-28 overflow-hidden"
+        className="relative bg-brand-navy py-20 lg:py-28 overflow-hidden scroll-mt-24"
+        id="proof"
         data-testid="proof-section"
       >
         {/* nassaq background image — same treatment as hero & how-it-works */}
@@ -1511,7 +1558,8 @@ export const LandingPage = () => {
 
       {/* ========== FAQ SECTION — funnel step 4: handle objections ========== */}
       <section
-        className="relative py-24 lg:py-32 bg-gradient-to-b from-background via-background to-background overflow-hidden"
+        className="relative py-24 lg:py-32 bg-gradient-to-b from-background via-background to-background overflow-hidden scroll-mt-24"
+        id="faq"
         data-testid="faq-section"
       >
         {/* journey-style ambient background — pattern + soft blur orbs */}
