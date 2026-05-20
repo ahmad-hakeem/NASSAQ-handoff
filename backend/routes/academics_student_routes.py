@@ -344,18 +344,47 @@ async def get_class_students(
     cls = await gd_find_one(db.session, "classes", {"id": class_id})
     class_name = cls.get("name") if cls else None
 
-    students_missing_parent = [s["id"] for s in students if not s.get("parent_id") and s.get("parent_phone")]
+    # IT §6.7 — cross-workspace collaborators receive a strictly
+    # downscoped roster: only the minimum classroom-teaching fields.
+    # Sensitive PII (national IDs, DOB, contact info, parent linkage,
+    # health, emergency contacts) is stripped before serialization so
+    # the §6.7 widening cannot leak guardian or child records into a
+    # foreign tenant. The §8 invariant is intentionally relaxed only
+    # for the named class — not for the underlying personal data.
+    COLLAB_STRIPPED_FIELDS = (
+        "email",
+        "phone",
+        "student_number",
+        "national_id",
+        "date_of_birth",
+        "parent_id",
+        "parent_phone",
+        "parent_email",
+        "parent_name",
+        "parent_relationship",
+        "qr_code",
+        "nationality",
+        "enrollment_date",
+        "health_info",
+        "emergency_contact",
+        "emergency_phone",
+    )
+
+    # Parent backfill is only needed when the caller will actually
+    # receive parent_id; skip the lookup entirely for collaborators.
     parent_lookup = {}
-    if students_missing_parent:
-        parent_links = await gd_find(db.session, "parent_student_links", {"student_id": {"$in": students_missing_parent}}, limit=500)
-        for link in parent_links:
-            parent_lookup[link["student_id"]] = link.get("parent_id")
-        if not parent_lookup:
-            parent_users = await gd_find(db.session, "users", {"role": "parent", "student_ids": {"$in": students_missing_parent}}, limit=500)
-            for pu in parent_users:
-                for sid in (pu.get("student_ids") or []):
-                    if sid in students_missing_parent:
-                        parent_lookup[sid] = pu["id"]
+    if not widened_for_collab:
+        students_missing_parent = [s["id"] for s in students if not s.get("parent_id") and s.get("parent_phone")]
+        if students_missing_parent:
+            parent_links = await gd_find(db.session, "parent_student_links", {"student_id": {"$in": students_missing_parent}}, limit=500)
+            for link in parent_links:
+                parent_lookup[link["student_id"]] = link.get("parent_id")
+            if not parent_lookup:
+                parent_users = await gd_find(db.session, "users", {"role": "parent", "student_ids": {"$in": students_missing_parent}}, limit=500)
+                for pu in parent_users:
+                    for sid in (pu.get("student_ids") or []):
+                        if sid in students_missing_parent:
+                            parent_lookup[sid] = pu["id"]
 
     result = []
     for s in students:
@@ -364,7 +393,11 @@ async def get_class_students(
             s["full_name"] = s["full_name_ar"]
         if hasattr(s.get("created_at"), "isoformat"):
             s["created_at"] = s["created_at"].isoformat()
-        if not s.get("parent_id") and s["id"] in parent_lookup:
+        if widened_for_collab:
+            for _f in COLLAB_STRIPPED_FIELDS:
+                if _f in s:
+                    s[_f] = None
+        elif not s.get("parent_id") and s["id"] in parent_lookup:
             s["parent_id"] = parent_lookup[s["id"]]
         result.append(StudentResponse(**s))
 
