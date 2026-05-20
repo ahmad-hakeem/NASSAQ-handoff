@@ -508,10 +508,10 @@ export const LandingPage = () => {
               <a
                 key={i}
                 href={item.href}
-                className={`font-tajawal text-sm px-3 py-2 rounded-lg transition-colors ${
+                className={`font-tajawal text-sm font-medium px-3 py-2 rounded-lg transition-colors ${
                   isScrolled
                     ? 'text-slate-600 hover:text-brand-navy hover:bg-slate-50'
-                    : 'text-white/85 hover:text-white hover:bg-white/10'
+                    : 'text-white hover:text-white hover:bg-white/15 [text-shadow:0_1px_2px_rgba(0,0,0,0.25)]'
                 }`}
               >
                 {item.label}
@@ -545,7 +545,7 @@ export const LandingPage = () => {
               className={`hidden sm:inline-flex items-center justify-center h-9 w-9 rounded-lg transition-colors ${
                 isScrolled
                   ? 'text-slate-500 hover:text-brand-navy hover:bg-slate-50'
-                  : 'text-white/80 hover:text-white hover:bg-white/10'
+                  : 'text-white hover:text-white hover:bg-white/15'
               }`}
               data-testid="language-toggle"
               aria-label={isRTL ? 'تغيير اللغة' : 'Toggle language'}
@@ -558,7 +558,7 @@ export const LandingPage = () => {
               className={`hidden sm:inline-flex items-center justify-center h-9 w-9 rounded-lg transition-colors ${
                 isScrolled
                   ? 'text-slate-500 hover:text-brand-navy hover:bg-slate-50'
-                  : 'text-white/80 hover:text-white hover:bg-white/10'
+                  : 'text-white hover:text-white hover:bg-white/15'
               }`}
               data-testid="theme-toggle"
               aria-label={isDark ? 'Light mode' : 'Dark mode'}
@@ -567,10 +567,10 @@ export const LandingPage = () => {
             </button>
             <Link
               to="/login"
-              className={`font-tajawal text-sm px-4 py-2 rounded-lg transition-colors ${
+              className={`font-tajawal text-sm font-medium px-4 py-2 rounded-lg transition-colors ${
                 isScrolled
                   ? 'text-slate-600 hover:text-brand-navy hover:bg-slate-50'
-                  : 'text-white/85 hover:text-white hover:bg-white/10'
+                  : 'text-white hover:text-white hover:bg-white/15 [text-shadow:0_1px_2px_rgba(0,0,0,0.25)]'
               }`}
               data-testid="login-link"
             >
