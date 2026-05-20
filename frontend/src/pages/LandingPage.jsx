@@ -1692,9 +1692,9 @@ export const LandingPage = () => {
 
         <div className="relative max-w-6xl mx-auto px-6">
           <div className="text-center max-w-2xl mx-auto mb-14">
-            <div className="inline-flex items-center gap-2 bg-brand-purple/15 border border-brand-purple/30 rounded-full ps-2 pe-4 py-1.5 mb-5 backdrop-blur-sm">
-              <Award className="h-4 w-4 text-brand-purple-light" strokeWidth={1.5} aria-hidden="true" />
-              <span className="font-tajawal text-sm text-brand-purple-light">
+            <div className="inline-flex items-center gap-2 bg-white/10 border border-white/25 rounded-full ps-2 pe-4 py-1.5 mb-5 backdrop-blur-sm">
+              <Award className="h-4 w-4 text-white" strokeWidth={1.5} aria-hidden="true" />
+              <span className="font-tajawal text-sm font-medium text-white">
                 {isRTL ? 'الباقات' : 'Plans'}
               </span>
             </div>
