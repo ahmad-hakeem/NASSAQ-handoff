@@ -21,6 +21,7 @@ import { LoginPage } from "../pages/LoginPage";
 
 const RegisterPage = lazy(() => import("../pages/RegisterPage").then(m => ({ default: m.RegisterPage })));
 const TeacherSelfRegistration = lazy(() => import("../pages/TeacherSelfRegistration").then(m => ({ default: m.TeacherSelfRegistration })));
+const TeacherExperiencePage = lazy(() => import("../pages/TeacherExperiencePage").then(m => ({ default: m.TeacherExperiencePage })));
 const RegistrationConfirmationPage = lazy(() => import("../pages/RegistrationConfirmationPage"));
 const ForgotPasswordPage = lazy(() => import("../pages/ForgotPasswordPage"));
 const ResetPasswordPage = lazy(() => import("../pages/ResetPasswordPage"));
@@ -204,6 +205,7 @@ export default function AppRoutes() {
         <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/teacher-register" element={<TeacherSelfRegistration />} />
+        <Route path="/for-teachers" element={<TeacherExperiencePage />} />
         {/* Task #206 — IT §6.2c public parent-invitation landing. The
             page swaps the one-shot bearer for an authenticated session
             and deep-links into /parent?student_id=…. Unauthenticated

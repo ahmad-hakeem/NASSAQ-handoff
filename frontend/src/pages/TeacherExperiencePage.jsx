@@ -1,0 +1,703 @@
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useTheme } from '../contexts/ThemeContext';
+import { Footer } from '../components/layout/Footer';
+import { HakimAssistant } from '../components/hakim/HakimAssistant';
+import { Button } from '../components/ui/button';
+import {
+  ArrowLeft, ArrowRight, Zap, Sparkles, CheckCircle2, Check,
+  ClipboardList, Activity, Brain, Send, Award, Star,
+  Calendar, BookOpen, Users, TrendingUp, Bell, Download,
+  FileText, MessageCircle, Clock, ChevronRight, Home,
+  GraduationCap, AlertTriangle, Target, Lightbulb,
+} from 'lucide-react';
+
+const BG_PATTERN = '/nassaq-pattern.png';
+
+const WORKFLOW_STEPS = [
+  {
+    num: '01',
+    icon: ClipboardList,
+    ar: 'تسجيل الحضور',
+    arDesc: 'يتم توثيقه بشكل رقمي أثناء الحصة — لا وقت مهدر، لا أوراق.',
+    en: 'Attendance Recording',
+    enDesc: 'Digitally logged during class — no wasted time, no paper.',
+  },
+  {
+    num: '02',
+    icon: Activity,
+    ar: 'رصد التفاعل والسلوك',
+    arDesc: 'المشاركة والأداء موثّقة تلقائياً كل يوم.',
+    en: 'Interaction & Behaviour',
+    enDesc: 'Participation and performance auto-documented every day.',
+  },
+  {
+    num: '03',
+    icon: Brain,
+    ar: 'توصيات حكيم',
+    arDesc: 'اعرف من يحتاج تدخلك قبل نهاية اليوم — مرتبة بالأولوية.',
+    en: 'Hakim Recommendations',
+    enDesc: 'Know who needs your attention before the day ends — ranked by priority.',
+  },
+  {
+    num: '04',
+    icon: MessageCircle,
+    ar: 'تواصل مع أولياء الأمور',
+    arDesc: 'أرسل تنبيهات فورية لأولياء الأمور بضغطة واحدة — أكاديمي أو سلوكي.',
+    en: 'Parent Communication',
+    enDesc: 'Send instant alerts to parents in one tap — academic or behavioural.',
+  },
+  {
+    num: '05',
+    icon: Award,
+    ar: 'ملف إنجاز يبنى تلقائياً',
+    arDesc: 'كل حصة تُضيف سجلاً — الملف جاهز للتصدير في أي وقت.',
+    en: 'Auto-Built Achievement File',
+    enDesc: 'Every lesson adds a record — the file is always ready to export.',
+  },
+];
+
+const ACHIEVEMENT_RECORDS = [
+  {
+    date: '١٢ مايو', dateEn: '12 May',
+    subject: 'حصة رياضيات', subjectEn: 'Maths',
+    note: 'مشاركة ممتازة — حل ٤ مسائل متقدمة', noteEn: 'Excellent participation — solved 4 advanced problems',
+    tag: 'إنجاز', tagEn: 'Achievement', tagColor: 'bg-brand-turquoise/10 text-brand-turquoise',
+    icon: Star,
+  },
+  {
+    date: '١١ مايو', dateEn: '11 May',
+    subject: 'حصة علوم', subjectEn: 'Science',
+    note: 'تقدم ملحوظ في التجربة العملية', noteEn: 'Notable progress in lab experiment',
+    tag: 'تقدم', tagEn: 'Progress', tagColor: 'bg-brand-purple/10 text-brand-purple',
+    icon: TrendingUp,
+  },
+  {
+    date: '١٠ مايو', dateEn: '10 May',
+    subject: 'حضور وسلوك', subjectEn: 'Attendance',
+    note: '٩ أيام متواصلة — سلوك إيجابي', noteEn: '9 consecutive days — positive behaviour',
+    tag: 'منتظم', tagEn: 'Consistent', tagColor: 'bg-emerald-500/10 text-emerald-600',
+    icon: CheckCircle2,
+  },
+  {
+    date: '٩ مايو', dateEn: '9 May',
+    subject: 'مشروع الفصل', subjectEn: 'Term Project',
+    note: 'أكمل المشروع بتقدير امتياز', noteEn: 'Completed the project with distinction',
+    tag: 'امتياز', tagEn: 'Distinction', tagColor: 'bg-amber-500/10 text-amber-600',
+    icon: GraduationCap,
+  },
+];
+
+const ALERT_TYPES = [
+  { ar: 'أكاديمي', en: 'Academic', icon: BookOpen, color: 'bg-brand-navy/10 text-brand-navy border-brand-navy/20' },
+  { ar: 'سلوكي', en: 'Behavioural', icon: AlertTriangle, color: 'bg-amber-500/10 text-amber-600 border-amber-200' },
+  { ar: 'إنجاز', en: 'Achievement', icon: Star, color: 'bg-brand-turquoise/10 text-brand-turquoise border-brand-turquoise/20' },
+  { ar: 'خطة تحسين', en: 'Improvement Plan', icon: Target, color: 'bg-brand-purple/10 text-brand-purple border-brand-purple/20' },
+];
+
+const MONTHLY_FEATURES = [
+  { ar: 'توصيات حكيم اليومية', en: 'Daily Hakim recommendations' },
+  { ar: 'التنبيهات الفورية لأولياء الأمور', en: 'Instant parent alerts' },
+  { ar: 'متابعة الطلاب', en: 'Student tracking' },
+  { ar: 'ملف الإنجاز التلقائي', en: 'Auto achievement file' },
+  { ar: 'كشف متابعة رقمي قابل للتصدير', en: 'Exportable digital roster' },
+  { ar: 'تنظيم العمل اليومي', en: 'Daily work organisation' },
+  { ar: 'رصد التفاعل والسلوك', en: 'Interaction & behaviour tracking' },
+  { ar: 'التدخلات المقترحة', en: 'Suggested interventions' },
+];
+
+export const TeacherExperiencePage = () => {
+  const { isRTL, toggleLanguage, toggleTheme, isDark } = useTheme();
+  const [activeAlertType, setActiveAlertType] = useState(0);
+
+  const ar = (a, e) => isRTL ? a : e;
+
+  return (
+    <div className="min-h-screen" dir={isRTL ? 'rtl' : 'ltr'} data-testid="teacher-experience-page">
+
+      {/* ── STICKY NAVBAR ─────────────────────────────────────── */}
+      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
+        <nav className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-2 shrink-0" aria-label={ar('نسق الرئيسية', 'NASSAQ Home')}>
+            <img
+              src="/nassaq-logo.png"
+              alt={ar('شعار نَسَّق', 'NASSAQ logo')}
+              className="w-10 h-10 rounded-xl object-cover shadow-md ring-1 ring-brand-navy/10"
+            />
+            <div className="hidden sm:flex flex-col leading-tight">
+              <span className="font-cairo font-bold text-brand-navy text-lg">{ar('نَسَّق', 'NASSAQ')}</span>
+              <span className="font-tajawal text-[10px] text-slate-500">{ar('معلّم نسّق', 'Teacher Experience')}</span>
+            </div>
+          </Link>
+
+          {/* Breadcrumb pill */}
+          <div className="hidden md:flex items-center gap-1.5 font-tajawal text-sm text-slate-500">
+            <Link to="/" className="flex items-center gap-1 hover:text-brand-navy transition-colors">
+              <Home className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+              {ar('الرئيسية', 'Home')}
+            </Link>
+            <ChevronRight className={`h-3.5 w-3.5 text-slate-300 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
+            <span className="text-brand-navy font-medium">{ar('معلّم نسّق', 'NASSAQ Teacher')}</span>
+          </div>
+
+          {/* Auth actions */}
+          <div className="flex items-center gap-2">
+            <Link
+              to="/login"
+              className="font-tajawal text-sm font-medium px-4 py-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+            >
+              {ar('تسجيل الدخول', 'Log in')}
+            </Link>
+            <Link
+              to="/teacher-register"
+              className="font-tajawal text-sm font-medium px-6 py-2.5 rounded-lg bg-brand-navy text-white hover:bg-brand-navy-light shadow-sm hover:shadow-md active:scale-95 transition-all"
+              data-testid="teacher-register-btn"
+            >
+              {ar('ابدأ مجاناً', 'Start free')}
+            </Link>
+          </div>
+        </nav>
+      </header>
+
+      {/* ── HERO — navy + nassaq texture ──────────────────────── */}
+      <section className="relative bg-brand-navy overflow-hidden py-20 lg:py-28">
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-[0.07]"
+          style={{ backgroundImage: `url('/nassaq-background.png')` }}
+          aria-hidden="true"
+        />
+        <div className="absolute inset-0 bg-brand-navy/60" aria-hidden="true" />
+        <div className="absolute top-0 left-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/8 blur-[120px]" aria-hidden="true" />
+        <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-brand-purple/8 blur-[100px]" aria-hidden="true" />
+
+        <div className="relative max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          {/* Copy */}
+          <div className={`space-y-6 ${isRTL ? '' : 'order-2'}`}>
+            {/* eyebrow */}
+            <div className="inline-flex items-center gap-2.5 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full px-5 py-2.5 backdrop-blur-sm">
+              <Zap className="h-4 w-4 text-brand-turquoise animate-pulse" strokeWidth={1.5} aria-hidden="true" />
+              <span className="font-tajawal text-sm text-brand-turquoise font-medium">
+                {ar('للمعلم المستقل · Teacher Experience', 'Independent Teacher · Teacher Experience')}
+              </span>
+            </div>
+
+            <h1 className="font-cairo font-black text-white text-4xl sm:text-5xl lg:text-6xl leading-tight">
+              {ar(
+                <><span className="text-brand-turquoise">أقل</span> إدارة،<br /><span className="text-brand-turquoise">أكثر</span> تدريس.</>,
+                <><span className="text-brand-turquoise">Less</span> admin,<br /><span className="text-brand-turquoise">more</span> teaching.</>
+              )}
+            </h1>
+
+            <p className="font-tajawal text-lg text-white/75 leading-relaxed max-w-xl">
+              {ar(
+                'نسّق يتولى المتابعة والتنظيم — حتى تركّز على ما يهم فعلاً: علاقتك بطلابك.',
+                'NASSAQ handles the tracking and organisation — so you focus on what truly matters: your relationship with your students.'
+              )}
+            </p>
+
+            {/* CTAs */}
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <Link
+                to="/teacher-register"
+                className="inline-flex items-center gap-2 font-cairo font-bold text-base px-8 py-3 rounded-lg bg-brand-turquoise hover:bg-brand-turquoise-light text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:scale-95 transition-all"
+              >
+                {ar('ابدأ تجربتك كمعلم', 'Start as a teacher')}
+                {isRTL ? <ArrowLeft className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" /> : <ArrowRight className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />}
+              </Link>
+              <a
+                href="#workflow"
+                className="inline-flex items-center gap-2 font-tajawal text-sm font-medium px-6 py-3 rounded-lg border-2 border-white/25 text-white hover:bg-white/10 hover:border-white/40 transition-all"
+              >
+                {ar('شاهد كيف يعمل', 'See how it works')}
+              </a>
+            </div>
+
+            {/* Trust badges */}
+            <div className="flex flex-wrap items-center gap-4 pt-2">
+              {[
+                { icon: CheckCircle2, ar: 'بدون إعداد معقد', en: 'Zero setup' },
+                { icon: CheckCircle2, ar: 'يعمل من اليوم الأول', en: 'Works day one' },
+                { icon: CheckCircle2, ar: 'شهر مجاني كامل', en: 'Full month free' },
+              ].map(({ icon: I, ar: a, en: e }, i) => (
+                <span key={i} className="flex items-center gap-1.5 text-white/60 font-tajawal text-xs">
+                  <I className="h-3.5 w-3.5 text-brand-turquoise" strokeWidth={2} aria-hidden="true" />
+                  {ar(a, e)}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Mock dashboard widget */}
+          <div className={`${isRTL ? '' : 'order-1'}`} aria-hidden="true">
+            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
+              {/* widget header */}
+              <div className="flex items-center justify-between gap-2 px-4 py-3 bg-white/5 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full bg-brand-turquoise flex items-center justify-center font-cairo font-bold text-xs text-white">م</div>
+                  <span className="font-cairo text-sm font-medium text-white/90">{ar('معلّم نسّق — يومك اليوم', 'NASSAQ Teacher — Your day')}</span>
+                </div>
+                <span className="flex items-center gap-1 text-xs text-emerald-400 font-tajawal">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  {ar('مباشر', 'Live')}
+                </span>
+              </div>
+
+              {/* saved hours */}
+              <div className="px-4 py-3 border-b border-white/10">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-white/50 font-tajawal text-xs">
+                    <Clock className="h-3.5 w-3.5" strokeWidth={1.5} />
+                    {ar('وفّرت هذا الأسبوع', 'Saved this week')}
+                  </div>
+                  <span className="font-cairo font-black text-brand-turquoise text-2xl">٦ {ar('ساعات', 'hrs')}</span>
+                </div>
+              </div>
+
+              {/* tasks */}
+              <div className="px-4 py-3 space-y-2">
+                <p className="text-white/40 font-tajawal text-xs mb-3">{ar('مهامك — مرتبة بالأولوية', 'Your tasks — by priority')}</p>
+                {[
+                  { label: ar('جلسة دعم — أحمد (توصية حكيم)', 'Support session — Ahmed (Hakim)'), badge: ar('أولوية', 'Priority'), badgeClass: 'bg-red-400/20 text-red-300 border-red-400/30' },
+                  { label: ar('تنبيه لأهل نورة — تراجع ملحوظ', "Alert for Nora's family — decline"), badge: ar('فوري', 'Urgent'), badgeClass: 'bg-amber-400/20 text-amber-300 border-amber-400/30' },
+                  { label: ar('تواصل مع أهل خالد', 'Contact Khalid\'s family'), badge: ar('هذا الأسبوع', 'This week'), badgeClass: 'bg-white/10 text-white/50 border-white/15' },
+                  { label: ar('ملف إنجاز — خالد علي', 'Achievement file — Khalid Ali'), badge: ar('جاهز', 'Ready'), badgeClass: 'bg-brand-turquoise/20 text-brand-turquoise border-brand-turquoise/30', done: true },
+                ].map((t, i) => (
+                  <div key={i} className="flex items-center justify-between gap-3 py-2 border-b border-white/5 last:border-0">
+                    <span className={`font-tajawal text-xs ${t.done ? 'line-through text-white/30' : 'text-white/70'}`}>{t.label}</span>
+                    <span className={`shrink-0 font-tajawal text-[10px] px-2 py-0.5 rounded-full border ${t.badgeClass}`}>{t.badge}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Hakim suggestion */}
+              <div className="mx-4 mb-4 mt-1 flex items-start gap-3 bg-brand-purple/20 border border-brand-purple/20 rounded-xl px-4 py-3">
+                <div className="w-6 h-6 rounded-full bg-brand-purple flex items-center justify-center font-cairo font-bold text-[10px] text-white shrink-0 mt-0.5">ح</div>
+                <div>
+                  <p className="text-brand-purple-light font-cairo text-xs font-bold mb-0.5">{ar('حكيم يقترح', 'Hakim suggests')}</p>
+                  <p className="text-white/60 font-tajawal text-xs leading-relaxed">
+                    {ar('أرسل تنبيهاً لأهل نورة — تراجع التفاعل ٣ أسابيع متتالية.', 'Send an alert to Nora\'s family — engagement declined 3 weeks in a row.')}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── WORKFLOW — light bg ────────────────────────────────── */}
+      <section
+        id="workflow"
+        className="py-24 lg:py-32 bg-gradient-to-b from-background via-background to-background relative overflow-hidden scroll-mt-24"
+      >
+        <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto' }} aria-hidden="true" />
+        <div className="absolute top-0 left-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/5 blur-[120px] animate-pulse" style={{ animationDuration: '8s' }} aria-hidden="true" />
+        <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-brand-purple/5 blur-[100px] animate-pulse" style={{ animationDelay: '2s', animationDuration: '8s' }} aria-hidden="true" />
+
+        <div className="relative max-w-5xl mx-auto px-6">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-turquoise/15 to-brand-turquoise/5 border border-brand-turquoise/25 rounded-full px-5 py-2.5 mb-6 backdrop-blur-sm">
+              <Zap className="h-4 w-4 text-brand-turquoise animate-pulse" strokeWidth={1.5} aria-hidden="true" />
+              <span className="text-brand-turquoise text-sm font-tajawal font-medium">{ar('سير العمل اليومي', 'Daily workflow')}</span>
+            </div>
+            <h2 className="font-cairo font-black text-foreground text-3xl md:text-5xl lg:text-[3.5rem] leading-tight mb-5">
+              {ar(
+                <>كيف يعمل <span className="text-brand-turquoise">معلّم نسّق</span> خلال يومك؟</>,
+                <>How does <span className="text-brand-turquoise">NASSAQ Teacher</span> work through your day?</>
+              )}
+            </h2>
+            <p className="text-lg text-muted-foreground font-tajawal max-w-2xl mx-auto leading-relaxed">
+              {ar('خمس خطوات تغطي يومك الدراسي كاملاً.', 'Five steps that cover your entire school day.')}
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-5 gap-4">
+            {WORKFLOW_STEPS.map((step, i) => {
+              const Icon = step.icon;
+              return (
+                <div
+                  key={i}
+                  className="relative flex flex-col items-center text-center p-6 bg-card/80 border border-border/50 rounded-2xl hover:border-brand-turquoise/40 hover:shadow-lg hover:-translate-y-0.5 transition-all group"
+                >
+                  {/* connector line (desktop) */}
+                  {i < WORKFLOW_STEPS.length - 1 && (
+                    <div className={`hidden md:block absolute top-10 ${isRTL ? '-left-2' : '-right-2'} w-4 h-0.5 bg-border/60 z-10`} aria-hidden="true" />
+                  )}
+                  <div className="w-12 h-12 rounded-xl bg-brand-turquoise/10 flex items-center justify-center mb-3 group-hover:bg-brand-turquoise/15 transition-colors">
+                    <Icon className="h-6 w-6 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+                  </div>
+                  <span className="font-cairo text-xs font-bold text-brand-turquoise/60 mb-1">{step.num}</span>
+                  <h3 className="font-cairo text-sm font-bold text-foreground mb-2">{ar(step.ar, step.en)}</h3>
+                  <p className="font-tajawal text-xs text-muted-foreground leading-relaxed">{ar(step.arDesc, step.enDesc)}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ── ACHIEVEMENT FILE — navy ────────────────────────────── */}
+      <section className="relative bg-brand-navy py-24 lg:py-32 overflow-hidden">
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-[0.05]"
+          style={{ backgroundImage: `url('/nassaq-background.png')` }}
+          aria-hidden="true"
+        />
+        <div className="absolute inset-0 bg-brand-navy/70" aria-hidden="true" />
+        <div className="absolute top-0 left-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/6 blur-[120px] animate-pulse" style={{ animationDuration: '10s' }} aria-hidden="true" />
+        <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-brand-purple/6 blur-[100px] animate-pulse" style={{ animationDelay: '2s', animationDuration: '8s' }} aria-hidden="true" />
+
+        <div className="relative max-w-6xl mx-auto px-6 grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          {/* copy */}
+          <div className="space-y-6">
+            <div className="inline-flex items-center gap-2.5 bg-white/10 border border-white/20 rounded-full px-5 py-2.5">
+              <FileText className="h-4 w-4 text-white" strokeWidth={1.5} aria-hidden="true" />
+              <span className="text-white text-sm font-tajawal font-medium">{ar('ملف الإنجاز التلقائي', 'Auto Achievement File')}</span>
+            </div>
+            <h2 className="font-cairo font-black text-white text-3xl md:text-5xl lg:text-[3.5rem] leading-tight">
+              {ar(
+                <>ملف إنجاز كامل يبنى<br /><span className="text-brand-turquoise">من اليوم الأول.</span></>,
+                <>A complete file built<br /><span className="text-brand-turquoise">from day one.</span></>
+              )}
+            </h2>
+            <p className="font-tajawal text-white/70 text-lg leading-relaxed max-w-lg">
+              {ar(
+                'كل حصة تُدرّسها تُضيف سجلاً لملف الطالب — حضور، تفاعل، إنجازات، ومشاريع. الملف جاهز للتصدير والمشاركة في أي وقت.',
+                'Every lesson you teach adds a record — attendance, interaction, achievements, projects. The file is always ready to export and share.'
+              )}
+            </p>
+            <ul className="space-y-3">
+              {[
+                { ar: 'سجل أداء متراكم — يُبنى تلقائياً دون جهد يدوي', en: 'Cumulative performance log — built automatically without manual effort' },
+                { ar: 'كشف متابعة رقمي — قابل للتصدير والمشاركة', en: 'Digital tracking sheet — exportable and shareable' },
+                { ar: 'توثيق الإنجازات — مشاريع، درجات، وسلوك في مكان واحد', en: 'Achievement documentation — projects, grades, behaviour in one place' },
+                { ar: 'جاهز للطباعة — تقرير نهاية الفصل بضغطة واحدة', en: 'Print-ready — end-of-term report in one tap' },
+              ].map((item, i) => (
+                <li key={i} className="flex items-start gap-3 font-tajawal text-sm text-white/70">
+                  <CheckCircle2 className="h-4 w-4 text-brand-turquoise shrink-0 mt-0.5" strokeWidth={2} aria-hidden="true" />
+                  {ar(item.ar, item.en)}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* achievement file card */}
+          <div aria-label={ar('ملف إنجاز — خالد علي', 'Achievement file — Khalid Ali')}>
+            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
+              {/* card header */}
+              <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+                <div>
+                  <p className="font-cairo text-white font-bold text-base">{ar('ملف إنجاز — خالد علي', 'Achievement File — Khalid Ali')}</p>
+                  <p className="font-tajawal text-white/40 text-xs mt-0.5">{ar('الفصل الثاني · ١٤٤٦', 'Term 2 · 2024')}</p>
+                </div>
+                <button className="flex items-center gap-1.5 font-tajawal text-xs text-brand-turquoise border border-brand-turquoise/30 rounded-lg px-3 py-1.5 hover:bg-brand-turquoise/10 transition-colors">
+                  <Download className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+                  {ar('تصدير', 'Export')}
+                </button>
+              </div>
+
+              {/* stats */}
+              <div className="grid grid-cols-3 divide-x divide-white/10 rtl:divide-x-reverse border-b border-white/10">
+                {[
+                  { value: '٩٥٪', label: ar('الحضور', 'Attendance') },
+                  { value: ar('مرتفع', 'High'), label: ar('التفاعل', 'Engagement') },
+                  { value: '٨', label: ar('المشاريع', 'Projects') },
+                ].map((s, i) => (
+                  <div key={i} className="py-4 px-3 text-center">
+                    <p className="font-cairo font-black text-brand-turquoise text-xl">{s.value}</p>
+                    <p className="font-tajawal text-white/40 text-xs mt-0.5">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* records */}
+              <div className="px-5 py-4">
+                <p className="font-tajawal text-white/40 text-xs mb-3">{ar('آخر السجلات — تُبنى تلقائياً', 'Latest records — auto-built')}</p>
+                <div className="space-y-2">
+                  {ACHIEVEMENT_RECORDS.map((rec, i) => {
+                    const Icon = rec.icon;
+                    return (
+                      <div key={i} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
+                        <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                          <Icon className="h-4 w-4 text-white/40" strokeWidth={1.5} aria-hidden="true" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-cairo text-xs font-medium text-white/80 truncate">{ar(rec.subject, rec.subjectEn)}</p>
+                          <p className="font-tajawal text-[11px] text-white/40 truncate">{ar(rec.note, rec.noteEn)}</p>
+                        </div>
+                        <span className={`shrink-0 font-tajawal text-[10px] px-2 py-0.5 rounded-full ${rec.tagColor}`}>{ar(rec.tag, rec.tagEn)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── PARENT COMMUNICATION — light ──────────────────────── */}
+      <section className="py-24 lg:py-32 bg-gradient-to-b from-background via-background to-background relative overflow-hidden">
+        <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto' }} aria-hidden="true" />
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/5 blur-[120px] animate-pulse" style={{ animationDuration: '10s' }} aria-hidden="true" />
+        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-brand-purple/5 blur-[100px] animate-pulse" style={{ animationDelay: '2s', animationDuration: '8s' }} aria-hidden="true" />
+
+        <div className="relative max-w-6xl mx-auto px-6 grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          {/* send form mockup */}
+          <div>
+            <div className="bg-card/80 border border-border/50 rounded-2xl overflow-hidden shadow-sm">
+              {/* header */}
+              <div className="px-5 py-4 border-b border-border/50 flex items-center justify-between">
+                <div>
+                  <p className="font-cairo font-bold text-foreground text-sm">{ar('إرسال تنبيه — نورة عبدالله', 'Send Alert — Nora Abdullah')}</p>
+                  <p className="font-tajawal text-muted-foreground text-xs mt-0.5">{ar('مباشر', 'Live')}</p>
+                </div>
+                <Bell className="h-5 w-5 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+              </div>
+
+              {/* alert type selector */}
+              <div className="px-5 py-4 border-b border-border/50">
+                <p className="font-tajawal text-xs text-muted-foreground mb-3">{ar('نوع التنبيه', 'Alert type')}</p>
+                <div className="flex flex-wrap gap-2">
+                  {ALERT_TYPES.map((t, i) => {
+                    const Icon = t.icon;
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => setActiveAlertType(i)}
+                        className={`flex items-center gap-1.5 font-tajawal text-xs px-3 py-1.5 rounded-lg border transition-all ${
+                          activeAlertType === i
+                            ? `${t.color} shadow-sm`
+                            : 'bg-muted/50 text-muted-foreground border-border/50 hover:bg-muted'
+                        }`}
+                      >
+                        <Icon className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+                        {ar(t.ar, t.en)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* message preview */}
+              <div className="px-5 py-4 border-b border-border/50">
+                <p className="font-tajawal text-xs text-muted-foreground mb-2">{ar('معاينة الرسالة', 'Message preview')}</p>
+                <div className="bg-slate-50 rounded-xl p-3 font-tajawal text-sm text-foreground/80 leading-relaxed border border-border/30">
+                  {ar(
+                    'عزيزي ولي أمر نورة، لاحظنا تراجعاً في تفاعل نورة خلال الأسابيع الثلاثة الماضية. نقترح جلسة متابعة.',
+                    "Dear Nora's guardian, we've noticed a decline in Nora's engagement over the past three weeks. We suggest a follow-up session."
+                  )}
+                </div>
+              </div>
+
+              {/* hakim suggestion */}
+              <div className="px-5 py-3 border-b border-border/50 flex items-start gap-2.5">
+                <div className="w-6 h-6 rounded-full bg-brand-purple flex items-center justify-center font-cairo font-bold text-[10px] text-white shrink-0 mt-0.5">ح</div>
+                <p className="font-tajawal text-xs text-muted-foreground leading-relaxed">
+                  <span className="text-brand-purple font-bold font-cairo">{ar('حكيم: ', 'Hakim: ')}</span>
+                  {ar('أضف اقتراح خطة تحسين لتقليص الفجوة في الأسبوعين القادمين.', 'Add an improvement plan suggestion to close the gap over the next two weeks.')}
+                </p>
+              </div>
+
+              {/* send button */}
+              <div className="px-5 py-4">
+                <button className="w-full flex items-center justify-center gap-2 bg-brand-navy text-white font-cairo font-bold text-sm py-3 rounded-lg hover:bg-brand-navy-light shadow-sm hover:shadow-md transition-all active:scale-[0.98]">
+                  <Send className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+                  {ar('إرسال التنبيه الآن', 'Send alert now')}
+                </button>
+                <p className="text-center font-tajawal text-xs text-muted-foreground mt-2">
+                  {ar('تجربة مجانية لمدة شهر كامل — بدون بطاقة ائتمان', 'Free trial for a full month — no credit card')}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* copy */}
+          <div className="space-y-6">
+            <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-turquoise/15 to-brand-turquoise/5 border border-brand-turquoise/25 rounded-full px-5 py-2.5">
+              <MessageCircle className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+              <span className="text-brand-turquoise text-sm font-tajawal font-medium">{ar('التواصل مع أولياء الأمور', 'Parent communication')}</span>
+            </div>
+            <h2 className="font-cairo font-black text-foreground text-3xl md:text-5xl lg:text-[3.5rem] leading-tight">
+              {ar(
+                <>تنبيهات فورية<br /><span className="text-brand-turquoise">بضغطة واحدة.</span></>,
+                <>Instant alerts<br /><span className="text-brand-turquoise">in one tap.</span></>
+              )}
+            </h2>
+            <p className="font-tajawal text-muted-foreground text-lg leading-relaxed max-w-lg">
+              {ar(
+                'أرسل تنبيهات أكاديمية وسلوكية مباشرة لأولياء الأمور — مشاركة التقدم، الملاحظات السريعة، وخطط التحسين المقترحة.',
+                'Send academic and behavioural alerts directly to parents — share progress, quick notes, and suggested improvement plans.'
+              )}
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { icon: BookOpen, ar: 'تنبيه أكاديمي', en: 'Academic alert', desc: ar('تراجع في أداء نورة', 'Decline in Nora\'s performance') },
+                { icon: Star, ar: 'ملاحظة سريعة', en: 'Quick note', desc: ar('مشاركة ممتازة لأحمد', 'Ahmed\'s excellent participation') },
+                { icon: GraduationCap, ar: 'إنجاز الطالب', en: 'Student achievement', desc: ar('خالد أكمل المشروع امتياز', 'Khalid completed project with distinction') },
+                { icon: Lightbulb, ar: 'خطة تحسين', en: 'Improvement plan', desc: ar('مقترح حكيم: جلسة دعم', 'Hakim suggestion: support session') },
+              ].map((item, i) => {
+                const Icon = item.icon;
+                return (
+                  <div key={i} className="bg-card/80 border border-border/50 rounded-xl p-3 hover:border-brand-turquoise/30 hover:shadow-sm transition-all">
+                    <div className="w-8 h-8 rounded-lg bg-brand-turquoise/10 flex items-center justify-center mb-2">
+                      <Icon className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+                    </div>
+                    <p className="font-cairo text-xs font-bold text-foreground mb-1">{ar(item.ar, item.en)}</p>
+                    <p className="font-tajawal text-[11px] text-muted-foreground">{item.desc}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── PRICING — navy ────────────────────────────────────── */}
+      <section className="relative bg-brand-navy py-24 lg:py-32 overflow-hidden">
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-[0.05]"
+          style={{ backgroundImage: `url('/nassaq-background.png')` }}
+          aria-hidden="true"
+        />
+        <div className="absolute inset-0 bg-brand-navy/70" aria-hidden="true" />
+        <div className="absolute top-0 left-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/5 blur-3xl animate-pulse" style={{ animationDuration: '10s' }} aria-hidden="true" />
+        <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-brand-purple/5 blur-3xl animate-pulse" style={{ animationDelay: '2s', animationDuration: '8s' }} aria-hidden="true" />
+
+        <div className="relative max-w-4xl mx-auto px-6">
+          <div className="text-center mb-14">
+            <div className="inline-flex items-center gap-2 bg-white/10 border border-white/25 rounded-full px-5 py-2 mb-6">
+              <Award className="h-4 w-4 text-white" strokeWidth={1.5} aria-hidden="true" />
+              <span className="font-tajawal text-sm font-medium text-white">{ar('خطتك كمعلم', 'Your teacher plan')}</span>
+            </div>
+            <h2 className="font-cairo font-black text-white text-3xl md:text-5xl leading-tight mb-4">
+              {ar('بسيطة، واضحة، بدون تعقيد.', 'Simple, clear, no complexity.')}
+            </h2>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6 max-w-2xl mx-auto">
+            {/* Monthly */}
+            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-7 flex flex-col hover:border-white/20 hover:bg-white/8 transition-all">
+              <p className="font-cairo font-bold text-white/70 text-sm mb-4">{ar('الخطة الشهرية', 'Monthly plan')}</p>
+              <div className="flex items-end gap-1 mb-1">
+                <span className="font-cairo font-black text-white text-5xl">٢٩</span>
+                <span className="font-tajawal text-white/50 text-sm mb-2">{ar('ريال / شهر', 'SAR / month')}</span>
+              </div>
+              <p className="font-tajawal text-white/40 text-xs mb-6">{ar('بعد شهر التجربة المجاني', 'After the free trial month')}</p>
+              <ul className="space-y-2.5 mb-8 flex-1">
+                {MONTHLY_FEATURES.map((f, i) => (
+                  <li key={i} className="flex items-center gap-2.5 font-tajawal text-sm text-white/70">
+                    <Check className="h-4 w-4 text-brand-turquoise shrink-0" strokeWidth={2} aria-hidden="true" />
+                    {ar(f.ar, f.en)}
+                  </li>
+                ))}
+              </ul>
+              <Link
+                to="/teacher-register"
+                className="block text-center font-cairo font-bold text-sm py-3 rounded-lg border-2 border-white/20 text-white hover:bg-white/10 hover:border-white/30 transition-all active:scale-[0.98]"
+              >
+                {ar('ابدأ تجربتك المجانية', 'Start your free trial')}
+              </Link>
+            </div>
+
+            {/* Annual — highlighted */}
+            <div className="relative bg-white/10 backdrop-blur-sm border border-brand-turquoise/40 rounded-2xl p-7 flex flex-col shadow-2xl shadow-brand-turquoise/10 scale-[1.02]">
+              {/* recommended badge */}
+              <div className="absolute -top-3 inset-x-0 flex justify-center">
+                <span className="bg-gradient-to-r from-brand-turquoise to-cyan-500 text-white font-cairo text-xs font-bold px-4 py-1 rounded-full shadow-lg shadow-brand-turquoise/30">
+                  {ar('الأوفر', 'Best value')}
+                </span>
+              </div>
+              <p className="font-cairo font-bold text-white text-sm mb-4">{ar('الخطة السنوية', 'Annual plan')}</p>
+              <div className="flex items-end gap-1 mb-1">
+                <span className="font-cairo font-black text-brand-turquoise text-5xl">١٩٩</span>
+                <span className="font-tajawal text-white/50 text-sm mb-2">{ar('ريال / سنة', 'SAR / year')}</span>
+              </div>
+              <p className="font-tajawal text-white/40 text-xs mb-6">{ar('أي ١٦.٦ ريال شهرياً — بعد شهر التجربة', 'Just 16.6 SAR/month — after the free trial')}</p>
+              <ul className="space-y-2.5 mb-8 flex-1">
+                {MONTHLY_FEATURES.map((f, i) => (
+                  <li key={i} className="flex items-center gap-2.5 font-tajawal text-sm text-white/80">
+                    <Check className="h-4 w-4 text-brand-turquoise shrink-0" strokeWidth={2} aria-hidden="true" />
+                    {ar(f.ar, f.en)}
+                  </li>
+                ))}
+              </ul>
+              <Link
+                to="/teacher-register"
+                className="block text-center font-cairo font-bold text-sm py-3 rounded-lg bg-gradient-to-r from-brand-turquoise to-cyan-500 hover:from-brand-turquoise-light hover:to-cyan-400 text-white shadow-lg shadow-brand-turquoise/25 hover:shadow-xl transition-all active:scale-[0.98]"
+              >
+                {ar('ابدأ تجربتك المجانية', 'Start your free trial')}
+              </Link>
+            </div>
+          </div>
+
+          <p className="text-center font-tajawal text-sm text-white/40 mt-8">
+            {ar('لا حاجة لبطاقة ائتمان · إلغاء في أي وقت · شهر مجاني كامل بجميع الميزات', 'No credit card · Cancel anytime · Full month free with all features')}
+          </p>
+        </div>
+      </section>
+
+      {/* ── FINAL CTA — light ─────────────────────────────────── */}
+      <section className="py-24 lg:py-32 bg-gradient-to-b from-background via-background to-background relative overflow-hidden">
+        <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto' }} aria-hidden="true" />
+        <div className="absolute top-0 left-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/5 blur-[120px] animate-pulse" style={{ animationDuration: '8s' }} aria-hidden="true" />
+        <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-brand-purple/5 blur-[100px] animate-pulse" style={{ animationDelay: '2s', animationDuration: '8s' }} aria-hidden="true" />
+
+        <div className="relative max-w-3xl mx-auto px-6 text-center">
+          {/* hakim avatar */}
+          <div className="flex justify-center mb-8">
+            <div className="relative">
+              <div className="absolute -inset-2 rounded-full bg-brand-turquoise/15 blur-xl animate-pulse" aria-hidden="true" />
+              <img
+                src="/hakim-poses/motivating.png"
+                alt={ar('حكيم', 'Hakim')}
+                className="hakim-img relative w-24 h-24 rounded-2xl object-contain border-2 border-brand-turquoise shadow-xl bg-gradient-to-br from-cyan-50 to-violet-50 p-1"
+              />
+            </div>
+          </div>
+
+          <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-turquoise/15 to-brand-turquoise/5 border border-brand-turquoise/25 rounded-full px-5 py-2.5 mb-6 backdrop-blur-sm">
+            <Sparkles className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+            <span className="text-brand-turquoise text-sm font-tajawal font-medium">{ar('معلّم نسّق · للمعلم المستقل', 'NASSAQ Teacher · For independent teachers')}</span>
+          </div>
+
+          <h2 className="font-cairo font-black text-foreground text-3xl md:text-5xl lg:text-[3.5rem] leading-tight mb-5">
+            {ar(
+              <>وفّر ساعات المتابعة الإدارية<br /><span className="text-brand-turquoise">وركّز على ما يهم.</span></>,
+              <>Save admin tracking hours<br /><span className="text-brand-turquoise">and focus on what matters.</span></>
+            )}
+          </h2>
+
+          <p className="font-tajawal text-muted-foreground text-lg max-w-xl mx-auto leading-relaxed mb-10">
+            {ar(
+              'شهر مجاني كامل بجميع الميزات — بدون تعقيد تقني.',
+              'A full free month with all features — no technical complexity.'
+            )}
+          </p>
+
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            <Link
+              to="/teacher-register"
+              className="inline-flex items-center gap-2 font-cairo font-bold text-lg px-10 py-4 rounded-2xl bg-gradient-to-r from-brand-turquoise to-cyan-500 hover:from-brand-turquoise-light hover:to-cyan-400 text-white shadow-2xl shadow-brand-turquoise/30 hover:shadow-brand-turquoise/40 transition-all hover:scale-[1.03] active:scale-[0.98]"
+              data-testid="teacher-final-cta"
+            >
+              {ar('ابدأ تجربتك كمعلم', 'Start as a teacher')}
+              {isRTL ? <ArrowLeft className="h-5 w-5" strokeWidth={1.5} aria-hidden="true" /> : <ArrowRight className="h-5 w-5" strokeWidth={1.5} aria-hidden="true" />}
+            </Link>
+            <Link
+              to="/"
+              className="inline-flex items-center gap-2 font-tajawal text-sm font-medium px-6 py-3 rounded-lg border border-border text-foreground hover:bg-muted hover:text-foreground transition-all"
+            >
+              {ar('استكشف نسّق للمؤسسات', 'Explore NASSAQ for institutions')}
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <Footer />
+      <HakimAssistant />
+    </div>
+  );
+};
+
+export default TeacherExperiencePage;
