@@ -40,7 +40,9 @@ import {
   CheckCircle2,
   XCircle,
   Users2,
+  FileText,
 } from 'lucide-react';
+import { AbsenceExcusesPanel } from './PrincipalAbsenceExcusesPage';
 import {
   Dialog,
   DialogContent,
@@ -84,22 +86,29 @@ const iconMap = {
 export const CommunicationCenterPage = () => {
   const { t } = useTranslation();
   const { isRTL, isDark } = useTheme();
-  const { api } = useAuth();
+  const { api, user } = useAuth();
   const { nassaqWarning, nassaqError } = useNassaqAlert();
   
   const location = useLocation();
   const navigate = useNavigate();
   const isNotificationsRoute = location.pathname.endsWith('/notifications');
-  const [activeTab, setActiveTab] = useState(isNotificationsRoute ? 'notifications' : 'compose');
+  const isExcusesRoute = location.pathname.endsWith('/excuses') || location.pathname.endsWith('/absence-excuses');
+  const canReviewExcuses = ['school_principal', 'school_admin', 'school_sub_admin'].includes((user?.role || '').toLowerCase());
+  const initialTab = isExcusesRoute && canReviewExcuses
+    ? 'excuses'
+    : isNotificationsRoute ? 'notifications' : 'compose';
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   useEffect(() => {
-    if (isNotificationsRoute && activeTab !== 'notifications') {
-      setActiveTab('notifications');
-    } else if (!isNotificationsRoute && activeTab === 'notifications') {
+    if (isExcusesRoute && canReviewExcuses) {
+      if (activeTab !== 'excuses') setActiveTab('excuses');
+    } else if (isNotificationsRoute) {
+      if (activeTab !== 'notifications') setActiveTab('notifications');
+    } else if (activeTab === 'notifications' || activeTab === 'excuses') {
       setActiveTab('compose');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNotificationsRoute]);
+  }, [isNotificationsRoute, isExcusesRoute, canReviewExcuses]);
 
   const [notificationsUnread, setNotificationsUnread] = useState(0);
   useEffect(() => {
@@ -116,12 +125,35 @@ export const CommunicationCenterPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const [pendingExcuses, setPendingExcuses] = useState(0);
+  useEffect(() => {
+    if (!canReviewExcuses) { setPendingExcuses(0); return undefined; }
+    let cancelled = false;
+    const loadPending = async () => {
+      try {
+        const res = await api.get('/attendance/excuses/pending-count');
+        if (!cancelled) setPendingExcuses(Number(res?.data?.count) || 0);
+      } catch (_) { /* non-fatal */ }
+    };
+    loadPending();
+    const id = setInterval(loadPending, 60000);
+    const onRefresh = () => loadPending();
+    window.addEventListener('excuses:refresh', onRefresh);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      window.removeEventListener('excuses:refresh', onRefresh);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canReviewExcuses]);
+
   const handleTabChange = (tabId) => {
-    if (tabId === 'notifications' && !isNotificationsRoute) {
-      navigate('/principal/communication/notifications');
-    } else if (tabId !== 'notifications' && isNotificationsRoute) {
-      navigate('/principal/communication');
-    }
+    const targetPath = tabId === 'notifications'
+      ? '/principal/communication/notifications'
+      : tabId === 'excuses'
+        ? '/principal/communication/excuses'
+        : '/principal/communication';
+    if (location.pathname !== targetPath) navigate(targetPath);
     setActiveTab(tabId);
   };
 
@@ -496,6 +528,7 @@ export const CommunicationCenterPage = () => {
     { id: 'sent', label: t('sent'), icon: Send, badge: sentMessages.length },
     { id: 'scheduled', label: t('scheduled'), icon: Clock, badge: scheduledMessages.length },
     { id: 'notifications', label: isRTL ? 'الإشعارات' : 'Notifications', icon: Bell, badge: notificationsUnread },
+    ...(canReviewExcuses ? [{ id: 'excuses', label: t('absenceExcuses'), icon: FileText, badge: pendingExcuses }] : []),
   ];
 
   return (
@@ -1038,6 +1071,12 @@ export const CommunicationCenterPage = () => {
           {activeTab === 'notifications' && (
             <div data-testid="notifications-tab-content">
               <NotificationsPage embedded />
+            </div>
+          )}
+
+          {activeTab === 'excuses' && canReviewExcuses && (
+            <div data-testid="excuses-tab-content">
+              <AbsenceExcusesPanel embedded />
             </div>
           )}
 

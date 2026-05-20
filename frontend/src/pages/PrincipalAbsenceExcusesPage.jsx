@@ -30,7 +30,7 @@ const STATUS_CONFIG = {
   rejected: { labelAr: 'مرفوض', labelEn: 'Rejected', color: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-900/40', icon: XCircle },
 };
 
-const PrincipalAbsenceExcusesPage = () => {
+export const AbsenceExcusesPanel = ({ embedded = false } = {}) => {
   const { t } = useTranslation();
   const { isRTL } = useTheme();
   const { api, user } = useAuth();
@@ -141,8 +141,7 @@ const PrincipalAbsenceExcusesPage = () => {
     return isRTL ? 'الكل' : 'All';
   };
 
-  return (
-    <Sidebar>
+  const body = (
       <div className="min-h-screen bg-background" data-testid="principal-absence-excuses-page">
         <header className="sticky top-0 z-30 glass border-b border-border/50 px-6 py-4">
           <div className="flex items-center justify-between" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -359,8 +358,12 @@ const PrincipalAbsenceExcusesPage = () => {
           )}
         </div>
       </div>
-    </Sidebar>
   );
+
+  if (embedded) return body;
+  return <Sidebar>{body}</Sidebar>;
 };
+
+const PrincipalAbsenceExcusesPage = (props) => <AbsenceExcusesPanel {...props} />;
 
 export default PrincipalAbsenceExcusesPage;

@@ -122,34 +122,8 @@ export const Sidebar = ({ children }) => {
   // `notifications:refresh` event lets bulk mark-as-read in the
   // hub flush the badge immediately.
   const [unreadInbox, setUnreadInbox] = useState(0);
-  const [pendingExcuses, setPendingExcuses] = useState(0);
   const isIndependentTeacher = (user?.role || '').toLowerCase() === 'independent_teacher';
-  const isSchoolReviewer = ['school_principal', 'school_admin', 'school_sub_admin'].includes((user?.role || '').toLowerCase());
 
-  useEffect(() => {
-    if (!isSchoolReviewer || !token) {
-      setPendingExcuses(0);
-      return undefined;
-    }
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const res = await api.get('/attendance/excuses/pending-count');
-        if (!cancelled) setPendingExcuses(Number(res?.data?.count) || 0);
-      } catch {
-        if (!cancelled) setPendingExcuses(0);
-      }
-    };
-    load();
-    const interval = setInterval(load, 60000);
-    const onRefresh = () => load();
-    window.addEventListener('excuses:refresh', onRefresh);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-      window.removeEventListener('excuses:refresh', onRefresh);
-    };
-  }, [api, token, isSchoolReviewer]);
   useEffect(() => {
     if (!isIndependentTeacher || !token) {
       setUnreadInbox(0);
@@ -441,14 +415,6 @@ export const Sidebar = ({ children }) => {
         label: t('communicationCenter'),
         href: '/principal/communication',
         roles: SCHOOL_ROLES,
-      },
-      // 7b. Absence Excuses (parent-submitted) — Task #466
-      {
-        icon: FileText,
-        label: t('absenceExcuses'),
-        href: '/principal/absence-excuses',
-        roles: SCHOOL_ROLES,
-        showExcusesBadge: true,
       },
       // 8. AI Insights
       {
@@ -877,15 +843,6 @@ export const Sidebar = ({ children }) => {
                     data-testid={`sidebar-badge-${item.href.replace(/\//g, '-')}`}
                   >
                     {unreadInbox > 99 ? '99+' : unreadInbox}
-                  </Badge>
-                )}
-                {item.showExcusesBadge && pendingExcuses > 0 && (
-                  <Badge
-                    variant="destructive"
-                    className={`h-5 min-w-[1.25rem] px-1.5 text-[10px] font-semibold flex items-center justify-center rounded-full ${collapsed ? 'absolute top-1 end-1' : 'ms-auto'}`}
-                    data-testid={`sidebar-badge-${item.href.replace(/\//g, '-')}`}
-                  >
-                    {pendingExcuses > 99 ? '99+' : pendingExcuses}
                   </Badge>
                 )}
               </Link>
