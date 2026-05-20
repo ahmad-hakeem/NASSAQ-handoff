@@ -738,17 +738,17 @@ export const LandingPage = () => {
       >
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center max-w-2xl mx-auto mb-14">
-            <div className="inline-flex items-center gap-2 bg-amber-50 border border-amber-100 rounded-full ps-2 pe-4 py-1.5 mb-5">
-              <Bell className="h-4 w-4 text-amber-600" />
-              <span className="font-tajawal text-sm text-amber-700">
+            <div className="inline-flex items-center gap-2 bg-brand-purple/10 border border-brand-purple/20 rounded-full ps-2 pe-4 py-1.5 mb-5">
+              <Bell className="h-4 w-4 text-brand-purple" strokeWidth={1.5} aria-hidden="true" />
+              <span className="font-tajawal text-sm text-brand-purple">
                 {isRTL ? 'إشارات تعرفها كل مدرسة' : 'Signals every school knows'}
               </span>
             </div>
             <h2 className="font-cairo font-bold text-brand-navy text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
               {isRTL ? (
-                <>هل تواجه هذه الإشارات <span className="text-amber-600">كل أسبوع؟</span></>
+                <>هل تواجه هذه الإشارات <span className="text-brand-purple">كل أسبوع؟</span></>
               ) : (
-                <>Are these signals showing up <span className="text-amber-600">every week?</span></>
+                <>Are these signals showing up <span className="text-brand-purple">every week?</span></>
               )}
             </h2>
             <p className="font-tajawal text-base text-slate-600 leading-relaxed">
@@ -802,10 +802,10 @@ export const LandingPage = () => {
                   className="group bg-white border border-slate-200 rounded-2xl p-7 flex flex-col transition-all duration-300 ease-out hover:-translate-y-1.5 hover:shadow-md hover:border-slate-300 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
                 >
                   <div className="flex items-center gap-3 mb-5">
-                    <div className="shrink-0 w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center transition-colors duration-300 group-hover:bg-amber-100">
-                      <Icon className="h-5 w-5 text-amber-600" strokeWidth={1.5} aria-hidden="true" />
+                    <div className="shrink-0 w-10 h-10 rounded-lg bg-brand-purple/10 flex items-center justify-center transition-colors duration-300 group-hover:bg-brand-purple/15">
+                      <Icon className="h-5 w-5 text-brand-purple" strokeWidth={1.5} aria-hidden="true" />
                     </div>
-                    <span className="font-cairo text-xs font-bold text-amber-700 uppercase tracking-wider">
+                    <span className="font-cairo text-xs font-bold text-brand-purple uppercase tracking-wider">
                       {isRTL ? col.roleAr : col.roleEn}
                     </span>
                   </div>
@@ -816,7 +816,7 @@ export const LandingPage = () => {
                     {isRTL ? col.bodyAr : col.bodyEn}
                   </p>
                   <div className="flex items-center gap-2 pt-4 border-t border-slate-100">
-                    <TrendingUp className="h-3.5 w-3.5 text-amber-600 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+                    <TrendingUp className="h-3.5 w-3.5 text-brand-purple shrink-0" strokeWidth={1.5} aria-hidden="true" />
                     <span className="font-tajawal text-xs text-slate-500">
                       {isRTL ? col.tagAr : col.tagEn}
                     </span>
