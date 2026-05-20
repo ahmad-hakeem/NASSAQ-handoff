@@ -1266,9 +1266,9 @@ export const LandingPage = () => {
 
         <div className={`relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 transition-all duration-1000 ${ecoVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}>
           <div className="text-center mb-16">
-            <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-purple/15 to-brand-turquoise/10 border border-brand-purple/25 rounded-full px-5 py-2.5 mb-6 backdrop-blur-sm">
-              <Shield className="h-4 w-4 text-brand-purple animate-pulse" />
-              <span className="text-brand-purple text-sm font-tajawal font-medium">{t('completeEcosystem')}</span>
+            <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-turquoise/15 to-brand-turquoise/5 border border-brand-turquoise/25 rounded-full px-5 py-2.5 mb-6 backdrop-blur-sm animate-pulse-glow">
+              <Shield className="h-4 w-4 text-brand-turquoise animate-pulse" />
+              <span className="text-brand-turquoise text-sm font-tajawal font-medium">{t('completeEcosystem')}</span>
             </div>
             <h2 className="font-cairo text-3xl md:text-5xl lg:text-[3.5rem] font-black text-foreground mb-5 leading-tight">
               {t('onePlatformOneEducationalEcosystem')}
@@ -1290,14 +1290,16 @@ export const LandingPage = () => {
                 onClick={() => setActiveEcosystemRole(i)}
                 className={`text-start rounded-2xl p-5 md:p-6 transition-all duration-500 border-2 group ${
                   activeEcosystemRole === i
-                    ? 'bg-gradient-to-br from-brand-turquoise/10 to-brand-turquoise/3 border-brand-turquoise shadow-xl shadow-brand-turquoise/10 scale-[1.03]'
-                    : 'bg-card/80 border-border/30 hover:border-brand-turquoise/30 hover:shadow-lg opacity-70 hover:opacity-100'
+                    ? 'bg-gradient-to-br from-brand-turquoise/10 to-brand-turquoise/[0.03] border-brand-turquoise shadow-xl shadow-brand-turquoise/25 scale-[1.03]'
+                    : 'bg-card/80 border-border/50 hover:border-brand-turquoise/30 hover:shadow-md opacity-70 hover:opacity-100'
                 }`}
               >
-                <div className={`w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-gradient-to-br ${role.gradient} flex items-center justify-center mb-3 md:mb-4 shadow-lg transition-all duration-300 ${
-                  activeEcosystemRole === i ? 'scale-110 shadow-xl' : 'group-hover:scale-105'
+                <div className={`w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center mb-3 md:mb-4 transition-all duration-300 ${
+                  activeEcosystemRole === i
+                    ? 'bg-gradient-to-br from-brand-turquoise to-cyan-500 shadow-xl shadow-brand-turquoise/25 scale-110'
+                    : 'bg-brand-turquoise/10 group-hover:bg-brand-turquoise/15 group-hover:scale-105'
                 }`}>
-                  <role.icon className="h-6 w-6 md:h-7 md:w-7 text-white" />
+                  <role.icon className={`h-6 w-6 md:h-7 md:w-7 ${activeEcosystemRole === i ? 'text-white' : 'text-brand-turquoise'}`} />
                 </div>
                 <h3 className="font-cairo text-base md:text-lg font-bold text-foreground mb-1">{role.role}</h3>
                 <p className="text-[11px] md:text-xs text-muted-foreground font-tajawal line-clamp-2">{role.title}</p>
@@ -1324,7 +1326,7 @@ export const LandingPage = () => {
             <div className="relative z-10 grid lg:grid-cols-2 gap-8 items-start">
               <div>
                 <div className="flex items-center gap-4 mb-5">
-                  <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${ecosystemRoles[activeEcosystemRole].gradient} flex items-center justify-center shadow-xl`}>
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-turquoise to-cyan-500 flex items-center justify-center shadow-xl shadow-brand-turquoise/25">
                     {(() => { const Icon = ecosystemRoles[activeEcosystemRole].icon; return <Icon className="h-7 w-7 text-white" />; })()}
                   </div>
                   <div>
@@ -1364,7 +1366,7 @@ export const LandingPage = () => {
                       onClick={() => setActiveEcosystemRole(i)}
                       className={`w-20 h-20 rounded-2xl flex items-center justify-center transition-all duration-500 border-2 ${
                         activeEcosystemRole === i
-                          ? `bg-gradient-to-br ${role.gradient} scale-110 shadow-xl border-transparent animate-pulse-glow`
+                          ? 'bg-gradient-to-br from-brand-turquoise to-cyan-500 scale-110 shadow-xl shadow-brand-turquoise/25 border-transparent animate-pulse-glow'
                           : 'bg-muted/30 hover:bg-muted border-border/30 hover:border-brand-turquoise/30'
                       }`}
                     >
