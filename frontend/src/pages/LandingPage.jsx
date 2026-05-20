@@ -1862,51 +1862,62 @@ export const LandingPage = () => {
 
       {/* ========== CALL TO ACTION ========== */}
       <section
-        className="py-24 lg:py-32 relative overflow-hidden"
+        className="py-24 lg:py-32 bg-gradient-to-b from-background via-background to-background relative overflow-hidden"
         data-testid="cta-section"
       >
-        <div className="absolute inset-0 bg-brand-navy" />
-        <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center bottom' }} />
-        <div className="absolute inset-0 bg-gradient-to-b from-brand-navy/30 via-transparent to-brand-navy/50" />
-        <div className="absolute inset-0">
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full bg-brand-turquoise/5 blur-3xl animate-pulse" />
-          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full bg-brand-purple/5 blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
-        </div>
+        {/* journey-style ambient background — pattern + soft brand-tinted blur orbs */}
+        <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center center' }} aria-hidden="true" />
+        <div className="absolute top-0 left-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/5 blur-[120px] animate-pulse" style={{ animationDuration: '8s' }} aria-hidden="true" />
+        <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-brand-purple/5 blur-[100px] animate-pulse" style={{ animationDelay: '2s', animationDuration: '8s' }} aria-hidden="true" />
 
         <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="font-cairo text-4xl md:text-6xl font-black text-white mb-10">
+          {/* eyebrow — matches journey/faq recipe */}
+          <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-turquoise/15 to-brand-turquoise/5 border border-brand-turquoise/25 rounded-full px-5 py-2.5 mb-6 backdrop-blur-sm animate-pulse-glow">
+            <Sparkles className="h-4 w-4 text-brand-turquoise animate-pulse" strokeWidth={1.5} aria-hidden="true" />
+            <span className="text-brand-turquoise text-sm font-tajawal font-medium">
+              {isRTL ? 'ابدأ رحلتك مع نَسَّق' : 'Start your NASSAQ journey'}
+            </span>
+          </div>
+
+          <h2 className="font-cairo text-3xl md:text-5xl lg:text-[3.5rem] font-black text-foreground mb-5 leading-tight">
             {t('readyToStart')}
           </h2>
+          <p className="text-lg md:text-xl text-muted-foreground font-tajawal max-w-2xl mx-auto leading-relaxed mb-12">
+            {isRTL
+              ? 'سواء كنت مدرسة أو معلمًا — نَسَّق يحوّل بياناتك إلى قرارات أوضح في دقائق.'
+              : 'Whether you run a school or teach a class — NASSAQ turns your data into clearer decisions in minutes.'}
+          </p>
 
           <div className="grid md:grid-cols-2 gap-5 mb-12">
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 text-start hover:bg-white/10 hover:border-brand-turquoise/30 transition-all hover:scale-[1.02] group">
-              <Building2 className="h-10 w-10 text-brand-turquoise mb-4 group-hover:scale-110 transition-transform" />
-              <h3 className="font-cairo text-xl font-bold text-white mb-2">{t('ifYouAreASchool')}</h3>
-              <p className="text-white/50 text-sm font-tajawal">
-                {t('makeYourSchoolMoreOrganizedAndClearWithNassaqPlatf')
-                }
+            <div className="bg-card/80 backdrop-blur-sm border border-border/50 rounded-2xl p-6 text-start hover:border-brand-turquoise/40 hover:shadow-lg hover:-translate-y-0.5 transition-all group">
+              <div className="w-12 h-12 rounded-xl bg-brand-turquoise/10 flex items-center justify-center mb-4 group-hover:bg-brand-turquoise/15 transition-colors">
+                <Building2 className="h-6 w-6 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+              </div>
+              <h3 className="font-cairo text-xl font-bold text-foreground mb-2">{t('ifYouAreASchool')}</h3>
+              <p className="text-muted-foreground text-sm font-tajawal leading-relaxed">
+                {t('makeYourSchoolMoreOrganizedAndClearWithNassaqPlatf')}
               </p>
             </div>
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 text-start hover:bg-white/10 hover:border-brand-turquoise/30 transition-all hover:scale-[1.02] group">
-              <UserCheck className="h-10 w-10 text-brand-turquoise mb-4 group-hover:scale-110 transition-transform" />
-              <h3 className="font-cairo text-xl font-bold text-white mb-2">{t('ifYouAreATeacher')}</h3>
-              <p className="text-white/50 text-sm font-tajawal">
-                {t('startOrganizingYourClassesNowAndMakeClassroomManag')
-                }
+            <div className="bg-card/80 backdrop-blur-sm border border-border/50 rounded-2xl p-6 text-start hover:border-brand-purple/40 hover:shadow-lg hover:-translate-y-0.5 transition-all group">
+              <div className="w-12 h-12 rounded-xl bg-brand-purple/10 flex items-center justify-center mb-4 group-hover:bg-brand-purple/15 transition-colors">
+                <UserCheck className="h-6 w-6 text-brand-purple" strokeWidth={1.5} aria-hidden="true" />
+              </div>
+              <h3 className="font-cairo text-xl font-bold text-foreground mb-2">{t('ifYouAreATeacher')}</h3>
+              <p className="text-muted-foreground text-sm font-tajawal leading-relaxed">
+                {t('startOrganizingYourClassesNowAndMakeClassroomManag')}
               </p>
             </div>
           </div>
 
           <div className="flex items-center justify-center gap-5 mb-12">
             <div className="relative flex-shrink-0">
-              <div className="absolute -inset-2 rounded-full bg-brand-turquoise/20 blur-xl animate-pulse" />
+              <div className="absolute -inset-2 rounded-full bg-brand-turquoise/15 blur-xl animate-pulse" aria-hidden="true" />
               <img src="/hakim-poses/motivating.png" alt={t('hakim')} className="hakim-img relative w-24 h-24 rounded-2xl object-contain border-2 border-brand-turquoise shadow-xl flex-shrink-0 bg-gradient-to-br from-cyan-50 to-violet-50 p-1" />
             </div>
-            <div className="bg-white/10 backdrop-blur-sm border border-white/15 rounded-2xl px-6 py-4 max-w-lg text-start">
-              <p className="text-white/90 font-tajawal text-base leading-relaxed">
+            <div className="bg-card/80 backdrop-blur-sm border border-border/50 rounded-2xl px-6 py-4 max-w-lg text-start shadow-sm">
+              <p className="text-foreground/90 font-tajawal text-base leading-relaxed">
                 <span className="text-brand-turquoise font-bold font-cairo">{t('hakim2')}</span>
-                {t('goodEducationStartsWithGoodDecisionsAndGoodDecisio')
-                }
+                {t('goodEducationStartsWithGoodDecisionsAndGoodDecisio')}
               </p>
             </div>
           </div>
@@ -1914,7 +1925,7 @@ export const LandingPage = () => {
           <Button asChild size="lg" className="bg-gradient-to-r from-brand-turquoise to-cyan-500 hover:from-brand-turquoise-light hover:to-cyan-400 text-white rounded-2xl h-16 px-14 text-xl font-cairo font-bold shadow-2xl shadow-brand-turquoise/30 hover:shadow-2xl hover:shadow-brand-turquoise/40 transition-all hover:scale-[1.03]" data-testid="cta-register-btn">
             <Link to="/register" className="flex items-center gap-3">
               {t('registerNow')}
-              {isRTL ? <ArrowLeft className="h-6 w-6" /> : <ArrowRight className="h-6 w-6" />}
+              {isRTL ? <ArrowLeft className="h-6 w-6" strokeWidth={1.5} aria-hidden="true" /> : <ArrowRight className="h-6 w-6" strokeWidth={1.5} aria-hidden="true" />}
             </Link>
           </Button>
         </div>

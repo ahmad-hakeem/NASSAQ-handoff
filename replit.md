@@ -69,7 +69,7 @@ A comprehensive, multi-tenant school management platform with AI-powered feature
 ## Design guidelines & marketing-surface overrides
 The product follows `design_guidelines.json` (in-app/admin surfaces). The public **landing page** (`frontend/src/pages/LandingPage.jsx`) intentionally overrides four rules from that spec to optimize for marketing-funnel conversion — do NOT "fix" these back to the in-app spec:
 - **Turquoise is the unifying accent**, not "sparing". Used across eyebrows, headings, active states, and CTAs to enforce brand cohesion across the funnel. Purple is reserved for AI/Hakim and the pricing-offer eyebrow.
-- **Navy + nassaq-texture sections alternate with light sections** (hero, how-it-works, AI capabilities, proof, pricing, CTA are navy; pain, journey, ecosystem, FAQ are light). The dark/light alternation paces the funnel — it intentionally deviates from "backgrounds should be mostly #F8FAFC".
+- **Navy + nassaq-texture sections alternate with light sections** (hero, how-it-works, AI capabilities, proof, pricing are navy; pain, journey, ecosystem, FAQ, final CTA are light). The dark/light alternation paces the funnel — it intentionally deviates from "backgrounds should be mostly #F8FAFC".
 - **Heading scale is larger than the in-app `text-3xl/4xl` spec** (`lg:text-[3.5rem]`, `text-6xl`, `text-7xl` on hero/proof/CTA) — marketing display sizing.
 - **Primary conversion CTAs use turquoise** rather than the in-app navy primary recipe: the hero CTA is solid `bg-brand-turquoise`, while the recommended pricing tier and final CTA use the `from-brand-turquoise to-cyan-500` gradient. Secondary/tertiary buttons remain navy or transparent-outline.
 
