@@ -456,9 +456,11 @@ export const LandingPage = () => {
         <nav className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           {/* RTL Start: Logo */}
           <Link to="/" className="flex items-center gap-2 shrink-0" data-testid="navbar-logo">
-            <div className="w-10 h-10 rounded-xl bg-brand-navy text-white flex items-center justify-center font-cairo font-black text-xl shadow-md">
-              ن
-            </div>
+            <img
+              src="/nassaq-logo.png"
+              alt={isRTL ? 'شعار نَسَّق' : 'NASSAQ logo'}
+              className="w-10 h-10 rounded-xl object-cover shadow-md ring-1 ring-brand-navy/10"
+            />
             <div className="hidden sm:flex flex-col leading-tight">
               <span className="font-cairo font-bold text-brand-navy text-lg">
                 {isRTL ? 'نَسَّق' : 'NASSAQ'}
