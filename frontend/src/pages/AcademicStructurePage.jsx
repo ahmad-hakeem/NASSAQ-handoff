@@ -548,7 +548,7 @@ export function AcademicStructureContent() {
                         }}>
                           <Edit2 className="h-3 w-3" /> {t('edit')}
                         </Button>
-                        <Button size="sm" variant="outline" className="text-xs gap-1 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                        <Button size="sm" variant="outline" className="text-xs gap-1 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 hover:text-red-600 focus-visible:text-red-600"
                           onClick={(e) => { e.stopPropagation(); handleDeleteYear(year.id); }}>
                           <Trash2 className="h-3 w-3" /> {t('delete')}
                         </Button>
@@ -913,7 +913,7 @@ export function AcademicStructureContent() {
                             }}>
                               <Edit2 className="h-3 w-3" /> {t('edit')}
                             </Button>
-                            <Button size="sm" variant="outline" className="text-xs gap-1 text-red-600 hover:bg-red-50" onClick={() => handleDeleteExam(ep.id)}>
+                            <Button size="sm" variant="outline" className="text-xs gap-1 text-red-600 hover:bg-red-50 hover:text-red-600 focus-visible:text-red-600" onClick={() => handleDeleteExam(ep.id)}>
                               <Trash2 className="h-3 w-3" /> {t('delete')}
                             </Button>
                           </div>

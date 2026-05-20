@@ -724,7 +724,7 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
                 {remedialPlan && enrichmentPlan && (
                   <Button
                     variant="outline"
-                    className="w-full gap-2 border-brand-navy/20 text-brand-navy hover:bg-brand-navy/5"
+                    className="w-full gap-2 border-brand-navy/20 text-brand-navy hover:bg-brand-navy/5 hover:text-brand-navy focus-visible:text-brand-navy"
                     onClick={() => openExportModal('both')}
                     disabled={exportingPlan}
                   >

@@ -55,7 +55,7 @@ export default function UserCard({ user, onView, onSuspend }) {
           <Button
             variant="outline"
             size="sm"
-            className={`flex-1 rounded-lg text-xs ${user.is_active !== false ? 'text-orange-600 hover:bg-orange-50' : 'text-green-600 hover:bg-green-50'}`}
+            className={`flex-1 rounded-lg text-xs ${user.is_active !== false ? 'text-orange-600 hover:bg-orange-50 hover:text-orange-600' : 'text-green-600 hover:bg-green-50 hover:text-green-600'}`}
             onClick={() => onSuspend(user)}
             data-testid={`suspend-user-${user.id}`}
           >

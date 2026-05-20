@@ -459,7 +459,7 @@ export default function SidebarSettingsDialog({
             variant="outline"
             onClick={() => handleAddBehaviour('negative')}
             disabled={!behaviourDraft.name.trim()}
-            className="rounded-full border-2 border-red-300 dark:border-red-800/60 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 font-cairo text-sm font-bold py-2.5 gap-2"
+            className="rounded-full border-2 border-red-300 dark:border-red-800/60 text-red-600 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400 focus-visible:text-red-600 font-cairo text-sm font-bold py-2.5 gap-2"
           >
             <ThumbsDown className="h-4 w-4" />
             {t('negative') || 'سلبي'}
@@ -469,7 +469,7 @@ export default function SidebarSettingsDialog({
             variant="outline"
             onClick={() => handleAddBehaviour('positive')}
             disabled={!behaviourDraft.name.trim()}
-            className="rounded-full border-2 border-emerald-300 dark:border-emerald-800/60 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 font-cairo text-sm font-bold py-2.5 gap-2"
+            className="rounded-full border-2 border-emerald-300 dark:border-emerald-800/60 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-400 focus-visible:text-emerald-600 font-cairo text-sm font-bold py-2.5 gap-2"
           >
             <ThumbsUp className="h-4 w-4" />
             {t('positive') || 'إيجابي'}

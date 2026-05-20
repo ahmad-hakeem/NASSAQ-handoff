@@ -184,7 +184,7 @@ export default function ActionHistoryPanel({ open, onClose, onRefresh, api }) {
                         variant="outline"
                         onClick={() => handleUndo(record.action_id)}
                         disabled={undoing === record.action_id}
-                        className="h-7 text-xs gap-1.5 rounded-lg border-amber-200 text-amber-700 hover:bg-amber-50 hover:border-amber-300"
+                        className="h-7 text-xs gap-1.5 rounded-lg border-amber-200 text-amber-700 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-700 focus-visible:text-amber-700"
                       >
                         {undoing === record.action_id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
                         تراجع

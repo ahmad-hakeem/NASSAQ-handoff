@@ -119,7 +119,7 @@ export default function ApprovalRequestsTab({
                               موافقة
                             </Button>
                             {request.status !== 'under_review' && (
-                              <Button size="sm" variant="outline" className="flex-1 lg:flex-none border-orange-400 text-orange-600 hover:bg-orange-50" onClick={() => onMarkUnderReview(request)}>
+                              <Button size="sm" variant="outline" className="flex-1 lg:flex-none border-orange-400 text-orange-600 hover:bg-orange-50 hover:text-orange-600 focus-visible:text-orange-600" onClick={() => onMarkUnderReview(request)}>
                                 <Clock className="h-4 w-4 ms-2" />
                                 تحت المراجعة
                               </Button>

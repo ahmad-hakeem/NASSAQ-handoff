@@ -575,7 +575,7 @@ export default function TeacherHomePage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="rounded-xl font-cairo border-brand-turquoise/30 text-brand-turquoise hover:bg-brand-turquoise/10 flex-shrink-0"
+                    className="rounded-xl font-cairo border-brand-turquoise/30 text-brand-turquoise hover:bg-brand-turquoise/10 hover:text-brand-turquoise focus-visible:text-brand-turquoise flex-shrink-0"
                     onClick={() => handleStartClass(nextLesson)}
                   >
                     <Play className="h-3.5 w-3.5 me-1" />
@@ -638,7 +638,7 @@ export default function TeacherHomePage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="rounded-lg font-cairo text-xs text-brand-turquoise hover:bg-brand-turquoise/10 flex-shrink-0"
+                          className="rounded-lg font-cairo text-xs text-brand-turquoise hover:bg-brand-turquoise/10 hover:text-brand-turquoise focus-visible:text-brand-turquoise flex-shrink-0"
                           onClick={() => handleStartClass(lesson)}
                         >
                           <Play className="h-3 w-3 me-1" />

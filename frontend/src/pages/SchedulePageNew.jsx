@@ -458,7 +458,7 @@ function HakimInsightsBanner({ conflicts, dismissed, onDismiss, onOpenDrawer }) 
         size="sm"
         variant="outline"
         onClick={onOpenDrawer}
-        className="shrink-0 border-orange-300 text-orange-800 hover:bg-orange-100 bg-white/70"
+        className="shrink-0 border-orange-300 text-orange-800 hover:bg-orange-100 hover:text-orange-800 focus-visible:text-orange-800 bg-white/70"
         data-testid="open-hakim-insights-drawer"
       >
         <Lightbulb className="h-3.5 w-3.5 me-1" />
@@ -1893,7 +1893,7 @@ export default function SchedulePageNew() {
               <Button
                 onClick={handleLogAbsence}
                 variant="outline"
-                className="border-slate-300 text-slate-700 hover:bg-slate-100 h-8 px-2.5"
+                className="border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-700 focus-visible:text-slate-700 h-8 px-2.5"
                 data-band-action="absence"
                 title={t('recordAbsence')}
                 aria-label={t('recordAbsence')}
@@ -2055,7 +2055,7 @@ export default function SchedulePageNew() {
                   <Button
                     onClick={() => setScheduleView('draft')}
                     variant="outline"
-                    className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                    className="border-amber-300 text-amber-700 hover:bg-amber-50 hover:text-amber-700 focus-visible:text-amber-700"
                     data-testid="empty-state-switch-draft-btn"
                   >
                     {t('switchToDraftView')}
@@ -2065,7 +2065,7 @@ export default function SchedulePageNew() {
                   <Button
                     onClick={() => setScheduleView('published')}
                     variant="outline"
-                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700 focus-visible:text-emerald-700"
                     data-testid="empty-state-switch-published-btn"
                   >
                     {t('switchToPublishedView')}
@@ -2312,7 +2312,7 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
                             type="button"
                             size="sm"
                             variant="outline"
-                            className="border-red-300 text-red-700 hover:bg-red-100 shrink-0"
+                            className="border-red-300 text-red-700 hover:bg-red-100 hover:text-red-700 focus-visible:text-red-700 shrink-0"
                             onClick={() => onNavigate(step.path)}
                           >
                             <Settings className="h-3.5 w-3.5 me-1" />

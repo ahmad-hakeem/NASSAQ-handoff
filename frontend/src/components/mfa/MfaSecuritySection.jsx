@@ -694,7 +694,7 @@ export default function MfaSecuritySection({ onChange } = {}) {
                     size="sm"
                     variant="outline"
                     onClick={() => setDisableDialogOpen(true)}
-                    className="rounded-lg gap-1.5 border-red-300 text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40"
+                    className="rounded-lg gap-1.5 border-red-300 text-red-700 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/40 dark:hover:text-red-400 focus-visible:text-red-700"
                     data-testid="mfa-disable-btn"
                   >
                     <ShieldOff className="h-3.5 w-3.5" />

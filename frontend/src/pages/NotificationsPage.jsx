@@ -450,7 +450,7 @@ export const NotificationsPage = ({ embedded = false }) => {
                     size="sm"
                     variant="outline"
                     onClick={() => navigate(notification.action_url)}
-                    className="h-8 gap-1.5 border-orange-300 text-orange-700 hover:bg-orange-50"
+                    className="h-8 gap-1.5 border-orange-300 text-orange-700 hover:bg-orange-50 hover:text-orange-700 focus-visible:text-orange-700"
                     data-testid={`notif-relocation-open-btn-${notification.id}`}
                   >
                     {isRTL ? 'فتح الجدول' : 'Open Schedule'}

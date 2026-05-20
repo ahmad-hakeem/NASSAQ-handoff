@@ -703,7 +703,7 @@ ${API_URL}/login
                   
                   <Button 
                     variant="outline"
-                    className="w-full text-red-600 hover:bg-red-50 border-red-200 rounded-xl h-12 text-base"
+                    className="w-full text-red-600 hover:bg-red-50 hover:text-red-600 focus-visible:text-red-600 border-red-200 rounded-xl h-12 text-base"
                     onClick={() => setShowDeleteDialog(true)}
                     data-testid="delete-user-btn"
                   >

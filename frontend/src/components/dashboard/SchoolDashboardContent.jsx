@@ -596,7 +596,7 @@ const QuickAddBar = ({ onAction }) => {
         variant="outline"
         size="sm"
         onClick={() => onAction('send-notification')}
-        className="rounded-xl text-xs h-8 px-3 border text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950/30 border-pink-200 dark:border-pink-800 transition-all"
+        className="rounded-xl text-xs h-8 px-3 border text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950/30 hover:text-pink-600 dark:hover:text-pink-400 focus-visible:text-pink-600 dark:focus-visible:text-pink-400 border-pink-200 dark:border-pink-800 transition-all"
       >
         <Send className="h-3.5 w-3.5 me-1.5" />
         {t('sendNotice')}

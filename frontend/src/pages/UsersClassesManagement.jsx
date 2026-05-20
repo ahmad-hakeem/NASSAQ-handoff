@@ -675,9 +675,9 @@ const PermanentHakimWidget = ({ insights, isRTL, onAction, stats }) => {
                 {insight.action && (
                   <Button size="sm" variant="outline"
                     className={`shrink-0 h-7 text-[10px] rounded-lg ${
-                      insight.severity === 'high' ? 'border-red-300 text-red-700 hover:bg-red-100' :
-                      insight.severity === 'medium' ? 'border-amber-300 text-amber-700 hover:bg-amber-100' :
-                      'border-violet-300 text-violet-700 hover:bg-violet-100'
+                      insight.severity === 'high' ? 'border-red-300 text-red-700 hover:bg-red-100 hover:text-red-700' :
+                      insight.severity === 'medium' ? 'border-amber-300 text-amber-700 hover:bg-amber-100 hover:text-amber-700' :
+                      'border-violet-300 text-violet-700 hover:bg-violet-100 hover:text-violet-700'
                     }`}
                     onClick={() => { onAction(insight.action, insight.data); setPanelOpen(false); }}>
                     <ArrowRight className="h-3 w-3 me-1" />
@@ -1996,7 +1996,7 @@ export default function UsersClassesManagement() {
                   <h4 className="font-semibold text-sm text-red-600 mb-2">{t('dangerZone')}</h4>
                   <Button
                     variant="outline"
-                    className="justify-start h-auto py-3 border-red-200 hover:bg-red-50 w-full"
+                    className="justify-start h-auto py-3 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-600 focus-visible:text-red-600 w-full"
                     disabled={viewClassSaving}
                     onClick={() => {
                       nassaqConfirm(

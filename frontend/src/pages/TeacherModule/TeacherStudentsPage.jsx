@@ -782,7 +782,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                     <Button
                       variant="outline"
                       onClick={() => _navigate('/teacher/classes?tab=import')}
-                      className="rounded-xl gap-2 px-5 border-workspace-accent-border text-workspace-accent-fg hover:bg-workspace-accent-light/60"
+                      className="rounded-xl gap-2 px-5 border-workspace-accent-border text-workspace-accent-fg hover:bg-workspace-accent-light/60 hover:text-workspace-accent-fg focus-visible:text-workspace-accent-fg"
                       data-testid="teacher-students-empty-state-import-cta"
                     >
                       <Upload className="h-4 w-4" />
@@ -950,7 +950,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="w-full mt-3 text-xs gap-1.5 border-brand-turquoise/30 text-brand-navy hover:bg-brand-turquoise/10 hover:border-brand-turquoise"
+                              className="w-full mt-3 text-xs gap-1.5 border-brand-turquoise/30 text-brand-navy hover:bg-brand-turquoise/10 hover:border-brand-turquoise hover:text-brand-navy focus-visible:text-brand-navy"
                               onClick={(e) => openMessageParent(e, student)}
                             >
                               <MessageSquare className="h-3.5 w-3.5" />
@@ -1027,7 +1027,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="w-full text-xs gap-1.5 border-brand-navy/30 text-brand-navy hover:bg-brand-navy/10 hover:border-brand-navy"
+                              className="w-full text-xs gap-1.5 border-brand-navy/30 text-brand-navy hover:bg-brand-navy/10 hover:border-brand-navy hover:text-brand-navy focus-visible:text-brand-navy"
                               onClick={(e) => openInviteParent(e, student)}
                               data-testid={`invite-parent-${student.id}`}
                             >
@@ -1294,7 +1294,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-xs gap-1.5 border-brand-turquoise/30 text-brand-navy hover:bg-brand-turquoise/10"
+                        className="text-xs gap-1.5 border-brand-turquoise/30 text-brand-navy hover:bg-brand-turquoise/10 hover:text-brand-navy focus-visible:text-brand-navy"
                         onClick={(e) => { setShowDetailsDialog(false); openMessageParent(e, selectedStudent); }}
                       >
                         <MessageSquare className="h-3.5 w-3.5" />

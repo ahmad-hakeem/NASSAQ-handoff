@@ -338,7 +338,7 @@ export default function TenantsManagement() {
                 <Filter className="h-4 w-4" />
                 {isRTL ? `عرض المدارس ${SCHOOL_STATUS[activeStatusFilter]?.label || ''}` : `Showing ${SCHOOL_STATUS[activeStatusFilter]?.label_en || ''} schools`}
               </span>
-              <Button variant="ghost" size="sm" onClick={() => setActiveStatusFilter(null)} className="text-brand-purple hover:bg-brand-purple/20">
+              <Button variant="ghost" size="sm" onClick={() => setActiveStatusFilter(null)} className="text-brand-purple hover:bg-brand-purple/20 hover:text-brand-purple focus-visible:text-brand-purple">
                 <X className="h-4 w-4 me-1" />
                 {isRTL ? 'إلغاء' : 'Clear'}
               </Button>
@@ -646,7 +646,7 @@ export default function TenantsManagement() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="rounded-xl text-xs border-brand-navy/30 text-brand-navy hover:bg-brand-navy/5"
+                          className="rounded-xl text-xs border-brand-navy/30 text-brand-navy hover:bg-brand-navy/5 hover:text-brand-navy focus-visible:text-brand-navy"
                           onClick={() => navigate(`/platform/schools/${school.id}`)}
                         >
                           <ExternalLink className="h-3.5 w-3.5 me-1" />

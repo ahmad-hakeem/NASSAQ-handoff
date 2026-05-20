@@ -1255,7 +1255,7 @@ export default function TeacherAchievementsPage() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-7 px-2 text-[11px] gap-1 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/30"
+                    className="h-7 px-2 text-[11px] gap-1 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 hover:bg-violet-50 hover:text-violet-700 dark:hover:bg-violet-900/30 dark:hover:text-violet-300"
                     onClick={() => handleHakimText('title', 'generate')}
                     disabled={!!hakimBusy.title}
                   >
@@ -1268,7 +1268,7 @@ export default function TeacherAchievementsPage() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-7 px-2 text-[11px] gap-1 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/30"
+                    className="h-7 px-2 text-[11px] gap-1 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-900/30 dark:hover:text-amber-300"
                     onClick={() => handleHakimText('title', 'improve')}
                     disabled={!!hakimBusy.title || (evidenceForm.title_ar || '').trim().length < 5}
                   >
@@ -1296,7 +1296,7 @@ export default function TeacherAchievementsPage() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-7 px-2 text-[11px] gap-1 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/30"
+                    className="h-7 px-2 text-[11px] gap-1 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 hover:bg-violet-50 hover:text-violet-700 dark:hover:bg-violet-900/30 dark:hover:text-violet-300"
                     onClick={() => handleHakimText('description', 'generate')}
                     disabled={!!hakimBusy.description}
                   >
@@ -1309,7 +1309,7 @@ export default function TeacherAchievementsPage() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-7 px-2 text-[11px] gap-1 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/30"
+                    className="h-7 px-2 text-[11px] gap-1 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-900/30 dark:hover:text-amber-300"
                     onClick={() => handleHakimText('description', 'improve')}
                     disabled={!!hakimBusy.description || (evidenceForm.description_ar || '').trim().length < 5}
                   >
@@ -1507,7 +1507,7 @@ export default function TeacherAchievementsPage() {
                     type="button" size="sm" variant="outline"
                     onClick={() => runManualEvHakim('generate', 'title')}
                     disabled={manualEvAIBusy || !manualEvForm.evidence_type}
-                    className="h-7 px-2 text-[11px] gap-1 border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-300"
+                    className="h-7 px-2 text-[11px] gap-1 border-violet-300 text-violet-700 hover:bg-violet-50 hover:text-violet-700 dark:border-violet-700 dark:text-violet-300 dark:hover:text-violet-300"
                     title="إنشاء عنوان بحكيم"
                   >
                     {manualEvAIBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
@@ -1517,7 +1517,7 @@ export default function TeacherAchievementsPage() {
                     type="button" size="sm" variant="outline"
                     onClick={() => runManualEvHakim('improve', 'title')}
                     disabled={manualEvAIBusy || !(manualEvForm.title_ar || '').trim()}
-                    className="h-7 px-2 text-[11px] gap-1 border-fuchsia-300 text-fuchsia-700 hover:bg-fuchsia-50 dark:border-fuchsia-700 dark:text-fuchsia-300"
+                    className="h-7 px-2 text-[11px] gap-1 border-fuchsia-300 text-fuchsia-700 hover:bg-fuchsia-50 hover:text-fuchsia-700 dark:border-fuchsia-700 dark:text-fuchsia-300 dark:hover:text-fuchsia-300"
                     title="تحسين العنوان بحكيم"
                   >
                     {manualEvAIBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
@@ -1543,7 +1543,7 @@ export default function TeacherAchievementsPage() {
                     type="button" size="sm" variant="outline"
                     onClick={() => runManualEvHakim('generate')}
                     disabled={manualEvAIBusy || !manualEvForm.evidence_type}
-                    className="h-7 px-2 text-[11px] gap-1 border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-300"
+                    className="h-7 px-2 text-[11px] gap-1 border-violet-300 text-violet-700 hover:bg-violet-50 hover:text-violet-700 dark:border-violet-700 dark:text-violet-300 dark:hover:text-violet-300"
                     title="توليد وصف بحكيم"
                   >
                     {manualEvAIBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
@@ -1553,7 +1553,7 @@ export default function TeacherAchievementsPage() {
                     type="button" size="sm" variant="outline"
                     onClick={() => runManualEvHakim('improve')}
                     disabled={manualEvAIBusy || !(manualEvForm.description_ar || '').trim()}
-                    className="h-7 px-2 text-[11px] gap-1 border-fuchsia-300 text-fuchsia-700 hover:bg-fuchsia-50 dark:border-fuchsia-700 dark:text-fuchsia-300"
+                    className="h-7 px-2 text-[11px] gap-1 border-fuchsia-300 text-fuchsia-700 hover:bg-fuchsia-50 hover:text-fuchsia-700 dark:border-fuchsia-700 dark:text-fuchsia-300 dark:hover:text-fuchsia-300"
                     title="تحسين الوصف بحكيم"
                   >
                     {manualEvAIBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}

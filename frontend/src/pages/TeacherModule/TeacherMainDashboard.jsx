@@ -756,7 +756,7 @@ export default function TeacherMainDashboard() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="rounded-xl font-cairo border-brand-turquoise/30 text-brand-turquoise hover:bg-brand-turquoise/10"
+                      className="rounded-xl font-cairo border-brand-turquoise/30 text-brand-turquoise hover:bg-brand-turquoise/10 hover:text-brand-turquoise focus-visible:text-brand-turquoise"
                       onClick={() => handleStartClass(nextLesson)}
                     >
                       <Play className="h-3.5 w-3.5 me-1.5" />
@@ -918,7 +918,7 @@ export default function TeacherMainDashboard() {
                     </div>
                   ))
                 )}
-                <Button variant="ghost" className="w-full rounded-xl font-cairo text-brand-turquoise hover:bg-brand-turquoise/10 mt-2" onClick={() => navigate('/notifications')}>
+                <Button variant="ghost" className="w-full rounded-xl font-cairo text-brand-turquoise hover:bg-brand-turquoise/10 hover:text-brand-turquoise focus-visible:text-brand-turquoise mt-2" onClick={() => navigate('/notifications')}>
                   {t('viewAllNotifications')}
                 </Button>
               </CardContent>
@@ -981,7 +981,7 @@ export default function TeacherMainDashboard() {
                       <span className="font-medium text-blue-800 dark:text-blue-300 font-tajawal text-sm">{t('pendingAssessments')}</span>
                       <Badge className="bg-blue-500 text-white font-cairo">{stats.pendingAssessments}</Badge>
                     </div>
-                    <Button size="sm" variant="outline" className="w-full border-blue-300 text-blue-700 hover:bg-blue-50 rounded-xl font-cairo" onClick={() => navigate('/teacher/assessments')}>
+                    <Button size="sm" variant="outline" className="w-full border-blue-300 text-blue-700 hover:bg-blue-50 hover:text-blue-700 focus-visible:text-blue-700 rounded-xl font-cairo" onClick={() => navigate('/teacher/assessments')}>
                       {t('completeAssessment')}
                     </Button>
                   </div>

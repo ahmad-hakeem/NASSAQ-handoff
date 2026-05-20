@@ -194,7 +194,7 @@ export default function ParentDashboard() {
                       <p className="text-sm text-muted-foreground">{selectedChild.className}</p>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" className="text-indigo-600 border-indigo-200">
+                  <Button variant="outline" size="sm" className="text-indigo-600 border-indigo-200 hover:text-indigo-600 focus-visible:text-indigo-600">
                     <MessageSquare className="h-4 w-4 me-1" />
                     تواصل
                   </Button>

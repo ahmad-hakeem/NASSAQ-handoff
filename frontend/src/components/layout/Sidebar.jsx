@@ -1095,7 +1095,7 @@ export const Sidebar = ({ children }) => {
               variant="outline"
               onClick={handleReturnToOriginal}
               disabled={switchingRole}
-              className="w-full mt-4 border-brand-turquoise/50 text-brand-turquoise hover:bg-brand-turquoise/10"
+              className="w-full mt-4 border-brand-turquoise/50 text-brand-turquoise hover:bg-brand-turquoise/10 hover:text-brand-turquoise focus-visible:text-brand-turquoise"
             >
               <RefreshCw className={`h-4 w-4 me-2 ${switchingRole ? 'animate-spin' : ''}`} />
               {t('returnToOriginalRole')}

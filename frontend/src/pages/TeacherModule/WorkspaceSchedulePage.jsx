@@ -237,7 +237,7 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
         <Button
           onClick={handleExport}
           variant="outline"
-          className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+          className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700 focus-visible:text-emerald-700"
           data-testid="workspace-schedule-export-btn"
         >
           <Printer className="h-4 w-4 ms-2" />
@@ -404,7 +404,7 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
                 {editing.hadContent ? (
                   <Button
                     variant="outline"
-                    className="border-rose-300 text-rose-700 hover:bg-rose-50"
+                    className="border-rose-300 text-rose-700 hover:bg-rose-50 hover:text-rose-700 focus-visible:text-rose-700"
                     onClick={() => setEditing(s => ({ ...s, classId: '', subjectId: '' }))}
                     disabled={saving}
                     data-testid="slot-editor-clear"

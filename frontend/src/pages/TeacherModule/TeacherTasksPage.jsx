@@ -154,7 +154,7 @@ export default function TeacherTasksPage() {
                       </div>
                     </div>
                     <Button size="sm" variant="outline"
-                      className="border-blue-300 text-blue-700 hover:bg-blue-50 rounded-xl font-cairo text-xs"
+                      className="border-blue-300 text-blue-700 hover:bg-blue-50 hover:text-blue-700 focus-visible:text-blue-700 rounded-xl font-cairo text-xs"
                       onClick={() => navigate('/teacher/assessments')}>
                       {t('open')}
                     </Button>

@@ -369,7 +369,7 @@ export default function SessionEditDrawer({
                 size="sm"
                 onClick={handleDelete}
                 disabled={deleting || saving}
-                className="border-red-300 text-red-700 hover:bg-red-50 gap-1.5"
+                className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-700 focus-visible:text-red-700 gap-1.5"
                 data-testid="session-edit-delete"
               >
                 {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}

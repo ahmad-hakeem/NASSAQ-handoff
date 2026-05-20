@@ -280,7 +280,7 @@ export default function TeacherBehaviorPage() {
                                   key={b.id}
                                   variant="outline"
                                   size="sm"
-                                  className="text-xs bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                                  className="text-xs bg-green-50 hover:bg-green-100 hover:text-green-700 text-green-700 border-green-200"
                                   onClick={() => quickAddBehavior(student, b)}
                                 >
                                   <ThumbsUp className="h-3 w-3 me-1" />
@@ -294,7 +294,7 @@ export default function TeacherBehaviorPage() {
                                   key={b.id}
                                   variant="outline"
                                   size="sm"
-                                  className="text-xs bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
+                                  className="text-xs bg-red-50 hover:bg-red-100 hover:text-red-700 text-red-700 border-red-200"
                                   onClick={() => quickAddBehavior(student, b)}
                                 >
                                   <ThumbsDown className="h-3 w-3 me-1" />

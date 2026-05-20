@@ -955,7 +955,7 @@ export function PlansTab({ hook }) {
         onGenerate={() => generatePlan('enrichment')} onExport={enrichmentPlan ? openExportModal : null} />
 
       {remedialPlan && enrichmentPlan && (
-        <Button variant="outline" className="w-full gap-2 border-brand-navy/20 text-brand-navy hover:bg-brand-navy/5"
+        <Button variant="outline" className="w-full gap-2 border-brand-navy/20 text-brand-navy hover:bg-brand-navy/5 hover:text-brand-navy focus-visible:text-brand-navy"
           onClick={() => openExportModal('both')} disabled={exportingPlan}>
           {exportingPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           {t('exportBothPlans')}

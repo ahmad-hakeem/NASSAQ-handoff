@@ -1036,7 +1036,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                             disabled={creatingClasses}
                             onClick={onCreateMissingClasses}
                             data-testid="btn-create-missing-classes"
-                            className="border-yellow-500 text-yellow-900 hover:bg-yellow-100 dark:text-yellow-100 dark:hover:bg-yellow-900/40"
+                            className="border-yellow-500 text-yellow-900 hover:bg-yellow-100 hover:text-yellow-900 dark:text-yellow-100 dark:hover:bg-yellow-900/40 dark:hover:text-yellow-100"
                           >
                             {creatingClasses ? <Loader2 className="h-3.5 w-3.5 animate-spin me-2" /> : <Database className="h-3.5 w-3.5 me-2" />}
                             إنشاء الفصول الناقصة وإعادة المطابقة
@@ -1078,7 +1078,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                         disabled={undoingClasses}
                         onClick={onUndoCreatedClasses}
                         data-testid="btn-undo-created-classes"
-                        className="border-blue-500 text-blue-900 hover:bg-blue-100 dark:text-blue-100 dark:hover:bg-blue-900/40"
+                        className="border-blue-500 text-blue-900 hover:bg-blue-100 hover:text-blue-900 dark:text-blue-100 dark:hover:bg-blue-900/40 dark:hover:text-blue-100"
                       >
                         {undoingClasses ? <Loader2 className="h-3.5 w-3.5 animate-spin me-2" /> : <Undo2 className="h-3.5 w-3.5 me-2" />}
                         تراجع عن إنشاء الفصول
@@ -1179,7 +1179,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                         disabled={undoingCommitted}
                         onClick={onUndoImported}
                         data-testid="btn-undo-committed"
-                        className="border-amber-500 text-amber-900 hover:bg-amber-100 dark:text-amber-100 dark:hover:bg-amber-900/40"
+                        className="border-amber-500 text-amber-900 hover:bg-amber-100 hover:text-amber-900 dark:text-amber-100 dark:hover:bg-amber-900/40 dark:hover:text-amber-100"
                       >
                         {undoingCommitted ? <Loader2 className="h-3.5 w-3.5 animate-spin me-2" /> : <Undo2 className="h-3.5 w-3.5 me-2" />}
                         تراجع عن استيراد السجلات

@@ -1821,7 +1821,7 @@ export const AccountSettingsPage = () => {
                         type="button"
                         variant="outline"
                         onClick={() => setWorkspaceLogoCropOpen(true)}
-                        className="rounded-xl border-workspace-accent-border text-workspace-accent-fg hover:bg-workspace-accent-light"
+                        className="rounded-xl border-workspace-accent-border text-workspace-accent-fg hover:bg-workspace-accent-light hover:text-workspace-accent-fg focus-visible:text-workspace-accent-fg"
                         data-testid="it-workspace-logo-upload-btn"
                       >
                         <Camera className="h-4 w-4 me-2" />
@@ -1889,7 +1889,7 @@ export const AccountSettingsPage = () => {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="text-workspace-accent hover:bg-workspace-accent-light rounded-xl font-tajawal"
+                        className="text-workspace-accent hover:bg-workspace-accent-light hover:text-workspace-accent focus-visible:text-workspace-accent rounded-xl font-tajawal"
                         data-testid="it-tour-replay"
                         onClick={async () => {
                           try {
@@ -2314,7 +2314,7 @@ export const AccountSettingsPage = () => {
                                         variant="outline"
                                         size="sm"
                                         onClick={() => handleHubCollabAction(c)}
-                                        className="rounded-xl text-amber-700 border-amber-300 hover:bg-amber-100 w-full sm:w-auto"
+                                        className="rounded-xl text-amber-700 border-amber-300 hover:bg-amber-100 hover:text-amber-700 focus-visible:text-amber-700 w-full sm:w-auto"
                                         data-testid={`it-hub-collab-cancel-${c.id}`}
                                       >
                                         {t('itHubCollabCancelInvite')}
@@ -2388,7 +2388,7 @@ export const AccountSettingsPage = () => {
                             type="button"
                             variant="outline"
                             onClick={handleHubReactivate}
-                            className="rounded-xl border-emerald-300 text-emerald-700 hover:bg-emerald-50 gap-2"
+                            className="rounded-xl border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700 focus-visible:text-emerald-700 gap-2"
                             data-testid="it-hub-reactivate-btn"
                           >
                             <RotateCcw className="h-4 w-4" />
@@ -2400,7 +2400,7 @@ export const AccountSettingsPage = () => {
                           onClick={handleOpenSoftDelete}
                           variant="outline"
                           disabled={!softDeleteEligible || saving || !!hub.lifecycle?.archived_at}
-                          className="rounded-xl border-red-300 text-red-600 hover:bg-red-50 gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="rounded-xl border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600 focus-visible:text-red-600 gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                           data-testid="it-hub-archive-btn"
                         >
                           <AlertTriangle className="h-4 w-4" />
@@ -2512,7 +2512,7 @@ export const AccountSettingsPage = () => {
                           variant="outline"
                           onClick={handleExportWorkspace}
                           disabled={saving}
-                          className="rounded-xl gap-2 border-brand-navy/30 text-brand-navy hover:bg-brand-navy/5"
+                          className="rounded-xl gap-2 border-brand-navy/30 text-brand-navy hover:bg-brand-navy/5 hover:text-brand-navy focus-visible:text-brand-navy"
                           data-testid="it-export-run-btn"
                         >
                           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
@@ -2552,7 +2552,7 @@ export const AccountSettingsPage = () => {
                           onClick={handleOpenSoftDelete}
                           variant="outline"
                           disabled={!softDeleteEligible || saving}
-                          className="rounded-xl border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="rounded-xl border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/20 dark:hover:text-red-400 focus-visible:text-red-600 gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                           data-testid="it-soft-delete-open-btn"
                         >
                           <AlertTriangle className="h-4 w-4" />

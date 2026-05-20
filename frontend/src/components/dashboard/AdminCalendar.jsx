@@ -316,7 +316,7 @@ export const AdminCalendar = ({
                   size="sm"
                   variant="outline"
                   disabled={isImporting}
-                  className="h-8 rounded-xl text-xs px-2.5 gap-1 border-brand-turquoise/40 text-brand-turquoise hover:bg-brand-turquoise/10 disabled:opacity-60"
+                  className="h-8 rounded-xl text-xs px-2.5 gap-1 border-brand-turquoise/40 text-brand-turquoise hover:bg-brand-turquoise/10 hover:text-brand-turquoise focus-visible:text-brand-turquoise disabled:opacity-60"
                 >
                   {isImporting ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />

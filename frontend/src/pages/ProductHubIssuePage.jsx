@@ -421,7 +421,7 @@ export function ProductHubIssuePage() {
                     <ThumbsUp className="h-4 w-4 ml-2" />
                     نعم، تم الحل
                   </Button>
-                  <Button onClick={() => handleFeedback(false)} variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 rounded-lg">
+                  <Button onClick={() => handleFeedback(false)} variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600 focus-visible:text-red-600 rounded-lg">
                     <ThumbsDown className="h-4 w-4 ml-2" />
                     لا، لم يتم الحل
                   </Button>
@@ -582,7 +582,7 @@ export function ProductHubIssuePage() {
                         size="sm"
                         onClick={handleGeneratePrompt}
                         disabled={generatingPrompt}
-                        className="text-xs rounded-lg h-8 gap-1.5 border-brand-purple/30 text-brand-purple hover:bg-brand-purple/10"
+                        className="text-xs rounded-lg h-8 gap-1.5 border-brand-purple/30 text-brand-purple hover:bg-brand-purple/10 hover:text-brand-purple focus-visible:text-brand-purple"
                       >
                         {generatingPrompt ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                         {issue.generated_prompt ? 'Regenerate Prompt' : 'Generate Prompt'}

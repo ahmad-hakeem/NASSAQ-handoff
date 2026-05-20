@@ -1547,7 +1547,7 @@ export const AIInsightsPage = () => {
                       ? `يوجد ${totalIssues} عنصر يحتاج انتباهك — ${alerts.length} تنبيه و ${highRiskCount} طالب في خطر مرتفع`
                       : `${totalIssues} items need your attention — ${alerts.length} alerts and ${highRiskCount} high-risk students`}
                   </p>
-                  <Button variant="outline" size="sm" onClick={() => document.getElementById('alerts-section')?.scrollIntoView({ behavior: 'smooth' })} className="rounded-lg text-xs border-amber-300 text-amber-700 hover:bg-amber-100">
+                  <Button variant="outline" size="sm" onClick={() => document.getElementById('alerts-section')?.scrollIntoView({ behavior: 'smooth' })} className="rounded-lg text-xs border-amber-300 text-amber-700 hover:bg-amber-100 hover:text-amber-700 focus-visible:text-amber-700">
                     {t('viewDetails')}
                   </Button>
                 </>
