@@ -458,148 +458,312 @@ export const LandingPage = () => {
 
   return (
     <div className="min-h-screen" dir={isRTL ? 'rtl' : 'ltr'} data-testid="landing-page">
-      <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl border-b border-white/5 overflow-hidden" data-testid="header">
-        <div className="absolute inset-0 bg-brand-navy/80" />
-        <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center top' }} />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 lg:h-18">
-            <Link to="/" className="flex items-center gap-2" data-testid="navbar-logo">
-              <img src={LOGO_WHITE} alt="نَسَّق" className="h-9 lg:h-10 w-auto rounded-xl" />
-            </Link>
-            <div className="flex items-center gap-1 sm:gap-2">
-              <Button variant="ghost" size="icon" onClick={toggleLanguage} className="text-white/70 hover:text-white hover:bg-white/10 rounded-xl h-9 w-9 sm:h-10 sm:w-10" data-testid="language-toggle" aria-label={t('key_xlsw4h')}>
-                <Globe className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={toggleTheme} className="text-white/70 hover:text-white hover:bg-white/10 rounded-xl h-9 w-9 sm:h-10 sm:w-10" data-testid="theme-toggle" aria-label={isDark ? 'Light mode' : 'Dark mode'}>
-                {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </Button>
-              <Button variant="ghost" asChild className="text-white/80 hover:text-white hover:bg-white/10 rounded-xl text-xs sm:text-sm px-2.5 sm:px-3 h-9 sm:h-10" data-testid="login-link">
-                <Link to="/login">{t('login')}</Link>
-              </Button>
-              <Button asChild className="bg-brand-turquoise hover:bg-brand-turquoise-light text-white rounded-xl text-xs sm:text-sm px-3 sm:px-5 h-9 sm:h-10 shadow-lg shadow-brand-turquoise/20" data-testid="register-link">
-                <Link to="/register">{t('register2')}</Link>
-              </Button>
+      {/* ========== STICKY GLASS NAVBAR ========== */}
+      <header
+        className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100"
+        data-testid="header"
+      >
+        <nav className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          {/* RTL Start: Logo */}
+          <Link to="/" className="flex items-center gap-2 shrink-0" data-testid="navbar-logo">
+            <div className="w-10 h-10 rounded-xl bg-brand-navy text-white flex items-center justify-center font-cairo font-black text-xl shadow-md">
+              ن
             </div>
+            <div className="hidden sm:flex flex-col leading-tight">
+              <span className="font-cairo font-bold text-brand-navy text-lg">{isRTL ? 'نَسَّق' : 'NASSAQ'}</span>
+              <span className="font-tajawal text-[10px] text-slate-500">{isRTL ? 'من البيانات للقرار' : 'From data to decisions'}</span>
+            </div>
+          </Link>
+
+          {/* Center: Anchor Links + IT pill */}
+          <div className="hidden lg:flex items-center gap-1">
+            {[
+              { href: '#how-it-works', label: isRTL ? 'كيف يعمل' : 'How it works' },
+              { href: '#solutions', label: isRTL ? 'الحلول' : 'Solutions' },
+              { href: '#results', label: isRTL ? 'النتائج' : 'Results' },
+              { href: '#plans', label: isRTL ? 'الباقات' : 'Plans' },
+              { href: '#how-it-works', label: isRTL ? 'عن نسق' : 'About' },
+            ].map((item, i) => (
+              <a
+                key={i}
+                href={item.href}
+                className="font-tajawal text-sm text-slate-600 hover:text-brand-navy px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                {item.label}
+              </a>
+            ))}
+            <Link
+              to="/teacher-register"
+              className="ms-2 inline-flex items-center gap-2 bg-brand-navy text-white font-tajawal text-sm font-medium px-4 py-2 rounded-full shadow-sm hover:bg-brand-navy-light active:scale-[0.98] transition-all"
+              data-testid="navbar-teacher-pill"
+            >
+              <span className="w-5 h-5 rounded-full bg-brand-turquoise text-white flex items-center justify-center text-[10px] font-cairo font-bold">ن</span>
+              {isRTL ? 'معلم نسق' : 'NASSAQ Teacher'}
+            </Link>
           </div>
-        </div>
+
+          {/* RTL End: Auth actions + utility toggles */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleLanguage}
+              className="hidden sm:inline-flex items-center justify-center h-9 w-9 rounded-lg text-slate-500 hover:text-brand-navy hover:bg-slate-50 transition-colors"
+              data-testid="language-toggle"
+              aria-label={isRTL ? 'تغيير اللغة' : 'Toggle language'}
+            >
+              <Globe className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="hidden sm:inline-flex items-center justify-center h-9 w-9 rounded-lg text-slate-500 hover:text-brand-navy hover:bg-slate-50 transition-colors"
+              data-testid="theme-toggle"
+              aria-label={isDark ? 'Light mode' : 'Dark mode'}
+            >
+              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+            <Link
+              to="/login"
+              className="font-tajawal text-sm text-slate-600 hover:text-brand-navy hover:bg-slate-50 px-4 py-2 rounded-lg transition-colors"
+              data-testid="login-link"
+            >
+              {isRTL ? 'تسجيل الدخول' : 'Log in'}
+            </Link>
+            <Link
+              to="/register"
+              className="font-tajawal text-sm text-brand-navy bg-white border border-slate-200 hover:border-brand-navy hover:bg-slate-50 px-4 py-2 rounded-lg shadow-sm active:scale-[0.98] transition-all"
+              data-testid="register-link"
+            >
+              {isRTL ? 'تسجيل' : 'Sign up'}
+            </Link>
+          </div>
+        </nav>
       </header>
 
-      {/* ========== HERO SECTION ========== */}
+      {/* ========== HERO SECTION (Modern SaaS) ========== */}
       <section
-        className="relative min-h-screen flex items-center overflow-hidden pt-20 bg-brand-navy"
+        className="relative bg-white overflow-hidden"
         data-testid="hero-section"
       >
-        <div className="absolute inset-0 opacity-[0.07]" style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center top' }} />
-        <div className="absolute inset-0 opacity-[0.12]" style={{ backgroundImage: `url('/images/nassaq-hero-bg.png')`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
-        <div className="absolute inset-0 bg-gradient-to-b from-brand-navy/40 via-transparent to-brand-navy/70" />
-
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-20 left-10 w-80 h-80 rounded-full bg-brand-turquoise/8 blur-3xl animate-pulse" />
-          <div className="absolute bottom-20 right-10 w-96 h-96 rounded-full bg-brand-purple/8 blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
-          <div className="absolute top-1/3 left-1/3 w-[500px] h-[500px] rounded-full bg-cyan-500/5 blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
-
-          <FloatingIcon icon={BarChart3} className="top-[15%] left-[10%]" delay="0s" />
-          <FloatingIcon icon={Brain} className="top-[25%] right-[15%]" delay="1s" />
-          <FloatingIcon icon={Database} className="bottom-[30%] left-[20%]" delay="2s" />
-          <FloatingIcon icon={BookOpen} className="top-[60%] right-[10%]" delay="3s" />
-          <FloatingIcon icon={Target} className="top-[40%] left-[5%]" delay="1.5s" />
-          <FloatingIcon icon={Award} className="bottom-[20%] right-[25%]" delay="2.5s" />
+        {/* Soft ambient backdrop */}
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-32 -end-32 w-[520px] h-[520px] rounded-full bg-brand-turquoise/10 blur-3xl" />
+          <div className="absolute -bottom-32 -start-32 w-[420px] h-[420px] rounded-full bg-brand-navy/5 blur-3xl" />
         </div>
 
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center min-h-[calc(100vh-5rem)]">
+        <div className="relative max-w-7xl mx-auto px-6 py-16 lg:py-24">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
 
-            <div className={`space-y-8 ${isRTL ? 'lg:order-1' : 'lg:order-1'}`}>
-              <div className="inline-flex items-center gap-2 bg-brand-turquoise/10 border border-brand-turquoise/20 rounded-full px-4 py-2 backdrop-blur-sm">
-                <Sparkles className="h-4 w-4 text-brand-turquoise animate-pulse" />
-                <span className="text-brand-turquoise/90 text-sm font-tajawal">{t('aipoweredSmartEducationPlatform')}</span>
+            {/* RTL Start = Right: Content */}
+            <div className="space-y-8 text-start order-2 lg:order-1 lg:[&]:order-none">
+              {/* Eyebrow badge */}
+              <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-full ps-2 pe-4 py-1.5">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                <span className="font-tajawal text-sm text-emerald-700">
+                  {isRTL ? 'نظام تشغيلي للمؤسسات التعليمية' : 'An operating system for educational institutions'}
+                </span>
               </div>
 
-              <div>
-                <h1 className="text-5xl md:text-6xl lg:text-7xl font-cairo font-black text-white mb-4 leading-tight" data-testid="platform-name">
-                  {t('nassaq')}
-                </h1>
-                <p className="text-3xl md:text-4xl text-brand-turquoise font-cairo font-bold mb-4">
-                  {t('fromDataToDecisions')}
-                </p>
-                <p className="text-lg text-white/60 font-tajawal leading-relaxed max-w-lg">
-                  {t('educationOperationsIntelligencePlatformFromDataToD')
-                  }
+              {/* H1 */}
+              <h1
+                className="font-cairo font-bold text-brand-navy leading-tight text-4xl sm:text-5xl lg:text-6xl"
+                data-testid="platform-name"
+              >
+                {isRTL ? (
+                  <>
+                    كل إشارة تعليمية
+                    <br />
+                    <span className="text-brand-turquoise">تتحول إلى</span> قرار.
+                  </>
+                ) : (
+                  <>
+                    Every educational signal
+                    <br />
+                    <span className="text-brand-turquoise">turns into</span> a decision.
+                  </>
+                )}
+              </h1>
+
+              {/* Sub-heading */}
+              <p className="font-tajawal text-lg text-slate-600 leading-relaxed max-w-xl">
+                {isRTL
+                  ? 'نسق يحول البيانات التعليمية اليومية إلى رؤى تنفيذية — اكتشاف التراجع مبكرًا، ترتيب الأولويات، والقرار في الوقت المناسب.'
+                  : 'NASSAQ turns everyday educational data into executive insights — catch decline early, prioritize what matters, and decide at the right moment.'}
+              </p>
+
+              {/* CTAs */}
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  asChild
+                  className="bg-brand-navy hover:bg-brand-navy-light text-white font-cairo rounded-lg px-8 py-3 h-auto text-base shadow-md hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:scale-[0.98] transition-all"
+                  data-testid="hero-cta-btn"
+                >
+                  <Link to="/register" className="flex items-center gap-2">
+                    {isRTL ? 'احجز تجربة' : 'Book a demo'}
+                    {isRTL ? <ArrowLeft className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
+                  </Link>
+                </Button>
+                <Button
+                  asChild
+                  variant="ghost"
+                  className="text-brand-navy hover:bg-slate-50 font-cairo rounded-lg px-6 py-3 h-auto text-base border border-slate-200 hover:border-slate-300 transition-all"
+                  data-testid="hero-secondary-cta"
+                >
+                  <a href="#how-it-works" className="flex items-center gap-2">
+                    {isRTL ? 'شاهد كيف يعمل' : 'See how it works'}
+                  </a>
+                </Button>
+              </div>
+
+              {/* Social proof */}
+              <div className="flex items-center gap-3" data-testid="traction-section">
+                <div className="flex -space-x-2 rtl:space-x-reverse">
+                  {['#1C3D74', '#46C1BE', '#615090', '#D4A23C'].map((bg, i) => (
+                    <div
+                      key={i}
+                      className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white text-xs font-cairo font-bold shadow-sm"
+                      style={{ backgroundColor: bg }}
+                    >
+                      ن
+                    </div>
+                  ))}
+                </div>
+                <p className="font-tajawal text-sm text-slate-600">
+                  {isRTL ? (
+                    <>
+                      <span className="font-bold text-brand-navy">+{Math.max(platformStats.schools, 32)} مدرسة</span> تستخدم نسق الآن
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-bold text-brand-navy">+{Math.max(platformStats.schools, 32)} schools</span> use NASSAQ today
+                    </>
+                  )}
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="traction-section">
+              {/* Features ticker */}
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-4 border-t border-slate-100">
                 {[
-                  { icon: Building2, value: platformStats.schools, label: t('schools3') },
-                  { icon: GraduationCap, value: platformStats.students, label: isRTL ? 'طالب' : 'Students' },
-                  { icon: Users, value: platformStats.parents, label: isRTL ? 'ولي أمر' : 'Parents' },
-                  { icon: UserCheck, value: platformStats.teachers, label: isRTL ? 'معلم' : 'Teachers' },
-                ].map((stat, i) => (
-                  <div key={i} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-3 text-center group hover:bg-white/10 hover:border-brand-turquoise/30 transition-all duration-300" data-testid={`traction-${stat.label.toLowerCase()}`}>
-                    <stat.icon className="h-5 w-5 text-brand-turquoise mx-auto mb-1.5 group-hover:scale-110 transition-transform" />
-                    <p className="text-xl font-cairo font-bold text-white">
-                      <AnimatedCounter target={stat.value} />
-                    </p>
-                    <p className="text-white/50 font-tajawal text-xs">{stat.label}</p>
+                  isRTL ? 'جاهز خلال 24 ساعة' : 'Ready in 24 hours',
+                  isRTL ? 'بدون تعقيد تقني' : 'No technical setup',
+                  isRTL ? 'يعمل مع نظامك الحالي' : 'Works with your current stack',
+                ].map((item, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    <span className="font-tajawal text-sm text-slate-600">{item}</span>
                   </div>
                 ))}
               </div>
-
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Button asChild size="lg" className="bg-gradient-to-r from-brand-turquoise to-cyan-500 hover:from-brand-turquoise-light hover:to-cyan-400 text-white rounded-2xl h-12 sm:h-14 px-6 sm:px-8 text-base sm:text-lg font-cairo shadow-xl shadow-brand-turquoise/25 hover:shadow-2xl hover:shadow-brand-turquoise/35 transition-all hover:scale-[1.02]" data-testid="hero-cta-btn">
-                  <Link to="/login" className="flex items-center gap-2">
-                    {t('enterThePlatform')}
-                    {isRTL ? <ArrowLeft className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
-                  </Link>
-                </Button>
-                <Button asChild variant="outline" size="lg" className="border-white/20 text-white hover:bg-white/10 rounded-2xl h-12 sm:h-14 px-5 sm:px-6 text-base sm:text-lg font-cairo backdrop-blur-sm" data-testid="teacher-register-cta">
-                  <Link to="/teacher-register" className="flex items-center gap-2">
-                    <UserCheck className="h-5 w-5" />
-                    {t('joinAsTeacher')}
-                  </Link>
-                </Button>
-              </div>
-
-              <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-4 py-2">
-                <Bell className="h-4 w-4 text-brand-turquoise animate-pulse" />
-                <span className="text-white/60 font-tajawal text-sm">{t('247TechnicalSupport')}</span>
-              </div>
             </div>
 
-            <div className={`flex flex-col items-center justify-end ${isRTL ? 'lg:order-2' : 'lg:order-2'}`}>
-              <div className="relative w-full max-w-md flex flex-col items-center">
-                <div className="relative z-10 w-72 lg:w-96 mb-[-40px]" style={{ aspectRatio: '1/1.2' }}>
-                  <img
-                    src={heroHakim.currentSrc}
-                    alt={t('hakim')}
-                    className="hakim-img absolute inset-0 w-full h-full object-contain"
-                    data-testid="hakim-avatar"
-                  />
+            {/* RTL End = Left: Dashboard mockup */}
+            <div className="order-1 lg:order-2">
+              <div
+                className="relative w-full aspect-[4/3] bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transform hover:scale-[1.02] transition-transform duration-500"
+                data-testid="hero-mockup"
+              >
+                {/* Mock browser chrome */}
+                <div className="flex items-center justify-between gap-2 px-4 h-9 bg-slate-50 border-b border-slate-100">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                    <span className="font-tajawal text-[11px] text-slate-500">{isRTL ? 'مباشر' : 'Live'}</span>
+                  </div>
+                  <span className="font-tajawal text-[11px] text-slate-500">{isRTL ? 'نسق · مركز العمل اليومي' : 'NASSAQ · Daily Ops Hub'}</span>
+                  <div className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-slate-200" />
+                    <span className="w-2 h-2 rounded-full bg-slate-200" />
+                    <span className="w-2 h-2 rounded-full bg-slate-200" />
+                  </div>
                 </div>
 
-                <div className="relative z-20 w-full">
-                  <div className="relative bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl px-6 py-5 shadow-2xl">
-                    <div className="absolute -top-3 start-6 bg-brand-turquoise text-white text-xs font-cairo font-bold px-3 py-1 rounded-full shadow-lg flex items-center gap-1.5">
-                      <Brain className="h-3.5 w-3.5" />
-                      {t('hakim')}
+                {/* Mock content */}
+                <div className="grid grid-cols-12 h-[calc(100%-2.25rem)]">
+                  {/* Sidebar */}
+                  <div className="col-span-3 border-s border-slate-100 bg-slate-50/50 py-4 px-3 space-y-1.5">
+                    {[
+                      { label: isRTL ? 'الرئيسية' : 'Home' },
+                      { label: isRTL ? 'الأولويات' : 'Priorities', active: true },
+                      { label: isRTL ? 'الطلاب' : 'Students' },
+                      { label: isRTL ? 'التقارير' : 'Reports' },
+                      { label: isRTL ? 'الإعدادات' : 'Settings' },
+                    ].map((item, i) => (
+                      <div
+                        key={i}
+                        className={`font-tajawal text-[12px] text-end px-3 py-1.5 rounded-md ${
+                          item.active
+                            ? 'bg-white text-brand-navy font-bold border-e-2 border-brand-turquoise shadow-sm'
+                            : 'text-slate-500'
+                        }`}
+                      >
+                        {item.label}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Main panel */}
+                  <div className="col-span-9 p-4 space-y-3 overflow-hidden">
+                    {/* KPI tiles */}
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { v: '+18%', l: isRTL ? 'تحسن التفاعل' : 'Engagement up', bg: 'bg-emerald-50', tx: 'text-emerald-700', br: 'border-emerald-100' },
+                        { v: '1h', l: isRTL ? 'وقت وُفِّر' : 'Time saved', bg: 'bg-sky-50', tx: 'text-sky-700', br: 'border-sky-100' },
+                        { v: '4', l: isRTL ? 'حالات مكتشفة' : 'Cases found', bg: 'bg-rose-50', tx: 'text-rose-700', br: 'border-rose-100' },
+                      ].map((k, i) => (
+                        <div key={i} className={`${k.bg} ${k.br} border rounded-xl p-2.5 text-center`}>
+                          <div className={`font-cairo font-black text-lg ${k.tx}`}>{k.v}</div>
+                          <div className={`font-tajawal text-[10px] ${k.tx} opacity-80`}>{k.l}</div>
+                        </div>
+                      ))}
                     </div>
-                    <p className="text-white/90 text-base font-tajawal leading-relaxed min-h-[72px]">
-                      {typedHakimText}
-                      <span className="inline-block w-0.5 h-5 bg-brand-turquoise animate-pulse ms-1 align-middle" />
-                    </p>
+
+                    {/* Priorities header */}
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="font-tajawal text-[10px] text-rose-600 inline-flex items-center gap-1">
+                        <Bell className="h-3 w-3" />
+                        {isRTL ? '٣ تنبيهات' : '3 alerts'}
+                      </span>
+                      <span className="font-cairo font-bold text-[12px] text-brand-navy">
+                        {isRTL ? 'أولويات اليوم' : "Today's priorities"}
+                      </span>
+                    </div>
+
+                    {/* Priority rows */}
+                    <div className="space-y-1.5">
+                      {[
+                        { tag: isRTL ? 'تدخل فوري' : 'Act now', tagBg: 'bg-rose-100 text-rose-700', text: isRTL ? 'أحمد محمد — تراجع حاد في الرياضيات' : 'Ahmed M. — sharp decline in Math' },
+                        { tag: isRTL ? 'متابعة' : 'Follow', tagBg: 'bg-amber-100 text-amber-700', text: isRTL ? 'نورة عبدالله — غياب متكرر هذا الأسبوع' : 'Noura A. — repeated absences this week' },
+                        { tag: isRTL ? 'مراقبة' : 'Watch', tagBg: 'bg-slate-100 text-slate-600', text: isRTL ? 'فيصل الشمري — تراجع ١١٪ في الأداء' : 'Faisal S. — 11% performance drop' },
+                      ].map((row, i) => (
+                        <div key={i} className="flex items-center justify-between gap-2 bg-white border border-slate-100 rounded-lg px-2.5 py-1.5 shadow-sm">
+                          <span className={`font-tajawal text-[10px] px-2 py-0.5 rounded-full ${row.tagBg}`}>{row.tag}</span>
+                          <span className="font-tajawal text-[11px] text-slate-700 truncate">{row.text}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Hakim recommendation */}
+                    <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-2.5 flex items-start gap-2">
+                      <div className="w-6 h-6 rounded-full bg-brand-navy text-white flex items-center justify-center font-cairo text-[10px] font-bold shrink-0">ح</div>
+                      <div className="min-w-0">
+                        <p className="font-cairo font-bold text-[11px] text-brand-navy mb-0.5">
+                          {isRTL ? 'حكيم يقترح تدخلاً أكاديميًا مبكرًا' : 'Hakim suggests an early academic intervention'}
+                        </p>
+                        <p className="font-tajawal text-[10px] text-slate-600 leading-snug">
+                          {isRTL ? 'جلسة دعم فردية + إشعار لولي الأمر خلال ٤٨ ساعة' : 'A 1:1 support session + parent notice within 48 hours'}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-white/40 text-xs font-tajawal">{t('hakimIsOnline')}</span>
-              </div>
+              {/* Footnote below mockup */}
+              <p className="font-tajawal text-xs text-slate-500 text-center mt-4">
+                {isRTL
+                  ? 'وفّرت ١ ساعات هذا الأسبوع من العمل الإداري'
+                  : 'Saved 1+ hours of admin work this week'}
+              </p>
             </div>
-          </div>
-
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
-            <ChevronDown className="h-6 w-6 text-white/30" />
           </div>
         </div>
       </section>
@@ -608,6 +772,7 @@ export const LandingPage = () => {
       <section
         ref={journeyRef}
         className="py-24 lg:py-32 bg-gradient-to-b from-background via-background to-background relative overflow-hidden"
+        id="how-it-works"
         data-testid="journey-section"
       >
         <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center center' }} />
@@ -763,6 +928,7 @@ export const LandingPage = () => {
       <section
         ref={aiRef}
         className="py-24 lg:py-32 bg-brand-navy relative overflow-hidden"
+        id="solutions"
         data-testid="ai-section"
       >
         <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center center' }} />
@@ -944,6 +1110,7 @@ export const LandingPage = () => {
       <section
         ref={ecoRef}
         className="py-24 lg:py-32 bg-gradient-to-b from-background via-background to-background relative overflow-hidden"
+        id="results"
         data-testid="ecosystem-section"
       >
         <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center center' }} />
@@ -1093,6 +1260,7 @@ export const LandingPage = () => {
       {/* ========== CALL TO ACTION ========== */}
       <section
         className="py-24 lg:py-32 relative overflow-hidden"
+        id="plans"
         data-testid="cta-section"
       >
         <div className="absolute inset-0 bg-brand-navy" />
