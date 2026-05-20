@@ -154,6 +154,66 @@ async def test_download_rejects_wrong_user(client):
 
 
 @pytest.mark.asyncio
+async def test_download_rejects_different_session_after_deactivation(client):
+    """Task #450 — session invalidation must hold on the download path.
+
+    A bearer token from the same user but with a different JTI than the one
+    captured at mint time must be rejected once the user is deactivated
+    (the state archive/erasure leaves the account in).  Without this guard
+    a stolen bearer token would remain a valid post-revocation channel for
+    redeeming an export URL leaked from another session.
+    """
+    ctx = await mk_it_workspace()
+    h_mint = _it_headers(ctx)
+
+    create = await client.post(
+        "/independent-teacher/workspace/export", headers=h_mint,
+    )
+    assert create.status_code == 200, create.text
+    url = create.json()["download_url"].replace("/api", "")
+
+    # Simulate the archive/erasure session-invalidation effect.
+    await gd_update_one(
+        db.session, "users", {"id": ctx["uid"]}, {"is_active": False},
+    )
+
+    # A *different* bearer (fresh JTI) from the same user must NOT be
+    # accepted — the bypass is bound to the initiator JTI only.
+    h_other_session = _it_headers(ctx)
+    resp = await client.get(url, headers=h_other_session)
+    assert resp.status_code == 401, resp.text
+
+
+@pytest.mark.asyncio
+async def test_download_rejects_other_session_after_password_change(client):
+    """Task #450 — same as above but for the last_password_change boundary
+    (the gate archive/erasure uses to revoke outstanding sessions)."""
+    ctx = await mk_it_workspace()
+    h_mint = _it_headers(ctx)
+
+    create = await client.post(
+        "/independent-teacher/workspace/export", headers=h_mint,
+    )
+    assert create.status_code == 200, create.text
+    url = create.json()["download_url"].replace("/api", "")
+
+    # Bump last_password_change to a moment in the future, mirroring what
+    # soft-delete / request-erasure do in production.
+    future = datetime.now(timezone.utc) + timedelta(minutes=5)
+    await gd_update_one(
+        db.session, "users", {"id": ctx["uid"]},
+        {"last_password_change": future.isoformat()},
+    )
+
+    # Different bearer token from the same user — must be rejected because
+    # its iat predates last_password_change and its JTI is not the
+    # initiator JTI on the schools row.
+    h_other_session = _it_headers(ctx)
+    resp = await client.get(url, headers=h_other_session)
+    assert resp.status_code == 401, resp.text
+
+
+@pytest.mark.asyncio
 async def test_download_succeeds_after_erasure_deactivates_user(client):
     """Erasure path: is_active=False must NOT block the exit-artefact download.
 

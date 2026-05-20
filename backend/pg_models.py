@@ -164,6 +164,13 @@ class School(Base):
     # IT §6.8 single-use export token state.
     last_export_token_hash = Column(String, nullable=True)
     last_export_consumed_at = Column(DateTime(timezone=True), nullable=True)
+    # Task #450 — bind the export download to the bearer-token JTI that
+    # minted it.  Only that exact session may bypass the is_active /
+    # last_password_change checks on the public download endpoint; any
+    # other bearer token (including stolen sessions whose JTI differs)
+    # must pass full session-invalidation checks and will be rejected
+    # after archive/erasure.
+    last_export_initiator_jti = Column(String, nullable=True)
     # IT §6.8 reactivation reminder + banner state.
     reactivation_reminder_sent_at = Column(DateTime(timezone=True), nullable=True)
     last_reactivated_at = Column(DateTime(timezone=True), nullable=True)

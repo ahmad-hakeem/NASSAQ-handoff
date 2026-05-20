@@ -702,6 +702,11 @@ async def create_workspace_export(
     raw_token, raw_hash, expires_at = mint_workspace_export_token(
         workspace_id, current_user["id"],
     )
+    # Task #450 — capture the JTI of the bearer token that minted this
+    # download so the public download endpoint can verify the redeemer is
+    # the same session.  Any other bearer token must pass full session-
+    # invalidation checks at download time.
+    initiator_jti = _extract_bearer_jti(request)
     now = _utcnow()
     try:
         async with db.session.begin_nested():
@@ -716,6 +721,7 @@ async def create_workspace_export(
                     "last_export_at": now.isoformat(),
                     "last_export_token_hash": raw_hash,
                     "last_export_consumed_at": None,
+                    "last_export_initiator_jti": initiator_jti,
                 },
             )
             await audit_engine.log(
@@ -756,25 +762,54 @@ async def create_workspace_export(
 # -- Endpoint: GET /public/workspace-export/{token} -----------------------
 
 
-async def _authenticate_export_download(request: Request) -> str:
+def _extract_bearer_jti(request: Request) -> Optional[str]:
+    """Decode the request's Authorization Bearer access token and return its
+    ``jti`` claim, or ``None`` if no/invalid token is present.
+
+    Used at export-mint time to bind the freshly issued single-use download
+    URL to the exact session that initiated the action (Task #450).  No
+    authentication side-effects — the caller is already authenticated by
+    ``Depends(get_current_user)`` upstream; this helper only extracts the
+    JTI for persistence.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    raw = auth_header[len("Bearer "):].strip()
+    if not raw:
+        return None
+    try:
+        decoded = _jwt.decode(raw, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except _jwt.PyJWTError:
+        return None
+    jti = decoded.get("jti")
+    return str(jti) if jti else None
+
+
+async def _authenticate_export_download(
+    request: Request, *, initiator_jti: Optional[str],
+) -> str:
     """Authenticate the caller for the workspace export download endpoint.
 
-    This is a deliberate, narrower variant of ``get_current_user`` that:
+    Task #450 hardening — session invalidation must hold on the public
+    download path.  Behaviour:
 
     * Requires a valid Bearer access token (type, signature, expiry, revocation).
-    * Intentionally skips the ``is_active`` flag check — the erasure flow
-      sets ``users.is_active = False`` in the same transaction that mints the
-      exit-artefact token, so the downloading user's account is inactive by
-      design at the moment the download is attempted.  The export token's own
-      security properties (single-use hash, 24h expiry, uid+ws binding verified
-      in the calling endpoint) are the sufficient guard here.  Deactivation by
-      an admin should also not strip the user of their data export.
-    * Intentionally skips the IT-archived-workspace gate — the workspace is
-      archived by the time the user downloads the exit artefact.
-    * Checks ``is_locked``: a security lockout (distinct from normal deactivation)
-      signals active compromise and must block the download.
-    * Does NOT check ``last_password_change`` / token IAT — the same reasoning
-      applies: erasure bumps ``last_password_change`` intentionally.
+    * Checks ``is_locked``: a security lockout (distinct from normal
+      deactivation) always blocks the download.
+    * Enforces ``is_active`` and ``last_password_change`` (token ``iat``)
+      checks — equivalent to the gates in ``get_current_user`` — for every
+      bearer token whose JTI does NOT match the recorded ``initiator_jti``
+      for this export.  That means any bearer token other than the one that
+      minted the URL is rejected once archive/erasure has bumped
+      ``last_password_change`` / cleared ``is_active``.
+    * The single, narrow bypass: when the bearer token's JTI exactly matches
+      ``initiator_jti`` (the JTI captured at mint time on the schools row),
+      we skip ``is_active`` and ``last_password_change`` so the legitimate
+      teacher who just initiated the lifecycle action can redeem the exit
+      artefact with the same session — even though that session has been
+      invalidated for every other API surface.  The export token's own
+      single-use + 24h expiry + uid/ws binding bound that window.
 
     Returns the validated ``user_id`` string on success.
     Raises ``HTTPException`` (401/403) for any auth failure — never returns
@@ -813,9 +848,42 @@ async def _authenticate_export_download(request: Request) -> str:
     user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=401, detail="المستخدم غير موجود.")
-    # is_active is intentionally NOT checked — see docstring.
     if user.get("is_locked", False):
         raise HTTPException(status_code=401, detail="الحساب مُعلَّق بسبب مخاوف أمنية.")
+
+    # -- Session-invalidation gate (Task #450) -------------------------------
+    # The narrow exemption from is_active / last_password_change is granted
+    # ONLY to the exact bearer-token JTI that minted this export.  Any other
+    # bearer token presented at the download endpoint must satisfy the same
+    # checks as ``get_current_user`` — so a stolen or otherwise-replayed
+    # session that did not initiate the lifecycle action cannot redeem the
+    # URL after archive/erasure has invalidated it everywhere else.
+    is_initiator = bool(
+        initiator_jti and jti and str(jti) == str(initiator_jti)
+    )
+    if not is_initiator:
+        if not user.get("is_active", True):
+            raise HTTPException(status_code=401, detail="تم إلغاء الجلسة.")
+        last_pw_change = user.get("last_password_change")
+        token_iat = decoded.get("iat")
+        if last_pw_change:
+            if token_iat is None:
+                raise HTTPException(status_code=401, detail="تم إلغاء الجلسة.")
+            try:
+                _lpc_str = (
+                    last_pw_change
+                    if isinstance(last_pw_change, str)
+                    else str(last_pw_change)
+                ).replace("Z", "+00:00")
+                pw_change_ts = datetime.fromisoformat(_lpc_str).timestamp()
+                if float(token_iat) < pw_change_ts:
+                    raise HTTPException(status_code=401, detail="تم إلغاء الجلسة.")
+            except HTTPException:
+                raise
+            except Exception:
+                # Fail closed when we cannot parse the boundary — better to
+                # force a fresh login than risk honoring a stale token.
+                raise HTTPException(status_code=401, detail="تم إلغاء الجلسة.")
 
     return str(user_id)
 
@@ -849,16 +917,19 @@ async def download_workspace_export(token: str, request: Request):
     if not school or school.get("pending_hard_delete"):
         raise HTTPException(status_code=404, detail=_MSG_DOWNLOAD_INVALID)
 
-    # -- Identity binding (§369 security fix) --------------------------------
-    # All downloads require a valid, user-bound Bearer access token.
-    # ``_authenticate_export_download`` enforces the same guarantees as
-    # ``get_current_user`` (type, revocation, user state) but deliberately
-    # skips the IT-archived-workspace gate so that a user who initiated a
-    # soft-delete or erasure can still redeem the exit-artefact token using
-    # the access token they held at the time of the lifecycle action.
-    # Raises 401/403 on any auth failure — never returns without a verified
-    # identity that we then compare against ``payload["uid"]``.
-    caller_user_id = await _authenticate_export_download(request)
+    # -- Identity binding (§369 + Task #450) ---------------------------------
+    # All downloads require a valid, user-bound Bearer access token.  Task
+    # #450 additionally binds the bypass of the session-invalidation checks
+    # (is_active / last_password_change) to the exact bearer-token JTI that
+    # was captured on the schools row at mint time.  Any OTHER bearer token
+    # — including a different stolen session from the same user — must pass
+    # full session-invalidation checks and will be rejected after the
+    # archive/erasure path has bumped ``last_password_change`` / cleared
+    # ``is_active``.  Raises 401/403 on any auth failure.
+    initiator_jti = school.get("last_export_initiator_jti")
+    caller_user_id = await _authenticate_export_download(
+        request, initiator_jti=initiator_jti,
+    )
     if caller_user_id != str(user_id):
         raise HTTPException(status_code=403, detail=_MSG_DOWNLOAD_IDENTITY)
     # ------------------------------------------------------------------------
@@ -975,6 +1046,11 @@ async def soft_delete_workspace(
     fresh_token, fresh_hash, fresh_expires_at = mint_workspace_export_token(
         workspace_id, current_user["id"],
     )
+    # Task #450 — see /workspace/export for rationale.  Captured BEFORE we
+    # bump last_password_change so the bearer presented at download time
+    # (the same one the user holds right now) is recognised as the
+    # initiator and may bypass is_active / last_password_change checks.
+    initiator_jti = _extract_bearer_jti(request)
     try:
         async with db.session.begin_nested():
             await gd_update_one(
@@ -986,6 +1062,7 @@ async def soft_delete_workspace(
                     "last_export_at": now.isoformat(),
                     "last_export_token_hash": fresh_hash,
                     "last_export_consumed_at": None,
+                    "last_export_initiator_jti": initiator_jti,
                     "reactivation_reminder_sent_at": None,
                 },
             )
@@ -1159,6 +1236,9 @@ async def request_workspace_erasure(
         workspace_id, current_user["id"],
     )
 
+    # Task #450 — capture initiator JTI BEFORE the session-invalidation
+    # bump below so the same bearer the user holds may redeem the export.
+    initiator_jti = _extract_bearer_jti(request)
     try:
         async with db.session.begin_nested():
             await gd_update_one(
@@ -1173,6 +1253,7 @@ async def request_workspace_erasure(
                     "last_export_at": now.isoformat(),
                     "last_export_token_hash": fresh_hash,
                     "last_export_consumed_at": None,
+                    "last_export_initiator_jti": initiator_jti,
                     "reactivation_reminder_sent_at": None,
                 },
             )

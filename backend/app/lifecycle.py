@@ -387,6 +387,12 @@ async def _sweep_auto_exports():
                     "last_export_at": now.isoformat(),
                     "last_export_token_hash": raw_hash,
                     "last_export_consumed_at": None,
+                    # Task #450 — auto-export has no bearer JTI (background
+                    # sweep). Clearing this means the download endpoint will
+                    # apply full is_active / last_password_change checks to
+                    # whoever presents the URL, which is the desired posture
+                    # for an out-of-band emailed export.
+                    "last_export_initiator_jti": None,
                 },
             )
 
