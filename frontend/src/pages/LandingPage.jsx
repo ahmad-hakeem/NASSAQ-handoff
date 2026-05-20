@@ -195,22 +195,20 @@ export const LandingPage = () => {
 
   useEffect(() => {
     const fetchStats = async () => {
+      // Landing page is unauthenticated. The full /public/stats payload is
+      // intentionally platform-admin gated (audit C-4). For the social-proof
+      // line we use the curated public schools-count endpoint, which exposes
+      // only a single aggregate integer with no per-tenant detail.
       try {
-                const response = await api.get('/public/stats');
-        if (response.data) {
-          setPlatformStats({
-            schools: response.data.schools || 0,
-            students: response.data.students || 0,
-            teachers: response.data.teachers || 0,
-            parents: response.data.parents || 0,
-          });
-        }
+        const response = await api.get('/public/schools-count');
+        const count = Number(response?.data?.count) || 0;
+        setPlatformStats((prev) => ({ ...prev, schools: count }));
       } catch (error) {
-        console.error('Failed to fetch platform stats:', error);
+        // Silent — social-proof block hides itself when the count is 0.
       }
     };
     fetchStats();
-  }, []);
+  }, [api]);
 
   useEffect(() => {
     if (journeyPaused) return;

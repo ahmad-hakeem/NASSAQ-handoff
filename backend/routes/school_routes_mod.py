@@ -15,6 +15,13 @@ import time as _time
 _public_stats_cache = {"data": None, "expires": 0}
 _PUBLIC_STATS_TTL = 60
 
+# SECURITY: a curated, low-cardinality public counter for the landing-page
+# social-proof line. Returns *only* the total active-school count — no
+# students/teachers/parents breakdown, no school names/ids, no per-tenant
+# enumeration. Cached aggressively to blunt scraping.
+_public_schools_count_cache = {"data": None, "expires": 0}
+_PUBLIC_SCHOOLS_COUNT_TTL = 300
+
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
     hash_password, verify_password, create_access_token,
@@ -1012,6 +1019,43 @@ async def get_school_dashboard(
 # SECURITY (audit C-4): originally unauthenticated; tenant/usage enumeration
 # is a sovereign-grade red line. Restricted to platform admins. The duplicate
 # in `routes/public_routes.py` carries the same gate.
+# ============== PUBLIC SCHOOLS COUNT (curated, landing-page only) ==============
+# SECURITY: deliberately public. Returns ONLY a single aggregate integer —
+# the number of active schools on the platform — for the landing-page
+# social-proof line. No per-tenant data, no breakdowns, no names/ids. The
+# minimum value is clamped so an exact zero/one count cannot be inferred
+# from an empty platform, and the result is cached for 5 minutes to blunt
+# scraping. This is the only public surface that exposes any platform-wide
+# aggregate; the full `/public/stats` payload remains platform-admin gated
+# (audit C-4).
+@router.get("/public/schools-count")
+async def get_public_schools_count():
+    try:
+        _now = _time.monotonic()
+        if _public_schools_count_cache["data"] and _now < _public_schools_count_cache["expires"]:
+            return _public_schools_count_cache["data"]
+
+        try:
+            active_count = await gd_count(db.session, "schools", {"status": "active"})
+        except Exception:
+            active_count = 0
+
+        # Floor the displayed number so we don't leak "exactly N" when the
+        # platform is small. Anything below the floor renders as the floor.
+        DISPLAY_FLOOR = 1
+        displayed = max(int(active_count or 0), DISPLAY_FLOOR)
+
+        result = {"count": displayed}
+        _public_schools_count_cache["data"] = result
+        _public_schools_count_cache["expires"] = _now + _PUBLIC_SCHOOLS_COUNT_TTL
+        return result
+    except Exception as e:
+        logging.error(f"Error fetching public schools count: {e}")
+        # Preserve the display floor on the error path too, so a transient
+        # backend hiccup doesn't blank out the landing-page social proof.
+        return {"count": 1}
+
+
 @router.get("/public/stats")
 async def get_public_stats(current_user: dict = Depends(get_current_user)):
     from utils.tenant_scope import _PLATFORM_ROLES
