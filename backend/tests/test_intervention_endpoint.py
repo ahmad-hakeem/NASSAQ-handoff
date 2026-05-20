@@ -58,8 +58,8 @@ async def test_intervention_writes_audit_log(client, school_admin_headers, a_stu
 
 
 @pytest.mark.asyncio
-async def test_notify_parent_without_parent_400(client, school_admin_headers, orphan_student):
+async def test_notify_parent_without_parent_404(client, school_admin_headers, orphan_student):
     body = {"student_id": orphan_student["id"], "action_type": "notify_parent",
             "data": {"message": "x", "issue_type": "attendance"}}
     r = await client.post("/ai/insights/intervention", json=body, headers=school_admin_headers)
-    assert r.status_code == 400
+    assert r.status_code == 404

@@ -27,6 +27,7 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 
 from routes.notification_routes_mod import create_notification_internal
 from engines.assessment_engine import AssessmentEngine
+from utils.parent_resolution import resolve_students_parent_user_ids
 
 router = APIRouter()
 
@@ -447,6 +448,10 @@ async def create_bulk_grades(
                 _from_ar = f" من الأستاذ/ة {_tname}"
                 _from_en = f" from {_tname}"
 
+        # Resolve parent user IDs in bulk — uses guardian_links first,
+        # falls back to students.parent_id. No mutable phone/email matching.
+        parent_uid_map = await resolve_students_parent_user_ids(list(created_sids), tenant_id)
+
         for g in data.grades:
             if g.student_id not in created_sids:
                 continue
@@ -473,25 +478,22 @@ async def create_bulk_grades(
                         school_id=tenant_id,
                     )
 
-                if si.get('parent_phone'):
-                    parent_user = await gd_find_one(db.session, "users", {
-                        "phone": si['parent_phone'], "role": "parent"
-                    })
-                    if parent_user:
-                        await create_notification_internal(
-                            title=f"درجة جديدة لـ {student_name}{_from_ar}",
-                            title_en=f"New Grade for {student_name}{_from_en}",
-                            message=f"حصل {student_name} على درجة {g.score}/{max_score} ({percentage}%) في {assessment_title}{_from_ar}",
-                            message_en=f"{student_name} scored {g.score}/{max_score} ({percentage}%) in {assessment_title}{_from_en}",
-                            recipient_id=parent_user['id'],
-                            notification_type="assessment",
-                            priority="medium",
-                            sender_id=current_user['id'],
-                            related_entity="assessment",
-                            related_entity_id=data.assessment_id,
-                            action_url="/parent/grades",
-                            school_id=tenant_id,
-                        )
+                parent_uid = parent_uid_map.get(g.student_id)
+                if parent_uid:
+                    await create_notification_internal(
+                        title=f"درجة جديدة لـ {student_name}{_from_ar}",
+                        title_en=f"New Grade for {student_name}{_from_en}",
+                        message=f"حصل {student_name} على درجة {g.score}/{max_score} ({percentage}%) في {assessment_title}{_from_ar}",
+                        message_en=f"{student_name} scored {g.score}/{max_score} ({percentage}%) in {assessment_title}{_from_en}",
+                        recipient_id=parent_uid,
+                        notification_type="assessment",
+                        priority="medium",
+                        sender_id=current_user['id'],
+                        related_entity="assessment",
+                        related_entity_id=data.assessment_id,
+                        action_url="/parent/grades",
+                        school_id=tenant_id,
+                    )
             except Exception as e:
                 logging.getLogger(__name__).warning("Grade notification failed for student %s: %s", g.student_id, e)
 

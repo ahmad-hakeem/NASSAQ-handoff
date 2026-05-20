@@ -26,6 +26,8 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 from auth_scope import require_request_school_id
 
 from engines.attendance_engine import AttendanceEngine
+from routes.notification_routes_mod import create_notification_internal
+from utils.parent_resolution import resolve_students_parent_user_ids
 
 _attendance_engine = AttendanceEngine(db)
 
@@ -327,6 +329,23 @@ async def create_bulk_attendance(
             "tenant_id": t_id,
         })
 
+        # Resolve parent user IDs in bulk — uses guardian_links first,
+        # falls back to students.parent_id. No mutable phone/email matching.
+        parent_uid_map = await resolve_students_parent_user_ids(al_ids, t_id)
+
+        # IT-aware venue text resolved once per request to avoid re-querying
+        # the users table for every absent student in the loop.
+        _venue_ar = "في المدرسة"
+        _venue_en = "at school"
+        if isinstance(t_id, str) and t_id.startswith("itw_"):
+            _owner = await gd_find_one(
+                db.session, "users", {"id": t_id[len("itw_"):]}
+            )
+            _tname = (_owner or {}).get("full_name")
+            if _tname:
+                _venue_ar = f"لدى الأستاذ/ة {_tname}"
+                _venue_en = f"with {_tname}"
+
         for student_id, att_status in absent_late:
             try:
                 si = student_map.get(student_id)
@@ -352,39 +371,22 @@ async def create_bulk_attendance(
                         school_id=t_id,
                     )
 
-                if si.get('parent_phone'):
-                    parent_user = await gd_find_one(db.session, "users", {
-                        "phone": si['parent_phone'], "role": "parent"
-                    })
-                    if parent_user:
-                        # Task #277 — IT-aware copy: when the student lives in
-                        # an `itw_{user_id}` workspace, the parent does not
-                        # have a school context, so reference the inviting
-                        # teacher by name instead of "في المدرسة".
-                        _venue_ar = "في المدرسة"
-                        _venue_en = "at school"
-                        if isinstance(t_id, str) and t_id.startswith("itw_"):
-                            _owner = await gd_find_one(
-                                db.session, "users", {"id": t_id[len("itw_"):]}
-                            )
-                            _tname = (_owner or {}).get("full_name")
-                            if _tname:
-                                _venue_ar = f"لدى الأستاذ/ة {_tname}"
-                                _venue_en = f"with {_tname}"
-                        await create_notification_internal(
-                            title=f"تنبيه حضور ابنك/ابنتك",
-                            title_en=f"Attendance Alert for Your Child",
-                            message=f"تم تسجيل {student_name} {status_ar} {_venue_ar} اليوم {bulk_data.date}",
-                            message_en=f"{student_name} was marked {status_en} {_venue_en} on {bulk_data.date}",
-                            recipient_id=parent_user['id'],
-                            notification_type="attendance",
-                            priority="high" if att_status == 'absent' else "medium",
-                            sender_id=current_user['id'],
-                            related_entity="student",
-                            related_entity_id=student_id,
-                            action_url="/parent/attendance",
-                            school_id=t_id,
-                        )
+                parent_uid = parent_uid_map.get(student_id)
+                if parent_uid:
+                    await create_notification_internal(
+                        title=f"تنبيه حضور ابنك/ابنتك",
+                        title_en=f"Attendance Alert for Your Child",
+                        message=f"تم تسجيل {student_name} {status_ar} {_venue_ar} اليوم {bulk_data.date}",
+                        message_en=f"{student_name} was marked {status_en} {_venue_en} on {bulk_data.date}",
+                        recipient_id=parent_uid,
+                        notification_type="attendance",
+                        priority="high" if att_status == 'absent' else "medium",
+                        sender_id=current_user['id'],
+                        related_entity="student",
+                        related_entity_id=student_id,
+                        action_url="/parent/attendance",
+                        school_id=t_id,
+                    )
             except Exception as e:
                 logging.getLogger(__name__).warning("Attendance notification failed for student %s: %s", student_id, e)
 

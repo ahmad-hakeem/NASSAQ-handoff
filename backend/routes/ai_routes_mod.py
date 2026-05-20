@@ -27,6 +27,7 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 from shared_models import (
     HakimMessage, HakimResponse
 )
+from utils.parent_resolution import resolve_student_parent_user_id, PARENT_NOT_FOUND_AR
 from openai import OpenAI
 from typing import Literal
 
@@ -2005,22 +2006,14 @@ async def post_intervention(
     d = body.data or {}
 
     if body.action_type == "notify_parent":
-        parent_id = student.get("parent_id")
-        if not parent_id:
-            raise HTTPException(400, "لا يوجد ولي أمر مسجل للطالب")
+        # Use canonical guardian_links → students.parent_id resolver; no
+        # mutable email/phone-based binding (threat-model §Information Disclosure).
+        parent_user_id = await resolve_student_parent_user_id(body.student_id, school_id)
+        if not parent_user_id:
+            raise HTTPException(404, PARENT_NOT_FOUND_AR)
         message = (d.get("message") or "").strip()
         if not message:
             raise HTTPException(400, "نص الرسالة مطلوب")
-        parent_rec = await gd_find_one(db.session, "parents",
-                                       {"id": parent_id, "school_id": school_id})
-        parent_user_id = None
-        if parent_rec and parent_rec.get("email"):
-            parent_user = await gd_find_one(db.session, "users",
-                                            {"email": parent_rec["email"]})
-            if parent_user:
-                parent_user_id = parent_user.get("id")
-        if not parent_user_id:
-            raise HTTPException(400, "ولي الأمر ليس لديه حساب مستخدم مفعّل")
         from routes.notification_routes_mod import create_notification_internal
         await create_notification_internal(
             title="متابعة أداء الطالب",
