@@ -193,17 +193,6 @@ export const LandingPage = () => {
   const [aiRef, aiVisible] = useScrollReveal();
   const [ecoRef, ecoVisible] = useScrollReveal();
 
-  // Navbar is transparent while sitting over the navy hero and turns into
-  // a white-glass bar once the user scrolls past it — so it reads cleanly
-  // on every alternating section below.
-  const [isScrolled, setIsScrolled] = useState(false);
-  useEffect(() => {
-    const onScroll = () => setIsScrolled(window.scrollY > 80);
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
   useEffect(() => {
     const fetchStats = async () => {
       // Landing page is unauthenticated. The full /public/stats payload is
@@ -469,28 +458,20 @@ export const LandingPage = () => {
     <div className="min-h-screen" dir={isRTL ? 'rtl' : 'ltr'} data-testid="landing-page">
       {/* ========== STICKY GLASS NAVBAR ========== */}
       <header
-        className={`sticky top-0 z-50 transition-all duration-300 ${
-          isScrolled
-            ? 'bg-white/80 backdrop-blur-md border-b border-slate-100'
-            : 'bg-gradient-to-b from-brand-navy/80 via-brand-navy/40 to-transparent border-b border-transparent backdrop-blur-[2px]'
-        }`}
+        className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200"
         data-testid="header"
       >
         <nav className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           {/* RTL Start: Logo */}
           <Link to="/" className="flex items-center gap-2 shrink-0" data-testid="navbar-logo">
-            <div
-              className={`w-10 h-10 rounded-xl flex items-center justify-center font-cairo font-black text-xl shadow-md transition-colors ${
-                isScrolled ? 'bg-brand-navy text-white' : 'bg-white text-brand-navy'
-              }`}
-            >
+            <div className="w-10 h-10 rounded-xl bg-brand-navy text-white flex items-center justify-center font-cairo font-black text-xl shadow-md">
               ن
             </div>
             <div className="hidden sm:flex flex-col leading-tight">
-              <span className={`font-cairo font-bold text-lg transition-colors ${isScrolled ? 'text-brand-navy' : 'text-white'}`}>
+              <span className="font-cairo font-bold text-brand-navy text-lg">
                 {isRTL ? 'نَسَّق' : 'NASSAQ'}
               </span>
-              <span className={`font-tajawal text-[10px] transition-colors ${isScrolled ? 'text-slate-500' : 'text-white/70'}`}>
+              <span className="font-tajawal text-[10px] text-slate-500">
                 {isRTL ? 'من البيانات للقرار' : 'From data to decisions'}
               </span>
             </div>
@@ -508,29 +489,17 @@ export const LandingPage = () => {
               <a
                 key={i}
                 href={item.href}
-                className={`font-tajawal text-sm font-medium px-3 py-2 rounded-lg transition-colors ${
-                  isScrolled
-                    ? 'text-slate-600 hover:text-brand-navy hover:bg-slate-50'
-                    : 'text-white hover:text-white hover:bg-white/15 [text-shadow:0_1px_2px_rgba(0,0,0,0.25)]'
-                }`}
+                className="font-tajawal text-sm font-medium px-3 py-2 rounded-lg text-slate-600 hover:text-brand-navy hover:bg-slate-50 transition-colors"
               >
                 {item.label}
               </a>
             ))}
             <Link
               to="/teacher-register"
-              className={`ms-2 inline-flex items-center gap-2 font-tajawal text-sm font-medium px-4 py-2 rounded-full shadow-sm active:scale-[0.98] transition-all ${
-                isScrolled
-                  ? 'bg-brand-navy text-white hover:bg-brand-navy-light'
-                  : 'bg-brand-turquoise text-white hover:bg-brand-turquoise-light'
-              }`}
+              className="ms-2 inline-flex items-center gap-2 font-tajawal text-sm font-medium px-4 py-2 rounded-full shadow-sm bg-brand-navy text-white hover:bg-brand-navy-light hover:text-white active:scale-[0.98] transition-all"
               data-testid="navbar-teacher-pill"
             >
-              <span
-                className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-cairo font-bold ${
-                  isScrolled ? 'bg-brand-turquoise text-white' : 'bg-white text-brand-turquoise'
-                }`}
-              >
+              <span className="w-5 h-5 rounded-full bg-brand-turquoise text-white flex items-center justify-center text-[10px] font-cairo font-bold">
                 ن
               </span>
               {isRTL ? 'معلم نسق' : 'NASSAQ Teacher'}
@@ -542,11 +511,7 @@ export const LandingPage = () => {
             <button
               type="button"
               onClick={toggleLanguage}
-              className={`hidden sm:inline-flex items-center justify-center h-9 w-9 rounded-lg transition-colors ${
-                isScrolled
-                  ? 'text-slate-500 hover:text-brand-navy hover:bg-slate-50'
-                  : 'text-white hover:text-white hover:bg-white/15'
-              }`}
+              className="hidden sm:inline-flex items-center justify-center h-9 w-9 rounded-lg text-slate-500 hover:text-brand-navy hover:bg-slate-100 transition-colors"
               data-testid="language-toggle"
               aria-label={isRTL ? 'تغيير اللغة' : 'Toggle language'}
             >
@@ -555,11 +520,7 @@ export const LandingPage = () => {
             <button
               type="button"
               onClick={toggleTheme}
-              className={`hidden sm:inline-flex items-center justify-center h-9 w-9 rounded-lg transition-colors ${
-                isScrolled
-                  ? 'text-slate-500 hover:text-brand-navy hover:bg-slate-50'
-                  : 'text-white hover:text-white hover:bg-white/15'
-              }`}
+              className="hidden sm:inline-flex items-center justify-center h-9 w-9 rounded-lg text-slate-500 hover:text-brand-navy hover:bg-slate-100 transition-colors"
               data-testid="theme-toggle"
               aria-label={isDark ? 'Light mode' : 'Dark mode'}
             >
@@ -567,22 +528,14 @@ export const LandingPage = () => {
             </button>
             <Link
               to="/login"
-              className={`font-tajawal text-sm font-medium px-4 py-2 rounded-lg transition-colors ${
-                isScrolled
-                  ? 'text-slate-600 hover:text-brand-navy hover:bg-slate-50'
-                  : 'text-white hover:text-white hover:bg-white/15 [text-shadow:0_1px_2px_rgba(0,0,0,0.25)]'
-              }`}
+              className="font-tajawal text-sm font-medium px-4 py-2 rounded-lg text-slate-600 hover:text-brand-navy hover:bg-slate-100 transition-colors"
               data-testid="login-link"
             >
               {isRTL ? 'تسجيل الدخول' : 'Log in'}
             </Link>
             <Link
               to="/register"
-              className={`font-tajawal text-sm px-4 py-2 rounded-lg shadow-sm active:scale-[0.98] transition-all ${
-                isScrolled
-                  ? 'text-brand-navy bg-white border border-slate-200 hover:border-brand-navy hover:bg-slate-50'
-                  : 'text-brand-navy bg-white border border-white/40 hover:bg-white'
-              }`}
+              className="font-tajawal text-sm font-medium px-4 py-2 rounded-lg border border-brand-navy text-brand-navy hover:text-brand-navy hover:bg-slate-50 active:scale-[0.98] transition-all"
               data-testid="register-link"
             >
               {isRTL ? 'تسجيل' : 'Sign up'}
@@ -658,7 +611,7 @@ export const LandingPage = () => {
               <div className="flex flex-wrap items-center gap-3">
                 <Button
                   asChild
-                  className="bg-brand-turquoise hover:bg-brand-turquoise-light text-white font-cairo rounded-lg px-8 py-3 h-auto text-base shadow-lg shadow-brand-turquoise/25 hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0 active:scale-[0.98] transition-all"
+                  className="bg-brand-turquoise hover:bg-brand-turquoise-light text-white hover:text-white font-cairo rounded-lg px-8 py-3 h-auto text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all"
                   data-testid="hero-cta-btn"
                 >
                   <Link to="/register" className="flex items-center gap-2">
@@ -669,7 +622,7 @@ export const LandingPage = () => {
                 <Button
                   asChild
                   variant="ghost"
-                  className="text-white hover:bg-white/10 font-cairo rounded-lg px-6 py-3 h-auto text-base border border-white/25 hover:border-white/50 backdrop-blur-sm transition-all"
+                  className="bg-transparent border-2 border-white/30 text-white hover:bg-white/10 hover:text-white hover:border-white/50 font-cairo rounded-lg px-6 py-3 h-auto text-base transition-colors"
                   data-testid="hero-secondary-cta"
                 >
                   <a href="#how-it-works" className="flex items-center gap-2">
