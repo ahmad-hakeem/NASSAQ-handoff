@@ -236,6 +236,114 @@ async def test_teacher_general_admin_broadcast_still_allowed(
 
 
 @pytest.mark.asyncio
+async def test_homework_template_resolves_parent_via_guardian_links(
+    client, teacher_user, tenant_a
+):
+    """Task #463 — FE sends `related_entity='student' +
+    related_entity_id=<student.id>` and the backend resolves the parent
+    users.id via active guardian_links (canonical path). The resulting
+    notification row must be addressed to that parent user."""
+    # Parent user (only, no parents row needed for the canonical path).
+    parent_user = await _mk_user(UserRole.PARENT, tenant_a)
+    # Student with NO `parent_id` so we exercise the guardian_links
+    # path exclusively — no legacy fallback can mask a missing canonical
+    # row.
+    sid = str(uuid.uuid4())
+    await gd_insert(db.session, "students", {
+        "id": sid,
+        "school_id": tenant_a,
+        "full_name": f"ST-{sid[:6]}",
+        "is_active": True,
+    })
+    await gd_insert(db.session, "guardian_links", {
+        "id": str(uuid.uuid4()),
+        "parent_ref": parent_user["id"],
+        "student_id": sid,
+        "relationship": "guardian",
+        "tenant_id": tenant_a,
+        "is_active": True,
+    })
+    res = await client.post(
+        "/notifications",
+        json=_payload(
+            "homework",
+            related_entity="student",
+            related_entity_id=sid,
+        ),
+        headers=_headers(teacher_user),
+    )
+    assert res.status_code == 200, res.text
+    # Notification row must be delivered to the resolved parent user.
+    from engines.sql_utils import gd_find_one as _find
+    row = await _find(db.session, "notifications", {"user_id": parent_user["id"]})
+    assert row is not None, "no notification persisted for resolved parent"
+
+
+@pytest.mark.asyncio
+async def test_homework_template_student_with_no_linked_parent_returns_safe_404(
+    client, teacher_user, tenant_a
+):
+    """No active guardian_links AND no canonical `students.parent_id →
+    users.id` mapping → safe Arabic 404, not the generic FE error."""
+    sid = str(uuid.uuid4())
+    await gd_insert(db.session, "students", {
+        "id": sid,
+        "school_id": tenant_a,
+        "full_name": f"ST-{sid[:6]}",
+        "is_active": True,
+    })
+    res = await client.post(
+        "/notifications",
+        json=_payload(
+            "homework",
+            related_entity="student",
+            related_entity_id=sid,
+        ),
+        headers=_headers(teacher_user),
+    )
+    assert res.status_code == 404, res.text
+    body = res.json()
+    # API wraps HTTPException in {error: {message}}; tolerate either shape.
+    detail = body.get("detail") or (body.get("error") or {}).get("message") or ""
+    assert "ولي أمر" in detail, body
+
+
+@pytest.mark.asyncio
+async def test_homework_template_cross_tenant_student_returns_404(
+    client, teacher_user, tenant_a, tenant_b
+):
+    """A student in another tenant must NOT leak: the resolver is
+    tenant-scoped, so a cross-tenant student id returns the safe 404
+    (no 403, no cross-tenant disclosure)."""
+    other_parent = await _mk_user(UserRole.PARENT, tenant_b)
+    sid = str(uuid.uuid4())
+    await gd_insert(db.session, "students", {
+        "id": sid,
+        "school_id": tenant_b,
+        "full_name": f"ST-{sid[:6]}",
+        "is_active": True,
+    })
+    await gd_insert(db.session, "guardian_links", {
+        "id": str(uuid.uuid4()),
+        "parent_ref": other_parent["id"],
+        "student_id": sid,
+        "relationship": "guardian",
+        "tenant_id": tenant_b,
+        "is_active": True,
+    })
+    res = await client.post(
+        "/notifications",
+        json=_payload(
+            "homework",
+            related_entity="student",
+            related_entity_id=sid,
+        ),
+        headers=_headers(teacher_user),
+    )
+    assert res.status_code == 404, res.text
+
+
+@pytest.mark.asyncio
 async def test_no_template_id_preserves_legacy_behaviour(
     client, teacher_user, vp_user
 ):

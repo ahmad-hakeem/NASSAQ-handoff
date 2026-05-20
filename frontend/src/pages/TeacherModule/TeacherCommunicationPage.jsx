@@ -224,14 +224,26 @@ function TeacherCommunicationPageInner() {
         }
       }
 
+      // Task #463 — for the parents cohort the FE now sends the
+      // STUDENT id (tagged via related_entity/related_entity_id) and
+      // lets the backend resolve the parent users.id canonically via
+      // guardian_links. This avoids the broken path where the FE used
+      // to push the mutable `students.parent_id` as recipient_id.
+      const isParentFlow = selectedCategory === 'parents';
+
       for (const recipientId of userRecipients) {
         const payload = {
           title: messageSubject,
           message: messageBody,
           notification_type: 'communication',
           priority: 'medium',
-          recipient_id: recipientId,
         };
+        if (isParentFlow) {
+          payload.related_entity = 'student';
+          payload.related_entity_id = recipientId;
+        } else {
+          payload.recipient_id = recipientId;
+        }
         if (templateId) payload.template_id = templateId;
         await api.post('/notifications', payload);
       }
@@ -240,7 +252,15 @@ function TeacherCommunicationPageInner() {
       resetFlow();
       fetchData();
     } catch (error) {
-      nassaqError(t('errorSendingMessage'));
+      // Surface the backend's safe Arabic detail when present (e.g.
+      // "لا يوجد ولي أمر مرتبط بهذا الطالب" or the cohort-mismatch
+      // message). Falls back to the generic toast otherwise.
+      const detail = error?.response?.data?.detail;
+      if (typeof detail === 'string' && detail.trim()) {
+        nassaqError(detail);
+      } else {
+        nassaqError(t('errorSendingMessage'));
+      }
     } finally {
       setSending(false);
     }
@@ -287,8 +307,11 @@ function TeacherCommunicationPageInner() {
   const handleParentModeSelect = (mode) => {
     setParentMode(mode);
     if (mode === 'all') {
-      const allParentIds = students.filter(s => s.parent_id).map(s => s.parent_id);
-      setSelectedRecipients([...new Set(allParentIds)]);
+      // Task #463 — collect STUDENT ids (deduped) instead of the
+      // mutable `students.parent_id`. The backend now resolves the
+      // canonical parent user via guardian_links for each student.
+      const allStudentIds = students.filter(s => s.id).map(s => s.id);
+      setSelectedRecipients([...new Set(allStudentIds)]);
     } else {
       setSelectedRecipients([]);
     }
@@ -757,7 +780,10 @@ function TeacherCommunicationPageInner() {
                       </div>
                     ) : (
                       filteredStudents.map(student => {
-                        const recId = student.parent_id || student.id;
+                        // Task #463 — push the STUDENT id; backend
+                        // resolves the canonical parent user via
+                        // guardian_links on submit.
+                        const recId = student.id;
                         const isSel = selectedRecipients.includes(recId);
                         return (
                           <div

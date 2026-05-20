@@ -13,6 +13,10 @@ import uuid, os, logging, json, random, re, io, base64
 from enum import Enum
 
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
+from utils.parent_resolution import (
+    PARENT_NOT_FOUND_AR,
+    resolve_student_parent_user_id,
+)
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
     hash_password, verify_password, create_access_token,
@@ -362,12 +366,76 @@ async def create_notification(
             detail="هذا المسار لم يعد متاحًا لإشعارات المعلم.",
         )
 
+    # Task #463 — student-targeted send. The Teacher Communication
+    # Center "Homework Reminder" (and any other parent-cohort
+    # template) now sends `related_entity='student'` +
+    # `related_entity_id=<student.id>` instead of pushing the
+    # mutable `students.parent_id` as `recipient_id`. Resolve the
+    # parent users.id via guardian_links (canonical) with a strict
+    # `students.parent_id → users.id` fallback. No silent
+    # email/phone/name fallback (threat-model: known weak parent
+    # linkage paths).
+    resolved_user_id_from_student: Optional[str] = None
+    if (
+        not notification.recipient_id
+        and not notification.recipient_role
+        and notification.related_entity == 'student'
+        and notification.related_entity_id
+    ):
+        tenant_id = current_user.get('tenant_id')
+        if not tenant_id:
+            logger.warning(
+                "parent resolver: missing tenant_id (template=%s, caller=%s, student=%s)",
+                notification.template_id,
+                current_user.get('id'),
+                notification.related_entity_id,
+            )
+            raise HTTPException(status_code=404, detail=PARENT_NOT_FOUND_AR)
+        try:
+            resolved_user_id_from_student = await resolve_student_parent_user_id(
+                notification.related_entity_id, tenant_id,
+            )
+        except HTTPException:
+            raise
+        except Exception:
+            # Never expose raw exception strings — keep the user-facing
+            # message as the safe Arabic 404 while logging context.
+            logger.exception(
+                "parent resolver failed (template=%s, caller=%s, tenant=%s, student=%s)",
+                notification.template_id,
+                current_user.get('id'),
+                tenant_id,
+                notification.related_entity_id,
+            )
+            raise HTTPException(status_code=404, detail=PARENT_NOT_FOUND_AR)
+        if not resolved_user_id_from_student:
+            logger.warning(
+                "template guard: no linked parent (template=%s, caller=%s, tenant=%s, student=%s)",
+                notification.template_id,
+                current_user.get('id'),
+                tenant_id,
+                notification.related_entity_id,
+            )
+            raise HTTPException(status_code=404, detail=PARENT_NOT_FOUND_AR)
+
+    # Communication-Center template → recipient cohort guard. Re-run
+    # against the canonical resolved parent user (when present) so the
+    # cohort rule is enforced on the actual delivery target. The
+    # earlier top-of-function call already covered the legacy
+    # recipient_id / recipient_role paths.
+    if resolved_user_id_from_student:
+        await _enforce_template_recipient_rule(
+            notification.template_id,
+            recipient_id=resolved_user_id_from_student,
+        )
+
     # IT hardening — Task #198 §5.6.
     if current_user.get('role') == 'independent_teacher':
         if notification.recipient_role:
             raise HTTPException(status_code=403, detail=_IT_RECIPIENT_ROLE_BLOCKED_AR)
-        if notification.recipient_id:
-            await _it_validate_recipients_or_403(current_user, [notification.recipient_id])
+        target_id = resolved_user_id_from_student or notification.recipient_id
+        if target_id:
+            await _it_validate_recipients_or_403(current_user, [target_id])
 
     if notification.recipient_role and not notification.recipient_id:
         query = {"role": notification.recipient_role}
@@ -403,27 +471,16 @@ async def create_notification(
 
         return {"success": True, "notification_id": created_ids[0] if created_ids else None, "created_count": len(created_ids), "message": f"تم إرسال {len(created_ids)} إشعار بنجاح"}
 
-    resolved_user_id = notification.recipient_id
+    # Prefer the canonical resolver result over any caller-supplied
+    # `recipient_id`. The legacy email/phone/name fallback chain is
+    # removed — Task #463 + threat-model: mutable parent fields are a
+    # documented weak linkage path and must never be used to widen
+    # the cohort silently.
+    resolved_user_id = resolved_user_id_from_student or notification.recipient_id
     if resolved_user_id:
         user_exists = await gd_find_one(db.session, "users", {"id": resolved_user_id})
         if not user_exists:
-            student = await gd_find_one(db.session, "students", {"id": resolved_user_id})
-            if not student:
-                student = await gd_find_one(db.session, "students", {"parent_id": resolved_user_id})
-            if student:
-                parent_user = None
-                if student.get("parent_email"):
-                    parent_user = await gd_find_one(db.session, "users", {"email": student["parent_email"], "role": "parent"})
-                if not parent_user and student.get("parent_phone"):
-                    parent_user = await gd_find_one(db.session, "users", {"phone": student["parent_phone"], "role": "parent"})
-                if not parent_user and student.get("parent_name"):
-                    parent_user = await gd_find_one(db.session, "users", {"full_name": student["parent_name"], "role": "parent"})
-                if parent_user:
-                    resolved_user_id = parent_user["id"]
-                else:
-                    raise HTTPException(status_code=404, detail="لم يتم العثور على حساب ولي الأمر")
-            else:
-                raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+            raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     else:
         raise HTTPException(status_code=400, detail="يجب تحديد المستلم أو الدور")
 
