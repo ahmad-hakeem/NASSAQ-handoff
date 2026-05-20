@@ -883,12 +883,100 @@ class ExcuseCreate(BaseModel):
     reason: Optional[str] = None
     attachment_url: Optional[str] = None
 
+
+# Task #466 — unify staff-side excuse endpoints on the `absence_excuses`
+# table written by the parent portal (`POST /parent-portal/absence-excuse`).
+# The legacy `attendance_excuses` table is left untouched (no migration) but
+# is no longer read or written from this module. Field-name mapping is
+# preserved at the API boundary so existing staff callers continue to use
+# `student_id` / `date` while persistence uses `child_id` / `absence_date`.
+
+_EXCUSE_TABLE = "absence_excuses"
+_EXCUSE_REVIEW_ROLES = {
+    "platform_admin", "school_admin", "school_principal", "school_sub_admin",
+}
+_EXCUSE_LIST_ROLES = _EXCUSE_REVIEW_ROLES | {"teacher", "independent_teacher"}
+_EXCUSE_TEACHER_ROLES = {"teacher", "independent_teacher"}
+
+
+def _serialize_excuse(row: dict, student: Optional[dict] = None) -> dict:
+    """Project an `absence_excuses` row onto the principal-review shape.
+
+    Exposes both the canonical parent-portal field names (`child_id`,
+    `absence_date`) and the staff-side aliases (`student_id`, `date`) so
+    existing API consumers keep working. Strips secret/internal fields.
+    """
+    if not row:
+        return {}
+    out = {
+        "id": row.get("id"),
+        "status": row.get("status"),
+        "child_id": row.get("child_id") or row.get("student_id"),
+        "child_name": row.get("child_name"),
+        "parent_id": row.get("parent_id"),
+        "parent_name": row.get("parent_name"),
+        "absence_date": row.get("absence_date") or row.get("date"),
+        "reason": row.get("reason"),
+        "attachment_url": row.get("attachment_url"),
+        "attachment_name": row.get("attachment_name"),
+        "school_id": row.get("school_id"),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+        "reviewed_by": row.get("reviewed_by"),
+        "reviewed_at": row.get("reviewed_at"),
+        "rejection_reason": row.get("rejection_reason"),
+        "excuse_type": row.get("excuse_type"),
+    }
+    # Back-compat aliases used by older staff clients.
+    out["student_id"] = out["child_id"]
+    out["date"] = out["absence_date"]
+    if student:
+        out["student_name"] = student.get("full_name") or out.get("child_name")
+        out["class_id"] = student.get("class_id")
+        if not out.get("child_name"):
+            out["child_name"] = student.get("full_name")
+    return out
+
+
+async def _teacher_scope_student_ids(
+    current_user: dict, school_id: str
+) -> Optional[List[str]]:
+    """Return the set of `students.id` a teacher can see for this endpoint,
+    or `None` if the teacher has no assigned classes (caller should return
+    an empty result in that case)."""
+    user_id = current_user.get("id")
+    teacher_id = current_user.get("teacher_id") or user_id
+    assigned_classes = await gd_find(
+        db.session, "teacher_assignments", {"teacher_id": teacher_id}, limit=500
+    )
+    session_classes = await gd_find(
+        db.session, "class_sessions", {"teacher_id": teacher_id}, limit=500
+    )
+    class_ids = list({
+        row["class_id"]
+        for row in (assigned_classes + session_classes)
+        if row.get("class_id")
+    })
+    if not class_ids:
+        return None
+    teacher_students = await gd_find(
+        db.session, "students",
+        {"class_id": {"$in": class_ids}, "school_id": school_id},
+        limit=5000,
+    )
+    return [s["id"] for s in teacher_students if s.get("id")]
+
+
 @router.post("/attendance/excuse")
 async def create_excuse(
     data: ExcuseCreate,
     current_user: dict = Depends(get_current_user)
 ):
-    """Create an attendance excuse request.
+    """Create an attendance excuse request from a staff/guardian surface.
+
+    Task #466: writes to the unified `absence_excuses` table so the row is
+    visible to both the parent excuse-history surface and the principal
+    review surface.
 
     SECURITY: The caller must be the student's guardian, the student
     themselves, a teacher assigned to the student's class, or an admin
@@ -909,69 +997,121 @@ async def create_excuse(
     now = datetime.now(timezone.utc).isoformat()
     excuse_doc = {
         "id": excuse_id,
-        "student_id": data.student_id,
+        # Canonical parent-portal field names.
+        "child_id": data.student_id,
+        "child_name": student.get("full_name"),
         "school_id": school_id,
-        "date": data.date,
-        "excuse_type": data.excuse_type.value,
+        "absence_date": data.date,
         "reason": data.reason,
         "attachment_url": data.attachment_url,
+        "attachment_name": None,
         "status": ExcuseStatus.PENDING.value,
+        # Staff-originated rows have no parent_id but record the actor.
+        "parent_id": None,
+        "parent_name": current_user.get("full_name", ""),
+        "excuse_type": data.excuse_type.value,
         "created_by": current_user["id"],
         "created_at": now,
+        "updated_at": now,
         "reviewed_by": None,
-        "reviewed_at": None
+        "reviewed_at": None,
     }
-    await gd_insert(db.session, "attendance_excuses", excuse_doc)
+    await gd_insert(db.session, _EXCUSE_TABLE, excuse_doc)
     excuse_doc.pop("_id", None)
-    return excuse_doc
+    return _serialize_excuse(excuse_doc, student)
+
 
 @router.put("/attendance/excuse/{excuse_id}/approve")
 async def approve_excuse(
     excuse_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Approve an attendance excuse and update attendance record"""
+    """Approve an absence excuse and cascade to the matching attendance row."""
     role = current_user.get("role", "")
-    allowed = {"platform_admin", "school_admin", "school_principal", "school_sub_admin"}
-    if role not in allowed:
+    if role not in _EXCUSE_REVIEW_ROLES:
         raise HTTPException(status_code=403, detail="ليس لديك صلاحية للموافقة على الأعذار")
 
-    school_id = current_user.get("tenant_id")
-    excuse = await gd_find_one(db.session, "attendance_excuses", {"id": excuse_id, "school_id": school_id})
+    school_id = require_request_school_id(current_user)
+    # §8 invariant: cross-tenant by-id reads must 404, never 403/200.
+    excuse = await gd_find_one(db.session, _EXCUSE_TABLE, {"id": excuse_id, "school_id": school_id})
     if not excuse:
         raise HTTPException(status_code=404, detail="العذر غير موجود")
 
-    if excuse["status"] != ExcuseStatus.PENDING.value:
+    if excuse.get("status") != ExcuseStatus.PENDING.value:
         raise HTTPException(status_code=400, detail="تم مراجعة هذا العذر مسبقاً")
 
     now = datetime.now(timezone.utc).isoformat()
-    await gd_update_one(db.session, "attendance_excuses", {"id": excuse_id}, {"status": ExcuseStatus.APPROVED.value, "reviewed_by": current_user["id"], "reviewed_at": now})
+    await gd_update_one(
+        db.session, _EXCUSE_TABLE, {"id": excuse_id, "school_id": school_id},
+        {
+            "status": ExcuseStatus.APPROVED.value,
+            "reviewed_by": current_user["id"],
+            "reviewed_at": now,
+            "updated_at": now,
+        },
+    )
 
-    await gd_update_many(db.session, "attendance", {"student_id": excuse["student_id"], "date": excuse["date"], "status": "absent", "school_id": school_id}, {"status": "excused", "excuse_id": excuse_id, "updated_at": now})
+    student_id = excuse.get("child_id") or excuse.get("student_id")
+    absence_date = excuse.get("absence_date") or excuse.get("date")
+    if student_id and absence_date:
+        await gd_update_many(
+            db.session, "attendance",
+            {
+                "student_id": student_id,
+                "date": absence_date,
+                "status": "absent",
+                "school_id": school_id,
+            },
+            {
+                "status": "excused",
+                "is_excused": True,
+                "excuse_reason": excuse.get("reason"),
+                "updated_at": now,
+            },
+        )
 
     return {"message": "تمت الموافقة على العذر وتحديث سجل الحضور", "excuse_id": excuse_id}
+
+
+class ExcuseRejectBody(BaseModel):
+    reason: Optional[str] = None
+
 
 @router.put("/attendance/excuse/{excuse_id}/reject")
 async def reject_excuse(
     excuse_id: str,
+    body: Optional[ExcuseRejectBody] = None,
     reason: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Reject an attendance excuse"""
+    """Reject an absence excuse, optionally with a rejection reason."""
     role = current_user.get("role", "")
-    allowed = {"platform_admin", "school_admin", "school_principal", "school_sub_admin"}
-    if role not in allowed:
+    if role not in _EXCUSE_REVIEW_ROLES:
         raise HTTPException(status_code=403, detail="ليس لديك صلاحية لرفض الأعذار")
 
-    school_id = current_user.get("tenant_id")
-    excuse = await gd_find_one(db.session, "attendance_excuses", {"id": excuse_id, "school_id": school_id})
+    school_id = require_request_school_id(current_user)
+    excuse = await gd_find_one(db.session, _EXCUSE_TABLE, {"id": excuse_id, "school_id": school_id})
     if not excuse:
         raise HTTPException(status_code=404, detail="العذر غير موجود")
 
+    if excuse.get("status") != ExcuseStatus.PENDING.value:
+        raise HTTPException(status_code=400, detail="تم مراجعة هذا العذر مسبقاً")
+
+    effective_reason = (body.reason if body and body.reason is not None else reason)
     now = datetime.now(timezone.utc).isoformat()
-    await gd_update_one(db.session, "attendance_excuses", {"id": excuse_id, "school_id": school_id}, {"status": ExcuseStatus.REJECTED.value, "reviewed_by": current_user["id"], "reviewed_at": now, "rejection_reason": reason})
+    await gd_update_one(
+        db.session, _EXCUSE_TABLE, {"id": excuse_id, "school_id": school_id},
+        {
+            "status": ExcuseStatus.REJECTED.value,
+            "reviewed_by": current_user["id"],
+            "reviewed_at": now,
+            "updated_at": now,
+            "rejection_reason": effective_reason,
+        },
+    )
 
     return {"message": "تم رفض العذر", "excuse_id": excuse_id}
+
 
 @router.get("/attendance/excuses")
 async def list_excuses(
@@ -979,81 +1119,81 @@ async def list_excuses(
     student_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """List attendance excuses.
+    """List absence excuses for the principal/teacher review surface.
 
     SECURITY: School-wide excuse listing is restricted to staff roles.
     Parents and students must not be able to enumerate other families'
-    excuse records, absence reasons, or attachment URLs.
-    Teachers and independent teachers are further restricted to students in
-    their own assigned classes; they cannot enumerate excuses school-wide or
-    for students in classes they do not teach.
+    excuse records, absence reasons, or attachment URLs. Teachers and
+    independent teachers are further restricted to students in their own
+    assigned classes; they cannot enumerate excuses school-wide or for
+    students in classes they do not teach.
     """
-    _allowed_excuse_roles = {
-        "platform_admin", "school_admin", "school_principal",
-        "school_sub_admin", "teacher", "independent_teacher",
-    }
-    _teacher_roles = {"teacher", "independent_teacher"}
     role = current_user.get("role")
-    if role not in _allowed_excuse_roles:
+    if role not in _EXCUSE_LIST_ROLES:
         raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على سجلات الأعذار")
-    # Task #155 (audit row #15, post-review): fail-closed scope. The previous
-    # `query = {}` + optional tenant filter would surface every tenant's
-    # excuses when `tenant_id` was missing from the caller's identity.
     school_id = require_request_school_id(current_user)
-    query = {"school_id": school_id}
+
+    query: Dict[str, Any] = {"school_id": school_id}
     if status_filter:
         query["status"] = status_filter
 
-    # Task #428: teachers must be limited to their own students.
-    # Same-school membership alone is not sufficient — a teacher who can reach
-    # this endpoint must only see excuses for students in classes they teach.
-    if role in _teacher_roles:
+    # Map staff-side `student_id` filter onto persisted `child_id`.
+    if role in _EXCUSE_TEACHER_ROLES:
         from utils.tenant_scope import can_view_student
         if student_id:
-            # Object-level authorization for the requested student.
             allowed = await can_view_student(db.session, current_user, student_id)
             if not allowed:
                 raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على بيانات هذا الطالب")
-            query["student_id"] = student_id
+            query["child_id"] = student_id
         else:
-            # No specific student — scope to students in the teacher's classes.
-            user_id = current_user.get("id")
-            teacher_id = current_user.get("teacher_id") or user_id
-            assigned_classes = await gd_find(
-                db.session, "teacher_assignments", {"teacher_id": teacher_id}, limit=500
-            )
-            session_classes = await gd_find(
-                db.session, "class_sessions", {"teacher_id": teacher_id}, limit=500
-            )
-            class_ids = list({
-                row["class_id"]
-                for row in (assigned_classes + session_classes)
-                if row.get("class_id")
-            })
-            if not class_ids:
-                return []
-            teacher_students = await gd_find(
-                db.session, "students",
-                {"class_id": {"$in": class_ids}, "school_id": school_id},
-                limit=5000,
-            )
-            allowed_student_ids = [s["id"] for s in teacher_students if s.get("id")]
+            allowed_student_ids = await _teacher_scope_student_ids(current_user, school_id)
             if not allowed_student_ids:
                 return []
-            query["student_id"] = {"$in": allowed_student_ids}
-    else:
-        if student_id:
-            query["student_id"] = student_id
+            query["child_id"] = {"$in": allowed_student_ids}
+    elif student_id:
+        query["child_id"] = student_id
 
-    excuses = await gd_find(db.session, "attendance_excuses", query, order_by="created_at", desc_order=True, limit=100)
+    excuses = await gd_find(
+        db.session, _EXCUSE_TABLE, query,
+        order_by="created_at", desc_order=True, limit=200,
+    )
+    if not excuses:
+        return []
 
-    for excuse in excuses:
-        student = await gd_find_one(db.session, "students", {"id": excuse["student_id"]})
-        if student:
-            excuse["student_name"] = student.get("full_name")
-            excuse["class_id"] = student.get("class_id")
+    # Bulk-load students in one query to avoid N+1.
+    student_ids = list({e.get("child_id") for e in excuses if e.get("child_id")})
+    student_rows = []
+    if student_ids:
+        student_rows = await gd_find(
+            db.session, "students",
+            {"id": {"$in": student_ids}, "school_id": school_id},
+            limit=len(student_ids) + 1,
+        )
+    student_by_id = {s["id"]: s for s in student_rows if s.get("id")}
 
-    return excuses
+    return [_serialize_excuse(e, student_by_id.get(e.get("child_id"))) for e in excuses]
+
+
+@router.get("/attendance/excuses/pending-count")
+async def pending_excuses_count(
+    current_user: dict = Depends(get_current_user)
+):
+    """Lightweight badge endpoint — returns the count of pending excuses
+    scoped to the caller's tenant + role-scope (mirrors `list_excuses`)."""
+    role = current_user.get("role")
+    if role not in _EXCUSE_LIST_ROLES:
+        raise HTTPException(status_code=403, detail="لا يمكنك الاطلاع على سجلات الأعذار")
+    school_id = require_request_school_id(current_user)
+
+    query: Dict[str, Any] = {"school_id": school_id, "status": ExcuseStatus.PENDING.value}
+    if role in _EXCUSE_TEACHER_ROLES:
+        allowed_student_ids = await _teacher_scope_student_ids(current_user, school_id)
+        if not allowed_student_ids:
+            return {"count": 0}
+        query["child_id"] = {"$in": allowed_student_ids}
+
+    count = await gd_count(db.session, _EXCUSE_TABLE, query)
+    return {"count": int(count or 0)}
 
 
 # ============== ATTENDANCE ALERTS ==============

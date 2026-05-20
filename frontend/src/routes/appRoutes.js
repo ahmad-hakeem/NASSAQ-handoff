@@ -121,6 +121,7 @@ const IntegrationsPage = lazy(() => import("../pages/IntegrationsPage"));
 const SecurityCenterPage = lazy(() => import("../pages/SecurityCenterPage"));
 const CommunicationNotificationsPage = lazy(() => import("../pages/CommunicationNotificationsPage").then(m => ({ default: m.CommunicationNotificationsPage })));
 const CommunicationCenterPage = lazy(() => import("../pages/CommunicationCenterPage").then(m => ({ default: m.CommunicationCenterPage })));
+const PrincipalAbsenceExcusesPage = lazy(() => import("../pages/PrincipalAbsenceExcusesPage"));
 const TenantsManagement = lazy(() => import("../pages/TenantsManagement"));
 const TeacherClassAssignmentPage = lazy(() => import("../pages/TeacherClassAssignmentPage"));
 const IndependentTeacherOnboardingWizard = lazy(() => import("../pages/IndependentTeacherOnboardingWizard"));
@@ -601,6 +602,9 @@ export default function AppRoutes() {
         } />
         <Route path="/principal/communication/notifications" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CommunicationCenterPage /></ProtectedRoute>
+        } />
+        <Route path="/principal/absence-excuses" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><PrincipalAbsenceExcusesPage /></ProtectedRoute>
         } />
 
         {/* School Management Routes (attendance, assessments, users, classes, subjects) */}
