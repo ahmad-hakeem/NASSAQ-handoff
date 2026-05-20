@@ -41,11 +41,18 @@ E2E_IT_PRE_BOOTSTRAP_PASSWORD=...
 E2E_PRINCIPAL_EMAIL=...
 E2E_PRINCIPAL_PASSWORD=...
 
-# Parent (any school parent — used by sign-out-other-devices.spec.ts).
+# Parent (any school parent — used by sign-out-other-devices.spec.ts
+# AND parent-change-password.spec.ts).
 # The account does NOT need to be MFA-enrolled; the spec drives two
 # real browser contexts as the same parent and asserts the
 # "End session" / "End all other sessions" buttons in
 # Settings → Active Sessions actually bounce the other browser.
+#
+# IMPORTANT: parent-change-password.spec.ts ROTATES this account's
+# password during the run and rotates it back at the end. If the
+# spec aborts halfway the canonical seed password may not be
+# restored — re-seed the account from TEST_CREDENTIALS.md before
+# rerunning the rest of the suite.
 E2E_PARENT_EMAIL=...
 E2E_PARENT_PASSWORD=...
 
@@ -87,6 +94,18 @@ Failures write traces, videos, and screenshots to
 gitignored).
 
 ## What this suite covers
+
+`e2e/auth/parent-change-password.spec.ts` (Task #474) — drives the
+Parent Account Settings → Change Password dialog end-to-end against
+the live FastAPI server. Two scenarios:
+
+1. Valid change → rotates the password, signs out via the real
+   Settings → Logout row, signs back in with the new password, and
+   rotates the password BACK to the canonical seed so the shared
+   parent account is reusable across runs.
+2. Wrong current password → asserts exactly one
+   `NassaqAlertDialog` appears (no stacked dialog, no stray sonner
+   toast). Pins the regression Task #470 originally fixed.
 
 `e2e/auth/sign-out-other-devices.spec.ts` (Task #378) — drives two
 real browser contexts as the same parent and asserts that:
