@@ -118,9 +118,11 @@ export const ProtectedRoute = ({
   // 2026-05-13 — School teachers (Tier B) must enrol an authenticator
   // factor before reaching the dashboard. Email OTP was removed as a
   // mandatory login factor (see backend/services/mfa_policy.py and
-  // backend/routes/auth_routes_mod.py login gate). The backend mints a
-  // normal access token for an unenrolled teacher and this guard mirrors
-  // that contract so a deep-link cannot bypass the enrolment screen.
+  // backend/routes/auth_routes_mod.py login gate).
+  // Task #443: the backend now enforces this server-side — get_current_user
+  // returns HTTP 403 mfa_enrollment_required for any unenrolled Tier A/B/C
+  // user calling a non-/auth/mfa* route. This guard is kept as a UX layer
+  // so deep-links redirect immediately without a round-trip to the server.
   if (
     effectiveRole === "teacher" &&
     !mfaDisabled &&

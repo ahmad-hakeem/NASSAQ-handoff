@@ -3,7 +3,7 @@ NASSAQ Shared Dependencies
 Central module exporting db, auth helpers, models, and engine instances.
 All route modules should import from here instead of server.py.
 """
-from fastapi import Depends, HTTPException, Header, Query
+from fastapi import Depends, HTTPException, Header, Query, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from pathlib import Path
@@ -266,6 +266,7 @@ def create_refresh_token(
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request = None,
 ) -> dict:
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
@@ -302,6 +303,65 @@ async def get_current_user(
 
         if user.get("is_locked", False):
             raise HTTPException(status_code=401, detail="Account is locked")
+
+        # Task #443 — Backend MFA-enrollment gate.
+        # If MFA is required for this user's role (Tier A/B/C) AND the user
+        # has not yet enrolled a factor (mfa_enrolled_at IS NULL), reject every
+        # protected API call with HTTP 403 mfa_enrollment_required.  This
+        # closes the bypass where a teacher (Tier B) could receive a fully-
+        # authenticated access token after password-only login and use it to
+        # call teacher endpoints directly, bypassing the frontend redirect.
+        #
+        # Exclusions (enforced via path prefix):
+        #   /auth/mfa  — enrollment setup and factor management routes; the user
+        #                must be able to reach these with the unenrolled token.
+        #   /auth/me   — the frontend polls this to detect when enrollment
+        #                completes so it can redirect back to the dashboard.
+        #   /auth/logout — logout must always succeed.
+        #
+        # The MFA_ENFORCEMENT_DISABLED kill switch disables both the login
+        # challenge gate AND this enrollment gate — see services/mfa_policy.py.
+        try:
+            from services import mfa_policy as _mfa_policy
+            if (
+                not _mfa_policy.is_enforcement_disabled()
+                and _mfa_policy.required_for(user) is not None
+                and not user.get("mfa_enrolled_at")
+            ):
+                _path = (request.url.path if request is not None else "") or ""
+                # server.py mounts the APIRouter under prefix="/api", so
+                # real request paths are /api/auth/mfa/... — strip the
+                # leading /api segment before prefix-matching so the
+                # exemption works regardless of mount prefix.
+                _path_norm = _path[4:] if _path.startswith("/api/") else _path
+                _ENROLL_EXEMPT_PREFIXES = ("/auth/mfa", "/auth/me", "/auth/logout")
+                if not any(_path_norm.startswith(p) for p in _ENROLL_EXEMPT_PREFIXES):
+                    raise HTTPException(
+                        status_code=403,
+                        detail={
+                            "code": "mfa_enrollment_required",
+                            "message": "MFA enrollment required",
+                            "message_ar": "يجب إتمام تسجيل التحقق بخطوتين قبل المتابعة",
+                        },
+                    )
+        except HTTPException:
+            raise
+        except Exception as _enroll_check_err:
+            # Fail closed: if we cannot determine enrollment status for a
+            # tiered user, reject rather than allow unenrolled access.
+            logger.warning(
+                "get_current_user: MFA enrollment gate check failed for "
+                "user=%s, rejecting for safety: %s",
+                user_id, _enroll_check_err,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "MFA_UNAVAILABLE",
+                    "message": "MFA service temporarily unavailable",
+                    "message_ar": "خدمة التحقق متعدد العوامل غير متاحة مؤقتاً. يرجى المحاولة لاحقاً",
+                },
+            )
 
         # Temporary platform-wide block: invalidate any already-issued
         # access token whose subject is a student. Returned as 401 (rather
