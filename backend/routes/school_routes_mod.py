@@ -503,7 +503,11 @@ async def activate_school(
     school_id: str,
     body: SchoolStatusChangeRequest,
     request: Request,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+    # Reactivating a suspended school re-enables every user account in that
+    # tenant. Require a fresh MFA proof so a stolen admin bearer token cannot
+    # silently restore an entire suspended tenant.
+    _stepup: dict = Depends(require_recent_mfa()),
 ):
     """Activate a suspended school with reason - logs full audit trail"""
     school = await gd_find_one(db.session, "schools", {"id": school_id})
@@ -523,7 +527,17 @@ async def activate_school(
             "updated_at": now,
         })
 
-    await gd_update_many(db.session, "users", {"tenant_id": school_id, "is_active": False, "suspended_by_school": True}, {"is_active": True, "activated_at": now, "suspended_by_school": False})
+    # Re-enable accounts and advance last_password_change so any attacker-held
+    # tokens that were valid before the suspension are immediately rejected.
+    # The token validator rejects access/refresh tokens whose iat predates
+    # last_password_change, closing the window where old stolen tokens would
+    # become valid again the moment the school is reactivated.
+    await gd_update_many(
+        db.session, "users",
+        {"tenant_id": school_id, "is_active": False, "suspended_by_school": True},
+        {"is_active": True, "activated_at": now, "suspended_by_school": False,
+         "last_password_change": now},
+    )
 
     # Audit log
     performer_id = current_user.get("id", current_user.get("user_id"))

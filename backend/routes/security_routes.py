@@ -167,18 +167,28 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole, require
     @router.post("/unlock-account/{user_id}")
     async def unlock_account(
         user_id: str,
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+        # Unlocking re-enables a previously locked account. Require a fresh MFA
+        # proof so a stolen admin bearer token cannot silently restore a locked
+        # account and replay old attacker-held tokens.
+        _stepup: dict = Depends(require_recent_mfa()),
     ):
         """
         فتح حساب مستخدم
         Unlock a user account
         """
         try:
+            now = datetime.now(timezone.utc).isoformat()
+            # Advance last_password_change so any attacker-held access/refresh
+            # tokens that pre-date this unlock are immediately rejected by the
+            # iat-vs-last_password_change check in get_current_user and the
+            # refresh-token validator.
             result = await gd_update_one(db.session, "users", {"$or": [{"id": user_id}, {"_id": user_id}]}, {
                         "is_locked": False,
                         "is_active": True,
-                        "unlocked_at": datetime.now(timezone.utc).isoformat(),
-                        "unlocked_by": current_user.get("id")
+                        "unlocked_at": now,
+                        "unlocked_by": current_user.get("id"),
+                        "last_password_change": now,
                     })
             
             if result == 0:
@@ -191,7 +201,7 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole, require
                 "target_user_id": user_id,
                 "performed_by": current_user.get("id"),
                 "performed_by_name": current_user.get("name"),
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": now,
             })
             
             return {"success": True, "message": "تم فتح الحساب بنجاح"}
@@ -350,7 +360,11 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole, require
     @router.post("/reactivate-account/{user_id}")
     async def reactivate_account(
         user_id: str,
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+        # Reactivating a disabled account restores login ability. Require a
+        # fresh MFA proof so a stolen admin token cannot silently resurrect a
+        # disabled account and make old attacker-held refresh tokens valid again.
+        _stepup: dict = Depends(require_recent_mfa()),
     ):
         """إعادة تفعيل حساب مستخدم"""
         try:
@@ -359,7 +373,15 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole, require
                 raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 
             now = datetime.now(timezone.utc).isoformat()
-            await gd_update_one(db.session, "users", {"id": user_id}, {"is_active": True, "reactivated_at": now})
+            # Advance last_password_change so any attacker-held access/refresh
+            # tokens that pre-date this reactivation are immediately rejected by
+            # the iat-vs-last_password_change check in get_current_user and the
+            # refresh-token validator.
+            await gd_update_one(db.session, "users", {"id": user_id}, {
+                "is_active": True,
+                "reactivated_at": now,
+                "last_password_change": now,
+            })
 
             await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
