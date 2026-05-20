@@ -1406,18 +1406,31 @@ export const LandingPage = () => {
 
       {/* ========== PROOF SECTION — funnel step 3: build trust ========== */}
       <section
-        className="relative bg-white py-20 lg:py-28 border-t border-slate-100"
+        className="relative bg-brand-navy py-20 lg:py-28 overflow-hidden"
         data-testid="proof-section"
       >
-        <div className="max-w-6xl mx-auto px-6">
+        {/* nassaq background image — same treatment as hero & how-it-works */}
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url('/nassaq-background.png')` }}
+          aria-hidden="true"
+        />
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center center' }}
+          aria-hidden="true"
+        />
+        <div className="absolute inset-0 bg-brand-navy/75" aria-hidden="true" />
+
+        <div className="relative max-w-6xl mx-auto px-6">
           <div className="text-center max-w-2xl mx-auto mb-14">
-            <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-full ps-2 pe-4 py-1.5 mb-5">
-              <Shield className="h-4 w-4 text-emerald-600" />
-              <span className="font-tajawal text-sm text-emerald-700">
+            <div className="inline-flex items-center gap-2 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full ps-2 pe-4 py-1.5 mb-5 backdrop-blur-sm">
+              <Shield className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+              <span className="font-tajawal text-sm text-brand-turquoise">
                 {isRTL ? 'لماذا تثق بنا المدارس' : 'Why schools trust us'}
               </span>
             </div>
-            <h2 className="font-cairo font-bold text-brand-navy text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
+            <h2 className="font-cairo font-bold text-white text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
               {isRTL ? (
                 <>منصة سعودية، مبنية لـ <span className="text-brand-turquoise">المدارس السعودية.</span></>
               ) : (
@@ -1428,7 +1441,7 @@ export const LandingPage = () => {
 
           {/* Live stat strip — real numbers only */}
           {platformStats.schools > 0 && (
-            <div className="bg-gradient-to-br from-brand-navy to-brand-navy-light rounded-2xl px-8 py-10 mb-12 text-center shadow-xl">
+            <div className="relative bg-white/5 border border-brand-turquoise/30 rounded-2xl px-8 py-10 mb-12 text-center shadow-xl backdrop-blur-sm">
               <p className="font-tajawal text-white/70 text-sm mb-3">
                 {isRTL ? 'مدارس فعّلت نَسَّق حتى اليوم' : 'Schools live on NASSAQ today'}
               </p>
@@ -1473,15 +1486,15 @@ export const LandingPage = () => {
               return (
                 <div
                   key={i}
-                  className="bg-slate-50 border border-slate-200 rounded-2xl p-7 hover:border-brand-turquoise/30 hover:bg-white hover:shadow-md transition-all"
+                  className="bg-white/5 border border-white/10 rounded-2xl p-7 backdrop-blur-sm transition-all duration-300 ease-out hover:bg-white/10 hover:border-brand-turquoise/40 hover:-translate-y-1.5 hover:shadow-xl motion-reduce:transition-none motion-reduce:hover:translate-y-0"
                 >
-                  <div className="w-12 h-12 rounded-xl bg-brand-turquoise/10 flex items-center justify-center mb-5">
-                    <Icon className="h-6 w-6 text-brand-turquoise" />
+                  <div className="w-12 h-12 rounded-xl bg-brand-turquoise/15 flex items-center justify-center mb-5">
+                    <Icon className="h-6 w-6 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
                   </div>
-                  <h3 className="font-cairo font-bold text-brand-navy text-lg mb-2">
+                  <h3 className="font-cairo font-bold text-white text-lg mb-2">
                     {isRTL ? pillar.titleAr : pillar.titleEn}
                   </h3>
-                  <p className="font-tajawal text-sm text-slate-600 leading-relaxed">
+                  <p className="font-tajawal text-sm text-white/70 leading-relaxed">
                     {isRTL ? pillar.bodyAr : pillar.bodyEn}
                   </p>
                 </div>
@@ -1490,7 +1503,7 @@ export const LandingPage = () => {
           </div>
 
           {/* Honesty note — we don't have testimonials yet, so we say so */}
-          <p className="font-tajawal text-center text-slate-400 text-xs mt-10">
+          <p className="font-tajawal text-center text-white/50 text-xs mt-10">
             {isRTL
               ? 'قصص شركائنا من المدارس الرائدة قيد الإعداد للنشر — بإذنهم وبلا تجميل.'
               : "Stories from our early partner schools are being prepared for publication — with their consent, unedited."}
