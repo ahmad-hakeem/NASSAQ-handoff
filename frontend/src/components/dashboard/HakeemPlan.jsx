@@ -43,6 +43,7 @@ export const HakeemPlan = () => {
   const [draft, setDraft] = useState({ title: '', priority: 'normal' });
   const [editingId, setEditingId] = useState(null);
   const [editingText, setEditingText] = useState('');
+  const [editingPriority, setEditingPriority] = useState('normal');
   const inputRef = useRef(null);
 
   const fetchTasks = useCallback(async () => {
@@ -141,20 +142,29 @@ export const HakeemPlan = () => {
   const startEdit = (task) => {
     setEditingId(task.id);
     setEditingText(task.title);
+    setEditingPriority(task.priority || 'normal');
   };
 
   const commitEdit = async () => {
     if (!editingId) return;
     const id = editingId;
     const text = editingText.trim();
+    const priority = editingPriority;
     const original = tasks.find((tk) => tk.id === id);
     setEditingId(null);
     setEditingText('');
-    if (!text || !original || text === original.title) return;
-    // OPTIMISTIC
-    setTasks((prev) => prev.map((tk) => (tk.id === id ? { ...tk, title: text } : tk)));
+    setEditingPriority('normal');
+    if (!text || !original) return;
+    const titleChanged = text !== original.title;
+    const priorityChanged = priority !== original.priority;
+    if (!titleChanged && !priorityChanged) return;
+    // OPTIMISTIC: apply all changed fields immediately
+    const patch = {};
+    if (titleChanged) patch.title = text;
+    if (priorityChanged) patch.priority = priority;
+    setTasks((prev) => prev.map((tk) => (tk.id === id ? { ...tk, ...patch } : tk)));
     try {
-      const res = await api.patch(`/v1/hakeem-plan/tasks/${id}`, { title: text });
+      const res = await api.patch(`/v1/hakeem-plan/tasks/${id}`, patch);
       const updated = res?.data?.task;
       if (updated) {
         setTasks((prev) => prev.map((tk) => (tk.id === id ? updated : tk)));
@@ -162,6 +172,7 @@ export const HakeemPlan = () => {
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[HakeemPlan] edit error:', err);
+      // Roll back both fields on error
       setTasks((prev) => prev.map((tk) => (tk.id === id ? original : tk)));
       toast.error(extractError(err, isRTL ? 'تعذر تعديل المهمة' : 'Failed to edit task'));
     }
@@ -214,17 +225,36 @@ export const HakeemPlan = () => {
 
         <div className="flex-1 min-w-0">
           {isEditing ? (
-            <input
-              autoFocus
-              value={editingText}
-              onChange={(e) => setEditingText(e.target.value)}
-              onBlur={commitEdit}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') commitEdit();
-                if (e.key === 'Escape') { setEditingId(null); setEditingText(''); }
-              }}
-              className="w-full h-7 rounded-md border border-input bg-background px-2 text-sm font-tajawal"
-            />
+            <div className="flex items-center gap-1.5">
+              <input
+                autoFocus
+                value={editingText}
+                onChange={(e) => setEditingText(e.target.value)}
+                onBlur={(e) => {
+                  // Don't commit if focus moved to the priority select in this row
+                  if (e.relatedTarget?.getAttribute('data-edit-priority-select') === String(task.id)) return;
+                  commitEdit();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitEdit();
+                  if (e.key === 'Escape') { setEditingId(null); setEditingText(''); setEditingPriority('normal'); }
+                }}
+                className="flex-1 min-w-0 h-7 rounded-md border border-input bg-background px-2 text-sm font-tajawal"
+                data-testid={`edit-title-input-${task.id}`}
+              />
+              <select
+                value={editingPriority}
+                onChange={(e) => setEditingPriority(e.target.value)}
+                onBlur={commitEdit}
+                data-edit-priority-select={String(task.id)}
+                className="h-7 rounded-md border border-input bg-background px-1.5 text-xs font-cairo shrink-0"
+                data-testid={`edit-priority-select-${task.id}`}
+              >
+                {Object.entries(PRIORITY_META).map(([key, meta]) => (
+                  <option key={key} value={key}>{isRTL ? meta.label_ar : meta.label_en}</option>
+                ))}
+              </select>
+            </div>
           ) : (
             <div className="flex items-center gap-1.5 min-w-0">
               {isAI && !isCompleted && (
@@ -249,8 +279,8 @@ export const HakeemPlan = () => {
           )}
         </div>
 
-        {!isCompleted && (
-          <Badge className={`shrink-0 border-0 font-cairo text-[10px] px-2 py-0.5 ${meta.badge}`}>
+        {!isCompleted && !isEditing && (
+          <Badge className={`shrink-0 border-0 font-cairo text-[10px] px-2 py-0.5 ${meta.badge}`} data-testid={`priority-badge-${task.id}`}>
             {isRTL ? meta.label_ar : meta.label_en}
           </Badge>
         )}
