@@ -615,8 +615,19 @@ async def accept_parent_invitation(
             if stu_locked.parent_id:
                 raise HTTPException(status_code=409, detail=_MSG_ALREADY_LINKED)
 
+            # Security: do NOT pass the caller-supplied national_id into the
+            # deduplication lookup.  The invitation token is bound only to
+            # (workspace_school_id, student_id); the only identity anchor we
+            # trust is the email/phone that the teacher provided when issuing
+            # the invitation.  Allowing a caller-supplied national_id to
+            # locate an existing parents row would let any holder of a valid
+            # invitation link impersonate an unrelated family in the same
+            # workspace by supplying that family's national ID.
+            # national_id from the payload is still stored/filled
+            # conservatively (see _conservative_fill below), just never used
+            # as a lookup key here.
             existing_parent, matched_by = await _dedupe_parent(
-                national_id=payload.national_id,
+                national_id=None,
                 phone=parent_phone,
                 email=parent_email,
                 workspace_id=workspace_id,
