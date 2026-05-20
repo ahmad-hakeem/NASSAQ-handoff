@@ -376,6 +376,27 @@ _CSV_FIELDS: List[str] = [
 _MSG_CSV_FAILED = "تعذّر إعداد ملف CSV — حاول لاحقًا."
 
 
+_FORMULA_INJECTION_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _sanitize_csv_cell(value: Any) -> str:
+    """Neutralize spreadsheet formula injection in the purge CSV.
+
+    Workspace names (``snapshot.name``, ``snapshot.name_ar``,
+    ``snapshot.name_en``) and actor identity fields are attacker-
+    controllable across a trust boundary: an Independent Teacher can
+    stash a payload like ``=HYPERLINK(...)`` in their workspace name
+    and wait for a platform admin to export the purge history. Any
+    string starting with a spreadsheet metacharacter is prefixed with
+    a tab so Excel / LibreOffice / Sheets treat it as literal text
+    instead of evaluating it as a formula (task #452).
+    """
+    s = "" if value is None else str(value)
+    if s and s.startswith(_FORMULA_INJECTION_CHARS):
+        return "\t" + s
+    return s
+
+
 def _csv_row_for_audit(r: Dict[str, Any]) -> List[str]:
     details = r.get("details") or {}
     snapshot = details.get("snapshot") or {}
@@ -392,15 +413,15 @@ def _csv_row_for_audit(r: Dict[str, Any]) -> List[str]:
     purged_at = _iso(r.get("timestamp")) or details.get("purged_at") or ""
     return [
         workspace_id or "",
-        snapshot.get("name") or "",
-        snapshot.get("name_ar") or "",
-        snapshot.get("name_en") or "",
-        snapshot.get("status") or "",
+        _sanitize_csv_cell(snapshot.get("name")),
+        _sanitize_csv_cell(snapshot.get("name_ar")),
+        _sanitize_csv_cell(snapshot.get("name_en")),
+        _sanitize_csv_cell(snapshot.get("status")),
         snapshot.get("archived_at") or "",
         snapshot.get("last_export_at") or "",
         purged_at,
-        r.get("actor_name") or "",
-        r.get("actor_email") or "",
+        _sanitize_csv_cell(r.get("actor_name")),
+        _sanitize_csv_cell(r.get("actor_email")),
         str(total),
         json.dumps(counts, ensure_ascii=False, sort_keys=True),
         json.dumps(skipped, ensure_ascii=False),

@@ -459,6 +459,27 @@ def _safe_class_name(value: Any) -> str:
     return _safe_person_name(value, fallback="فصل غير مسمى")
 
 
+_FORMULA_INJECTION_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _sanitize_csv_cell(value: Any) -> Any:
+    """Neutralize spreadsheet formula injection in CSV/XLSX exports.
+
+    If *value* is a string that starts with a spreadsheet metacharacter
+    (``=``, ``+``, ``-``, ``@``, tab, or carriage-return) it is prefixed
+    with a tab character so that Excel, LibreOffice, and Google Sheets
+    treat the cell as literal text rather than a formula.
+
+    Non-string values (ints, floats, None) are returned as-is because
+    numeric cells cannot carry formula payloads.
+    """
+    if not isinstance(value, str):
+        return value
+    if value.startswith(_FORMULA_INJECTION_CHARS):
+        return "\t" + value
+    return value
+
+
 def _render_analytics_xlsx(
     payload: Dict[str, Any], start: datetime, end: datetime, cid: Optional[str],
     workspace_id: str, class_label: Optional[str] = None,
@@ -556,7 +577,19 @@ def _render_analytics_xlsx(
     ]
 
     buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
+    # Disable xlsxwriter's automatic string-to-formula / string-to-url
+    # conversion so a roster name like ``=HYPERLINK(...)`` is written as
+    # a literal text cell instead of an evaluated formula when the
+    # workbook is opened in Excel / LibreOffice (CSV/XLSX injection
+    # hardening — task #452).
+    with pd.ExcelWriter(
+        buf,
+        engine="xlsxwriter",
+        engine_kwargs={"options": {
+            "strings_to_formulas": False,
+            "strings_to_urls": False,
+        }},
+    ) as writer:
         workbook = writer.book
         header_fmt = workbook.add_format({
             "bold": True,
@@ -658,19 +691,19 @@ def _render_analytics_csv(
     _section(
         "top_students_absence",
         ["student_id", "name", "absent_count", "total_count", "absence_rate"],
-        [[r["student_id"], r["name"], r["absent_count"], r["total_count"], r["absence_rate"]]
+        [[r["student_id"], _sanitize_csv_cell(r["name"]), r["absent_count"], r["total_count"], r["absence_rate"]]
          for r in payload["top_students_absence"]],
     )
     _section(
         "top_students_behavior",
         ["student_id", "name", "negative_count"],
-        [[r["student_id"], r["name"], r["negative_count"]]
+        [[r["student_id"], _sanitize_csv_cell(r["name"]), r["negative_count"]]
          for r in payload["top_students_behavior"]],
     )
     _section(
         "top_classes_attendance",
         ["class_id", "name", "attendance_rate", "present_count", "total_count"],
-        [[r["class_id"], r["name"], r["attendance_rate"], r["present_count"], r["total_count"]]
+        [[r["class_id"], _sanitize_csv_cell(r["name"]), r["attendance_rate"], r["present_count"], r["total_count"]]
          for r in payload["top_classes_attendance"]],
     )
 
