@@ -404,11 +404,11 @@ export const LandingPage = () => {
       gradient: 'from-emerald-500 to-emerald-600',
     },
     {
-      role: 'الطالب',
-      title: 'التعلم يصبح تجربة محفزة',
-      content: 'حساب بسيط ومحفز وتفاعلي. نقاط المشاركة، إنجازات، متابعة الواجبات، تقارير التقدم الدراسي.',
-      hakimSays: 'عندما يرى الطالب تقدمه بنفسه… يصبح التعلم تجربة أكثر تحفيزًا.',
-      icon: GraduationCap,
+      role: 'المعلم المستقل',
+      title: 'مساحة عمل كاملة… للمعلم الذي يدير طلابه بنفسه',
+      content: 'مساحة عمل مستقلة بطلابك وأولياء أمورهم وخططك وجدولك — دون الحاجة لمدرسة. دعوات أولياء الأمور بضغطة، خطط الدروس، جدول الحصص، تقارير الأداء، وتعاون اختياري مع زميل في حصة مشتركة.',
+      hakimSays: 'لست بحاجة لمدرسة لتعمل باحترافية… أرتّب لك يومك التعليمي وأرصد إشارات كل طالب على حدة.',
+      icon: BookOpen,
       gradient: 'from-brand-purple to-violet-600',
     },
     {
@@ -437,11 +437,11 @@ export const LandingPage = () => {
       gradient: 'from-emerald-500 to-emerald-600',
     },
     {
-      role: 'Student',
-      title: 'Learning becomes a motivating experience',
-      content: 'Simple, motivating, interactive account. Participation points, achievements, assignment tracking, progress reports.',
-      hakimSays: 'When students see their own progress... learning becomes a more motivating experience.',
-      icon: GraduationCap,
+      role: 'Independent Teacher',
+      title: 'A full workspace... for the teacher running their own students',
+      content: 'A standalone workspace with your students, their parents, your lesson plans and your schedule — no school required. One-click parent invitations, lesson planning, class timetable, performance reports, and optional co-teaching with a colleague on a shared class.',
+      hakimSays: "You don't need a school to work professionally... I organize your teaching day and track signals for every student individually.",
+      icon: BookOpen,
       gradient: 'from-brand-purple to-violet-600',
     },
     {
