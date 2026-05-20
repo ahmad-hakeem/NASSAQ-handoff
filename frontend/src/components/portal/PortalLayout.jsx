@@ -39,7 +39,7 @@ import {
   Globe,
 } from 'lucide-react';
 
-const LOGO_WHITE = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/q04svb5j_Nassaq%20LinkedIn%20Logo%20White.png';
+const LOGO_WHITE = '/nassaq-logo-white.png';
 
 /* -------------------------------------------------------------------------- */
 /*  Parent shell — shared right-side Sidebar + thin top utility bar           */

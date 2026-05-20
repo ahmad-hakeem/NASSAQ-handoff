@@ -23,8 +23,8 @@ import {
   ChevronDown 
 } from 'lucide-react';
 
-const LOGO_LIGHT = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/a2a1b0lv_Nassaq%20LinkedIn%20Logo.png';
-const LOGO_DARK = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/q04svb5j_Nassaq%20LinkedIn%20Logo%20White.png';
+const LOGO_LIGHT = '/nassaq-logo.png';
+const LOGO_DARK = '/nassaq-logo-white.png';
 
 export const Navbar = ({ variant = 'default' }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);

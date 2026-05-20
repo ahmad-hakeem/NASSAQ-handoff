@@ -24,7 +24,7 @@ import {
   Star, FileText, Trash2, Upload, Settings as SettingsIcon
 } from 'lucide-react';
 
-const BG_PATTERN = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/1itjy61q_Nassaq%20Background.png';
+const BG_PATTERN = '/nassaq-background.png';
 
 const PasswordStrength = ({ password, isRTL }) => {
   const { t } = useTranslation();
