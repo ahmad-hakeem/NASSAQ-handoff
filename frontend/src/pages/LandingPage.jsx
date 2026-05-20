@@ -1513,18 +1513,31 @@ export const LandingPage = () => {
 
       {/* ========== FAQ SECTION — funnel step 4: handle objections ========== */}
       <section
-        className="relative bg-slate-50 py-20 lg:py-28"
+        className="relative bg-brand-navy py-20 lg:py-28 overflow-hidden"
         data-testid="faq-section"
       >
-        <div className="max-w-3xl mx-auto px-6">
+        {/* nassaq background image — same treatment as hero, how-it-works & proof */}
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url('/nassaq-background.png')` }}
+          aria-hidden="true"
+        />
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center center' }}
+          aria-hidden="true"
+        />
+        <div className="absolute inset-0 bg-brand-navy/75" aria-hidden="true" />
+
+        <div className="relative max-w-3xl mx-auto px-6">
           <div className="text-center mb-12">
-            <div className="inline-flex items-center gap-2 bg-slate-100 border border-slate-200 rounded-full ps-2 pe-4 py-1.5 mb-5">
-              <Lightbulb className="h-4 w-4 text-slate-600" />
-              <span className="font-tajawal text-sm text-slate-600">
+            <div className="inline-flex items-center gap-2 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full ps-2 pe-4 py-1.5 mb-5 backdrop-blur-sm">
+              <Lightbulb className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+              <span className="font-tajawal text-sm text-brand-turquoise">
                 {isRTL ? 'الأسئلة التي يطرحها المدراء قبل البدء' : 'Questions principals ask before starting'}
               </span>
             </div>
-            <h2 className="font-cairo font-bold text-brand-navy text-3xl sm:text-4xl lg:text-5xl leading-tight">
+            <h2 className="font-cairo font-bold text-white text-3xl sm:text-4xl lg:text-5xl leading-tight">
               {isRTL ? 'إجابات صريحة على ما يقلقك.' : 'Straight answers to what worries you.'}
             </h2>
           </div>
@@ -1564,16 +1577,16 @@ export const LandingPage = () => {
             ].map((faq, i) => (
               <details
                 key={i}
-                className="group bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-brand-turquoise/30 transition-colors"
+                className="group bg-white/5 border border-white/10 rounded-xl overflow-hidden backdrop-blur-sm hover:border-brand-turquoise/40 hover:bg-white/10 transition-colors open:border-brand-turquoise/40 open:bg-white/10"
               >
-                <summary className="flex items-center justify-between gap-4 px-6 py-5 cursor-pointer list-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-2 rounded-xl">
-                  <span className="font-cairo font-bold text-brand-navy text-base text-start">
+                <summary className="flex items-center justify-between gap-4 px-6 py-5 cursor-pointer list-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-2 focus-visible:ring-offset-brand-navy rounded-xl">
+                  <span className="font-cairo font-bold text-white text-base text-start">
                     {isRTL ? faq.qAr : faq.qEn}
                   </span>
-                  <ChevronDown className="h-5 w-5 text-slate-400 group-open:rotate-180 transition-transform shrink-0" />
+                  <ChevronDown className="h-5 w-5 text-brand-turquoise group-open:rotate-180 transition-transform shrink-0" strokeWidth={1.5} aria-hidden="true" />
                 </summary>
                 <div className="px-6 pb-5 -mt-1">
-                  <p className="font-tajawal text-sm text-slate-600 leading-relaxed">
+                  <p className="font-tajawal text-sm text-white/75 leading-relaxed">
                     {isRTL ? faq.aAr : faq.aEn}
                   </p>
                 </div>
