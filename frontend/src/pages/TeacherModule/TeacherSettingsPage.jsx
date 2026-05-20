@@ -261,7 +261,11 @@ export default function TeacherSettingsPage() {
     }
     setSaving(true);
     try {
-      await api.put(`/users/${user?.id}/password`, {
+      // Task #470: repointed to the canonical /auth/change-password
+      // route. The legacy PUT /users/{id}/password handler was
+      // removed (NameError on every call, no audit/MFA/session
+      // revocation side-effects).
+      await api.post('/auth/change-password', {
         current_password: passwordForm.current_password,
         new_password: passwordForm.new_password,
       });
@@ -269,8 +273,23 @@ export default function TeacherSettingsPage() {
       setShowPasswordDialog(false);
       setPasswordForm({ current_password: '', new_password: '', confirm_password: '' });
     } catch (error) {
-      const msg = error?.response?.data?.detail;
-      nassaqError(msg || (t('errorChangingPassword2')));
+      // Task #470: 4xx → safe Arabic `detail` from backend; 5xx / network
+      // → generic Arabic fallback so raw English server strings never
+      // reach the user.
+      const status = error?.response?.status;
+      const data = error?.response?.data || {};
+      const fallback = t('errorChangingPassword2');
+      let message = fallback;
+      if (status && status >= 400 && status < 500) {
+        const envMsg = (data.error && typeof data.error === 'object')
+          ? (data.error.message || data.error.detail)
+          : null;
+        const detail = data.detail;
+        message = envMsg
+          || (typeof detail === 'string' ? detail : detail?.message)
+          || fallback;
+      }
+      nassaqError(message);
     } finally {
       setSaving(false);
     }

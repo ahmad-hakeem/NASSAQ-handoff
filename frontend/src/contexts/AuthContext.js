@@ -387,8 +387,14 @@ export const AuthProvider = ({ children }) => {
         // Suppress the global server-error toast for those two endpoints so
         // it cannot double-fire alongside the login card's banner / dialog.
         const isAuthLogin = url.includes('/auth/login');
+        // Task #470 — /auth/change-password owns its own error surface
+        // (in-form `nassaqError` from AccountSettingsPage, the parent
+        // PasswordChangeDialog, and TeacherSettingsPage). Suppress the
+        // generic server-error toast for this route so a backend 5xx
+        // cannot double-fire alongside the in-form Arabic error.
+        const isChangePassword = url.includes('/auth/change-password');
         const isLoginOrPostLoginAuthMe = isAuthLogin || (isPublicPath && isAuthMe);
-        if (!isLoginOrPostLoginAuthMe) {
+        if (!isLoginOrPostLoginAuthMe && !isChangePassword) {
           const msg = isRealNetworkError
             ? translateToast('serverConnectionFailed')
             : translateToast('serverErrorWithCode', { code: status });

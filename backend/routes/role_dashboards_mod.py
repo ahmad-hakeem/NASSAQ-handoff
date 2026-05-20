@@ -1918,29 +1918,14 @@ async def update_notification_settings(
     return {"message": "تم حفظ الإعدادات"}
 
 
-@router.put("/users/{user_id}/password")
-async def change_user_password(
-    user_id: str,
-    data: dict = Body(...),
-    current_user: dict = Depends(get_current_user)
-):
-    """Change user password"""
-    if current_user["id"] != user_id and current_user.get("role") != "platform_admin":
-        raise HTTPException(status_code=403, detail="Not authorized")
-    
-    # Verify current password
-    user = await gd_find_one(db.session, "users", {"id": user_id})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    if not pwd_context.verify(data.get("current_password"), user.get("password_hash")):
-        raise HTTPException(status_code=400, detail="كلمة المرور الحالية غير صحيحة")
-    
-    # Update password
-    new_hash = pwd_context.hash(data.get("new_password"))
-    await gd_update_one(db.session, "users", {"id": user_id}, {"password_hash": new_hash, "updated_at": datetime.now(timezone.utc).isoformat()})
-    
-    return {"message": "تم تغيير كلمة المرور"}
+# Task #470: the legacy `PUT /users/{user_id}/password` handler was
+# removed. It referenced an unbound `pwd_context` (passlib was never
+# imported in this module), raised `NameError` → HTTP 500 on every
+# call, and bypassed the security side-effects (audit log, refresh
+# token revocation, `last_password_change`, MFA step-up) that the
+# canonical `POST /auth/change-password` already enforces. All
+# callers (Parent dialog, Teacher settings) have been repointed to
+# `/auth/change-password`. Do not re-introduce this route.
 
 
 @router.get("/teacher/profile/{teacher_id}/activity")

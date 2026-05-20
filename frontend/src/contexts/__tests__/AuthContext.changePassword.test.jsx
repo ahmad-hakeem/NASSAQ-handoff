@@ -346,6 +346,41 @@ describe('Task #338 — /auth/change-password MFA step-up interceptor', () => {
     unmount();
   });
 
+  test('Task #470: 500 on /auth/change-password does NOT trigger the global serverErrorWithCode toast', async () => {
+    // The global 5xx mutation toast must be suppressed for the
+    // change-password URL so the in-form nassaqError fired by the
+    // calling component (Parent dialog / Teacher / AccountSettings)
+    // is the only popup. Without this skip, a backend 500 produces
+    // two stacked dialogs (the bug the user reported).
+    const { toast } = require('sonner');
+    const { captured, unmount } = mountAndCaptureApi();
+    await waitFor(() => expect(captured.api).not.toBeNull());
+
+    captured.api.defaults.adapter = (config) =>
+      Promise.reject({
+        config,
+        response: mockResponse({ status: 500, data: { detail: 'boom' } }),
+        message: 'Request failed with status code 500',
+        isAxiosError: true,
+      });
+
+    let caught = null;
+    try {
+      await captured.api.post('/auth/change-password', {
+        current_password: 'x',
+        new_password: 'y',
+      });
+    } catch (e) { caught = e; }
+
+    expect(caught).not.toBeNull();
+    expect(caught.response.status).toBe(500);
+    // The global serverErrorWithCode toast must NOT fire for this URL.
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(window.location.href).toBe('http://localhost/account-settings');
+
+    unmount();
+  });
+
   test('400 + Arabic detail rejects to the caller without step-up and without navigation', async () => {
     const { captured, unmount } = mountAndCaptureApi();
     await waitFor(() => expect(captured.api).not.toBeNull());

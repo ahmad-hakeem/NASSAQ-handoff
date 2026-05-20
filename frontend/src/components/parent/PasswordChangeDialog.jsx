@@ -77,15 +77,39 @@ const PasswordChangeDialog = ({ open, onOpenChange }) => {
     }
     setSaving(true);
     try {
-      await api.put(`/users/${user?.id}/password`, {
+      // Task #470: use the canonical /auth/change-password route so
+      // parents share the same audit-logged, MFA-gated, refresh-token-
+      // revoking path as principals/teachers/admins. The legacy
+      // PUT /users/{id}/password handler was removed (it referenced
+      // an unbound pwd_context and 500'd on every call).
+      await api.post('/auth/change-password', {
         current_password: form.current_password,
         new_password: form.new_password,
       });
       toast.success(t('passwordChangedSuccessfully') || 'Password changed');
       handleClose();
     } catch (err) {
-      const detail = err?.response?.data?.detail;
-      nassaqError(typeof detail === 'string' ? detail : (t('errorChangingPassword') || 'Error changing password'));
+      // Task #470: collapse to a single user-visible error. The global
+      // axios interceptor suppresses its generic 5xx toast for
+      // /auth/change-password, so this nassaqError is the only popup.
+      // For 4xx (expected validation/auth errors) we surface the
+      // backend's safe Arabic `detail`; for 5xx / network failures we
+      // fall back to a generic Arabic message so raw English server
+      // strings like "Internal Server Error" never reach the user.
+      const status = err?.response?.status;
+      const data = err?.response?.data || {};
+      const fallback = t('errorChangingPassword') || 'حدث خطأ أثناء تغيير كلمة المرور';
+      let message = fallback;
+      if (status && status >= 400 && status < 500) {
+        const envMsg = (data.error && typeof data.error === 'object')
+          ? (data.error.message || data.error.detail)
+          : null;
+        const detail = data.detail;
+        message = envMsg
+          || (typeof detail === 'string' ? detail : detail?.message)
+          || fallback;
+      }
+      nassaqError(message);
     } finally {
       setSaving(false);
     }
