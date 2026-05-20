@@ -172,30 +172,54 @@ export const LandingPage = () => {
     { id: 'solutions',    ar: 'الحلول',  en: 'Solutions' },
     { id: 'ecosystem',    ar: 'الأدوار',  en: 'Roles' },
     { id: 'proof',        ar: 'النتائج', en: 'Results' },
-    { id: 'plans',        ar: 'الباقات', en: 'Plans' },
     { id: 'faq',          ar: 'الأسئلة الشائعة', en: 'FAQ' },
+    { id: 'plans',        ar: 'الباقات', en: 'Plans' },
   ]), []);
 
   const [activeSection, setActiveSection] = useState('');
 
   useEffect(() => {
-    const targets = navSections
-      .map(({ id }) => document.getElementById(id))
-      .filter(Boolean);
-    if (!targets.length) return;
+    const ids = navSections.map(({ id }) => id);
+    const HEADER_OFFSET = 96; // sticky navbar height + breathing room
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
-        if (visible.length) setActiveSection(visible[0].target.id);
-      },
-      { rootMargin: '-80px 0px -55% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] },
-    );
+    const pickActive = () => {
+      const targets = ids
+        .map((id) => document.getElementById(id))
+        .filter(Boolean);
+      if (!targets.length) return;
 
-    targets.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
+      const scrollY = window.scrollY;
+      const docBottomReached =
+        window.innerHeight + scrollY >= document.documentElement.scrollHeight - 4;
+
+      // At the very bottom: always highlight the last section so the user
+      // doesn't see the second-to-last lit while looking at the final one.
+      if (docBottomReached) {
+        setActiveSection(targets[targets.length - 1].id);
+        return;
+      }
+
+      // Pick the section whose top has just crossed the header offset —
+      // i.e. the last one whose top <= header offset.
+      let current = '';
+      for (const el of targets) {
+        const top = el.getBoundingClientRect().top;
+        if (top - HEADER_OFFSET <= 0) {
+          current = el.id;
+        } else {
+          break;
+        }
+      }
+      setActiveSection(current);
+    };
+
+    pickActive();
+    window.addEventListener('scroll', pickActive, { passive: true });
+    window.addEventListener('resize', pickActive);
+    return () => {
+      window.removeEventListener('scroll', pickActive);
+      window.removeEventListener('resize', pickActive);
+    };
   }, [navSections]);
 
   const handleNavClick = (e, id) => {
