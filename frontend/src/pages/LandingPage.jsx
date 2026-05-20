@@ -241,7 +241,6 @@ export const LandingPage = () => {
       content: 'تسجيل حضور الطلاب، تقييم الواجبات، تسجيل السلوك، مشاركة الطلاب داخل الفصل، نتائج الاختبارات، ملاحظات المعلمين. لكن هذه البيانات غالبًا تكون موزعة ومجزأة.',
       hakimSays: 'المدارس تولد آلاف البيانات كل يوم… لكن القليل منها يستطيع تحويل هذه البيانات إلى معرفة.',
       icons: [BarChart3, Calendar, Brain, BookOpen],
-      dataIcons: ['📊', '📋', '🧠', '📚', '📝'],
       phase: '01',
     },
     {
@@ -250,7 +249,6 @@ export const LandingPage = () => {
       content: 'يقوم النظام بجمع كل هذه البيانات داخل منصة واحدة: الحضور والانصراف، الأداء الأكاديمي، السلوك اليومي، التفاعل داخل الحصة، الواجبات والتقييمات.',
       hakimSays: 'مهمتي هي تنظيم هذه البيانات وتحويلها إلى صورة واضحة للمدرسة.',
       icons: [Database, TrendingUp, CheckCircle2, Award],
-      dataIcons: ['📦', '📈', '✅', '🎯'],
       phase: '02',
     },
     {
@@ -259,7 +257,6 @@ export const LandingPage = () => {
       content: 'اكتشاف الطلاب الذين يحتاجون دعمًا، تحليل الأنماط السلوكية داخل الفصول، رصد تراجع الأداء الأكاديمي، تحديد فرص تحسين المشاركة.',
       hakimSays: 'أنا لا أعرض الأرقام فقط… بل أكتشف ما تعنيه هذه الأرقام.',
       icons: [Brain, Lightbulb, TrendingUp, Target],
-      dataIcons: ['📈', '⚠️', '🧠', '💡'],
       phase: '03',
     },
     {
@@ -268,7 +265,6 @@ export const LandingPage = () => {
       content: 'خطط دعم الطلاب، تقارير الأداء، قرارات تعليمية دقيقة مبنية على بيانات حقيقية تساعد في تحسين جودة العملية التعليمية.',
       hakimSays: 'البيانات وحدها لا تغيّر التعليم… لكن القرارات الصحيحة تفعل.',
       icons: [CheckCircle2, Award, Target, TrendingUp],
-      dataIcons: ['✔️', '📊', '🎓', '🏆'],
       phase: '04',
     },
   ] : [
@@ -278,7 +274,6 @@ export const LandingPage = () => {
       content: 'Recording attendance, evaluating assignments, recording behavior, student participation, test results, teacher notes. But this data is often distributed and fragmented.',
       hakimSays: 'Schools generate thousands of data points every day... but few can turn this data into knowledge.',
       icons: [BarChart3, Calendar, Brain, BookOpen],
-      dataIcons: ['📊', '📋', '🧠', '📚', '📝'],
       phase: '01',
     },
     {
@@ -287,7 +282,6 @@ export const LandingPage = () => {
       content: 'The system collects all this data in one platform: attendance, academic performance, daily behavior, in-class interaction, assignments and assessments.',
       hakimSays: 'My mission is to organize this data and turn it into a clear picture for the school.',
       icons: [Database, TrendingUp, CheckCircle2, Award],
-      dataIcons: ['📦', '📈', '✅', '🎯'],
       phase: '02',
     },
     {
@@ -296,7 +290,6 @@ export const LandingPage = () => {
       content: 'Discovering students who need support, analyzing behavioral patterns, tracking academic decline, identifying participation improvement opportunities.',
       hakimSays: "I don't just display numbers... I discover what these numbers mean.",
       icons: [Brain, Lightbulb, TrendingUp, Target],
-      dataIcons: ['📈', '⚠️', '🧠', '💡'],
       phase: '03',
     },
     {
@@ -305,7 +298,6 @@ export const LandingPage = () => {
       content: 'Student support plans, performance reports, precise educational decisions based on real data that help improve education quality.',
       hakimSays: "Data alone doesn't change education... but the right decisions do.",
       icons: [CheckCircle2, Award, Target, TrendingUp],
-      dataIcons: ['✔️', '📊', '🎓', '🏆'],
       phase: '04',
     },
   ];
@@ -642,11 +634,10 @@ export const LandingPage = () => {
               {platformStats.schools > 0 && (
                 <div className="flex items-center gap-3" data-testid="traction-section">
                   <div className="flex -space-x-2 rtl:space-x-reverse">
-                    {['#1C3D74', '#46C1BE', '#615090', '#D4A23C'].map((bg, i) => (
+                    {['bg-brand-navy', 'bg-brand-turquoise', 'bg-brand-purple', 'bg-amber-500'].map((bgClass, i) => (
                       <div
                         key={i}
-                        className="w-8 h-8 rounded-full border-2 border-brand-navy flex items-center justify-center text-white text-xs font-cairo font-bold shadow-sm"
-                        style={{ backgroundColor: bg }}
+                        className={`w-8 h-8 rounded-full border-2 border-brand-navy flex items-center justify-center text-white text-xs font-cairo font-bold shadow-sm ${bgClass}`}
                       >
                         ن
                       </div>
@@ -979,13 +970,14 @@ export const LandingPage = () => {
 
                 <div className="relative z-10">
                   <div className="flex gap-2.5 mb-6">
-                    {journeySteps[activeJourneyStep].dataIcons.map((emoji, i) => (
+                    {journeySteps[activeJourneyStep].icons.map((DataIcon, i) => (
                       <span
                         key={`${activeJourneyStep}-${i}`}
-                        className="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-turquoise/10 to-brand-turquoise/5 border border-brand-turquoise/15 flex items-center justify-center text-lg animate-scale-in shadow-sm"
+                        className="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-turquoise/10 to-brand-turquoise/5 border border-brand-turquoise/15 flex items-center justify-center animate-scale-in shadow-sm"
                         style={{ animationDelay: `${i * 80}ms` }}
+                        aria-hidden="true"
                       >
-                        {emoji}
+                        <DataIcon className="h-5 w-5 text-brand-turquoise" strokeWidth={1.5} />
                       </span>
                     ))}
                   </div>

@@ -66,6 +66,20 @@ A comprehensive, multi-tenant school management platform with AI-powered feature
 - Role switching for administrators.
 - Administrative calendar with event management.
 
+## Design guidelines & marketing-surface overrides
+The product follows `design_guidelines.json` (in-app/admin surfaces). The public **landing page** (`frontend/src/pages/LandingPage.jsx`) intentionally overrides four rules from that spec to optimize for marketing-funnel conversion — do NOT "fix" these back to the in-app spec:
+- **Turquoise is the unifying accent**, not "sparing". Used across eyebrows, headings, active states, and CTAs to enforce brand cohesion across the funnel. Purple is reserved for AI/Hakim and the pricing-offer eyebrow.
+- **Navy + nassaq-texture sections alternate with light sections** (hero, how-it-works, AI capabilities, proof, pricing, CTA are navy; pain, journey, ecosystem, FAQ are light). The dark/light alternation paces the funnel — it intentionally deviates from "backgrounds should be mostly #F8FAFC".
+- **Heading scale is larger than the in-app `text-3xl/4xl` spec** (`lg:text-[3.5rem]`, `text-6xl`, `text-7xl` on hero/proof/CTA) — marketing display sizing.
+- **Primary conversion CTAs use turquoise** rather than the in-app navy primary recipe: the hero CTA is solid `bg-brand-turquoise`, while the recommended pricing tier and final CTA use the `from-brand-turquoise to-cyan-500` gradient. Secondary/tertiary buttons remain navy or transparent-outline.
+
+Strict rules from `design_guidelines.json` that DO apply on the landing page (do not violate):
+- No emoji used as decorative icons — always use `lucide-react`.
+- No raw hex literals in JSX — use Tailwind brand tokens (`bg-brand-navy`, `bg-brand-turquoise`, `bg-brand-purple`).
+- No text gradients (`bg-clip-text`).
+- RTL via logical properties (`ps-*`, `pe-*`, `ms-*`, `me-*`, `text-start`/`text-end`).
+- Lucide icons with `strokeWidth={1.5}` and `aria-hidden="true"` on decorative ones.
+
 ## User preferences
 - **Communication Style**: I prefer simple and direct language.
 - **Workflow**: I want iterative development with clear milestones.
