@@ -133,6 +133,130 @@ async def _link_guardian(
     })
 
 
+async def _mk_realistic_parent(tenant_id: str) -> tuple[dict, dict]:
+    """Create a separate parents row + users row bridged via the shared email.
+
+    Mirrors what ``find_or_create_parent`` actually persists in production:
+    a ``parents`` row scoped to the school (no persisted ``user_id``
+    column) and a separate ``users`` row with ``role='parent'``. The
+    only stable link between them is ``parents.email == users.email``.
+    Returns ``(parent_row, user_row)``.
+    """
+    user_id = str(uuid.uuid4())
+    parent_id = str(uuid.uuid4())
+    email = f"p-{parent_id}@t.test"
+    await gd_insert(_db.session, "users", {
+        "id": user_id,
+        "role": "parent",
+        "tenant_id": tenant_id,
+        "email": email,
+        "full_name": f"Parent-{user_id[:6]}",
+        "is_active": True,
+        "password_hash": "x",
+    })
+    await gd_insert(_db.session, "parents", {
+        "id": parent_id,
+        "full_name": f"Parent-{user_id[:6]}",
+        "email": email,
+        "school_id": tenant_id,
+        "is_active": True,
+    })
+    return ({"id": parent_id, "email": email},
+            {"id": user_id, "email": email})
+
+
+@pytest.mark.asyncio
+async def test_resolver_bridges_students_parent_id_through_parents_email():
+    """Production case: students.parent_id -> parents.id -> parents.email -> users.id.
+
+    Regression for the false-positive "لا يوجد ولي أمر مرتبط بهذا الطالب"
+    error in the Teacher Communication module — the previous resolver
+    treated students.parent_id as a users.id directly and returned None
+    for every student created through the principal flow (where
+    students.parent_id is a parents.id, not a users.id).
+    """
+    school_id = await _mk_school()
+    parent_row, user_row = await _mk_realistic_parent(school_id)
+    student = await _mk_student(school_id, parent_id=parent_row["id"])
+    result = await resolve_student_parent_user_id(student["id"], school_id)
+    assert result == user_row["id"]
+
+
+@pytest.mark.asyncio
+async def test_resolver_bridges_guardian_links_parent_ref_as_parents_id():
+    """relationship_routes_mod.py writes parent_ref = parents.id; bridge it."""
+    school_id = await _mk_school()
+    parent_row, user_row = await _mk_realistic_parent(school_id)
+    student = await _mk_student(school_id)  # no students.parent_id
+    # parent_ref holds parents.id (principal-managed linkage flow).
+    await gd_insert(_db.session, "guardian_links", {
+        "id": str(uuid.uuid4()),
+        "student_id": student["id"],
+        "parent_ref": parent_row["id"],
+        "tenant_id": school_id,
+        "is_active": True,
+        "relationship_type": "mother",
+    })
+    result = await resolve_student_parent_user_id(student["id"], school_id)
+    assert result == user_row["id"]
+
+
+@pytest.mark.asyncio
+async def test_resolver_prefers_guardian_links_parent_user_id_column():
+    """The canonical parent_user_id column wins over any other source."""
+    school_id = await _mk_school()
+    parent_row, user_row = await _mk_realistic_parent(school_id)
+    student = await _mk_student(school_id)
+    await gd_insert(_db.session, "guardian_links", {
+        "id": str(uuid.uuid4()),
+        "student_id": student["id"],
+        "parent_user_id": user_row["id"],
+        # parent_ref intentionally points elsewhere — parent_user_id wins.
+        "parent_ref": parent_row["id"],
+        "tenant_id": school_id,
+        "is_active": True,
+        "relationship_type": "father",
+    })
+    result = await resolve_student_parent_user_id(student["id"], school_id)
+    assert result == user_row["id"]
+
+
+@pytest.mark.asyncio
+async def test_bulk_resolver_bridges_realistic_parents_rows():
+    """Bulk variant must also bridge parents.id -> parents.user_id -> users.id."""
+    school_id = await _mk_school()
+    p1_row, u1 = await _mk_realistic_parent(school_id)
+    p2_row, u2 = await _mk_realistic_parent(school_id)
+    s1 = await _mk_student(school_id, parent_id=p1_row["id"])
+    s2 = await _mk_student(school_id)
+    # s2 linked via guardian_links with parent_ref = parents.id.
+    await gd_insert(_db.session, "guardian_links", {
+        "id": str(uuid.uuid4()),
+        "student_id": s2["id"],
+        "parent_ref": p2_row["id"],
+        "tenant_id": school_id,
+        "is_active": True,
+        "relationship_type": "mother",
+    })
+    result = await resolve_students_parent_user_ids(
+        [s1["id"], s2["id"]], school_id,
+    )
+    assert result[s1["id"]] == u1["id"]
+    assert result[s2["id"]] == u2["id"]
+
+
+@pytest.mark.asyncio
+async def test_resolver_rejects_cross_tenant_parents_row():
+    """parents row in tenant B must not resolve a student in tenant A even
+    when students.parent_id happens to match the foreign parents.id."""
+    school_a = await _mk_school()
+    school_b = await _mk_school()
+    foreign_parent, foreign_user = await _mk_realistic_parent(school_b)
+    student = await _mk_student(school_a, parent_id=foreign_parent["id"])
+    result = await resolve_student_parent_user_id(student["id"], school_a)
+    assert result is None
+
+
 # ===========================================================================
 # A. Helper unit tests
 # ===========================================================================
