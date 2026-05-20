@@ -108,17 +108,17 @@ webpackConfig.devServer = (devServerConfig) => {
   devServerConfig.port = 5000;
   devServerConfig.allowedHosts = "all";
 
-  devServerConfig.webSocketServer = {
-    type: "ws",
-    options: { path: "/ws-hmr" },
-  };
-  devServerConfig.client = {
-    ...(devServerConfig.client || {}),
-    webSocketURL: {
-      ...((devServerConfig.client && devServerConfig.client.webSocketURL) || {}),
-      pathname: "/ws-hmr",
-    },
-  };
+  // Replit preview is an iframe-proxied (mTLS) tunnel that does not relay
+  // WebSocket upgrade frames on custom paths reliably — webpack-dev-server's
+  // HMR client errored with "Invalid frame header" on every reconnect and
+  // spammed the browser console. We disable the HMR client/server entirely:
+  // the dev bundle still compiles on file change, and a manual page refresh
+  // picks up the new build. This is a Replit-environment trade-off, not a
+  // product change.
+  devServerConfig.webSocketServer = false;
+  devServerConfig.liveReload = false;
+  devServerConfig.hot = false;
+  devServerConfig.client = false;
 
   devServerConfig.headers = {
     "X-Content-Type-Options": "nosniff",
