@@ -758,41 +758,69 @@ export const LandingPage = () => {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* 3-role pain columns — same problem from 3 angles */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {[
               {
-                icon: TrendingUp,
-                ar: 'تكتشف تراجع طالب فقط حين يصل كشف الدرجات إلى ولي أمره.',
-                en: "You only spot a student's decline when the grade report reaches the parent.",
+                roleAr: 'الإدارة',
+                roleEn: 'Administration',
+                icon: Building2,
+                titleAr: 'القرارات تتأخّر حتى تظهر المشكلة.',
+                titleEn: 'Decisions are delayed until the problem surfaces.',
+                bodyAr: 'الإدارة تتدخل بعد انخفاض النتائج فعليًا — وليس عند ظهور المؤشرات الأكاديمية الأولى.',
+                bodyEn: 'Leadership intervenes after grades drop — not when the first academic signals appear.',
+                tagAr: 'التراجع يُكتشف متأخرًا',
+                tagEn: 'Decline caught too late',
               },
               {
-                icon: Calendar,
-                ar: 'ساعات تُستهلك أسبوعيًا في الجداول والتقارير اليدوية بدل القرار.',
-                en: 'Hours wasted weekly on manual timetables and reports instead of decisions.',
+                roleAr: 'طاقم التدريس',
+                roleEn: 'Teaching staff',
+                icon: GraduationCap,
+                titleAr: 'الوقت يُستهلك في المتابعة لا في التدريس.',
+                titleEn: 'Time gets spent on tracking, not teaching.',
+                bodyAr: 'المعلم يقضي ساعات أسبوعيًا في تسجيل الحضور وتحضير التقارير — ساعات لا تنتج تدخّلًا أكاديميًا فعليًا.',
+                bodyEn: 'Teachers spend hours per week on attendance and reports — hours that produce no real academic intervention.',
+                tagAr: 'وقت تدريس فعلي أقل من 40%',
+                tagEn: 'Actual teaching time under 40%',
               },
               {
-                icon: Database,
-                ar: 'ملاحظات المعلمين، الحضور، والسلوك مبعثرة بين دفاتر وملفات إكسل ومجموعات واتساب.',
-                en: 'Teacher notes, attendance and behavior scattered across notebooks, Excel files and WhatsApp groups.',
+                roleAr: 'ولي الأمر',
+                roleEn: 'The parent',
+                icon: Users,
+                titleAr: 'يعلم بالمشكلة بعد فوات الأوان.',
+                titleEn: 'They learn about the problem too late.',
+                bodyAr: 'ولي الأمر لا يطّلع على المؤشرات الأكاديمية إلا بعد تفاقمها وظهور أثرها في كشف الدرجات.',
+                bodyEn: "Parents only see academic signals after they've already escalated into the grade report.",
+                tagAr: 'المشكلة ظاهرة قبل أن يعلم ولي الأمر',
+                tagEn: 'Problem visible before the parent knows',
               },
-              {
-                icon: Lightbulb,
-                ar: 'قرارات تربوية مهمة تُتخذ بناءً على انطباع — لأن البيانات لا تصل في الوقت المناسب.',
-                en: "Important academic decisions made on gut feel — because data doesn't arrive on time.",
-              },
-            ].map((item, i) => {
-              const Icon = item.icon;
+            ].map((col, i) => {
+              const Icon = col.icon;
               return (
                 <div
                   key={i}
-                  className="flex items-start gap-4 bg-white border border-slate-200 rounded-2xl p-6 hover:border-amber-200 hover:shadow-md transition-all"
+                  className="bg-white border border-slate-200 rounded-2xl p-7 hover:border-amber-200 hover:shadow-md transition-all flex flex-col"
                 >
-                  <div className="shrink-0 w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center">
-                    <Icon className="h-5 w-5 text-amber-600" />
+                  <div className="flex items-center gap-3 mb-5">
+                    <div className="shrink-0 w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
+                      <Icon className="h-5 w-5 text-amber-600" />
+                    </div>
+                    <span className="font-cairo text-xs font-bold text-amber-700 uppercase tracking-wider">
+                      {isRTL ? col.roleAr : col.roleEn}
+                    </span>
                   </div>
-                  <p className="font-tajawal text-base text-slate-700 leading-relaxed">
-                    {isRTL ? item.ar : item.en}
+                  <h3 className="font-cairo font-bold text-brand-navy text-lg leading-snug mb-3">
+                    {isRTL ? col.titleAr : col.titleEn}
+                  </h3>
+                  <p className="font-tajawal text-sm text-slate-600 leading-relaxed mb-5 flex-1">
+                    {isRTL ? col.bodyAr : col.bodyEn}
                   </p>
+                  <div className="flex items-center gap-2 pt-4 border-t border-slate-100">
+                    <TrendingUp className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                    <span className="font-tajawal text-xs text-slate-500">
+                      {isRTL ? col.tagAr : col.tagEn}
+                    </span>
+                  </div>
                 </div>
               );
             })}
@@ -806,11 +834,79 @@ export const LandingPage = () => {
         </div>
       </section>
 
+      {/* ========== HOW IT WORKS — compact 4-step strip (merged from client demo) ========== */}
+      <section
+        id="how-it-works"
+        className="relative bg-white py-20 lg:py-24 border-t border-slate-100 scroll-mt-24"
+        data-testid="how-it-works-steps"
+      >
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center max-w-2xl mx-auto mb-12">
+            <div className="inline-flex items-center gap-2 bg-brand-turquoise/10 border border-brand-turquoise/20 rounded-full ps-2 pe-4 py-1.5 mb-5">
+              <Zap className="h-4 w-4 text-brand-turquoise" />
+              <span className="font-tajawal text-sm text-brand-turquoise">
+                {isRTL ? 'العمل اليومي في نَسَّق' : 'The daily NASSAQ loop'}
+              </span>
+            </div>
+            <h2 className="font-cairo font-bold text-brand-navy text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
+              {isRTL ? (
+                <>أربع خطوات تحوّل الإشارات اليومية إلى <span className="text-brand-turquoise">قرارات واضحة.</span></>
+              ) : (
+                <>Four steps that turn daily signals into <span className="text-brand-turquoise">clear decisions.</span></>
+              )}
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {[
+              {
+                titleAr: 'رصد الإشارات اليومية',
+                titleEn: 'Capture daily signals',
+                bodyAr: 'يرصد الأداء والحضور والتفاعل السلوكي من كل مصدر — تلقائيًا، يوميًا، دون تدخل يدوي.',
+                bodyEn: 'Pulls performance, attendance and behavior from every source — automatically, daily, without manual entry.',
+              },
+              {
+                titleAr: 'اكتشاف التراجع مبكرًا',
+                titleEn: 'Catch decline early',
+                bodyAr: 'يكتشف الانحرافات عن المسار الطبيعي قبل ظهور أثرها في النتائج — حين لا يزال التدخل ممكنًا.',
+                bodyEn: "Detects deviations from a student's normal trajectory before they show up in grades — while intervention still works.",
+              },
+              {
+                titleAr: 'ترتيب الأولويات',
+                titleEn: 'Prioritize',
+                bodyAr: 'يُنشئ قائمة تدخّل يومية واضحة لكل دور — الإدارة والمعلم وولي الأمر — مرتّبة حسب الأهمية.',
+                bodyEn: 'Builds a clear daily intervention list for every role — admin, teacher, parent — ranked by urgency.',
+              },
+              {
+                titleAr: 'التدخّل والمتابعة',
+                titleEn: 'Act & follow up',
+                bodyAr: 'توصيات قابلة للتنفيذ مباشرة، مع متابعة أثر كل تدخّل — حتى تعرف أن التحسّن فعلي.',
+                bodyEn: 'Directly actionable recommendations, with follow-up on the impact of every intervention — so you know the improvement is real.',
+              },
+            ].map((step, i) => (
+              <div
+                key={i}
+                className="relative bg-slate-50 border border-slate-200 rounded-2xl p-6 hover:border-brand-turquoise/30 hover:bg-white hover:shadow-md transition-all"
+              >
+                <div className="font-cairo font-black text-brand-turquoise/30 text-5xl leading-none mb-4">
+                  {String(i + 1).padStart(2, '0')}
+                </div>
+                <h3 className="font-cairo font-bold text-brand-navy text-base mb-2 leading-snug">
+                  {isRTL ? step.titleAr : step.titleEn}
+                </h3>
+                <p className="font-tajawal text-sm text-slate-600 leading-relaxed">
+                  {isRTL ? step.bodyAr : step.bodyEn}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ========== JOURNEY SECTION ========== */}
       <section
         ref={journeyRef}
         className="py-24 lg:py-32 bg-gradient-to-b from-background via-background to-background relative overflow-hidden"
-        id="how-it-works"
         data-testid="journey-section"
       >
         <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center center' }} />
@@ -1412,8 +1508,8 @@ export const LandingPage = () => {
               {
                 qAr: 'أخشى أن تكون التكلفة عالية على ميزانية المدرسة.',
                 qEn: 'I worry the cost is too high for our school budget.',
-                aAr: 'باقات نَسَّق مرنة وتُحسب لكل طالب شهريًا — تبدأ بسعر أقل من تكلفة موظف إداري واحد، وتشمل التحديثات والدعم بدون رسوم خفية. يمكنك إلغاء اشتراكك في أي وقت دون التزام.',
-                aEn: 'NASSAQ plans are flexible and priced per-student per-month — starting below the cost of a single admin staffer, including updates and support with no hidden fees. Cancel anytime, no commitment.',
+                aAr: 'باقات نَسَّق مرنة وتُحسب حسب عدد الطلاب وحجم المؤسسة، وتشمل التحديثات والدعم بدون رسوم إعداد خفية. تبدأ بباقة Pilot المجانية لتجربة المنصة على بياناتك الحقيقية، ويمكنك إلغاء اشتراكك في أي وقت دون التزام.',
+                aEn: 'NASSAQ plans are flexible and scale with your student count and institution size, including updates and support with no hidden setup fees. Start with the free Pilot plan to try NASSAQ on your real data, and cancel anytime — no commitment.',
               },
               {
                 qAr: 'موظفونا غير متخصصين تقنيًا. هل سيستطيعون استخدامها؟',
@@ -1461,10 +1557,185 @@ export const LandingPage = () => {
         </div>
       </section>
 
+      {/* ========== PRICING TIERS — merged from client demo ========== */}
+      <section
+        className="relative bg-white py-20 lg:py-28 border-t border-slate-100 scroll-mt-24"
+        data-testid="pricing-section"
+        id="plans"
+      >
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center max-w-2xl mx-auto mb-14">
+            <div className="inline-flex items-center gap-2 bg-brand-purple/10 border border-brand-purple/20 rounded-full ps-2 pe-4 py-1.5 mb-5">
+              <Award className="h-4 w-4 text-brand-purple" />
+              <span className="font-tajawal text-sm text-brand-purple">
+                {isRTL ? 'الباقات' : 'Plans'}
+              </span>
+            </div>
+            <h2 className="font-cairo font-bold text-brand-navy text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
+              {isRTL ? (
+                <>ابدأ بـ <span className="text-brand-turquoise">Pilot</span> — وطوّر مع نمو مدرستك.</>
+              ) : (
+                <>Start with a <span className="text-brand-turquoise">Pilot</span> — then scale as your school grows.</>
+              )}
+            </h2>
+            <p className="font-tajawal text-base text-slate-600 leading-relaxed">
+              {isRTL
+                ? 'ابدأ بتجربة مجانية محدودة، وانتقل إلى باقة المدارس متى احتجت — أو خصّص حلًا للمجموعات التعليمية.'
+                : 'Start with a limited free trial, move to the schools plan whenever you need — or customize a solution for education groups.'}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch">
+            {[
+              {
+                badge: null,
+                nameAr: 'Pilot',
+                nameEn: 'Pilot',
+                taglineAr: 'للمدارس الراغبة في التجربة',
+                taglineEn: 'For schools that want to try first',
+                priceAr: 'مجانًا',
+                priceEn: 'Free',
+                priceNoteAr: 'برنامج تجريبي محدود',
+                priceNoteEn: 'Limited pilot program',
+                metaAr: 'حتى ٣٠ طالب · معلم واحد · جاهز خلال ٢٤ ساعة',
+                metaEn: 'Up to 30 students · 1 teacher · ready in 24 hours',
+                ctaAr: 'اطلب Pilot',
+                ctaEn: 'Request a Pilot',
+                ctaLink: '/register',
+                features: [
+                  ['إدارة المستويات الأكاديمية', 'Academic levels management'],
+                  ['تسجيل الحضور', 'Attendance tracking'],
+                  ['السلوك والمشاركة', 'Behavior & participation'],
+                  ['تقارير بسيطة', 'Basic reports'],
+                ],
+                highlight: false,
+              },
+              {
+                badgeAr: 'الأكثر اختيارًا',
+                badgeEn: 'Most popular',
+                nameAr: 'للمدارس',
+                nameEn: 'Schools',
+                taglineAr: 'الحل الشامل للاكتشاف المبكر والتدخل الأكاديمي والسلوكي',
+                taglineEn: 'The full solution for early detection and academic & behavioral intervention',
+                priceAr: 'حسب عدد الطلاب',
+                priceEn: 'Per-student pricing',
+                priceNoteAr: 'وحجم المؤسسة',
+                priceNoteEn: 'and institution size',
+                metaAr: 'تسعير شفاف بدون رسوم إعداد · إلغاء في أي وقت',
+                metaEn: 'Transparent pricing, no setup fees · cancel anytime',
+                ctaAr: 'احجز عرضًا',
+                ctaEn: 'Book a demo',
+                ctaLink: '/register',
+                features: [
+                  ['كل ما في Pilot', 'Everything in Pilot'],
+                  ['توصيات يومية ذكية', 'Smart daily recommendations'],
+                  ['الاكتشاف المبكر للتعثر', 'Early detection of decline'],
+                  ['تدخّلات مقترحة لكل حالة', 'Suggested interventions for every case'],
+                  ['تقارير تنفيذية للإدارة', 'Executive reports for leadership'],
+                  ['متابعة أولياء الأمور', 'Parent follow-up'],
+                  ['قياس أثر التدخلات', 'Intervention impact tracking'],
+                ],
+                highlight: true,
+              },
+              {
+                badge: null,
+                nameAr: 'للمجموعات التعليمية',
+                nameEn: 'Education groups',
+                taglineAr: 'شبكات ومجموعات تعليمية وجهات حكومية',
+                taglineEn: 'Networks, education groups and government bodies',
+                priceAr: 'تسعير مخصّص',
+                priceEn: 'Custom pricing',
+                priceNoteAr: 'تواصل معنا',
+                priceNoteEn: 'Contact us',
+                metaAr: 'تخصيص كامل للشبكات التعليمية',
+                metaEn: 'Full customization for education networks',
+                ctaAr: 'تواصل مع المبيعات',
+                ctaEn: 'Contact sales',
+                ctaLink: '/register',
+                features: [
+                  ['كل ما في باقة المدارس', 'Everything in the Schools plan'],
+                  ['ربط أنظمة خارجية', 'External systems integration'],
+                  ['تسجيل دخول موحّد (SSO)', 'Single sign-on (SSO)'],
+                  ['لوحات مخصّصة بالكامل', 'Fully customized dashboards'],
+                  ['مدير نجاح مخصّص', 'Dedicated success manager'],
+                  ['تدريب وتشغيل كامل', 'End-to-end training & onboarding'],
+                ],
+                highlight: false,
+              },
+            ].map((tier, i) => (
+              <div
+                key={i}
+                aria-label={tier.highlight ? (isRTL ? 'الباقة الموصى بها' : 'Recommended plan') : undefined}
+                className={`relative flex flex-col rounded-2xl p-7 transition-all ${
+                  tier.highlight
+                    ? 'bg-brand-navy text-white border-2 border-brand-turquoise shadow-2xl scale-100 md:scale-[1.03]'
+                    : 'bg-slate-50 border border-slate-200 hover:border-brand-turquoise/30 hover:shadow-md'
+                }`}
+              >
+                {tier.badgeAr && (
+                  <div className="absolute -top-3 inset-x-0 flex justify-center">
+                    <span className="bg-brand-turquoise text-white font-cairo text-xs font-bold px-4 py-1 rounded-full shadow-md">
+                      {isRTL ? tier.badgeAr : tier.badgeEn}
+                    </span>
+                  </div>
+                )}
+
+                <h3 className={`font-cairo font-bold text-xl mb-1 ${tier.highlight ? 'text-white' : 'text-brand-navy'}`}>
+                  {isRTL ? tier.nameAr : tier.nameEn}
+                </h3>
+                <p className={`font-tajawal text-sm mb-6 ${tier.highlight ? 'text-white/70' : 'text-slate-500'}`}>
+                  {isRTL ? tier.taglineAr : tier.taglineEn}
+                </p>
+
+                <div className="mb-2">
+                  <span className={`font-cairo font-black text-3xl ${tier.highlight ? 'text-brand-turquoise' : 'text-brand-navy'}`}>
+                    {isRTL ? tier.priceAr : tier.priceEn}
+                  </span>
+                </div>
+                <p className={`font-tajawal text-xs mb-6 ${tier.highlight ? 'text-white/60' : 'text-slate-500'}`}>
+                  {isRTL ? tier.priceNoteAr : tier.priceNoteEn}
+                </p>
+
+                <Button
+                  asChild
+                  className={`w-full font-cairo rounded-lg h-11 mb-6 ${
+                    tier.highlight
+                      ? 'bg-brand-turquoise hover:bg-brand-turquoise-light text-white hover:text-white shadow-lg'
+                      : 'bg-brand-navy hover:bg-brand-navy-light text-white hover:text-white'
+                  }`}
+                >
+                  <Link to={tier.ctaLink}>{isRTL ? tier.ctaAr : tier.ctaEn}</Link>
+                </Button>
+
+                <ul className="space-y-3 flex-1">
+                  {tier.features.map(([ar, en], j) => (
+                    <li key={j} className="flex items-start gap-2.5">
+                      <CheckCircle2 className={`h-4 w-4 mt-0.5 shrink-0 ${tier.highlight ? 'text-brand-turquoise' : 'text-emerald-600'}`} />
+                      <span className={`font-tajawal text-sm leading-snug ${tier.highlight ? 'text-white/85' : 'text-slate-700'}`}>
+                        {isRTL ? ar : en}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+
+                <p className={`font-tajawal text-xs mt-6 pt-5 border-t ${tier.highlight ? 'text-white/60 border-white/10' : 'text-slate-400 border-slate-200'}`}>
+                  {isRTL ? tier.metaAr : tier.metaEn}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <p className="font-tajawal text-center text-slate-500 text-sm mt-10">
+            {isRTL
+              ? 'دعم عربي كامل · بدون رسوم إعداد · إلغاء في أي وقت'
+              : 'Full Arabic support · no setup fees · cancel anytime'}
+          </p>
+        </div>
+      </section>
+
       {/* ========== CALL TO ACTION ========== */}
       <section
         className="py-24 lg:py-32 relative overflow-hidden"
-        id="plans"
         data-testid="cta-section"
       >
         <div className="absolute inset-0 bg-brand-navy" />
