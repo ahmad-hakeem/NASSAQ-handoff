@@ -118,6 +118,13 @@ RATE_LIMITS = {
     # portal responsiveness for other users.  Per-child AI caching
     # (inside the handler) provides a second, complementary defence.
     "/api/parent-portal/child/": {"max": 20, "window": 60},
+    # SECURITY (task #446): the Hakim chat endpoint calls the live LLM on
+    # every request and was previously unthrottled — any authenticated user
+    # could script a tight loop and burn shared model quota.  20 requests
+    # per 60 s is generous for interactive chat (≈ 1 message every 3 s)
+    # while still bounding the blast radius of a single abusive account.
+    # This mirrors the `/api/parent-portal/child/` limit applied in #438.
+    "/api/hakim/chat": {"max": 20, "window": 60},
 }
 
 
