@@ -472,7 +472,7 @@ export const LandingPage = () => {
         className={`sticky top-0 z-50 transition-all duration-300 ${
           isScrolled
             ? 'bg-white/80 backdrop-blur-md border-b border-slate-100'
-            : 'bg-transparent border-b border-transparent'
+            : 'bg-gradient-to-b from-brand-navy/80 via-brand-navy/40 to-transparent border-b border-transparent backdrop-blur-[2px]'
         }`}
         data-testid="header"
       >
