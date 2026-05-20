@@ -1602,26 +1602,42 @@ export const LandingPage = () => {
 
       {/* ========== PRICING TIERS — merged from client demo ========== */}
       <section
-        className="relative bg-white py-20 lg:py-28 border-t border-slate-100 scroll-mt-24"
+        className="relative py-20 lg:py-28 scroll-mt-24 overflow-hidden"
         data-testid="pricing-section"
         id="plans"
       >
-        <div className="max-w-6xl mx-auto px-6">
+        {/* navy + nassaq texture — same treatment as hero, how-it-works, proof & CTA */}
+        <div className="absolute inset-0 bg-brand-navy" aria-hidden="true" />
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url('/nassaq-background.png')` }}
+          aria-hidden="true"
+        />
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center center' }}
+          aria-hidden="true"
+        />
+        <div className="absolute inset-0 bg-brand-navy/75" aria-hidden="true" />
+        <div className="absolute top-1/4 left-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/5 blur-3xl animate-pulse" style={{ animationDuration: '10s' }} aria-hidden="true" />
+        <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-brand-purple/5 blur-3xl animate-pulse" style={{ animationDelay: '2s', animationDuration: '8s' }} aria-hidden="true" />
+
+        <div className="relative max-w-6xl mx-auto px-6">
           <div className="text-center max-w-2xl mx-auto mb-14">
-            <div className="inline-flex items-center gap-2 bg-brand-purple/10 border border-brand-purple/20 rounded-full ps-2 pe-4 py-1.5 mb-5">
-              <Award className="h-4 w-4 text-brand-purple" />
-              <span className="font-tajawal text-sm text-brand-purple">
+            <div className="inline-flex items-center gap-2 bg-brand-purple/15 border border-brand-purple/30 rounded-full ps-2 pe-4 py-1.5 mb-5 backdrop-blur-sm">
+              <Award className="h-4 w-4 text-brand-purple-light" strokeWidth={1.5} aria-hidden="true" />
+              <span className="font-tajawal text-sm text-brand-purple-light">
                 {isRTL ? 'الباقات' : 'Plans'}
               </span>
             </div>
-            <h2 className="font-cairo font-bold text-brand-navy text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
+            <h2 className="font-cairo font-bold text-white text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
               {isRTL ? (
                 <>ابدأ بـ <span className="text-brand-turquoise">Pilot</span> — وطوّر مع نمو مدرستك.</>
               ) : (
                 <>Start with a <span className="text-brand-turquoise">Pilot</span> — then scale as your school grows.</>
               )}
             </h2>
-            <p className="font-tajawal text-base text-slate-600 leading-relaxed">
+            <p className="font-tajawal text-base text-white/70 leading-relaxed">
               {isRTL
                 ? 'ابدأ بتجربة مجانية محدودة، وانتقل إلى باقة المدارس متى احتجت — أو خصّص حلًا للمجموعات التعليمية.'
                 : 'Start with a limited free trial, move to the schools plan whenever you need — or customize a solution for education groups.'}
@@ -1709,33 +1725,33 @@ export const LandingPage = () => {
               <div
                 key={i}
                 aria-label={tier.highlight ? (isRTL ? 'الباقة الموصى بها' : 'Recommended plan') : undefined}
-                className={`relative flex flex-col rounded-2xl p-7 transition-all ${
+                className={`relative flex flex-col rounded-2xl p-7 backdrop-blur-sm transition-all duration-300 ${
                   tier.highlight
-                    ? 'bg-brand-navy text-white border-2 border-brand-turquoise shadow-2xl scale-100 md:scale-[1.03]'
-                    : 'bg-slate-50 border border-slate-200 hover:border-brand-turquoise/30 hover:shadow-md'
+                    ? 'bg-white/10 text-white border-2 border-brand-turquoise shadow-2xl shadow-brand-turquoise/20 scale-100 md:scale-[1.03]'
+                    : 'bg-white/5 border border-white/10 hover:bg-white/10 hover:border-brand-turquoise/40 hover:shadow-lg'
                 }`}
               >
                 {tier.badgeAr && (
                   <div className="absolute -top-3 inset-x-0 flex justify-center">
-                    <span className="bg-brand-turquoise text-white font-cairo text-xs font-bold px-4 py-1 rounded-full shadow-md">
+                    <span className="bg-gradient-to-r from-brand-turquoise to-cyan-500 text-white font-cairo text-xs font-bold px-4 py-1 rounded-full shadow-lg shadow-brand-turquoise/30">
                       {isRTL ? tier.badgeAr : tier.badgeEn}
                     </span>
                   </div>
                 )}
 
-                <h3 className={`font-cairo font-bold text-xl mb-1 ${tier.highlight ? 'text-white' : 'text-brand-navy'}`}>
+                <h3 className="font-cairo font-bold text-xl mb-1 text-white">
                   {isRTL ? tier.nameAr : tier.nameEn}
                 </h3>
-                <p className={`font-tajawal text-sm mb-6 ${tier.highlight ? 'text-white/70' : 'text-slate-500'}`}>
+                <p className="font-tajawal text-sm mb-6 text-white/65">
                   {isRTL ? tier.taglineAr : tier.taglineEn}
                 </p>
 
                 <div className="mb-2">
-                  <span className={`font-cairo font-black text-3xl ${tier.highlight ? 'text-brand-turquoise' : 'text-brand-navy'}`}>
+                  <span className={`font-cairo font-black text-3xl ${tier.highlight ? 'text-brand-turquoise' : 'text-white'}`}>
                     {isRTL ? tier.priceAr : tier.priceEn}
                   </span>
                 </div>
-                <p className={`font-tajawal text-xs mb-6 ${tier.highlight ? 'text-white/60' : 'text-slate-500'}`}>
+                <p className="font-tajawal text-xs mb-6 text-white/55">
                   {isRTL ? tier.priceNoteAr : tier.priceNoteEn}
                 </p>
 
@@ -1743,8 +1759,8 @@ export const LandingPage = () => {
                   asChild
                   className={`w-full font-cairo rounded-lg h-11 mb-6 ${
                     tier.highlight
-                      ? 'bg-brand-turquoise hover:bg-brand-turquoise-light text-white hover:text-white shadow-lg'
-                      : 'bg-brand-navy hover:bg-brand-navy-light text-white hover:text-white'
+                      ? 'bg-gradient-to-r from-brand-turquoise to-cyan-500 hover:from-brand-turquoise-light hover:to-cyan-400 text-white hover:text-white shadow-lg shadow-brand-turquoise/25'
+                      : 'bg-white/10 border border-white/20 hover:bg-white/15 hover:border-brand-turquoise/40 text-white hover:text-white backdrop-blur-sm'
                   }`}
                 >
                   <Link to={tier.ctaLink}>{isRTL ? tier.ctaAr : tier.ctaEn}</Link>
@@ -1753,22 +1769,22 @@ export const LandingPage = () => {
                 <ul className="space-y-3 flex-1">
                   {tier.features.map(([ar, en], j) => (
                     <li key={j} className="flex items-start gap-2.5">
-                      <CheckCircle2 className={`h-4 w-4 mt-0.5 shrink-0 ${tier.highlight ? 'text-brand-turquoise' : 'text-emerald-600'}`} />
-                      <span className={`font-tajawal text-sm leading-snug ${tier.highlight ? 'text-white/85' : 'text-slate-700'}`}>
+                      <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-brand-turquoise" strokeWidth={2} aria-hidden="true" />
+                      <span className="font-tajawal text-sm leading-snug text-white/85">
                         {isRTL ? ar : en}
                       </span>
                     </li>
                   ))}
                 </ul>
 
-                <p className={`font-tajawal text-xs mt-6 pt-5 border-t ${tier.highlight ? 'text-white/60 border-white/10' : 'text-slate-400 border-slate-200'}`}>
+                <p className="font-tajawal text-xs mt-6 pt-5 border-t text-white/55 border-white/10">
                   {isRTL ? tier.metaAr : tier.metaEn}
                 </p>
               </div>
             ))}
           </div>
 
-          <p className="font-tajawal text-center text-slate-500 text-sm mt-10">
+          <p className="font-tajawal text-center text-white/60 text-sm mt-10">
             {isRTL
               ? 'دعم عربي كامل · بدون رسوم إعداد · إلغاء في أي وقت'
               : 'Full Arabic support · no setup fees · cancel anytime'}
