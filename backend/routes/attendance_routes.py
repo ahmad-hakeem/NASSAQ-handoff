@@ -316,7 +316,7 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
             raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
 
         from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
-        allowed = await can_view_student(db.session, current_user, student_id)
+        allowed = await can_view_student(db.session, current_user, student_id, permission_type="attendance")
         require_can_view_student_sync_check(allowed)
 
         records = await engine.get_student_attendance(
@@ -428,7 +428,7 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
             raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
 
         from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
-        allowed = await can_view_student(db.session, current_user, student_id)
+        allowed = await can_view_student(db.session, current_user, student_id, permission_type="attendance")
         require_can_view_student_sync_check(allowed)
 
         summary = await engine.get_student_attendance_summary(
@@ -520,7 +520,7 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
             raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
 
         from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
-        allowed = await can_view_student(db.session, current_user, data.student_id)
+        allowed = await can_view_student(db.session, current_user, data.student_id, permission_type="attendance")
         require_can_view_student_sync_check(allowed)
 
         excuse = await engine.create_excuse(
@@ -569,7 +569,7 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
             raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
 
         from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
-        allowed = await can_view_student(db.session, current_user, student_id)
+        allowed = await can_view_student(db.session, current_user, student_id, permission_type="attendance")
         require_can_view_student_sync_check(allowed)
 
         excuses = await engine.get_student_excuses(

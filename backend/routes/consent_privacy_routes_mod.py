@@ -93,11 +93,18 @@ async def record_consent(
             raise HTTPException(status_code=403, detail="لا يمكنك تسجيل موافقة لمستخدم آخر")
         if target_student_id:
             if role == "parent":
-                parent = await _gd1(db.session, "parents", {"user_id": caller_id})
-                linked = parent and target_student_id in (parent.get("student_ids") or [])
+                _cp_parent = await _gd1(db.session, "parents", {"user_id": caller_id})
+                _cp_parent_id = _cp_parent.get("id") if _cp_parent else None
+                _cp_id_cond = (
+                    {"$or": [{"parent_user_id": caller_id}, {"parent_id": _cp_parent_id}]}
+                    if _cp_parent_id else {"parent_user_id": caller_id}
+                )
+                link = await _gd1(db.session, "guardian_links", {**_cp_id_cond, "student_id": target_student_id, "is_active": True})
+                linked = bool(link)
                 if not linked:
-                    link = await _gd1(db.session, "guardian_links", {"parent_user_id": caller_id, "student_id": target_student_id})
-                    linked = bool(link)
+                    inactive = await _gd1(db.session, "guardian_links", {**_cp_id_cond, "student_id": target_student_id, "is_active": False})
+                    if not inactive:
+                        linked = bool(_cp_parent and target_student_id in (_cp_parent.get("student_ids") or []))
                 if not linked:
                     raise HTTPException(status_code=403, detail="لا يمكنك تسجيل موافقة لطالب غير مرتبط بحسابك")
             else:
@@ -180,13 +187,20 @@ async def get_student_consents(
         caller_id = current_user["id"]
         if role != "parent":
             raise HTTPException(status_code=403, detail="غير مصرح — يُسمح فقط للوالدين أو الأوصياء والإداريين بعرض سجلات الموافقة")
-        # Verify the parent is a guardian of this specific student.
+        # Verify the parent is an *active* guardian of this specific student.
         from engines.sql_utils import gd_find_one as _gd1
-        parent = await _gd1(db.session, "parents", {"user_id": caller_id})
-        linked = parent and student_id in (parent.get("student_ids") or [])
+        _gsc_parent = await _gd1(db.session, "parents", {"user_id": caller_id})
+        _gsc_parent_id = _gsc_parent.get("id") if _gsc_parent else None
+        _gsc_id_cond = (
+            {"$or": [{"parent_user_id": caller_id}, {"parent_id": _gsc_parent_id}]}
+            if _gsc_parent_id else {"parent_user_id": caller_id}
+        )
+        link = await _gd1(db.session, "guardian_links", {**_gsc_id_cond, "student_id": student_id, "is_active": True})
+        linked = bool(link)
         if not linked:
-            link = await _gd1(db.session, "guardian_links", {"parent_user_id": caller_id, "student_id": student_id})
-            linked = bool(link)
+            inactive = await _gd1(db.session, "guardian_links", {**_gsc_id_cond, "student_id": student_id, "is_active": False})
+            if not inactive:
+                linked = bool(_gsc_parent and student_id in (_gsc_parent.get("student_ids") or []))
         if not linked:
             raise HTTPException(status_code=403, detail="لا يمكنك عرض سجلات موافقة طالب غير مرتبط بحسابك")
 
@@ -225,11 +239,18 @@ async def withdraw_consent(
         elif record_student:
             role = current_user.get("role", "")
             if role == "parent":
-                parent = await gd_find_one(db.session, "parents", {"user_id": caller_id})
-                linked = parent and record_student in (parent.get("student_ids") or [])
+                _wc_parent = await gd_find_one(db.session, "parents", {"user_id": caller_id})
+                _wc_parent_id = _wc_parent.get("id") if _wc_parent else None
+                _wc_id_cond = (
+                    {"$or": [{"parent_user_id": caller_id}, {"parent_id": _wc_parent_id}]}
+                    if _wc_parent_id else {"parent_user_id": caller_id}
+                )
+                link = await gd_find_one(db.session, "guardian_links", {**_wc_id_cond, "student_id": record_student, "is_active": True})
+                linked = bool(link)
                 if not linked:
-                    link = await gd_find_one(db.session, "guardian_links", {"parent_user_id": caller_id, "student_id": record_student})
-                    linked = bool(link)
+                    inactive = await gd_find_one(db.session, "guardian_links", {**_wc_id_cond, "student_id": record_student, "is_active": False})
+                    if not inactive:
+                        linked = bool(_wc_parent and record_student in (_wc_parent.get("student_ids") or []))
                 if not linked:
                     raise HTTPException(status_code=403, detail="لا يمكنك سحب موافقة لطالب غير مرتبط بحسابك")
             else:
@@ -351,11 +372,18 @@ async def request_data_deletion(
                 raise HTTPException(status_code=403, detail="لا يمكنك تقديم طلب حذف لمستخدم آخر")
         elif data.entity_type == "student":
             if role == "parent":
-                parent = await gd_find_one(db.session, "parents", {"user_id": caller_id})
-                linked = parent and data.entity_id in (parent.get("student_ids") or [])
+                _dr_parent = await gd_find_one(db.session, "parents", {"user_id": caller_id})
+                _dr_parent_id = _dr_parent.get("id") if _dr_parent else None
+                _dr_id_cond = (
+                    {"$or": [{"parent_user_id": caller_id}, {"parent_id": _dr_parent_id}]}
+                    if _dr_parent_id else {"parent_user_id": caller_id}
+                )
+                link = await gd_find_one(db.session, "guardian_links", {**_dr_id_cond, "student_id": data.entity_id, "is_active": True})
+                linked = bool(link)
                 if not linked:
-                    link = await gd_find_one(db.session, "guardian_links", {"parent_user_id": caller_id, "student_id": data.entity_id})
-                    linked = bool(link)
+                    inactive = await gd_find_one(db.session, "guardian_links", {**_dr_id_cond, "student_id": data.entity_id, "is_active": False})
+                    if not inactive:
+                        linked = bool(_dr_parent and data.entity_id in (_dr_parent.get("student_ids") or []))
                 if not linked:
                     raise HTTPException(status_code=403, detail="لا يمكنك تقديم طلب حذف لطالب غير مرتبط بحسابك")
             else:

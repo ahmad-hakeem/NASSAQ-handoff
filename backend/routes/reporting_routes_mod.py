@@ -472,7 +472,7 @@ async def report_student(
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
     from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
-    allowed = await can_view_student(db.session, current_user, student_id)
+    allowed = await can_view_student(db.session, current_user, student_id, permission_types=["grades", "attendance"])
     require_can_view_student_sync_check(allowed)
     return await reporting_engine.generate_student_report(student_id, school_id)
 
@@ -603,9 +603,11 @@ async def generate_report(
         # Teachers must be object-level authorized (assigned to the student's
         # class) before they can access detailed student reports such as
         # progress, attendance history, performance, and AI risk data.
+        # Task #439 — student reports include both grade and attendance data,
+        # so guardians must have both flags enabled.
         if role not in ADMIN_ROLES_SET:
             from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
-            allowed = await can_view_student(db.session, current_user, student_id)
+            allowed = await can_view_student(db.session, current_user, student_id, permission_types=["grades", "attendance"])
             require_can_view_student_sync_check(allowed)
 
     if report_type in ("class_report", "timetable"):
@@ -714,9 +716,11 @@ async def export_report_file(
         # Teachers must be object-level authorized (assigned to the student's
         # class) before they can export detailed student data such as
         # attendance history, performance scores, and AI risk data.
+        # Task #439 — student exports contain both grade and attendance data,
+        # so guardians must have both flags enabled.
         if role not in ADMIN_ROLES_SET:
             from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
-            allowed = await can_view_student(db.session, current_user, student_id)
+            allowed = await can_view_student(db.session, current_user, student_id, permission_types=["grades", "attendance"])
             require_can_view_student_sync_check(allowed)
 
     try:

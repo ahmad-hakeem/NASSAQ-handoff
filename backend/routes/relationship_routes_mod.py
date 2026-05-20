@@ -79,8 +79,11 @@ async def link_guardian_to_student(
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
     parent = None
+    resolved_parent_user_id = data.parent_user_id
     if data.parent_id:
         parent = await gd_find_one(db.session, "parents", {"id": data.parent_id, "school_id": school_id})
+        if parent and not resolved_parent_user_id:
+            resolved_parent_user_id = parent.get("user_id")
     elif data.parent_user_id:
         parent = await gd_find_one(db.session, "users", {"id": data.parent_user_id, "tenant_id": school_id, "role": "parent"})
 
@@ -109,7 +112,7 @@ async def link_guardian_to_student(
         "student_id": data.student_id,
         "student_name": student.get("full_name"),
         "parent_id": data.parent_id,
-        "parent_user_id": data.parent_user_id,
+        "parent_user_id": resolved_parent_user_id,
         "parent_ref": parent_ref,
         "parent_name": parent.get("full_name"),
         "relationship": data.relationship.value,

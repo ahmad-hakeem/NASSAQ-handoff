@@ -154,9 +154,29 @@ async def tenant_scoped_assert_one(
     return row
 
 
-async def can_view_student(session, current_user: dict, student_id: str) -> bool:
+async def can_view_student(
+    session,
+    current_user: dict,
+    student_id: str,
+    *,
+    permission_type: Optional[str] = None,
+    permission_types: Optional[list] = None,
+) -> bool:
     """Return True iff `current_user` is allowed to read student-scoped data
     (attendance, grades, behaviour, portfolio, participation) for `student_id`.
+
+    ``permission_type`` refines the check for parent/guardian callers.  Pass
+    ``"attendance"`` when guarding attendance data, ``"grades"`` when guarding
+    grade/report data, or leave as ``None`` for a general access check.  When
+    set, the corresponding per-guardian permission flag in ``guardian_links``
+    must also be ``True``; guardians that have been restricted to pickup-only
+    will be denied.
+
+    ``permission_types`` accepts a list of permission strings and requires ALL
+    of them to be satisfied.  Use this for composite endpoints that return
+    multiple data domains (e.g., ``["grades", "attendance"]`` for student
+    reports that include both).  Takes precedence over ``permission_type``
+    when both are supplied.
 
     Allowed:
       - Platform admins.
@@ -164,7 +184,10 @@ async def can_view_student(session, current_user: dict, student_id: str) -> bool
       - Independent teachers for any student inside their own workspace (they are
         the sole admin of their synthetic school).
       - The student themselves.
-      - The student's guardians via `parents.student_ids` or `guardian_links`.
+      - The student's *active* guardians via ``guardian_links`` (with
+        ``is_active=True``) whose permissions allow the requested data type, or
+        via the legacy ``parents.student_ids`` array when no ``guardian_links``
+        row has ever been created for this pair (backward compatibility only).
       - Teachers with a `teacher_assignments` or `class_sessions` assignment to
         the student's class.
 
@@ -207,15 +230,53 @@ async def can_view_student(session, current_user: dict, student_id: str) -> bool
         return current_user.get("student_id") == student_id or user_id == student_id
 
     if role == UserRole.PARENT.value:
-        parent = await gd_find_one(session, "parents", {"user_id": user_id})
-        if parent and student_id in (parent.get("student_ids") or []):
-            return True
+        # Resolve the caller's parent record once.  guardian_links may have been
+        # created with parent_user_id, with parent_id, or with both — so we
+        # match on either identifier to avoid bypasses via partially-populated rows.
+        parent_row = await gd_find_one(session, "parents", {"user_id": user_id})
+        parent_row_id = parent_row.get("id") if parent_row else None
+        _id_cond: dict = (
+            {"$or": [{"parent_user_id": user_id}, {"parent_id": parent_row_id}]}
+            if parent_row_id
+            else {"parent_user_id": user_id}
+        )
+
+        # Authoritative check: an active guardian_links row with the required
+        # permission flag(s) (when permission_type or permission_types is specified).
         link = await gd_find_one(
             session,
             "guardian_links",
-            {"parent_user_id": user_id, "student_id": student_id},
+            {**_id_cond, "student_id": student_id, "is_active": True},
         )
-        return bool(link)
+        if link:
+            _perm_map = {
+                "attendance": "can_view_attendance",
+                "grades": "can_view_grades",
+                "communicate": "can_communicate",
+            }
+            # Normalise to a list of types to check (permission_types takes precedence).
+            _types_to_check = permission_types if permission_types else ([permission_type] if permission_type else [])
+            _permissions = link.get("permissions") or {}
+            for _pt in _types_to_check:
+                _perm_key = _perm_map.get(_pt)
+                if _perm_key and not _permissions.get(_perm_key, True):
+                    _logger.debug(
+                        "Guardian %s denied %s access to student %s: %s=False",
+                        user_id, _pt, student_id, _perm_key,
+                    )
+                    return False
+            return True
+        # If an *inactive* guardian_links row exists the guardian was explicitly
+        # unlinked.  Deny access even if a stale parents.student_ids entry remains.
+        inactive_link = await gd_find_one(
+            session,
+            "guardian_links",
+            {**_id_cond, "student_id": student_id, "is_active": False},
+        )
+        if inactive_link:
+            return False
+        # Legacy fallback: no guardian_links row exists at all — trust the legacy array.
+        return bool(parent_row and student_id in (parent_row.get("student_ids") or []))
 
     if role == UserRole.TEACHER.value:
         teacher_id = current_user.get("teacher_id") or user_id

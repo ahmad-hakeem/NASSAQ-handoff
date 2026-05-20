@@ -519,14 +519,31 @@ async def get_student_dashboard(
     _sd_caller_role = current_user.get("role", "")
     _sd_caller_id = current_user.get("id")
     _SD_ADMIN_ROLES = {"platform_admin", "admin", "super_admin", "school_principal", "school_admin", "school_sub_admin"}
+    # Default: full access; overridden below for restricted guardian callers.
+    _sd_can_view_attendance = True
+    _sd_can_view_grades = True
     if _sd_caller_role not in _SD_ADMIN_ROLES:
         if _sd_caller_role == "student":
             if current_user.get("student_id") != student_id and _sd_caller_id != student_id:
                 raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات طالب آخر")
         elif _sd_caller_role == "parent":
             _sd_parent = await gd_find_one(db.session, "parents", {"user_id": _sd_caller_id})
-            if not _sd_parent or student_id not in (_sd_parent.get("student_ids") or []):
-                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات هذا الطالب")
+            _sd_parent_row_id = _sd_parent.get("id") if _sd_parent else None
+            _sd_id_cond = (
+                {"$or": [{"parent_user_id": _sd_caller_id}, {"parent_id": _sd_parent_row_id}]}
+                if _sd_parent_row_id else {"parent_user_id": _sd_caller_id}
+            )
+            _sd_link = await gd_find_one(db.session, "guardian_links", {**_sd_id_cond, "student_id": student_id, "is_active": True})
+            if not _sd_link:
+                _sd_inactive = await gd_find_one(db.session, "guardian_links", {**_sd_id_cond, "student_id": student_id, "is_active": False})
+                if _sd_inactive:
+                    raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات هذا الطالب")
+                if not _sd_parent or student_id not in (_sd_parent.get("student_ids") or []):
+                    raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات هذا الطالب")
+            # Capture per-guardian permission flags for response filtering below.
+            _sd_link_perms = (_sd_link.get("permissions") or {}) if _sd_link else {}
+            _sd_can_view_attendance = _sd_link_perms.get("can_view_attendance", True)
+            _sd_can_view_grades = _sd_link_perms.get("can_view_grades", True)
         elif _sd_caller_role == "teacher":
             _sd_teacher_id = current_user.get("teacher_id") or _sd_caller_id
             _sd_class_id = student.get("class_id")
@@ -590,36 +607,41 @@ async def get_student_dashboard(
         
         today_lessons.sort(key=lambda x: x.get("period", 0))
     
-    # Get attendance summary
-    attendance_records = await gd_find(db.session, "attendance", {
-        "student_id": student_id,
-        "school_id": school_id
-    }, limit=200)
+    # Get attendance summary — only when the caller is permitted to see it
+    total_days = 0
+    present_days = 0
+    attendance_rate = None
+    if _sd_can_view_attendance:
+        attendance_records = await gd_find(db.session, "attendance", {
+            "student_id": student_id,
+            "school_id": school_id
+        }, limit=200)
+        total_days = len(attendance_records)
+        present_days = len([a for a in attendance_records if a.get("status") == "present"])
+        attendance_rate = round((present_days / total_days * 100) if total_days > 0 else 100, 1)
     
-    total_days = len(attendance_records)
-    present_days = len([a for a in attendance_records if a.get("status") == "present"])
-    attendance_rate = round((present_days / total_days * 100) if total_days > 0 else 100, 1)
-    
+    # Get grade data — only when the caller is permitted to see it
     recent_grades = []
-    submissions = await gd_find(db.session, "assessment_submissions", {
-        "student_id": student_id
-    }, order_by="submitted_at", desc_order=True, limit=10)
-    for sub in submissions:
-        assessment = await gd_find_one(db.session, "assessments", {"id": sub.get("assessment_id")})
-        subject_name = ""
-        if assessment and assessment.get("subject_id"):
-            subj = await gd_find_one(db.session, "subjects", {"id": assessment["subject_id"]})
-            subject_name = subj.get("name_ar", subj.get("name", "")) if subj else assessment.get("title", "")
-        elif assessment:
-            subject_name = assessment.get("title", "")
-        grade_val = sub.get("grade", sub.get("score", 0))
-        recent_grades.append({
-            "subject": subject_name or "غير محدد",
-            "grade": grade_val,
-            "date": sub.get("submitted_at", sub.get("graded_at", datetime.now().strftime("%Y-%m-%d")))
-        })
-    
-    average_grade = sum(g.get("grade", 0) for g in recent_grades) / len(recent_grades) if recent_grades else 0
+    average_grade = 0
+    if _sd_can_view_grades:
+        submissions = await gd_find(db.session, "assessment_submissions", {
+            "student_id": student_id
+        }, order_by="submitted_at", desc_order=True, limit=10)
+        for sub in submissions:
+            assessment = await gd_find_one(db.session, "assessments", {"id": sub.get("assessment_id")})
+            subject_name = ""
+            if assessment and assessment.get("subject_id"):
+                subj = await gd_find_one(db.session, "subjects", {"id": assessment["subject_id"]})
+                subject_name = subj.get("name_ar", subj.get("name", "")) if subj else assessment.get("title", "")
+            elif assessment:
+                subject_name = assessment.get("title", "")
+            grade_val = sub.get("grade", sub.get("score", 0))
+            recent_grades.append({
+                "subject": subject_name or "غير محدد",
+                "grade": grade_val,
+                "date": sub.get("submitted_at", sub.get("graded_at", datetime.now().strftime("%Y-%m-%d")))
+            })
+        average_grade = sum(g.get("grade", 0) for g in recent_grades) / len(recent_grades) if recent_grades else 0
     
     # Get notifications
     notifications = await gd_find(db.session, "notifications", {
@@ -685,44 +707,84 @@ async def get_parent_dashboard(
         if caller_id != parent_user_id and caller_id != parent_id:
             raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات ولي أمر آخر")
     
-    # Get children
-    student_ids = parent.get("student_ids", [])
+    # Get children — use active guardian_links as the authoritative source.
+    # Fall back to parents.student_ids only for entries that have no
+    # guardian_links record at all (legacy links created before the guardian_links
+    # table was introduced).  Stale entries whose guardian_links row was
+    # soft-deleted (is_active=False) are excluded so unlinked guardians lose access.
+    parent_user_id_for_links = parent.get("user_id")
+    _pd_parent_row_id = parent.get("id")
+    _pd_id_cond: dict
+    if parent_user_id_for_links and _pd_parent_row_id:
+        _pd_id_cond = {"$or": [{"parent_user_id": parent_user_id_for_links}, {"parent_id": _pd_parent_row_id}]}
+    elif parent_user_id_for_links:
+        _pd_id_cond = {"parent_user_id": parent_user_id_for_links}
+    else:
+        _pd_id_cond = {"parent_id": _pd_parent_row_id}
+    active_links = await gd_find(db.session, "guardian_links", {**_pd_id_cond, "is_active": True}) if (_pd_parent_row_id or parent_user_id_for_links) else []
+    active_student_ids = {lnk["student_id"] for lnk in active_links if lnk.get("student_id")}
+    # Build per-student permission map from active links (True when no link exists = legacy full access)
+    _link_perms_map = {lnk["student_id"]: (lnk.get("permissions") or {}) for lnk in active_links if lnk.get("student_id")}
+
+    legacy_student_ids = parent.get("student_ids") or []
+    for _leg_sid in legacy_student_ids:
+        if _leg_sid not in active_student_ids:
+            any_link = await gd_find_one(db.session, "guardian_links", {**_pd_id_cond, "student_id": _leg_sid})
+            if not any_link:
+                active_student_ids.add(_leg_sid)
+
+    student_ids = list(active_student_ids)
     children_data = []
-    
+
     for student_id in student_ids:
         student = await gd_find_one(db.session, "students", {"id": student_id})
         if not student:
             continue
+
+        # Resolve per-guardian permission flags for this child.
+        # Legacy-linked students (no guardian_links row) receive full access.
+        _child_perms = _link_perms_map.get(student_id)
+        _can_view_attendance = _child_perms.get("can_view_attendance", True) if _child_perms is not None else True
+        _can_view_grades = _child_perms.get("can_view_grades", True) if _child_perms is not None else True
         
         class_info = await gd_find_one(db.session, "classes", {"id": student.get("class_id")})
         
-        # Get attendance summary
-        attendance_records = await gd_find(db.session, "attendance", {
-            "student_id": student_id
-        }, limit=200)
+        # Get attendance summary — only when this guardian is permitted to see it
+        total_days = 0
+        present_days = 0
+        absent_days = 0
+        late_days = 0
+        attendance_rate = None
+        if _can_view_attendance:
+            attendance_records = await gd_find(db.session, "attendance", {
+                "student_id": student_id
+            }, limit=200)
+            total_days = len(attendance_records)
+            present_days = len([a for a in attendance_records if a.get("status") == "present"])
+            absent_days = len([a for a in attendance_records if a.get("status") == "absent"])
+            late_days = len([a for a in attendance_records if a.get("status") == "late"])
+            attendance_rate = round((present_days / total_days * 100) if total_days > 0 else 100, 1)
         
-        total_days = len(attendance_records)
-        present_days = len([a for a in attendance_records if a.get("status") == "present"])
-        absent_days = len([a for a in attendance_records if a.get("status") == "absent"])
-        late_days = len([a for a in attendance_records if a.get("status") == "late"])
-        attendance_rate = round((present_days / total_days * 100) if total_days > 0 else 100, 1)
-        
-        grade_records = await gd_find(db.session, "grades", {
-            "student_id": student_id
-        }, order_by="recorded_at", desc_order=True, limit=10)
-        recent_grades = [
-            {
-                "subject": g.get("subject_name", "غير محدد"),
-                "grade": g.get("score", 0),
-                "date": g.get("recorded_at", ""),
-            }
-            for g in grade_records
-        ]
-        average_grade = (
-            sum(g.get("grade", 0) for g in recent_grades) / len(recent_grades)
-            if recent_grades
-            else 0
-        )
+        # Get grade records — only when this guardian is permitted to see them
+        recent_grades = []
+        average_grade = 0
+        if _can_view_grades:
+            grade_records = await gd_find(db.session, "grades", {
+                "student_id": student_id
+            }, order_by="recorded_at", desc_order=True, limit=10)
+            recent_grades = [
+                {
+                    "subject": g.get("subject_name", "غير محدد"),
+                    "grade": g.get("score", 0),
+                    "date": g.get("recorded_at", ""),
+                }
+                for g in grade_records
+            ]
+            average_grade = (
+                sum(g.get("grade", 0) for g in recent_grades) / len(recent_grades)
+                if recent_grades
+                else 0
+            )
 
         behaviour_records = await gd_find(db.session, "behaviour_records", {
             "student_id": student_id
@@ -1198,8 +1260,22 @@ async def get_student_grades(
                 raise HTTPException(status_code=403, detail="لا يمكنك الوصول لدرجات طالب آخر")
         elif _stg_role == "parent":
             _stg_parent = await gd_find_one(db.session, "parents", {"user_id": _stg_caller_id})
-            if not _stg_parent or student_id not in (_stg_parent.get("student_ids") or []):
-                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لدرجات هذا الطالب")
+            _stg_parent_row_id = _stg_parent.get("id") if _stg_parent else None
+            _stg_id_cond = (
+                {"$or": [{"parent_user_id": _stg_caller_id}, {"parent_id": _stg_parent_row_id}]}
+                if _stg_parent_row_id else {"parent_user_id": _stg_caller_id}
+            )
+            _stg_link = await gd_find_one(db.session, "guardian_links", {**_stg_id_cond, "student_id": student_id, "is_active": True})
+            if _stg_link:
+                _stg_perms = _stg_link.get("permissions") or {}
+                if not _stg_perms.get("can_view_grades", True):
+                    raise HTTPException(status_code=403, detail="لا يمكنك الوصول لدرجات هذا الطالب")
+            else:
+                _stg_inactive = await gd_find_one(db.session, "guardian_links", {**_stg_id_cond, "student_id": student_id, "is_active": False})
+                if _stg_inactive:
+                    raise HTTPException(status_code=403, detail="لا يمكنك الوصول لدرجات هذا الطالب")
+                if not _stg_parent or student_id not in (_stg_parent.get("student_ids") or []):
+                    raise HTTPException(status_code=403, detail="لا يمكنك الوصول لدرجات هذا الطالب")
         elif _stg_role == "teacher":
             _stg_teacher_id = current_user.get("teacher_id") or _stg_caller_id
             _stg_assign = await gd_find_one(db.session, "teacher_assignments", {"teacher_id": _stg_teacher_id, "class_id": _stg_student.get("class_id")})
@@ -1243,8 +1319,22 @@ async def get_student_attendance_stats(
                 raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات حضور طالب آخر")
         elif _sas_role == "parent":
             _sas_parent = await gd_find_one(db.session, "parents", {"user_id": _sas_caller_id})
-            if not _sas_parent or student_id not in (_sas_parent.get("student_ids") or []):
-                raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات حضور هذا الطالب")
+            _sas_parent_row_id = _sas_parent.get("id") if _sas_parent else None
+            _sas_id_cond = (
+                {"$or": [{"parent_user_id": _sas_caller_id}, {"parent_id": _sas_parent_row_id}]}
+                if _sas_parent_row_id else {"parent_user_id": _sas_caller_id}
+            )
+            _sas_link = await gd_find_one(db.session, "guardian_links", {**_sas_id_cond, "student_id": student_id, "is_active": True})
+            if _sas_link:
+                _sas_perms = _sas_link.get("permissions") or {}
+                if not _sas_perms.get("can_view_attendance", True):
+                    raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات حضور هذا الطالب")
+            else:
+                _sas_inactive = await gd_find_one(db.session, "guardian_links", {**_sas_id_cond, "student_id": student_id, "is_active": False})
+                if _sas_inactive:
+                    raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات حضور هذا الطالب")
+                if not _sas_parent or student_id not in (_sas_parent.get("student_ids") or []):
+                    raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات حضور هذا الطالب")
         elif _sas_role == "teacher":
             _sas_teacher_id = current_user.get("teacher_id") or _sas_caller_id
             _sas_assign = await gd_find_one(db.session, "teacher_assignments", {"teacher_id": _sas_teacher_id, "class_id": _sas_student.get("class_id")})
