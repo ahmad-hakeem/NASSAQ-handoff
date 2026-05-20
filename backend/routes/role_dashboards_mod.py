@@ -2652,23 +2652,133 @@ async def broadcast_session_note_to_parents(
         if s:
             students_map[sid] = s.get("full_name") or s.get("name") or ""
 
-    # 4) for each student, locate parents and create one notification per parent
+    # 4) for each student, locate parent USER ids (notifications.user_id is
+    # a users.id, not a parents.id). Three sources are merged, all bulk
+    # and tenant-scoped to avoid N+1:
+    #   (a) user_relationships (parent_of / guardian_of)
+    #   (b) students.parent_id -> parents.id -> users (role=parent,
+    #       users.parent_id = parents.id)   ← canonical school-student
+    #       linkage missed by the old single-source lookup, which was
+    #       the source of the false-positive "no parent linked" warning.
+    #   (c) guardian_links (active links only) — parent_user_id when
+    #       present, else resolved via parent_id -> users bridge.
+    student_to_parent_user_ids: Dict[str, set] = {sid: set() for sid in valid_ids}
+
+    # (a) user_relationships — bulk
+    try:
+        rels = await gd_find(
+            db.session,
+            "user_relationships",
+            {
+                "to_entity_type": "student",
+                "status": "active",
+                "tenant_id": tenant_id,
+                "to_entity_id": {"$in": list(valid_ids)},
+                "relationship_type": {"$in": ["parent_of", "guardian_of"]},
+            },
+            limit=2000,
+        )
+        for r in rels:
+            sid = r.get("to_entity_id")
+            pid = r.get("from_entity_id")
+            if sid in student_to_parent_user_ids and pid:
+                student_to_parent_user_ids[sid].add(pid)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Bulk user_relationships lookup failed: %s", e)
+
+    # (b) students.parent_id -> parents.id -> users.parent_id
+    try:
+        student_rows = await gd_find(
+            db.session,
+            "students",
+            {"id": {"$in": list(valid_ids)}, "tenant_id": tenant_id},
+            limit=2000,
+        )
+        parent_record_to_students: Dict[str, list] = {}
+        for s in student_rows:
+            prid = s.get("parent_id")
+            if prid:
+                parent_record_to_students.setdefault(prid, []).append(s.get("id"))
+        if parent_record_to_students:
+            parent_user_rows = await gd_find(
+                db.session,
+                "users",
+                {
+                    "parent_id": {"$in": list(parent_record_to_students.keys())},
+                    "role": "parent",
+                    "tenant_id": tenant_id,
+                },
+                limit=2000,
+            )
+            for u in parent_user_rows:
+                uid = u.get("id")
+                prid = u.get("parent_id")
+                if not (uid and prid):
+                    continue
+                for sid in parent_record_to_students.get(prid, []):
+                    if sid in student_to_parent_user_ids:
+                        student_to_parent_user_ids[sid].add(uid)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("students.parent_id parent bridge lookup failed: %s", e)
+
+    # (c) guardian_links — bulk, active only
+    try:
+        glinks = await gd_find(
+            db.session,
+            "guardian_links",
+            {
+                "tenant_id": tenant_id,
+                "student_id": {"$in": list(valid_ids)},
+                "is_active": True,
+            },
+            limit=2000,
+        )
+        unresolved_parent_record_ids: set = set()
+        link_pending: list = []
+        for ln in glinks:
+            sid = ln.get("student_id")
+            if sid not in student_to_parent_user_ids:
+                continue
+            puid = ln.get("parent_user_id")
+            if puid:
+                student_to_parent_user_ids[sid].add(puid)
+                continue
+            prid = ln.get("parent_id")
+            if prid:
+                unresolved_parent_record_ids.add(prid)
+                link_pending.append((sid, prid))
+        if unresolved_parent_record_ids:
+            bridge_rows = await gd_find(
+                db.session,
+                "users",
+                {
+                    "parent_id": {"$in": list(unresolved_parent_record_ids)},
+                    "role": "parent",
+                    "tenant_id": tenant_id,
+                },
+                limit=2000,
+            )
+            prid_to_uid: Dict[str, str] = {}
+            for u in bridge_rows:
+                if u.get("parent_id") and u.get("id"):
+                    prid_to_uid[u["parent_id"]] = u["id"]
+            for sid, prid in link_pending:
+                uid = prid_to_uid.get(prid)
+                if uid:
+                    student_to_parent_user_ids[sid].add(uid)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("guardian_links bulk lookup failed: %s", e)
+
     sent = 0
     failed = 0
     students_with_parents = 0
     seen_pairs: set = set()
-    rel_filter = {"to_entity_type": "student", "status": "active", "tenant_id": tenant_id}
 
     for sid in valid_ids:
-        try:
-            rels = await gd_find(db.session, "user_relationships", {**rel_filter, "to_entity_id": sid}, limit=10)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("Relationship lookup failed for student %s: %s", sid, e)
-            continue
-        parent_ids = [r.get("from_entity_id") for r in rels if r.get("relationship_type") in ("parent_of", "guardian_of") and r.get("from_entity_id")]
-        if parent_ids:
+        parent_user_ids = student_to_parent_user_ids.get(sid) or set()
+        if parent_user_ids:
             students_with_parents += 1
-        for pid in parent_ids:
+        for pid in parent_user_ids:
             key = (pid, sid)
             if key in seen_pairs:
                 continue
