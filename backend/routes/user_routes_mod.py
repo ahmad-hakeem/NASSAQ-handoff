@@ -579,12 +579,14 @@ async def reset_user_password(
 
     _assert_role_ceiling(current_user.get("role", ""), user.get("role", ""))
 
+    now_iso = datetime.now(timezone.utc).isoformat()
     await gd_update_one(db.session, "users", {"id": user_id}, {
             "password_hash": hash_password(data.new_password),
             "must_change_password": True,
-            "password_reset_at": datetime.now(timezone.utc).isoformat(),
+            "password_reset_at": now_iso,
             "password_reset_by": current_user["id"],
-            "updated_at": datetime.now(timezone.utc).isoformat()
+            "last_password_change": now_iso,
+            "updated_at": now_iso,
         })
     
     # Audit log

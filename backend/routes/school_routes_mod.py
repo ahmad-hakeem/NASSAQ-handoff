@@ -657,6 +657,7 @@ async def manage_school_credentials(
         }
         if raw_password:
             update_fields["password_hash"] = hash_password(raw_password)
+            update_fields["last_password_change"] = now
         await gd_update_one(db.session, "users", {"id": existing_principal["id"]}, update_fields)
         principal_id = existing_principal["id"]
     else:

@@ -12,7 +12,8 @@ import secrets
 import string
 
 from dependencies import (
-    db, get_current_user, require_roles, UserRole, logger, hash_password
+    db, get_current_user, require_roles, UserRole, logger, hash_password,
+    require_recent_mfa,
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_unset
 
@@ -350,7 +351,8 @@ async def update_teacher_professional_info(
 async def update_teacher_credentials(
     teacher_id: str,
     data: UpdateCredentialsRequest,
-    current_user: dict = Depends(require_roles(ADMIN_ROLES))
+    current_user: dict = Depends(require_roles(ADMIN_ROLES)),
+    _mfa: dict = Depends(require_recent_mfa()),
 ):
     tenant_id = current_user.get("tenant_id")
 
@@ -394,6 +396,7 @@ async def update_teacher_credentials(
 
     if data.new_password:
         updates["password_hash"] = hash_password(data.new_password)
+        updates["last_password_change"] = datetime.now(timezone.utc).isoformat()
         changes["password"] = {"changed": True}
 
     if not updates:
