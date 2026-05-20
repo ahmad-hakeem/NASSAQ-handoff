@@ -1796,6 +1796,8 @@
   "messageTypeLabel": "نوع الرسالة",
   "messageTypeNote": "ملاحظة",
   "messageTypeSuggestion": "اقتراح",
+  "selectTeacherRecipient": "اختر المعلم المستلم",
+  "noTeacherRecipientsAvailable": "لا يوجد معلمون متاحون للمراسلة حالياً",
   "messaging": "المراسلة",
   "metrics": "المؤشرات",
   "middle": "متوسط",

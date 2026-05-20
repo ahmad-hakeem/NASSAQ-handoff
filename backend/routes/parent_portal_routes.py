@@ -2469,6 +2469,117 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             }
         }
 
+    # ============= MESSAGE RECIPIENTS (teachers of parent's children) =============
+
+    async def _resolve_parent_teacher_recipients(current_user: dict) -> list:
+        """Resolve the set of teacher *user* accounts that the authenticated
+        parent is allowed to message. Walks parent → children → class
+        timetable_sessions → teachers.user_id → users(role=teacher,
+        tenant_id=school_id, is_active=true). Returns a list of dicts:
+        {recipient_user_id, teacher_name, child_labels: [..]}. Never includes
+        cross-tenant users; on resolution ambiguity, omits the entry."""
+        school_id = current_user.get("tenant_id")
+        if not school_id:
+            return []
+        children = await _find_children(current_user, current_user.get("phone"), school_id)
+        # Keep only children in this tenant and build class -> child label map
+        class_to_children: dict = {}
+        for child in children:
+            if child.get("school_id") and child.get("school_id") != school_id:
+                continue
+            cid = child.get("class_id")
+            if not cid:
+                continue
+            label = child.get("full_name") or child.get("name") or ""
+            class_to_children.setdefault(cid, []).append(label)
+        if not class_to_children:
+            return []
+        class_ids = list(class_to_children.keys())
+        sessions = await gd_find(db.session, "timetable_sessions",
+                                 {"class_id": {"$in": class_ids}}, limit=2000)
+        teacher_to_classes: dict = {}
+        for s in sessions:
+            tid = s.get("teacher_id")
+            cid = s.get("class_id")
+            if not tid or not cid:
+                continue
+            teacher_to_classes.setdefault(tid, set()).add(cid)
+        if not teacher_to_classes:
+            return []
+        teacher_ids = list(teacher_to_classes.keys())
+        # Bulk-resolve teachers -> user_id in this tenant
+        teacher_rows = await gd_find(db.session, "teachers",
+                                     {"id": {"$in": teacher_ids},
+                                      "school_id": school_id,
+                                      "is_active": True},
+                                     limit=1000)
+        user_ids = [t.get("user_id") for t in teacher_rows if t.get("user_id")]
+        if not user_ids:
+            return []
+        users = await gd_find(db.session, "users",
+                              {"id": {"$in": user_ids},
+                               "tenant_id": school_id,
+                               "role": "teacher",
+                               "is_active": True},
+                              limit=1000)
+        users_by_id = {u["id"]: u for u in users if u.get("id")}
+        seen: set = set()
+        recipients = []
+        for t in teacher_rows:
+            uid = t.get("user_id")
+            if not uid or uid in seen:
+                continue
+            user = users_by_id.get(uid)
+            if not user:
+                continue
+            child_labels = []
+            for cid in teacher_to_classes.get(t.get("id"), set()):
+                child_labels.extend(class_to_children.get(cid, []))
+            # Dedupe child labels preserving order
+            seen_labels = set()
+            uniq_labels = []
+            for lbl in child_labels:
+                if lbl and lbl not in seen_labels:
+                    seen_labels.add(lbl)
+                    uniq_labels.append(lbl)
+            recipients.append({
+                "recipient_user_id": uid,
+                "teacher_name": user.get("full_name") or t.get("full_name") or "",
+                "child_labels": uniq_labels,
+            })
+            seen.add(uid)
+        recipients.sort(key=lambda r: r.get("teacher_name") or "")
+        return recipients
+
+    @router.get("/message-recipients/teachers")
+    async def list_message_recipient_teachers(
+        current_user: dict = Depends(require_roles([UserRole.PARENT]))
+    ):
+        """Return the teachers a parent is allowed to message (teachers of
+        the parent's children's classes, in the same tenant)."""
+        teachers = await _resolve_parent_teacher_recipients(current_user)
+        return {"teachers": teachers}
+
+    async def _resolve_admin_recipient(school_id: str) -> Optional[dict]:
+        """Deterministically resolve the principal user for a tenant. Prefers
+        the earliest-created active school_principal; falls back to the
+        earliest-created active school_admin if no principal exists."""
+        if not school_id:
+            return None
+        principals = await gd_find(
+            db.session, "users",
+            {"tenant_id": school_id, "role": "school_principal", "is_active": True},
+            order_by="created_at", desc_order=False, limit=1,
+        )
+        if principals:
+            return principals[0]
+        admins = await gd_find(
+            db.session, "users",
+            {"tenant_id": school_id, "role": "school_admin", "is_active": True},
+            order_by="created_at", desc_order=False, limit=1,
+        )
+        return admins[0] if admins else None
+
     # ============= QUICK MESSAGE (Communication Center) =============
 
     @router.post("/quick-message")
@@ -2502,55 +2613,71 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
         receiver = None
         if recipient_type == "admin":
-            receiver = await gd_find_one(db.session, "users", {
-                "tenant_id": school_id,
-                "role": {"$in": ["school_admin", "school_principal"]}
-            })
+            receiver = await _resolve_admin_recipient(school_id)
+            if not receiver:
+                raise HTTPException(
+                    status_code=503,
+                    detail="لا يوجد مسؤول متاح لاستلام الرسالة حالياً"
+                )
         elif recipient_type == "teacher":
-            children = await _find_children(current_user, current_user.get("phone"), school_id)
-            if children:
-                child = children[0]
-                if child.get("class_id"):
-                    session = await gd_find_one(db.session, "timetable_sessions", {
-                        "class_id": child.get("class_id")
-                    })
-                    if session and session.get("teacher_id"):
-                        receiver = await gd_find_one(db.session, "teachers", {"id": session.get("teacher_id")})
-                        if not receiver:
-                            receiver = await gd_find_one(db.session, "users", {"id": session.get("teacher_id")})
+            requested_uid = (data.get("recipient_user_id") or "").strip()
+            if not requested_uid:
+                raise HTTPException(status_code=400, detail="المعلم المحدد غير متاح للمراسلة")
+            allowed = await _resolve_parent_teacher_recipients(current_user)
+            allowed_ids = {r["recipient_user_id"] for r in allowed}
+            if requested_uid not in allowed_ids:
+                raise HTTPException(status_code=400, detail="المعلم المحدد غير متاح للمراسلة")
+            receiver = await gd_find_one(db.session, "users", {
+                "id": requested_uid,
+                "tenant_id": school_id,
+                "role": "teacher",
+                "is_active": True,
+            })
+            if not receiver:
+                raise HTTPException(status_code=400, detail="المعلم المحدد غير متاح للمراسلة")
+        else:
+            raise HTTPException(status_code=400, detail="نوع المستلم غير صالح")
 
-        receiver_id = receiver.get("id", "") if receiver else ""
-        receiver_name = (receiver.get("full_name") or receiver.get("name", "")) if receiver else "الإدارة"
+        receiver_id = receiver.get("id", "")
+        receiver_name = receiver.get("full_name") or receiver.get("name", "") or ""
 
         type_labels = {"note": "ملاحظة", "suggestion": "اقتراح", "inquiry": "استفسار"}
         subject = type_labels.get(message_type, "رسالة") + f" من ولي الأمر {current_user.get('full_name', '')}"
 
+        now_iso = datetime.now(timezone.utc).isoformat()
         message = {
             "id": str(uuid.uuid4()),
             "subject": subject,
+            "body": content,
             "content": content,
             "sender_id": parent_id,
             "sender_name": current_user.get("full_name"),
             "sender_role": "parent",
+            "recipient_id": receiver_id,
             "receiver_id": receiver_id,
             "receiver_name": receiver_name,
             "message_type": message_type,
+            "is_read": False,
             "read_status": False,
             "status": "sent",
             "school_id": school_id,
-            "created_at": datetime.now(timezone.utc).isoformat()
+            "created_at": now_iso,
         }
         await gd_insert(db.session, "messages", message)
 
         if receiver_id:
             await gd_insert(db.session, "notifications", {
                 "id": str(uuid.uuid4()),
+                "user_id": receiver_id,
                 "recipient_id": receiver_id,
+                "tenant_id": school_id,
+                "type": "message",
                 "notification_type": "message",
                 "title": f"رسالة جديدة من ولي أمر: {current_user.get('full_name')}",
                 "message": subject,
+                "is_read": False,
                 "read_status": False,
-                "created_at": datetime.now(timezone.utc).isoformat()
+                "created_at": now_iso,
             })
 
         return {"success": True, "message": "تم استلام رسالتكم، رضاكم محل اهتمامنا"}

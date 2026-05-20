@@ -6,6 +6,7 @@ import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Skeleton } from '../../components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { NotificationsPage } from '../NotificationsPage';
 import ParentAbsenceExcusePage from './ParentAbsenceExcusePage';
@@ -42,6 +43,8 @@ const ParentCommunicationCenter = () => {
   const [msgText, setMsgText] = useState('');
   const [sending, setSending] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [teacherRecipients, setTeacherRecipients] = useState([]);
+  const [selectedTeacherUserId, setSelectedTeacherUserId] = useState('');
 
   const TABS = [
     { id: 'send', label: t('sendMessage'), icon: Send },
@@ -68,12 +71,14 @@ const ParentCommunicationCenter = () => {
   useEffect(() => {
     const init = async () => {
       try {
-        const [countRes, msgRes] = await Promise.all([
+        const [countRes, msgRes, teachersRes] = await Promise.all([
           api.get('/parent-portal/open-requests-count'),
           api.get('/parent-portal/messages'),
+          api.get('/parent-portal/message-recipients/teachers').catch(() => ({ data: { teachers: [] } })),
         ]);
         setRequestsCount(countRes.data);
         setMessages(msgRes.data?.messages || []);
+        setTeacherRecipients(teachersRes.data?.teachers || []);
       } catch {
         nassaqError(t('errorFetchingData'));
       } finally {
@@ -82,6 +87,12 @@ const ParentCommunicationCenter = () => {
     };
     init();
   }, [api, nassaqError, t]);
+
+  useEffect(() => {
+    if (recipient !== 'teacher') {
+      setSelectedTeacherUserId('');
+    }
+  }, [recipient]);
 
   const canSubmit = requestsCount?.can_submit !== false;
 
@@ -105,13 +116,21 @@ const ParentCommunicationCenter = () => {
       nassaqError(t('maxOpenRequestsError'));
       return;
     }
+    if (recipient === 'teacher' && !selectedTeacherUserId) {
+      nassaqError(t('selectTeacherRecipient'));
+      return;
+    }
     setSending(true);
     try {
-      await api.post('/parent-portal/quick-message', {
+      const body = {
         message_type: msgType,
         recipient_type: recipient,
         content: msgText.trim(),
-      });
+      };
+      if (recipient === 'teacher') {
+        body.recipient_user_id = selectedTeacherUserId;
+      }
+      await api.post('/parent-portal/quick-message', body);
       setMsgText('');
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 5000);
@@ -307,6 +326,37 @@ const ParentCommunicationCenter = () => {
                       </button>
                     ))}
                   </div>
+                  {recipient === 'teacher' && (
+                    teacherRecipients.length === 0 ? (
+                      <p className="mt-2 text-xs text-muted-foreground font-cairo px-1">
+                        {t('noTeacherRecipientsAvailable')}
+                      </p>
+                    ) : (
+                      <div className="mt-2">
+                        <Select
+                          value={selectedTeacherUserId}
+                          onValueChange={setSelectedTeacherUserId}
+                          dir={isRTL ? 'rtl' : 'ltr'}
+                        >
+                          <SelectTrigger className="w-full rounded-xl border border-border dark:border-gray-700 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-brand-navy text-start">
+                            <SelectValue placeholder={t('selectTeacherRecipient')} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {teacherRecipients.map(tr => (
+                              <SelectItem key={tr.recipient_user_id} value={tr.recipient_user_id}>
+                                <span className="font-medium">{tr.teacher_name}</span>
+                                {tr.child_labels && tr.child_labels.length > 0 && (
+                                  <span className="ms-2 text-xs text-muted-foreground">
+                                    — {tr.child_labels.join('، ')}
+                                  </span>
+                                )}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )
+                  )}
                 </div>
 
                 <textarea
@@ -319,7 +369,10 @@ const ParentCommunicationCenter = () => {
 
                 <button
                   onClick={handleSendMessage}
-                  disabled={!msgText.trim() || sending || !canSubmit}
+                  disabled={
+                    !msgText.trim() || sending || !canSubmit ||
+                    (recipient === 'teacher' && (teacherRecipients.length === 0 || !selectedTeacherUserId))
+                  }
                   className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-brand-navy to-brand-purple hover:from-brand-navy-dark hover:to-brand-purple text-white text-sm font-medium font-cairo disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-brand-navy/15 dark:shadow-brand-navy/30"
                 >
                   {sending ? (

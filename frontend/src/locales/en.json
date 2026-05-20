@@ -1792,6 +1792,8 @@
   "messageTypeLabel": "Message Type",
   "messageTypeNote": "Note",
   "messageTypeSuggestion": "Suggestion",
+  "selectTeacherRecipient": "Select the teacher recipient",
+  "noTeacherRecipientsAvailable": "No teachers available to message right now",
   "messaging": "Messaging",
   "metrics": "Metrics",
   "middle": "Middle",
