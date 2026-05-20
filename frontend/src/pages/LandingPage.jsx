@@ -1515,32 +1515,32 @@ export const LandingPage = () => {
 
       {/* ========== FAQ SECTION — funnel step 4: handle objections ========== */}
       <section
-        className="relative bg-brand-navy py-20 lg:py-28 overflow-hidden"
+        className="relative py-24 lg:py-32 bg-gradient-to-b from-background via-background to-background overflow-hidden"
         data-testid="faq-section"
       >
-        {/* nassaq background image — same treatment as hero, how-it-works & proof */}
+        {/* journey-style ambient background — pattern + soft blur orbs */}
         <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url('/nassaq-background.png')` }}
-          aria-hidden="true"
-        />
-        <div
-          className="absolute inset-0 opacity-[0.06]"
+          className="absolute inset-0 opacity-[0.02]"
           style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center center' }}
           aria-hidden="true"
         />
-        <div className="absolute inset-0 bg-brand-navy/75" aria-hidden="true" />
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/5 blur-[120px] animate-pulse" style={{ animationDuration: '10s' }} aria-hidden="true" />
+        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-brand-purple/5 blur-[100px] animate-pulse" style={{ animationDelay: '3s', animationDuration: '8s' }} aria-hidden="true" />
 
         <div className="relative max-w-3xl mx-auto px-6">
           <div className="text-center mb-12">
-            <div className="inline-flex items-center gap-2 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full ps-2 pe-4 py-1.5 mb-5 backdrop-blur-sm">
-              <Lightbulb className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
-              <span className="font-tajawal text-sm text-brand-turquoise">
+            <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-turquoise/15 to-brand-turquoise/5 border border-brand-turquoise/25 rounded-full px-5 py-2.5 mb-6 backdrop-blur-sm animate-pulse-glow">
+              <Lightbulb className="h-4 w-4 text-brand-turquoise animate-pulse" strokeWidth={1.5} aria-hidden="true" />
+              <span className="text-brand-turquoise text-sm font-tajawal font-medium">
                 {isRTL ? 'الأسئلة التي يطرحها المدراء قبل البدء' : 'Questions principals ask before starting'}
               </span>
             </div>
-            <h2 className="font-cairo font-bold text-white text-3xl sm:text-4xl lg:text-5xl leading-tight">
-              {isRTL ? 'إجابات صريحة على ما يقلقك.' : 'Straight answers to what worries you.'}
+            <h2 className="font-cairo font-black text-foreground text-3xl md:text-5xl lg:text-[3.5rem] leading-tight">
+              {isRTL ? (
+                <>إجابات صريحة على <span className="text-brand-turquoise">ما يقلقك.</span></>
+              ) : (
+                <>Straight answers to <span className="text-brand-turquoise">what worries you.</span></>
+              )}
             </h2>
           </div>
 
@@ -1579,16 +1579,18 @@ export const LandingPage = () => {
             ].map((faq, i) => (
               <details
                 key={i}
-                className="group bg-white/5 border border-white/10 rounded-xl overflow-hidden backdrop-blur-sm hover:border-brand-turquoise/40 hover:bg-white/10 transition-colors open:border-brand-turquoise/40 open:bg-white/10"
+                className="group bg-card/80 border border-border/50 rounded-2xl overflow-hidden backdrop-blur-sm transition-all duration-300 hover:border-brand-turquoise/30 hover:shadow-md open:border-brand-turquoise/40 open:shadow-xl open:shadow-brand-turquoise/5"
               >
-                <summary className="flex items-center justify-between gap-4 px-6 py-5 cursor-pointer list-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-2 focus-visible:ring-offset-brand-navy rounded-xl">
-                  <span className="font-cairo font-bold text-white text-base text-start">
+                <summary className="flex items-center justify-between gap-4 px-6 py-5 cursor-pointer list-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-2xl">
+                  <span className="font-cairo font-bold text-foreground text-base text-start">
                     {isRTL ? faq.qAr : faq.qEn}
                   </span>
-                  <ChevronDown className="h-5 w-5 text-brand-turquoise group-open:rotate-180 transition-transform shrink-0" strokeWidth={1.5} aria-hidden="true" />
+                  <span className="shrink-0 w-8 h-8 rounded-lg bg-brand-turquoise/10 flex items-center justify-center transition-colors group-hover:bg-brand-turquoise/15 group-open:bg-gradient-to-br group-open:from-brand-turquoise group-open:to-cyan-500">
+                    <ChevronDown className="h-4 w-4 text-brand-turquoise group-open:text-white group-open:rotate-180 transition-all" strokeWidth={2} aria-hidden="true" />
+                  </span>
                 </summary>
                 <div className="px-6 pb-5 -mt-1">
-                  <p className="font-tajawal text-sm text-white/75 leading-relaxed">
+                  <p className="font-tajawal text-sm text-muted-foreground leading-relaxed">
                     {isRTL ? faq.aAr : faq.aEn}
                   </p>
                 </div>
