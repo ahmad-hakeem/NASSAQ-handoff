@@ -14,6 +14,7 @@ The quota 409 (6th class) is already covered by
 and is intentionally not duplicated here.
 """
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 
@@ -36,6 +37,7 @@ async def _mk_independent_teacher() -> dict:
     """Mirror of the helper in test_independent_teacher_phase0 — duplicated
     here to keep this module self-contained."""
     uid = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
     user = {
         "id": uid,
         "role": UserRole.INDEPENDENT_TEACHER.value,
@@ -44,6 +46,7 @@ async def _mk_independent_teacher() -> dict:
         "full_name": f"IT-{uid[:6]}",
         "is_active": True,
         "password_hash": "x",
+        "mfa_enrolled_at": now,
     }
     await gd_insert(db.session, "users", user)
     wsid = independent_workspace_id(user)
@@ -56,6 +59,74 @@ async def _mk_independent_teacher() -> dict:
         "language": "ar",
     })
     return user
+
+
+# ----------------------------------------------------------------------
+# Duplicate-name regression — distinct Arabic titles must not collide on
+# auto-generated English labels (Grade N - section).
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_independent_teacher_two_classes_same_grade_distinct_names_ok(client):
+    user = await _mk_independent_teacher()
+    wsid = independent_workspace_id(user)
+    h = _headers(user["id"], user["role"], wsid)
+    shared_grade = "المرحلة المشتركة"
+    r1 = await client.post(
+        "/classes/create",
+        json={"name_ar": "حلقة تجويد أ", "grade_id": shared_grade, "capacity": 20},
+        headers=h,
+    )
+    assert r1.status_code == 200, r1.text
+    r2 = await client.post(
+        "/classes/create",
+        json={"name_ar": "حلقة تجويد ب", "grade_id": shared_grade, "capacity": 20},
+        headers=h,
+    )
+    assert r2.status_code == 200, r2.text
+
+
+@pytest.mark.asyncio
+async def test_independent_teacher_duplicate_arabic_name_returns_structured_409(client):
+    user = await _mk_independent_teacher()
+    wsid = independent_workspace_id(user)
+    h = _headers(user["id"], user["role"], wsid)
+    shared_grade = "المرحلة الثانية"
+    first = await client.post(
+        "/classes/create",
+        json={"name_ar": "فصل موحد", "grade_id": shared_grade, "capacity": 15},
+        headers=h,
+    )
+    assert first.status_code == 200, first.text
+    dup = await client.post(
+        "/classes/create",
+        json={"name_ar": "فصل موحد", "grade_id": shared_grade, "capacity": 15},
+        headers=h,
+    )
+    assert dup.status_code == 409, dup.text
+    body = dup.json()
+    err = body.get("error") or {}
+    d = err.get("detail")
+    assert isinstance(d, dict), body
+    assert d.get("code") == "duplicate_class_name"
+    assert "يوجد بالفعل" in (d.get("message") or "")
+
+
+@pytest.mark.asyncio
+async def test_independent_teacher_invalid_subject_id_returns_400(client):
+    user = await _mk_independent_teacher()
+    wsid = independent_workspace_id(user)
+    h = _headers(user["id"], user["role"], wsid)
+    r = await client.post(
+        "/classes/create",
+        json={
+            "name_ar": "فصل تجريبي",
+            "grade_id": "المرحلة الثالثة",
+            "capacity": 12,
+            "subject_id": str(uuid.uuid4()),
+        },
+        headers=h,
+    )
+    assert r.status_code == 400, r.text
 
 
 # ----------------------------------------------------------------------
@@ -255,6 +326,7 @@ async def test_principal_create_class_regression(client):
         "language": "ar",
     })
     uid = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
     await gd_insert(db.session, "users", {
         "id": uid,
         "role": UserRole.SCHOOL_PRINCIPAL.value,
@@ -263,6 +335,7 @@ async def test_principal_create_class_regression(client):
         "full_name": "Principal",
         "is_active": True,
         "password_hash": "x",
+        "mfa_enrolled_at": now,
     })
     h = _headers(uid, UserRole.SCHOOL_PRINCIPAL.value, school_id)
 

@@ -70,6 +70,33 @@ import { useTranslation } from '../../contexts/ThemeContext';
 
 const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'];
 
+/** Normalize API error bodies: raw FastAPI `{detail}` or server `{success,error}`. */
+function extractFastApiDetailFromResponseData(data) {
+  if (!data || typeof data !== 'object') return '';
+  if (typeof data.detail === 'string') return data.detail;
+  if (Array.isArray(data.detail)) {
+    return data.detail
+      .map((e) => (e && typeof e === 'object' && e.msg != null ? String(e.msg) : String(e)))
+      .filter(Boolean)
+      .join(' ');
+  }
+  if (data.detail && typeof data.detail === 'object' && data.detail.message != null) {
+    return String(data.detail.message);
+  }
+  const err = data.error;
+  if (err && typeof err === 'object') {
+    if (typeof err.message === 'string' && err.message.trim()) return err.message;
+    const d = err.detail;
+    if (typeof d === 'string') return d;
+    if (d && typeof d === 'object' && d.message != null) return String(d.message);
+  }
+  const ve = data.meta?.validation_errors;
+  if (Array.isArray(ve) && ve.length) {
+    return ve.map((e) => (e && e.message) || '').filter(Boolean).join(' ');
+  }
+  return '';
+}
+
 // 2026-05-19 — The IT_SETTINGS_WEEKDAYS / IT_SETTINGS_TIMEZONES
 // constants moved with the schedule-settings tab into the
 // `/teacher/planning` hub (TimeManagementHubPage).
@@ -559,14 +586,12 @@ export default function TeacherClassesPage() {
         fetchWorkspaceClassCount();
       } catch (err) {
         const status = err?.response?.status;
-        const detail = err?.response?.data?.detail;
-        if (status === 409 && typeof detail === 'string') {
-          // Surface the backend's safe Arabic quota message verbatim —
-          // never replace it client-side (spec §5.3 step 5).
-          nassaqWarning(detail, { title: t('error') });
+        const rawDetail = err?.response?.data;
+        const msg = extractFastApiDetailFromResponseData(rawDetail) || t('errorAddingClass');
+        if (status === 409) {
+          nassaqWarning(msg, { title: t('error') });
         } else {
-          const msg = typeof detail === 'string' ? detail : t('errorAddingClass');
-          nassaqError(msg);
+          nassaqError(msg, { title: t('error') });
         }
       } finally {
         setAddingClass(false);
@@ -597,9 +622,9 @@ export default function TeacherClassesPage() {
         setShowAddClassDialog(false);
         nassaqError(friendlyTeacherWriteMessage('teacherCreateClassNotAvailable'));
       } else {
-        const detail = err.response?.data?.detail;
-        const msg = typeof detail === 'string' ? detail : t('errorAddingClass');
-        nassaqError(msg);
+        const rawDetail = err.response?.data;
+        const msg = extractFastApiDetailFromResponseData(rawDetail) || t('errorAddingClass');
+        nassaqError(msg, { title: t('error') });
       }
     } finally {
       setAddingClass(false);

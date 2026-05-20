@@ -31,6 +31,13 @@ from shared_models import (
 
 router = APIRouter()
 
+# Structured 409 for name collisions — clients should key off `code`, not
+# substring-match the Arabic `message` (which may be localized later).
+DUPLICATE_CLASS_NAME_DETAIL: Dict[str, str] = {
+    "message": "يوجد بالفعل فصل بنفس الاسم",
+    "code": "duplicate_class_name",
+}
+
 # ============== CLASSES ROUTES ==============
 
 def _normalize_class_name(value: Optional[str]) -> str:
@@ -50,12 +57,17 @@ async def _assert_class_name_unique(
     name: Optional[str],
     name_en: Optional[str] = None,
     exclude_id: Optional[str] = None,
+    homeroom_teacher_id: Optional[str] = None,
 ) -> None:
-    """Reject the request if another active class in the same workspace
+    """Reject the request if another active class in the same school/workspace
     already uses this `name` or `name_en` (case-insensitive, whitespace-
     normalized). Soft-deleted (`is_active=False`) rows are ignored so a
     teacher can re-create a previously deleted class (Task #308).
-    Mirrors `_assert_subject_name_unique` in academics_subject_routes.
+
+    When ``homeroom_teacher_id`` is set, only classes assigned to that same
+    homeroom teacher participate in the duplicate check (so two different
+    teachers in the same school may reuse a label). When it is omitted, the
+    check is school-wide (principal wizard / unassigned classes).
     """
     candidates = {n for n in (_normalize_class_name(name), _normalize_class_name(name_en)) if n}
     if not candidates or not school_id:
@@ -69,12 +81,16 @@ async def _assert_class_name_unique(
     for row in existing:
         if exclude_id and row.get("id") == exclude_id:
             continue
+        if homeroom_teacher_id:
+            row_ht = row.get("homeroom_teacher_id")
+            if row_ht != homeroom_teacher_id:
+                continue
         existing_names = {
             _normalize_class_name(row.get("name")),
             _normalize_class_name(row.get("name_en")),
         }
         if candidates & (existing_names - {""}):
-            raise HTTPException(status_code=409, detail="يوجد بالفعل فصل بنفس الاسم")
+            raise HTTPException(status_code=409, detail=DUPLICATE_CLASS_NAME_DETAIL)
 
 
 # Class Wizard Options
@@ -91,6 +107,9 @@ class ClassWizardCreate(BaseModel):
     capacity: int = 30
     homeroom_teacher_id: Optional[str] = None
     student_ids: List[str] = []
+    # Independent-Teacher workspace UI — validated when present (ignored for
+    # school principals who use the legacy wizard body).
+    subject_id: Optional[str] = None
 
 @router.post("/classes/create")
 async def create_class_wizard(
@@ -113,6 +132,21 @@ async def create_class_wizard(
             raise HTTPException(status_code=403, detail="غير مصرح لك بإنشاء فصل خارج مساحة عملك")
     # Phase 0 §4.B-5 — IT v1 class quota.
     await enforce_class_quota(db.session, current_user)
+
+    # Optional workspace subject (IT create-class dialog). Reject invalid ids
+    # early so the client never mis-reads a downstream failure as a duplicate.
+    sid_raw = (getattr(data, "subject_id", None) or "").strip()
+    if sid_raw:
+        sub_row = await gd_find_one(
+            db.session,
+            "subjects",
+            {"id": sid_raw, "school_id": school_id, "is_active": {"$ne": False}},
+        )
+        if not sub_row:
+            raise HTTPException(
+                status_code=400,
+                detail="معرف المادة غير صالح أو غير موجود في مساحة العمل / Invalid subject for this workspace",
+            )
     
     class_id = str(uuid.uuid4())
 
@@ -152,7 +186,28 @@ async def create_class_wizard(
     grade_name = grade_level.get("name_ar") if grade_level else f"الصف {grade_number}"
 
     class_name_en = data.name_en or f"Grade {grade_number} - {data.section or 'A'}"
-    await _assert_class_name_unique(school_id, class_name, class_name_en)
+    # Duplicate check must NOT include auto-generated English labels: many
+    # distinct Arabic course titles share the same default
+    # ``Grade {n} - {section}`` pattern and would false-trigger 409.
+    explicit_name_en = (data.name_en or "").strip() or None
+    homeroom_for_dedupe: Optional[str] = data.homeroom_teacher_id
+    if is_independent_teacher(current_user) and not homeroom_for_dedupe:
+        tid = current_user.get("teacher_id")
+        if not tid:
+            trow = await gd_find_one(
+                db.session,
+                "teachers",
+                {"user_id": current_user.get("id"), "school_id": school_id},
+            )
+            if trow:
+                tid = trow.get("id")
+        homeroom_for_dedupe = tid
+    await _assert_class_name_unique(
+        school_id,
+        class_name,
+        explicit_name_en,
+        homeroom_teacher_id=homeroom_for_dedupe,
+    )
 
     # Create class document - use correct field names for ORM model
     class_doc = {
@@ -163,7 +218,7 @@ async def create_class_wizard(
         "grade_id": grade_level.get("id") if grade_level else data.grade_id,
         "grade_level": data.grade_id,
         "capacity": data.capacity,
-        "homeroom_teacher_id": data.homeroom_teacher_id,
+        "homeroom_teacher_id": data.homeroom_teacher_id or homeroom_for_dedupe,
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -184,8 +239,9 @@ async def create_class_wizard(
     
     # Get homeroom teacher name
     teacher_name = None
-    if data.homeroom_teacher_id:
-        teacher = await gd_find_one(db.session, "teachers", {"id": data.homeroom_teacher_id})
+    _htid = class_doc.get("homeroom_teacher_id")
+    if _htid:
+        teacher = await gd_find_one(db.session, "teachers", {"id": _htid})
         if teacher:
             teacher_name = teacher.get("full_name")
     
@@ -217,7 +273,15 @@ async def create_class(
     if user_tenant and school_id != user_tenant:
         raise HTTPException(status_code=403, detail="لا يمكنك إنشاء فصل في مدرسة أخرى / Cannot create class in another school")
 
-    await _assert_class_name_unique(school_id, class_data.name, getattr(class_data, 'name_en', None))
+    _raw_en = getattr(class_data, "name_en", None)
+    _name_en_chk = (_raw_en.strip() if isinstance(_raw_en, str) else None) or None
+    _ht_create = getattr(class_data, "homeroom_teacher_id", None) or getattr(class_data, "class_teacher_id", None)
+    await _assert_class_name_unique(
+        school_id,
+        class_data.name,
+        _name_en_chk,
+        homeroom_teacher_id=_ht_create,
+    )
 
     class_id = str(uuid.uuid4())
     
@@ -419,11 +483,23 @@ async def update_class(
         if existing is None:
             existing = await gd_find_one(db.session, "classes", {"id": class_id})
         if existing:
+            _new_name = class_data.name if class_data.name is not None else existing.get("name")
+            if class_data.name_en is not None:
+                _new_en = class_data.name_en.strip() if isinstance(class_data.name_en, str) else class_data.name_en
+            else:
+                _new_en = existing.get("name_en")
+            _en_for_dedupe = (_new_en.strip() if isinstance(_new_en, str) else None) or None
+            # Only treat English as part of the duplicate set when the client
+            # explicitly PATCHes name_en; otherwise rely on primary name only
+            # so auto-filled English does not widen false positives.
+            if class_data.name_en is None:
+                _en_for_dedupe = None
             await _assert_class_name_unique(
                 existing.get("school_id"),
-                class_data.name if class_data.name is not None else existing.get("name"),
-                class_data.name_en if class_data.name_en is not None else existing.get("name_en"),
+                _new_name,
+                _en_for_dedupe,
                 exclude_id=class_id,
+                homeroom_teacher_id=existing.get("homeroom_teacher_id"),
             )
     # Build update dict with only provided fields
     update_fields = {"updated_at": datetime.now(timezone.utc).isoformat()}
