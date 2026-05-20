@@ -540,13 +540,25 @@ export const LandingPage = () => {
 
       {/* ========== HERO SECTION (Modern SaaS) ========== */}
       <section
-        className="relative bg-white overflow-hidden"
+        className="relative bg-brand-navy overflow-hidden"
         data-testid="hero-section"
       >
-        {/* Soft ambient backdrop */}
+        {/* Brand background image */}
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url('/nassaq-background.png')` }}
+        />
+        {/* Subtle pattern overlay */}
+        <div
+          className="absolute inset-0 opacity-[0.08]"
+          style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center top' }}
+        />
+        {/* Navy tint to lock in contrast for the headline */}
+        <div className="absolute inset-0 bg-brand-navy/70" />
+        {/* Soft ambient glows */}
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -top-32 -end-32 w-[520px] h-[520px] rounded-full bg-brand-turquoise/10 blur-3xl" />
-          <div className="absolute -bottom-32 -start-32 w-[420px] h-[420px] rounded-full bg-brand-navy/5 blur-3xl" />
+          <div className="absolute -top-32 -end-32 w-[520px] h-[520px] rounded-full bg-brand-turquoise/15 blur-3xl" />
+          <div className="absolute -bottom-32 -start-32 w-[420px] h-[420px] rounded-full bg-brand-purple/15 blur-3xl" />
         </div>
 
         <div className="relative max-w-7xl mx-auto px-6 py-16 lg:py-24">
@@ -555,16 +567,16 @@ export const LandingPage = () => {
             {/* RTL Start = Right: Content */}
             <div className="space-y-8 text-start order-2 lg:order-1 lg:[&]:order-none">
               {/* Eyebrow badge */}
-              <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-full ps-2 pe-4 py-1.5">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <span className="font-tajawal text-sm text-emerald-700">
+              <div className="inline-flex items-center gap-2 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full ps-2 pe-4 py-1.5 backdrop-blur-sm">
+                <CheckCircle2 className="h-4 w-4 text-brand-turquoise" />
+                <span className="font-tajawal text-sm text-brand-turquoise">
                   {isRTL ? 'نظام تشغيلي للمؤسسات التعليمية' : 'An operating system for educational institutions'}
                 </span>
               </div>
 
               {/* H1 */}
               <h1
-                className="font-cairo font-bold text-brand-navy leading-tight text-4xl sm:text-5xl lg:text-6xl"
+                className="font-cairo font-bold text-white leading-tight text-4xl sm:text-5xl lg:text-6xl"
                 data-testid="platform-name"
               >
                 {isRTL ? (
@@ -583,7 +595,7 @@ export const LandingPage = () => {
               </h1>
 
               {/* Sub-heading */}
-              <p className="font-tajawal text-lg text-slate-600 leading-relaxed max-w-xl">
+              <p className="font-tajawal text-lg text-white/75 leading-relaxed max-w-xl">
                 {isRTL
                   ? 'نسق يحول البيانات التعليمية اليومية إلى رؤى تنفيذية — اكتشاف التراجع مبكرًا، ترتيب الأولويات، والقرار في الوقت المناسب.'
                   : 'NASSAQ turns everyday educational data into executive insights — catch decline early, prioritize what matters, and decide at the right moment.'}
@@ -593,7 +605,7 @@ export const LandingPage = () => {
               <div className="flex flex-wrap items-center gap-3">
                 <Button
                   asChild
-                  className="bg-brand-navy hover:bg-brand-navy-light text-white font-cairo rounded-lg px-8 py-3 h-auto text-base shadow-md hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:scale-[0.98] transition-all"
+                  className="bg-brand-turquoise hover:bg-brand-turquoise-light text-white font-cairo rounded-lg px-8 py-3 h-auto text-base shadow-lg shadow-brand-turquoise/25 hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0 active:scale-[0.98] transition-all"
                   data-testid="hero-cta-btn"
                 >
                   <Link to="/register" className="flex items-center gap-2">
@@ -604,7 +616,7 @@ export const LandingPage = () => {
                 <Button
                   asChild
                   variant="ghost"
-                  className="text-brand-navy hover:bg-slate-50 font-cairo rounded-lg px-6 py-3 h-auto text-base border border-slate-200 hover:border-slate-300 transition-all"
+                  className="text-white hover:bg-white/10 font-cairo rounded-lg px-6 py-3 h-auto text-base border border-white/25 hover:border-white/50 backdrop-blur-sm transition-all"
                   data-testid="hero-secondary-cta"
                 >
                   <a href="#how-it-works" className="flex items-center gap-2">
@@ -620,17 +632,17 @@ export const LandingPage = () => {
                     {['#1C3D74', '#46C1BE', '#615090', '#D4A23C'].map((bg, i) => (
                       <div
                         key={i}
-                        className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white text-xs font-cairo font-bold shadow-sm"
+                        className="w-8 h-8 rounded-full border-2 border-brand-navy flex items-center justify-center text-white text-xs font-cairo font-bold shadow-sm"
                         style={{ backgroundColor: bg }}
                       >
                         ن
                       </div>
                     ))}
                   </div>
-                  <p className="font-tajawal text-sm text-slate-600" data-testid="hero-school-count">
+                  <p className="font-tajawal text-sm text-white/75" data-testid="hero-school-count">
                     {isRTL ? (
                       <>
-                        <span className="font-bold text-brand-navy">
+                        <span className="font-bold text-white">
                           <AnimatedCounter target={platformStats.schools} />
                           {' '}مدرسة
                         </span>{' '}
@@ -638,7 +650,7 @@ export const LandingPage = () => {
                       </>
                     ) : (
                       <>
-                        <span className="font-bold text-brand-navy">
+                        <span className="font-bold text-white">
                           <AnimatedCounter target={platformStats.schools} />
                           {' '}schools
                         </span>{' '}
@@ -650,15 +662,15 @@ export const LandingPage = () => {
               )}
 
               {/* Features ticker */}
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-4 border-t border-slate-100">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-4 border-t border-white/10">
                 {[
                   isRTL ? 'جاهز خلال 24 ساعة' : 'Ready in 24 hours',
                   isRTL ? 'بدون تعقيد تقني' : 'No technical setup',
                   isRTL ? 'يعمل مع نظامك الحالي' : 'Works with your current stack',
                 ].map((item, i) => (
                   <div key={i} className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                    <span className="font-tajawal text-sm text-slate-600">{item}</span>
+                    <CheckCircle2 className="h-4 w-4 text-brand-turquoise" />
+                    <span className="font-tajawal text-sm text-white/80">{item}</span>
                   </div>
                 ))}
               </div>
