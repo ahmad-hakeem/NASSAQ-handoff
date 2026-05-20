@@ -799,11 +799,11 @@ export const LandingPage = () => {
               return (
                 <div
                   key={i}
-                  className="bg-white border border-slate-200 rounded-2xl p-7 hover:border-amber-200 hover:shadow-md transition-all flex flex-col"
+                  className="group bg-white border border-slate-200 rounded-2xl p-7 flex flex-col transition-all duration-300 ease-out hover:-translate-y-1.5 hover:shadow-md hover:border-slate-300 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
                 >
                   <div className="flex items-center gap-3 mb-5">
-                    <div className="shrink-0 w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
-                      <Icon className="h-5 w-5 text-amber-600" />
+                    <div className="shrink-0 w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center transition-colors duration-300 group-hover:bg-amber-100">
+                      <Icon className="h-5 w-5 text-amber-600" strokeWidth={1.5} aria-hidden="true" />
                     </div>
                     <span className="font-cairo text-xs font-bold text-amber-700 uppercase tracking-wider">
                       {isRTL ? col.roleAr : col.roleEn}
@@ -816,7 +816,7 @@ export const LandingPage = () => {
                     {isRTL ? col.bodyAr : col.bodyEn}
                   </p>
                   <div className="flex items-center gap-2 pt-4 border-t border-slate-100">
-                    <TrendingUp className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                    <TrendingUp className="h-3.5 w-3.5 text-amber-600 shrink-0" strokeWidth={1.5} aria-hidden="true" />
                     <span className="font-tajawal text-xs text-slate-500">
                       {isRTL ? col.tagAr : col.tagEn}
                     </span>
