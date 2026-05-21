@@ -70,6 +70,68 @@ async def test_resolve_management_sub_admin_only(tenant_a):
 
 
 @pytest.mark.asyncio
+async def test_resolve_management_school_admin_only(tenant_a):
+    # Task #490 — many real-world tenants provision the principal /
+    # vice-principal under role ``school_admin`` (the original cohort
+    # omitted this and silently delivered nothing). Verify it resolves.
+    admin_id = await _mk_user("school_admin", tenant_a)
+
+    ids = await _engine()._resolve_management_recipient_ids(tenant_a)
+
+    assert ids == [admin_id]
+
+
+@pytest.mark.asyncio
+async def test_resolve_management_full_cohort_priority(tenant_a):
+    # All three management role strings present in the same tenant.
+    # Principal-tier (school_principal + school_admin) must come before
+    # school_sub_admin; the two principal-tier roles are equal-rank.
+    principal_id = await _mk_user("school_principal", tenant_a)
+    admin_id = await _mk_user("school_admin", tenant_a)
+    sub_id = await _mk_user("school_sub_admin", tenant_a)
+
+    ids = await _engine()._resolve_management_recipient_ids(tenant_a)
+
+    assert set(ids) == {principal_id, admin_id, sub_id}
+    assert ids.index(sub_id) > ids.index(principal_id)
+    assert ids.index(sub_id) > ids.index(admin_id)
+
+
+@pytest.mark.asyncio
+async def test_send_management_summary_persists_to_school_admin(tenant_a):
+    # Task #490 regression: end-of-session summary must reach the head
+    # of school when their role is stored as ``school_admin``.
+    admin_id = await _mk_user("school_admin", tenant_a)
+
+    session_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+
+    sent = await _engine()._send_management_session_summary(
+        session_id=session_id,
+        tenant_id=tenant_a,
+        subject_id=None,
+        class_id=None,
+        duration_minutes=30,
+        present=10,
+        absent=0,
+        total=10,
+        attendance_rate=100.0,
+        questions_count=3,
+        correct=3,
+        engagement_rate=80.0,
+        now=now,
+    )
+
+    assert sent == 1
+    rows = await gd_find(db.session, "notifications", {
+        "tenant_id": tenant_a,
+        "entity_type": "session",
+        "entity_id": session_id,
+    }, limit=10)
+    assert {r.get("user_id") for r in rows} == {admin_id}
+
+
+@pytest.mark.asyncio
 async def test_resolve_management_no_users_returns_empty(tenant_a):
     # Teacher and parent exist, but no management roles.
     await _mk_user("teacher", tenant_a)
@@ -246,6 +308,36 @@ async def test_post_notifications_admin_alias_targets_management(client, tenant_
     }, limit=10)
     user_ids = {r.get("user_id") for r in rows}
     assert user_ids == {principal_id, sub_id}
+
+
+@pytest.mark.asyncio
+async def test_post_notifications_admin_alias_includes_school_admin(client, tenant_a):
+    # Task #490 — the ``admin`` alias must also resolve ``school_admin``
+    # users (most common provisioned role for the head of school).
+    admin_id = await _mk_user("school_admin", tenant_a)
+    teacher_id = await _mk_user("teacher", tenant_a)
+
+    resp = await client.post(
+        "/notifications",
+        json={
+            "title": "Session Summary — Admin",
+            "message": "End of session report.",
+            "notification_type": "communication",
+            "priority": "medium",
+            "recipient_role": "admin",
+            "related_entity": "session",
+            "related_entity_id": str(uuid.uuid4()),
+        },
+        headers=_headers(teacher_id, "teacher", tenant_a),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json().get("created_count") == 1
+
+    rows = await gd_find(db.session, "notifications", {
+        "tenant_id": tenant_a,
+        "title": "Session Summary — Admin",
+    }, limit=10)
+    assert {r.get("user_id") for r in rows} == {admin_id}
 
 
 @pytest.mark.asyncio

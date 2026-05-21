@@ -1888,11 +1888,21 @@ class TeacherSessionEngine:
         )
 
     async def _resolve_management_recipient_ids(self, tenant_id: str) -> List[str]:
-        """Task #486 — return active school-management user ids (principal first,
-        then sub-admin) for a given tenant.
+        """Task #486 (+#490) — return active school-management user ids for a
+        given tenant.
 
-        Used as the canonical "school management" recipient cohort for the
-        end-of-session summary and the repeated-negative-behaviour alert.
+        Canonical school-management cohort across the codebase (see
+        ``notification_routes_mod.create_notification``,
+        ``role_dashboards_mod.get_parent_dashboard``,
+        ``notification_routes.send_notification``):
+        ``school_principal``, ``school_admin``, ``school_sub_admin``. The
+        original Task #486 cohort omitted ``school_admin``, which silently
+        delivered nothing in real-world tenants whose principal/vice
+        principal are stored as ``school_admin`` (the most common
+        provisioned shape). Ordering: principal-tier first
+        (``school_principal`` then ``school_admin`` — same tier, stable
+        by id), then ``school_sub_admin`` last.
+
         Independent-Teacher workspaces (tenant_id starting with ``itw_``)
         have no management recipient by design and always resolve to an
         empty list. The query is a single bulk ``gd_find`` — no N+1.
@@ -1905,12 +1915,15 @@ class TeacherSessionEngine:
             self.session, "users",
             {
                 "tenant_id": tenant_id,
-                "role": {"$in": ["school_principal", "school_sub_admin"]},
+                "role": {"$in": ["school_principal", "school_admin", "school_sub_admin"]},
                 "is_active": True,
             },
             limit=50,
         )
-        priority = {"school_principal": 0, "school_sub_admin": 1}
+        # school_principal and school_admin are both principal-tier in this
+        # codebase (different tenants provision the head-of-school under
+        # either name); rank them equally and put sub-admins last.
+        priority = {"school_principal": 0, "school_admin": 0, "school_sub_admin": 1}
         rows.sort(key=lambda u: (priority.get(u.get("role"), 9), u.get("id") or ""))
         return [u["id"] for u in rows if u.get("id")]
 

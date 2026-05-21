@@ -450,8 +450,15 @@ async def create_notification(
         # honest. Authorization is unchanged — the role allow-list above
         # still restricts who can POST.
         if notification.recipient_role == 'admin':
+            # Task #486 (+#490) — kept in lock-step with
+            # ``session_engine._resolve_management_recipient_ids``: the
+            # school-management cohort is ``school_principal``,
+            # ``school_admin``, and ``school_sub_admin``. The original
+            # alias omitted ``school_admin``, which silently dropped the
+            # notification in tenants whose principal is provisioned
+            # under that role string.
             query = {
-                "role": {"$in": ["school_principal", "school_sub_admin"]},
+                "role": {"$in": ["school_principal", "school_admin", "school_sub_admin"]},
                 "is_active": True,
             }
         else:
