@@ -150,36 +150,18 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
     async def _find_children(current_user_or_id, parent_phone: Optional[str] = None, school_id: Optional[str] = None):
         """Back-compat signature: accepts either a full user dict or a user id
-        followed by parent_phone/school_id."""
+        followed by parent_phone/school_id. Delegates to the shared
+        canonical resolver in `utils.parent_children_resolution` so the
+        parent portal and the Hakim assistant always see the same
+        allow-list of children."""
         if isinstance(current_user_or_id, dict):
             current_user = current_user_or_id
-            parent_user_id = current_user.get("id")
-            parent_phone = parent_phone or current_user.get("phone")
             school_id = school_id or current_user.get("tenant_id")
         else:
             current_user = {"id": current_user_or_id, "phone": parent_phone, "tenant_id": school_id}
-            parent_user_id = current_user_or_id
 
-        parent_record_id = current_user.get("parent_id")
-        parent_email = current_user.get("email")
-
-        or_conditions = _parent_or_conditions(parent_user_id, parent_phone, parent_record_id, parent_email)
-        if not or_conditions:
-            return []
-        student_query = {"$or": or_conditions}
-        if school_id:
-            student_query["school_id"] = school_id
-        children = await gd_find(db.session, "students", student_query, limit=50)
-        found_ids = {c.get("id") for c in children}
-        linked_ids = await _get_linked_student_ids(current_user, school_id)
-        missing_ids = [sid for sid in linked_ids if sid not in found_ids]
-        if missing_ids:
-            extra_q = {"id": {"$in": missing_ids}}
-            if school_id:
-                extra_q["school_id"] = school_id
-            extra = await gd_find(db.session, "students", extra_q, limit=50)
-            children.extend(extra)
-        return children
+        from utils.parent_children_resolution import resolve_parent_children
+        return await resolve_parent_children(current_user, school_id)
 
     # ============= DASHBOARD =============
 

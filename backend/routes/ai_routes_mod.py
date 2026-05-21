@@ -28,6 +28,7 @@ from shared_models import (
     HakimMessage, HakimResponse
 )
 from utils.parent_resolution import resolve_student_parent_user_id, PARENT_NOT_FOUND_AR
+from utils.parent_children_resolution import resolve_parent_children
 from openai import OpenAI
 from typing import Literal
 
@@ -390,51 +391,14 @@ class HakimChatRequest(BaseModel):
     child_id: Optional[str] = None
 
 
-async def _verify_parent_child_access(parent_user_id: str, child_id: str) -> bool:
-    link = await gd_find_one(db.session, "guardian_links", {
-        "parent_ref": parent_user_id, "student_id": child_id, "is_active": True
-    })
-    if link:
-        return True
-    student = await gd_find_one(db.session, "students", {"id": child_id})
-    if student and (student.get("parent_id") == parent_user_id or student.get("parent_user_id") == parent_user_id):
-        return True
-    return False
-
-
-async def _resolve_parent_linked_children(parent_user_id: str, school_id: str) -> List[Dict[str, Any]]:
-    """
-    Return the strict allow-list of students this parent may access.
-    Combines `guardian_links` (active) with the legacy `students.parent_id`
-    fallback. Always re-filtered by `school_id` (tenant) to prevent any
-    cross-tenant leakage even if a stale link exists.
-    """
-    children: Dict[str, Dict[str, Any]] = {}
-
-    # 1) Active guardian links — primary source of truth.
-    link_query: Dict[str, Any] = {"parent_ref": parent_user_id, "is_active": True}
-    if school_id:
-        link_query["tenant_id"] = school_id
-    links = await gd_find(db.session, "guardian_links", link_query, limit=100)
-    student_ids_from_links = [l.get("student_id") for l in links if l.get("student_id")]
-
-    if student_ids_from_links:
-        student_query: Dict[str, Any] = {"id": {"$in": student_ids_from_links}}
-        if school_id:
-            student_query["school_id"] = school_id
-        for s in await gd_find(db.session, "students", student_query, limit=100):
-            children[s["id"]] = s
-
-    # 2) Legacy fallback on the students table.
-    legacy_query: Dict[str, Any] = {
-        "$or": [{"parent_id": parent_user_id}, {"parent_user_id": parent_user_id}]
-    }
-    if school_id:
-        legacy_query["school_id"] = school_id
-    for s in await gd_find(db.session, "students", legacy_query, limit=100):
-        children.setdefault(s["id"], s)
-
-    return list(children.values())
+async def _verify_parent_child_access(
+    current_user: Dict[str, Any], child_id: str, school_id: str,
+) -> bool:
+    """Verify the requested child is in the parent's canonical allow-list
+    AND is in the authenticated tenant. Uses the same shared resolver as
+    the parent portal so IDOR coverage is identical."""
+    allowed = await resolve_parent_children(current_user, school_id or "")
+    return any(s.get("id") == child_id for s in allowed)
 
 
 async def _build_parent_child_context(child_id: str, school_id: str) -> str:
@@ -610,21 +574,32 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
         if client is None:
             return JSONResponse(status_code=503, content=AI_NOT_CONFIGURED_RESPONSE)
 
-        school_id = current_user.get("tenant_id") or message.tenant_id
         # Trust the server-side role over anything the client claims; only fall
         # back to the request's `user_role` when the auth payload omits it.
         user_role = current_user.get("role") or (message.user_role or "unknown")
         is_parent = user_role == "parent" or message.context == "parent_portal"
 
+        # Parent tenant scope is pinned strictly to the authenticated
+        # tenant — a client-supplied `message.tenant_id` must NEVER widen
+        # the allow-list of children (threat model: cross-tenant disclosure).
+        # Non-parent roles keep the legacy fallback for unauthenticated-
+        # tenant platform contexts.
+        if is_parent:
+            school_id = current_user.get("tenant_id")
+        else:
+            school_id = current_user.get("tenant_id") or message.tenant_id
+
         child_context = ""
         allowed_students: List[Dict[str, Any]] = []
 
         if is_parent:
-            parent_user_id = current_user.get("id", "")
-
-            # Always resolve the parent's full allow-list — used both for
-            # validating any requested child_id AND for the AI scope guard.
-            allowed_students = await _resolve_parent_linked_children(parent_user_id, school_id or "")
+            # Use the same canonical resolver the parent portal uses so
+            # Hakim sees exactly the dashboard's allow-list — including
+            # principal-managed linkages where `students.parent_id` is a
+            # `parents.id` and `guardian_links.parent_ref` may carry either
+            # a `users.id` or a `parents.id`. Tenant is pinned to the
+            # authenticated `school_id`, never a client-supplied value.
+            allowed_students = await resolve_parent_children(current_user, school_id or "")
             allowed_ids = {s["id"] for s in allowed_students}
 
             # Graceful "no linked students" path — never let the AI hallucinate.
