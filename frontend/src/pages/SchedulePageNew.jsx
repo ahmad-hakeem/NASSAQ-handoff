@@ -1557,7 +1557,7 @@ export default function SchedulePageNew() {
       <div
         dir={direction}
         data-master-schedule-root
-        className="flex flex-col min-h-[100dvh] bg-slate-50 text-slate-900"
+        className="flex flex-col h-[100dvh] bg-slate-50 text-slate-900"
         style={{
           // Mode-specific pre-measurement fallback per spec §4.2
           // (daily ≤ 88 px, weekly ≤ 52 px). The ResizeObserver in
@@ -1971,7 +1971,7 @@ export default function SchedulePageNew() {
             page surface; daily mode never scrolls horizontally,
             weekly mode scrolls horizontally inside the container
             while the teacher column and headers stay sticky. */}
-        <div className="relative" data-testid="master-matrix-region">
+        <div className="relative flex flex-col flex-grow min-h-0" data-testid="master-matrix-region">
           {viewMode === 'weekly' && (
             <>
               <div
@@ -2001,7 +2001,24 @@ export default function SchedulePageNew() {
           data-testid="master-matrix-container"
           data-matrix-overflow={viewMode === 'weekly' ? 'horizontal' : 'none'}
           className={`relative bg-white border-t border-slate-200 ${
-            viewMode === 'weekly' ? 'overflow-x-auto overflow-y-visible' : 'overflow-visible'
+            viewMode === 'weekly'
+              // Weekly mode: intentional two-axis scroll container.
+              // overflow-x:auto handles horizontal scroll (wide day columns).
+              // overflow-y:auto + flex-grow + min-h-0 make this a constrained-
+              // height vertical scroll box — the matrix scrolls inside this
+              // container rather than at the page level. This is the correct
+              // architectural pattern because overflow-x:auto alone is coerced
+              // by the browser to overflow-y:auto anyway (CSS spec §overflow
+              // coercion: a non-visible overflow on one axis forces the other
+              // axis from visible → auto). Embracing that coercion and giving
+              // the container a real constrained height means position:sticky
+              // elements inside correctly stick relative to this container —
+              // day-band and period-header cells use top:0 / top:DAY_H (not
+              // the page-level --sticky-band-h offset), so they pin to the
+              // container viewport without the 45 px push-down that previously
+              // overlapped the first teacher row.
+              ? 'overflow-x-auto overflow-y-auto flex-grow min-h-0'
+              : 'overflow-visible'
           }`}
         >
           {loading ? (
@@ -2491,7 +2508,12 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
       <div
         data-testid="master-matrix-corner"
         className={`sticky bg-slate-50 text-slate-700 text-xs font-semibold flex items-center justify-center border-b border-l border-slate-200 ${teacherStickyShadow}`}
-        style={{ top: 'var(--sticky-band-h, 88px)', insetInlineStart: 0, zIndex: 30, height: DAY_HEADER_HEIGHT }}
+        style={{
+          // In weekly mode the container is the scroll parent (not the page),
+          // so headers stick at top:0. Daily mode remains page-level sticky.
+          top: isDaily ? 'var(--sticky-band-h, 88px)' : 0,
+          insetInlineStart: 0, zIndex: 30, height: DAY_HEADER_HEIGHT,
+        }}
       >
         {t('teacherColHeader')}
       </div>
@@ -2500,7 +2522,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
           key={`day-h-${dayKey}`}
           data-testid={`master-matrix-day-band-${dayKey}`}
           className={`sticky z-20 ${getDayBandClass(dayKey)} ${getDayTextOnBand(dayKey)} text-sm font-cairo font-bold text-center flex items-center justify-center tracking-wide ${dayIdx > 0 ? 'border-s-2 border-s-white/70' : ''} shadow-[inset_0_-1px_0_rgba(255,255,255,0.25)]`}
-          style={{ top: 'var(--sticky-band-h, 88px)', gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
+          style={{ top: isDaily ? 'var(--sticky-band-h, 88px)' : 0, gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
         >
           {dayLabelMap[dayKey] || dayKey}
           {dayKey === today && (
@@ -2514,7 +2536,12 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
       {/* ── Sticky header row 2: period numbers ────────────────── */}
       <div
         className={`sticky bg-slate-50 text-slate-500 text-[10px] font-medium px-2 flex items-center justify-end border-b border-l border-slate-200 ${teacherStickyShadow}`}
-        style={{ top: `calc(var(--sticky-band-h, 88px) + ${DAY_HEADER_HEIGHT}px)`, insetInlineStart: 0, zIndex: 30, height: PERIOD_HEADER_HEIGHT }}
+        style={{
+          top: isDaily
+            ? `calc(var(--sticky-band-h, 88px) + ${DAY_HEADER_HEIGHT}px)`
+            : `${DAY_HEADER_HEIGHT}px`,
+          insetInlineStart: 0, zIndex: 30, height: PERIOD_HEADER_HEIGHT,
+        }}
       >
         {t('teachersCountSummary', { count: summaryCount, periods: periods.length, days: days.length })}
       </div>
@@ -2529,7 +2556,12 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
             <div
               key={`ph-${dayKey}-${p}`}
               className={`sticky z-20 ${getDayTintClass(dayKey)} text-brand-navy/85 text-center flex flex-col items-center justify-center leading-tight border-b border-white/40 border-l border-l-white/40 ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
-              style={{ top: `calc(var(--sticky-band-h, 88px) + ${DAY_HEADER_HEIGHT}px)`, height: PERIOD_HEADER_HEIGHT }}
+              style={{
+                top: isDaily
+                  ? `calc(var(--sticky-band-h, 88px) + ${DAY_HEADER_HEIGHT}px)`
+                  : `${DAY_HEADER_HEIGHT}px`,
+                height: PERIOD_HEADER_HEIGHT,
+              }}
               title={timeLabel ? t('periodLabelWithTime', { num: p, time: timeLabel }) : t('periodLabelShort', { num: p })}
             >
               <span className={`${isDaily ? 'text-sm' : 'text-[12px]'} font-bold tabular-nums`}>{p}</span>
