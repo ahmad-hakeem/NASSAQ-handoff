@@ -221,6 +221,11 @@ class SessionSummaryResponse(BaseModel):
     notes_sent: int = 0
     top_participants: List[Dict[str, Any]]
     needs_attention: List[Dict[str, Any]]
+    # Task #486 — how many school-management recipients (principal +
+    # sub-admin) actually received the end-of-session summary. The
+    # frontend uses this to drive a truthful success toast: it claims
+    # delivery to administration only when this value is > 0.
+    management_notifications_sent: int = 0
 
 
 # ============== SCORE RULES (defaults) ==============
@@ -1539,6 +1544,34 @@ class TeacherSessionEngine:
         except Exception as e:
             logger.error(f"Smart notifications failed for session {session_id}: {e}")
 
+        # Task #486 — deliver the end-of-session summary to school management
+        # (school_principal first, then school_sub_admin) of the session's
+        # tenant. tenant_id is taken from the session row, never the caller,
+        # so cross-tenant delivery is impossible. IT workspaces resolve to
+        # an empty cohort and the call is a no-op there. The returned count
+        # is propagated to the response so the FE toast can be truthful
+        # about whether administration actually received the summary.
+        management_sent = 0
+        try:
+            management_sent = await self._send_management_session_summary(
+                session_id=session_id,
+                tenant_id=session.get("tenant_id") or session.get("school_id") or "",
+                subject_id=subject_id,
+                class_id=class_id,
+                duration_minutes=round(duration),
+                present=present,
+                absent=absent,
+                total=total,
+                attendance_rate=attendance_rate,
+                questions_count=len(questions),
+                correct=correct,
+                engagement_rate=engagement_rate,
+                now=now,
+            )
+        except Exception as e:
+            logger.error(f"Management session summary failed for session {session_id}: {e}")
+            management_sent = 0
+
         await self._log_event(
             session_id=session_id,
             event_type=EventType.SESSION_ENDED.value,
@@ -1617,7 +1650,8 @@ class TeacherSessionEngine:
             evaluated_students=evaluated_students_count,
             notes_sent=notes_sent_count,
             top_participants=top_participants,
-            needs_attention=needs_attention
+            needs_attention=needs_attention,
+            management_notifications_sent=management_sent,
         )
 
     async def _get_completed_session_summary(self, session, session_id, now):
@@ -1853,6 +1887,112 @@ class TeacherSessionEngine:
             metadata={"insights_count": len(insights)}
         )
 
+    async def _resolve_management_recipient_ids(self, tenant_id: str) -> List[str]:
+        """Task #486 — return active school-management user ids (principal first,
+        then sub-admin) for a given tenant.
+
+        Used as the canonical "school management" recipient cohort for the
+        end-of-session summary and the repeated-negative-behaviour alert.
+        Independent-Teacher workspaces (tenant_id starting with ``itw_``)
+        have no management recipient by design and always resolve to an
+        empty list. The query is a single bulk ``gd_find`` — no N+1.
+        """
+        if not tenant_id:
+            return []
+        if isinstance(tenant_id, str) and tenant_id.startswith("itw_"):
+            return []
+        rows = await gd_find(
+            self.session, "users",
+            {
+                "tenant_id": tenant_id,
+                "role": {"$in": ["school_principal", "school_sub_admin"]},
+                "is_active": True,
+            },
+            limit=50,
+        )
+        priority = {"school_principal": 0, "school_sub_admin": 1}
+        rows.sort(key=lambda u: (priority.get(u.get("role"), 9), u.get("id") or ""))
+        return [u["id"] for u in rows if u.get("id")]
+
+    async def _send_management_session_summary(
+        self,
+        session_id: str,
+        tenant_id: str,
+        subject_id: str,
+        class_id: str,
+        duration_minutes: int,
+        present: int,
+        absent: int,
+        total: int,
+        attendance_rate: float,
+        questions_count: int,
+        correct: int,
+        engagement_rate: float,
+        now: datetime,
+    ) -> int:
+        """Task #486 — deliver an end-of-session summary to school management.
+
+        Persists one ``notifications`` row per resolved management recipient
+        (principal + sub-admin in the session's tenant). When no recipient
+        exists (e.g. IT workspace, or a school that has not yet provisioned
+        a principal), this is a logged no-op — never raises. ``tenant_id``
+        MUST be the session's tenant; the caller passes it in so the engine
+        can not silently widen scope from a caller-supplied value.
+        Returns the number of notifications inserted.
+        """
+        recipient_ids = await self._resolve_management_recipient_ids(tenant_id)
+        if not recipient_ids:
+            logger.info(
+                "end-session summary: no management recipients for tenant %s (session=%s)",
+                tenant_id, session_id,
+            )
+            return 0
+
+        subject_name = ""
+        class_name = ""
+        if subject_id:
+            subj = await gd_find_one(self.session, "subjects", {"id": subject_id})
+            if subj:
+                subject_name = subj.get("name_ar") or subj.get("name_en") or ""
+        if class_id:
+            cls = await gd_find_one(self.session, "classes", {"id": class_id})
+            if cls:
+                class_name = cls.get("name") or ""
+
+        title_ar = f"ملخص الحصة — {subject_name}" if subject_name else "ملخص الحصة"
+        title_en = f"Session Summary — {subject_name}" if subject_name else "Session Summary"
+        message_ar = (
+            f"اكتملت حصة {subject_name} للصف {class_name}. "
+            f"المدة {duration_minutes} دقيقة، الحضور {present}/{total} ({attendance_rate}%)، "
+            f"الأسئلة {questions_count} والإجابات الصحيحة {correct}."
+        )
+        message_en = (
+            f"Session for {subject_name} ({class_name}) completed. "
+            f"Duration: {duration_minutes} min. Present: {present}/{total} ({attendance_rate}%). "
+            f"Questions: {questions_count}, Correct: {correct}."
+        )
+
+        sent = 0
+        for rid in recipient_ids:
+            await gd_insert(self.session, "notifications", {
+                "id": str(uuid.uuid4()),
+                "tenant_id": tenant_id,
+                "user_id": rid,
+                "title": title_ar,
+                "title_en": title_en,
+                "message": message_ar,
+                "message_en": message_en,
+                "type": "communication",
+                "category": "session",
+                "priority": "medium",
+                "is_read": False,
+                "entity_type": "session",
+                "entity_id": session_id,
+                "created_at": now.isoformat(),
+            })
+            sent += 1
+        return sent
+
     async def _send_smart_end_session_notifications(self, session_id, school_id, attendance, neg_students, student_interactions, now):
         """Send automatic notifications on session end: absence, repeated negative behavior, improvement."""
         notifications_sent = 0
@@ -1893,11 +2033,16 @@ class TeacherSessionEngine:
                 recipients = []
                 if parent_user_id:
                     recipients.append(parent_user_id)
-                principal = await gd_find_one(self.session, "users",
-                    {"school_id": school_id, "role": {"$in": ["school_admin", "school_principal"]}}
-                )
-                if principal:
-                    recipients.append(principal["id"])
+                # Task #486 — the old filter used ``school_id`` (the
+                # ``users`` table is keyed by ``tenant_id``) and the role
+                # value ``school_admin`` (a platform-tier role, not the
+                # school management cohort), so this branch silently
+                # delivered nothing. Use the shared canonical resolver so
+                # the principal+sub-admin cohort is computed exactly the
+                # same way the end-of-session summary uses (and IT
+                # workspaces correctly resolve to an empty cohort).
+                mgmt_ids = await self._resolve_management_recipient_ids(school_id)
+                recipients.extend(mgmt_ids)
                 
                 for rid in recipients:
                     await gd_insert(self.session, "notifications", {

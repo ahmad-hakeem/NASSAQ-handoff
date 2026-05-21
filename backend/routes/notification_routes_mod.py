@@ -438,8 +438,24 @@ async def create_notification(
             await _it_validate_recipients_or_403(current_user, [target_id])
 
     if notification.recipient_role and not notification.recipient_id:
-        query = {"role": notification.recipient_role}
         tenant_id = current_user.get('tenant_id')
+        # Task #486 — the literal role string ``admin`` is not stored in
+        # ``users.role`` (real management roles are ``school_principal``
+        # and ``school_sub_admin``). Treat ``admin`` as a canonical alias
+        # for the school-management cohort in the caller's tenant, mirroring
+        # the resolver used by the end-of-session summary in
+        # ``session_engine.SessionEngine._resolve_management_recipient_ids``.
+        # This removes the silent 404 that the end-session screen was
+        # hitting and keeps any other caller that already sends ``admin``
+        # honest. Authorization is unchanged — the role allow-list above
+        # still restricts who can POST.
+        if notification.recipient_role == 'admin':
+            query = {
+                "role": {"$in": ["school_principal", "school_sub_admin"]},
+                "is_active": True,
+            }
+        else:
+            query = {"role": notification.recipient_role}
         if tenant_id:
             query['tenant_id'] = tenant_id
         role_users = await gd_find(db.session, "users", query, limit=1000)

@@ -4215,23 +4215,23 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
         related_entity_id: summary.session_record_id,
         scope_class_id: classId,
       };
-      const adminNotif = {
-        ...notifPayload,
-        recipient_role: 'admin',
-        scope_class_id: undefined,
-      };
-      const results = await Promise.allSettled([
-        api.post('/notifications', notifPayload),
-        api.post('/notifications', adminNotif),
-      ]);
-      const successCount = results.filter(r => r.status === 'fulfilled').length;
-      if (successCount > 0) {
+      // Task #486 — management delivery is now the backend's
+      // responsibility (`session_engine.end_session` persists a
+      // summary notification per resolved school_principal /
+      // school_sub_admin in the session's tenant) and reports
+      // back how many recipients were actually written via
+      // `summary.management_notifications_sent`. The FE fires
+      // only the parent-cohort POST here and picks a truthful
+      // toast: parents+admin only when management actually
+      // received the summary, otherwise parents-only.
+      await api.post('/notifications', notifPayload);
+      const mgmtSent = Number(summary?.management_notifications_sent || 0);
+      if (mgmtSent > 0) {
         toast.success(t('reportSentToParentsAndAdmin'));
-        confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#34d399', '#6ee7b7'] });
       } else {
-        clearGuardForRetry();
-        nassaqError(t('failedToSendNotifications'));
+        toast.success(t('reportSentToParentsOnly'));
       }
+      confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#34d399', '#6ee7b7'] });
     } catch (e) {
       console.error('Error sending notifications:', e);
       clearGuardForRetry();

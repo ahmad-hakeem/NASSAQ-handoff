@@ -2605,6 +2605,7 @@
   "reportsAndAnalytics": "التقارير والتحليلات",
   "reportScheduledSuccessfully": "تم جدولة التقرير بنجاح",
   "reportSentToParentsAndAdmin": "تم إرسال الملخص لأولياء الأمور والإدارة",
+  "reportSentToParentsOnly": "تم إرسال الملخص لأولياء الأمور",
   "reportSharedSuccessfully": "تم إرسال التقرير بنجاح",
   "reportsToReview": "تقارير للمراجعة",
   "reportSummary": "ملخص التقرير",
