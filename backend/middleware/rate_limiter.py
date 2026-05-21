@@ -125,6 +125,23 @@ RATE_LIMITS = {
     # while still bounding the blast radius of a single abusive account.
     # This mirrors the `/api/parent-portal/child/` limit applied in #438.
     "/api/hakim/chat": {"max": 20, "window": 60},
+    # SECURITY (task #483): per-IP outer caps on the auth hot path.
+    # - /api/auth/refresh: bounds refresh-token rotation / family-revocation
+    #   probing from an attacker holding a stolen refresh token. 30/60s
+    #   leaves plenty of headroom for normal "401 → refresh once → retry"
+    #   loops while rejecting tight scripted bursts.
+    # - /api/auth/me: bounds hard-refresh / bootstrap storms. The route
+    #   does an extra schools lookup per call, so a single tab in a loop
+    #   can amplify DB load. 120/60s is generous for legitimate use
+    #   (StrictMode double-mount, role-switch re-fetch, occasional poll).
+    # Per-identity inner caps (keyed on the token `sub`) live inside the
+    # handlers and stack on top of these — see auth_routes_mod.py.
+    # NOTE: like every other limit in this map these are PER PROCESS;
+    # multi-worker deployments multiply the effective threshold by the
+    # worker count. The Phase 2 audit item M-3 tracks the move to a
+    # shared (Redis-backed) store; no infra change in this task.
+    "/api/auth/refresh": {"max": 30, "window": 60},
+    "/api/auth/me": {"max": 120, "window": 60},
 }
 
 

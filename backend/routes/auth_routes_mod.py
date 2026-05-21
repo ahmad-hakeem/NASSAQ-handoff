@@ -598,6 +598,31 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
+    # SECURITY (task #483): per-identity inner rate limit on refresh-token
+    # rotation. The outer per-IP cap in RATE_LIMITS bounds a single source;
+    # this bound applies to a credential-stuffer rotating IPs but holding
+    # the same stolen refresh token. Must run BEFORE the JTI claim insert
+    # and BEFORE the family-revocation check so a 429 never consumes the
+    # JTI and never short-circuits reuse detection.
+    from middleware.rate_limiter import rate_store as _rl_store
+    from utils.trusted_proxy import extract_client_ip as _xip
+    _refresh_key = f"refresh_user:{user_id}"
+    _r_limited, _, _r_retry = await _rl_store.is_rate_limited(_refresh_key, 20, 60)
+    if _r_limited:
+        try:
+            _client_ip = _xip(request) if request else "unknown"
+        except Exception:
+            _client_ip = "unknown"
+        logging.getLogger("nassaq.ratelimit").warning(
+            "Rate limited (per-user): /api/auth/refresh ip=%s sub=%s",
+            _client_ip, user_id,
+        )
+        raise HTTPException(
+            status_code=429,
+            detail="عدد طلبات تجديد الجلسة تجاوز الحد المسموح. يرجى المحاولة لاحقاً",
+            headers={"Retry-After": str(_r_retry)},
+        )
+
     # Phase 3 (audit Open Question 5): refresh-token family check. If the
     # whole family was revoked (e.g. due to a previously detected reuse),
     # refuse here — even before consulting revoked_tokens for the individual
@@ -949,7 +974,32 @@ async def logout(
     return {"message": "تم تسجيل الخروج بنجاح"}
 
 @router.get("/auth/me", response_model=UserResponse)
-async def get_me(current_user: dict = Depends(get_current_user)):
+async def get_me(request: Request, current_user: dict = Depends(get_current_user)):
+    # SECURITY (task #483): per-identity inner rate limit on the auth
+    # bootstrap endpoint. The outer per-IP cap in RATE_LIMITS bounds a
+    # single source; this bound applies to an attacker rotating IPs while
+    # holding the same access token, and prevents one authenticated tab
+    # in a tight loop from amplifying the extra schools-lookup DB read.
+    from middleware.rate_limiter import rate_store as _rl_store
+    from utils.trusted_proxy import extract_client_ip as _xip
+    _me_sub = current_user.get("id") or str(current_user.get("_id") or "")
+    if _me_sub:
+        _me_key = f"auth_me_user:{_me_sub}"
+        _m_limited, _, _m_retry = await _rl_store.is_rate_limited(_me_key, 60, 60)
+        if _m_limited:
+            try:
+                _client_ip = _xip(request) if request else "unknown"
+            except Exception:
+                _client_ip = "unknown"
+            logging.getLogger("nassaq.ratelimit").warning(
+                "Rate limited (per-user): /api/auth/me ip=%s sub=%s",
+                _client_ip, _me_sub,
+            )
+            raise HTTPException(
+                status_code=429,
+                detail="عدد الطلبات تجاوز الحد المسموح. يرجى المحاولة لاحقاً",
+                headers={"Retry-After": str(_m_retry)},
+            )
     from engines.name_validation import is_generic_name
     # Resolve the school's display name so the UI can show it without
     # needing a second round-trip (and without falling back to the UUID).
