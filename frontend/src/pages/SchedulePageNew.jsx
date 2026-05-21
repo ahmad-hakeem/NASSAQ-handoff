@@ -2471,7 +2471,20 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
     <div
       data-testid={`master-matrix-${isDaily ? 'daily' : 'weekly'}`}
       className="grid text-[11px] w-full"
-      style={{ gridTemplateColumns: gridTemplate }}
+      style={{
+        gridTemplateColumns: gridTemplate,
+        // Explicit header tracks + body row floor. Without this, the
+        // first body row's CSS-grid auto track could collapse below
+        // ROW_HEIGHT (clipping the first teacher row under the sticky
+        // period header) when its lesson cells had no sessions and the
+        // per-item `minHeight: ROW_HEIGHT` contract was not enough to
+        // grow the implicit track. `grid-auto-rows: minmax(ROW_HEIGHT,
+        // auto)` enforces the floor at the container level so row 1
+        // cannot structurally diverge from row N. The two explicit
+        // header rows keep using their existing fixed heights.
+        gridTemplateRows: `${DAY_HEADER_HEIGHT}px ${PERIOD_HEADER_HEIGHT}px`,
+        gridAutoRows: `minmax(${ROW_HEIGHT}px, auto)`,
+      }}
     >
       {/* ── Sticky header row 1: day spans ─────────────────────── */}
       {/* الزاوية العلوية الجانبية (تقاطع رأس + عمود المعلم) — أعلى z-index */}
