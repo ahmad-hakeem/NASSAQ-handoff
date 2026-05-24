@@ -815,14 +815,14 @@ export const LandingPage = () => {
         data-testid="pain-section"
       >
         <div className="max-w-6xl mx-auto px-6">
-          <div className="text-center max-w-2xl mx-auto mb-14">
+          <div className="text-center max-w-4xl mx-auto mb-14">
             <div className="inline-flex items-center gap-2 bg-brand-turquoise/10 border border-brand-turquoise/30 rounded-full ps-2 pe-4 py-1.5 mb-5">
               <Bell className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
               <span className="font-tajawal text-sm text-brand-turquoise">
                 {isRTL ? 'إشارات تعرفها كل مدرسة' : 'Signals every school knows'}
               </span>
             </div>
-            <h2 className="font-cairo font-bold text-brand-navy dark:text-white text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
+            <h2 className="font-cairo font-bold text-brand-navy dark:text-white text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4 lg:whitespace-nowrap">
               {isRTL ? (
                 <>هل تواجه هذه الإشارات <span className="text-brand-turquoise">كل أسبوع؟</span></>
               ) : (
