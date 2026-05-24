@@ -1051,12 +1051,12 @@ export const LandingPage = () => {
 
           {/* Journey Content */}
           <div
-            className="grid lg:grid-cols-5 gap-6 lg:gap-8 items-start"
+            className="grid lg:grid-cols-5 gap-6 lg:gap-8 items-stretch"
             onMouseEnter={() => setJourneyPaused(true)}
             onMouseLeave={() => setJourneyPaused(false)}
           >
-            <div className="lg:col-span-3">
-              <Card className="relative overflow-hidden border border-border/50 bg-card/80 backdrop-blur-sm p-7 md:p-8 transition-all duration-500 hover:border-brand-turquoise/20 hover:shadow-xl group">
+            <div className="lg:col-span-3 flex">
+              <Card className="relative overflow-hidden border border-border/50 bg-card/80 backdrop-blur-sm p-7 md:p-8 transition-all duration-500 hover:border-brand-turquoise/20 hover:shadow-xl group w-full h-full flex flex-col">
                 <div className="absolute top-0 end-0 w-40 h-40 bg-gradient-to-bl from-brand-turquoise/5 to-transparent rounded-bl-full" />
                 <div className="absolute bottom-0 start-0 w-32 h-32 bg-gradient-to-tr from-brand-purple/3 to-transparent rounded-tr-full" />
                 <div className="absolute inset-0 animate-shimmer opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -1116,9 +1116,9 @@ export const LandingPage = () => {
               </Card>
             </div>
 
-            <div className="lg:col-span-2 space-y-5">
+            <div className="lg:col-span-2 flex flex-col h-full">
               {/* Large Hakim Visual Showcase — swaps per active step */}
-              <div className="relative bg-gradient-to-br from-brand-purple/8 via-white/60 to-brand-turquoise/8 dark:from-brand-purple/15 dark:via-slate-900/50 dark:to-brand-turquoise/15 border border-brand-purple/20 rounded-3xl overflow-hidden shadow-xl shadow-brand-purple/10">
+              <div className="relative bg-gradient-to-br from-brand-purple/8 via-white/60 to-brand-turquoise/8 dark:from-brand-purple/15 dark:via-slate-900/50 dark:to-brand-turquoise/15 border border-brand-purple/20 rounded-3xl overflow-hidden shadow-xl shadow-brand-purple/10 flex-1 flex flex-col">
                 <div className="absolute top-8 -end-10 w-44 h-44 rounded-full bg-brand-turquoise/20 blur-3xl" aria-hidden="true" />
                 <div className="absolute bottom-8 -start-10 w-36 h-36 rounded-full bg-brand-purple/20 blur-3xl" aria-hidden="true" />
 
@@ -1131,7 +1131,7 @@ export const LandingPage = () => {
                   {journeySteps[activeJourneyStep].phase}/04
                 </div>
 
-                <div className="relative z-10 aspect-[4/5] sm:aspect-square flex items-end justify-center px-4 pt-10">
+                <div className="relative z-10 flex-1 flex items-end justify-center px-4 pt-12 pb-2 min-h-[320px]">
                   <img
                     key={activeJourneyStep}
                     src={[
@@ -1141,7 +1141,7 @@ export const LandingPage = () => {
                       '/hakim-poses/positive-feedback.png',
                     ][activeJourneyStep]}
                     alt={t('hakim')}
-                    className="hakim-img w-full h-full max-h-[420px] object-contain object-bottom animate-fade-in drop-shadow-2xl"
+                    className="hakim-img w-full h-full max-h-[460px] object-contain object-bottom animate-fade-in drop-shadow-2xl"
                   />
                 </div>
 
@@ -1155,18 +1155,6 @@ export const LandingPage = () => {
                 </div>
               </div>
 
-              {/* Icon Grid */}
-              <div className="grid grid-cols-4 gap-2.5">
-                {journeySteps[activeJourneyStep].icons.map((Icon, i) => (
-                  <div
-                    key={`${activeJourneyStep}-icon-${i}`}
-                    className="aspect-square rounded-2xl bg-gradient-to-br from-brand-turquoise/8 to-brand-turquoise/3 border border-brand-turquoise/15 flex items-center justify-center transition-all duration-300 hover:scale-110 hover:bg-brand-turquoise/15 hover:shadow-lg hover:shadow-brand-turquoise/10 animate-scale-in cursor-default"
-                    style={{ animationDelay: `${i * 100 + 200}ms` }}
-                  >
-                    <Icon className="h-6 w-6 text-brand-turquoise" aria-hidden="true" />
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         </div>
