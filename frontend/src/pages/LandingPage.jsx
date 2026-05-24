@@ -1117,21 +1117,41 @@ export const LandingPage = () => {
             </div>
 
             <div className="lg:col-span-2 space-y-5">
-              {/* Hakim Quote */}
-              <div className="flex items-start gap-3">
-                <div className="relative flex-shrink-0">
-                  <img src="/hakim-poses/explaining-concept.png" alt={t('hakim')} className="hakim-img w-20 h-20 rounded-2xl object-contain border-2 border-brand-purple/40 shadow-xl bg-gradient-to-br from-violet-50 to-cyan-50 p-1" />
-                  <div className="absolute -bottom-1 -end-1 w-5 h-5 rounded-md bg-brand-purple flex items-center justify-center border border-card">
-                    <Brain className="h-2.5 w-2.5 text-white" />
-                  </div>
+              {/* Large Hakim Visual Showcase — swaps per active step */}
+              <div className="relative bg-gradient-to-br from-brand-purple/8 via-white/60 to-brand-turquoise/8 dark:from-brand-purple/15 dark:via-slate-900/50 dark:to-brand-turquoise/15 border border-brand-purple/20 rounded-3xl overflow-hidden shadow-xl shadow-brand-purple/10">
+                <div className="absolute top-8 -end-10 w-44 h-44 rounded-full bg-brand-turquoise/20 blur-3xl" aria-hidden="true" />
+                <div className="absolute bottom-8 -start-10 w-36 h-36 rounded-full bg-brand-purple/20 blur-3xl" aria-hidden="true" />
+
+                <div className="absolute top-4 start-4 z-20 bg-gradient-to-r from-brand-purple to-violet-600 text-white text-[11px] font-cairo font-bold px-3 py-1 rounded-full shadow-lg flex items-center gap-1.5">
+                  <Brain className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+                  {t('hakim')}
                 </div>
-                <div className="flex-1 relative bg-gradient-to-br from-white to-gray-50 dark:from-white/95 dark:to-gray-100/90 border border-brand-purple/20 rounded-2xl p-5 shadow-lg">
-                  <div className="absolute -top-2.5 start-4 bg-gradient-to-r from-brand-purple to-violet-600 text-white text-[10px] font-cairo font-bold px-3 py-0.5 rounded-full shadow-md">
-                    {t('hakim')}
-                  </div>
-                  <p className="text-gray-700 text-sm leading-relaxed font-tajawal mt-1">
-                    {journeySteps[activeJourneyStep].hakimSays}
-                  </p>
+
+                <div className="absolute top-4 end-4 z-20 font-mono text-[11px] font-bold text-brand-purple bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm px-2.5 py-1 rounded-lg border border-brand-purple/20">
+                  {journeySteps[activeJourneyStep].phase}/04
+                </div>
+
+                <div className="relative z-10 aspect-[4/5] sm:aspect-square flex items-end justify-center px-4 pt-10">
+                  <img
+                    key={activeJourneyStep}
+                    src={[
+                      '/hakim-poses/friendly-greeting.png',
+                      '/hakim-poses/detecting-patterns.png',
+                      '/hakim-poses/giving-instructions.png',
+                      '/hakim-poses/positive-feedback.png',
+                    ][activeJourneyStep]}
+                    alt={t('hakim')}
+                    className="hakim-img w-full h-full max-h-[420px] object-contain object-bottom animate-fade-in drop-shadow-2xl"
+                  />
+                </div>
+
+                {/* AI Powered Badge — repositioned as composition footer */}
+                <div className="relative z-10 flex items-center justify-center gap-2 bg-gradient-to-r from-brand-turquoise/10 to-brand-purple/10 border-t border-brand-turquoise/15 px-4 py-3 backdrop-blur-sm">
+                  <Brain className="h-4 w-4 text-brand-turquoise animate-pulse" aria-hidden="true" />
+                  <span className="text-xs font-tajawal text-foreground/70">
+                    {t('aipoweredIntelligence')}
+                  </span>
+                  <Sparkles className="h-3.5 w-3.5 text-brand-purple animate-pulse" style={{ animationDelay: '0.5s' }} aria-hidden="true" />
                 </div>
               </div>
 
@@ -1143,18 +1163,9 @@ export const LandingPage = () => {
                     className="aspect-square rounded-2xl bg-gradient-to-br from-brand-turquoise/8 to-brand-turquoise/3 border border-brand-turquoise/15 flex items-center justify-center transition-all duration-300 hover:scale-110 hover:bg-brand-turquoise/15 hover:shadow-lg hover:shadow-brand-turquoise/10 animate-scale-in cursor-default"
                     style={{ animationDelay: `${i * 100 + 200}ms` }}
                   >
-                    <Icon className="h-6 w-6 text-brand-turquoise" />
+                    <Icon className="h-6 w-6 text-brand-turquoise" aria-hidden="true" />
                   </div>
                 ))}
-              </div>
-
-              {/* AI Powered Badge */}
-              <div className="flex items-center justify-center gap-2 bg-gradient-to-r from-brand-turquoise/5 to-brand-purple/5 border border-brand-turquoise/15 rounded-xl px-4 py-3">
-                <Brain className="h-4 w-4 text-brand-turquoise animate-pulse" />
-                <span className="text-xs font-tajawal text-muted-foreground">
-                  {t('aipoweredIntelligence')}
-                </span>
-                <Sparkles className="h-3.5 w-3.5 text-brand-purple animate-pulse" style={{ animationDelay: '0.5s' }} />
               </div>
             </div>
           </div>
