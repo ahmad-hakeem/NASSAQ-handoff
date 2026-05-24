@@ -786,7 +786,7 @@ export const LandingPage = () => {
 
       {/* ========== PAIN SECTION — funnel step 1: agitate the problem ========== */}
       <section
-        className="relative bg-slate-50 py-20 lg:py-28"
+        className="relative bg-slate-50 dark:bg-slate-900 py-20 lg:py-28"
         data-testid="pain-section"
       >
         <div className="max-w-6xl mx-auto px-6">
@@ -797,14 +797,14 @@ export const LandingPage = () => {
                 {isRTL ? 'إشارات تعرفها كل مدرسة' : 'Signals every school knows'}
               </span>
             </div>
-            <h2 className="font-cairo font-bold text-brand-navy text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
+            <h2 className="font-cairo font-bold text-brand-navy dark:text-white text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
               {isRTL ? (
                 <>هل تواجه هذه الإشارات <span className="text-brand-turquoise">كل أسبوع؟</span></>
               ) : (
                 <>Are these signals showing up <span className="text-brand-turquoise">every week?</span></>
               )}
             </h2>
-            <p className="font-tajawal text-base text-slate-600 leading-relaxed">
+            <p className="font-tajawal text-base text-slate-600 dark:text-slate-300 leading-relaxed">
               {isRTL
                 ? 'لو تكررت أي اثنتين منها، فأنت تخسر وقتًا وقرارات وفُرص تدخّل — والبيانات موجودة، لكنها مبعثرة.'
                 : 'If any two of these recur, you are losing time, decisions and intervention windows — the data exists, but it is scattered.'}
@@ -852,7 +852,7 @@ export const LandingPage = () => {
               return (
                 <div
                   key={i}
-                  className="group bg-white border border-slate-200 rounded-2xl p-7 flex flex-col transition-all duration-300 ease-out hover:-translate-y-1.5 hover:shadow-md hover:border-slate-300 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+                  className="group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-7 flex flex-col transition-all duration-300 ease-out hover:-translate-y-1.5 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
                 >
                   <div className="flex items-center gap-3 mb-5">
                     <div className="shrink-0 w-10 h-10 rounded-lg bg-brand-turquoise/10 flex items-center justify-center transition-colors duration-300 group-hover:bg-brand-turquoise/15">
@@ -862,15 +862,15 @@ export const LandingPage = () => {
                       {isRTL ? col.roleAr : col.roleEn}
                     </span>
                   </div>
-                  <h3 className="font-cairo font-bold text-brand-navy text-lg leading-snug mb-3">
+                  <h3 className="font-cairo font-bold text-brand-navy dark:text-white text-lg leading-snug mb-3">
                     {isRTL ? col.titleAr : col.titleEn}
                   </h3>
-                  <p className="font-tajawal text-sm text-slate-600 leading-relaxed mb-5 flex-1">
+                  <p className="font-tajawal text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-5 flex-1">
                     {isRTL ? col.bodyAr : col.bodyEn}
                   </p>
-                  <div className="flex items-center gap-2 pt-4 border-t border-slate-100">
+                  <div className="flex items-center gap-2 pt-4 border-t border-slate-100 dark:border-slate-700">
                     <TrendingUp className="h-3.5 w-3.5 text-brand-turquoise shrink-0" strokeWidth={1.5} aria-hidden="true" />
-                    <span className="font-tajawal text-xs text-slate-500">
+                    <span className="font-tajawal text-xs text-slate-500 dark:text-slate-400">
                       {isRTL ? col.tagAr : col.tagEn}
                     </span>
                   </div>
@@ -879,7 +879,7 @@ export const LandingPage = () => {
             })}
           </div>
 
-          <p className="font-tajawal text-center text-slate-500 text-sm mt-10">
+          <p className="font-tajawal text-center text-slate-500 dark:text-slate-400 text-sm mt-10">
             {isRTL
               ? 'نَسَّق بُني خصيصًا ليُغلق هذه الفجوات — واحدة تلو الأخرى.'
               : 'NASSAQ was built specifically to close these gaps — one by one.'}
