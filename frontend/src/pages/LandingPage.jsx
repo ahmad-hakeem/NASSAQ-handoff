@@ -939,7 +939,7 @@ export const LandingPage = () => {
                 {isRTL ? 'العمل اليومي في نَسَّق' : 'The daily NASSAQ loop'}
               </span>
             </div>
-            <h2 className="font-cairo font-bold text-white text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
+            <h2 className="font-cairo font-bold text-white text-3xl sm:text-4xl lg:text-5xl leading-snug mb-4">
               {isRTL ? (
                 <>أربع خطوات تحوّل الإشارات اليومية إلى <span className="text-brand-turquoise">قرارات واضحة.</span></>
               ) : (
