@@ -743,7 +743,23 @@ export const LandingPage = () => {
             </div>
 
             {/* RTL End = Left: Dashboard mockup */}
-            <div className="order-1 lg:order-2">
+            <div className="order-1 lg:order-2 relative">
+              {/* Floating Hakim mascot — welcomes visitors next to the dashboard */}
+              <div
+                className="hidden sm:block absolute -bottom-6 -start-6 lg:-bottom-10 lg:-start-10 z-20 pointer-events-none select-none animate-float motion-reduce:animate-none"
+                aria-hidden="true"
+              >
+                <div className="relative">
+                  <div className="absolute inset-0 -m-3 rounded-full bg-brand-turquoise/30 blur-2xl" />
+                  <img
+                    src="/hakim-welcome.png"
+                    alt=""
+                    className="relative w-28 h-28 sm:w-32 sm:h-32 lg:w-40 lg:h-40 object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.35)]"
+                    loading="lazy"
+                  />
+                </div>
+              </div>
+
               <div
                 className="relative w-full bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transform hover:scale-[1.02] transition-transform duration-500"
                 data-testid="hero-mockup"
