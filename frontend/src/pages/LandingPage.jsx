@@ -680,7 +680,7 @@ export const LandingPage = () => {
                   data-testid="hero-secondary-cta"
                 >
                   <a href="#how-it-works" className="flex items-center gap-2">
-                    {isRTL ? 'شاهد كيف يعمل (دقيقتان)' : 'See how it works (2 min)'}
+                    {isRTL ? 'كيف يعمل' : 'How it works'}
                   </a>
                 </Button>
               </div>
