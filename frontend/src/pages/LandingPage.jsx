@@ -1267,17 +1267,22 @@ export const LandingPage = () => {
                   </div>
 
                   <div className="flex items-center gap-3 mt-6 pt-4 border-t border-white/5">
-                    <div className="flex-1 flex items-center gap-1">
-                      {aiCapabilities.map((_, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setActiveAIStep(i)}
-                          aria-label={`AI capability ${i + 1}`}
-                          className={`h-1.5 rounded-full transition-all duration-500 ${
-                            activeAIStep === i ? 'flex-[3] bg-gradient-to-r from-brand-turquoise to-cyan-500' : 'flex-1 bg-white/10 hover:bg-white/25'
-                          }`}
-                        />
-                      ))}
+                    <div className="flex-1 relative h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className="absolute inset-y-0 start-0 bg-gradient-to-r from-brand-turquoise to-cyan-500 rounded-full transition-all duration-500 ease-in-out"
+                        style={{ width: `${((activeAIStep + 1) / aiCapabilities.length) * 100}%` }}
+                        aria-hidden="true"
+                      />
+                      <div className="absolute inset-0 flex">
+                        {aiCapabilities.map((_, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setActiveAIStep(i)}
+                            aria-label={`AI capability ${i + 1}`}
+                            className="flex-1 h-full bg-transparent hover:bg-white/5 transition-colors"
+                          />
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
