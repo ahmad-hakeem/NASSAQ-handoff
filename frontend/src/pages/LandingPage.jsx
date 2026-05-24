@@ -651,19 +651,7 @@ export const LandingPage = () => {
                 className="font-cairo font-bold text-white leading-tight text-4xl sm:text-5xl lg:text-6xl"
                 data-testid="platform-name"
               >
-                {isRTL ? (
-                  <>
-                    اكتشف <span className="text-brand-turquoise">تراجع طلابك</span>
-                    <br />
-                    قبل فوات الأوان.
-                  </>
-                ) : (
-                  <>
-                    Catch <span className="text-brand-turquoise">student decline</span>
-                    <br />
-                    before it's too late.
-                  </>
-                )}
+                <span className="text-brand-turquoise">نَسَّق</span>
               </h1>
 
               {/* Sub-heading — names the mechanism, doesn't repeat the headline */}
