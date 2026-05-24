@@ -1091,17 +1091,22 @@ export const LandingPage = () => {
 
                   {/* Progress Timeline */}
                   <div className="flex items-center gap-3 pt-5 border-t border-border/30">
-                    <div className="flex-1 flex items-center gap-1">
-                      {journeySteps.map((_, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setActiveJourneyStep(i)}
-                          aria-label={`Step ${i + 1}`}
-                          className={`h-1.5 rounded-full transition-all duration-500 ${
-                            activeJourneyStep === i ? 'flex-[3] bg-gradient-to-r from-brand-turquoise to-cyan-500' : 'flex-1 bg-muted hover:bg-muted-foreground/30'
-                          }`}
-                        />
-                      ))}
+                    <div className="flex-1 relative h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="absolute inset-y-0 start-0 bg-gradient-to-r from-brand-turquoise to-cyan-500 rounded-full transition-all duration-500 ease-in-out"
+                        style={{ width: `${((activeJourneyStep + 1) / journeySteps.length) * 100}%` }}
+                        aria-hidden="true"
+                      />
+                      <div className="absolute inset-0 flex">
+                        {journeySteps.map((_, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setActiveJourneyStep(i)}
+                            aria-label={`Step ${i + 1}`}
+                            className="flex-1 h-full bg-transparent hover:bg-white/5 transition-colors"
+                          />
+                        ))}
+                      </div>
                     </div>
                     <span className="text-xs text-muted-foreground font-mono bg-muted/50 px-2 py-1 rounded-lg">
                       {journeySteps[activeJourneyStep].phase}/04
