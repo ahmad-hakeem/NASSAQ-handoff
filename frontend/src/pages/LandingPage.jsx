@@ -642,7 +642,7 @@ export const LandingPage = () => {
               <div className="inline-flex items-center gap-2 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full ps-2 pe-4 py-1.5 backdrop-blur-sm">
                 <CheckCircle2 className="h-4 w-4 text-brand-turquoise" />
                 <span className="font-tajawal text-sm text-brand-turquoise">
-                  {isRTL ? 'لمدراء المدارس · معاهد التعليم · المعلمين المستقلين' : 'For principals, training institutes & independent teachers'}
+                  {isRTL ? 'المؤسسات التعليمية · المعلمين المستقلين' : 'Educational institutions & independent teachers'}
                 </span>
               </div>
 
