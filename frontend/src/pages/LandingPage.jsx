@@ -939,16 +939,16 @@ export const LandingPage = () => {
                 {isRTL ? 'العمل اليومي في نَسَّق' : 'The daily NASSAQ loop'}
               </span>
             </div>
-            <h2 className="font-cairo font-bold text-white text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
+            <h2 className="font-cairo font-bold text-white text-4xl md:text-5xl leading-tight tracking-normal text-center max-w-3xl mx-auto mb-4 selection:bg-brand-turquoise/30 selection:text-white">
               {isRTL ? (
                 <>
-                  <span className="block mb-4">أربع خطوات تحوّل الإشارات اليومية إلى</span>
-                  <span className="block text-brand-turquoise">قرارات واضحة.</span>
+                  <span className="block mb-4 selection:bg-brand-turquoise/30 selection:text-white">أربع خطوات تحوّل الإشارات اليومية إلى</span>
+                  <span className="block text-brand-turquoise selection:bg-brand-turquoise/30 selection:text-white">قرارات واضحة.</span>
                 </>
               ) : (
                 <>
-                  <span className="block mb-4">Four steps that turn daily signals into</span>
-                  <span className="block text-brand-turquoise">clear decisions.</span>
+                  <span className="block mb-4 selection:bg-brand-turquoise/30 selection:text-white">Four steps that turn daily signals into</span>
+                  <span className="block text-brand-turquoise selection:bg-brand-turquoise/30 selection:text-white">clear decisions.</span>
                 </>
               )}
             </h2>
