@@ -932,7 +932,7 @@ export const LandingPage = () => {
         <div className="absolute inset-0 bg-brand-navy/70" aria-hidden="true" />
 
         <div className="relative max-w-6xl mx-auto px-6">
-          <div className="text-center max-w-2xl mx-auto mb-12">
+          <div className="text-center max-w-5xl mx-auto mb-12">
             <div className="inline-flex items-center gap-2 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full ps-2 pe-4 py-1.5 mb-5 backdrop-blur-sm">
               <Zap className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
               <span className="font-tajawal text-sm text-brand-turquoise">
