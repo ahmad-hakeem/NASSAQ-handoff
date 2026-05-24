@@ -657,8 +657,8 @@ export const LandingPage = () => {
               {/* Sub-heading — names the mechanism, doesn't repeat the headline */}
               <p className="font-tajawal text-lg text-white/80 leading-relaxed max-w-xl">
                 {isRTL
-                  ? 'نَسَّق يجمع الحضور والدرجات والسلوك في صورة واحدة، فيُنبّهك للطلاب الذين يحتاجون تدخّلك — وللمعلمين الذين يحتاجون دعمك — قبل أن تتحول الإشارة إلى أزمة.'
-                  : 'NASSAQ joins attendance, grades and behavior into one picture, then flags the students who need your intervention — and the teachers who need your support — before a signal turns into a crisis.'}
+                  ? 'منصة تساعدك على فهم رحلة الطالب بشكل أعمق.'
+                  : 'A platform that helps you understand each student\'s journey more deeply.'}
               </p>
 
               {/* CTAs */}
