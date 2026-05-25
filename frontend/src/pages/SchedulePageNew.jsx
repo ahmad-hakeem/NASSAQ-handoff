@@ -202,7 +202,7 @@ function MasterMatrixSkeleton({ rows = 10, days = 5, periods = 7, isDaily = fals
     >
       {/* Day-band header row */}
       <div
-        className="sticky bg-slate-100 border-b border-slate-200 z-30"
+        className="sticky bg-slate-100 border-b border-slate-200 z-10"
         style={{ top: 'var(--sticky-band-h, 88px)', insetInlineStart: 0, height: dayBandH }}
       />
       {Array.from({ length: days }).map((_, d) => (
@@ -1704,7 +1704,7 @@ export default function SchedulePageNew() {
           ref={stickyBandRef}
           data-testid="master-schedule-sticky-band"
           data-density="default"
-          className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200"
+          className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-200"
         >
           {/* Row 1: status chips (start) + actions (end). The h1 page
               title and the decorative Sparkles icon are intentionally

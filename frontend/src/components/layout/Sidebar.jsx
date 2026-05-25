@@ -416,7 +416,7 @@ export const Sidebar = ({ children }) => {
         variant="ghost"
         size="icon"
         onClick={() => setMobileOpen((v) => !v)}
-        className="lg:hidden fixed top-3 start-3 z-50 bg-brand-navy text-white shadow-lg rounded-xl h-10 w-10"
+        className="lg:hidden fixed top-3 start-3 z-[110] bg-brand-navy text-white shadow-lg rounded-xl h-10 w-10"
         data-testid="mobile-sidebar-toggle"
       >
         {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -425,7 +425,7 @@ export const Sidebar = ({ children }) => {
       {/* Mobile Overlay */}
       {mobileOpen && (
         <div
-          className="lg:hidden fixed inset-0 bg-black/50 z-40"
+          className="lg:hidden fixed inset-0 bg-black/50 z-[100]"
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -435,7 +435,7 @@ export const Sidebar = ({ children }) => {
         data-testid="sidebar"
         dir={isRTL ? 'rtl' : 'ltr'}
         className={`
-          fixed inset-y-0 z-40 bg-brand-navy overflow-hidden
+          fixed inset-y-0 z-[100] bg-brand-navy overflow-hidden
           transition-all duration-300 ease-in-out
           ${isRTL ? 'right-0' : 'left-0'}
           ${collapsed ? 'w-20' : 'w-72'}
