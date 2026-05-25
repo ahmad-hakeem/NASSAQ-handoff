@@ -261,7 +261,64 @@ const NotificationRow = ({ title, desc, checked, onChange }) => (
 // call-sites identical and is the smallest possible patch.
 const ToggleRow = NotificationRow;
 
-export const AccountSettingsPage = () => {
+// Task #496 — When a Platform Admin is in school "preview mode"
+// (`isImpersonating && schoolContext`), the personal Account Settings
+// surface must not render the Platform Admin's data inside the previewed
+// school's chrome. Preview mode is a frontend-only school-context switch
+// — `/users/me/*` still correctly resolves to (and mutates) the Platform
+// Admin's row, so the only safe behavior is to refuse to render the
+// personal form and route the user to exit preview first.
+const PreviewModeAccountSettingsGuard = ({ schoolContext, onExit }) => {
+  const { t } = useTranslation();
+  const { isRTL } = useTheme();
+  return (
+    <Sidebar>
+      <div
+        className="min-h-screen bg-background flex items-center justify-center p-6"
+        data-testid="account-settings-preview-guard"
+      >
+        <Card className="card-nassaq max-w-xl w-full border-0 shadow-lg">
+          <CardHeader className="text-center pt-8">
+            <div className="mx-auto h-14 w-14 rounded-2xl bg-amber-500/15 flex items-center justify-center mb-3">
+              <ShieldAlert
+                className="h-7 w-7 text-amber-500"
+                strokeWidth={1.5}
+                aria-hidden="true"
+              />
+            </div>
+            <CardTitle className="font-cairo text-xl text-foreground">
+              {isRTL ? 'إعدادات الحساب غير متاحة في وضع المعاينة' : 'Account Settings unavailable in preview mode'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5 pb-8">
+            <p className="text-sm text-muted-foreground font-tajawal text-center leading-relaxed">
+              {isRTL
+                ? 'إعدادات الحساب تخصّ حساب مدير المنصة وليست جزءاً من المدرسة التي تستعرضها حالياً. للوصول إلى ملفك الشخصي وكلمة المرور والتفضيلات والإشعارات، يجب الخروج من وضع المعاينة أولاً.'
+                : 'Account Settings belongs to the Platform Admin account, not to the school you are previewing. To access your profile, password, preferences, or notifications, you must exit preview mode first.'}
+            </p>
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs font-tajawal text-amber-700 dark:text-amber-300 text-center">
+              {isRTL
+                ? `تستعرض حالياً: ${schoolContext?.school_name || ''}`
+                : `Currently previewing: ${schoolContext?.school_name_en || schoolContext?.school_name || ''}`}
+            </div>
+            <div className="flex justify-center">
+              <Button
+                onClick={onExit}
+                className="bg-brand-navy rounded-xl gap-2 min-w-[200px]"
+                data-testid="account-settings-preview-exit-btn"
+              >
+                <LogOut className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+                {isRTL ? 'الخروج من وضع المعاينة' : 'Exit preview mode'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </Sidebar>
+  );
+};
+
+const AccountSettingsPageInner = () => {
   const { t } = useTranslation();
   const { user, api, logout, refreshUser, updateToken } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark, language, setLanguage, theme, setTheme } = useTheme();
@@ -2797,6 +2854,31 @@ export const AccountSettingsPage = () => {
       )}
     </Sidebar>
   );
+};
+
+// Task #496 — exported wrapper that gates the personal Account Settings
+// surface behind the preview-mode check. When a Platform Admin is in
+// school preview mode, render the guard (with a one-click exit) instead
+// of mounting the inner component — this also prevents the `/users/me/*`
+// fetches inside the inner component from running while previewing.
+export const AccountSettingsPage = () => {
+  const { isImpersonating, schoolContext, exitSchoolContext } = useAuth();
+  if (isImpersonating && schoolContext) {
+    return (
+      <PreviewModeAccountSettingsGuard
+        schoolContext={schoolContext}
+        onExit={() => {
+          exitSchoolContext();
+          if (typeof window !== 'undefined') {
+            // Re-navigate to /account/settings so the page remounts in
+            // the Platform Admin's own shell without preview state.
+            window.location.assign('/account/settings');
+          }
+        }}
+      />
+    );
+  }
+  return <AccountSettingsPageInner />;
 };
 
 export default AccountSettingsPage;
