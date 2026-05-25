@@ -206,7 +206,19 @@ export default function AppRoutes() {
         <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/teacher-register" element={<TeacherSelfRegistration />} />
-        <Route path="/for-teachers" element={<PublicShell><TeacherExperiencePage /></PublicShell>} />
+        <Route
+          path="/for-teachers"
+          element={
+            <PublicShell>
+              {/* Local Suspense keeps the shared shell + tab switcher
+                  visible on first lazy-chunk load instead of bubbling
+                  to the app-level fallback. */}
+              <Suspense fallback={<div className="min-h-[60vh]" aria-hidden="true" />}>
+                <TeacherExperiencePage />
+              </Suspense>
+            </PublicShell>
+          }
+        />
         {/* Task #206 — IT §6.2c public parent-invitation landing. The
             page swaps the one-shot bearer for an authenticated session
             and deep-links into /parent?student_id=…. Unauthenticated

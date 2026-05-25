@@ -24,9 +24,6 @@ import {
   Lightbulb,
   TrendingUp,
   Award,
-  Globe,
-  Sun,
-  Moon,
   ClipboardCheck,
   Activity,
   Star,
@@ -157,7 +154,7 @@ function FloatingIcon({ icon: Icon, className, delay = '0s' }) {
 const SHOW_PRICING = false;
 
 export const LandingPage = () => {
-  const { isRTL, toggleLanguage, toggleTheme, isDark } = useTheme();
+  const { isRTL } = useTheme();
   const { t } = useTranslation();
   const { api } = useAuth();
   const [activeJourneyStep, setActiveJourneyStep] = useState(0);

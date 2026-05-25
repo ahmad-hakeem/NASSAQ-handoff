@@ -8,7 +8,7 @@ import {
   ArrowLeft, ArrowRight, Zap, Sparkles, CheckCircle2, Check,
   ClipboardList, Activity, Brain, Send, Award, Star,
   Calendar, BookOpen, Users, TrendingUp, Bell, Download,
-  FileText, MessageCircle, Clock, ChevronRight, Home,
+  FileText, MessageCircle, Clock,
   GraduationCap, AlertTriangle, Target, Lightbulb,
 } from 'lucide-react';
 
@@ -107,7 +107,7 @@ const MONTHLY_FEATURES = [
 ];
 
 export const TeacherExperiencePage = () => {
-  const { isRTL, toggleLanguage, toggleTheme, isDark } = useTheme();
+  const { isRTL } = useTheme();
   const [activeAlertType, setActiveAlertType] = useState(0);
 
   const ar = (a, e) => isRTL ? a : e;
