@@ -1,81 +1,38 @@
-import { useState, useEffect } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { Button } from '../ui/button';
-import { ScrollArea } from '../ui/scroll-area';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '../ui/dialog';
-import { Badge } from '../ui/badge';
-import { Input } from '../ui/input';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
-import { BetaBadge } from '../BetaDisclaimer';
 import {
   LayoutDashboard,
   Building2,
   Users,
-  GraduationCap,
-  UserCheck,
+  UserCog,
+  CalendarCheck,
   BookOpen,
   Calendar,
   CalendarDays,
-  CalendarCheck,
-  ClipboardList,
-  BarChart3,
   Settings,
-  ChevronRight,
-  ChevronLeft,
   Menu,
   X,
   Bell,
   MessageSquare,
-  LogOut,
   Shield,
   Activity,
   Link2,
   FileText,
-  UserCog,
   Network,
-  RefreshCw,
-  Eye,
-  ArrowLeftRight,
   FileSpreadsheet,
   Home,
-  FolderOpen,
-  Star,
-  Play,
   Award,
   Lightbulb,
-  ChevronDown,
-  Upload,
-  Sparkles,
-  History,
   Trash2,
-  Search,
 } from 'lucide-react';
-import CommandPalette from '../teacher/CommandPalette';
-
-
-const LOGO_WHITE = '/nassaq-logo-white.png';
-
-const getRoleNameAr = (role) => {
-  const names = {
-    platform_admin: 'مدير المنصة',
-    platform_operations_manager: 'مدير العمليات',
-    school_principal: 'مدير المدرسة',
-    school_admin: 'مسؤول المدرسة',
-    school_sub_admin: 'نائب مدير المدرسة',
-    teacher: 'معلم',
-    student: 'طالب',
-    parent: 'ولي أمر',
-  };
-  return names[role] || role;
-};
+import SidebarContent from './sidebar/SidebarContent';
+import RoleSwitcherDialog from './sidebar/RoleSwitcherDialog';
+import PreviewReasonDialog from './sidebar/PreviewReasonDialog';
 
 export const Sidebar = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
@@ -85,15 +42,15 @@ export const Sidebar = ({ children }) => {
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [switchingRole, setSwitchingRole] = useState(false);
   const [previewReasonRole, setPreviewReasonRole] = useState(null);
-  const [previewReason, setPreviewReason] = useState('');
-  const [previewReasonError, setPreviewReasonError] = useState('');
   const [loggingOut, setLoggingOut] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({});
-  const { user, logout, isImpersonating, schoolContext, getEffectiveRole, exitSchoolContext, token, updateToken, isSwitchedRole, originalRole, api, fetchPermissions } = useAuth();
-  // Phase 0 §4.B-6 backed sidebar permission gate. Items that declare a
-  // `permission` field are only shown once the backend confirms the
-  // current user actually carries it. Until the lazy fetch resolves we
-  // hide gated items (fail-closed) — never the other way round.
+  const {
+    user, logout, isImpersonating, schoolContext, getEffectiveRole,
+    exitSchoolContext, token, updateToken, isSwitchedRole, originalRole,
+    api, fetchPermissions,
+  } = useAuth();
+
+  // Phase 0 §4.B-6 backed sidebar permission gate.
   const [perms, setPerms] = useState(null);
   useEffect(() => {
     let cancelled = false;
@@ -114,17 +71,14 @@ export const Sidebar = ({ children }) => {
     })();
     return () => { cancelled = true; };
   }, [token, fetchPermissions]);
+
   const { isRTL } = useTheme();
   const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
 
   // 2026-05-18 — IT unread inbox counter for the unified
-  // "التواصل والإشعارات" entry (Phase-1 badge migration). Polled
-  // from the same IT-scoped endpoint NotificationBell uses so the
-  // bell and the sidebar badge never diverge; the global
-  // `notifications:refresh` event lets bulk mark-as-read in the
-  // hub flush the badge immediately.
+  // "التواصل والإشعارات" entry (Phase-1 badge migration).
   const [unreadInbox, setUnreadInbox] = useState(0);
   const isIndependentTeacher = (user?.role || '').toLowerCase() === 'independent_teacher';
 
@@ -153,48 +107,43 @@ export const Sidebar = ({ children }) => {
     };
   }, [api, token, isIndependentTeacher]);
 
-  // Fetch available roles on mount
   const { nassaqError, nassaqWarning } = useNassaqAlert();
-  useEffect(() => {
-    // Only fetch if we have a valid token and user
-    if (token && user?.id) {
-      // Small delay to ensure auth context is fully initialized
-      const timeoutId = setTimeout(() => {
-        fetchAvailableRoles();
-      }, 100);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [token, user?.id]);
 
-  // Fetch available roles when modal opens
-  useEffect(() => {
-    if (showRoleSwitcher && token && user?.id) {
-      fetchAvailableRoles();
-    }
-  }, [showRoleSwitcher, token, user?.id]);
-
-  const fetchAvailableRoles = async () => {
-    // Double check token is valid before making request
+  const fetchAvailableRoles = useCallback(async () => {
     if (!token) {
       console.warn('Skipping roles fetch - no token available');
       return;
     }
-    
     setLoadingRoles(true);
     try {
       const response = await api.get('/user-roles/my-roles');
       setAvailableRoles(response.data.available_roles || []);
     } catch (error) {
       console.error('Error fetching roles:', error);
-      // Only show error if it's not a token/auth issue (those are handled by logout)
       if (error.response?.status !== 401 && error.response?.status !== 403) {
-        // Don't show error toast - just log it silently
         setAvailableRoles([]);
       }
     } finally {
       setLoadingRoles(false);
     }
-  };
+  }, [api, token]);
+
+  // Fetch available roles on mount
+  useEffect(() => {
+    if (token && user?.id) {
+      const timeoutId = setTimeout(() => {
+        fetchAvailableRoles();
+      }, 100);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [token, user?.id, fetchAvailableRoles]);
+
+  // Fetch available roles when modal opens
+  useEffect(() => {
+    if (showRoleSwitcher && token && user?.id) {
+      fetchAvailableRoles();
+    }
+  }, [showRoleSwitcher, token, user?.id, fetchAvailableRoles]);
 
   // Task #498: platform-admin "preview as school principal" rows are minted
   // by /user-roles/my-roles (is_preview=true). The legacy /user-roles/switch
@@ -202,10 +151,11 @@ export const Sidebar = ({ children }) => {
   // backend/routes/user_roles_routes.py:218) — platform admins must go
   // through the hardened /role-switch/switch flow which requires a typed
   // reason, fresh MFA, and a server-side impersonation_sessions row.
-  const isPlatformAdminPreview = (role) =>
+  const isPlatformAdminPreview = useCallback((role) =>
     role?.is_preview === true
     && role?.role === 'school_principal'
-    && user?.role === 'platform_admin';
+    && user?.role === 'platform_admin',
+  [user?.role]);
 
   const _detailString = (error) => {
     const d = error?.response?.data?.detail;
@@ -213,14 +163,10 @@ export const Sidebar = ({ children }) => {
     return null;
   };
 
-  const handleSwitchRole = async (role) => {
+  const handleSwitchRole = useCallback(async (role) => {
     if (role.is_current) return;
 
-    // Platform-admin → school-principal preview: open the reason dialog
-    // and route through the hardened endpoint instead of the legacy one.
     if (isPlatformAdminPreview(role)) {
-      setPreviewReason('');
-      setPreviewReasonError('');
       setPreviewReasonRole(role);
       return;
     }
@@ -229,15 +175,13 @@ export const Sidebar = ({ children }) => {
     try {
       const response = await api.post('/user-roles/switch', {
         target_role: role.role,
-        target_tenant_id: role.tenant_id
+        target_tenant_id: role.tenant_id,
       });
 
       if (response.data.success) {
         await updateToken(response.data.access_token);
-
         toast.success(response.data.message || (t('roleSwitchedSuccessfully')));
         setShowRoleSwitcher(false);
-
         const redirectTo = response.data.redirect_to || '/';
         navigate(redirectTo);
       }
@@ -248,28 +192,15 @@ export const Sidebar = ({ children }) => {
     } finally {
       setSwitchingRole(false);
     }
-  };
+  }, [api, isPlatformAdminPreview, nassaqError, navigate, t, updateToken]);
 
   // Task #498: hardened impersonation flow for platform admins previewing
   // a specific school as its principal. Posts to /role-switch/switch with
   // the typed reason; the response shape is { token, role, school_id,
   // is_impersonating, original_role } — note `token`, NOT `access_token`.
-  // If the user's MFA recency has expired, the backend returns HTTP 403
-  // with the canonical step-up envelope; the axios interceptor in
-  // AuthContext handles the passkey replay transparently and we never
-  // see that as an error here.
-  const handleConfirmPreviewSwitch = async () => {
+  // The reason is owned by PreviewReasonDialog and arrives validated.
+  const handleConfirmPreviewSwitch = useCallback(async (reason) => {
     if (!previewReasonRole) return;
-    const reason = (previewReason || '').trim();
-    if (reason.length < 4) {
-      setPreviewReasonError(t('previewReasonTooShort'));
-      return;
-    }
-    if (reason.length > 500) {
-      setPreviewReasonError(t('previewReasonTooLong'));
-      return;
-    }
-
     setSwitchingRole(true);
     try {
       const response = await api.post('/role-switch/switch', {
@@ -289,8 +220,6 @@ export const Sidebar = ({ children }) => {
 
       toast.success(t('roleSwitchedSuccessfully'));
       setPreviewReasonRole(null);
-      setPreviewReason('');
-      setPreviewReasonError('');
       setShowRoleSwitcher(false);
       navigate('/principal');
     } catch (error) {
@@ -300,26 +229,21 @@ export const Sidebar = ({ children }) => {
     } finally {
       setSwitchingRole(false);
     }
-  };
+  }, [api, nassaqError, navigate, previewReasonRole, t, updateToken]);
 
-  const handleCancelPreviewSwitch = () => {
+  const handleCancelPreviewSwitch = useCallback(() => {
     if (switchingRole) return;
     setPreviewReasonRole(null);
-    setPreviewReason('');
-    setPreviewReasonError('');
-  };
+  }, [switchingRole]);
 
-  const handleReturnToOriginal = async () => {
+  const handleReturnToOriginal = useCallback(async () => {
     setSwitchingRole(true);
     try {
       const response = await api.post('/user-roles/return-to-original', {});
-      
       if (response.data.success) {
         await updateToken(response.data.access_token);
-
         toast.success(response.data.message || (t('returnedToOriginalRole')));
         setShowRoleSwitcher(false);
-
         const redirectTo = response.data.redirect_to || '/admin';
         navigate(redirectTo);
       }
@@ -329,9 +253,9 @@ export const Sidebar = ({ children }) => {
     } finally {
       setSwitchingRole(false);
     }
-  };
+  }, [api, nassaqError, navigate, t, updateToken]);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     nassaqWarning(
       t('areYouSureYouWantToLogOut'),
       {
@@ -352,912 +276,123 @@ export const Sidebar = ({ children }) => {
             setLoggingOut(false);
           }
         },
-      }
+      },
     );
-  };
-  
+  }, [api, logout, nassaqWarning, navigate, t]);
+
   // Handle exit from school context (impersonation mode)
-  const handleExitSchoolContext = () => {
+  // eslint-disable-next-line no-unused-vars
+  const handleExitSchoolContext = useCallback(() => {
     exitSchoolContext();
     navigate('/admin/tenants');
-  };
+  }, [exitSchoolContext, navigate]);
 
-  const getMenuItems = () => {
-    // Get effective role (supports impersonation)
-    const effectiveRole = getEffectiveRole ? getEffectiveRole() : user?.role;
-    
+  const effectiveRole = getEffectiveRole ? getEffectiveRole() : user?.role;
+
+  const menuItems = useMemo(() => {
     // Platform Admin Menu Items - مدير المنصة
-    // Based on Platform Admin Role Documentation
     const platformAdminItems = [
-      {
-        icon: LayoutDashboard,
-        label: t('controlDashboard'),
-        href: '/admin',
-        roles: ['platform_admin'],
-      },
-      {
-        icon: Building2,
-        label: t('schoolsManagement'),
-        href: '/admin/schools',
-        roles: ['platform_admin'],
-      },
-      {
-        icon: Users,
-        label: t('usersManagement'),
-        href: '/admin/users',
-        roles: ['platform_admin'],
-      },
-      {
-        icon: Activity,
-        label: t('systemMonitoring'),
-        href: '/admin/monitoring',
-        roles: ['platform_admin'],
-      },
-      {
-        icon: Network,
-        label: t('aiInsights'),
-        href: '/principal/ai-insights',
-        roles: ['platform_admin'],
-      },
-      {
-        icon: Link2,
-        label: t('integrations'),
-        href: '/admin/integrations',
-        roles: ['platform_admin'],
-      },
-      {
-        icon: Shield,
-        label: t('securityCenter'),
-        href: '/admin/security',
-        roles: ['platform_admin'],
-      },
+      { icon: LayoutDashboard, label: t('controlDashboard'), href: '/admin', roles: ['platform_admin'] },
+      { icon: Building2, label: t('schoolsManagement'), href: '/admin/schools', roles: ['platform_admin'] },
+      { icon: Users, label: t('usersManagement'), href: '/admin/users', roles: ['platform_admin'] },
+      { icon: Activity, label: t('systemMonitoring'), href: '/admin/monitoring', roles: ['platform_admin'] },
+      { icon: Network, label: t('aiInsights'), href: '/principal/ai-insights', roles: ['platform_admin'] },
+      { icon: Link2, label: t('integrations'), href: '/admin/integrations', roles: ['platform_admin'] },
+      { icon: Shield, label: t('securityCenter'), href: '/admin/security', roles: ['platform_admin'] },
       // Task #225 — IT §6.8 platform-admin hard-delete UI for archived workspaces.
-      {
-        icon: Trash2,
-        label: t('workspacePurgeMenu'),
-        href: '/admin/workspace-purge',
-        roles: ['platform_admin'],
-      },
-      {
-        icon: FileText,
-        label: t('auditLogs'),
-        href: '/admin/audit',
-        roles: ['platform_admin', 'platform_security_officer', 'platform_data_analyst'],
-      },
-      {
-        icon: MessageSquare,
-        label: t('communicationNotifications'),
-        href: '/admin/communication',
-        roles: ['platform_admin'],
-      },
-      {
-        icon: Lightbulb,
-        label: t('productHub'),
-        href: '/admin/product-hub',
-        roles: ['platform_admin'],
-      },
-      // Task #173: first-class entry to the platform admin's personal
-      // settings page. Without this, the only way to reach
-      // `/account/settings` was a buried MFA deep-link inside Platform
-      // Settings. Platform Settings (gear icon) stays where it is.
-      {
-        icon: UserCog,
-        label: t('myAccount'),
-        href: '/account/settings',
-        roles: ['platform_admin'],
-      },
+      { icon: Trash2, label: t('workspacePurgeMenu'), href: '/admin/workspace-purge', roles: ['platform_admin'] },
+      { icon: FileText, label: t('auditLogs'), href: '/admin/audit', roles: ['platform_admin', 'platform_security_officer', 'platform_data_analyst'] },
+      { icon: MessageSquare, label: t('communicationNotifications'), href: '/admin/communication', roles: ['platform_admin'] },
+      { icon: Lightbulb, label: t('productHub'), href: '/admin/product-hub', roles: ['platform_admin'] },
+      // Task #173: first-class entry to the platform admin's personal settings page.
+      { icon: UserCog, label: t('myAccount'), href: '/account/settings', roles: ['platform_admin'] },
     ];
 
     // School Principal & Sub Admin Menu Items
-    // Reorganized according to the required structure
-    // school_admin = new schools admins (same access as school_principal)
     const SCHOOL_ROLES = ['school_principal', 'school_admin', 'school_sub_admin'];
     const SCHOOL_PRINCIPAL_ROLES = ['school_principal', 'school_admin'];
     const schoolItems = [
-      // 1. Dashboard Overview
-      {
-        icon: LayoutDashboard,
-        label: t('commandCenter2'),
-        href: '/principal',
-        roles: SCHOOL_ROLES,
-      },
-      // 2. Schedule Management
-      {
-        icon: Calendar,
-        label: t('schoolSchedule'),
-        href: '/school/schedule',
-        roles: SCHOOL_ROLES,
-      },
-      // 3. Users & Classes Management — direct link (no sub-items),
-      // mirrors the structure of Command Center / School Schedule.
-      {
-        icon: Users,
-        label: t('usersClasses'),
-        href: '/admin/users-management',
-        roles: SCHOOL_ROLES,
-      },
-      // 4. Attendance Management
-      {
-        icon: CalendarCheck,
-        label: t('staffAttendance'),
-        href: '/admin/teacher-attendance',
-        roles: SCHOOL_ROLES,
-      },
-      // 5. Assessments & Grades Management
-      // TEMPORARILY HIDDEN — module under maintenance. Restore by uncommenting.
-      // {
-      //   icon: ClipboardList,
-      //   label: t('examsAssessments'),
-      //   href: '/admin/assessments',
-      //   roles: SCHOOL_ROLES,
-      // },
-      // 6. School Settings
-      {
-        icon: Settings,
-        label: t('schoolSettings'),
-        href: '/school/settings',
-        roles: SCHOOL_PRINCIPAL_ROLES,
-      },
-      
-      // 7. Communication & Notifications
-      {
-        icon: Bell,
-        label: t('communicationCenter'),
-        href: '/principal/communication',
-        roles: SCHOOL_ROLES,
-      },
-      // 8. AI Insights
-      {
-        icon: Network,
-        label: t('aiInsights'),
-        href: '/principal/ai-insights',
-        roles: SCHOOL_ROLES,
-      },
-      // 10. Account Settings
-      {
-        icon: UserCog,
-        label: t('accountSettings'),
-        href: '/account/settings',
-        roles: SCHOOL_ROLES,
-      },
+      { icon: LayoutDashboard, label: t('commandCenter2'), href: '/principal', roles: SCHOOL_ROLES },
+      { icon: Calendar, label: t('schoolSchedule'), href: '/school/schedule', roles: SCHOOL_ROLES },
+      { icon: Users, label: t('usersClasses'), href: '/admin/users-management', roles: SCHOOL_ROLES },
+      { icon: CalendarCheck, label: t('staffAttendance'), href: '/admin/teacher-attendance', roles: SCHOOL_ROLES },
+      // 5. Assessments & Grades Management — TEMPORARILY HIDDEN (module under maintenance).
+      { icon: Settings, label: t('schoolSettings'), href: '/school/settings', roles: SCHOOL_PRINCIPAL_ROLES },
+      { icon: Bell, label: t('communicationCenter'), href: '/principal/communication', roles: SCHOOL_ROLES },
+      { icon: Network, label: t('aiInsights'), href: '/principal/ai-insights', roles: SCHOOL_ROLES },
+      { icon: UserCog, label: t('accountSettings'), href: '/account/settings', roles: SCHOOL_ROLES },
     ];
 
-    // Teacher Menu Items — Task #79: schedule, portfolio/achievements, notifications nav
-    // Task #189 §5.2: shared items also visible to `independent_teacher`;
-    // the IT-only workspace-settings entry is added below.
+    // Teacher Menu Items — Task #79
+    // Task #189 §5.2: shared items also visible to `independent_teacher`.
     const teacherItems = [
-      {
-        icon: Home,
-        label: t('dashboard'),
-        href: '/teacher',
-        roles: ['teacher', 'independent_teacher'],
-      },
-      {
-        icon: BookOpen,
-        label: t('myClasses'),
-        href: '/teacher/classes',
-        roles: ['teacher', 'independent_teacher'],
-        dataTour: 'sidebar-my-classes',
-      },
-      // 2026-05-19 — IA refactor: "الجدول والتقويم" (Time Management
-      // Hub). The three time-management tabs that used to live in the
-      // "فصولي" page (جدولي / تقويمي الشخصي / إعدادات الجدول) were
-      // extracted into a dedicated sidebar surface so the classes page
-      // can focus on class management. IT-only — non-IT teachers have
-      // no workspace schedule/calendar/settings surface to manage.
-      {
-        icon: CalendarDays,
-        label: t('timeManagementHub'),
-        href: '/teacher/planning',
-        roles: ['independent_teacher'],
-        dataTour: 'sidebar-time-management',
-      },
-      {
-        icon: Award,
-        label: t('myAchievements'),
-        href: '/teacher/achievements',
-        roles: ['teacher', 'independent_teacher'],
-      },
+      { icon: Home, label: t('dashboard'), href: '/teacher', roles: ['teacher', 'independent_teacher'] },
+      { icon: BookOpen, label: t('myClasses'), href: '/teacher/classes', roles: ['teacher', 'independent_teacher'], dataTour: 'sidebar-my-classes' },
+      // 2026-05-19 — IT-only "الجدول والتقويم" Time Management Hub.
+      { icon: CalendarDays, label: t('timeManagementHub'), href: '/teacher/planning', roles: ['independent_teacher'], dataTour: 'sidebar-time-management' },
+      { icon: Award, label: t('myAchievements'), href: '/teacher/achievements', roles: ['teacher', 'independent_teacher'] },
       {
         icon: MessageSquare,
         label: t('communicationNotifications'),
         href: '/teacher/communication',
         roles: ['teacher', 'independent_teacher'],
         dataTour: 'sidebar-communication',
-        // 2026-05-18 — surface the IT unread inbox count next to
-        // this single unified entry now that the standalone
-        // "الإشعارات" item is gone. The sidebar polls the same
-        // IT-scoped /independent-teacher/notifications/unread-count
-        // endpoint NotificationBell uses, so the bell and the
-        // sidebar badge never disagree.
+        // 2026-05-18 — IT unread inbox badge sits on this unified entry.
         showUnreadBadge: true,
       },
-      {
-        icon: Network,
-        label: t('aiInsights'),
-        href: '/ai-insights',
-        roles: ['teacher', 'independent_teacher'],
-      },
-      // 2026-05-18 — Unified "الملف الشخصي والإعدادات" entry. The
-      // legacy /teacher/settings page has been folded into the
-      // canonical /account/settings hub (AccountSettingsPage), and
-      // the legacy route now redirects there in appRoutes.js. The
-      // bottom-of-sidebar user-card shortcut already points at
-      // /account/settings, so both navigation entry points now land
-      // on the same surface.
-      {
-        icon: Settings,
-        label: t('profileSettings'),
-        href: '/account/settings',
-        roles: ['teacher', 'independent_teacher'],
-        dataTour: 'sidebar-account-settings',
-      },
-      // 2026-05-19 — The standalone "إعدادات مساحتي" sidebar entry
-      // has been retired. Its two halves now live in their natural
-      // homes: identity (name/logo) under Account Settings → My
-      // Workspace, and schedule baseline + active year/term under
-      // فصولي → "إعدادات الجدول" tab. /teacher/workspace-settings
-      // still resolves (it redirects to /teacher/classes?tab=settings)
-      // so existing bookmarks and internal links keep working.
-      // Task #193 §5.4 — Independent-Teacher manual schedule editor.
-      // 2026-05-18 — The standalone "جدولي" sidebar entry has been
-      // folded into the "فصولي" page as a fourth tab so IT users
-      // get classes / sessions / lesson-planner / schedule under one
-      // mounted shell. /teacher/workspace-schedule still resolves
-      // (it redirects to /teacher/classes?tab=schedule) so existing
-      // bookmarks and internal links keep working.
-      // Task #208 §6.3 — Independent-Teacher only: personal calendar.
-      // 2026-05-19 — The standalone "تقويمي الشخصي" sidebar entry has
-      // been folded into the "فصولي" page as a "تقويمي الشخصي" tab so
-      // IT users get one mounted shell for everything class-adjacent.
-      // /teacher/calendar still resolves (it redirects to
-      // /teacher/classes?tab=calendar) so existing bookmarks and
-      // permission gating (events.author_own) keep working.
-      // Task #190 §5.3 — IT-only workspace subjects CRUD.
-      // 2026-05-18 — The standalone "المواد" sidebar entry has been
-      // folded into the "فصولي" page as a fifth tab so IT users
-      // get classes / sessions / lesson-planner / schedule / subjects
-      // under one mounted shell. /teacher/subjects still resolves
-      // (redirects to /teacher/classes?tab=subjects) so old bookmarks
-      // and the create-class dialog dropdown keep working.
-      // Task #207 §6.1 / Task #278 — IT-only bulk imports.
-      // 2026-05-19 — Both standalone IT import entries ("استيراد الطلاب"
-      // and "الاستيراد الجماعي") have been merged into a single
-      // "استيراد البيانات" tab inside /teacher/classes. The merged tab
-      // hosts the four sub-tabs (الطلاب / الفصول / المواد / نسخ الأسبوع)
-      // and reuses the same headless panels — backend contracts,
-      // permission gates (students.bulk_import_workspace,
-      // classes.bulk_import_workspace) and MFA step-up are unchanged.
-      // /teacher/import-students and /teacher/bulk-import still resolve
-      // (they redirect to /teacher/classes?tab=import) so historical
-      // bookmarks and in-app links keep working.
-      // Task #185 — IT-only subjects CRUD page (workspace-scoped).
-      // 2026-05-18 — Duplicate "موادي" sidebar entry removed; the
-      // primary entry point is now the "المواد" tab inside
-      // /teacher/classes (?tab=subjects). See the redirect in
-      // appRoutes.js — old bookmarks land on the new embedded tab.
-      // 2026-05-18 — IT "مساعد خطط الدروس" (lesson planner) was
-      // relocated into the "فصولي" tabs as `?tab=lesson-planner`
-      // (alongside فصولي / إدارة الحصص). The standalone sidebar
-      // entry is removed to avoid duplicate nav; deep links to
-      // /teacher/lesson-planner redirect to /teacher/classes?tab=
-      // lesson-planner in appRoutes.js so historical bookmarks
-      // continue to work. Permission gating (ai.lesson_plans) is
-      // preserved at both the redirect route and the tab itself.
-      // 2026-05-18 — IT "سجل النشاط" was relocated into the unified
-      // Account Settings page (tab id `activity`). The sidebar entry
-      // is removed to eliminate the duplicate nav item; deep links to
-      // /teacher/audit-log redirect to /account/settings#activity in
-      // appRoutes.js so historical bookmarks continue to work.
-      // 2026-05-19 — Standalone "التحليلات" sidebar entry retired.
-      // Its panel is now embedded in /ai-insights as the
-      // "التحليلات الرقمية" tab so IT users have a single AI/analytics
-      // entry point. /teacher/analytics still redirects there for
-      // legacy bookmarks (see appRoutes.js).
-      // 2026-05-18 — Standalone IT "الإشعارات" entry removed. The
-      // inbox now lives inside the unified "التواصل والإشعارات"
-      // hub as its default "البريد الوارد" tab; the unread counter
-      // moved onto the kept communication entry above
-      // (`showUnreadBadge: true`). Deep links to
-      // /teacher/notifications redirect to
-      // /teacher/communication?tab=inbox in appRoutes.js so
-      // historical bookmarks continue to work.
+      { icon: Network, label: t('aiInsights'), href: '/ai-insights', roles: ['teacher', 'independent_teacher'] },
+      // 2026-05-18 — Unified "الملف الشخصي والإعدادات" entry → /account/settings hub.
+      { icon: Settings, label: t('profileSettings'), href: '/account/settings', roles: ['teacher', 'independent_teacher'], dataTour: 'sidebar-account-settings' },
     ];
 
-    // Parent Menu Items — mirrors the historical Parent Portal navigation so
-    // parent users plug into the same shared sidebar registry as everyone else.
+    // Parent Menu Items
     const parentItems = [
-      {
-        icon: Home,
-        label: t('home'),
-        href: '/parent',
-        roles: ['parent'],
-      },
-      {
-        icon: Users,
-        label: t('studentProfile'),
-        href: '/parent/children',
-        roles: ['parent'],
-      },
-      {
-        icon: MessageSquare,
-        label: t('communicationCenter'),
-        href: '/parent/communication',
-        roles: ['parent'],
-      },
-      // Absence Excuse, Meeting Request and Notifications are now consolidated
-      // inside the Communication Center for parents (tabs). The underlying
-      // routes/components remain available for direct deep-links and future
-      // reactivation, but they are intentionally hidden from the sidebar to
-      // keep the parent IA simple.
-      // The standalone Reports page has been merged into the Student Profile
-      // (Reports & Statistics tab). The legacy ``/parent/reports`` route
-      // still exists but redirects to ``/parent/children`` so the parent
-      // can pick a child and open their unified profile.
-      {
-        icon: Settings,
-        label: t('settings'),
-        href: '/parent/settings',
-        roles: ['parent'],
-      },
+      { icon: Home, label: t('home'), href: '/parent', roles: ['parent'] },
+      { icon: Users, label: t('studentProfile'), href: '/parent/children', roles: ['parent'] },
+      { icon: MessageSquare, label: t('communicationCenter'), href: '/parent/communication', roles: ['parent'] },
+      { icon: Settings, label: t('settings'), href: '/parent/settings', roles: ['parent'] },
     ];
 
-    // Combine all items
     const allItems = [...platformAdminItems, ...schoolItems, ...teacherItems, ...parentItems];
-    
-    // Filter by effective role (supports impersonation)
-    // effectiveRole is already defined at the start of this function
+
     const filteredItems = allItems.filter((item) => {
       if (!item.roles.includes(effectiveRole)) return false;
       if (!item.permission) return true;
       // fail-closed while permissions are still loading
       return !!(perms && perms.has(item.permission));
     });
-    
+
     // Remove duplicates by href
     const uniqueItems = filteredItems.reduce((acc, current) => {
-      const exists = acc.find(item => item.href === current.href);
-      if (!exists) {
-        acc.push(current);
-      }
+      const exists = acc.find((item) => item.href === current.href);
+      if (!exists) acc.push(current);
       return acc;
     }, []);
 
     return uniqueItems;
-  };
+  }, [t, effectiveRole, perms]);
 
-  const menuItems = getMenuItems();
-
-  const isActive = (href) => {
+  const isActive = useCallback((href) => {
     // Support deep links like "/teacher/communication?tab=bulletin"
     const [hrefPath, hrefQuery] = href.split('?');
     if (location.pathname !== hrefPath) return false;
     if (!hrefQuery) return true;
-    // All query params in href must match current URL
     const current = new URLSearchParams(location.search);
     const target = new URLSearchParams(hrefQuery);
     for (const [k, v] of target.entries()) {
       if (current.get(k) !== v) return false;
     }
     return true;
-  };
+  }, [location.pathname, location.search]);
 
-  const sidebarContent = (
-    <div className="flex flex-col h-full">
-      <CommandPalette />
-      {/* Logo */}
-      <div className="p-4 flex flex-col items-center">
-        {/* Logo and collapse button row */}
-        <div className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'} w-full`}>
-          {!collapsed && (
-            <Link to="/" className="flex items-center gap-2">
-              <img src={LOGO_WHITE} alt="نَسَّق" className="h-10 w-auto rounded-xl" />
-              <BetaBadge />
-            </Link>
-          )}
-          {collapsed && (
-            <Link to="/" className="flex-shrink-0">
-              <img src={LOGO_WHITE} alt="نَسَّق" className="h-8 w-8 rounded-lg object-contain" />
-            </Link>
-          )}
-          <div className="flex items-center gap-1">
-            {((getEffectiveRole ? getEffectiveRole() : user?.role) === 'independent_teacher') && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => window.dispatchEvent(new CustomEvent('nassaq:open-command-palette'))}
-                className="text-white/70 hover:text-white hover:bg-white/10"
-                data-testid="sidebar-cmdk-btn"
-                title={t('cmdkOpen')}
-              >
-                <Search className="h-5 w-5" />
-              </Button>
-            )}
-            {availableRoles.length > 1 && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowRoleSwitcher(true)}
-                className="text-white/70 hover:text-white hover:bg-white/10"
-                data-testid="sidebar-role-switch-btn"
-                title={t('switchRole')}
-              >
-                <ArrowLeftRight className="h-5 w-5" />
-              </Button>
-            )}
-            {user?.role === 'platform_admin' && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => { navigate('/settings'); setMobileOpen(false); }}
-                className={`text-white/70 hover:text-white hover:bg-white/10 ${
-                  location.pathname === '/settings' ? 'bg-white/15 text-white' : ''
-                }`}
-                data-testid="sidebar-settings-btn"
-                title={t('systemSettings')}
-              >
-                <Settings className="h-5 w-5" />
-              </Button>
-            )}
-            {!collapsed && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setCollapsed(!collapsed)}
-                className="text-white/70 hover:text-white hover:bg-white/10 hidden lg:flex"
-                data-testid="sidebar-collapse-btn"
-              >
-                {isRTL ? (
-                  <ChevronRight className="h-5 w-5" />
-                ) : (
-                  <ChevronLeft className="h-5 w-5" />
-                )}
-              </Button>
-            )}
-          </div>
-        </div>
-        
-        {/* Collapse button when collapsed */}
-        {collapsed && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setCollapsed(!collapsed)}
-            className="text-white/70 hover:text-white hover:bg-white/10 mt-2 hidden lg:flex"
-            data-testid="sidebar-collapse-btn"
-          >
-            {isRTL ? (
-              <ChevronLeft className="h-5 w-5" />
-            ) : (
-              <ChevronRight className="h-5 w-5" />
-            )}
-          </Button>
-        )}
-        
-        {/* User info when collapsed */}
-        {collapsed && user && (
-          <div className="mt-3 text-center">
-            <p className="text-xs font-medium text-white truncate max-w-[60px]">
-              {user.full_name?.split(' ')[0]}
-            </p>
-            <p className="text-[10px] text-white/50 truncate max-w-[60px]">
-              {isRTL
-                ? user.role === 'platform_admin' || user.role === 'platform_operations_manager'
-                  ? 'مدير المنصة'
-                  : user.role === 'school_principal' || user.role === 'school_admin'
-                  ? 'مدير المدرسة'
-                  : user.role === 'school_sub_admin'
-                  ? 'مساعد المدير'
-                  : user.role === 'teacher'
-                  ? 'معلم'
-                  : user.role === 'independent_teacher'
-                  ? 'معلم مستقل'
-                  : user.role === 'parent'
-                  ? 'ولي أمر'
-                  : user.role === 'student'
-                  ? 'طالب'
-                  : user.role?.replace('_', ' ')
-                : user.role?.replace('_', ' ')}
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Menu Items */}
-      <ScrollArea className="flex-1 px-3" dir={isRTL ? 'rtl' : 'ltr'}>
-        <nav className="space-y-1 py-4" dir={isRTL ? 'rtl' : 'ltr'}>
-          {menuItems.map((item) => {
-            const hasSubItems = item.subItems && item.subItems.length > 0;
-            const isGroupExpanded = expandedGroups[item.href];
-            const isAnySubActive = hasSubItems && item.subItems.some(sub => isActive(sub.href));
-
-            if (hasSubItems && !collapsed) {
-              return (
-                <div key={item.href}>
-                  <button
-                    onClick={() => setExpandedGroups(prev => ({ ...prev, [item.href]: !prev[item.href] }))}
-                    data-testid={`sidebar-link-${item.href.replace(/\//g, '-')}`}
-                    className={`sidebar-item w-full ${
-                      isAnySubActive ? 'sidebar-item-active' : 'sidebar-item-inactive'
-                    }`}
-                  >
-                    <item.icon className="h-5 w-5 flex-shrink-0" />
-                    <span className="flex-1 text-start">{item.label}</span>
-                    <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isGroupExpanded ? 'rotate-180' : ''}`} />
-                  </button>
-                  {isGroupExpanded && (
-                    <div className="mt-0.5 space-y-0.5">
-                      {item.subItems.map(sub => (
-                        <Link
-                          key={sub.href}
-                          to={sub.href}
-                          onClick={() => setMobileOpen(false)}
-                          className={`block py-2 rounded-xl text-sm transition-colors duration-150 ${isRTL ? 'pr-12 pl-4 text-right' : 'pl-12 pr-4 text-left'} ${
-                            isActive(sub.href)
-                              ? 'text-brand-turquoise bg-white/10 font-medium'
-                              : 'text-white/60 hover:text-white hover:bg-white/5'
-                          }`}
-                        >
-                          {sub.label}
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            }
-
-            return (
-              <Link
-                key={item.href}
-                to={item.href}
-                onClick={() => setMobileOpen(false)}
-                data-testid={`sidebar-link-${item.href.replace(/\//g, '-')}`}
-                data-tour={item.dataTour}
-                className={`sidebar-item ${
-                  isActive(item.href) ? 'sidebar-item-active' : 'sidebar-item-inactive'
-                }`}
-              >
-                <item.icon className="h-5 w-5 flex-shrink-0" />
-                {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-                {/* 2026-05-18 — unread badge for sidebar items that
-                    opt in via `showUnreadBadge`. Currently used by
-                    the IT unified communications entry. Renders in
-                    both collapsed and expanded modes so the cue is
-                    never hidden behind the rail. */}
-                {item.showUnreadBadge && unreadInbox > 0 && (
-                  <Badge
-                    variant="destructive"
-                    className={`h-5 min-w-[1.25rem] px-1.5 text-[10px] font-semibold flex items-center justify-center rounded-full ${collapsed ? 'absolute top-1 end-1' : 'ms-auto'}`}
-                    data-testid={`sidebar-badge-${item.href.replace(/\//g, '-')}`}
-                  >
-                    {unreadInbox > 99 ? '99+' : unreadInbox}
-                  </Badge>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-      </ScrollArea>
-
-      {/* User Info & Logout */}
-      {!collapsed && user && (
-        <div className="p-4 border-t border-white/10">
-          {isSwitchedRole && (
-            <div className="mb-3 p-2 rounded-lg bg-brand-turquoise/20 border border-brand-turquoise/30">
-              <div className="flex items-center gap-2 text-brand-turquoise text-xs">
-                <ArrowLeftRight className="h-3 w-3" />
-                <span className="font-medium">
-                  {t('switchedRole')}
-                </span>
-              </div>
-              <p className="text-[10px] text-white/70 mt-1">
-                {isRTL ? `الدور الأصلي: ${getRoleNameAr(originalRole)}` : `Original: ${originalRole?.replace(/_/g, ' ')}`}
-              </p>
-            </div>
-          )}
-          {isImpersonating && schoolContext && !isSwitchedRole && (
-            <div className="mb-3 p-2 rounded-lg bg-amber-500/20 border border-amber-500/30">
-              <div className="flex items-center gap-2 text-amber-200 text-xs">
-                <Shield className="h-3 w-3" />
-                <span className="font-medium">
-                  {t('previewMode')}
-                </span>
-              </div>
-              <p className="text-[10px] text-amber-100/80 truncate mt-1">
-                {schoolContext.school_name}
-              </p>
-            </div>
-          )}
-          
-          <div className="flex items-center gap-3">
-            {/* Task #173: footer identity area is now a one-click
-                affordance to /account/settings for every authenticated
-                role (including platform_admin). The avatar+name block is
-                a real button so keyboard and screen-reader users get the
-                same shortcut. The trailing logout icon stays as its own
-                button. No full reload — react-router navigate(). */}
-            <button
-              type="button"
-              onClick={() => { navigate('/account/settings'); setMobileOpen(false); }}
-              className="flex items-center gap-3 flex-1 min-w-0 text-start rounded-xl p-1 -m-1 hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-brand-turquoise/60 transition-colors"
-              title={t('accountSettings')}
-              aria-label={t('accountSettings')}
-              data-testid="sidebar-footer-account"
-            >
-              <div className="w-10 h-10 rounded-xl bg-brand-turquoise flex items-center justify-center overflow-hidden flex-shrink-0">
-                {user.avatar_url ? (
-                  <img
-                    src={user.avatar_url}
-                    alt={user.full_name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-white font-semibold">
-                    {user.full_name?.charAt(0)}
-                  </span>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <p className="text-sm font-medium text-white truncate">{user.full_name}</p>
-                  {/* Task #200 §5.8 — Sub-brand role badge for the
-                      Independent-Teacher persona. Uses the workspace-accent
-                      design token so it stays consistent with the wizard
-                      header, workspace settings header, and IT empty states. */}
-                  {((getEffectiveRole ? getEffectiveRole() : user.role) === 'independent_teacher') && (
-                    <span
-                      className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-workspace-accent-light text-workspace-accent-fg border border-workspace-accent-border flex-shrink-0"
-                      data-testid="sidebar-it-role-badge"
-                      title={isRTL ? 'معلم مستقل' : 'Independent Teacher'}
-                    >
-                      {isRTL ? 'معلم مستقل' : 'IT'}
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-white/50 truncate">
-                  {(() => {
-                    const effectiveRole = getEffectiveRole ? getEffectiveRole() : user.role;
-                    if (isRTL) {
-                      return effectiveRole === 'platform_admin' || effectiveRole === 'platform_operations_manager'
-                        ? 'مدير المنصة'
-                        : effectiveRole === 'school_principal' || effectiveRole === 'school_admin'
-                        ? 'مدير المدرسة'
-                        : effectiveRole === 'school_sub_admin'
-                        ? 'مساعد المدير'
-                        : effectiveRole === 'teacher'
-                        ? 'معلم'
-                        : effectiveRole === 'independent_teacher'
-                        ? 'معلم مستقل'
-                        : effectiveRole === 'parent'
-                        ? 'ولي أمر'
-                        : effectiveRole === 'student'
-                        ? 'طالب'
-                        : effectiveRole;
-                    }
-                    return effectiveRole?.replace('_', ' ');
-                  })()}
-                </p>
-              </div>
-            </button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleLogout}
-              disabled={loggingOut}
-              className="flex-shrink-0 text-red-300/70 hover:text-red-200 hover:bg-red-500/20 rounded-xl transition-colors"
-              data-testid="logout-btn"
-              title={t('logout')}
-              aria-label={t('logout')}
-            >
-              {loggingOut ? (
-                <RefreshCw className="h-5 w-5 animate-spin" />
-              ) : (
-                <LogOut className="h-5 w-5" />
-              )}
-            </Button>
-          </div>
-        </div>
-      )}
-      
-      {collapsed && user && (
-        <div className="p-3 border-t border-white/10 space-y-2">
-          {isSwitchedRole && (
-            <div className="w-full flex justify-center">
-              <div className="w-3 h-3 rounded-full bg-brand-turquoise animate-pulse" title={t('switchedRole')} />
-            </div>
-          )}
-          {/* Task #173: collapsed-sidebar avatar is also clickable —
-              same /account/settings shortcut as the expanded footer. */}
-          <button
-            type="button"
-            onClick={() => { navigate('/account/settings'); setMobileOpen(false); }}
-            className="w-full flex justify-center rounded-lg p-1 hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-brand-turquoise/60 transition-colors"
-            title={t('accountSettings')}
-            aria-label={t('accountSettings')}
-            data-testid="sidebar-footer-account-collapsed"
-          >
-            <div className="w-8 h-8 rounded-lg bg-brand-turquoise flex items-center justify-center overflow-hidden">
-              {user.avatar_url ? (
-                <img src={user.avatar_url} alt={user.full_name} className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-white text-xs font-semibold">{user.full_name?.charAt(0)}</span>
-              )}
-            </div>
-          </button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleLogout}
-            disabled={loggingOut}
-            className="w-full text-red-300/70 hover:text-red-200 hover:bg-red-500/20"
-            title={t('logout')}
-            aria-label={t('logout')}
-            data-testid="logout-btn-collapsed"
-          >
-            {loggingOut ? (
-              <RefreshCw className="h-5 w-5 animate-spin" />
-            ) : (
-              <LogOut className="h-5 w-5" />
-            )}
-          </Button>
-        </div>
-      )}
-
-      {/* Role Switcher Modal */}
-      <Dialog open={showRoleSwitcher} onOpenChange={setShowRoleSwitcher}>
-        <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ArrowLeftRight className="h-5 w-5 text-brand-turquoise" />
-              {t('switchRole2')}
-            </DialogTitle>
-          </DialogHeader>
-          
-          {loadingRoles ? (
-            <div className="flex items-center justify-center py-8">
-              <RefreshCw className="h-8 w-8 animate-spin text-brand-turquoise" />
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {availableRoles.map((role, index) => (
-                <button
-                  key={`${role.role}-${role.tenant_id || index}`}
-                  onClick={() => handleSwitchRole(role)}
-                  disabled={role.is_current || switchingRole}
-                  className={`w-full p-3 rounded-lg border transition-all text-start ${
-                    role.is_current
-                      ? 'bg-brand-turquoise/10 border-brand-turquoise'
-                      : 'bg-background border-border hover:border-brand-turquoise hover:bg-muted'
-                  } ${switchingRole ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  data-testid={`switch-role-${role.role}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        role.is_current ? 'bg-brand-turquoise text-white' : 'bg-muted'
-                      }`}>
-                        {role.is_preview ? (
-                          <Eye className="h-5 w-5" />
-                        ) : role.role === 'platform_admin' ? (
-                          <Shield className="h-5 w-5" />
-                        ) : role.role === 'school_principal' || role.role === 'school_admin' || role.role === 'school_sub_admin' ? (
-                          <Building2 className="h-5 w-5" />
-                        ) : role.role === 'teacher' || role.role === 'independent_teacher' ? (
-                          <GraduationCap className="h-5 w-5" />
-                        ) : role.role === 'student' ? (
-                          <BookOpen className="h-5 w-5" />
-                        ) : (
-                          <Users className="h-5 w-5" />
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-medium text-sm">
-                          {isRTL ? (role.descriptive_ar || role.role_name_ar) : (role.descriptive_en || role.role_name_en)}
-                        </p>
-                        {role.tenant_name && !role.descriptive_ar && (
-                          <p className="text-xs text-muted-foreground">
-                            {role.tenant_name}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {role.is_current && (
-                        <Badge variant="secondary" className="bg-brand-turquoise/20 text-brand-turquoise">
-                          {t('current2')}
-                        </Badge>
-                      )}
-                      {role.is_preview && (
-                        <Badge variant="outline" className="text-amber-500 border-amber-500">
-                          {t('preview')}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-          
-          {isSwitchedRole && (
-            <Button
-              variant="outline"
-              onClick={handleReturnToOriginal}
-              disabled={switchingRole}
-              className="w-full mt-4 border-brand-turquoise/50 text-brand-turquoise hover:bg-brand-turquoise/10 hover:text-brand-turquoise focus-visible:text-brand-turquoise"
-            >
-              <RefreshCw className={`h-4 w-4 me-2 ${switchingRole ? 'animate-spin' : ''}`} />
-              {t('returnToOriginalRole')}
-            </Button>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Task #498 — Reason dialog for platform-admin → school-principal preview */}
-      <Dialog
-        open={!!previewReasonRole}
-        onOpenChange={(open) => { if (!open) handleCancelPreviewSwitch(); }}
-      >
-        <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Eye className="h-5 w-5 text-brand-turquoise" />
-              {t('previewAsPrincipalTitle')}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              {previewReasonRole?.tenant_name
-                ? t('previewAsPrincipalDescWithSchool').replace('{school}', previewReasonRole.tenant_name)
-                : t('previewAsPrincipalDesc')}
-            </p>
-            <label className="text-sm font-medium block" htmlFor="preview-reason-input">
-              {t('previewReasonLabel')}
-            </label>
-            <Input
-              id="preview-reason-input"
-              dir="rtl"
-              value={previewReason}
-              onChange={(e) => {
-                setPreviewReason(e.target.value);
-                if (previewReasonError) setPreviewReasonError('');
-              }}
-              placeholder={t('previewReasonPlaceholder')}
-              maxLength={500}
-              disabled={switchingRole}
-              data-testid="preview-reason-input"
-              autoFocus
-              className="text-start ps-4 placeholder:text-slate-400 focus:placeholder:opacity-0 placeholder:transition-opacity placeholder:duration-200"
-            />
-            {previewReasonError && (
-              <p className="text-xs text-red-600" role="alert">
-                {previewReasonError}
-              </p>
-            )}
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button
-              variant="outline"
-              onClick={handleCancelPreviewSwitch}
-              disabled={switchingRole}
-            >
-              {t('cancel')}
-            </Button>
-            <Button
-              onClick={handleConfirmPreviewSwitch}
-              disabled={switchingRole}
-              className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
-              data-testid="preview-reason-confirm"
-            >
-              {switchingRole && <RefreshCw className="h-4 w-4 me-2 animate-spin" />}
-              {t('previewAsPrincipalConfirm')}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
+  // Stable callbacks passed into SidebarContent
+  const onToggleCollapsed = useCallback(() => setCollapsed((c) => !c), []);
+  const onCloseMobile = useCallback(() => setMobileOpen(false), []);
+  const onNavigate = useCallback((to) => navigate(to), [navigate]);
+  const onToggleGroup = useCallback((href) => {
+    setExpandedGroups((prev) => ({ ...prev, [href]: !prev[href] }));
+  }, []);
+  const onOpenRoleSwitcher = useCallback(() => setShowRoleSwitcher(true), []);
 
   return (
     <div className="min-h-screen flex">
@@ -1265,7 +400,7 @@ export const Sidebar = ({ children }) => {
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => setMobileOpen(!mobileOpen)}
+        onClick={() => setMobileOpen((v) => !v)}
         className="lg:hidden fixed top-3 start-3 z-50 bg-brand-navy text-white shadow-lg rounded-xl h-10 w-10"
         data-testid="mobile-sidebar-toggle"
       >
@@ -1293,7 +428,30 @@ export const Sidebar = ({ children }) => {
         `}
       >
         <div className="absolute inset-0 nassaq-pattern opacity-[0.03] pointer-events-none" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
-        {sidebarContent}
+        <SidebarContent
+          isRTL={isRTL}
+          t={t}
+          user={user}
+          effectiveRole={effectiveRole}
+          collapsed={collapsed}
+          onToggleCollapsed={onToggleCollapsed}
+          onCloseMobile={onCloseMobile}
+          onNavigate={onNavigate}
+          locationPathname={location.pathname}
+          menuItems={menuItems}
+          isActive={isActive}
+          expandedGroups={expandedGroups}
+          onToggleGroup={onToggleGroup}
+          unreadInbox={unreadInbox}
+          availableRoles={availableRoles}
+          onOpenRoleSwitcher={onOpenRoleSwitcher}
+          isSwitchedRole={isSwitchedRole}
+          isImpersonating={isImpersonating}
+          schoolContext={schoolContext}
+          originalRole={originalRole}
+          onLogout={handleLogout}
+          loggingOut={loggingOut}
+        />
       </aside>
 
       {/* Main Content */}
@@ -1309,6 +467,29 @@ export const Sidebar = ({ children }) => {
       >
         {children}
       </main>
+
+      {/* Role Switcher Modal */}
+      <RoleSwitcherDialog
+        open={showRoleSwitcher}
+        onOpenChange={setShowRoleSwitcher}
+        loadingRoles={loadingRoles}
+        availableRoles={availableRoles}
+        switchingRole={switchingRole}
+        onSelectRole={handleSwitchRole}
+        isSwitchedRole={isSwitchedRole}
+        onReturnToOriginal={handleReturnToOriginal}
+      />
+
+      {/* Task #498 — Reason dialog for platform-admin → school-principal preview.
+          Owns its own draft/error state internally; emits only the validated
+          reason on confirm. This is the structural fix for Task #519 — typing
+          here no longer re-renders any unrelated sidebar region. */}
+      <PreviewReasonDialog
+        role={previewReasonRole}
+        submitting={switchingRole}
+        onConfirm={handleConfirmPreviewSwitch}
+        onCancel={handleCancelPreviewSwitch}
+      />
     </div>
   );
 };
