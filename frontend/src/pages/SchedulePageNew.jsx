@@ -285,15 +285,15 @@ function EmptyCell({ onClick, addLabel }) {
         onClick={onClick}
         title={addLabel}
         aria-label={addLabel}
-        className="w-full h-full bg-slate-50/30 hover:bg-brand-turquoise/5 hover:ring-1 hover:ring-inset hover:ring-brand-turquoise/40 transition-colors flex items-center justify-center text-slate-300 hover:text-brand-turquoise group rounded-md"
+        className="w-full h-full bg-gradient-to-b from-slate-50/40 to-slate-100/30 hover:from-brand-turquoise/10 hover:to-brand-turquoise/5 hover:ring-1 hover:ring-inset hover:ring-brand-turquoise/40 transition-all duration-200 flex items-center justify-center text-slate-300 hover:text-brand-turquoise group rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-1"
         data-testid="master-matrix-empty-cell-add"
       >
-        <span className="opacity-0 group-hover:opacity-100 text-base leading-none transition-opacity font-light">+</span>
+        <span className="opacity-0 group-hover:opacity-100 scale-75 group-hover:scale-100 text-lg leading-none transition-all duration-200 font-light">+</span>
       </button>
     );
   }
   return (
-    <div className="w-full h-full bg-slate-50/30" />
+    <div className="w-full h-full bg-gradient-to-b from-slate-50/40 to-slate-100/30" />
   );
 }
 
@@ -2566,7 +2566,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
         <div
           key={`day-h-${dayKey}`}
           data-testid={`master-matrix-day-band-${dayKey}`}
-          className={`sticky z-20 ${getDayBandClass(dayKey)} ${getDayTextOnBand(dayKey)} text-sm font-cairo font-bold text-center flex items-center justify-center tracking-wide ${dayIdx > 0 ? 'border-s-2 border-s-white/70' : ''} shadow-[inset_0_1px_0_rgba(255,255,255,0.22),inset_0_-1px_0_rgba(0,0,0,0.08)]`}
+          className={`sticky z-20 ${getDayBandClass(dayKey)} ${getDayTextOnBand(dayKey)} text-sm font-cairo font-bold text-center flex items-center justify-center tracking-wide ${dayIdx > 0 ? 'border-s-2 border-s-white/70' : ''} shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.12),0_1px_2px_rgba(15,42,75,0.08)]`}
           style={{ top: isDaily ? 'var(--sticky-band-h, 88px)' : 0, gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
         >
           {dayLabelMap[dayKey] || dayKey}
@@ -2600,7 +2600,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
           return (
             <div
               key={`ph-${dayKey}-${p}`}
-              className={`sticky z-20 ${getDayTintClass(dayKey)} text-brand-navy/85 text-center flex flex-col items-center justify-center leading-tight border-b border-white/60 border-l border-l-white/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
+              className={`sticky z-20 ${getDayTintClass(dayKey)} text-brand-navy/90 text-center flex flex-col items-center justify-center leading-tight border-b border-white/70 border-l border-l-white/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),inset_0_-1px_0_rgba(15,42,75,0.05)] ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
               style={{
                 top: isDaily
                   ? `calc(var(--sticky-band-h, 88px) + ${DAY_HEADER_HEIGHT}px)`
@@ -2633,7 +2633,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
             {/* Sticky teacher column (الجانب الأيمن في RTL) */}
             <div
               data-testid={`master-matrix-teacher-${teacher.id}`}
-              className={`sticky z-10 ${isDaily ? 'px-4 py-3' : 'px-3 py-2'} border-b border-l border-slate-200 ${rowBg} ${teacherStickyShadow}`}
+              className={`sticky z-10 ${isDaily ? 'px-4 py-3' : 'px-3 py-2'} border-b border-l border-slate-200 ${rowBg} ${teacherStickyShadow} transition-colors hover:bg-slate-50/60`}
               style={{ insetInlineStart: 0, minHeight: ROW_HEIGHT }}
             >
               <div className="flex items-start justify-between gap-2">
@@ -2676,10 +2676,10 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                       type="button"
                       size="sm"
                       onClick={() => onBulkCoverClick(teacher)}
-                      className="w-full h-6 text-[10px] font-bold bg-gradient-to-r from-[#1C3D74] to-[#2BB5A0] hover:from-[#152d57] text-white shadow-sm px-2"
+                      className="w-full h-6 text-[10px] font-bold bg-gradient-to-r from-brand-navy to-brand-turquoise hover:brightness-110 text-white shadow-sm px-2"
                       title={t('openBulkCoverPanelTooltip')}
                     >
-                      <Layers className="h-3 w-3 me-1" />
+                      <Layers className="h-3 w-3 me-1" strokeWidth={1.5} aria-hidden="true" />
                       {t('coverWithCount', { count: vacantTodayCount })}
                     </Button>
                   )}
