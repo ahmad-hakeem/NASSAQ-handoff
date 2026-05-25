@@ -491,5 +491,93 @@ class TestAssessmentsCreateAPI:
         print(f"Created assessment: {data.get('id')}")
 
 
+class TestTeacherClassesIdVariants:
+    """Regression tests for task #578 — 403 on teacher class / class-metrics endpoints.
+
+    The bug was that _verify_teacher_access ran before _resolve_teacher_record,
+    so supplying teachers.id when the JWT only carries users.id (teacher_id not
+    backfilled) caused a spurious 403.  Both ID shapes must now return 200.
+    """
+
+    @pytest.fixture
+    def teacher_session(self):
+        """Login and return (token, users_id, teacher_id) tuple."""
+        resp = requests.post(f"{BASE_URL}/api/auth/login", json={
+            "email": TEACHER_EMAIL,
+            "password": TEACHER_PASSWORD,
+        })
+        assert resp.status_code == 200, f"Login failed: {resp.text}"
+        data = resp.json()
+        token = data["access_token"]
+        user = data.get("user", {})
+        users_id = user.get("id")
+        teacher_id = user.get("teacher_id")
+        return token, users_id, teacher_id
+
+    def _classes_url(self, param):
+        return f"{BASE_URL}/api/teacher/classes/{param}"
+
+    def _metrics_url(self, param):
+        return f"{BASE_URL}/api/teacher/{param}/class-metrics"
+
+    def test_classes_with_users_id_returns_200(self, teacher_session):
+        """GET /teacher/classes/{users.id} must return 200 for the owning teacher."""
+        token, users_id, _teacher_id = teacher_session
+        assert users_id, "users.id missing from login response"
+        resp = requests.get(self._classes_url(users_id), headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200, (
+            f"Expected 200 with users.id param, got {resp.status_code}: {resp.text}"
+        )
+        assert isinstance(resp.json(), list)
+
+    def test_classes_with_teachers_id_returns_200(self, teacher_session):
+        """GET /teacher/classes/{teachers.id} must return 200 for the owning teacher."""
+        token, users_id, teacher_id = teacher_session
+        param = teacher_id or users_id
+        assert param, "No teacher_id or users.id available"
+        resp = requests.get(self._classes_url(param), headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200, (
+            f"Expected 200 with teachers.id param, got {resp.status_code}: {resp.text}"
+        )
+        assert isinstance(resp.json(), list)
+
+    def test_classes_with_foreign_id_returns_403(self, teacher_session):
+        """GET /teacher/classes/{unrelated_uuid} must return 403 for the wrong teacher."""
+        token, _users_id, _teacher_id = teacher_session
+        foreign_id = str(uuid.uuid4())
+        resp = requests.get(self._classes_url(foreign_id), headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code in (403, 404), (
+            f"Expected 403/404 for foreign ID, got {resp.status_code}: {resp.text}"
+        )
+
+    def test_metrics_with_users_id_returns_200(self, teacher_session):
+        """GET /teacher/{users.id}/class-metrics must return 200 for the owning teacher."""
+        token, users_id, _teacher_id = teacher_session
+        assert users_id, "users.id missing from login response"
+        resp = requests.get(self._metrics_url(users_id), headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200, (
+            f"Expected 200 with users.id param, got {resp.status_code}: {resp.text}"
+        )
+
+    def test_metrics_with_teachers_id_returns_200(self, teacher_session):
+        """GET /teacher/{teachers.id}/class-metrics must return 200 for the owning teacher."""
+        token, users_id, teacher_id = teacher_session
+        param = teacher_id or users_id
+        assert param, "No teacher_id or users.id available"
+        resp = requests.get(self._metrics_url(param), headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200, (
+            f"Expected 200 with teachers.id param, got {resp.status_code}: {resp.text}"
+        )
+
+    def test_metrics_with_foreign_id_returns_403(self, teacher_session):
+        """GET /teacher/{unrelated_uuid}/class-metrics must return 403 for the wrong teacher."""
+        token, _users_id, _teacher_id = teacher_session
+        foreign_id = str(uuid.uuid4())
+        resp = requests.get(self._metrics_url(foreign_id), headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code in (403, 404), (
+            f"Expected 403/404 for foreign ID, got {resp.status_code}: {resp.text}"
+        )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
