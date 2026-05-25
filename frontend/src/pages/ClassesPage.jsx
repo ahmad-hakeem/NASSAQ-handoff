@@ -64,7 +64,7 @@ export const ClassesPage = () => {
   const [classes, setClasses] = useState([]);
   const [schools, setSchools] = useState([]);
   const [teachers, setTeachers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSchool, setSelectedSchool] = useState('all');
@@ -126,17 +126,15 @@ export const ClassesPage = () => {
       console.error('Failed to fetch data:', error);
       nassaqError(t('failedToLoadData'));
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (user) {
-      fetchData();
-      // Set default school_id for new class form
-      if (userSchoolId) {
-        setNewClass(prev => ({ ...prev, school_id: userSchoolId }));
-      }
+    fetchData();
+    // Set default school_id for new class form
+    if (userSchoolId) {
+      setNewClass(prev => ({ ...prev, school_id: userSchoolId }));
     }
   }, [user]);
 
@@ -413,7 +411,7 @@ export const ClassesPage = () => {
 
           <Card className="card-nassaq">
             <CardContent className="p-0">
-              {loading ? (
+              {isLoading ? (
                 <div className="flex items-center justify-center py-20">
                   <Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" />
                 </div>
