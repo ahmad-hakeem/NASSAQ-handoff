@@ -940,7 +940,9 @@ ${API_URL}/login
                     ) : (
                       <div className="space-y-3">
                         {activities.map((activity, idx) => {
-                          const actionLabel = activity.action_ar || ACTION_TRANSLATIONS[activity.action] || humanizeActionKey(activity.action);
+                          const rawAr = activity.action_ar;
+                          const arLooksRaw = !rawAr || rawAr === activity.action || /^[a-z][a-z0-9_.\-]*$/i.test(rawAr);
+                          const actionLabel = (!arLooksRaw && rawAr) || ACTION_TRANSLATIONS[activity.action] || humanizeActionKey(activity.action);
                           const deviceBrowser = activity.device_info?.browser;
                           const deviceOs = activity.device_info?.os;
                           const deviceLabel = (deviceBrowser && deviceBrowser !== 'غير معروف')
