@@ -160,7 +160,8 @@ function KpiCard({ icon: Icon, label, value, suffix, accent }) {
   // spot critical metrics at a glance, but reclaims ~60px of vertical
   // space for the grid below.
   return (
-    <div className={`group relative overflow-hidden bg-white rounded-xl border border-slate-200/80 border-s-4 ${accent.topBorder.replace('border-t-', 'border-s-')} shadow-[0_1px_2px_rgba(15,42,75,0.04),0_1px_3px_rgba(15,42,75,0.05)] hover:shadow-[0_6px_16px_rgba(15,42,75,0.1)] hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-3 px-4 py-3 min-w-0`}>
+    <div className={`group relative overflow-hidden bg-white rounded-xl border border-slate-200/80 shadow-[0_1px_2px_rgba(15,42,75,0.04),0_1px_3px_rgba(15,42,75,0.05)] hover:shadow-[0_6px_16px_rgba(15,42,75,0.1)] hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-3 px-4 py-3 min-w-0`}>
+      <span aria-hidden="true" className={`absolute inset-y-0 start-0 w-1 ${accent.topBorder.replace('border-t-', 'bg-').replace('-400', '-500').replace('-500', '-500')}`} />
       <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${accent.iconBg} ring-1 ring-inset ring-white/70`}>
         <Icon className={`h-5 w-5 ${accent.iconText}`} strokeWidth={1.5} aria-hidden="true" />
       </div>

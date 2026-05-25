@@ -86,8 +86,7 @@ export default function SubjectsPage() {
   const remove = (s) => {
     nassaqConfirm(
       isRTL ? `هل تريد حذف المادة "${s.name}"؟` : `Delete subject "${s.name}"?`,
-      async (ok) => {
-        if (!ok) return;
+      async () => {
         try {
           await api.delete(`/subjects/${s.id}`);
           nassaqInfo(isRTL ? 'تم حذف المادة' : 'Subject deleted');
