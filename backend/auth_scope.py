@@ -90,7 +90,11 @@ def require_request_school_id(current_user: dict) -> str:
     Raises `HTTPException(403, AI_INSIGHTS_SCOPE_DENIED_AR)` if neither
     resolves — never returns `None`, never returns an empty string.
     """
-    school_id = current_user.get("tenant_id") or independent_workspace_id(current_user)
+    school_id = (
+        current_user.get("tenant_id")
+        or current_user.get("school_id")
+        or independent_workspace_id(current_user)
+    )
     if not school_id:
         raise HTTPException(status_code=403, detail=AI_INSIGHTS_SCOPE_DENIED_AR)
     return school_id

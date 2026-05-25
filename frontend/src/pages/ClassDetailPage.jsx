@@ -270,8 +270,14 @@ export default function ClassDetailPage() {
       setClasses(Array.isArray(classesRes.data) ? classesRes.data : []);
       setGrades(Array.isArray(gradesRes.data) ? gradesRes.data : []);
     } catch (error) {
-      console.error('Error fetching class data:', error);
-      nassaqError(t('errorLoadingClassData'));
+      const status = error?.response?.status;
+      if (status === 403) {
+        nassaqError('هذا الفصل غير مسند إليك أو لا تملك صلاحية استعراضه');
+      } else if (status === 404) {
+        nassaqError('الفصل غير موجود');
+      } else {
+        nassaqError(t('errorLoadingClassData'));
+      }
     } finally {
       setLoading(false);
     }

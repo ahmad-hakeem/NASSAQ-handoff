@@ -182,7 +182,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
     
     setLoading(true);
     try {
-      const classesRes = await api.get(`/teacher/classes/${teacherId}`).catch(() => ({ data: [] }));
+      const classesRes = await api.get(`/teacher/classes/${teacherId}`);
       setClasses(classesRes.data || []);
       // 2026-05-19 — Auto-select-first-class is preserved for non-IT
       // teachers (school tenants), who must stay on the class-scoped
@@ -197,7 +197,12 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
         setSelectedClass(classesRes.data[0].id);
       }
     } catch (error) {
-      console.error('Error:', error);
+      const status = error?.response?.status;
+      if (status === 403) {
+        nassaqError('هذا الفصل غير مسند إليك أو لا تملك صلاحية استعراضه');
+      } else if (status === 404) {
+        nassaqError('المعلم غير موجود');
+      }
     } finally {
       setLoading(false);
     }

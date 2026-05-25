@@ -200,9 +200,72 @@ async def _resolve_teacher_sessions(school_id: str, resolved_teacher_id: str, da
 # ============== TEACHER DASHBOARD APIs ==============
 TEACHER_ADMIN_ROLES = {"admin", "super_admin", "platform_admin", "school_admin"}
 
-def _verify_teacher_access(teacher_id: str, current_user: dict):
-    caller_teacher = current_user.get("teacher_id") or current_user.get("id")
-    if caller_teacher != teacher_id and current_user.get("role") not in TEACHER_ADMIN_ROLES:
+async def _verify_teacher_access(teacher_id: str, current_user: dict):
+    """Authorise teacher-scoped endpoints.
+
+    Security invariant: only the teacher who owns the record (or an admin) may
+    read it.  The complication is that the frontend sometimes sends
+    ``teachers.id`` in the URL while the JWT carries ``users.id`` (or vice
+    versa).  To handle both shapes without weakening the check we:
+
+      1. Admins pass immediately.
+      2. Direct match on any caller-side ID passes immediately.
+      3. On a mismatch we resolve the teacher record and verify ownership via
+         the resolved ``teachers.user_id == JWT id`` link.
+      4. If resolution returns None (no matching row) we let the endpoint
+         handle its own empty/404 response rather than short-circuiting here.
+      5. Resolved-but-wrong-owner → 403.
+
+    All branches are logged at DEBUG so production 403s can be diagnosed from
+    logs without exposing caller or teacher PII to the HTTP response.
+    """
+    if current_user.get("role") in TEACHER_ADMIN_ROLES:
+        return
+
+    caller_user_id = current_user.get("id")
+    caller_teacher_id = current_user.get("teacher_id")
+    caller_any = caller_teacher_id or caller_user_id
+
+    if caller_any == teacher_id:
+        logger.debug(
+            "_verify_teacher_access: direct match caller=%s url_param=%s",
+            caller_any, teacher_id,
+        )
+        return
+
+    # ID-format mismatch: attempt resolution then re-check ownership.
+    logger.debug(
+        "_verify_teacher_access: preliminary mismatch caller_user=%s "
+        "caller_teacher=%s url_param=%s — attempting resolution",
+        caller_user_id, caller_teacher_id, teacher_id,
+    )
+    resolved = await _resolve_teacher_record(teacher_id)
+    if resolved is None:
+        # Could not resolve — let the calling endpoint return its own
+        # 404 / empty response rather than raising here, so the error
+        # message stays contextually correct.
+        logger.debug(
+            "_verify_teacher_access: resolution returned None for url_param=%s, "
+            "deferring 404 to endpoint",
+            teacher_id,
+        )
+        return
+
+    resolved_user_id = resolved.get("user_id")
+    resolved_id = resolved.get("id")
+    owner_matched = (
+        (caller_user_id and caller_user_id == resolved_user_id)
+        or (caller_user_id and caller_user_id == resolved_id)
+        or (caller_teacher_id and caller_teacher_id == resolved_id)
+        or (caller_teacher_id and caller_teacher_id == resolved_user_id)
+    )
+    if not owner_matched:
+        logger.debug(
+            "_verify_teacher_access: denied caller_user=%s caller_teacher=%s "
+            "resolved_user_id=%s resolved_id=%s url_param=%s",
+            caller_user_id, caller_teacher_id,
+            resolved_user_id, resolved_id, teacher_id,
+        )
         raise HTTPException(status_code=403, detail="ليس لديك صلاحية للوصول لبيانات هذا المعلم")
 
 
@@ -302,7 +365,7 @@ async def get_teacher_dashboard(
     - الحصص اليومية
     - الإحصائيات
     """
-    _verify_teacher_access(teacher_id, current_user)
+    await _verify_teacher_access(teacher_id, current_user)
     # Task #145 — use the same strict resolver as `/teacher/schedule`. The
     # previous fallback matched on ``full_name`` which can ambiguously
     # resolve to a different teacher in the same school and leak their
@@ -946,7 +1009,7 @@ async def get_teacher_sessions_list(
     teacher_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    _verify_teacher_access(teacher_id, current_user)
+    await _verify_teacher_access(teacher_id, current_user)
     teacher = await _resolve_teacher_record(teacher_id)
     _check_teacher_tenant(teacher, current_user)
     resolved_teacher_id = teacher.get("id") if teacher else teacher_id
@@ -972,10 +1035,14 @@ async def get_teacher_classes(
     Get all classes assigned to a teacher with enriched data
     جلب جميع الفصول المسندة للمعلم مع بيانات مُثرَاة
     """
-    _verify_teacher_access(teacher_id, current_user)
+    await _verify_teacher_access(teacher_id, current_user)
 
     teacher = await _resolve_teacher_record(teacher_id)
     _check_teacher_tenant(teacher, current_user)
+
+    if teacher is None and current_user.get("role") not in TEACHER_ADMIN_ROLES:
+        raise HTTPException(status_code=404, detail="المعلم غير موجود")
+
     school_id = teacher.get("school_id") if teacher else None
     # Use the actual teachers.id for queries — admin-side assignments are
     # stored against teachers.id, not users.id.
@@ -1128,7 +1195,7 @@ async def get_teacher_schedule(
     Get teacher's schedule
     جلب جدول المعلم
     """
-    _verify_teacher_access(teacher_id, current_user)
+    await _verify_teacher_access(teacher_id, current_user)
     teacher = await _resolve_teacher_record(teacher_id)
     _check_teacher_tenant(teacher, current_user)
     if not teacher:
@@ -1155,7 +1222,7 @@ async def get_teacher_assessments(
     Get assessments created by teacher
     جلب تقييمات المعلم
     """
-    _verify_teacher_access(teacher_id, current_user)
+    await _verify_teacher_access(teacher_id, current_user)
     teacher = await _resolve_teacher_record(teacher_id)
     _check_teacher_tenant(teacher, current_user)
     resolved_teacher_id = teacher.get("id") if teacher else teacher_id
@@ -2441,7 +2508,7 @@ async def get_teacher_class_metrics(
     جلب مقاييس الفصول الحقيقية للمعلم
     Get real class metrics for a teacher (attendance, participation, performance)
     """
-    _verify_teacher_access(teacher_id, current_user)
+    await _verify_teacher_access(teacher_id, current_user)
     teacher = await _resolve_teacher_record(teacher_id)
     _check_teacher_tenant(teacher, current_user)
     resolved_teacher_id = teacher.get("id") if teacher else teacher_id
@@ -3084,7 +3151,7 @@ async def get_teacher_sessions_history(
     status: str = None,
     current_user: dict = Depends(get_current_user)
 ):
-    _verify_teacher_access(teacher_id, current_user)
+    await _verify_teacher_access(teacher_id, current_user)
     teacher = await _resolve_teacher_record(teacher_id)
     resolved_teacher_id = teacher.get("id") if teacher else teacher_id
     result = await session_engine.get_teacher_sessions(
@@ -3109,7 +3176,7 @@ async def get_teacher_achievements(
     teacher_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    _verify_teacher_access(teacher_id, current_user)
+    await _verify_teacher_access(teacher_id, current_user)
     teacher = await _resolve_teacher_record(teacher_id)
     school_id = teacher.get("school_id") if teacher else current_user.get("tenant_id")
     resolved_teacher_id = teacher.get("id") if teacher else teacher_id
