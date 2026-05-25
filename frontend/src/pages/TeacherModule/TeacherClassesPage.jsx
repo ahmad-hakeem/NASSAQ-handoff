@@ -737,12 +737,12 @@ export default function TeacherClassesPage() {
       isRTL
         ? `هل تريد حذف الفصل "${cls.name}"؟ لا يمكن حذفه إذا كان به طلاب.`
         : `Delete class "${cls.name}"? It can't be deleted while it has students.`,
-      async (ok) => {
-        if (!ok) return;
+      async () => {
         try {
           await api.delete(`/classes/${cls.id}`);
-          await fetchClasses();
-          await fetchWorkspaceClassCount();
+          setClasses((prev) => prev.filter((c) => c.id !== cls.id));
+          toast.success(isRTL ? `تم حذف الفصل "${cls.name}"` : `Class "${cls.name}" deleted`);
+          fetchWorkspaceClassCount();
         } catch (err) {
           const detail = err?.response?.data?.detail;
           nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر حذف الفصل' : 'Could not delete class'));
