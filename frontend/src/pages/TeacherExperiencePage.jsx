@@ -8,7 +8,7 @@ import {
   ArrowLeft, ArrowRight, Zap, Sparkles, CheckCircle2, Check,
   ClipboardList, Activity, Brain, Send, Award, Star,
   Calendar, BookOpen, Users, TrendingUp, Bell, Download,
-  FileText, MessageCircle, Clock,
+  FileText, MessageCircle,
   GraduationCap, AlertTriangle, Target, Lightbulb,
 } from 'lucide-react';
 
@@ -185,59 +185,14 @@ export const TeacherExperiencePage = () => {
             </div>
           </div>
 
-          {/* Mock dashboard widget */}
-          <div className={`${isRTL ? '' : 'order-1'}`} aria-hidden="true">
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
-              {/* widget header */}
-              <div className="flex items-center justify-between gap-2 px-4 py-3 bg-white/5 border-b border-white/10">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-full bg-brand-turquoise flex items-center justify-center font-cairo font-bold text-xs text-white">م</div>
-                  <span className="font-cairo text-sm font-medium text-white/90">{ar('معلّم نسّق — يومك اليوم', 'NASSAQ Teacher — Your day')}</span>
-                </div>
-                <span className="flex items-center gap-1 text-xs text-emerald-400 font-tajawal">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  {ar('مباشر', 'Live')}
-                </span>
-              </div>
-
-              {/* saved hours */}
-              <div className="px-4 py-3 border-b border-white/10">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-white/50 font-tajawal text-xs">
-                    <Clock className="h-3.5 w-3.5" strokeWidth={1.5} />
-                    {ar('وفّرت هذا الأسبوع', 'Saved this week')}
-                  </div>
-                  <span className="font-cairo font-black text-brand-turquoise text-2xl">٦ {ar('ساعات', 'hrs')}</span>
-                </div>
-              </div>
-
-              {/* tasks */}
-              <div className="px-4 py-3 space-y-2">
-                <p className="text-white/40 font-tajawal text-xs mb-3">{ar('مهامك — مرتبة بالأولوية', 'Your tasks — by priority')}</p>
-                {[
-                  { label: ar('جلسة دعم — أحمد (توصية حكيم)', 'Support session — Ahmed (Hakim)'), badge: ar('أولوية', 'Priority'), badgeClass: 'bg-red-400/20 text-red-300 border-red-400/30' },
-                  { label: ar('تنبيه لأهل نورة — تراجع ملحوظ', "Alert for Nora's family — decline"), badge: ar('فوري', 'Urgent'), badgeClass: 'bg-amber-400/20 text-amber-300 border-amber-400/30' },
-                  { label: ar('تواصل مع أهل خالد', 'Contact Khalid\'s family'), badge: ar('هذا الأسبوع', 'This week'), badgeClass: 'bg-white/10 text-white/50 border-white/15' },
-                  { label: ar('ملف إنجاز — خالد علي', 'Achievement file — Khalid Ali'), badge: ar('جاهز', 'Ready'), badgeClass: 'bg-brand-turquoise/20 text-brand-turquoise border-brand-turquoise/30', done: true },
-                ].map((t, i) => (
-                  <div key={i} className="flex items-center justify-between gap-3 py-2 border-b border-white/5 last:border-0">
-                    <span className={`font-tajawal text-xs ${t.done ? 'line-through text-white/30' : 'text-white/70'}`}>{t.label}</span>
-                    <span className={`shrink-0 font-tajawal text-[10px] px-2 py-0.5 rounded-full border ${t.badgeClass}`}>{t.badge}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Hakim suggestion */}
-              <div className="mx-4 mb-4 mt-1 flex items-start gap-3 bg-brand-purple/20 border border-brand-purple/20 rounded-xl px-4 py-3">
-                <div className="w-6 h-6 rounded-full bg-brand-purple flex items-center justify-center font-cairo font-bold text-[10px] text-white shrink-0 mt-0.5">ح</div>
-                <div>
-                  <p className="text-brand-purple-light font-cairo text-xs font-bold mb-0.5">{ar('حكيم يقترح', 'Hakim suggests')}</p>
-                  <p className="text-white/60 font-tajawal text-xs leading-relaxed">
-                    {ar('أرسل تنبيهاً لأهل نورة — تراجع التفاعل ٣ أسابيع متتالية.', 'Send an alert to Nora\'s family — engagement declined 3 weeks in a row.')}
-                  </p>
-                </div>
-              </div>
-            </div>
+          {/* Real teacher dashboard preview */}
+          <div className={`${isRTL ? '' : 'order-1'}`}>
+            <img
+              src="/teacher-dashboard-preview.png"
+              alt={ar('معاينة لوحة المعلم في نَسَّق', 'Preview of the NASSAQ teacher dashboard')}
+              className="w-full h-auto rounded-2xl border border-white/10 shadow-2xl bg-white/5 backdrop-blur-sm"
+              loading="lazy"
+            />
           </div>
         </div>
       </section>
