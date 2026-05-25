@@ -39,6 +39,18 @@ const BG_PATTERN = '/nassaq-pattern.png';
 const HAKIM_CHARACTER = '/hakim-poses/friendly-greeting.png';
 const HAKIM_HERO_WELCOME = '/hakim-poses/welcome.png';
 
+// Module-level cache for public landing data. The two-tab public shell
+// unmounts and remounts this page on every tab switch; without a cache,
+// each remount re-issues the /public/schools-count and
+// /public/growth-indicators requests. Storing the most recent successful
+// response here lets subsequent mounts hydrate instantly from memory while
+// still revalidating in the background. The cache lives for the lifetime
+// of the tab; a hard reload clears it as expected.
+const landingDataCache = {
+  platformStats: null,
+  growthIndicators: null,
+};
+
 
 function useTypedText(texts, speed = 40, pauseBetween = 3000) {
   const [display, setDisplay] = useState('');
@@ -234,21 +246,23 @@ export const LandingPage = () => {
   // Fixed welcome pose for hero (no rotation)
   const heroHakim = { currentSrc: HAKIM_HERO_WELCOME };
 
-  const [platformStats, setPlatformStats] = useState({
+  // Module-level cache (see below) hydrates these on remount so switching
+  // between the public tabs does not refetch already-loaded data.
+  const [platformStats, setPlatformStats] = useState(() => ({
     schools: 0,
     students: 0,
     teachers: 0,
     parents: 0,
-  });
+    ...(landingDataCache.platformStats || {}),
+  }));
 
   // Sanitized, server-provided display indicators for the trust section.
   // The backend returns ONLY preformatted bucketed strings (e.g. "100+",
   // "1K+") — never raw aggregate counts — so the browser cannot reconstruct
   // the exact platform-wide totals.
-  const [growthIndicators, setGrowthIndicators] = useState({
-    schools: null,
-    teachers: null,
-  });
+  const [growthIndicators, setGrowthIndicators] = useState(() => (
+    landingDataCache.growthIndicators || { schools: null, teachers: null }
+  ));
 
   // Single normalized display rule for all growth counters in this section.
   // Accepts an already-vetted string from the server and returns it unchanged
@@ -280,14 +294,18 @@ export const LandingPage = () => {
   const [ecoRef, ecoVisible] = useScrollReveal();
 
   useEffect(() => {
+    // Landing page is unauthenticated. The full /public/stats payload is
+    // intentionally platform-admin gated (audit C-4). For the social-proof
+    // line we use the curated public schools-count endpoint, which exposes
+    // only a single aggregate integer with no per-tenant detail.
+    // Skip the request entirely when the module-level cache already holds
+    // a successful response from this tab's earlier mount.
+    if (landingDataCache.platformStats) return;
     const fetchStats = async () => {
-      // Landing page is unauthenticated. The full /public/stats payload is
-      // intentionally platform-admin gated (audit C-4). For the social-proof
-      // line we use the curated public schools-count endpoint, which exposes
-      // only a single aggregate integer with no per-tenant detail.
       try {
         const response = await api.get('/public/schools-count');
         const count = Number(response?.data?.count) || 0;
+        landingDataCache.platformStats = { schools: count };
         setPlatformStats((prev) => ({ ...prev, schools: count }));
       } catch (error) {
         // Silent — social-proof block hides itself when the count is 0.
@@ -300,14 +318,17 @@ export const LandingPage = () => {
     // Trust section: pulls vetted, preformatted display strings only.
     // The server bucketizes raw counts into a fixed vocabulary so this
     // request never exposes platform-wide totals to the browser.
+    if (landingDataCache.growthIndicators) return;
     const fetchGrowth = async () => {
       try {
         const response = await api.get('/public/growth-indicators');
         const data = response?.data || {};
-        setGrowthIndicators({
+        const next = {
           schools: typeof data.schools === 'string' ? data.schools : null,
           teachers: typeof data.teachers === 'string' ? data.teachers : null,
-        });
+        };
+        landingDataCache.growthIndicators = next;
+        setGrowthIndicators(next);
       } catch (error) {
         // Silent — cards hide themselves when no indicator is available.
       }
