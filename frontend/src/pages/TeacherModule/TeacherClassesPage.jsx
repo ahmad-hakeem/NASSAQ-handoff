@@ -232,6 +232,11 @@ export default function TeacherClassesPage() {
   // Subject options for the IT workspace dialog. Sourced from /subjects
   // which is already tenant-scoped server-side via `current_user.tenant_id`.
   const [workspaceSubjects, setWorkspaceSubjects] = useState([]);
+  // Subjects fetched for the Lesson Settings modal. Populated for all
+  // teacher roles (not just IT) via the /subjects endpoint which is
+  // already tenant-scoped server-side.
+  const [subjectsForSettings, setSubjectsForSettings] = useState([]);
+  const [subjectsLoading, setSubjectsLoading] = useState(false);
   // Authoritative tenant-scoped class count for the "X من 5 فصول" chip
   // (spec §5.3 step 4). Sourced from /classes (tenant-scoped server-side
   // via require_request_school_id) rather than the teacher-assignment
@@ -484,6 +489,26 @@ export default function TeacherClassesPage() {
     }
   }, [api, isIndependentTeacher]);
 
+  // Subject loader for the Lesson Settings modal. Runs for all teacher
+  // roles — the /subjects endpoint is already tenant-scoped server-side,
+  // so regular school teachers get their school's subjects and IT accounts
+  // get their workspace subjects. The IT guard on fetchWorkspaceSubjects
+  // is intentionally kept separate so the add-class dialog keeps its own
+  // independent subject state.
+  const fetchSubjectsForSettings = useCallback(async () => {
+    setSubjectsLoading(true);
+    try {
+      const res = await api.get('/subjects').catch(() => ({ data: [] }));
+      const subjects = Array.isArray(res.data) ? res.data : (res.data?.subjects || []);
+      setSubjectsForSettings(subjects.filter(s => s?.is_active !== false));
+    } catch (err) {
+      console.error('Error fetching subjects for settings:', err);
+      setSubjectsForSettings([]);
+    } finally {
+      setSubjectsLoading(false);
+    }
+  }, [api]);
+
   // Authoritative tenant-scoped class count from /classes for the IT
   // usage chip. Independent of the per-teacher assignment listing.
   const fetchWorkspaceClassCount = useCallback(async () => {
@@ -504,6 +529,19 @@ export default function TeacherClassesPage() {
       fetchWorkspaceClassCount();
     }
   }, [isIndependentTeacher, fetchWorkspaceSubjects, fetchGradeOptions, fetchWorkspaceClassCount]);
+
+  // Fetch subjects for the Lesson Settings modal on page load so the
+  // dropdown is ready immediately when the modal opens, then re-fetch
+  // whenever the modal opens to pick up any server-side changes.
+  useEffect(() => {
+    fetchSubjectsForSettings();
+  }, [fetchSubjectsForSettings]);
+
+  useEffect(() => {
+    if (showSettingsModal) {
+      fetchSubjectsForSettings();
+    }
+  }, [showSettingsModal, fetchSubjectsForSettings]);
 
   // 2026-05-19 — The IT schedule-settings GET/PUT handlers and the
   // toggleItWorkingDay helper moved with the tab into the
@@ -1128,7 +1166,8 @@ export default function TeacherClassesPage() {
         // canonical Interactive Class wiring).
         sessionConfig={{
           showSubjectPicker: true,
-          subjectsList: allSubjects,
+          subjectsList: subjectsForSettings,
+          subjectsLoading: subjectsLoading,
           subjectId: settingsSubject,
           onSubjectIdChange: handleSubjectChange,
           participationEnabled: sessionConfig.participation_enabled,

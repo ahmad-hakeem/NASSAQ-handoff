@@ -623,17 +623,27 @@ export default function SidebarSettingsDialog({
             <select
               value={sc.subjectId || ''}
               onChange={(e) => sc.onSubjectIdChange?.(e.target.value)}
+              disabled={!!sc.subjectsLoading}
               dir={isRTL ? 'rtl' : 'ltr'}
-              className={`w-full text-sm bg-card dark:bg-muted border border-border rounded-full px-4 py-2.5 outline-none focus:border-brand-turquoise font-cairo ${sc.subjectId ? '' : 'text-muted-foreground/60'}`}
+              className={`w-full text-sm bg-card dark:bg-muted border border-border rounded-full px-4 py-2.5 outline-none focus:border-brand-turquoise font-cairo disabled:opacity-60 disabled:cursor-not-allowed ${sc.subjectId ? '' : 'text-muted-foreground/60'}`}
             >
-              <option value="" disabled>
-                {t('selectSubject') || 'اختر المادة'}
-              </option>
+              {sc.subjectsLoading ? (
+                <option value="" disabled>{'جاري التحميل…'}</option>
+              ) : (
+                <option value="" disabled>
+                  {t('selectSubject') || 'اختر المادة'}
+                </option>
+              )}
               {(sc.subjectsList || []).map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
-            {!sc.subjectId && (
+            {!sc.subjectsLoading && (sc.subjectsList || []).length === 0 && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 font-cairo">
+                {'لا توجد مواد مضافة لهذا المعلم'}
+              </p>
+            )}
+            {!sc.subjectsLoading && (sc.subjectsList || []).length > 0 && !sc.subjectId && (
               <p className="text-[11px] text-amber-600 dark:text-amber-400 font-cairo">
                 {t('selectSubjectFirst') || 'اختر المادة أولاً'}
               </p>
