@@ -60,31 +60,31 @@ const WORKFLOW_STEPS = [
 const ACHIEVEMENT_RECORDS = [
   {
     date: '١٢ مايو', dateEn: '12 May',
-    subject: 'حصة رياضيات', subjectEn: 'Maths',
-    note: 'مشاركة ممتازة — حل ٤ مسائل متقدمة', noteEn: 'Excellent participation — solved 4 advanced problems',
-    tag: 'إنجاز', tagEn: 'Achievement', tagColor: 'bg-brand-turquoise/10 text-brand-turquoise',
-    icon: Star,
+    subject: 'خطة توزيع المنهج الدراسي', subjectEn: 'Curriculum distribution plan',
+    note: 'تم إرفاق الخطة الزمنية للفصل الدراسي الأول', noteEn: 'Term-one timeline attached',
+    tag: 'تحضير', tagEn: 'Planning', tagColor: 'bg-brand-turquoise/10 text-brand-turquoise',
+    icon: FileText,
   },
   {
     date: '١١ مايو', dateEn: '11 May',
-    subject: 'حصة علوم', subjectEn: 'Science',
-    note: 'تقدم ملحوظ في التجربة العملية', noteEn: 'Notable progress in lab experiment',
-    tag: 'تقدم', tagEn: 'Progress', tagColor: 'bg-brand-purple/10 text-brand-purple',
+    subject: 'تحليل نتائج الاختبارات', subjectEn: 'Assessment results analysis',
+    note: 'تقرير مفصل عن نقاط القوة والضعف للطلاب', noteEn: 'Detailed report on student strengths & gaps',
+    tag: 'تقييم', tagEn: 'Assessment', tagColor: 'bg-brand-purple/10 text-brand-purple',
     icon: TrendingUp,
   },
   {
     date: '١٠ مايو', dateEn: '10 May',
-    subject: 'حضور وسلوك', subjectEn: 'Attendance',
-    note: '٩ أيام متواصلة — سلوك إيجابي', noteEn: '9 consecutive days — positive behaviour',
-    tag: 'منتظم', tagEn: 'Consistent', tagColor: 'bg-emerald-500/10 text-emerald-600',
-    icon: CheckCircle2,
+    subject: 'تقييم شفهي', subjectEn: 'Oral assessment',
+    note: 'استراتيجيات تدريس تفاعلية موثقة', noteEn: 'Documented interactive teaching strategies',
+    tag: 'شاهد', tagEn: 'Evidence', tagColor: 'bg-emerald-500/10 text-emerald-600',
+    icon: MessageCircle,
   },
   {
     date: '٩ مايو', dateEn: '9 May',
-    subject: 'مشروع الفصل', subjectEn: 'Term Project',
-    note: 'أكمل المشروع بتقدير امتياز', noteEn: 'Completed the project with distinction',
-    tag: 'امتياز', tagEn: 'Distinction', tagColor: 'bg-amber-500/10 text-amber-600',
-    icon: GraduationCap,
+    subject: 'شهادة حضور دورة تدريبية', subjectEn: 'Training course certificate',
+    note: 'التطوير المهني المستمر', noteEn: 'Continuous professional development',
+    tag: 'تطوير', tagEn: 'Development', tagColor: 'bg-amber-500/10 text-amber-600',
+    icon: Award,
   },
 ];
 
@@ -266,22 +266,22 @@ export const TeacherExperiencePage = () => {
             </div>
             <h2 className="font-cairo font-black text-white text-3xl md:text-5xl lg:text-[3.5rem] leading-tight">
               {ar(
-                <>ملف إنجاز كامل يبنى<br /><span className="text-brand-turquoise">من اليوم الأول.</span></>,
-                <>A complete file built<br /><span className="text-brand-turquoise">from day one.</span></>
+                <>ملف إنجاز مهني يُبنى<br /><span className="text-brand-turquoise">تلقائياً من اليوم الأول.</span></>,
+                <>A professional portfolio built<br /><span className="text-brand-turquoise">automatically from day one.</span></>
               )}
             </h2>
             <p className="font-tajawal text-white/70 text-lg leading-relaxed max-w-lg">
               {ar(
-                'كل حصة تُدرّسها تُضيف سجلاً لملف الطالب — حضور، تفاعل، إنجازات، ومشاريع. الملف جاهز للتصدير والمشاركة في أي وقت.',
-                'Every lesson you teach adds a record — attendance, interaction, achievements, projects. The file is always ready to export and share.'
+                'وداعاً للورق والمجلدات. نَسَّق يقوم بجمع وتوثيق شواهدك اليومية، تحضيرك، وتقييماتك تلقائياً في ملف إنجاز احترافي جاهز للمشاركة مع الإدارة أو المشرفين في أي وقت.',
+                'Goodbye to paper and folders. NASSAQ automatically gathers and documents your daily evidence, lesson plans, and assessments into a professional portfolio ready to share with administration or supervisors anytime.'
               )}
             </p>
             <ul className="space-y-3">
               {[
-                { ar: 'سجل أداء متراكم — يُبنى تلقائياً دون جهد يدوي', en: 'Cumulative performance log — built automatically without manual effort' },
-                { ar: 'كشف متابعة رقمي — قابل للتصدير والمشاركة', en: 'Digital tracking sheet — exportable and shareable' },
-                { ar: 'توثيق الإنجازات — مشاريع، درجات، وسلوك في مكان واحد', en: 'Achievement documentation — projects, grades, behaviour in one place' },
-                { ar: 'جاهز للطباعة — تقرير نهاية الفصل بضغطة واحدة', en: 'Print-ready — end-of-term report in one tap' },
+                { ar: 'توثيق آلي للشواهد — يُبنى تلقائياً من أنشطتك اليومية دون جهد إضافي.', en: 'Automatic evidence documentation — built from your daily activities with zero extra effort.' },
+                { ar: 'تنظيم احترافي — تصنيف ذكي للخطط، التقييمات، والأنشطة اللامنهجية.', en: 'Professional organisation — smart classification of plans, assessments, and extracurriculars.' },
+                { ar: 'استعراض شامل للأداء — يعكس تطورك المهني وتأثيرك الفعلي في الفصول.', en: 'Comprehensive performance overview — reflects your professional growth and real classroom impact.' },
+                { ar: 'جاهز للطباعة والمشاركة — بضغطة واحدة، ملفك جاهز للتقييم أو الترقية.', en: 'Print- and share-ready — one tap and your file is ready for review or promotion.' },
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-3 font-tajawal text-sm text-white/70">
                   <CheckCircle2 className="h-4 w-4 text-brand-turquoise shrink-0 mt-0.5" strokeWidth={2} aria-hidden="true" />
@@ -292,12 +292,12 @@ export const TeacherExperiencePage = () => {
           </div>
 
           {/* achievement file card */}
-          <div aria-label={ar('ملف إنجاز — خالد علي', 'Achievement file — Khalid Ali')}>
+          <div aria-label={ar('ملف الإنجاز المهني — الأستاذ إبراهيم', 'Professional Portfolio — Mr Ibrahim')}>
             <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
               {/* card header */}
               <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
                 <div>
-                  <p className="font-cairo text-white font-bold text-base">{ar('ملف إنجاز — خالد علي', 'Achievement File — Khalid Ali')}</p>
+                  <p className="font-cairo text-white font-bold text-base">{ar('ملف الإنجاز المهني — الأستاذ إبراهيم', 'Professional Portfolio — Mr Ibrahim')}</p>
                   <p className="font-tajawal text-white/40 text-xs mt-0.5">{ar('الفصل الثاني · ١٤٤٦', 'Term 2 · 2024')}</p>
                 </div>
                 <button className="flex items-center gap-1.5 font-tajawal text-xs text-brand-turquoise border border-brand-turquoise/30 rounded-lg px-3 py-1.5 hover:bg-brand-turquoise/10 transition-colors">
@@ -309,9 +309,9 @@ export const TeacherExperiencePage = () => {
               {/* stats */}
               <div className="grid grid-cols-3 divide-x divide-white/10 rtl:divide-x-reverse border-b border-white/10">
                 {[
-                  { value: '٩٥٪', label: ar('الحضور', 'Attendance') },
-                  { value: ar('مرتفع', 'High'), label: ar('التفاعل', 'Engagement') },
-                  { value: '٨', label: ar('المشاريع', 'Projects') },
+                  { value: '٤٥', label: ar('الشواهد المكتملة', 'Evidence completed') },
+                  { value: '١٢', label: ar('الأنشطة الموثقة', 'Documented activities') },
+                  { value: ar('متميز', 'Excellent'), label: ar('التقييم العام', 'Overall rating') },
                 ].map((s, i) => (
                   <div key={i} className="py-4 px-3 text-center">
                     <p className="font-cairo font-black text-brand-turquoise text-xl">{s.value}</p>
