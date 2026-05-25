@@ -199,7 +199,7 @@ const SUBSECTION_CONFIG_V2 = [
 ];
 
 const labelForType = (typeKey) =>
-  TYPE_LABEL_AR_V2[typeKey] || typeKey.replace(/_/g, ' ');
+  TYPE_LABEL_AR_V2[typeKey] || 'مستند تعليمي';
 
 const FILE_KIND_OPTIONS = [
   { value: 'pdf',   label: 'ملف PDF' },
@@ -1162,7 +1162,7 @@ export default function TeacherAchievementsPage() {
                               {isRTL ? item.title_ar : (item.title_en || item.title_ar)}
                             </p>
                             <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
-                              {t(TYPE_LABEL_KEYS[item.evidence_type] || item.evidence_type)}
+                              {labelForType(item.evidence_type)}
                             </p>
                           </div>
                           <Badge variant="outline" className={`text-[10px] shrink-0 ${item.source === 'auto' ? 'border-amber-300 text-amber-600 dark:border-amber-700 dark:text-amber-400' : 'border-blue-300 text-blue-600 dark:border-blue-700 dark:text-blue-400'}`}>
