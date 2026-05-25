@@ -270,7 +270,7 @@ class ReportingEngine:
         top_sorted = sorted(student_agg.items(), key=lambda x: -x[1]["interactions"])[:20]
 
         student_ids = [s[0] for s in top_sorted if s[0]]
-        students = await gd_find(self.session, "students", {"id": {"$in": student_ids}, "school_id": school_id}, limit=200) if student_ids else []
+        students = await gd_find(self.session, "students", {"id": {"$in": student_ids}, "school_id": school_id, "is_active": True}, limit=200) if student_ids else []
         stu_map = {s["id"]: s for s in students}
 
         top_students = []
@@ -378,7 +378,7 @@ class ReportingEngine:
 
         sorted_records = sorted(all_records, key=lambda x: x.get("created_at", ""), reverse=True)[:10]
         student_ids_needed = list(set(r.get("student_id") for r in sorted_records if r.get("student_id")))
-        stu_docs = await gd_find(self.session, "students", {"id": {"$in": student_ids_needed}, "school_id": school_id}, limit=100) if student_ids_needed else []
+        stu_docs = await gd_find(self.session, "students", {"id": {"$in": student_ids_needed}, "school_id": school_id, "is_active": True}, limit=100) if student_ids_needed else []
         stu_map = {s["id"]: s.get("name_ar") or s.get("full_name") or s.get("name", "") for s in stu_docs}
         recent_items = []
         for r in sorted_records:
@@ -466,7 +466,7 @@ class ReportingEngine:
             [r[0] for r in top_raw if r[0]] +
             [r[0] for r in bottom_raw if r[0]]
         ))
-        stu_docs = await gd_find(self.session, "students", {"id": {"$in": all_stu_ids}, "school_id": school_id}, limit=200)
+        stu_docs = await gd_find(self.session, "students", {"id": {"$in": all_stu_ids}, "school_id": school_id, "is_active": True}, limit=200)
         stu_map = {s["id"]: s for s in stu_docs}
 
         def _stu_row(r):
@@ -719,7 +719,7 @@ class ReportingEngine:
                                {"start_date": start_date, "end_date": end_date},
                                {"error": "student_id مطلوب"})
 
-        student = await gd_find_one(self.session, "students", {"id": student_id, "school_id": school_id})
+        student = await gd_find_one(self.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
         if not student:
             return self._wrap("student_progress", school_id,
                                {"start_date": start_date, "end_date": end_date},
@@ -845,7 +845,7 @@ class ReportingEngine:
                                {"start_date": start_date, "end_date": end_date},
                                {"error": "student_id مطلوب"})
 
-        student = await gd_find_one(self.session, "students", {"id": student_id, "school_id": school_id})
+        student = await gd_find_one(self.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
         if not student:
             return self._wrap("student_performance", school_id,
                                {"start_date": start_date, "end_date": end_date},
@@ -973,7 +973,7 @@ class ReportingEngine:
 
     async def generate_student_report(self, student_id: str, school_id: str) -> dict:
         """Generate a comprehensive report for a single student."""
-        student = await gd_find_one(self.session, "students", {"id": student_id, "school_id": school_id})
+        student = await gd_find_one(self.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
         if not student:
             return {"error": "الطالب غير موجود"}
 

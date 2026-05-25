@@ -93,7 +93,7 @@ class HakimAIEngine:
         if academic_score < 50:
             factors.append("تدني الأداء الأكاديمي")
 
-        student = await gd_find_one(self.session, "students", {"id": student_id, "school_id": school_id})
+        student = await gd_find_one(self.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
 
         return {
             "student_id": student_id,
@@ -269,7 +269,7 @@ class HakimAIEngine:
                 gr_map[sid].append(r)
 
         students_docs = await gd_find(self.session, "students", {
-            "id": {"$in": student_ids}, "school_id": school_id,
+            "id": {"$in": student_ids}, "school_id": school_id, "is_active": True,
         }, limit=len(student_ids))
         students_map = {s["id"]: s for s in students_docs}
 
@@ -503,7 +503,7 @@ class HakimAIEngine:
 
         repeated = {k: v for k, v in type_freq.items() if v >= 3}
 
-        student = await gd_find_one(self.session, "students", {"id": student_id, "school_id": school_id})
+        student = await gd_find_one(self.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
 
         return {
             "student_id": student_id,
@@ -1156,7 +1156,7 @@ class HakimAIEngine:
             goals.append({"goal_ar": "تقليل الملاحظات السلبية إلى صفر خلال أسبوعين", "metric": "negative_behaviours", "target": 0})
 
         student = await gd_find_one(self.session, "students", {
-            "id": student_id, "school_id": school_id
+            "id": student_id, "school_id": school_id, "is_active": True,
         })
 
         return {

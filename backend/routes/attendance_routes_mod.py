@@ -141,7 +141,9 @@ async def create_attendance(
         raise HTTPException(status_code=403, detail="تعذّر التحقق من صلاحياتك — لا يوجد معرّف مؤسسة")
 
     # Tenant-pin student lookup; cross-tenant student_id → 404.
-    _student_query: dict = {"id": attendance.student_id}
+    # Soft-deleted students also return 404 so attendance cannot be
+    # recorded against an inactive student.
+    _student_query: dict = {"id": attendance.student_id, "is_active": True}
     if _eff_tenant:
         _student_query["$or"] = [
             {"school_id": _eff_tenant},
@@ -321,7 +323,7 @@ async def create_bulk_attendance(
     absent_late = result.get("absent_late", [])
     if absent_late:
         al_ids = [s[0] for s in absent_late]
-        students_list = await gd_find(db.session, "students", {"id": {"$in": al_ids}, "tenant_id": t_id}, limit=len(al_ids))
+        students_list = await gd_find(db.session, "students", {"id": {"$in": al_ids}, "tenant_id": t_id, "is_active": True}, limit=len(al_ids))
         student_map = {s["id"]: s for s in students_list}
 
         principal = await gd_find_one(db.session, "users", {
@@ -504,7 +506,7 @@ async def get_class_attendance(
     async def _empty_list():
         return []
     
-    students_coro = gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=len(student_ids)) if student_ids else _empty_list()
+    students_coro = gd_find(db.session, "students", {"id": {"$in": student_ids}, "is_active": True}, limit=len(student_ids)) if student_ids else _empty_list()
     classes_coro = gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=len(class_ids)) if class_ids else _empty_list()
     teachers_coro = gd_find(db.session, "users", {"id": {"$in": teacher_ids}}, limit=len(teacher_ids)) if teacher_ids else _empty_list()
     subjects_coro = gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=len(subject_ids)) if subject_ids else _empty_list()
@@ -549,13 +551,13 @@ async def get_student_attendance_history(
     tenant_id = require_request_school_id(current_user)
     student = await gd_find_one(
         db.session, "students",
-        {"id": student_id, "school_id": tenant_id},
+        {"id": student_id, "school_id": tenant_id, "is_active": True},
     )
     if not student:
         # Fallback for legacy rows that pin tenant on the alternate column.
         student = await gd_find_one(
             db.session, "students",
-            {"id": student_id, "tenant_id": tenant_id},
+            {"id": student_id, "tenant_id": tenant_id, "is_active": True},
         )
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
@@ -641,7 +643,7 @@ async def get_daily_attendance_report(
         date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
     # Tenant-pin student and attendance queries.
-    _students_q: dict = {"class_id": class_id}
+    _students_q: dict = {"class_id": class_id, "is_active": True}
     _att_q: dict = {"class_id": class_id, "date": date}
     if _eff_tenant:
         _students_q["$or"] = [{"school_id": _eff_tenant}, {"tenant_id": _eff_tenant}]
@@ -666,7 +668,7 @@ async def get_daily_attendance_report(
     # Enrich records
     enriched_records = []
     for record in records:
-        student = await gd_find_one(db.session, "students", {"id": record['student_id']})
+        student = await gd_find_one(db.session, "students", {"id": record['student_id'], "is_active": True})
         teacher = await gd_find_one(db.session, "users", {"id": record.get('teacher_id')})
         
         record['student_name'] = student.get('full_name') if student else None
@@ -822,7 +824,7 @@ async def get_students_for_attendance(
         date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     # Tenant-pin student and attendance queries.
-    _students_q: dict = {"class_id": class_id}
+    _students_q: dict = {"class_id": class_id, "is_active": True}
     _att_q: dict = {"class_id": class_id, "date": date}
     if _eff_tenant:
         _students_q["$or"] = [{"school_id": _eff_tenant}, {"tenant_id": _eff_tenant}]
@@ -987,7 +989,7 @@ async def create_excuse(
     """
     school_id = current_user.get("tenant_id")
 
-    student = await gd_find_one(db.session, "students", {"id": data.student_id, "school_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": data.student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -1168,7 +1170,7 @@ async def list_excuses(
     if student_ids:
         student_rows = await gd_find(
             db.session, "students",
-            {"id": {"$in": student_ids}, "school_id": school_id},
+            {"id": {"$in": student_ids}, "school_id": school_id, "is_active": True},
             limit=len(student_ids) + 1,
         )
     student_by_id = {s["id"]: s for s in student_rows if s.get("id")}
@@ -1246,7 +1248,7 @@ async def get_attendance_alerts(
     chronic_students = await _gd_aggregate(db.session, "attendance", consecutive_pipeline)
 
     for cs in chronic_students:
-        student = await gd_find_one(db.session, "students", {"id": cs["_id"]})
+        student = await gd_find_one(db.session, "students", {"id": cs["_id"], "is_active": True})
         class_info = await gd_find_one(db.session, "classes", {"id": student.get("class_id")}) if student else None
         alerts.append({
             "id": str(uuid.uuid4())[:8],
@@ -1277,7 +1279,7 @@ async def get_attendance_alerts(
     for ls in low_students:
         if any(a["student_id"] == ls["_id"] for a in alerts):
             continue
-        student = await gd_find_one(db.session, "students", {"id": ls["_id"]})
+        student = await gd_find_one(db.session, "students", {"id": ls["_id"], "is_active": True})
         class_info = await gd_find_one(db.session, "classes", {"id": student.get("class_id")}) if student else None
         rate = round(ls["rate"], 1)
         alerts.append({

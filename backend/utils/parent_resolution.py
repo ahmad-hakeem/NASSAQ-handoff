@@ -147,7 +147,7 @@ async def resolve_student_parent_user_id(
     #    the principal flow has students.parent_id set to a parents.id.
     student = await gd_find_one(
         db.session, "students",
-        {"id": student_id, "school_id": tenant_id},
+        {"id": student_id, "school_id": tenant_id, "is_active": True},
     )
     if student and student.get("parent_id"):
         parent_id = student["parent_id"]
@@ -256,7 +256,7 @@ async def resolve_students_parent_user_ids(
     if still_missing:
         students = await gd_find(
             db.session, "students",
-            {"id": {"$in": still_missing}, "school_id": tenant_id},
+            {"id": {"$in": still_missing}, "school_id": tenant_id, "is_active": True},
             limit=5000,
         )
         student_legacy_user_candidates: Dict[str, str] = {}

@@ -844,7 +844,7 @@ async def get_parent_dashboard(
     children_data = []
 
     for student_id in student_ids:
-        student = await gd_find_one(db.session, "students", {"id": student_id})
+        student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
         if not student:
             continue
 
@@ -1357,7 +1357,7 @@ async def get_student_grades(
     current_user: dict = Depends(get_current_user)
 ):
     """Get all grades for a student"""
-    _stg_student = await gd_find_one(db.session, "students", {"id": student_id})
+    _stg_student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
     if not _stg_student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
     _stg_role = current_user.get("role", "")
@@ -1416,7 +1416,7 @@ async def get_student_attendance_stats(
     current_user: dict = Depends(get_current_user)
 ):
     """Get attendance statistics for a student"""
-    _sas_student = await gd_find_one(db.session, "students", {"id": student_id})
+    _sas_student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
     if not _sas_student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
     _sas_role = current_user.get("role", "")
@@ -1524,9 +1524,9 @@ async def create_behavior_record(
     # validate class_id consistency. platform_admin has global scope so no
     # tenant filter is applied, but we still need the student row.
     if _create_beh_role == "platform_admin":
-        student = await gd_find_one(db.session, "students", {"id": student_id})
+        student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
     else:
-        student = await gd_find_one(db.session, "students", {"id": student_id, "tenant_id": caller_tenant})
+        student = await gd_find_one(db.session, "students", {"id": student_id, "tenant_id": caller_tenant, "is_active": True})
 
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود أو لا ينتمي لمدرستك")
@@ -1581,7 +1581,7 @@ async def get_class_student_stats(
                 if not await caller_can_access_class(db.session, current_user, class_id):
                     raise HTTPException(status_code=403, detail="ليس لديك صلاحية لعرض هذا الفصل")
 
-    students = await gd_find(db.session, "students", {"class_id": class_id}, limit=100)
+    students = await gd_find(db.session, "students", {"class_id": class_id, "is_active": True}, limit=100)
 
     student_ids = [s["id"] for s in students]
     if not student_ids:
@@ -1681,7 +1681,7 @@ async def get_student_analytics(
     _ana_role = current_user.get("role", "")
     _ana_tenant = current_user.get("tenant_id")
     _ANA_ADMIN_ROLES = {"platform_admin", "admin", "super_admin", "school_principal", "school_admin", "school_sub_admin"}
-    student = await gd_find_one(db.session, "students", {"id": student_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -1917,9 +1917,9 @@ async def send_message(
                     raise HTTPException(status_code=403, detail="لا يمكنك إرسال رسائل لمستخدمين من مدرسة أخرى")
             resolved_recipient_id = user["id"]
             break
-        student = await gd_find_one(db.session, "students", {"id": rid})
+        student = await gd_find_one(db.session, "students", {"id": rid, "is_active": True})
         if not student:
-            student = await gd_find_one(db.session, "students", {"parent_id": rid})
+            student = await gd_find_one(db.session, "students", {"parent_id": rid, "is_active": True})
         if student:
             if _snd_role != "platform_admin" and _snd_tenant:
                 if student.get("school_id") and student["school_id"] != _snd_tenant:
@@ -2743,7 +2743,7 @@ async def broadcast_session_note_to_parents(
     # 3) build student-name map (validated subset only, tenant-scoped)
     students_map: Dict[str, str] = {}
     for sid in valid_ids:
-        s = await gd_find_one(db.session, "students", {"id": sid, "tenant_id": tenant_id})
+        s = await gd_find_one(db.session, "students", {"id": sid, "tenant_id": tenant_id, "is_active": True})
         if s:
             students_map[sid] = s.get("full_name") or s.get("name") or ""
 

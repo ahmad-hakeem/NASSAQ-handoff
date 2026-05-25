@@ -431,7 +431,7 @@ async def create_bulk_grades(
     if created_sids:
         max_score = assessment.get("max_score", 100)
         assessment_title = assessment.get('title', 'تقييم')
-        students_list = await gd_find(db.session, "students", {"id": {"$in": list(created_sids)}, "tenant_id": tenant_id}, limit=len(created_sids))
+        students_list = await gd_find(db.session, "students", {"id": {"$in": list(created_sids)}, "tenant_id": tenant_id, "is_active": True}, limit=len(created_sids))
         student_map = {s["id"]: s for s in students_list}
 
         # Task #286 — IT-aware copy: resolve the inviting teacher's name
@@ -555,7 +555,7 @@ async def get_grades_for_assessment(
     
     result = []
     for g in grades:
-        student = await gd_find_one(db.session, "students", {"id": g['student_id']})
+        student = await gd_find_one(db.session, "students", {"id": g['student_id'], "is_active": True})
         result.append(GradeResponse(
             id=g['id'],
             assessment_id=g['assessment_id'],
@@ -580,7 +580,7 @@ async def get_student_grade_history(
     current_user: dict = Depends(get_current_user)
 ):
     """Get complete grade history for a student"""
-    student = await gd_find_one(db.session, "students", {"id": student_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     user_role = current_user.get("role", "")
@@ -701,7 +701,7 @@ async def get_class_grade_overview(
         raise HTTPException(status_code=404, detail="Class not found")
     
     # Get all students in class
-    students = await gd_find(db.session, "students", {"class_id": class_id}, limit=100)
+    students = await gd_find(db.session, "students", {"class_id": class_id, "is_active": True}, limit=100)
     student_ids = [s['id'] for s in students]
     
     # Get grades query
@@ -804,7 +804,7 @@ async def get_students_for_grading(
     subject = await gd_find_one(db.session, "subjects", {"id": assessment['subject_id']})
     
     # Get all students in this class
-    students = await gd_find(db.session, "students", {"class_id": assessment['class_id']}, limit=100)
+    students = await gd_find(db.session, "students", {"class_id": assessment['class_id'], "is_active": True}, limit=100)
     
     # Get existing grades for this assessment
     existing_grades = await gd_find(db.session, "grades", {"assessment_id": assessment_id}, limit=100)
@@ -1004,7 +1004,7 @@ async def generate_report_card(
     """Generate a report card for a student"""
     school_id = current_user.get("tenant_id")
 
-    student_query = {"id": student_id}
+    student_query = {"id": student_id, "is_active": True}
     if school_id:
         student_query["tenant_id"] = school_id
     student = await gd_find_one(db.session, "students", student_query)
@@ -1119,7 +1119,7 @@ async def get_class_rankings(
     """Get class rankings by student GPA or subject"""
     school_id = current_user.get("tenant_id")
 
-    students = await gd_find(db.session, "students", {"class_id": class_id, "tenant_id": school_id}, limit=200)
+    students = await gd_find(db.session, "students", {"class_id": class_id, "tenant_id": school_id, "is_active": True}, limit=200)
 
     rankings = []
     for student in students:

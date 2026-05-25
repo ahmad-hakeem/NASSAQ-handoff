@@ -93,7 +93,7 @@ async def global_search(
     caller_is_admin = _is_admin(current_user)
 
     if caller_is_staff and (not entity_type or entity_type == "student"):
-        student_query = {**tenant_filter, "$or": [
+        student_query = {**tenant_filter, "is_active": True, "$or": [
             {"full_name": pattern}, {"national_id": pattern},
             {"email": pattern}, {"student_number": pattern},
         ]}
@@ -155,7 +155,7 @@ async def autocomplete_search(
     suggestions = []
 
     if caller_is_staff and entity_type in ("all", "student"):
-        student_query: dict = {"tenant_id": school_id, "full_name": pattern}
+        student_query: dict = {"tenant_id": school_id, "is_active": True, "full_name": pattern}
         if not caller_is_admin:
             teacher_class_ids = await _get_teacher_class_ids(school_id, current_user)
             if not teacher_class_ids:
@@ -201,7 +201,7 @@ async def directory_students(
     """
     # Task #155: fail-closed school-id resolution; see audit row #5.
     school_id = require_request_school_id(current_user)
-    query: dict = {"tenant_id": school_id}
+    query: dict = {"tenant_id": school_id, "is_active": True}
 
     caller_role = current_user.get("role", "")
     caller_is_teacher = caller_role in (UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value)
@@ -298,7 +298,7 @@ async def directory_parents(
     parents = await gd_find(db.session, "parents", query, order_by="full_name", desc_order=False, offset=skip, limit=per_page)
 
     for p in parents:
-        children = await gd_find(db.session, "students", {"tenant_id": school_id, "$or": [
+        children = await gd_find(db.session, "students", {"tenant_id": school_id, "is_active": True, "$or": [
                 {"parent_id": p["id"]},
                 {"parent_user_id": p.get("user_id")}
             ]}, limit=20)

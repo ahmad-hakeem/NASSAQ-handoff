@@ -473,7 +473,7 @@ async def get_student_full_profile(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    student = await gd_find_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True, **_entity_tenant_filter(tenant_id)})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -557,7 +557,7 @@ async def get_student_full_profile(
         sibling_links = await gd_find(db.session, "guardian_links", {**_entity_tenant_filter(tenant_id), "parent_ref": {"$in": parent_refs}, "is_active": True, "student_id": {"$ne": student_id}}, limit=20)
         sib_ids = list({s["student_id"] for s in sibling_links})
         for sid in sib_ids[:10]:
-            sib = await gd_find_one(db.session, "students", {"id": sid, **_entity_tenant_filter(tenant_id)})
+            sib = await gd_find_one(db.session, "students", {"id": sid, "is_active": True, **_entity_tenant_filter(tenant_id)})
             if sib:
                 siblings.append(sib)
 
@@ -614,7 +614,7 @@ async def update_student_basic_info(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    student = await gd_find_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True, **_entity_tenant_filter(tenant_id)})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -662,7 +662,7 @@ async def update_student_credentials(
 ):
     tenant_id = current_user.get("tenant_id")
 
-    student = await gd_find_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True, **_entity_tenant_filter(tenant_id)})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -725,7 +725,7 @@ async def update_student_account_status(
     if data.status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"الحالة غير صالحة")
 
-    student = await gd_find_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True, **_entity_tenant_filter(tenant_id)})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -756,7 +756,7 @@ async def transfer_student_class(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    student = await gd_find_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True, **_entity_tenant_filter(tenant_id)})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -804,7 +804,7 @@ async def add_student_behaviour(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    student = await gd_find_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True, **_entity_tenant_filter(tenant_id)})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -864,7 +864,7 @@ async def get_parent_full_profile(
     if children_links:
         link_student_ids = [link["student_id"] for link in children_links if link.get("student_id")]
         if link_student_ids:
-            children_docs = await gd_find(db.session, "students", {"id": {"$in": link_student_ids}, **_entity_tenant_filter(tenant_id)}, limit=100)
+            children_docs = await gd_find(db.session, "students", {"id": {"$in": link_student_ids}, "is_active": True, **_entity_tenant_filter(tenant_id)}, limit=100)
             child_map = {c["id"]: c for c in children_docs}
             for link in children_links:
                 child = child_map.get(link["student_id"])
@@ -880,11 +880,11 @@ async def get_parent_full_profile(
     if not children and parent.get("children"):
         child_ids = parent.get("children", [])
         if child_ids:
-            fallback_docs = await gd_find(db.session, "students", {"id": {"$in": child_ids}, **_entity_tenant_filter(tenant_id)}, limit=100)
+            fallback_docs = await gd_find(db.session, "students", {"id": {"$in": child_ids}, "is_active": True, **_entity_tenant_filter(tenant_id)}, limit=100)
             children = fallback_docs
 
     if not children:
-        linked_students = await gd_find(db.session, "students", {"$and": [_entity_tenant_filter(tenant_id), {"$or": [{"parent_id": parent_id}, {"parent_user_id": parent_id}]}]}, limit=20)
+        linked_students = await gd_find(db.session, "students", {"is_active": True, "$and": [_entity_tenant_filter(tenant_id), {"$or": [{"parent_id": parent_id}, {"parent_user_id": parent_id}]}]}, limit=20)
         children = linked_students
 
     notifications = await gd_find(db.session, "notifications", {**_entity_tenant_filter(tenant_id), "user_id": parent_id}, order_by="created_at", desc_order=True, limit=10)

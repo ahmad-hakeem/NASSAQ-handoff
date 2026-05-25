@@ -144,13 +144,14 @@ async def resolve_parent_children(
         student_query: Dict[str, Any] = {"$or": or_conditions}
         if school_id:
             student_query["school_id"] = school_id
+        student_query["is_active"] = True
         children = await gd_find(db.session, "students", student_query, limit=50)
 
     found_ids = {c.get("id") for c in children}
     linked_ids = await _linked_student_ids(current_user, school_id)
     missing_ids = [sid for sid in linked_ids if sid not in found_ids]
     if missing_ids:
-        extra_q: Dict[str, Any] = {"id": {"$in": missing_ids}}
+        extra_q: Dict[str, Any] = {"id": {"$in": missing_ids}, "is_active": True}
         if school_id:
             extra_q["school_id"] = school_id
         extra = await gd_find(db.session, "students", extra_q, limit=50)

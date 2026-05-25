@@ -865,7 +865,7 @@ class TeacherSessionEngine:
         selected_id = random.choice(selection_pool)[0]
         
         # Get student info
-        student = await gd_find_one(self.session, "students", {"id": selected_id})
+        student = await gd_find_one(self.session, "students", {"id": selected_id, "is_active": True})
         
         # Get participation count in this session
         participation_count = selection_counts.get(selected_id, 0)
@@ -1237,7 +1237,7 @@ class TeacherSessionEngine:
             if score <= 0:
                 # Skip students with no positive activity — they aren't truly "top"
                 continue
-            student_filter = {"id": sid}
+            student_filter = {"id": sid, "is_active": True}
             if tenant_id_scope:
                 student_filter["tenant_id"] = tenant_id_scope
             student = await gd_find_one(self.session, "students", student_filter)
@@ -1254,7 +1254,7 @@ class TeacherSessionEngine:
         present_ids = [a["student_id"] for a in attendance if a["status"] == AttendanceStatus.PRESENT.value]
         for sid in present_ids:
             if sid not in interacted_ids:
-                student_filter = {"id": sid}
+                student_filter = {"id": sid, "is_active": True}
                 if tenant_id_scope:
                     student_filter["tenant_id"] = tenant_id_scope
                 student = await gd_find_one(self.session, "students", student_filter)
@@ -1271,7 +1271,7 @@ class TeacherSessionEngine:
                 neg_students[sid] = neg_students.get(sid, 0) + 1
         for sid, count in neg_students.items():
             if count >= 2:
-                student = await gd_find_one(self.session, "students", {"id": sid})
+                student = await gd_find_one(self.session, "students", {"id": sid, "is_active": True})
                 if student and not any(n["student_id"] == sid for n in needs_attention):
                     needs_attention.append({
                         "student_id": sid,
@@ -1424,7 +1424,7 @@ class TeacherSessionEngine:
             score = stats["correct"] * 2 + stats["participation"]
             if score <= 0:
                 continue
-            student_filter = {"id": sid}
+            student_filter = {"id": sid, "is_active": True}
             if tenant_id_scope_end:
                 student_filter["tenant_id"] = tenant_id_scope_end
             student = await gd_find_one(self.session, "students", student_filter)
@@ -1441,7 +1441,7 @@ class TeacherSessionEngine:
         present_ids = [a["student_id"] for a in attendance if a["status"] == AttendanceStatus.PRESENT.value]
         for sid in present_ids:
             if sid not in interacted_student_ids:
-                student_filter = {"id": sid}
+                student_filter = {"id": sid, "is_active": True}
                 if tenant_id_scope_end:
                     student_filter["tenant_id"] = tenant_id_scope_end
                 student = await gd_find_one(self.session, "students", student_filter)
@@ -1458,7 +1458,7 @@ class TeacherSessionEngine:
                 neg_students[sid] = neg_students.get(sid, 0) + 1
         for sid, count in neg_students.items():
             if count >= 2:
-                student_filter = {"id": sid}
+                student_filter = {"id": sid, "is_active": True}
                 if tenant_id_scope_end:
                     student_filter["tenant_id"] = tenant_id_scope_end
                 student = await gd_find_one(self.session, "students", student_filter)
@@ -1705,7 +1705,7 @@ class TeacherSessionEngine:
         for sid, st in sorted_c[:3]:
             if st["correct"] * 2 + st["participation"] <= 0:
                 continue
-            sf = {"id": sid}
+            sf = {"id": sid, "is_active": True}
             if tenant_id_scope_c:
                 sf["tenant_id"] = tenant_id_scope_c
             stu = await gd_find_one(self.session, "students", sf)
@@ -1720,7 +1720,7 @@ class TeacherSessionEngine:
         interacted_c = set(i["student_id"] for i in interactions)
         for sid in [a["student_id"] for a in attendance if a["status"] == AttendanceStatus.PRESENT.value]:
             if sid not in interacted_c:
-                sf = {"id": sid}
+                sf = {"id": sid, "is_active": True}
                 if tenant_id_scope_c:
                     sf["tenant_id"] = tenant_id_scope_c
                 stu = await gd_find_one(self.session, "students", sf)
@@ -1788,7 +1788,7 @@ class TeacherSessionEngine:
             update_fields["engagement_score"] = engagement
             
             if inc_fields:
-                existing_student = await gd_find_one(self.session, "students", {"id": sid, "school_id": school_id})
+                existing_student = await gd_find_one(self.session, "students", {"id": sid, "school_id": school_id, "is_active": True})
                 if existing_student:
                     for field, inc_val in inc_fields.items():
                         update_fields[field] = existing_student.get(field, 0) + inc_val
@@ -2013,7 +2013,7 @@ class TeacherSessionEngine:
         absent_students = [a for a in attendance if a["status"] == AttendanceStatus.ABSENT.value]
         for a_rec in absent_students:
             sid = a_rec["student_id"]
-            student = await gd_find_one(self.session, "students", {"id": sid})
+            student = await gd_find_one(self.session, "students", {"id": sid, "is_active": True})
             if not student:
                 continue
             parent_user_id = student.get("parent_user_id")
@@ -2039,7 +2039,7 @@ class TeacherSessionEngine:
 
         for sid, neg_count in neg_students.items():
             if neg_count >= 3:
-                student = await gd_find_one(self.session, "students", {"id": sid})
+                student = await gd_find_one(self.session, "students", {"id": sid, "is_active": True})
                 if not student:
                     continue
                 parent_user_id = student.get("parent_user_id")
@@ -2078,7 +2078,7 @@ class TeacherSessionEngine:
 
         for sid, si in student_interactions.items():
             if si.get("correct", 0) >= 3 or si.get("participation", 0) >= 5:
-                student = await gd_find_one(self.session, "students", {"id": sid})
+                student = await gd_find_one(self.session, "students", {"id": sid, "is_active": True})
                 if not student:
                     continue
                 parent_user_id = student.get("parent_user_id")
@@ -2126,7 +2126,7 @@ class TeacherSessionEngine:
         ))
         students_map = {}
         for sid in student_ids:
-            s = await gd_find_one(self.session, "students", {"id": sid})
+            s = await gd_find_one(self.session, "students", {"id": sid, "is_active": True})
             if s:
                 students_map[sid] = s.get("full_name", sid)
 
@@ -2188,7 +2188,7 @@ class TeacherSessionEngine:
         month = now.strftime("%Y-%m")
 
         if not school_id:
-            student = await gd_find_one(self.session, "students", {"id": student_id})
+            student = await gd_find_one(self.session, "students", {"id": student_id, "is_active": True})
             school_id = student.get("school_id") if student else None
         
         ledger_entry = {
@@ -2248,7 +2248,7 @@ class TeacherSessionEngine:
         month = now.strftime("%Y-%m")
         
         # Get student info
-        student = await gd_find_one(self.session, "students", {"id": student_id})
+        student = await gd_find_one(self.session, "students", {"id": student_id, "is_active": True})
         if not student:
             raise HTTPException(status_code=404, detail="الطالب غير موجود")
         
@@ -2370,7 +2370,7 @@ class TeacherSessionEngine:
                 )
                 raise HTTPException(status_code=404, detail="نوع المهارة غير موجود")
 
-        student = await gd_find_one(self.session, "students", {"id": student_id})
+        student = await gd_find_one(self.session, "students", {"id": student_id, "is_active": True})
         if not student:
             raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -2478,7 +2478,7 @@ class TeacherSessionEngine:
         student_ids = list(set(i["student_id"] for i in interactions if i.get("student_id")))
         students = {}
         if student_ids:
-            student_docs = await gd_find(self.session, "students", {"id": {"$in": student_ids}}, limit=len(student_ids))
+            student_docs = await gd_find(self.session, "students", {"id": {"$in": student_ids}, "is_active": True}, limit=len(student_ids))
             students = {s["id"]: s.get("full_name", "طالب") for s in student_docs}
 
         skill_ids = [i.get("behaviour_type") for i in interactions
@@ -2677,7 +2677,7 @@ class TeacherSessionEngine:
 
         for note in notes:
             if note.get("student_id"):
-                student = await gd_find_one(self.session, "students", {"id": note["student_id"]})
+                student = await gd_find_one(self.session, "students", {"id": note["student_id"], "is_active": True})
                 note["student_name"] = student.get("full_name") if student else None
         return notes
 
@@ -2823,7 +2823,7 @@ class TeacherSessionEngine:
         student_details = {}
         for att in attendance:
             sid = att["student_id"]
-            student = await gd_find_one(self.session, "students", {"id": sid})
+            student = await gd_find_one(self.session, "students", {"id": sid, "is_active": True})
             student_details[sid] = {
                 "student_id": sid,
                 "name": student.get("full_name") if student else sid,
@@ -2837,7 +2837,7 @@ class TeacherSessionEngine:
         for inter in interactions:
             sid = inter["student_id"]
             if sid not in student_details:
-                student = await gd_find_one(self.session, "students", {"id": sid})
+                student = await gd_find_one(self.session, "students", {"id": sid, "is_active": True})
                 student_details[sid] = {
                     "student_id": sid,
                     "name": student.get("full_name") if student else sid,

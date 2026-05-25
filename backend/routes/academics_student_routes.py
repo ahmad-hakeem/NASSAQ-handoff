@@ -429,11 +429,11 @@ async def get_my_student_profile(current_user: dict = Depends(get_current_user))
     student = None
     sid = current_user.get("student_id")
     if sid:
-        student = await gd_find_one(db.session, "students", {"id": sid})
+        student = await gd_find_one(db.session, "students", {"id": sid, "is_active": True})
 
     # Tenant-scoped fallback lookups to prevent cross-tenant resolution.
     def _scoped(field, value):
-        q = {field: value}
+        q = {field: value, "is_active": True}
         if current_user.get("tenant_id"):
             q["school_id"] = current_user.get("tenant_id")
         return q
@@ -471,7 +471,7 @@ async def get_student(student_id: str, current_user: dict = Depends(get_current_
     any low-privilege account from enumerating the full student directory via
     brute-forced or guessed student IDs.
     """
-    student = await gd_find_one(db.session, "students", {"id": student_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -522,7 +522,7 @@ async def update_student(
     # (their `users.tenant_id` is NULL by design).
     from auth_scope import independent_workspace_id as _itw_id
     school_id = current_user.get("tenant_id") or _itw_id(current_user)
-    query = {"id": student_id}
+    query = {"id": student_id, "is_active": True}
     if school_id:
         query["school_id"] = school_id
 
@@ -606,7 +606,7 @@ async def transfer_student_class(
     if not school_id:
         raise HTTPException(status_code=400, detail="سياق المدرسة مطلوب")
 
-    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -649,20 +649,31 @@ async def delete_student(
     from auth_scope import is_independent_teacher, independent_workspace_id
     if is_independent_teacher(current_user):
         wsid = independent_workspace_id(current_user)
-        student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": wsid})
+        student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": wsid, "is_active": True})
     elif current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
-        student = await gd_find_one(db.session, "students", {"id": student_id})
+        student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
     else:
         caller_tenant = current_user.get("tenant_id")
         if not caller_tenant:
             raise HTTPException(status_code=403, detail="سياق المدرسة مطلوب")
-        student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": caller_tenant})
+        student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": caller_tenant, "is_active": True})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
     
     school_id = student.get("school_id")
     class_id = student.get("class_id")
     user_id = student.get("user_id")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await gd_update_one(
+        db.session, "students",
+        {"id": student_id},
+        {"$set": {"is_active": False, "updated_at": now_iso}},
+    )
+
+    await _gd_inc(db.session, "schools", {"id": school_id}, {"current_students": -1})
+    if class_id:
+        await _gd_inc(db.session, "classes", {"id": class_id, "school_id": school_id}, {"current_students": -1})
 
     await audit_engine.log(
         action=AuditAction.USER_DELETED.value,
@@ -674,48 +685,14 @@ async def delete_student(
             "full_name": student.get("full_name"),
             "school_id": school_id,
             "class_id": class_id,
+            "soft_delete": True,
         },
         actor_name=current_user.get("full_name"),
         actor_role=current_user.get("role"),
         actor_email=current_user.get("email"),
     )
 
-    cleanup = {}
-    await gd_delete_many(db.session, "attendance", {"student_id": student_id})
-    await gd_delete_one(db.session, "students", {"id": student_id})
-
-    await _gd_inc(db.session, "schools", {"id": school_id}, {"current_students": -1})
-    if class_id:
-        await _gd_inc(db.session, "classes", {"id": class_id, "school_id": school_id}, {"current_students": -1})
-
-    r = await gd_delete_many(db.session, "attendance", {"student_id": student_id})
-    cleanup["attendance"] = r
-    r = await gd_delete_many(db.session, "session_attendance", {"student_id": student_id})
-    cleanup["session_attendance"] = r
-    r = await gd_delete_many(db.session, "grades", {"student_id": student_id})
-    cleanup["grades"] = r
-    r = await gd_delete_many(db.session, "student_daily_scores", {"student_id": student_id})
-    cleanup["student_daily_scores"] = r
-    r = await gd_delete_many(db.session, "student_score_ledger", {"student_id": student_id})
-    cleanup["student_score_ledger"] = r
-    r = await gd_delete_many(db.session, "student_skills", {"student_id": student_id})
-    cleanup["student_skills"] = r
-    r = await gd_delete_many(db.session, "behaviour_records", {"student_id": student_id})
-    cleanup["behaviour_records"] = r
-    r = await gd_delete_many(db.session, "session_interactions", {"student_id": student_id})
-    cleanup["session_interactions"] = r
-    r = await gd_delete_many(db.session, "guardian_links", {"student_id": student_id})
-    cleanup["guardian_links"] = r
-    r = await gd_delete_many(db.session, "user_relationships", {"$or": [{"source_id": student_id}, {"target_id": student_id}]})
-    cleanup["user_relationships"] = r
-
-    if user_id:
-        await gd_delete_one(db.session, "users", {"id": user_id})
-        await gd_delete_many(db.session, "user_roles", {"user_id": user_id})
-        await gd_delete_many(db.session, "user_identities", {"user_id": user_id})
-        cleanup["user_account"] = 1
-
-    return {"message": "تم حذف الطالب وجميع بياناته من النظام بالكامل", "success": True, "cleanup": cleanup}
+    return {"message": "تم إلغاء تفعيل الطالب وإخفاؤه من جميع القوائم مع الحفاظ على سجلاته", "success": True}
 
 
 
@@ -764,7 +741,7 @@ async def check_parent_exists(
     
     if parent:
         # Get parent's students (siblings)
-        students = await gd_find(db.session, "students", {"school_id": school_id, "id": {"$in": parent.get("student_ids", [])}}, limit=100)
+        students = await gd_find(db.session, "students", {"school_id": school_id, "is_active": True, "id": {"$in": parent.get("student_ids", [])}}, limit=100)
         
         return {
             "found": True,
@@ -825,7 +802,7 @@ async def get_parents(
     parent_ids = [p.get("id") for p in parents if p.get("id")]
     back_ref_map: Dict[str, list] = {}
     if parent_ids:
-        back_query: Dict[str, Any] = {"parent_id": {"$in": parent_ids}}
+        back_query: Dict[str, Any] = {"parent_id": {"$in": parent_ids}, "is_active": True}
         if school_id:
             back_query["school_id"] = school_id
         # Narrow to the specific failure mode the back-ref guards against
@@ -850,7 +827,7 @@ async def get_parents(
         children: List[Dict[str, Any]] = []
         seen_ids = set()
         if student_ids:
-            child_query: Dict[str, Any] = {"id": {"$in": student_ids}}
+            child_query: Dict[str, Any] = {"id": {"$in": student_ids}, "is_active": True}
             if school_id:
                 child_query["school_id"] = school_id
             students_docs = await gd_find(db.session, "students", child_query, limit=50)

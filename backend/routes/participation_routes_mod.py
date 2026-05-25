@@ -120,7 +120,7 @@ async def record_participation(
         cls_allowed = await can_view_class(db.session, current_user, data.class_id)
         require_can_view_class_sync_check(cls_allowed)
 
-    student = await gd_find_one(db.session, "students", {"id": data.student_id, "tenant_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": data.student_id, "tenant_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -185,7 +185,7 @@ async def record_bulk_participation(
             errors.append({"error": "missing student_id"})
             continue
 
-        student = await gd_find_one(db.session, "students", {"id": student_id, "tenant_id": school_id})
+        student = await gd_find_one(db.session, "students", {"id": student_id, "tenant_id": school_id, "is_active": True})
         if not student:
             errors.append({"student_id": student_id, "error": "student not found"})
             continue
@@ -536,7 +536,7 @@ async def get_class_participation_statistics(
 
     records = await gd_find(db.session, "participation_records", query, limit=10000)
 
-    class_students = await gd_find(db.session, "students", {"tenant_id": school_id, "class_id": class_id}, limit=100)
+    class_students = await gd_find(db.session, "students", {"tenant_id": school_id, "class_id": class_id, "is_active": True}, limit=100)
     all_student_ids = {s["id"] for s in class_students}
 
     student_stats = {}
@@ -600,7 +600,7 @@ async def get_student_participation_report(
     require_can_view_student_sync_check(allowed)
     school_id = current_user.get("tenant_id")
 
-    student = await gd_find_one(db.session, "students", {"id": student_id, "tenant_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "tenant_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 

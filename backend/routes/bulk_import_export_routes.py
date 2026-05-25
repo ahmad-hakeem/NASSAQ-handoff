@@ -781,6 +781,7 @@ async def _export_students(db, school_id: str, grade: str = None, class_name: st
     if class_name:
         query["class_name"] = class_name
     
+    query["is_active"] = True
     students = await gd_find(db.session, "students", query, limit=10000)
     
     data = []

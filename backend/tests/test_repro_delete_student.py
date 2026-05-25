@@ -1,5 +1,9 @@
 """Regression tests for Bug #372 — class roster delete must reflect
-persisted state immediately on the post-delete refetch."""
+persisted state immediately on the post-delete refetch.
+
+Task #593: deletion is now a soft delete (is_active = False). The student
+row must still exist with is_active=False, must not appear in roster/list
+endpoints, and the class current_students count must still decrement."""
 import uuid
 import pytest
 
@@ -27,7 +31,10 @@ async def test_delete_student_refetched_roster_and_count(
     body = r.json()
     assert body.get("success") is True
 
-    assert await gd_find_one(_db_session, "students", {"id": target}) is None
+    # Task #593: soft delete — row must still exist but with is_active=False
+    row = await gd_find_one(_db_session, "students", {"id": target})
+    assert row is not None, "student row must not be hard-deleted"
+    assert row.get("is_active") is False, "soft-deleted student must have is_active=False"
 
     r = await client.get(f"/classes/{cls_id}/students", headers=school_principal_headers)
     assert r.status_code == 200
@@ -56,4 +63,6 @@ async def test_delete_student_cross_tenant_404_no_mutation(
 
     r = await client.delete(f"/students/{other_sid}", headers=school_principal_headers)
     assert r.status_code == 404
-    assert await gd_find_one(_db_session, "students", {"id": other_sid}) is not None
+    row = await gd_find_one(_db_session, "students", {"id": other_sid})
+    assert row is not None
+    assert row.get("is_active") is not False, "cross-tenant student must not be mutated"
