@@ -1,5 +1,3 @@
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
@@ -7,80 +5,22 @@ import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { NotificationBell } from '../components/notifications/NotificationBell';
 import { SchoolDashboardContent } from '../components/dashboard/SchoolDashboardContent';
 import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
 import {
   Sun,
   Moon,
   Globe,
-  ArrowLeft,
-  Shield,
-  Building2,
-  X,
   Command,
 } from 'lucide-react';
 
 export default function PrincipalDashboard() {
-  const navigate = useNavigate();
-  const { user, schoolContext, isImpersonating, exitSchoolContext } = useAuth();
+  const { user, schoolContext, isImpersonating } = useAuth();
   const { t } = useTranslation();
-  const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
-  const exitTimeoutRef = useRef(null);
-
-  useEffect(() => {
-    return () => {
-      if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current);
-    };
-  }, []);
-  
-  const handleExitImpersonation = async () => {
-    // Audit 2026-05-25 (H2): await exitSchoolContext so the server-side
-    // /role-switch/restore (which revokes the impersonation JTI) actually
-    // completes before we navigate away. Previously the 100ms setTimeout
-    // raced the network call and the impersonation token could stay
-    // alive for its full 15-min TTL after the user thought they exited.
-    try {
-      await exitSchoolContext();
-    } finally {
-      if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current);
-      window.location.href = '/admin/tenants';
-    }
-  };
+  const { toggleTheme, toggleLanguage, isDark } = useTheme();
 
   return (
     <Sidebar>
       <div className="min-h-screen" data-testid="principal-dashboard">
-        {isImpersonating && schoolContext && (
-          <div 
-            className="sticky top-0 z-50 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-white px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between shadow-lg gap-2" 
-            data-testid="impersonation-banner"
-          >
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
-                <Shield className="h-4 w-4 sm:h-5 sm:w-5" />
-              </div>
-              <div className="flex flex-col min-w-0">
-                <span className="font-bold text-xs sm:text-sm">
-                  {t('youAreNowPreviewing')}
-                </span>
-                <span className="text-white/90 font-cairo text-sm sm:text-lg truncate">
-                  {schoolContext.school_name}
-                </span>
-              </div>
-            </div>
-            <Button 
-              size="sm" 
-              className="bg-white text-amber-600 hover:bg-white/90 rounded-xl font-bold shadow-md flex-shrink-0 text-xs sm:text-sm"
-              onClick={handleExitImpersonation}
-              data-testid="exit-impersonation-btn"
-            >
-              <ArrowLeft className={`h-3.5 w-3.5 sm:h-4 sm:w-4 me-1 sm:me-2 ${isRTL ? 'rotate-180' : ''}`} />
-              <span className="hidden sm:inline">{t('backToPlatform')}</span>
-              <span className="sm:hidden">{t('back3')}</span>
-            </Button>
-          </div>
-        )}
-        
-        <header className={`sticky ${isImpersonating ? 'top-[48px] sm:top-[60px]' : 'top-0'} z-30 bg-background/80 backdrop-blur-xl border-b border-border/40 px-4 sm:px-6 py-3 sm:py-4`}>
+        <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border/40 px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 sm:gap-4 min-w-0">
               <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-brand-navy to-brand-turquoise flex items-center justify-center shadow-lg shadow-brand-navy/20 flex-shrink-0">

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, LogOut, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Eye, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
@@ -9,6 +9,8 @@ import { Button } from '../ui/button';
 
 /**
  * Task #528 — Persistent preview-mode banner.
+ * Task #576 — Consolidated: this is now the ONLY preview-mode banner
+ * (the duplicate orange/amber banner on PrincipalDashboard was removed).
  *
  * Visible across navigation whenever the Platform Admin is impersonating
  * a school (Preview Mode). The exit button calls the same hardened
@@ -55,26 +57,26 @@ export default function PreviewModeBanner() {
       data-testid="preview-mode-banner"
       className="sticky top-0 z-[120] w-full bg-brand-navy text-white border-b border-brand-turquoise/40 shadow-md"
     >
-      <div className="max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center gap-3 justify-between">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-2.5 flex items-center gap-2 sm:gap-3 justify-between">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <span
-            className="flex items-center justify-center h-8 w-8 rounded-lg bg-brand-turquoise/20 text-brand-turquoise shrink-0"
+            className="flex items-center justify-center h-8 w-8 sm:h-9 sm:w-9 rounded-lg bg-brand-turquoise/20 text-brand-turquoise shrink-0"
             aria-hidden="true"
           >
-            <Eye className="h-4 w-4" strokeWidth={1.5} />
+            <Eye className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={1.5} />
           </span>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold leading-tight">
-              {t('previewModeBannerTitle')}
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-3 min-w-0 text-start">
+            <span className="inline-flex items-center rounded-md bg-brand-turquoise/20 text-brand-turquoise px-2 py-0.5 text-[11px] sm:text-xs font-bold uppercase tracking-wide w-fit">
+              {t('previewMode')}
+            </span>
             {schoolName ? (
-              <p className="text-xs text-white/80 truncate">
-                {t('previewModeBannerSchool', { school: schoolName })}
-              </p>
+              <span className="font-cairo text-sm sm:text-base font-bold text-white truncate">
+                {schoolName}
+              </span>
             ) : (
-              <p className="text-xs text-white/80 truncate">
+              <span className="text-xs sm:text-sm text-white/80 truncate">
                 {t('previewModeBannerHelper')}
-              </p>
+              </span>
             )}
           </div>
         </div>
@@ -83,14 +85,19 @@ export default function PreviewModeBanner() {
           disabled={exiting}
           size="sm"
           data-testid="preview-mode-banner-exit-btn"
-          className="bg-brand-turquoise hover:bg-brand-turquoise-light text-white rounded-lg"
+          className="bg-brand-turquoise hover:bg-brand-turquoise-light text-white rounded-lg font-bold shadow-md shrink-0 min-h-[36px] px-3 sm:px-4"
         >
           {exiting ? (
-            <RefreshCw className="h-4 w-4 me-2 animate-spin" strokeWidth={1.5} aria-hidden="true" />
+            <RefreshCw className="h-4 w-4 me-1.5 sm:me-2 animate-spin" strokeWidth={1.5} aria-hidden="true" />
           ) : (
-            <LogOut className="h-4 w-4 me-2" strokeWidth={1.5} aria-hidden="true" />
+            <ArrowLeft
+              className={`h-4 w-4 me-1.5 sm:me-2 ${isRTL ? 'rotate-180' : ''}`}
+              strokeWidth={1.5}
+              aria-hidden="true"
+            />
           )}
-          {t('exitPreview')}
+          <span className="hidden sm:inline">{t('backToPlatform')}</span>
+          <span className="sm:hidden">{t('back3')}</span>
         </Button>
       </div>
     </div>
