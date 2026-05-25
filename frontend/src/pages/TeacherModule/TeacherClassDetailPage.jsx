@@ -262,7 +262,7 @@ export default function TeacherClassDetailPage() {
       toast.success(lesson.is_skipped ? t('lessonUpdated') : t('skipped'));
       fetchCurriculum();
     } catch (err) {
-      console.error(err);
+      nassaqError(t('errorSkippingLesson'));
     }
   };
 
@@ -272,7 +272,7 @@ export default function TeacherClassDetailPage() {
       toast.success(t('lessonDeleted'));
       fetchCurriculum();
     } catch (err) {
-      console.error(err);
+      nassaqError(t('errorDeletingLesson'));
     }
   };
 
@@ -303,7 +303,7 @@ export default function TeacherClassDetailPage() {
       setEditingTitle('');
       fetchCurriculum();
     } catch (err) {
-      console.error(err);
+      nassaqError(t('errorEditingLesson'));
     }
   };
 
