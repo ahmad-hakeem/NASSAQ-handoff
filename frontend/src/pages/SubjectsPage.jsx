@@ -72,6 +72,7 @@ export const SubjectsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSchool, setSelectedSchool] = useState('all');
   const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   
   const [newSubject, setNewSubject] = useState({
     name: '',
@@ -115,6 +116,7 @@ export const SubjectsPage = () => {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const resetForm = () => {
@@ -170,19 +172,49 @@ export const SubjectsPage = () => {
     }
   };
 
-  const handleDeleteSubject = async (subjectId) => {
-    nassaqConfirm(
-      t('areYouSureYouWantToDeleteThisSubject'),
-      async () => {
-        try {
-          await api.delete(`/subjects/${subjectId}`);
-          toast.success(t('subjectDeleted'));
-          setSubjects(prev => prev.filter(s => s.id !== subjectId));
-        } catch (error) {
-          nassaqError(t('failedToDeleteSubject'));
-        }
+  const performDelete = async (subjectId, { force = false } = {}) => {
+    setDeletingId(subjectId);
+    try {
+      const res = await api.delete(`/subjects/${subjectId}`, force ? { params: { force: true } } : undefined);
+      const data = res?.data;
+      if (data && data.requires_confirmation) {
+        const deps = data.dependencies || {};
+        const classes = deps.classes || 0;
+        const assignments = deps.teacher_assignments || 0;
+        const sessions = deps.schedule_sessions || 0;
+        const lines = [
+          data.message || t('subjectDeleteHasDependencies') || 'هذه المادة لا تزال مستخدمة.',
+          `• ${t('classes') || 'الفصول'}: ${classes}`,
+          `• ${t('teacherAssignments') || 'إسنادات المعلمين'}: ${assignments}`,
+          `• ${t('scheduleSessions') || 'الحصص في الجدول'}: ${sessions}`,
+          t('subjectDeleteAnywayHint') || 'سيؤدي الحذف إلى إخفاء المادة دون حذف الفصول أو الحصص المرتبطة. هل تريد المتابعة؟',
+        ];
+        setDeletingId(null);
+        nassaqConfirm(lines.join('\n'), async (ok) => {
+          if (!ok) return;
+          await performDelete(subjectId, { force: true });
+        }, {
+          confirmText: t('deleteAnyway') || 'حذف على أي حال',
+          cancelText: t('cancel') || 'إلغاء',
+        });
+        return;
       }
-    );
+      fetchData();
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      nassaqError(typeof detail === 'string' ? detail : t('failedToDeleteSubject'));
+    } finally {
+      setDeletingId((current) => (current === subjectId ? null : current));
+    }
+  };
+
+  const handleDeleteSubject = (subject) => {
+    const label = subject.name || subject.name_en || '';
+    const message = t('areYouSureYouWantToDeleteThisSubject') + (label ? `\n${label}` : '');
+    nassaqConfirm(message, async (ok) => {
+      if (!ok) return;
+      await performDelete(subject.id);
+    });
   };
 
   const openEditDialog = (subject) => {
@@ -638,7 +670,8 @@ export const SubjectsPage = () => {
                                   </DropdownMenuItem>
                                   <DropdownMenuItem 
                                     className="text-red-600"
-                                    onClick={() => handleDeleteSubject(subject.id)}
+                                    disabled={deletingId === subject.id}
+                                    onClick={() => handleDeleteSubject(subject)}
                                   >
                                     <Trash2 className="h-4 w-4 me-2" />
                                     {t('delete')}
