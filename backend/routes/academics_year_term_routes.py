@@ -389,6 +389,19 @@ async def delete_term(
 
 
 # ============== GRADE LEVELS APIs ==============
+# Task #520 — The `grade_levels` table (see `pg_models.GradeLevel` and the
+# initial Alembic migration) only declares `id, school_id, name_ar,
+# name_en, code, stage, order, is_active`. Earlier revisions of these
+# routes wrote `name`, `created_at`, `updated_at`, `created_by` into the
+# insert dict and required `name`/`created_at` on the response model.
+# `gd_insert` silently dropped those unknown keys (no `data` JSONB column
+# on this ORM), so freshly-created rows came back missing `name` and
+# `created_at` and blew up `GradeLevelResponse(**row)` with a Pydantic
+# ValidationError on the list endpoint. The request schema still accepts
+# `name` for backward compatibility with the IT create-class dialog
+# (`frontend/.../TeacherClassesPage.jsx`), and we map it onto the real
+# `name_ar` column; the response model exposes both `name_ar` and a
+# `name` alias derived from it so existing FE consumers keep working.
 class GradeLevelBase(BaseModel):
     name: str
     name_en: Optional[str] = None
@@ -399,12 +412,30 @@ class GradeLevelBase(BaseModel):
 class GradeLevelResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str
-    name: str
+    name: Optional[str] = None
+    name_ar: Optional[str] = None
     name_en: Optional[str] = None
-    order: int
-    is_active: bool
-    school_id: str
-    created_at: str
+    order: int = 0
+    is_active: bool = True
+    school_id: Optional[str] = None
+
+
+def _grade_to_response(row: dict) -> "GradeLevelResponse":
+    """Build a response model from a `grade_levels` ORM row dict.
+
+    Mirrors `name_ar` into the legacy `name` field so older callers that
+    read `g.name` continue to work without a separate migration.
+    """
+    name_ar = row.get("name_ar")
+    return GradeLevelResponse(
+        id=row.get("id"),
+        name=row.get("name") or name_ar,
+        name_ar=name_ar,
+        name_en=row.get("name_en"),
+        order=row.get("order") or 0,
+        is_active=bool(row.get("is_active", True)),
+        school_id=row.get("school_id"),
+    )
 
 @router.post("/grade-levels", response_model=GradeLevelResponse)
 async def create_grade_level(
@@ -426,23 +457,19 @@ async def create_grade_level(
         raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
 
     grade_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-    
+
     grade_doc = {
         "id": grade_id,
-        "name": data.name,
+        "name_ar": data.name,
         "name_en": data.name_en,
         "order": data.order,
         "is_active": data.is_active,
         "school_id": target_school_id,
-        "created_at": now,
-        "updated_at": now,
-        "created_by": current_user.get("id")
     }
-    
+
     await gd_insert(db.session, "grade_levels", grade_doc)
-    
-    return GradeLevelResponse(**grade_doc)
+
+    return _grade_to_response(grade_doc)
 
 @router.get("/grade-levels", response_model=List[GradeLevelResponse])
 async def get_grade_levels(
@@ -471,7 +498,7 @@ async def get_grade_levels(
         query["school_id"] = caller_tenant
 
     grade_levels = await gd_find(db.session, "grade_levels", query, order_by="order", desc_order=False, limit=100)
-    return [GradeLevelResponse(**gl) for gl in grade_levels]
+    return [_grade_to_response(gl) for gl in grade_levels]
 
 @router.get("/grade-levels/{grade_id}", response_model=GradeLevelResponse)
 async def get_grade_level(
@@ -483,7 +510,7 @@ async def get_grade_level(
     grade = await tenant_scoped_find_one(db.session, "grade_levels", grade_id, current_user)
     if not grade:
         raise HTTPException(status_code=404, detail="المرحلة الدراسية غير موجودة")
-    return GradeLevelResponse(**grade)
+    return _grade_to_response(grade)
 
 @router.put("/grade-levels/{grade_id}", response_model=GradeLevelResponse)
 async def update_grade_level(
@@ -499,17 +526,16 @@ async def update_grade_level(
     )
     
     update_data = {
-        "name": data.name,
+        "name_ar": data.name,
         "name_en": data.name_en,
         "order": data.order,
         "is_active": data.is_active,
-        "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
     await gd_update_one(db.session, "grade_levels", {"id": grade_id}, update_data)
-    
+
     updated = await gd_find_one(db.session, "grade_levels", {"id": grade_id})
-    return GradeLevelResponse(**updated)
+    return _grade_to_response(updated)
 
 @router.delete("/grade-levels/{grade_id}")
 async def delete_grade_level(
