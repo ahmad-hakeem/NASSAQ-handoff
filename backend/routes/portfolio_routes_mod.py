@@ -35,6 +35,18 @@ router = APIRouter()
 _engine = PortfolioEvidenceEngine(db)
 logger = logging.getLogger("nassaq.portfolio.routes")
 
+_TEACHER_WRITE_ROLES = ("teacher", "independent_teacher")
+
+_ALLOWED_DATA_URL_PREFIXES = (
+    "data:application/pdf;",
+    "data:image/",
+    "data:video/",
+    "data:application/msword;",
+    "data:application/vnd.openxmlformats-officedocument.",
+    "data:application/vnd.ms-",
+    "data:text/",
+)
+
 
 class ManualEvidenceCreate(BaseModel):
     evidence_type: str
@@ -111,7 +123,7 @@ async def upload_evidence_file(
     """Upload an evidence attachment (PDF / image / video). Returns a data URL the client
     can store on the evidence record's file_url field. Stays consistent with the existing
     parent /upload-attachment pattern (base64 data URL, no external storage required)."""
-    if current_user["role"] != "teacher":
+    if current_user["role"] not in _TEACHER_WRITE_ROLES:
         raise HTTPException(status_code=403, detail="غير مصرح")
 
     import base64
@@ -185,17 +197,17 @@ async def add_evidence(
     data: ManualEvidenceCreate,
     current_user: dict = Depends(get_current_user),
 ):
-    if current_user["role"] != "teacher":
+    if current_user["role"] not in _TEACHER_WRITE_ROLES:
         raise HTTPException(status_code=403, detail="غير مصرح")
     if data.file_url:
         MAX_DATA_URL = 14 * 1024 * 1024  # base64 of 10 MB ≈ 13.3 MB
         if len(data.file_url) > MAX_DATA_URL:
             raise HTTPException(status_code=400, detail="حجم المرفق يتجاوز الحد المسموح")
-        if not (data.file_url.startswith("data:application/pdf;base64,")
-                or data.file_url.startswith("data:image/")
-                or data.file_url.startswith("data:video/")
-                or data.file_url.startswith("https://")
-                or data.file_url.startswith("http://")):
+        if not (
+            data.file_url.startswith(_ALLOWED_DATA_URL_PREFIXES)
+            or data.file_url.startswith("https://")
+            or data.file_url.startswith("http://")
+        ):
             raise HTTPException(status_code=400, detail="صيغة المرفق غير مدعومة")
     teacher_id = current_user["id"]
     school_id = current_user.get("tenant_id", "")
@@ -225,17 +237,17 @@ async def update_evidence(
     data: EvidenceUpdate,
     current_user: dict = Depends(get_current_user),
 ):
-    if current_user["role"] != "teacher":
+    if current_user["role"] not in _TEACHER_WRITE_ROLES:
         raise HTTPException(status_code=403, detail="غير مصرح")
     if data.file_url:
         MAX_DATA_URL = 14 * 1024 * 1024
         if len(data.file_url) > MAX_DATA_URL:
             raise HTTPException(status_code=400, detail="حجم المرفق يتجاوز الحد المسموح")
-        if not (data.file_url.startswith("data:application/pdf;base64,")
-                or data.file_url.startswith("data:image/")
-                or data.file_url.startswith("data:video/")
-                or data.file_url.startswith("https://")
-                or data.file_url.startswith("http://")):
+        if not (
+            data.file_url.startswith(_ALLOWED_DATA_URL_PREFIXES)
+            or data.file_url.startswith("https://")
+            or data.file_url.startswith("http://")
+        ):
             raise HTTPException(status_code=400, detail="صيغة المرفق غير مدعومة")
     # Honor explicit None for fields the client actually sent (PATCH semantics),
     # so that teachers can clear file_url, class_id, subject_id, etc.
@@ -256,7 +268,7 @@ async def delete_evidence(
     evidence_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    if current_user["role"] != "teacher":
+    if current_user["role"] not in _TEACHER_WRITE_ROLES:
         raise HTTPException(status_code=403, detail="غير مصرح")
     result = await _engine.delete_evidence(evidence_id, current_user["id"])
     if not result.get("success"):
