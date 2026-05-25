@@ -496,7 +496,7 @@ export default function TeacherAchievementsPage() {
       setExpandedSubsec(p => ({ ...p, [manualEvForm.section_key]: true }));
       fetchPortfolio();
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'فشل إضافة الشاهد');
+      nassaqError(err?.response?.data?.detail || 'فشل إضافة الشاهد');
     } finally { setManualEvSaving(false); }
   };
 
@@ -646,7 +646,7 @@ export default function TeacherAchievementsPage() {
       }
     } catch (err) {
       if (token !== cvUploadTokenRef.current) return;
-      toast.error(err?.response?.data?.detail || 'فشل رفع الملف');
+      nassaqError(err?.response?.data?.detail || 'فشل رفع الملف');
     } finally {
       if (token === cvUploadTokenRef.current) setCvFileUploading(false);
     }
@@ -670,7 +670,7 @@ export default function TeacherAchievementsPage() {
       await fetchPortfolio();
       toast.success('تمت الإضافة');
     } catch (e) {
-      toast.error(e?.response?.data?.detail || 'فشل الحفظ');
+      nassaqError(e?.response?.data?.detail || 'فشل الحفظ');
     }
     finally { setCvSaving(false); }
   };
@@ -845,7 +845,7 @@ export default function TeacherAchievementsPage() {
       fetchPortfolio();
     } catch (err) {
       console.error('Save evidence error:', err);
-      toast.error(err?.response?.data?.detail || 'Error');
+      nassaqError(err?.response?.data?.detail || t('portfolioSaveError') || 'فشل حفظ الشاهد. يرجى المحاولة مرة أخرى.');
     } finally {
       setSaving(false);
     }
