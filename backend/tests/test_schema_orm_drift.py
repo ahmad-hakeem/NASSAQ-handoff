@@ -27,6 +27,8 @@ from alembic.migration import MigrationContext
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
+from sqlalchemy import inspect as sa_inspect
+
 from db import Base, _get_async_url
 import pg_models  # noqa: F401  ensure all ORM tables are registered on Base.metadata
 
@@ -48,6 +50,60 @@ KNOWN_DB_ONLY_COLUMNS: frozenset[tuple[str, str]] = frozenset({
     ("schools", "ai_consent_enabled"),  # legacy column, no longer surfaced via ORM
     ("teachers", "created_by"),         # legacy column, no longer surfaced via ORM
 })
+
+
+async def _collect_db_tables_and_columns_async() -> dict[str, set[str]]:
+    """Return ``{table_name: {column_name, ...}}`` for the live database."""
+    engine = create_async_engine(_get_async_url(), poolclass=NullPool)
+    try:
+        async with engine.connect() as conn:
+            def _introspect(sync_conn):
+                insp = sa_inspect(sync_conn)
+                return {
+                    tbl: {col["name"] for col in insp.get_columns(tbl)}
+                    for tbl in insp.get_table_names()
+                }
+            return await conn.run_sync(_introspect)
+    finally:
+        await engine.dispose()
+
+
+def _collect_db_tables_and_columns() -> dict[str, set[str]]:
+    return asyncio.run(_collect_db_tables_and_columns_async())
+
+
+def test_every_orm_column_exists_in_db():
+    """Fail if any column declared on a mapped ORM model is missing from
+    Postgres.
+
+    This is the direction Task #592 hit in production: ``grade_levels`` had
+    four ORM-only columns that didn't exist in the database, so every write
+    raised ``UndefinedColumn`` at runtime. Catching this in CI blocks deploys
+    that would 500 on first write.
+
+    Implemented as a direct introspection check (rather than relying on
+    Alembic's ``compare_metadata``) so any ghost column is reported with its
+    table and column name regardless of type/default/nullable differences.
+    """
+    db_schema = _collect_db_tables_and_columns()
+
+    missing: list[str] = []
+    for table_name, table in Base.metadata.tables.items():
+        db_cols = db_schema.get(table_name)
+        if db_cols is None:
+            missing.append(f"{table_name} (entire table missing)")
+            continue
+        for col in table.columns:
+            if col.name not in db_cols:
+                missing.append(f"{table_name}.{col.name}")
+
+    if missing:
+        pytest.fail(
+            "ORM columns declared in pg_models.py but missing from the "
+            "live database. These will raise UndefinedColumn at runtime on "
+            "first write — add a migration or remove the ORM column before "
+            "deploying.\n\n  - " + "\n  - ".join(sorted(missing))
+        )
 
 
 async def _collect_diffs_async():
