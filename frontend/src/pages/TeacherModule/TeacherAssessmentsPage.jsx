@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -30,6 +30,11 @@ const ASSESSMENT_TYPES = [
 export default function TeacherAssessmentsPage() {
   const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
+  const { nassaqError } = useNassaqAlert();
+  const todayISO = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
   const [loading, setLoading] = useState(true);
   const [assessments, setAssessments] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -42,7 +47,7 @@ export default function TeacherAssessmentsPage() {
   const [grades, setGrades] = useState({});
   const [saving, setSaving] = useState(false);
 
-  const { nassaqError, nassaqWarning } = useNassaqAlert();
+  const { nassaqWarning } = useNassaqAlert();
   const teacherId = user?.teacher_id || user?.id;
 
   const [newAssessment, setNewAssessment] = useState({
@@ -91,7 +96,14 @@ export default function TeacherAssessmentsPage() {
       nassaqError(t('pleaseFillAllRequiredFields'));
       return;
     }
-    
+    if (newAssessment.date && newAssessment.date < todayISO) {
+      nassaqError(
+        isRTL ? 'تاريخ غير صالح' : 'Invalid Date',
+        isRTL ? 'لا يمكن إنشاء تقييم بتاريخ ماضٍ' : 'Assessments cannot be scheduled for a past date.',
+      );
+      return;
+    }
+
     setSaving(true);
     try {
       await api.post('/assessments', {
@@ -357,6 +369,7 @@ export default function TeacherAssessmentsPage() {
                   <Label>{t('date')}</Label>
                   <Input 
                     type="date"
+                    min={todayISO}
                     value={newAssessment.date}
                     onChange={(e) => setNewAssessment({...newAssessment, date: e.target.value})}
                   />

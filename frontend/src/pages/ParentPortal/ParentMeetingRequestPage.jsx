@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
@@ -8,6 +8,7 @@ import { Badge } from '../../components/ui/badge';
 import { Input } from '../../components/ui/input';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { toast } from 'sonner';
 import {
   CalendarCheck, Send, Calendar, Clock, CheckCircle, XCircle,
@@ -32,6 +33,11 @@ const ParentMeetingRequestPage = () => {
   const { t } = useTranslation();
   const { token, user, api } = useAuth();
   const { isRTL } = useTheme();
+  const { nassaqError } = useNassaqAlert();
+  const todayISO = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
   const [meetings, setMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -62,6 +68,13 @@ const ParentMeetingRequestPage = () => {
     e.preventDefault();
     if (!preferredDate || !topic.trim()) {
       toast.error(t('pleaseFillDateAndTopic'));
+      return;
+    }
+    if (preferredDate < todayISO) {
+      nassaqError(
+        isRTL ? 'تاريخ غير صالح' : 'Invalid Date',
+        isRTL ? 'لا يمكن طلب موعد بتاريخ ماضٍ' : 'Meetings cannot be requested for a past date.',
+      );
       return;
     }
     setSubmitting(true);
@@ -165,7 +178,7 @@ const ParentMeetingRequestPage = () => {
                       type="date"
                       value={preferredDate}
                       onChange={(e) => setPreferredDate(e.target.value)}
-                      min={new Date().toISOString().split('T')[0]}
+                      min={todayISO}
                       required
                     />
                   </div>

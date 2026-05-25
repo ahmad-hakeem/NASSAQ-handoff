@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -50,6 +50,10 @@ export function AcademicStructureContent() {
   const { direction } = useTheme();
   const { api } = useAuth();
   const { nassaqError, nassaqConfirm } = useNassaqAlert();
+  const todayISO = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('years');
@@ -210,6 +214,14 @@ export function AcademicStructureContent() {
   };
 
   const handleSaveExam = async () => {
+    if (examForm.start_date && examForm.start_date < todayISO) {
+      nassaqError(t('invalidDate') || 'تاريخ غير صالح', t('examStartDateCannotBeInPast') || 'لا يمكن تحديد بداية الاختبار في الماضي');
+      return;
+    }
+    if (examForm.end_date && examForm.end_date < todayISO) {
+      nassaqError(t('invalidDate') || 'تاريخ غير صالح', t('examEndDateCannotBeInPast') || 'لا يمكن تحديد نهاية الاختبار في الماضي');
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -1104,11 +1116,11 @@ export function AcademicStructureContent() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>{t('startDateField')}</Label>
-                <Input type="date" value={examForm.start_date} onChange={(e) => setExamForm({ ...examForm, start_date: e.target.value })} />
+                <Input type="date" min={todayISO} value={examForm.start_date} onChange={(e) => setExamForm({ ...examForm, start_date: e.target.value })} />
               </div>
               <div>
                 <Label>{t('endDateField')}</Label>
-                <Input type="date" value={examForm.end_date} onChange={(e) => setExamForm({ ...examForm, end_date: e.target.value })} />
+                <Input type="date" min={examForm.start_date || todayISO} value={examForm.end_date} onChange={(e) => setExamForm({ ...examForm, end_date: e.target.value })} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

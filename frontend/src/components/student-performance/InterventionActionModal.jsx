@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -8,6 +8,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { toast } from 'sonner';
+import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 
 const DEFAULT_MESSAGE = (name, issue) =>
   `ولي أمر ${name} الكريم، نود إبلاغكم بأن ابنكم/ابنتكم بحاجة لمتابعة بخصوص ${issue}. نرجو التواصل مع المدرسة.`;
@@ -33,6 +34,11 @@ const SUCCESS_KEY = {
 export default function InterventionActionModal({ student, actionType, onClose, onSuccess }) {
   const { t } = useTranslation();
   const { api } = useAuth();
+  const { nassaqError } = useNassaqAlert();
+  const todayISO = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState(
     DEFAULT_MESSAGE(student.name, student.issue_label_ar || ''),
@@ -44,6 +50,14 @@ export default function InterventionActionModal({ student, actionType, onClose, 
   const [notes, setNotes] = useState('');
 
   async function submit() {
+    if (actionType === 'remedial_plan' && targetDate && targetDate < todayISO) {
+      nassaqError(t('invalidDate') || 'تاريخ غير صالح', t('targetDateCannotBeInPast') || 'لا يمكن تحديد تاريخ هدف في الماضي');
+      return;
+    }
+    if (actionType === 'schedule_followup' && followUpDate && followUpDate < todayISO) {
+      nassaqError(t('invalidDate') || 'تاريخ غير صالح', t('followUpDateCannotBeInPast') || 'لا يمكن تحديد تاريخ متابعة في الماضي');
+      return;
+    }
     setSubmitting(true);
     try {
       const data =
@@ -93,7 +107,7 @@ export default function InterventionActionModal({ student, actionType, onClose, 
             />
             <div>
               <label className="text-sm">{t('targetDate')}</label>
-              <Input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
+              <Input type="date" min={todayISO} value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
             </div>
             <div>
               <label className="text-sm">{t('milestones')}</label>
@@ -128,6 +142,7 @@ export default function InterventionActionModal({ student, actionType, onClose, 
               <label className="text-sm">{t('followupDate')}</label>
               <Input
                 type="date"
+                min={todayISO}
                 value={followUpDate}
                 onChange={(e) => setFollowUpDate(e.target.value)}
               />

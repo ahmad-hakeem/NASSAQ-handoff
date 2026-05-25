@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Coffee, UserX, DoorClosed, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, X, Loader2, Download, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
+import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 
 function BreakModal({ hook }) {
   const { t } = useTranslation();
@@ -350,6 +351,12 @@ export function SettingsModals({ hook }) {
     api, fetchData,
   } = hook;
 
+  const { nassaqError } = useNassaqAlert();
+  const todayISO = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+  const isRTL = direction === 'rtl';
   const [unavailMode, setUnavailMode] = useState('recurring');
   const [selectedEntityId, setSelectedEntityId] = useState('');
 
@@ -409,12 +416,28 @@ export function SettingsModals({ hook }) {
                   alternative_location: altLocation || null,
                 });
               } else {
+                const startDate = formData.get('start_date');
+                const endDate = formData.get('end_date');
+                if (startDate && startDate < todayISO) {
+                  nassaqError(
+                    isRTL ? 'تاريخ غير صالح' : 'Invalid Date',
+                    isRTL ? 'لا يمكن تحديد بداية عدم التوفر في الماضي' : 'Unavailability cannot start in the past.',
+                  );
+                  return;
+                }
+                if (endDate && endDate < todayISO) {
+                  nassaqError(
+                    isRTL ? 'تاريخ غير صالح' : 'Invalid Date',
+                    isRTL ? 'لا يمكن تحديد نهاية عدم التوفر في الماضي' : 'Unavailability cannot end in the past.',
+                  );
+                  return;
+                }
                 handleSaveUnavailability({
                   [unavailabilityType === 'teacher' ? 'teacher_id' : 'class_id']: selectedEntityId,
                   [unavailabilityType === 'teacher' ? 'teacher_name' : 'class_name']: entityName,
                   unavailability_type: 'long_term',
-                  start_date: formData.get('start_date'),
-                  end_date: formData.get('end_date'),
+                  start_date: startDate,
+                  end_date: endDate,
                   reason: formData.get('reason') || '',
                   alternative_location: altLocation || null,
                 });
@@ -495,11 +518,11 @@ export function SettingsModals({ hook }) {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>{t('startDateLabel')}</Label>
-                      <Input type="date" name="start_date" required className="mt-1" />
+                      <Input type="date" name="start_date" min={todayISO} required className="mt-1" />
                     </div>
                     <div>
                       <Label>{t('endDateLabel')}</Label>
-                      <Input type="date" name="end_date" required className="mt-1" />
+                      <Input type="date" name="end_date" min={todayISO} required className="mt-1" />
                     </div>
                   </div>
                   <div>

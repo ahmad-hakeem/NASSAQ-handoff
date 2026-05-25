@@ -108,6 +108,10 @@ const DEFAULT_FIELDS = [
 function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }) {
   const { nassaqError } = useNassaqAlert();
   const { t } = useTranslation();
+  const todayISO = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
   const [expanded, setExpanded] = useState({});
   const [addSubjectOpen, setAddSubjectOpen] = useState(false);
   const [targetPeriodId, setTargetPeriodId] = useState(null);
@@ -182,6 +186,10 @@ function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }
   const saveSubject = () => {
     if (!subForm.name.trim()) {
       nassaqError(t('pleaseEnterSubjectName'));
+      return;
+    }
+    if (subForm.date && subForm.date < todayISO) {
+      nassaqError(t('invalidDate') || 'تاريخ غير صالح', t('examDateCannotBeInPast') || 'لا يمكن تحديد تاريخ اختبار في الماضي');
       return;
     }
     if (editSubjectId) {
@@ -333,7 +341,7 @@ function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>{t('date')}</Label>
-                <Input type="date" value={subForm.date} onChange={e => setSubForm(f => ({ ...f, date: e.target.value }))} data-testid="input-subject-date" />
+                <Input type="date" min={todayISO} value={subForm.date} onChange={e => setSubForm(f => ({ ...f, date: e.target.value }))} data-testid="input-subject-date" />
               </div>
               <div>
                 <Label>{t('time')}</Label>
