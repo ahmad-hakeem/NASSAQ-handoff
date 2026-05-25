@@ -14,12 +14,19 @@ import { Button } from '../ui/button';
  *
  * Visible across navigation whenever the Platform Admin is impersonating
  * a school (Preview Mode). The exit button calls the same hardened
- * `/user-roles/return-to-original` flow used by the dialog button —
- * both go through `returnToOriginalRole()` on AuthContext so there is a
- * single source of truth for the restore network call and token swap.
+ * `/role-switch/restore` flow (via AuthContext's `exitSchoolContext`)
+ * used by the Sidebar, RoleSwitcherDialog, and AccountSettings exit
+ * affordances — single source of truth for the restore network call,
+ * token swap, and impersonation-flag clearing.
+ *
+ * Task #591 — Rewired off the legacy `returnToOriginalRole` /
+ * `/user-roles/return-to-original` path which now fails-closed on
+ * tokens missing `jti` or when revocation fails, producing the spurious
+ * "حدث خطأ في العودة للدور الأصلي" dialog on what is otherwise a
+ * successful preview exit.
  */
 export default function PreviewModeBanner() {
-  const { isImpersonating, schoolContext, returnToOriginalRole } = useAuth();
+  const { isImpersonating, schoolContext, exitSchoolContext } = useAuth();
   const { isRTL, language } = useTheme();
   const { t } = useTranslation();
   const { nassaqError } = useNassaqAlert();
@@ -30,18 +37,20 @@ export default function PreviewModeBanner() {
     if (exiting) return;
     setExiting(true);
     try {
-      const result = await returnToOriginalRole();
-      if (result?.success) {
-        toast.success(result.message || t('returnedToOriginalRole'));
-        navigate(result.redirectTo);
-      }
+      // Task #591 — Use the canonical hardened restore flow
+      // (`/role-switch/restore`) via AuthContext. It clears the
+      // impersonation flags, swaps the token, and tolerates transient
+      // server errors by falling back to the parked PA bearer, so we
+      // only surface the error dialog if it actually throws.
+      await exitSchoolContext();
+      toast.success(t('returnedToOriginalRole'));
+      navigate('/admin');
     } catch (error) {
-      console.error('Error exiting preview mode:', error);
       nassaqError(t('errorReturningToOriginalRole'));
     } finally {
       setExiting(false);
     }
-  }, [exiting, navigate, nassaqError, returnToOriginalRole, t]);
+  }, [exiting, exitSchoolContext, navigate, nassaqError, t]);
 
   if (!isImpersonating) return null;
 
