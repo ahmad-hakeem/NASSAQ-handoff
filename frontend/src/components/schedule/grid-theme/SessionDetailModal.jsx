@@ -65,7 +65,10 @@ export default function SessionDetailModal({
               id="session-detail-title"
               className={`${getDayBandClass(session.day_of_week)} ${getDayTextOnBand(session.day_of_week)} px-4 py-2 text-sm font-cairo font-bold text-center`}
             >
-              {t(session.day_of_week)} · {t('periodNumberLabel', { n: session.slot_number })}
+              {session.day_of_week ? t(session.day_of_week) : t('sessionDetails')}
+              {(session.slot_number ?? session.period_number) != null && (
+                <> · {t('periodNumberLabel', { n: session.slot_number ?? session.period_number })}</>
+              )}
               {(session.start_time || session.end_time) && (
                 <> · {session.start_time || ''}{session.start_time && session.end_time ? ' - ' : ''}{session.end_time || ''}</>
               )}

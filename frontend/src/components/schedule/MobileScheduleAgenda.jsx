@@ -139,7 +139,7 @@ function PeriodSection({
         </p>
       ) : (
         <ul className="divide-y divide-slate-100">
-          {entries.map(({ teacher, cell, status }) => {
+          {entries.map(({ teacher, cell, status, period: entryPeriod, dayKey: entryDayKey }) => {
             const subject = cell?.subject_name || '—';
             const klass = cell?.class_name || '—';
             const dotCls = STATUS_DOT[status] || STATUS_DOT.normal;
@@ -147,7 +147,7 @@ function PeriodSection({
               <li key={`${teacher.id}-${period}`}>
                 <button
                   type="button"
-                  onClick={() => onPickEntry({ teacher, cell, status })}
+                  onClick={() => onPickEntry({ teacher, cell, status, period: entryPeriod, dayKey: entryDayKey })}
                   className="w-full text-start flex items-stretch gap-3 px-3 py-2.5 hover:bg-slate-50 active:bg-slate-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise"
                   data-testid={`mobile-session-row-${teacher.id}-${period}`}
                 >
@@ -221,7 +221,7 @@ function DayAgenda({
             : rawCell;
         const hasConflict = conflictKeys?.has(`${teacher.id}|${dayKey}|${p}`);
         const status = statusOf(cell, teacher.is_absent_today, isToday, hasConflict);
-        entries.push({ teacher, cell, status });
+        entries.push({ teacher, cell, status, period: p, dayKey });
       }
       const meta = periodTimes?.[pStr] || {};
       return {
@@ -349,34 +349,48 @@ export default function MobileScheduleAgenda({
 
   const safePeriods = periods && periods.length ? periods : [1, 2, 3, 4, 5, 6, 7];
 
-  const handlePickEntry = ({ teacher, cell, status }) => {
+  const handlePickEntry = ({ teacher, cell, status, period, dayKey }) => {
+    // The raw `cell` from `cellsByTeacher` is the API session payload
+    // and does NOT carry `period_number` / `day_of_week` (those keys
+    // are added by the desktop matrix into its `cellData` wrapper, not
+    // onto the cell itself). On mobile we already know the period and
+    // day from the agenda iteration — use them as the source of truth
+    // so downstream consumers (vacant flow, edit drawer, detail modal)
+    // never see `undefined` in the "الحصة N" header.
+    const effectivePeriod = period ?? cell?.period_number ?? cell?.slot_number;
+    const effectiveDay = dayKey ?? cell?.day_of_week;
+
     if (status === 'vacant') {
       onVacantClick?.({
         teacher_id: teacher.id,
         teacher_name: teacher.full_name,
-        day_of_week: cell?.day_of_week,
-        period_number: cell?.period_number,
-        is_today: cell?.day_of_week === today,
+        day_of_week: effectiveDay,
+        period_number: effectivePeriod,
+        is_today: effectiveDay === today,
         teacher_absent: teacher.is_absent_today,
         session: cell,
       });
       return;
     }
     if (canEdit && onEditSession && cell?.session_id) {
-      onEditSession({ session: cell, mode: 'edit' });
+      onEditSession({
+        session: { ...cell, period_number: effectivePeriod, day_of_week: effectiveDay },
+        mode: 'edit',
+      });
       return;
     }
     // Published / read-only fallback: surface a detail modal so the
     // operator can still inspect the lesson on a phone.
     // SessionDetailModal reads the period number from `slot_number`
-    // (matrix vocabulary), but the master-grid cell uses
-    // `period_number`. Map it here so the modal header renders the
-    // correct "حصة N" label on mobile parity with the desktop matrix.
-    const pStr = String(cell?.period_number ?? '');
+    // (matrix vocabulary) and the day from `day_of_week`; map both
+    // from the iteration values so the header renders the correct
+    // "حصة N" label rather than leaking the literal "undefined".
+    const pStr = String(effectivePeriod ?? '');
     const meta = periodTimes?.[pStr] || {};
     setDetailSession({
       ...cell,
-      slot_number: cell?.period_number,
+      slot_number: effectivePeriod,
+      day_of_week: effectiveDay,
       teacher_name: teacher.full_name,
       teacher_specialty: teacher.subject || '',
       teacher_avatar_url: teacher.avatar_url,
