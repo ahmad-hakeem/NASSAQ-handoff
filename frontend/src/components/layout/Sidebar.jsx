@@ -1218,6 +1218,7 @@ export const Sidebar = ({ children }) => {
             </label>
             <Input
               id="preview-reason-input"
+              dir="rtl"
               value={previewReason}
               onChange={(e) => {
                 setPreviewReason(e.target.value);
@@ -1228,6 +1229,7 @@ export const Sidebar = ({ children }) => {
               disabled={switchingRole}
               data-testid="preview-reason-input"
               autoFocus
+              className="text-start ps-4 placeholder:text-slate-400 focus:placeholder:opacity-0 placeholder:transition-opacity placeholder:duration-200"
             />
             {previewReasonError && (
               <p className="text-xs text-red-600" role="alert">
