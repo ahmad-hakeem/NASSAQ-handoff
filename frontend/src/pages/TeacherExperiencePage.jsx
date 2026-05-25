@@ -129,68 +129,68 @@ export const TeacherExperiencePage = () => {
         <div className="absolute top-0 left-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/8 blur-[120px]" aria-hidden="true" />
         <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-brand-purple/8 blur-[100px]" aria-hidden="true" />
 
-        <div className="relative max-w-4xl mx-auto px-6 flex flex-col items-center text-center space-y-8">
-          {/* Teacher avatar */}
-          <div className="w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-white/5 backdrop-blur-sm border border-white/15 shadow-2xl overflow-hidden flex items-center justify-center">
-            <img
-              src="/hakim-poses/positive-feedback.png"
-              alt={ar('معلم نسّق', 'NASSAQ Teacher')}
-              className="w-full h-full object-contain p-1"
-              loading="eager"
-            />
-          </div>
-
-          {/* eyebrow */}
-          <div className="inline-flex items-center gap-2.5 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full px-5 py-2.5 backdrop-blur-sm">
-            <Sparkles className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
-            <span className="font-tajawal text-sm text-brand-turquoise font-medium">
-              {ar('معلّم نسّق · للمعلم المستقل', 'NASSAQ Teacher · Independent Teacher')}
-            </span>
-          </div>
-
-          <h1 className="font-cairo font-black text-white text-4xl md:text-6xl lg:text-7xl leading-[1.1] tracking-tight max-w-3xl">
-            {ar(
-              <>وفّر ساعات المتابعة الإدارية <span className="text-brand-turquoise">وركّز على ما يهم.</span></>,
-              <>Save hours of admin tracking <span className="text-brand-turquoise">and focus on what matters.</span></>
-            )}
-          </h1>
-
-          <p className="font-tajawal text-lg text-white/70 leading-relaxed max-w-2xl">
-            {ar(
-              'شهر مجاني كامل بجميع الميزات — بدون تعقيد تقني.',
-              'A full free month with all features — no technical setup.'
-            )}
-          </p>
-
-          {/* CTAs */}
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-            <Link
-              to="/teacher-register"
-              className="inline-flex items-center gap-2 font-cairo font-bold text-base px-8 py-3 rounded-lg bg-brand-turquoise hover:bg-brand-turquoise-light text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:scale-95 transition-all"
-            >
-              {ar('ابدأ تجربتك كمعلم', 'Start as a teacher')}
-              {isRTL ? <ArrowLeft className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" /> : <ArrowRight className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />}
-            </Link>
-            <Link
-              to="/"
-              className="inline-flex items-center gap-2 font-tajawal text-sm font-medium px-6 py-3 rounded-lg border-2 border-white/25 text-white hover:bg-white/10 hover:border-white/40 transition-all"
-            >
-              {ar('استكشف نسّق للمؤسسات', 'Explore NASSAQ for institutions')}
-            </Link>
-          </div>
-
-          {/* Trust badges */}
-          <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
-            {[
-              { icon: CheckCircle2, ar: 'بدون إعداد معقد', en: 'Zero setup' },
-              { icon: CheckCircle2, ar: 'يعمل من اليوم الأول', en: 'Works day one' },
-              { icon: CheckCircle2, ar: 'شهر مجاني كامل', en: 'Full month free' },
-            ].map(({ icon: I, ar: a, en: e }, i) => (
-              <span key={i} className="flex items-center gap-1.5 text-white/60 font-tajawal text-xs">
-                <I className="h-3.5 w-3.5 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
-                {ar(a, e)}
+        <div className="relative max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          {/* Copy */}
+          <div className={`space-y-6 ${isRTL ? '' : 'order-2'}`}>
+            {/* eyebrow */}
+            <div className="inline-flex items-center gap-2.5 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full px-5 py-2.5 backdrop-blur-sm">
+              <Zap className="h-4 w-4 text-brand-turquoise animate-pulse" strokeWidth={1.5} aria-hidden="true" />
+              <span className="font-tajawal text-sm text-brand-turquoise font-medium">
+                {ar('للمعلم المستقل · Teacher Experience', 'Independent Teacher · Teacher Experience')}
               </span>
-            ))}
+            </div>
+
+            <h1 className="font-cairo font-bold text-white text-5xl md:text-6xl lg:text-7xl leading-none tracking-tight">
+              نَسَّق
+            </h1>
+
+            <p className="font-tajawal text-lg text-white/75 leading-relaxed max-w-xl">
+              {ar(
+                'نسّق يتولى المتابعة والتنظيم — حتى تركّز على ما يهم فعلاً: علاقتك بطلابك.',
+                'NASSAQ handles the tracking and organisation — so you focus on what truly matters: your relationship with your students.'
+              )}
+            </p>
+
+            {/* CTAs */}
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <Link
+                to="/teacher-register"
+                className="inline-flex items-center gap-2 font-cairo font-bold text-base px-8 py-3 rounded-lg bg-brand-turquoise hover:bg-brand-turquoise-light text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:scale-95 transition-all"
+              >
+                {ar('ابدأ تجربتك كمعلم', 'Start as a teacher')}
+                {isRTL ? <ArrowLeft className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" /> : <ArrowRight className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />}
+              </Link>
+              <a
+                href="#workflow"
+                className="inline-flex items-center gap-2 font-tajawal text-sm font-medium px-6 py-3 rounded-lg border-2 border-white/25 text-white hover:bg-white/10 hover:border-white/40 transition-all"
+              >
+                {ar('شاهد كيف يعمل', 'See how it works')}
+              </a>
+            </div>
+
+            {/* Trust badges */}
+            <div className="flex flex-wrap items-center gap-4 pt-2">
+              {[
+                { icon: CheckCircle2, ar: 'بدون إعداد معقد', en: 'Zero setup' },
+                { icon: CheckCircle2, ar: 'يعمل من اليوم الأول', en: 'Works day one' },
+                { icon: CheckCircle2, ar: 'شهر مجاني كامل', en: 'Full month free' },
+              ].map(({ icon: I, ar: a, en: e }, i) => (
+                <span key={i} className="flex items-center gap-1.5 text-white/60 font-tajawal text-xs">
+                  <I className="h-3.5 w-3.5 text-brand-turquoise" strokeWidth={2} aria-hidden="true" />
+                  {ar(a, e)}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Real teacher dashboard preview */}
+          <div className={`${isRTL ? '' : 'order-1'}`}>
+            <img
+              src="/teacher-dashboard-preview.png"
+              alt={ar('معاينة لوحة المعلم في نَسَّق', 'Preview of the NASSAQ teacher dashboard')}
+              className="w-full h-auto rounded-2xl border border-white/10 shadow-2xl bg-white/5 backdrop-blur-sm"
+              loading="lazy"
+            />
           </div>
         </div>
       </section>

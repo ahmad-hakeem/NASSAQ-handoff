@@ -88,25 +88,9 @@ export default function SubjectsPage() {
       isRTL ? `هل تريد حذف المادة "${s.name}"؟` : `Delete subject "${s.name}"?`,
       async () => {
         try {
-          const response = await api.delete(`/subjects/${s.id}`);
-          if (response.data?.requires_confirmation) {
-            nassaqConfirm(
-              response.data.message,
-              async () => {
-                try {
-                  await api.delete(`/subjects/${s.id}?force=true`);
-                  nassaqInfo(isRTL ? 'تم حذف المادة' : 'Subject deleted');
-                  await fetchSubjects();
-                } catch (forceErr) {
-                  const detail = forceErr?.response?.data?.detail;
-                  nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر حذف المادة' : 'Could not delete subject'));
-                }
-              }
-            );
-          } else {
-            nassaqInfo(isRTL ? 'تم حذف المادة' : 'Subject deleted');
-            await fetchSubjects();
-          }
+          await api.delete(`/subjects/${s.id}`);
+          nassaqInfo(isRTL ? 'تم حذف المادة' : 'Subject deleted');
+          await fetchSubjects();
         } catch (err) {
           const detail = err?.response?.data?.detail;
           nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر حذف المادة' : 'Could not delete subject'));
