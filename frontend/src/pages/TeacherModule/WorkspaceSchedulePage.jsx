@@ -50,6 +50,7 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
   });
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [slotErrors, setSlotErrors] = useState({ classId: false, subjectId: false });
 
   const isIndependent = (user?.role || '').toLowerCase() === 'independent_teacher';
 
@@ -95,6 +96,7 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
 
   const openEditor = (day, slot) => {
     const existing = sessionsByKey.get(slotKey(day, slot));
+    setSlotErrors({ classId: false, subjectId: false });
     setEditing({
       day,
       slot,
@@ -105,7 +107,10 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
     });
   };
 
-  const closeEditor = () => setEditing(null);
+  const closeEditor = () => {
+    setSlotErrors({ classId: false, subjectId: false });
+    setEditing(null);
+  };
 
   const extractConflict = (err) => {
     const detail = err?.response?.data?.detail || err?.response?.data?.error?.message;
@@ -119,6 +124,11 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
     if (!editing) return;
     const { day, slot, classId, subjectId, version, hadContent } = editing;
     const willClear = !classId && !subjectId;
+
+    if (!willClear && (!classId || !subjectId)) {
+      setSlotErrors({ classId: !classId, subjectId: !subjectId });
+      return;
+    }
 
     const submit = async () => {
       setSaving(true);
@@ -366,7 +376,10 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
               <label className="block text-sm text-slate-600 mb-1">الفصل</label>
               <select
                 value={editing.classId}
-                onChange={e => setEditing(s => ({ ...s, classId: e.target.value }))}
+                onChange={e => {
+                  setEditing(s => ({ ...s, classId: e.target.value }));
+                  if (e.target.value) setSlotErrors(prev => ({ ...prev, classId: false }));
+                }}
                 className="w-full h-11 px-3 rounded-md border border-slate-200 focus:border-emerald-600 bg-white text-sm"
                 data-testid="slot-editor-class"
               >
@@ -375,12 +388,18 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
+              {slotErrors.classId && (
+                <p className="text-xs text-red-500 mt-1">هذا الحقل مطلوب</p>
+              )}
             </div>
             <div>
               <label className="block text-sm text-slate-600 mb-1">المادة</label>
               <select
                 value={editing.subjectId}
-                onChange={e => setEditing(s => ({ ...s, subjectId: e.target.value }))}
+                onChange={e => {
+                  setEditing(s => ({ ...s, subjectId: e.target.value }));
+                  if (e.target.value) setSlotErrors(prev => ({ ...prev, subjectId: false }));
+                }}
                 className="w-full h-11 px-3 rounded-md border border-slate-200 focus:border-emerald-600 bg-white text-sm"
                 data-testid="slot-editor-subject"
               >
@@ -389,6 +408,9 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
+              {slotErrors.subjectId && (
+                <p className="text-xs text-red-500 mt-1">هذا الحقل مطلوب</p>
+              )}
             </div>
             <div className="flex items-center justify-between gap-2 pt-2">
               <Button
