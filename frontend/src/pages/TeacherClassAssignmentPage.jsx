@@ -370,7 +370,7 @@ const TeacherClassAssignmentPage = () => {
                   <CardTitle className="flex items-center gap-2 text-lg">
                     <Users className="h-5 w-5 text-brand-navy" />
                     المعلمون
-                    <Badge variant="outline">{teachers.length}</Badge>
+                    <Badge variant="outline">{filteredTeachers.length}</Badge>
                   </CardTitle>
                   <div className="relative mt-3">
                     <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -406,7 +406,7 @@ const TeacherClassAssignmentPage = () => {
                   <CardTitle className="flex items-center gap-2 text-lg">
                     <GraduationCap className="h-5 w-5 text-brand-navy" />
                     الفصول الدراسية
-                    <Badge variant="outline">{classes.length}</Badge>
+                    <Badge variant="outline">{filteredClasses.length}</Badge>
                   </CardTitle>
                   <div className="relative mt-3">
                     <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
