@@ -445,7 +445,7 @@ async def get_relationship_graph(
         cls_ids = list({a.get("class_id") for a in assignments if a.get("class_id")})
         cls_names = {}
         if cls_ids:
-            classes_docs = await gd_find(db.session, "classes", {"id": {"$in": cls_ids}}, limit=50)
+            classes_docs = await gd_find(db.session, "classes", {"id": {"$in": cls_ids}, "is_active": {"$ne": False}}, limit=50)
             cls_names = {c["id"]: c.get("name", "") for c in classes_docs}
 
         classes = list({a["class_id"] for a in assignments if a.get("class_id")})

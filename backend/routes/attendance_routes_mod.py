@@ -507,7 +507,7 @@ async def get_class_attendance(
         return []
     
     students_coro = gd_find(db.session, "students", {"id": {"$in": student_ids}, "is_active": True}, limit=len(student_ids)) if student_ids else _empty_list()
-    classes_coro = gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=len(class_ids)) if class_ids else _empty_list()
+    classes_coro = gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=len(class_ids)) if class_ids else _empty_list()
     teachers_coro = gd_find(db.session, "users", {"id": {"$in": teacher_ids}}, limit=len(teacher_ids)) if teacher_ids else _empty_list()
     subjects_coro = gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=len(subject_ids)) if subject_ids else _empty_list()
     

@@ -573,7 +573,7 @@ async def smart_get_timetable_sessions(
     subject_ids = list({s.get("subject_id") for s in sessions if s.get("subject_id")})
 
     teachers = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=len(teacher_ids) or 1) if teacher_ids else []
-    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=len(class_ids) or 1) if class_ids else []
+    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=len(class_ids) or 1) if class_ids else []
     subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=len(subject_ids) or 1) if subject_ids else []
     found_subj_ids = {s.get("id") for s in subjects}
     missing_subj_ids = [sid for sid in subject_ids if sid not in found_subj_ids]

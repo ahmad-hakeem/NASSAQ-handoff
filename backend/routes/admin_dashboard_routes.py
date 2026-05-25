@@ -76,7 +76,7 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
             total_parents = await gd_count(db.session, "parents", {})
             if total_parents == 0:
                 total_parents = await gd_count(db.session, "users", {"role": "parent"})
-            total_classes = await gd_count(db.session, "classes", {})
+            total_classes = await gd_count(db.session, "classes", {"is_active": {"$ne": False}})
             total_subjects = await gd_count(db.session, "subjects", {})
 
             teachers_in_schools = await gd_count(db.session, "teachers", {"school_id": {"$ne": None}})

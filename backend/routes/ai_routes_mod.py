@@ -141,14 +141,15 @@ async def ai_data_quality_scan(current_user: dict = Depends(require_roles([UserR
     
     # Check classes without teachers
     classes_no_teacher = await gd_count(db.session, "classes", {
-        "$or": [{"teacher_id": None}, {"teacher_id": ""}]
+        "$or": [{"teacher_id": None}, {"teacher_id": ""}],
+        "is_active": {"$ne": False},
     })
     if classes_no_teacher > 0:
         issues.append({"type": "incomplete", "entity": "classes", "count": classes_no_teacher, "issue": "no_teacher"})
     
     total_students_count = await gd_count(db.session, "students", {})
     total_teachers_count = await gd_count(db.session, "teachers", {})
-    total_classes_count = await gd_count(db.session, "classes", {})
+    total_classes_count = await gd_count(db.session, "classes", {"is_active": {"$ne": False}})
     total_records = total_students_count + total_teachers_count + total_classes_count
     total_issues = sum(i.get("count", 0) for i in issues)
     quality_score = max(0, 100 - (total_issues / max(1, total_records) * 100))
@@ -240,7 +241,7 @@ async def ai_executive_summary(current_user: dict = Depends(require_roles([UserR
     active_schools = await gd_count(db.session, "schools", {"status": "active"})
     total_students = await gd_count(db.session, "students", {})
     total_teachers = await gd_count(db.session, "teachers", {})
-    total_classes = await gd_count(db.session, "classes", {})
+    total_classes = await gd_count(db.session, "classes", {"is_active": {"$ne": False}})
     pending_requests = await gd_count(db.session, "registration_requests", {"status": "pending"})
     
     # Today's activity
@@ -631,7 +632,7 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
             school = await gd_find_one(db.session, "schools", {"id": school_id})
             total_students = await gd_count(db.session, "students", {"school_id": school_id})
             total_teachers = await gd_count(db.session, "teachers", {"school_id": school_id})
-            total_classes = await gd_count(db.session, "classes", {"school_id": school_id})
+            total_classes = await gd_count(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}})
             attendance_query = {"school_id": school_id}
             total_att = await gd_count(db.session, "attendance", attendance_query)
             present_att = await gd_count(db.session, "attendance", {**attendance_query, "status": "present"})
@@ -947,6 +948,7 @@ async def resolve_ai_insights_scope(current_user: dict):
 
             classes = await gd_find(db.session, "classes", {
                 "school_id": workspace_id,
+                "is_active": {"$ne": False},
             }, limit=200)
             class_ids = [c.get("id") for c in classes if c.get("id")]
 
@@ -1580,7 +1582,7 @@ async def get_ai_recommendations(
                 "scope_level": "school",
             })
 
-    classes_list = await gd_find(db.session, "classes", classes_q, limit=100)
+    classes_list = await gd_find(db.session, "classes", {**classes_q, "is_active": {"$ne": False}}, limit=100)
     class_ids_all = [c["id"] for c in classes_list]
     cls_name_map = {c["id"]: c.get("name", c["id"]) for c in classes_list}
 
@@ -1851,7 +1853,7 @@ async def get_students_overview(
     risks = await hakim_engine.analyze_students_risk_batch(school_id, ids, days_back=30)
 
     class_ids = list({r["class_id"] for r in risks if r.get("class_id")})
-    class_docs = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=500) if class_ids else []
+    class_docs = await gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=500) if class_ids else []
     class_name = {c["id"]: c.get("name", "") for c in class_docs}
 
     academic_scores = sorted([r["breakdown"]["academic"] for r in risks], reverse=True)
@@ -2181,6 +2183,7 @@ async def get_at_risk_students(
         classes = await gd_find(db.session, "classes", {
             "school_id": school_id,
             "id": {"$in": class_ids},
+            "is_active": {"$ne": False},
         }, limit=200) if class_ids else []
         cls_name_map = {c["id"]: c.get("name", c["id"]) for c in classes}
 
@@ -3230,7 +3233,7 @@ async def get_student_longitudinal(
 
     skill_records = await gd_find(db.session, "student_skills", {"student_id": student_id, "school_id": school_id}, limit=2000)
 
-    classes = await gd_find(db.session, "classes", {"school_id": school_id}, limit=500)
+    classes = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
     class_map = {c["id"]: c.get("name", "") for c in classes}
 
     teachers = await gd_find(db.session, "teachers", {"school_id": school_id}, limit=500)

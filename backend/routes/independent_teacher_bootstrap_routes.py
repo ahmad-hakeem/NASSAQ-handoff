@@ -348,7 +348,7 @@ async def bootstrap_independent_teacher_workspace(
         # against the IT v1 cap (5). A pre-bootstrap workspace has zero
         # classes by construction, so this only fires if step 3 ever loops.
         current_classes = await gd_count(
-            db.session, "classes", {"school_id": workspace_id}
+            db.session, "classes", {"school_id": workspace_id, "is_active": {"$ne": False}}
         )
         if current_classes >= MAX_CLASSES:
             raise HTTPException(status_code=409, detail=_MSG_QUOTA_CLASSES)

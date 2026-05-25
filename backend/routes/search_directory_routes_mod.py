@@ -120,7 +120,7 @@ async def global_search(
         results["parents"] = [dict(p, entity_type="parent") for p in parents]
 
     if not entity_type or entity_type == "class":
-        classes = await gd_find(db.session, "classes", {**tenant_filter, "$or": [{"name": pattern}, {"name_en": pattern}]}, limit=limit)
+        classes = await gd_find(db.session, "classes", {**tenant_filter, "is_active": {"$ne": False}, "$or": [{"name": pattern}, {"name_en": pattern}]}, limit=limit)
         results["classes"] = [dict(c, entity_type="class") for c in classes]
 
     if not entity_type or entity_type == "subject":
@@ -325,6 +325,7 @@ async def directory_classes(
     if grade_level:
         query["grade_level"] = grade_level
 
+    query["is_active"] = {"$ne": False}
     classes = await gd_find(db.session, "classes", query, order_by="name", desc_order=False, limit=200)
 
     for c in classes:
@@ -348,7 +349,7 @@ async def directory_statistics(
     students_active = await gd_count(db.session, "students", {**t_filter, "is_active": {"$ne": False}})
     teachers_total = await gd_count(db.session, "users", {**t_filter, "role": "teacher"})
     parents_total = await gd_count(db.session, "parents", s_filter)
-    classes_total = await gd_count(db.session, "classes", t_filter)
+    classes_total = await gd_count(db.session, "classes", {**t_filter, "is_active": {"$ne": False}})
     subjects_total = await gd_count(db.session, "subjects", t_filter)
 
     gender_dist = {}

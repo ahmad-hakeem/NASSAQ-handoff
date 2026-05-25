@@ -177,7 +177,7 @@ async def get_students(
     
     # Get class names
     class_ids = list(set([s.get("class_id") for s in students if s.get("class_id")]))
-    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=100)
+    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=100)
     class_map = {c.get("id"): c.get("name") or c.get("name_ar") for c in classes}
     
     result = []

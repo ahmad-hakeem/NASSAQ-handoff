@@ -617,7 +617,7 @@ async def get_school_detail(
     users = await gd_find(db.session, "users", {"tenant_id": school_id}, limit=1000)
     students = await gd_find(db.session, "students", {"school_id": school_id}, limit=500)
     teachers = await gd_find(db.session, "teachers", {"school_id": school_id}, limit=500)
-    classes = await gd_find(db.session, "classes", {"school_id": school_id}, limit=200)
+    classes = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=200)
 
     # Find principal account (school admin login)
     principal_account = await gd_find_one(db.session, "users", {"tenant_id": school_id, "role": UserRole.SCHOOL_PRINCIPAL.value})

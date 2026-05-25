@@ -488,7 +488,7 @@ async def get_master_grid(
 
     class_ids = list({s.get("class_id") for s in sessions if s.get("class_id")})
     classes = (
-        await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=len(class_ids) or 1)
+        await gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=len(class_ids) or 1)
         if class_ids
         else []
     )

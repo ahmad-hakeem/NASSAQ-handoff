@@ -498,7 +498,7 @@ async def system_metrics(current_user: dict = Depends(require_roles([UserRole.PL
             "schools": await gd_count(db.session, "schools", {}),
             "teachers": await gd_count(db.session, "teachers", {}),
             "students": await gd_count(db.session, "students", {}),
-            "classes": await gd_count(db.session, "classes", {}),
+            "classes": await gd_count(db.session, "classes", {"is_active": {"$ne": False}}),
             "sessions": await gd_count(db.session, "teacher_sessions", {}),
             "audit_logs": await gd_count(db.session, "audit_logs", {}),
         }

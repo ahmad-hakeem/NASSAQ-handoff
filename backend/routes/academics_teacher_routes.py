@@ -319,7 +319,7 @@ async def get_teacher_grades_options(current_user: dict = Depends(get_current_us
     
     # Task #155: fail-closed school-id resolution; see audit row #11.
     school_id = require_request_school_id(current_user)
-    query = {"school_id": school_id}
+    query = {"school_id": school_id, "is_active": {"$ne": False}}
     classes = await gd_find(db.session, "classes", query, limit=500)
     
     grade_map = {}

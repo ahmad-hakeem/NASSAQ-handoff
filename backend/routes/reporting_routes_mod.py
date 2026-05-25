@@ -76,7 +76,7 @@ async def get_school_overview_report(
     total_students, total_teachers, total_classes, attendance_records, grades = await asyncio.gather(
         gd_count(db.session, "students", {"school_id": school_id}),
         gd_count(db.session, "teachers", {"school_id": school_id}),
-        gd_count(db.session, "classes", {"school_id": school_id}),
+        gd_count(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}),
         gd_find(db.session, "attendance", {"school_id": school_id, "date": today}, limit=10000),
         gd_find(db.session, "grades", {"school_id": school_id}, limit=10000),
     )
@@ -135,7 +135,7 @@ async def get_school_attendance_report(
         cls_allowed = await can_view_class(db.session, current_user, class_id)
         require_can_view_class_sync_check(cls_allowed)
     
-    class_query = {"school_id": school_id}
+    class_query = {"school_id": school_id, "is_active": {"$ne": False}}
     if class_id:
         class_query["id"] = class_id
     
@@ -311,7 +311,7 @@ async def get_top_performing_classes(
     if not school_id:
         raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
     
-    classes = await gd_find(db.session, "classes", {"school_id": school_id}, limit=100)
+    classes = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=100)
     
     all_attendance = await gd_find(db.session, "attendance", {"school_id": school_id}, limit=100000)
     
@@ -382,7 +382,7 @@ async def export_school_report(
         # Get counts
         total_students = await gd_count(db.session, "students", {"school_id": school_id})
         total_teachers = await gd_count(db.session, "teachers", {"school_id": school_id})
-        total_classes = await gd_count(db.session, "classes", {"school_id": school_id})
+        total_classes = await gd_count(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}})
         
         # Get attendance
         attendance = await gd_find(db.session, "attendance", {"school_id": school_id}, limit=10000)
@@ -410,7 +410,7 @@ async def export_school_report(
     
     elif report_type == "attendance":
         # Get attendance by class
-        classes = await gd_find(db.session, "classes", {"school_id": school_id}, limit=100)
+        classes = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=100)
         attendance_data = []
         
         for cls in classes:

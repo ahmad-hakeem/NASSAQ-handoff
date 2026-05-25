@@ -799,7 +799,7 @@ async def get_school_settings(
     admin_constraints = await gd_find(db.session, "admin_constraints", {"is_active": True}, limit=50)
     
     # Get school-specific data
-    sections = await gd_find(db.session, "classes", {"school_id": school_id}, limit=200)
+    sections = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=200)
     terms = await gd_find(db.session, "academic_terms", {"school_id": school_id}, limit=10)
     
     # Extract settings nested values
@@ -2620,7 +2620,7 @@ async def get_teacher_class_assignments(
     c_ids = list({a.get("class_id") for a in assignments if a.get("class_id")})
 
     teachers_list = await gd_find(db.session, "teachers", {"id": {"$in": t_ids}}, limit=len(t_ids) + 1) if t_ids else []
-    classes_list = await gd_find(db.session, "classes", {"id": {"$in": c_ids}}, limit=len(c_ids) + 1) if c_ids else []
+    classes_list = await gd_find(db.session, "classes", {"id": {"$in": c_ids}, "is_active": {"$ne": False}}, limit=len(c_ids) + 1) if c_ids else []
 
     teacher_map = {t["id"]: t for t in teachers_list}
     class_map = {c["id"]: c for c in classes_list}
@@ -2756,7 +2756,7 @@ async def get_classes_without_teachers(
         raise HTTPException(status_code=400, detail="Missing school context")
     
     # Get all classes
-    all_classes = await gd_find(db.session, "classes", {"school_id": school_id}, limit=500)
+    all_classes = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
     
     assigned_class_ids = set(await gd_distinct(db.session, "teacher_class_assignments", "class_id", {"school_id": school_id}))
     
@@ -2927,7 +2927,7 @@ async def get_teacher_assignments(
     }, limit=500)
     
     class_ids = list({a.get("class_id") for a in assignments if a.get("class_id")})
-    classes_docs = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=500) if class_ids else []
+    classes_docs = await gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=500) if class_ids else []
     class_map = {c["id"]: c for c in classes_docs}
 
     result = []

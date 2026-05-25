@@ -112,7 +112,7 @@ async def _resolve_teacher_sessions(school_id: str, resolved_teacher_id: str, da
 
         class_ids = [s.get("class_id") for s in sessions if s.get("class_id")]
         subj_ids = [s.get("subject_id") for s in sessions if s.get("subject_id")]
-        classes = await gd_find(db.session, "classes", {"id": {"$in": list(set(class_ids))}}, limit=500) if class_ids else []
+        classes = await gd_find(db.session, "classes", {"id": {"$in": list(set(class_ids))}, "is_active": {"$ne": False}}, limit=500) if class_ids else []
         subjects = await gd_find(db.session, "subjects", {"id": {"$in": list(set(subj_ids))}}, limit=500) if subj_ids else []
         cls_map = {c.get("id"): c for c in classes}
         subj_map = {s.get("id"): s for s in subjects}
@@ -159,7 +159,7 @@ async def _resolve_teacher_sessions(school_id: str, resolved_teacher_id: str, da
         class_ids = [cid for cid in class_ids if cid]
         subj_ids = list({(a_map.get(s.get("assignment_id")) or {}).get("subject_id") or s.get("subject_id") for s in sessions})
         subj_ids = [sid for sid in subj_ids if sid]
-        classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=500) if class_ids else []
+        classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=500) if class_ids else []
         subjects = await gd_find(db.session, "subjects", {"id": {"$in": subj_ids}}, limit=500) if subj_ids else []
         cls_map = {c.get("id"): c for c in classes}
         subj_map = {s.get("id"): s for s in subjects}
@@ -504,7 +504,7 @@ async def get_teacher_dashboard(
         # teachers-row school_id is stale or missing.
         school_id = _it_workspace
 
-    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=500) if class_ids else []
+    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=500) if class_ids else []
     total_students = 0
     for cls_item in classes:
         count = await gd_count(db.session, "students", {"class_id": cls_item.get("id"), "is_active": True})
@@ -1118,7 +1118,7 @@ async def get_teacher_classes(
     if not all_class_ids:
         return []
 
-    classes = await gd_find(db.session, "classes", {"id": {"$in": all_class_ids}}, limit=100)
+    classes = await gd_find(db.session, "classes", {"id": {"$in": all_class_ids}, "is_active": {"$ne": False}}, limit=100)
 
     schedule = await gd_find_one(db.session, "schedules", {"school_id": school_id, "status": {"$in": ["draft", "published"]}}) if school_id else None
     schedule_sessions = []

@@ -119,7 +119,7 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
         # Get stages/grades/classes
         stages = await gd_find(db.session, "academic_stages", {"school_id": school_id}, limit=20)
         grades = await gd_find(db.session, "grades", {"school_id": school_id}, limit=50)
-        classes = await gd_find(db.session, "classes", {"school_id": school_id}, limit=200)
+        classes = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=200)
         
         # Get teachers
         teachers = await gd_find(db.session, "teachers", {"school_id": school_id}, limit=100)

@@ -265,7 +265,7 @@ async def platform_analytics(
     total_students = await gd_count(db.session, "students", {"is_active": True})
     total_teachers = await gd_count(db.session, "teachers", {})
     total_users = await gd_count(db.session, "users", {})
-    total_classes = await gd_count(db.session, "classes", {})
+    total_classes = await gd_count(db.session, "classes", {"is_active": {"$ne": False}})
     total_sessions = await gd_count(db.session, "class_sessions", {"status": "completed"})
 
     att_total = await gd_count(db.session, "attendance", {})

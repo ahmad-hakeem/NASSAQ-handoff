@@ -195,7 +195,7 @@ async def get_dashboard_stats(
             gd_count(db.session, "teachers", {**teacher_filter, "$or": [{"rank": None}, {"rank": ""}]}),
             gd_count(db.session, "users", {}),
             gd_count(db.session, "users", {"is_active": True}),
-            gd_count(db.session, "classes", school_id_filter if school_id_filter else {}),
+            gd_count(db.session, "classes", {**(school_id_filter or {}), "is_active": {"$ne": False}}),
             gd_count(db.session, "subjects", school_id_filter if school_id_filter else {}),
             gd_count(db.session, "registration_requests", {"status": "pending"}),
             gd_count(db.session, "events", operations_filter),
@@ -216,7 +216,7 @@ async def get_dashboard_stats(
             gd_count(db.session, "users", {"tenant_id": tenant_id, "is_active": True}),
             gd_count(db.session, "students", {"school_id": tenant_id}),
             gd_count(db.session, "teachers", {"school_id": tenant_id}),
-            gd_count(db.session, "classes", {"school_id": tenant_id}),
+            gd_count(db.session, "classes", {"school_id": tenant_id, "is_active": {"$ne": False}}),
             gd_count(db.session, "subjects", {"school_id": tenant_id}),
             gd_count(db.session, "events", {"tenant_id": tenant_id}),
         )
@@ -302,7 +302,7 @@ async def _compute_super_admin_dashboard_stats(_CACHE_KEY, _CACHE_TTL):
             gd_count(db.session, "teachers", {"created_at": {"$gte": last_month_str}}),
             gd_count(db.session, "events", {"event_type": {"$in": ["lesson_started", "lesson", "class_session"]}, "created_at": {"$gte": today_start.isoformat()}}),
             gd_count(db.session, "events", {"event_type": {"$in": ["waiting_session", "substitute_needed", "coverage_needed"]}, "status": "pending", "created_at": {"$gte": today_start.isoformat()}}),
-            gd_count(db.session, "classes", {}),
+            gd_count(db.session, "classes", {"is_active": {"$ne": False}}),
             gd_count(db.session, "users", {"last_login": {"$gte": today_start.isoformat()}}),
         )
         

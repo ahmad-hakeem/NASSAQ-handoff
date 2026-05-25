@@ -836,7 +836,7 @@ async def delete_school_grade(
         raise HTTPException(status_code=400, detail="School context required")
     
     # Check for dependencies (classes in this grade)
-    classes_count = await gd_count(db.session, "classes", {"grade_id": grade_id, "school_id": school_id})
+    classes_count = await gd_count(db.session, "classes", {"grade_id": grade_id, "school_id": school_id, "is_active": {"$ne": False}})
     if classes_count > 0:
         raise HTTPException(status_code=400, detail=f"لا يمكن حذف الصف لأنه يحتوي على {classes_count} فصل")
     

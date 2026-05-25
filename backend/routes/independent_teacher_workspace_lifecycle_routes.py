@@ -400,7 +400,7 @@ async def _load_quota_snapshot(workspace_id: str) -> Optional[Dict[str, Any]]:
             current_classes = await gd_count(
                 db.session,
                 "classes",
-                {"school_id": workspace_id},
+                {"school_id": workspace_id, "is_active": {"$ne": False}},
             )
         except Exception:  # noqa: BLE001
             current_classes = 0
