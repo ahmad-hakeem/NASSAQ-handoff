@@ -1120,6 +1120,18 @@ export default function UsersClassesManagement() {
     setEditDialogOpen(true);
   };
 
+  const refetchClasses = async () => {
+    try {
+      const headers = {};
+      if (isImpersonating && schoolContext?.school_id) headers['X-School-Context'] = schoolContext.school_id;
+      const res = await api.get('/classes', { headers });
+      if (Array.isArray(res.data)) setClasses(res.data);
+    } catch (e) {
+      // Preserve current (optimistic) state on transient failure so the
+      // stat card and tab badge do not drift back to a stale count.
+    }
+  };
+
   const handleDelete = (item, type) => {
     const typeLabels = { student: t('studentLower'), teacher: t('teacherLower'), parent: t('parentLower'), class: t('classLower') };
     const msg = t('confirmDeleteEntity', { label: typeLabels[type] });
@@ -1138,7 +1150,15 @@ export default function UsersClassesManagement() {
           if (parts.length > 0) successMsg += ` (${parts.join(', ')})`;
         }
         toast.success(successMsg);
-        fetchAllData();
+        if (type === 'class') {
+          // Optimistically remove so the totalClasses stat and tab badge
+          // update without waiting for the network round-trip, then run a
+          // targeted refetch that won't clobber the list on partial failure.
+          setClasses(prev => prev.filter(c => c.id !== item.id));
+          refetchClasses();
+        } else {
+          fetchAllData();
+        }
       } catch (error) {
         let errMsg = t('deleteFailed');
         if (error.response?.data?.detail) {
@@ -1313,7 +1333,24 @@ export default function UsersClassesManagement() {
   const handleRefresh = () => { fetchAllData(); toast.success(t('dataRefreshed')); };
   const handleStudentCreated = () => { setShowStudentWizard(false); fetchAllData(); };
   const handleTeacherCreated = () => { setShowTeacherWizard(false); fetchAllData(); };
-  const handleClassCreated = () => { setShowClassWizard(false); fetchAllData(); };
+  const handleClassCreated = (payload) => {
+    setShowClassWizard(false);
+    // Optimistically append the new class so the totalClasses stat card and
+    // the classes tab badge reflect the addition immediately, without waiting
+    // for a full multi-endpoint reload (which can drift on partial failure).
+    const created = payload?.class;
+    const createdId = payload?.class_id || created?.id;
+    if (createdId) {
+      setClasses(prev => {
+        if (prev.some(c => c.id === createdId)) return prev;
+        return [...prev, { id: createdId, is_active: true, student_count: 0, ...(created || {}) }];
+      });
+    }
+    // Targeted refetch keeps the list in sync with the server (fills in any
+    // fields the wizard response didn't carry) while preserving the
+    // optimistic count on transient failure.
+    refetchClasses();
+  };
 
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
 
