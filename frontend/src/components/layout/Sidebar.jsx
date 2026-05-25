@@ -157,6 +157,21 @@ export const Sidebar = ({ children }) => {
     && user?.role === 'platform_admin',
   [user?.role]);
 
+  // Task #525 — hide the Platform Admin's own "self" row from the
+  // role-switch popup. The backend still returns it (is_current=true,
+  // role='platform_admin', is_primary=true) but it isn't a valid
+  // switch target — restoring to the original role is handled by the
+  // dedicated "العودة للدور الأصلي" button at the bottom of the
+  // dialog. Other roles keep their full list, and the row is only
+  // hidden for actual platform_admin users.
+  const displayableRoles = useMemo(() => {
+    if (user?.role !== 'platform_admin') return availableRoles;
+    return (availableRoles || []).filter((role) => !(
+      role?.role === 'platform_admin'
+      && (role?.is_current === true || role?.is_primary === true)
+    ));
+  }, [availableRoles, user?.role]);
+
   const _detailString = (error) => {
     const d = error?.response?.data?.detail;
     if (typeof d === 'string' && d.trim()) return d;
@@ -473,7 +488,7 @@ export const Sidebar = ({ children }) => {
         open={showRoleSwitcher}
         onOpenChange={setShowRoleSwitcher}
         loadingRoles={loadingRoles}
-        availableRoles={availableRoles}
+        availableRoles={displayableRoles}
         switchingRole={switchingRole}
         onSelectRole={handleSwitchRole}
         isSwitchedRole={isSwitchedRole}
