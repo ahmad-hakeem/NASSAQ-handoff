@@ -160,15 +160,15 @@ function KpiCard({ icon: Icon, label, value, suffix, accent }) {
   // spot critical metrics at a glance, but reclaims ~60px of vertical
   // space for the grid below.
   return (
-    <div className={`bg-white shadow-sm rounded-lg border border-slate-200 border-s-4 ${accent.topBorder.replace('border-t-', 'border-s-')} flex items-center gap-2.5 px-3 py-2 min-w-0`}>
-      <div className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0 ${accent.iconBg}`}>
-        <Icon className={`h-4 w-4 ${accent.iconText}`} />
+    <div className={`group relative bg-white rounded-xl border border-slate-200/80 border-s-[3px] ${accent.topBorder.replace('border-t-', 'border-s-')} shadow-[0_1px_2px_rgba(15,42,75,0.04)] hover:shadow-[0_4px_12px_rgba(15,42,75,0.08)] transition-shadow duration-200 flex items-center gap-3 px-3.5 py-2.5 min-w-0`}>
+      <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${accent.iconBg} ring-1 ring-inset ring-white/60`}>
+        <Icon className={`h-4 w-4 ${accent.iconText}`} strokeWidth={1.5} aria-hidden="true" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-medium text-slate-500 leading-tight truncate">{label}</p>
-        <div className="flex items-baseline gap-1 leading-tight">
-          <span className={`text-lg font-bold ${accent.valueText}`}>{value}</span>
-          {suffix && <span className="text-[10px] text-slate-400">{suffix}</span>}
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 leading-tight truncate">{label}</p>
+        <div className="flex items-baseline gap-1 leading-tight mt-0.5">
+          <span className={`text-xl font-bold tabular-nums ${accent.valueText}`}>{value}</span>
+          {suffix && <span className="text-[11px] font-medium text-slate-400 tabular-nums">{suffix}</span>}
         </div>
       </div>
     </div>
@@ -284,15 +284,15 @@ function EmptyCell({ onClick, addLabel }) {
         onClick={onClick}
         title={addLabel}
         aria-label={addLabel}
-        className="w-full h-full bg-slate-50/40 border-b border-dashed border-slate-200/60 hover:bg-emerald-50/60 hover:border-emerald-300 transition-colors flex items-center justify-center text-slate-300 hover:text-emerald-600 group"
+        className="w-full h-full bg-slate-50/30 hover:bg-brand-turquoise/5 hover:ring-1 hover:ring-inset hover:ring-brand-turquoise/40 transition-colors flex items-center justify-center text-slate-300 hover:text-brand-turquoise group rounded-md"
         data-testid="master-matrix-empty-cell-add"
       >
-        <span className="opacity-0 group-hover:opacity-100 text-lg leading-none transition-opacity">+</span>
+        <span className="opacity-0 group-hover:opacity-100 text-base leading-none transition-opacity font-light">+</span>
       </button>
     );
   }
   return (
-    <div className="w-full h-full bg-slate-50/40 border-b border-dashed border-slate-200/60" />
+    <div className="w-full h-full bg-slate-50/30" />
   );
 }
 
@@ -1829,7 +1829,7 @@ export default function SchedulePageNew() {
                   onClick={() => setViewMode('daily')}
                   className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
                     viewMode === 'daily'
-                      ? 'bg-[#1C3D74] text-white shadow-sm'
+                      ? 'bg-brand-navy text-white shadow-sm'
                       : 'text-slate-600 hover:bg-slate-100'
                   }`}
                   data-testid="view-mode-daily"
@@ -1843,7 +1843,7 @@ export default function SchedulePageNew() {
                   onClick={() => setViewMode('weekly')}
                   className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
                     viewMode === 'weekly'
-                      ? 'bg-[#1C3D74] text-white shadow-sm'
+                      ? 'bg-brand-navy text-white shadow-sm'
                       : 'text-slate-600 hover:bg-slate-100'
                   }`}
                   data-testid="view-mode-weekly"
@@ -1963,7 +1963,7 @@ export default function SchedulePageNew() {
                       onClick={() => setSelectedDay(dayKey)}
                       className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 disabled:cursor-wait ${
                         isActive
-                          ? 'bg-[#2BB5A0] text-white shadow-sm'
+                          ? 'bg-brand-turquoise text-white shadow-[0_1px_2px_rgba(43,181,160,0.35)]'
                           : 'text-slate-600 hover:bg-slate-100'
                       }`}
                       data-testid={`day-tab-${dayKey}`}
@@ -2044,7 +2044,7 @@ export default function SchedulePageNew() {
           ref={matrixContainerRef}
           data-testid="master-matrix-container"
           data-matrix-overflow={viewMode === 'weekly' ? 'horizontal' : 'none'}
-          className={`relative bg-white border-t border-slate-200 ${
+          className={`relative bg-white border border-slate-200 rounded-xl shadow-[0_1px_3px_rgba(15,42,75,0.04)] ${
             viewMode === 'weekly'
               // Weekly mode: intentional two-axis scroll container.
               // overflow-x:auto handles horizontal scroll (wide day columns).
@@ -2565,7 +2565,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
         <div
           key={`day-h-${dayKey}`}
           data-testid={`master-matrix-day-band-${dayKey}`}
-          className={`sticky z-20 ${getDayBandClass(dayKey)} ${getDayTextOnBand(dayKey)} text-sm font-cairo font-bold text-center flex items-center justify-center tracking-wide ${dayIdx > 0 ? 'border-s-2 border-s-white/70' : ''} shadow-[inset_0_-1px_0_rgba(255,255,255,0.25)]`}
+          className={`sticky z-20 ${getDayBandClass(dayKey)} ${getDayTextOnBand(dayKey)} text-sm font-cairo font-bold text-center flex items-center justify-center tracking-wide ${dayIdx > 0 ? 'border-s-2 border-s-white/70' : ''} shadow-[inset_0_1px_0_rgba(255,255,255,0.22),inset_0_-1px_0_rgba(0,0,0,0.08)]`}
           style={{ top: isDaily ? 'var(--sticky-band-h, 88px)' : 0, gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
         >
           {dayLabelMap[dayKey] || dayKey}
@@ -2599,7 +2599,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
           return (
             <div
               key={`ph-${dayKey}-${p}`}
-              className={`sticky z-20 ${getDayTintClass(dayKey)} text-brand-navy/85 text-center flex flex-col items-center justify-center leading-tight border-b border-white/40 border-l border-l-white/40 ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
+              className={`sticky z-20 ${getDayTintClass(dayKey)} text-brand-navy/85 text-center flex flex-col items-center justify-center leading-tight border-b border-white/60 border-l border-l-white/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
               style={{
                 top: isDaily
                   ? `calc(var(--sticky-band-h, 88px) + ${DAY_HEADER_HEIGHT}px)`
