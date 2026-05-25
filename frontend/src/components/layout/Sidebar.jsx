@@ -742,8 +742,7 @@ export const Sidebar = ({ children }) => {
     return true;
   };
 
-  const SidebarContent = () => {
-    return (
+  const sidebarContent = (
     <div className="flex flex-col h-full">
       <CommandPalette />
       {/* Logo */}
@@ -1258,8 +1257,7 @@ export const Sidebar = ({ children }) => {
         </DialogContent>
       </Dialog>
     </div>
-    );
-  };
+  );
 
   return (
     <div className="min-h-screen flex">
@@ -1295,7 +1293,7 @@ export const Sidebar = ({ children }) => {
         `}
       >
         <div className="absolute inset-0 nassaq-pattern opacity-[0.03] pointer-events-none" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
-        <SidebarContent />
+        {sidebarContent}
       </aside>
 
       {/* Main Content */}
