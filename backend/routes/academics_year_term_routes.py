@@ -425,13 +425,28 @@ def _grade_to_response(row: dict) -> "GradeLevelResponse":
 
     Mirrors `name_ar` into the legacy `name` field so older callers that
     read `g.name` continue to work without a separate migration.
+
+    Task #539: guard against rows where `name_ar` is null (legacy data)
+    by falling back through name_ar → name_en → code so the response
+    always has a displayable label and Pydantic never sees an empty `name`.
     """
-    name_ar = row.get("name_ar")
+    name_ar = row.get("name_ar") or None
+    name_en = row.get("name_en") or None
+    display_name = (
+        row.get("name")
+        or name_ar
+        or name_en
+        or row.get("code")
+        or None
+    )
+    row_id = row.get("id")
+    if not row_id:
+        raise ValueError("grade_levels row is missing id")
     return GradeLevelResponse(
-        id=row.get("id"),
-        name=row.get("name") or name_ar,
+        id=row_id,
+        name=display_name,
         name_ar=name_ar,
-        name_en=row.get("name_en"),
+        name_en=name_en,
         order=row.get("order") or 0,
         is_active=bool(row.get("is_active", True)),
         school_id=row.get("school_id"),
@@ -460,6 +475,7 @@ async def create_grade_level(
 
     grade_doc = {
         "id": grade_id,
+        "name": data.name,
         "name_ar": data.name,
         "name_en": data.name_en,
         "order": data.order,

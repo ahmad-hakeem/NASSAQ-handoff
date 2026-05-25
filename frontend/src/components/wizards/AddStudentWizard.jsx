@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import {
   Dialog,
@@ -178,6 +178,11 @@ export default function AddStudentWizard({
   const { t } = useTranslation();
   const { nassaqError } = useNassaqAlert();
   const [step, setStep] = useState(1);
+
+  const [internalGrades, setInternalGrades] = useState([]);
+  const [gradesLoadError, setGradesLoadError] = useState(false);
+  const [isLoadingGrades, setIsLoadingGrades] = useState(false);
+  const gradesFetchedRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedMessage, setCopiedMessage] = useState(false);
@@ -239,6 +244,30 @@ export default function AddStudentWizard({
 
   const [createdStudent, setCreatedStudent] = useState(null);
   const [createdParent, setCreatedParent] = useState(null);
+
+  const allGrades = internalGrades.length > 0 ? internalGrades : grades;
+
+  const fetchGrades = useCallback(async () => {
+    setIsLoadingGrades(true);
+    setGradesLoadError(false);
+    try {
+      const res = await api.get('/grade-levels');
+      const fetched = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+      setInternalGrades(fetched);
+      gradesFetchedRef.current = true;
+    } catch (_err) {
+      setGradesLoadError(true);
+    } finally {
+      setIsLoadingGrades(false);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (grades.length > 0) return;
+    if (gradesFetchedRef.current) return;
+    fetchGrades();
+  }, [open, grades.length, fetchGrades]);
 
   const checkParentExists = useCallback(async () => {
     // Workspace mode (#192) intentionally skips the parent-directory probe:
@@ -305,8 +334,17 @@ export default function AddStudentWizard({
 
   const isStepValid = () => {
     switch (step) {
-      case 1:
-        return studentData.full_name && studentData.gender && studentData.date_of_birth && studentData.education_level && studentData.grade_id;
+      case 1: {
+        const baseValid = Boolean(
+          studentData.full_name &&
+          studentData.gender &&
+          studentData.date_of_birth &&
+          studentData.education_level &&
+          studentData.grade_id
+        );
+        const classValid = classes.length === 0 || Boolean(studentData.class_id);
+        return baseValid && classValid;
+      }
       case 2:
         // Workspace mode (#192 spec §5.6) — parent step is fully optional;
         // the user can leave every field blank and still advance.
@@ -487,6 +525,10 @@ export default function AddStudentWizard({
     setParentSearchResults([]);
     setParentSearchQuery('');
     setParentMode('new');
+    setInternalGrades([]);
+    setGradesLoadError(false);
+    setIsLoadingGrades(false);
+    gradesFetchedRef.current = false;
   };
 
   return (
@@ -567,7 +609,7 @@ export default function AddStudentWizard({
                   <FormField label={t('educationLevel')} required>
                     <Select value={studentData.education_level} onValueChange={(val) => setStudentData(prev => {
                       // Preserve grade only when it still belongs to the new stage; otherwise clear it.
-                      const currentGrade = grades.find(g => g.id === prev.grade_id);
+                      const currentGrade = allGrades.find(g => g.id === prev.grade_id);
                       const keepGrade = currentGrade && gradeBelongsToStage(currentGrade, val);
                       return { ...prev, education_level: val, grade_id: keepGrade ? prev.grade_id : '' };
                     })} disabled={lockEducation}>
@@ -580,40 +622,66 @@ export default function AddStudentWizard({
 
                   <FormField label={t('grade')} required>
                     {(() => {
-                      const stageFiltered = filterGradesByStage(grades, studentData.education_level);
+                      const stageFiltered = filterGradesByStage(allGrades, studentData.education_level);
                       const stageSelected = Boolean(studentData.education_level);
                       return (
-                        <Select
-                          value={studentData.grade_id}
-                          onValueChange={(val) => setStudentData({ ...studentData, grade_id: val })}
-                          disabled={lockGrade || !stageSelected}
-                        >
-                          <SelectTrigger className="h-10 rounded-lg">
-                            <SelectValue placeholder={!stageSelected ? (isRTL ? 'اختر المرحلة أولاً' : 'Select stage first') : t('selectGrade')} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {!stageSelected ? (
-                              <div className="px-2 py-3 text-xs text-muted-foreground text-center">
-                                {isRTL ? 'اختر المرحلة التعليمية أولاً' : 'Select an educational stage first'}
-                              </div>
-                            ) : stageFiltered.length > 0 ? (
-                              stageFiltered.map(grade => (
-                                <SelectItem key={grade.id} value={grade.id}>
-                                  {isRTL ? (grade.name_ar || grade.name) : (grade.name_en || grade.name)}
-                                </SelectItem>
-                              ))
-                            ) : (
-                              <div className="px-2 py-3 text-xs text-muted-foreground text-center">
-                                {isRTL ? 'لا توجد صفوف لهذه المرحلة — يُرجى إضافتها من الإعدادات' : 'No grades for this stage — add from settings first'}
-                              </div>
-                            )}
-                          </SelectContent>
-                        </Select>
+                        <div className="space-y-1.5">
+                          <Select
+                            value={studentData.grade_id}
+                            onValueChange={(val) => setStudentData({ ...studentData, grade_id: val })}
+                            disabled={lockGrade || !stageSelected || isLoadingGrades}
+                          >
+                            <SelectTrigger className="h-10 rounded-lg">
+                              {isLoadingGrades ? (
+                                <span className="flex items-center gap-2 text-muted-foreground text-sm">
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  {isRTL ? 'جاري التحميل…' : 'Loading…'}
+                                </span>
+                              ) : (
+                                <SelectValue placeholder={!stageSelected ? (isRTL ? 'اختر المرحلة أولاً' : 'Select stage first') : t('selectGrade')} />
+                              )}
+                            </SelectTrigger>
+                            <SelectContent>
+                              {!stageSelected ? (
+                                <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                                  {isRTL ? 'اختر المرحلة التعليمية أولاً' : 'Select an educational stage first'}
+                                </div>
+                              ) : stageFiltered.length > 0 ? (
+                                stageFiltered.map(grade => (
+                                  <SelectItem key={grade.id} value={grade.id}>
+                                    {isRTL ? (grade.name_ar || grade.name) : (grade.name_en || grade.name)}
+                                  </SelectItem>
+                                ))
+                              ) : (
+                                <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                                  {isRTL ? 'لا توجد صفوف لهذه المرحلة' : 'No grades for this stage'}
+                                </div>
+                              )}
+                            </SelectContent>
+                          </Select>
+                          {gradesLoadError && allGrades.length === 0 && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <p className="text-xs text-red-500 flex-1">
+                                {isRTL ? 'تعذّر تحميل الصفوف' : 'Failed to load grades'}
+                              </p>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-6 text-xs rounded-md px-2"
+                                onClick={fetchGrades}
+                                disabled={isLoadingGrades}
+                              >
+                                {isLoadingGrades ? <Loader2 className="h-3 w-3 animate-spin" /> : (isRTL ? 'إعادة المحاولة' : 'Retry')}
+                              </Button>
+                            </div>
+                          )}
+                        </div>
                       );
                     })()}
                   </FormField>
 
-                  <FormField label={t('class')}>
+                  <FormField label={t('class')} required={classes.length > 0}>
                     <Select value={studentData.class_id} onValueChange={(val) => setStudentData({...studentData, class_id: val})} disabled={lockClass}>
                       <SelectTrigger className="h-10 rounded-lg"><SelectValue placeholder={t('selectClass')} /></SelectTrigger>
                       <SelectContent>
