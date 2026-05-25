@@ -574,10 +574,15 @@ export default function TeacherAchievementsPage() {
   const handleSaveVMV = async () => {
     setVmvBusy(true);
     try {
-      await api.put('/teacher/portfolio/vmv', vmvDraft);
+      const res = await api.put('/teacher/portfolio/vmv', {
+        vision: vmvDraft.vision || '',
+        mission: vmvDraft.mission || '',
+        values: vmvDraft.values || '',
+      });
+      if (!res.data?.success) throw new Error('save-failed');
       toast.success('تم حفظ الرؤية والرسالة والقيم');
       fetchPortfolio();
-    } catch (e) { nassaqError('فشل الحفظ'); }
+    } catch (e) { nassaqError('فشل حفظ الرؤية والرسالة والقيم. يرجى المحاولة مرة أخرى.'); }
     finally { setVmvBusy(false); }
   };
 
