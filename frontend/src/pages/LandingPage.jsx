@@ -1718,20 +1718,14 @@ export const LandingPage = () => {
               {
                 qAr: 'أخشى أن تكون التكلفة عالية على ميزانية المدرسة.',
                 qEn: 'I worry the cost is too high for our school budget.',
-                aAr: 'باقات نَسَّق مرنة وتُحسب حسب عدد الطلاب وحجم المؤسسة، وتشمل التحديثات والدعم بدون رسوم إعداد خفية. تبدأ بباقة Pilot المجانية لتجربة المنصة على بياناتك الحقيقية، ويمكنك إلغاء اشتراكك في أي وقت دون التزام.',
-                aEn: 'NASSAQ plans are flexible and scale with your student count and institution size, including updates and support with no hidden setup fees. Start with the free Pilot plan to try NASSAQ on your real data, and cancel anytime — no commitment.',
+                aAr: 'تُقدّم منصة نَسَّق عائداً على الاستثمار عبر توفير مئات الساعات المهدرة في العمل الإداري. باقاتنا مرنة ومصممة لتناسب حجم منشأتك التعليمية وعدد الطلاب، بدون أي رسوم إعداد خفية أو تكاليف صيانة إضافية. يمكنك بدء تجربتك المجانية لاستكشاف القيمة الفعلية قبل اتخاذ أي قرار، مع إمكانية الإلغاء في أي وقت ودون التزام.',
+                aEn: 'NASSAQ delivers a clear return on investment by saving hundreds of hours otherwise lost to administrative work. Our plans are flexible and tailored to the size of your institution and student count — with no hidden setup fees and no additional maintenance costs. You can start a free trial to explore the real value before any commitment, and cancel at any time.',
               },
               {
-                qAr: 'موظفونا غير متخصصين تقنيًا. هل سيستطيعون استخدامها؟',
-                qEn: 'Our staff are not tech specialists. Can they use it?',
-                aAr: 'صُممت كل شاشة في نَسَّق لتعمل بدون تدريب — معلم يدخل غيابه في ٣٠ ثانية، ولي أمر يرى تقرير طفله بضغطة. نُقدّم جلسة تأهيل أونلاين لفريقك مجانًا في أول أسبوع، وفريق دعم باللغة العربية متاح طوال أيام العمل.',
-                aEn: 'Every screen in NASSAQ is designed to work without training — a teacher logs attendance in 30 seconds, a parent sees their child\'s report in one tap. We onboard your team online free in the first week, and our Arabic-speaking support is available every working day.',
-              },
-              {
-                qAr: 'هل بياناتنا آمنة، ومحفوظة داخل المملكة؟',
-                qEn: 'Is our data safe and kept inside the Kingdom?',
-                aAr: 'نَسَّق مصمَّمة بما يتوافق مع متطلبات نظام حماية البيانات الشخصية (PDPL): تشفير كامل أثناء النقل والتخزين، نسخ احتياطي يومي، وفصل صارم لبيانات كل مدرسة على مستوى الاستعلام. نعمل حاليًا على اعتماد الاستضافة السيادية داخل المملكة ونُحدّث صفحة الخصوصية فور اكتمالها.',
-                aEn: 'NASSAQ is designed in line with the Personal Data Protection Law (PDPL): full encryption in transit and at rest, daily backups, and strict per-school separation enforced at query level. Sovereign hosting inside Saudi Arabia is in progress, and we update the privacy page the moment it is finalized.',
+                qAr: 'معلمونا غير متخصصين تقنيًا. هل سيستطيعون استخدامها؟',
+                qEn: 'Our teachers are not tech specialists. Can they use it?',
+                aAr: 'بالتأكيد. لقد صُممت نَسَّق خصيصاً لتكون واجهة فائقة السهولة والوضوح لطاقم المعلمين والإداريين دون الحاجة لأي خلفية تقنية. يمكن للمعلّم تسجيل الغياب، متابعة السلوك، ورصد الأداء بالكامل ومن شاشة واحدة. نوفر أيضاً دعم فني متكامل باللغة العربية طوال أيام العمل، وجلسة تأهيل مجانية لفريقك في الأسبوع الأول.',
+                aEn: 'Absolutely. NASSAQ is purpose-built to give teachers and administrators an exceptionally clear, easy interface that requires no technical background. A teacher can log attendance, follow behaviour, and track performance end-to-end from a single screen. We also provide full Arabic-speaking technical support throughout the working week, and a free onboarding session for your team in the first week.',
               },
               {
                 qAr: 'ماذا لو لم تناسبنا المنصة بعد التجربة؟',
