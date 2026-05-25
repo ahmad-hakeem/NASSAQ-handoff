@@ -1757,3 +1757,29 @@ class NoorImportHistory(Base):
             postgresql_where=text("deleted_at IS NULL"),
         ),
     )
+
+
+class NoorImportDraft(Base):
+    """Short-lived draft store for the two-step Noor importer (parse -> commit).
+
+    Created at /noor-import/parse time and read back by /noor-import/commit
+    so the server never trusts a client-supplied rows[] payload. Rows are
+    purged lazily once `expires_at` has passed (1h TTL).
+    """
+
+    __tablename__ = "noor_import_drafts"
+
+    id = Column(String, primary_key=True)
+    principal_id = Column(String, nullable=False, index=True)
+    school_id = Column(String, nullable=False, index=True)
+    detected_type = Column(String(16), nullable=False)
+    header_row = Column(Integer, nullable=False)
+    payload = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    counts = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        Index("ix_noor_import_drafts_owner", "principal_id", "school_id"),
+        Index("ix_noor_import_drafts_expires_at", "expires_at"),
+    )
