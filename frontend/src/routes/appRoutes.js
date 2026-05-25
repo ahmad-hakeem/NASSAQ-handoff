@@ -13,6 +13,7 @@ const ParentStudentTabRedirect = ({ tab }) => {
 // --- Eager: small + first-paint critical (no recharts/jspdf chains) ---
 import { LandingPage } from "../pages/LandingPage";
 import { LoginPage } from "../pages/LoginPage";
+import { PublicShell } from "../components/layout/PublicShell";
 
 // --- Lazy: every other page becomes its own chunk ---
 // Webpack dedupes shared modules across these chunks, so heavy deps (recharts,
@@ -196,7 +197,7 @@ export default function AppRoutes() {
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         {/* Public Routes */}
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={<PublicShell><LandingPage /></PublicShell>} />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/terms" element={<TermsAndConditionsPage />} />
         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
@@ -205,7 +206,7 @@ export default function AppRoutes() {
         <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/teacher-register" element={<TeacherSelfRegistration />} />
-        <Route path="/for-teachers" element={<TeacherExperiencePage />} />
+        <Route path="/for-teachers" element={<PublicShell><TeacherExperiencePage /></PublicShell>} />
         {/* Task #206 — IT §6.2c public parent-invitation landing. The
             page swaps the one-shot bearer for an authenticated session
             and deep-links into /parent?student_id=…. Unauthenticated

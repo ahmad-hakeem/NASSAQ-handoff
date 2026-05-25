@@ -114,51 +114,8 @@ export const TeacherExperiencePage = () => {
 
   return (
     <div className="min-h-screen" dir={isRTL ? 'rtl' : 'ltr'} data-testid="teacher-experience-page">
-
-      {/* ── STICKY NAVBAR ─────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
-        <nav className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 shrink-0" aria-label={ar('نسق الرئيسية', 'NASSAQ Home')}>
-            <img
-              src="/nassaq-logo.png"
-              alt={ar('شعار نَسَّق', 'NASSAQ logo')}
-              className="w-10 h-10 rounded-xl object-cover shadow-md ring-1 ring-brand-navy/10"
-            />
-            <div className="hidden sm:flex flex-col leading-tight">
-              <span className="font-cairo font-bold text-brand-navy text-lg">{ar('نَسَّق', 'NASSAQ')}</span>
-              <span className="font-tajawal text-[10px] text-slate-500">{ar('معلّم نسّق', 'Teacher Experience')}</span>
-            </div>
-          </Link>
-
-          {/* Breadcrumb pill */}
-          <div className="hidden md:flex items-center gap-1.5 font-tajawal text-sm text-slate-500">
-            <Link to="/" className="flex items-center gap-1 hover:text-brand-navy transition-colors">
-              <Home className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
-              {ar('الرئيسية', 'Home')}
-            </Link>
-            <ChevronRight className={`h-3.5 w-3.5 text-slate-300 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
-            <span className="text-brand-navy font-medium">{ar('معلّم نسّق', 'NASSAQ Teacher')}</span>
-          </div>
-
-          {/* Auth actions */}
-          <div className="flex items-center gap-2">
-            <Link
-              to="/login"
-              className="font-tajawal text-sm font-medium px-4 py-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
-            >
-              {ar('تسجيل الدخول', 'Log in')}
-            </Link>
-            <Link
-              to="/teacher-register"
-              className="font-tajawal text-sm font-medium px-6 py-2.5 rounded-lg bg-brand-navy text-white hover:bg-brand-navy-light shadow-sm hover:shadow-md active:scale-95 transition-all"
-              data-testid="teacher-register-btn"
-            >
-              {ar('ابدأ مجاناً', 'Start free')}
-            </Link>
-          </div>
-        </nav>
-      </header>
+      {/* Header lives in the shared <PublicShell>; the old breadcrumb
+          bar was removed as part of the unified two-tab navigation. */}
 
       {/* ── HERO — navy + nassaq texture ──────────────────────── */}
       <section className="relative bg-brand-navy overflow-hidden py-20 lg:py-28">
