@@ -135,18 +135,14 @@ export const ClassesPage = () => {
   };
 
   useEffect(() => {
-    fetchData();
+    if (!user) return;
+    fetchData({ includeInactive: showInactive });
     // Set default school_id for new class form
     if (userSchoolId) {
       setNewClass(prev => ({ ...prev, school_id: userSchoolId }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
-
-  useEffect(() => {
-    fetchData({ includeInactive: showInactive });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showInactive]);
+  }, [user, showInactive]);
 
   // Auto-generate class name
   useEffect(() => {
@@ -167,7 +163,7 @@ export const ClassesPage = () => {
 
     setSubmitting(true);
     try {
-      const response = await api.post('/classes', { ...newClass, school_id: schoolId });
+      await api.post('/classes', { ...newClass, school_id: schoolId });
       toast.success(t('classAddedSuccessfully'));
       setCreateDialogOpen(false);
       setNewClass({
@@ -179,7 +175,7 @@ export const ClassesPage = () => {
         capacity: 30,
         homeroom_teacher_id: '',
       });
-      setClasses(prev => [...prev, response.data]);
+      await fetchData({ includeInactive: showInactive });
     } catch (error) {
       nassaqError(error.response?.data?.detail || (t('failedToAddClass')));
     } finally {
@@ -191,7 +187,7 @@ export const ClassesPage = () => {
     try {
       await api.put(`/classes/${classId}`, { is_active: true });
       toast.success(t('classReactivated'));
-      setClasses(prev => prev.map(c => c.id === classId ? { ...c, is_active: true } : c));
+      await fetchData({ includeInactive: showInactive });
     } catch (error) {
       nassaqError(error.response?.data?.detail || (t('operationFailed')));
     }
@@ -210,7 +206,7 @@ export const ClassesPage = () => {
             if (parts.length > 0) msg += ` (${parts.join(', ')})`;
           }
           toast.success(msg);
-          setClasses(prev => prev.filter(c => c.id !== classId));
+          await fetchData({ includeInactive: showInactive });
         } catch (error) {
           nassaqError(error.response?.data?.detail || (t('failedToDeleteClass')));
         }
@@ -227,7 +223,7 @@ export const ClassesPage = () => {
     return matchesSearch && matchesSchool;
   }).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
 
-  const activeCount = filteredClasses.filter(c => c.is_active !== false).length;
+  const activeCount = filteredClasses.length;
 
   const getSchoolName = (schoolId) => {
     const school = schools.find(s => s.id === schoolId);
