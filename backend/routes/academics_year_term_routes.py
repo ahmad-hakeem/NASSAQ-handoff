@@ -498,23 +498,47 @@ async def get_grade_levels(
     `X-School-Context` header through `resolve_school_id`. The previous
     `?school_id=` query param branch silently let any caller pivot to
     another tenant's rows and is no longer honored.
+
+    Task #579: (1) Guard None tenant — callers with no resolvable tenant
+    get an empty list instead of a DB-level IS NULL query that may 500.
+    (2) Per-row ValueError from _grade_to_response (missing id) is caught
+    and the bad row is skipped rather than aborting the response.
+    (3) Top-level exception handler returns a safe Arabic 500 message.
     """
     from utils.tenant_scope import resolve_school_id
     from auth_scope import independent_workspace_id as _itw_id
-    query = {}
-    if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
-        scoped = resolve_school_id(current_user, x_school_context)
-        if scoped:
-            query["school_id"] = scoped
-    else:
-        caller_tenant = current_user.get("tenant_id") or _itw_id(current_user)
-        if x_school_context is not None:
+    try:
+        query = {}
+        if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
             scoped = resolve_school_id(current_user, x_school_context)
-            caller_tenant = scoped or caller_tenant
-        query["school_id"] = caller_tenant
+            if scoped:
+                query["school_id"] = scoped
+        else:
+            caller_tenant = current_user.get("tenant_id") or _itw_id(current_user)
+            if x_school_context is not None:
+                scoped = resolve_school_id(current_user, x_school_context)
+                caller_tenant = scoped or caller_tenant
+            if not caller_tenant:
+                return []
+            query["school_id"] = caller_tenant
 
-    grade_levels = await gd_find(db.session, "grade_levels", query, order_by="order", desc_order=False, limit=100)
-    return [_grade_to_response(gl) for gl in grade_levels]
+        grade_levels = await gd_find(db.session, "grade_levels", query, order_by="order", desc_order=False, limit=100)
+        result = []
+        for gl in grade_levels:
+            try:
+                result.append(_grade_to_response(gl))
+            except ValueError as row_err:
+                logger.warning(
+                    "get_grade_levels: skipping grade_levels row id=%r — %s",
+                    gl.get("id") if isinstance(gl, dict) else getattr(gl, "id", None),
+                    row_err,
+                )
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("get_grade_levels: unexpected error — %s", exc)
+        raise HTTPException(status_code=500, detail="حدث خطأ أثناء جلب المراحل الدراسية")
 
 @router.get("/grade-levels/{grade_id}", response_model=GradeLevelResponse)
 async def get_grade_level(
