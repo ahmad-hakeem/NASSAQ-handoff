@@ -48,7 +48,7 @@ export const Sidebar = ({ children }) => {
   const {
     user, logout, isImpersonating, schoolContext, getEffectiveRole,
     exitSchoolContext, token, updateToken, isSwitchedRole, originalRole,
-    api, fetchPermissions, returnToOriginalRole,
+    api, fetchPermissions, returnToOriginalRole, enterSchoolContext,
   } = useAuth();
 
   // Phase 0 §4.B-6 backed sidebar permission gate.
@@ -216,24 +216,25 @@ export const Sidebar = ({ children }) => {
   // the typed reason; the response shape is { token, role, school_id,
   // is_impersonating, original_role } — note `token`, NOT `access_token`.
   // The reason is owned by PreviewReasonDialog and arrives validated.
+  // Task #543 — Delegate the impersonation network call + state population
+  // to AuthContext.enterSchoolContext so the persistent PreviewModeBanner
+  // (which reads `isImpersonating` + `schoolContext` from AuthContext)
+  // appears immediately, identical to the "View Dashboard" path. The
+  // sidebar only owns local UI concerns: spinner, dialog close, toast,
+  // navigation.
   const handleConfirmPreviewSwitch = useCallback(async (reason) => {
     if (!previewReasonRole) return;
     setSwitchingRole(true);
     try {
-      const response = await api.post('/role-switch/switch', {
-        target_role: 'school_principal',
-        school_id: previewReasonRole.tenant_id,
-        reason,
-      });
-
-      const newToken = response.data?.token;
-      if (!newToken) {
-        nassaqError(t('errorSwitchingRole'));
-        return;
-      }
-
-      sessionStorage.setItem('nassaq_impersonating', 'true');
-      await updateToken(newToken);
+      await enterSchoolContext(
+        {
+          id: previewReasonRole.tenant_id,
+          name: previewReasonRole.tenant_name,
+          name_en: previewReasonRole.tenant_name_en,
+          code: previewReasonRole.tenant_code,
+        },
+        { reason },
+      );
 
       toast.success(t('roleSwitchedSuccessfully'));
       setPreviewReasonRole(null);
@@ -246,7 +247,7 @@ export const Sidebar = ({ children }) => {
     } finally {
       setSwitchingRole(false);
     }
-  }, [api, nassaqError, navigate, previewReasonRole, t, updateToken]);
+  }, [enterSchoolContext, nassaqError, navigate, previewReasonRole, t]);
 
   const handleCancelPreviewSwitch = useCallback(() => {
     if (switchingRole) return;
