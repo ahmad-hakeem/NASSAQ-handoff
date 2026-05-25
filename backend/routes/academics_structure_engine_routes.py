@@ -122,15 +122,29 @@ async def seed_default_stages(
 
 @router.get("/academic/stages")
 async def get_educational_stages(
-    school_id: Optional[str] = None,
     include_global: bool = True,
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user)
 ):
-    """Get educational stages"""
+    """Get educational stages.
+
+    Task #510: Platform admins resolve preview scope via the
+    `X-School-Context` header through `resolve_school_id`. The previous
+    `?school_id=` query param branch silently let any caller pivot to
+    another tenant's rows and is no longer honored.
+    """
     from utils.tenant_scope import resolve_school_id
-    effective_school_id = resolve_school_id(current_user, school_id) or current_user.get("tenant_id")
+    from auth_scope import independent_workspace_id as _itw_id
+    effective_school_id: Optional[str] = None
+    if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
+        effective_school_id = resolve_school_id(current_user, x_school_context)
+    else:
+        effective_school_id = current_user.get("tenant_id") or _itw_id(current_user)
+        if x_school_context is not None:
+            scoped = resolve_school_id(current_user, x_school_context)
+            effective_school_id = scoped or effective_school_id
+
     query = {"is_active": True}
-    
     if effective_school_id:
         if include_global:
             query["$or"] = [{"tenant_id": effective_school_id}, {"is_global": True}]
@@ -138,7 +152,7 @@ async def get_educational_stages(
             query["tenant_id"] = effective_school_id
     else:
         query["is_global"] = True
-    
+
     stages = await gd_find(db.session, "educational_stages", query, order_by="order", desc_order=False, limit=100)
     return {"stages": stages, "total": len(stages)}
 
@@ -505,17 +519,31 @@ async def seed_default_subjects(
 
 @router.get("/academic/subjects")
 async def get_subjects(
-    school_id: Optional[str] = None,
     category: Optional[str] = None,
     stage_code: Optional[str] = None,
     include_global: bool = True,
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user)
 ):
-    """Get subjects"""
+    """Get subjects.
+
+    Task #510: Platform admins resolve preview scope via the
+    `X-School-Context` header through `resolve_school_id`. The previous
+    `?school_id=` query param branch silently let any caller pivot to
+    another tenant's rows and is no longer honored.
+    """
     from utils.tenant_scope import resolve_school_id
-    effective_school_id = resolve_school_id(current_user, school_id) or current_user.get("tenant_id")
+    from auth_scope import independent_workspace_id as _itw_id
+    effective_school_id: Optional[str] = None
+    if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
+        effective_school_id = resolve_school_id(current_user, x_school_context)
+    else:
+        effective_school_id = current_user.get("tenant_id") or _itw_id(current_user)
+        if x_school_context is not None:
+            scoped = resolve_school_id(current_user, x_school_context)
+            effective_school_id = scoped or effective_school_id
+
     query = {"is_active": True}
-    
     if effective_school_id:
         if include_global:
             query["$or"] = [{"tenant_id": effective_school_id}, {"is_global": True}]
@@ -523,7 +551,7 @@ async def get_subjects(
             query["tenant_id"] = effective_school_id
     else:
         query["is_global"] = True
-    
+
     if category:
         query["category"] = category
     

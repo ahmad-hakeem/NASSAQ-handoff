@@ -389,40 +389,45 @@ async def create_subject(
 
 @router.get("/subjects", response_model=List[SubjectResponse])
 async def get_subjects(
-    school_id: Optional[str] = None,
     include_inactive: bool = False,
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user)
 ):
-    """Get all subjects or filter by school. Non-platform callers are
-    pinned to their own tenant; a caller-supplied `school_id` that does
-    not match is rejected with 403 so the API never confirms the
-    existence of foreign-tenant rows. Soft-deleted (`is_active=False`)
-    rows are hidden by default; platform admins can opt in via
-    `include_inactive=true`."""
+    """Get all subjects or filter by school.
+
+    Task #510: Platform admins resolve preview scope via the
+    `X-School-Context` header through `resolve_school_id`, which only
+    honors the override when the bearer token was minted by
+    `/role-switch/switch`. Without an override a plain platform-admin
+    token still returns the cross-tenant directory (legacy admin-console
+    behavior). The previous `?school_id=` query param branch silently
+    let any caller pivot to another tenant's rows and is no longer
+    honored. Non-platform callers are pinned to their own tenant.
+    Soft-deleted (`is_active=False`) rows are hidden by default;
+    platform admins can opt in via `include_inactive=true`."""
     from auth_scope import is_independent_teacher, independent_workspace_id
+    from utils.tenant_scope import resolve_school_id
     query = {}
     if not include_inactive:
         query["is_active"] = {"$ne": False}
-    # Tenant scope. IT callers fall back to their synthetic workspace id
-    # (`itw_{user_id}`) via `independent_workspace_id` when `tenant_id`
-    # is unset on the JWT.
     is_platform = current_user.get("role") == UserRole.PLATFORM_ADMIN.value
-    caller_tenant = (
-        current_user.get("tenant_id")
-        or (independent_workspace_id(current_user) if is_independent_teacher(current_user) else None)
-    )
     if is_platform:
-        # Platform admin may scope by any school_id, or list across all
-        # tenants when omitted.
-        if school_id:
-            query["school_id"] = school_id
+        scoped = resolve_school_id(current_user, x_school_context)
+        if scoped:
+            query["school_id"] = scoped
     else:
-        # Non-platform callers are pinned to their own tenant. A
-        # caller-supplied `school_id` that does not match the caller's
-        # tenant is rejected with 403 so the API never confirms the
-        # existence of foreign-tenant rows.
-        if school_id and school_id != caller_tenant:
-            raise HTTPException(status_code=403, detail="غير مصرح")
+        # Compute caller's own tenant/workspace first so Independent
+        # Teacher tokens (which carry no real `tenant_id`) keep working
+        # even when no X-School-Context header is supplied. Only invoke
+        # the strict override validation when the caller actually sent
+        # a header — otherwise `resolve_school_id` would 403 for IT.
+        caller_tenant = (
+            current_user.get("tenant_id")
+            or (independent_workspace_id(current_user) if is_independent_teacher(current_user) else None)
+        )
+        if x_school_context is not None:
+            scoped = resolve_school_id(current_user, x_school_context)
+            caller_tenant = scoped or caller_tenant
         query["school_id"] = caller_tenant
 
     subjects = await gd_find(db.session, "subjects", query, limit=1000)

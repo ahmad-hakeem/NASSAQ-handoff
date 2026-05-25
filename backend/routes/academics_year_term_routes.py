@@ -128,16 +128,34 @@ async def create_academic_year(
 
 @router.get("/academic-years", response_model=List[AcademicYearResponse])
 async def get_academic_years(
-    school_id: Optional[str] = None,
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user)
 ):
-    """Get all academic years for a school"""
+    """Get all academic years for a school.
+
+    Task #510: Platform admins resolve preview scope via the
+    `X-School-Context` header through `resolve_school_id`, which only
+    honors the override when the bearer token was minted by
+    `/role-switch/switch`. Without an override a plain platform-admin
+    token still returns the cross-tenant directory (legacy admin-console
+    behavior). The previous `?school_id=` query param branch silently
+    let any caller pivot to another tenant's rows and is no longer
+    honored.
+    """
     from utils.tenant_scope import resolve_school_id
-    effective_school_id = resolve_school_id(current_user, school_id) or current_user.get("tenant_id")
+    from auth_scope import independent_workspace_id as _itw_id
     query = {}
-    if effective_school_id:
-        query["school_id"] = effective_school_id
-    
+    if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
+        scoped = resolve_school_id(current_user, x_school_context)
+        if scoped:
+            query["school_id"] = scoped
+    else:
+        caller_tenant = current_user.get("tenant_id") or _itw_id(current_user)
+        if x_school_context is not None:
+            scoped = resolve_school_id(current_user, x_school_context)
+            caller_tenant = scoped or caller_tenant
+        query["school_id"] = caller_tenant
+
     academic_years = await gd_find(db.session, "academic_years", query, order_by="start_date", desc_order=True, limit=100)
     return [AcademicYearResponse(**normalize_academic_year(ay)) for ay in academic_years]
 
@@ -270,17 +288,31 @@ async def create_term(
 
 @router.get("/terms", response_model=List[TermResponse])
 async def get_terms(
-    school_id: Optional[str] = None,
     academic_year_id: Optional[str] = None,
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user)
 ):
-    """Get all terms for a school"""
+    """Get all terms for a school.
+
+    Task #510: Platform admins resolve preview scope via the
+    `X-School-Context` header through `resolve_school_id`. The previous
+    `?school_id=` query param branch silently let any caller pivot to
+    another tenant's rows and is no longer honored.
+    """
     from utils.tenant_scope import resolve_school_id
-    effective_school_id = resolve_school_id(current_user, school_id) or current_user.get("tenant_id")
+    from auth_scope import independent_workspace_id as _itw_id
     query = {}
-    if effective_school_id:
-        query["school_id"] = effective_school_id
-    
+    if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
+        scoped = resolve_school_id(current_user, x_school_context)
+        if scoped:
+            query["school_id"] = scoped
+    else:
+        caller_tenant = current_user.get("tenant_id") or _itw_id(current_user)
+        if x_school_context is not None:
+            scoped = resolve_school_id(current_user, x_school_context)
+            caller_tenant = scoped or caller_tenant
+        query["school_id"] = caller_tenant
+
     if academic_year_id:
         query["academic_year_id"] = academic_year_id
     
@@ -414,16 +446,30 @@ async def create_grade_level(
 
 @router.get("/grade-levels", response_model=List[GradeLevelResponse])
 async def get_grade_levels(
-    school_id: Optional[str] = None,
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user)
 ):
-    """Get all grade levels for a school"""
+    """Get all grade levels for a school.
+
+    Task #510: Platform admins resolve preview scope via the
+    `X-School-Context` header through `resolve_school_id`. The previous
+    `?school_id=` query param branch silently let any caller pivot to
+    another tenant's rows and is no longer honored.
+    """
     from utils.tenant_scope import resolve_school_id
-    effective_school_id = resolve_school_id(current_user, school_id) or current_user.get("tenant_id")
+    from auth_scope import independent_workspace_id as _itw_id
     query = {}
-    if effective_school_id:
-        query["school_id"] = effective_school_id
-    
+    if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
+        scoped = resolve_school_id(current_user, x_school_context)
+        if scoped:
+            query["school_id"] = scoped
+    else:
+        caller_tenant = current_user.get("tenant_id") or _itw_id(current_user)
+        if x_school_context is not None:
+            scoped = resolve_school_id(current_user, x_school_context)
+            caller_tenant = scoped or caller_tenant
+        query["school_id"] = caller_tenant
+
     grade_levels = await gd_find(db.session, "grade_levels", query, order_by="order", desc_order=False, limit=100)
     return [GradeLevelResponse(**gl) for gl in grade_levels]
 
