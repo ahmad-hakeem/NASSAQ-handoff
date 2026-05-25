@@ -163,6 +163,11 @@ async def get_students(
             return []
         query["school_id"] = scoped
     else:
+        # Task #509: non-platform callers may not address another tenant
+        # via X-School-Context; validating through resolve_school_id 403s
+        # on mismatch and matches /teachers and /classes behaviour.
+        if x_school_context is not None:
+            resolve_school_id(current_user, x_school_context)
         query["school_id"] = require_request_school_id(current_user)
 
     if class_id:
@@ -804,6 +809,10 @@ async def get_parents(
         if not school_id:
             return []
     else:
+        # Task #509: 403 on foreign X-School-Context for non-platform callers
+        # (matches /teachers and /classes behaviour).
+        if x_school_context is not None:
+            resolve_school_id(current_user, x_school_context)
         school_id = require_request_school_id(current_user)
     query: Dict[str, Any] = {"status": {"$ne": "closed"}, "school_id": school_id}
     parents = await gd_find(db.session, "parents", query, limit=1000)
