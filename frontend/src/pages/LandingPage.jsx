@@ -1417,8 +1417,8 @@ export const LandingPage = () => {
             <div className="absolute bottom-0 start-0 w-36 h-36 bg-gradient-to-tr from-brand-purple/3 to-transparent rounded-tr-full" />
             <div className="absolute inset-0 animate-shimmer opacity-0 group-hover:opacity-100 transition-opacity" />
 
-            <div className="relative z-10 grid lg:grid-cols-2 gap-8 items-start">
-              <div>
+            <div className="relative z-10 grid lg:grid-cols-2 gap-8 items-stretch">
+              <div className="flex flex-col h-full">
                 <div className="flex items-center gap-4 mb-5">
                   <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-turquoise to-cyan-500 flex items-center justify-center shadow-xl shadow-brand-turquoise/25">
                     {(() => { const Icon = ecosystemRoles[activeEcosystemRole].icon; return <Icon className="h-7 w-7 text-white" />; })()}
@@ -1451,48 +1451,44 @@ export const LandingPage = () => {
                 </div>
               </div>
 
-              <div className="flex flex-col items-center justify-center gap-6">
-                {/* Role Grid */}
-                <div className="grid grid-cols-2 gap-3">
-                  {ecosystemRoles.map((role, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setActiveEcosystemRole(i)}
-                      className={`w-20 h-20 rounded-2xl flex items-center justify-center transition-all duration-500 border-2 ${
-                        activeEcosystemRole === i
-                          ? 'bg-gradient-to-br from-brand-turquoise to-cyan-500 scale-110 shadow-xl shadow-brand-turquoise/25 border-transparent animate-pulse-glow'
-                          : 'bg-muted/30 hover:bg-muted border-border/30 hover:border-brand-turquoise/30'
-                      }`}
-                    >
-                      <role.icon className={`h-8 w-8 transition-colors ${
-                        activeEcosystemRole === i ? 'text-white' : 'text-muted-foreground'
-                      }`} />
-                    </button>
-                  ))}
+              {/* Large dynamic Hakim character card — swaps per active role */}
+              <div className="relative bg-gradient-to-br from-brand-purple/8 via-white/60 to-brand-turquoise/8 dark:from-brand-purple/15 dark:via-slate-900/50 dark:to-brand-turquoise/15 border border-brand-purple/20 rounded-3xl overflow-hidden shadow-xl shadow-brand-purple/10 flex flex-col h-full min-h-[360px]">
+                <div className="absolute top-8 -end-10 w-44 h-44 rounded-full bg-brand-turquoise/20 blur-3xl" aria-hidden="true" />
+                <div className="absolute bottom-8 -start-10 w-36 h-36 rounded-full bg-brand-purple/20 blur-3xl" aria-hidden="true" />
+
+                {/* Hakim badge top-start */}
+                <div className="absolute top-4 start-4 z-20 bg-gradient-to-r from-brand-purple to-violet-600 text-white text-[11px] font-cairo font-bold px-3 py-1 rounded-full shadow-lg flex items-center gap-1.5">
+                  <Brain className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+                  {t('hakim')}
                 </div>
 
-                {/* Progress Dots */}
-                <div className="flex items-center gap-3">
-                  <div className="flex gap-1.5">
-                    {ecosystemRoles.map((_, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setActiveEcosystemRole(i)}
-                        aria-label={`Role ${i + 1}`}
-                        className={`h-1.5 rounded-full transition-all duration-500 ${
-                          activeEcosystemRole === i ? 'w-8 bg-gradient-to-r from-brand-turquoise to-cyan-500' : 'w-1.5 bg-muted hover:bg-muted-foreground/30'
-                        }`}
-                      />
-                    ))}
-                  </div>
+                {/* Active role label top-end */}
+                <div className="absolute top-4 end-4 z-20 font-cairo text-[11px] font-bold text-brand-purple bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm px-2.5 py-1 rounded-lg border border-brand-purple/20">
+                  {ecosystemRoles[activeEcosystemRole].role}
                 </div>
 
-                {/* AI Badge */}
-                <div className="flex items-center gap-2 bg-gradient-to-r from-brand-turquoise/5 to-brand-purple/5 border border-brand-turquoise/15 rounded-xl px-4 py-2.5">
-                  <Brain className="h-3.5 w-3.5 text-brand-turquoise animate-pulse" />
-                  <span className="text-[11px] font-tajawal text-muted-foreground">
+                {/* Dynamic Hakim image */}
+                <div className="relative z-10 flex-1 flex items-end justify-center px-4 pt-12 pb-2 min-h-[280px]">
+                  <img
+                    key={activeEcosystemRole}
+                    src={[
+                      '/hakim-poses/congratulating-student.png',
+                      '/hakim-poses/listening.png',
+                      '/hakim-poses/inviting-to-begin.png',
+                      '/hakim-poses/open-hands-welcoming.png',
+                    ][activeEcosystemRole]}
+                    alt={t('hakim')}
+                    className="hakim-img w-full h-full max-h-[420px] object-contain object-bottom animate-fade-in drop-shadow-2xl"
+                  />
+                </div>
+
+                {/* AI Powered footer chip */}
+                <div className="relative z-10 flex items-center justify-center gap-2 bg-gradient-to-r from-brand-turquoise/10 to-brand-purple/10 border-t border-brand-turquoise/15 px-4 py-3 backdrop-blur-sm">
+                  <Brain className="h-4 w-4 text-brand-turquoise animate-pulse" aria-hidden="true" />
+                  <span className="text-[11px] font-tajawal text-muted-foreground font-medium">
                     {isRTL ? 'مدعوم بالذكاء الاصطناعي' : 'AI-Powered Platform'}
                   </span>
+                  <Sparkles className="h-3.5 w-3.5 text-brand-purple animate-pulse" style={{ animationDelay: '0.5s' }} aria-hidden="true" />
                 </div>
               </div>
             </div>
