@@ -1881,9 +1881,14 @@ async def switch_role(
 
     if current_role == UserRole.PLATFORM_ADMIN.value:
         if target_school_id:
+            _it_excluded_statuses = {"archived", "pending_hard_delete"}
+            if target_school_id.startswith("itw_"):
+                raise HTTPException(403, "لا يمكن معاينة مساحة معلم مستقل كمدير مدرسة")
             school = await gd_find_one(db.session, "schools", {"id": target_school_id})
             if not school:
                 raise HTTPException(404, "المدرسة غير موجودة")
+            if (school.get("status") or "") in _it_excluded_statuses:
+                raise HTTPException(403, "لا يمكن معاينة مساحة معلم مستقل كمدير مدرسة")
         else:
             raise HTTPException(400, "يجب تحديد المدرسة للتبديل")
     else:
