@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { BetaBadge } from '../BetaDisclaimer';
@@ -83,6 +84,9 @@ export const Sidebar = ({ children }) => {
   const [availableRoles, setAvailableRoles] = useState([]);
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [switchingRole, setSwitchingRole] = useState(false);
+  const [previewReasonRole, setPreviewReasonRole] = useState(null);
+  const [previewReason, setPreviewReason] = useState('');
+  const [previewReasonError, setPreviewReasonError] = useState('');
   const [loggingOut, setLoggingOut] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({});
   const { user, logout, isImpersonating, schoolContext, getEffectiveRole, exitSchoolContext, token, updateToken, isSwitchedRole, originalRole, api, fetchPermissions } = useAuth();
@@ -192,16 +196,42 @@ export const Sidebar = ({ children }) => {
     }
   };
 
+  // Task #498: platform-admin "preview as school principal" rows are minted
+  // by /user-roles/my-roles (is_preview=true). The legacy /user-roles/switch
+  // endpoint deliberately rejects this case (HTTP 403, see
+  // backend/routes/user_roles_routes.py:218) — platform admins must go
+  // through the hardened /role-switch/switch flow which requires a typed
+  // reason, fresh MFA, and a server-side impersonation_sessions row.
+  const isPlatformAdminPreview = (role) =>
+    role?.is_preview === true
+    && role?.role === 'school_principal'
+    && user?.role === 'platform_admin';
+
+  const _detailString = (error) => {
+    const d = error?.response?.data?.detail;
+    if (typeof d === 'string' && d.trim()) return d;
+    return null;
+  };
+
   const handleSwitchRole = async (role) => {
     if (role.is_current) return;
-    
+
+    // Platform-admin → school-principal preview: open the reason dialog
+    // and route through the hardened endpoint instead of the legacy one.
+    if (isPlatformAdminPreview(role)) {
+      setPreviewReason('');
+      setPreviewReasonError('');
+      setPreviewReasonRole(role);
+      return;
+    }
+
     setSwitchingRole(true);
     try {
       const response = await api.post('/user-roles/switch', {
         target_role: role.role,
         target_tenant_id: role.tenant_id
       });
-      
+
       if (response.data.success) {
         await updateToken(response.data.access_token);
 
@@ -213,10 +243,70 @@ export const Sidebar = ({ children }) => {
       }
     } catch (error) {
       console.error('Error switching role:', error);
-      nassaqError(t('errorSwitchingRole'));
+      const detail = _detailString(error);
+      nassaqError(detail || t('errorSwitchingRole'));
     } finally {
       setSwitchingRole(false);
     }
+  };
+
+  // Task #498: hardened impersonation flow for platform admins previewing
+  // a specific school as its principal. Posts to /role-switch/switch with
+  // the typed reason; the response shape is { token, role, school_id,
+  // is_impersonating, original_role } — note `token`, NOT `access_token`.
+  // If the user's MFA recency has expired, the backend returns HTTP 403
+  // with the canonical step-up envelope; the axios interceptor in
+  // AuthContext handles the passkey replay transparently and we never
+  // see that as an error here.
+  const handleConfirmPreviewSwitch = async () => {
+    if (!previewReasonRole) return;
+    const reason = (previewReason || '').trim();
+    if (reason.length < 4) {
+      setPreviewReasonError(t('previewReasonTooShort'));
+      return;
+    }
+    if (reason.length > 500) {
+      setPreviewReasonError(t('previewReasonTooLong'));
+      return;
+    }
+
+    setSwitchingRole(true);
+    try {
+      const response = await api.post('/role-switch/switch', {
+        target_role: 'school_principal',
+        school_id: previewReasonRole.tenant_id,
+        reason,
+      });
+
+      const newToken = response.data?.token;
+      if (!newToken) {
+        nassaqError(t('errorSwitchingRole'));
+        return;
+      }
+
+      sessionStorage.setItem('nassaq_impersonating', 'true');
+      await updateToken(newToken);
+
+      toast.success(t('roleSwitchedSuccessfully'));
+      setPreviewReasonRole(null);
+      setPreviewReason('');
+      setPreviewReasonError('');
+      setShowRoleSwitcher(false);
+      navigate('/principal');
+    } catch (error) {
+      console.error('Error switching role (hardened):', error);
+      const detail = _detailString(error);
+      nassaqError(detail || t('errorSwitchingRole'));
+    } finally {
+      setSwitchingRole(false);
+    }
+  };
+
+  const handleCancelPreviewSwitch = () => {
+    if (switchingRole) return;
+    setPreviewReasonRole(null);
+    setPreviewReason('');
+    setPreviewReasonError('');
   };
 
   const handleReturnToOriginal = async () => {
@@ -1102,6 +1192,67 @@ export const Sidebar = ({ children }) => {
               {t('returnToOriginalRole')}
             </Button>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Task #498 — Reason dialog for platform-admin → school-principal preview */}
+      <Dialog
+        open={!!previewReasonRole}
+        onOpenChange={(open) => { if (!open) handleCancelPreviewSwitch(); }}
+      >
+        <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5 text-brand-turquoise" />
+              {t('previewAsPrincipalTitle')}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {previewReasonRole?.tenant_name
+                ? t('previewAsPrincipalDescWithSchool').replace('{school}', previewReasonRole.tenant_name)
+                : t('previewAsPrincipalDesc')}
+            </p>
+            <label className="text-sm font-medium block" htmlFor="preview-reason-input">
+              {t('previewReasonLabel')}
+            </label>
+            <Input
+              id="preview-reason-input"
+              value={previewReason}
+              onChange={(e) => {
+                setPreviewReason(e.target.value);
+                if (previewReasonError) setPreviewReasonError('');
+              }}
+              placeholder={t('previewReasonPlaceholder')}
+              maxLength={500}
+              disabled={switchingRole}
+              data-testid="preview-reason-input"
+              autoFocus
+            />
+            {previewReasonError && (
+              <p className="text-xs text-red-600" role="alert">
+                {previewReasonError}
+              </p>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={handleCancelPreviewSwitch}
+              disabled={switchingRole}
+            >
+              {t('cancel')}
+            </Button>
+            <Button
+              onClick={handleConfirmPreviewSwitch}
+              disabled={switchingRole}
+              className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
+              data-testid="preview-reason-confirm"
+            >
+              {switchingRole && <RefreshCw className="h-4 w-4 me-2 animate-spin" />}
+              {t('previewAsPrincipalConfirm')}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
