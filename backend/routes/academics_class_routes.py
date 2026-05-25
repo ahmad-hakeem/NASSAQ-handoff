@@ -344,7 +344,8 @@ async def get_classes(
     if grade_level:
         query["grade_level"] = grade_level
     
-    classes = await gd_find(db.session, "classes", query, limit=1000)
+    all_classes = await gd_find(db.session, "classes", query, limit=1000)
+    classes = [c for c in all_classes if c.get("is_active") is not False]
     
     # Get teacher names
     teacher_ids = list(set([c.get("homeroom_teacher_id") for c in classes if c.get("homeroom_teacher_id")]))

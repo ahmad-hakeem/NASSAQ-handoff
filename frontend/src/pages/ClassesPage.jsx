@@ -200,6 +200,7 @@ export const ClassesPage = () => {
   };
 
   const filteredClasses = classes.filter(cls => {
+    if (cls.is_active === false) return false;
     const matchesSearch = cls.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          cls.grade_level.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesSchool = selectedSchool === 'all' || cls.school_id === selectedSchool;

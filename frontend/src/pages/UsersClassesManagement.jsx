@@ -858,7 +858,7 @@ export default function UsersClassesManagement() {
     totalStudents: students.length,
     totalTeachers: teachers.length,
     totalParents: parents.length,
-    totalClasses: classes.length,
+    totalClasses: classes.filter(c => c.is_active !== false).length,
     activeStudents: students.filter(s => s.is_active !== false).length,
     activeTeachers: teachers.filter(t => t.is_active !== false).length,
   }), [students, teachers, parents, classes]);
@@ -1060,14 +1060,14 @@ export default function UsersClassesManagement() {
   }, [parents, searchQuery, applySorting]);
 
   const filteredClasses = useMemo(() => {
-    let list = classes;
-    if (activeFilter === 'overCapacity') list = overCapClasses;
+    let list = classes.filter(c => c.is_active !== false);
+    if (activeFilter === 'overCapacity') list = list.filter(c => (c.student_count || 0) > (c.capacity || 30));
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       list = list.filter(c => c.name?.toLowerCase().includes(q));
     }
     return applySorting(list, 'class');
-  }, [classes, searchQuery, activeFilter, overCapClasses, applySorting]);
+  }, [classes, searchQuery, activeFilter, applySorting]);
 
   const handleAddSelect = (type) => {
     setShowAddPicker(false);
