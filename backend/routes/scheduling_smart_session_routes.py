@@ -813,12 +813,21 @@ async def _verify_class_access(class_id: str, current_user: dict, *, write: bool
     # relaxed here, but only for the exact class the row points at, and
     # write surfaces additionally require scope.mode == 'write'.
     if role == UserRole.INDEPENDENT_TEACHER.value:
+        from auth_scope import independent_workspace_id
         from utils.collab_access import caller_collab_mode_for_class
+        # Ownership check: if the class belongs to the caller's own workspace,
+        # grant access immediately (both read and write).
+        wsid = independent_workspace_id(current_user)
+        if wsid and str(class_school) == str(wsid):
+            return
+        # Cross-workspace: only collaborators may proceed.
         mode = await caller_collab_mode_for_class(db.session, current_user, class_id)
         if mode is not None:
             if write and mode != "write":
                 raise HTTPException(status_code=403, detail="هذا التعاون مخصّص للقراءة فقط")
             return
+        # Per §8 inv. 3: cross-workspace IDs must 404, never 403/200.
+        raise HTTPException(status_code=404, detail="Class not found")
     if role in ("teacher",):
         tid = current_user.get("teacher_id") or current_user.get("id")
         if cls.get("homeroom_teacher_id") and tid and cls.get("homeroom_teacher_id") == tid:
