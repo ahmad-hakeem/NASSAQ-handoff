@@ -139,11 +139,8 @@ export const TeacherExperiencePage = () => {
               </span>
             </div>
 
-            <h1 className="font-cairo font-black text-white text-4xl sm:text-5xl lg:text-6xl leading-tight">
-              {ar(
-                <><span className="text-brand-turquoise">أقل</span> إدارة،<br /><span className="text-brand-turquoise">أكثر</span> تدريس.</>,
-                <><span className="text-brand-turquoise">Less</span> admin,<br /><span className="text-brand-turquoise">more</span> teaching.</>
-              )}
+            <h1 className="font-cairo font-bold text-white text-5xl md:text-6xl lg:text-7xl leading-none tracking-tight">
+              نَسَّق
             </h1>
 
             <p className="font-tajawal text-lg text-white/75 leading-relaxed max-w-xl">
