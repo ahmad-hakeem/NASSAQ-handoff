@@ -306,9 +306,15 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
             # Allowing it here (even with MFA) bypasses the reason requirement and
             # the nested-impersonation guard of the hardened flow.
             if user.get("role") == "platform_admin" and target_role in SCHOOL_SCOPED_ROLES:
+                logger.info(
+                    "user_roles.switch rejected platform_admin->%s (tenant=%s): "
+                    "must use hardened /role-switch/switch flow",
+                    target_role,
+                    target_tenant_id,
+                )
                 raise HTTPException(
                     status_code=403,
-                    detail="استخدم نقطة النهاية /role-switch/switch للتبديل إلى دور مدرسي"
+                    detail="أنت الآن في وضع المعاينة لمدرسة أخرى. الرجاء إنهاء المعاينة الحالية أولاً ثم اختيار المدرسة التي تريد معاينتها."
                 )
 
             if not is_valid_role:
