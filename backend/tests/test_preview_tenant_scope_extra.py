@@ -26,16 +26,17 @@ Endpoints covered (all under /api):
     GET /school/constraints
     GET /academic/subjects?include_global=false
 
-`/grade-levels` and `/academic/stages` read the header through the
-same `resolve_school_id` helper, but each has a pre-existing
-ORM-vs-Postgres schema drift that prevents the seed/round-trip
-pattern used here: `grade_levels` is missing `name`/`created_at` on
-the ORM model (response Pydantic validation fails), and
-`educational_stages` is missing the `tenant_id` column entirely
-(scope filter is silently dropped). Both are outside the scope of
-Task #512 — the security contract is still enforced by the shared
-`resolve_school_id` helper, which IS covered here through every
-other endpoint that calls it.
+`/grade-levels` reads the header through the same `resolve_school_id`
+helper, but has a pre-existing ORM-vs-Postgres schema drift that
+prevents the seed/round-trip pattern used here: `grade_levels` is
+missing `name`/`created_at` on the ORM model (response Pydantic
+validation fails). That is outside the scope of Task #512 — the
+security contract is still enforced by the shared `resolve_school_id`
+helper, which IS covered here through every other endpoint that calls
+it.
+
+Task #521 added `tenant_id` and `is_global` columns to
+`educational_stages`, so `/academic/stages` is now exercised here too.
 """
 from __future__ import annotations
 
@@ -255,6 +256,10 @@ ENDPOINTS = [
     # `include_global=false` removes the global-row OR branch so the
     # "school A row absent" assertion isn't polluted by ambient globals.
     ("/academic/subjects?include_global=false", _seed_subject_tenant_id),
+    # Task #521: educational_stages now has tenant_id + is_global columns.
+    # `include_global=false` keeps the seeded global defaults out of the
+    # response so the "school A row absent" assertion is clean.
+    ("/academic/stages?include_global=false", _seed_stage),
 ]
 
 

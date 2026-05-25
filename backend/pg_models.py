@@ -1176,6 +1176,8 @@ class EducationalStage(Base):
     __tablename__ = "educational_stages"
 
     id = Column(String, primary_key=True, default=_uuid)
+    tenant_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True, index=True)
+    is_global = Column(Boolean, default=False, index=True)
     name_ar = Column(String, nullable=True)
     name_en = Column(String, nullable=True)
     code = Column(String, nullable=True)
