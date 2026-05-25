@@ -197,7 +197,7 @@ async def create_behaviour_record(
         raise HTTPException(status_code=404, detail="نوع السلوك غير موجود")
     
     # Get student
-    student = await gd_find_one(db.session, "students", {"id": data.student_id})
+    student = await gd_find_one(db.session, "students", {"id": data.student_id, "is_active": True})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
     
@@ -594,7 +594,7 @@ async def create_disciplinary_action(
             })
     
     # Get student for audit
-    student = await gd_find_one(db.session, "students", {"id": data.student_id})
+    student = await gd_find_one(db.session, "students", {"id": data.student_id, "is_active": True})
     
     # Audit log
     await gd_insert(db.session, "audit_logs", {
@@ -641,7 +641,7 @@ async def get_student_behaviour_profile(
     current_user: dict = Depends(get_current_user)
 ):
     """Get comprehensive behaviour profile for a student"""
-    student = await gd_find_one(db.session, "students", {"id": student_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
     

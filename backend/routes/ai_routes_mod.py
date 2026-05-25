@@ -2282,7 +2282,7 @@ async def hakim_student_risk(
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
-    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
     return await hakim_engine.analyze_student_risk(student_id, school_id, days)
@@ -2310,7 +2310,7 @@ async def hakim_student_behaviour(
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
-    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
     return await hakim_engine.analyze_student_behaviour_patterns(student_id, school_id, days)
@@ -2475,7 +2475,7 @@ async def hakim_student_improvement_plan(
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
-    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
     return await hakim_engine.generate_improvement_plan(student_id, school_id, days)
@@ -2489,7 +2489,7 @@ async def hakim_student_ai_plans(
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
-    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
 
@@ -2645,7 +2645,7 @@ async def export_student_plans_docx(
         raise HTTPException(400, "لا توجد خطط للتصدير")
 
     school_id = current_user.get("tenant_id")
-    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود")
 
@@ -2938,7 +2938,7 @@ async def export_student_plans_pdf(
         raise HTTPException(400, "لا توجد خطط للتصدير")
 
     school_id = current_user.get("tenant_id")
-    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود")
 
@@ -3214,7 +3214,7 @@ async def get_student_longitudinal(
     current_user: dict = Depends(get_current_user),
 ):
     school_id = current_user.get("tenant_id")
-    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود")
 
@@ -3423,7 +3423,7 @@ async def export_student_full_profile_docx(
     sections = body.get("sections", [])
 
     school_id = current_user.get("tenant_id")
-    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود")
 
@@ -3708,7 +3708,7 @@ async def export_student_full_profile_pdf(
     sections = body.get("sections", [])
 
     school_id = current_user.get("tenant_id")
-    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود")
 

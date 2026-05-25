@@ -74,7 +74,7 @@ async def link_guardian_to_student(
     if not school_id:
         raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
 
-    student = await gd_find_one(db.session, "students", {"id": data.student_id, "tenant_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": data.student_id, "tenant_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -277,7 +277,7 @@ async def get_parent_children(
 
     children = []
     for link in links:
-        student = await gd_find_one(db.session, "students", {"id": link["student_id"], "tenant_id": school_id})
+        student = await gd_find_one(db.session, "students", {"id": link["student_id"], "tenant_id": school_id, "is_active": True})
         if student:
             children.append({
                 **student,
@@ -358,7 +358,7 @@ async def get_relationship_graph(
     caller_id = current_user.get("id", "")
     school_id = current_user.get("tenant_id")
 
-    student = await gd_find_one(db.session, "students", {"id": entity_id, "school_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": entity_id, "school_id": school_id, "is_active": True})
 
     if student:
         from utils.tenant_scope import can_view_student, require_can_view_student_sync_check
@@ -524,7 +524,7 @@ async def get_siblings(
 
     parent_refs = [l["parent_ref"] for l in links]
     if not parent_refs:
-        parent = await gd_find_one(db.session, "students", {"id": student_id})
+        parent = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
         if parent:
             if parent.get("parent_id"):
                 parent_refs.append(parent["parent_id"])
@@ -550,7 +550,7 @@ async def get_siblings(
     from utils.tenant_scope import can_view_student
     siblings = []
     for sid in sibling_ids:
-        s = await gd_find_one(db.session, "students", {"id": sid, "school_id": school_id})
+        s = await gd_find_one(db.session, "students", {"id": sid, "school_id": school_id, "is_active": True})
         if s:
             sib_allowed = await can_view_student(db.session, current_user, sid)
             if sib_allowed:

@@ -596,7 +596,7 @@ async def generate_report(
     if report_type.startswith("student_"):
         if not student_id:
             raise HTTPException(400, "student_id مطلوب لتقارير الطالب")
-        stu = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
+        stu = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
         if not stu:
             raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
         # Task #423 — same-tenant presence is not sufficient authorization.
@@ -709,7 +709,7 @@ async def export_report_file(
     if report_type.startswith("student_"):
         if not student_id:
             raise HTTPException(400, "student_id مطلوب لتقارير الطالب")
-        stu = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
+        stu = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
         if not stu:
             raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
         # Task #423 — same-tenant presence is not sufficient authorization.
