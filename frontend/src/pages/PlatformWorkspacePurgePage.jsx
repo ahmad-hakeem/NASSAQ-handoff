@@ -297,10 +297,8 @@ export const PlatformWorkspacePurgePage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background" data-testid="platform-workspace-purge-page">
-      <Sidebar />
-      <div className="lg:mr-72 transition-all duration-300">
-        <main className="p-4 sm:p-6 lg:p-8">
+    <Sidebar>
+      <div className="p-4 sm:p-6 lg:p-8" data-testid="platform-workspace-purge-page">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <div className="flex items-start gap-3">
               <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-200 flex items-center justify-center flex-shrink-0">
@@ -796,9 +794,8 @@ export const PlatformWorkspacePurgePage = () => {
               </Card>
             </TabsContent>
           </Tabs>
-        </main>
       </div>
-    </div>
+    </Sidebar>
   );
 };
 
