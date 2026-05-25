@@ -1164,12 +1164,16 @@ class GradeLevel(Base):
 
     id = Column(String, primary_key=True, default=_uuid)
     school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True, index=True)
+    name = Column(String, nullable=True)
     name_ar = Column(String, nullable=True)
     name_en = Column(String, nullable=True)
     code = Column(String, nullable=True)
     stage = Column(String, nullable=True)
     order = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow)
+    created_by = Column(String, nullable=True)
 
 
 class EducationalStage(Base):
