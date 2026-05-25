@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Globe, Sun, Moon } from 'lucide-react';
+import { Globe, Sun, Moon, Menu, X, LogIn } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 
 const TABS = [
@@ -19,6 +19,38 @@ export const PublicShell = ({ children }) => {
   const activeId = location.pathname === '/for-teachers' ? 'teacher' : 'home';
   const tabRefs = useRef({});
   const isFirstRender = useRef(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuRef = useRef(null);
+  const mobileTriggerRef = useRef(null);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return undefined;
+    const handleKey = (e) => {
+      if (e.key === 'Escape') {
+        setMobileMenuOpen(false);
+        mobileTriggerRef.current?.focus();
+      }
+    };
+    const handleClick = (e) => {
+      if (
+        mobileMenuRef.current &&
+        !mobileMenuRef.current.contains(e.target) &&
+        !mobileTriggerRef.current?.contains(e.target)
+      ) {
+        setMobileMenuOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    document.addEventListener('mousedown', handleClick);
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      document.removeEventListener('mousedown', handleClick);
+    };
+  }, [mobileMenuOpen]);
 
   useEffect(() => {
     if (isFirstRender.current) {
@@ -145,7 +177,7 @@ export const PublicShell = ({ children }) => {
             </button>
             <Link
               to="/login"
-              className="inline-flex font-tajawal text-xs sm:text-sm font-medium px-2.5 sm:px-4 py-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+              className="hidden sm:inline-flex font-tajawal text-xs sm:text-sm font-medium px-2.5 sm:px-4 py-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
               data-testid="login-link"
             >
               {isRTL ? 'دخول' : 'Log in'}
@@ -157,6 +189,79 @@ export const PublicShell = ({ children }) => {
             >
               {isRTL ? 'ابدأ مجاناً' : 'Start free'}
             </Link>
+
+            {/* Mobile-only "more" menu trigger */}
+            <div className="relative sm:hidden">
+              <button
+                ref={mobileTriggerRef}
+                type="button"
+                onClick={() => setMobileMenuOpen((open) => !open)}
+                className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-2"
+                aria-label={isRTL ? 'القائمة' : 'Menu'}
+                aria-expanded={mobileMenuOpen}
+                aria-controls="public-shell-mobile-menu"
+                aria-haspopup="true"
+                data-testid="public-shell-mobile-menu-trigger"
+              >
+                {mobileMenuOpen
+                  ? <X className="h-5 w-5" strokeWidth={1.5} aria-hidden="true" />
+                  : <Menu className="h-5 w-5" strokeWidth={1.5} aria-hidden="true" />}
+              </button>
+
+              <AnimatePresence>
+                {mobileMenuOpen && (
+                  <motion.div
+                    ref={mobileMenuRef}
+                    id="public-shell-mobile-menu"
+                    role="menu"
+                    initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                    transition={{ duration: 0.16, ease: 'easeOut' }}
+                    className={`absolute top-full mt-2 ${isRTL ? 'start-0' : 'end-0'} w-56 rounded-xl border border-slate-200 bg-white shadow-lg ring-1 ring-black/5 p-1.5 z-50`}
+                    data-testid="public-shell-mobile-menu"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => { toggleLanguage(); setMobileMenuOpen(false); }}
+                      className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-start font-tajawal text-sm text-slate-700 hover:bg-slate-100 transition-colors"
+                      data-testid="mobile-language-toggle"
+                    >
+                      <Globe className="h-4 w-4 text-slate-500" strokeWidth={1.5} aria-hidden="true" />
+                      <span>{isRTL ? 'English' : 'العربية'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => { toggleTheme(); setMobileMenuOpen(false); }}
+                      className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-start font-tajawal text-sm text-slate-700 hover:bg-slate-100 transition-colors"
+                      data-testid="mobile-theme-toggle"
+                    >
+                      {isDark
+                        ? <Sun className="h-4 w-4 text-slate-500" strokeWidth={1.5} aria-hidden="true" />
+                        : <Moon className="h-4 w-4 text-slate-500" strokeWidth={1.5} aria-hidden="true" />}
+                      <span>
+                        {isDark
+                          ? (isRTL ? 'الوضع الفاتح' : 'Light mode')
+                          : (isRTL ? 'الوضع الداكن' : 'Dark mode')}
+                      </span>
+                    </button>
+                    <div className="my-1 h-px bg-slate-100" aria-hidden="true" />
+                    <Link
+                      to="/login"
+                      role="menuitem"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg font-tajawal text-sm text-slate-700 hover:bg-slate-100 transition-colors"
+                      data-testid="mobile-login-link"
+                    >
+                      <LogIn className="h-4 w-4 text-slate-500" strokeWidth={1.5} aria-hidden="true" />
+                      <span>{isRTL ? 'دخول' : 'Log in'}</span>
+                    </Link>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </nav>
       </header>
