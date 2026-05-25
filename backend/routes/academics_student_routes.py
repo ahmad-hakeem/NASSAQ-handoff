@@ -126,8 +126,8 @@ async def create_student(
 
 @router.get("/students", response_model=List[StudentResponse])
 async def get_students(
-    school_id: Optional[str] = None,
     class_id: Optional[str] = None,
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(require_roles([
         UserRole.PLATFORM_ADMIN,
         UserRole.SCHOOL_PRINCIPAL,
@@ -144,11 +144,22 @@ async def get_students(
     (covers school roles AND independent-teacher synthetic workspaces);
     a token without a tenant raises 403 instead of silently degrading
     into an unscoped or empty query.
+
+    Task #508: Platform admins resolve preview scope via the
+    `X-School-Context` header through `resolve_school_id`, which only
+    honors the override when the bearer token was minted by
+    `/role-switch/switch` (is_impersonating + matching tenant_id).
+    Without an override a plain platform-admin token still returns the
+    cross-tenant directory (legacy admin-console behavior); the legacy
+    `?school_id=` query param is no longer honored to close the
+    impersonation-bypass disclosure path.
     """
+    from utils.tenant_scope import resolve_school_id
     query = {"is_active": {"$ne": False}}
     if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
-        if school_id:
-            query["school_id"] = school_id
+        scoped = resolve_school_id(current_user, x_school_context)
+        if scoped:
+            query["school_id"] = scoped
     else:
         query["school_id"] = require_request_school_id(current_user)
 
@@ -759,6 +770,7 @@ async def check_parent_exists(
 
 @router.get("/parents")
 async def get_parents(
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(require_roles([
         UserRole.PLATFORM_ADMIN,
         UserRole.SCHOOL_PRINCIPAL,
@@ -773,15 +785,20 @@ async def get_parents(
     and must not be accessible to teachers, students, or other parents.
 
     Task #335: fail-closed school-id resolution for non-platform callers
-    (mirrors `/students`). Platform-admin callers are scoped to
-    `current_user.tenant_id` when present and otherwise see all tenants
-    (legacy admin-console behavior); every other role resolves a
-    concrete tenant via `require_request_school_id` and a token without
-    a tenant raises 403 instead of silently returning every tenant's
-    parents (or nothing).
+    (mirrors `/students`).
+
+    Task #508: Platform admins resolve preview scope via the
+    `X-School-Context` header through `resolve_school_id`, which only
+    honors the override when the bearer token was minted by
+    `/role-switch/switch`. Without an override a plain platform-admin
+    token still returns the cross-tenant directory (legacy admin-console
+    behavior). The previous `current_user.tenant_id` fallback was always
+    `None` for plain platform-admin tokens, silently returning every
+    tenant's parents in preview mode.
     """
+    from utils.tenant_scope import resolve_school_id
     if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
-        school_id = current_user.get("tenant_id")
+        school_id = resolve_school_id(current_user, x_school_context)
     else:
         school_id = require_request_school_id(current_user)
     query: Dict[str, Any] = {"status": {"$ne": "closed"}}

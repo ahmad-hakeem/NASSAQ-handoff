@@ -743,15 +743,28 @@ async def create_teacher(
 
 @router.get("/teachers", response_model=List[TeacherResponse])
 async def get_teachers(
-    school_id: Optional[str] = None,
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user)
 ):
-    """Get all teachers or filter by school"""
+    """Get all teachers or filter by school.
+
+    Task #508: Platform admins resolve preview scope via the
+    `X-School-Context` header through `resolve_school_id`, which only
+    honors the override when the bearer token was minted by
+    `/role-switch/switch`. Non-platform callers are pinned to their
+    own tenant via `resolve_school_id` (mismatched override → 403).
+    The previous `?school_id=` query param + `tenant_id` fallback
+    silently degraded plain platform-admin tokens into an unscoped
+    cross-tenant directory and is no longer honored.
+    """
     from utils.tenant_scope import resolve_school_id
-    effective_school_id = resolve_school_id(current_user, school_id) or current_user.get("tenant_id")
     query = {"status": {"$ne": "closed"}}
-    if effective_school_id:
-        query["school_id"] = effective_school_id
+    if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
+        scoped = resolve_school_id(current_user, x_school_context)
+        if scoped:
+            query["school_id"] = scoped
+    else:
+        query["school_id"] = resolve_school_id(current_user, x_school_context)
     
     teachers = await gd_find(db.session, "teachers", query, limit=1000)
     

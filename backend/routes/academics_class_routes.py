@@ -314,17 +314,31 @@ async def create_class(
 
 @router.get("/classes", response_model=List[ClassResponse])
 async def get_classes(
-    school_id: Optional[str] = None,
     grade_level: Optional[str] = None,
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user)
 ):
-    """Get all classes or filter by school/grade"""
+    """Get all classes or filter by school/grade.
+
+    Task #508: Platform admins resolve preview scope via the
+    `X-School-Context` header through `resolve_school_id`, which only
+    honors the override when the bearer token was minted by
+    `/role-switch/switch`. Without an override a plain platform-admin
+    token still returns the cross-tenant directory (legacy admin-console
+    behavior). The previous `?school_id=` query param branch silently
+    let any caller pivot to another tenant's classes and is no longer
+    honored.
+    """
+    from utils.tenant_scope import resolve_school_id
     query = {}
-    if school_id:
-        query["school_id"] = school_id
-    elif current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
+    if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
+        scoped = resolve_school_id(current_user, x_school_context)
+        if scoped:
+            query["school_id"] = scoped
+    else:
         from auth_scope import independent_workspace_id as _itw_id
-        query["school_id"] = current_user.get("tenant_id") or _itw_id(current_user)
+        scoped = resolve_school_id(current_user, x_school_context)
+        query["school_id"] = scoped or current_user.get("tenant_id") or _itw_id(current_user)
     
     if grade_level:
         query["grade_level"] = grade_level
