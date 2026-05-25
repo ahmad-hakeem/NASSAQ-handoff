@@ -162,6 +162,86 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
             logger.error(f"Error getting user roles: {e}")
             raise HTTPException(status_code=500, detail="حدث خطأ داخلي في الخادم")
 
+    @router.get("/available")
+    async def get_available_roles(
+        current_user: dict = Depends(get_current_user)
+    ):
+        try:
+            user_id = current_user.get("id")
+            user = await gd_find_one(db.session, "users", {"id": user_id})
+            if not user:
+                raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+
+            current_role = current_user.get("role")
+            current_tenant = current_user.get("tenant_id")
+
+            primary_tenant_id = user.get("tenant_id")
+            primary_school_name = user.get("school_name") or user.get("tenant_name") or await _get_school_name(primary_tenant_id)
+
+            roles = [{
+                "role": user.get("role"),
+                "role_name_ar": get_role_name_ar(user.get("role")),
+                "role_name_en": get_role_name_en(user.get("role")),
+                "descriptive_ar": _build_descriptive_label_ar(user.get("role"), primary_school_name),
+                "descriptive_en": _build_descriptive_label_en(user.get("role"), primary_school_name),
+                "tenant_id": primary_tenant_id,
+                "tenant_name": primary_school_name,
+                "is_current": user.get("role") == current_role and (primary_tenant_id == current_tenant or not current_tenant),
+                "is_primary": True
+            }]
+
+            additional_roles = user.get("additional_roles", [])
+            for role_info in additional_roles:
+                if not _is_role_active(role_info):
+                    continue
+                r_tenant = role_info.get("tenant_id")
+                r_name = role_info.get("tenant_name") or await _get_school_name(r_tenant)
+                roles.append({
+                    "role": role_info.get("role"),
+                    "role_name_ar": get_role_name_ar(role_info.get("role")),
+                    "role_name_en": get_role_name_en(role_info.get("role")),
+                    "descriptive_ar": _build_descriptive_label_ar(role_info.get("role"), r_name),
+                    "descriptive_en": _build_descriptive_label_en(role_info.get("role"), r_name),
+                    "tenant_id": r_tenant,
+                    "tenant_name": r_name,
+                    "is_current": role_info.get("role") == current_role and r_tenant == current_tenant,
+                    "is_primary": False
+                })
+
+            if user.get("role") == "platform_admin":
+                schools = await gd_find(db.session, "schools", {}, limit=100)
+                _it_excluded_statuses = {"archived", "pending_hard_delete"}
+                for school in schools:
+                    s_id = school.get("id") or ""
+                    s_status = school.get("status") or ""
+                    if s_id.startswith("itw_") or s_status in _it_excluded_statuses:
+                        continue
+                    s_name = school.get("name") or school.get("name_en")
+                    active_principal_count = await gd_count(
+                        db.session, "users",
+                        {"role": "school_principal", "tenant_id": s_id, "is_active": True},
+                    )
+                    roles.append({
+                        "role": "school_principal",
+                        "role_name_ar": "معاينة كمدير مدرسة",
+                        "role_name_en": "Preview as School Principal",
+                        "descriptive_ar": f"معاينة كمدير — {s_name}",
+                        "descriptive_en": f"Preview as Principal — {s_name}",
+                        "tenant_id": school.get("id"),
+                        "tenant_name": s_name,
+                        "is_current": False,
+                        "is_primary": False,
+                        "is_preview": True,
+                        "no_principal": active_principal_count == 0,
+                    })
+
+            return {"roles": roles}
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error getting available roles: {e}")
+            raise HTTPException(status_code=500, detail="حدث خطأ داخلي في الخادم")
+
     # Build the MFA dependency once so it can be referenced in the handler
     # signature. Falls back to plain get_current_user if require_recent_mfa
     # was not supplied (backwards-compat shim for tests / old callers).
