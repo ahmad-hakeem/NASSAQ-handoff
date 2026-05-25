@@ -270,18 +270,29 @@ class TestLandingPageText:
         assert response.status_code == 200, f"Landing page should load, got {response.status_code}"
         print("✓ Landing page loads successfully")
     
-    def test_public_stats_api(self):
-        """Test public stats API for landing page"""
-        response = requests.get(f"{BASE_URL}/api/public/stats")
-        assert response.status_code == 200, f"Public stats API should return 200, got {response.status_code}"
-        
+    def test_public_schools_count_api(self):
+        """Curated public schools-count endpoint backs the landing page social proof."""
+        response = requests.get(f"{BASE_URL}/api/public/schools-count")
+        assert response.status_code == 200, (
+            f"Public schools-count should return 200, got {response.status_code}: {response.text}"
+        )
+        data = response.json()
+        assert "count" in data, "Response should contain 'count'"
+        assert isinstance(data["count"], int), f"'count' should be int, got {type(data['count']).__name__}"
+        print(f"✓ Public schools-count API working - Count: {data.get('count')}")
+
+    def test_public_growth_indicators_api(self):
+        """Curated public growth-indicators endpoint backs the landing page trust section."""
+        response = requests.get(f"{BASE_URL}/api/public/growth-indicators")
+        assert response.status_code == 200, (
+            f"Public growth-indicators should return 200, got {response.status_code}: {response.text}"
+        )
         data = response.json()
         assert "schools" in data, "Response should contain 'schools'"
-        assert "students" in data, "Response should contain 'students'"
         assert "teachers" in data, "Response should contain 'teachers'"
-        assert "parents" in data, "Response should contain 'parents'"
-        
-        print(f"✓ Public stats API working - Schools: {data.get('schools')}, Students: {data.get('students')}")
+        assert isinstance(data["schools"], str), "'schools' should be a bucketed display string"
+        assert isinstance(data["teachers"], str), "'teachers' should be a bucketed display string"
+        print(f"✓ Public growth-indicators API working - Schools: {data.get('schools')}, Teachers: {data.get('teachers')}")
 
 
 if __name__ == "__main__":

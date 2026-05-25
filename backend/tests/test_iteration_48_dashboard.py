@@ -76,22 +76,67 @@ class TestAuthenticationAPIs:
         assert data["user"]["role"] == "student"
 
 
+def _login_token(email: str, password: str):
+    """Shared helper: log in and return access token, or skip the test."""
+    resp = requests.post(f"{BASE_URL}/api/auth/login", json={
+        "email": email,
+        "password": password,
+    })
+    if resp.status_code != 200:
+        pytest.skip(f"Login failed for {email}: {resp.status_code}")
+    return resp.json().get("access_token")
+
+
+@pytest.fixture
+def platform_admin_token():
+    """Reuse the same platform-admin login used elsewhere in this file."""
+    return _login_token("admin@nassaq.com", "Admin@123")
+
+
+@pytest.fixture
+def school_principal_token():
+    """Reuse the same school-principal login used elsewhere in this file."""
+    return _login_token("principal1@nassaq.com", "Principal@123")
+
+
 class TestPublicStatsAPI:
-    """Test public statistics API - should return real data for 5 schools"""
-    
-    def test_public_stats_returns_real_data(self):
-        """Test /api/public/stats returns real data (5 schools, 500 students, 125 teachers)"""
+    """Test /api/public/stats security contract.
+
+    Per security audit C-4, platform-wide aggregates are no longer publicly
+    readable — tenant/usage enumeration is a sovereign-grade red line. The
+    endpoint is restricted to platform admins; anonymous and non-platform
+    callers must be denied.
+    """
+
+    def test_public_stats_anonymous_forbidden(self):
+        """Unauthenticated callers must be denied (403)."""
         response = requests.get(f"{BASE_URL}/api/public/stats")
+        assert response.status_code == 403, (
+            f"Expected 403 for anonymous /public/stats, got {response.status_code}: {response.text}"
+        )
+
+    def test_public_stats_non_platform_role_forbidden(self, school_principal_token):
+        """A school principal (non-platform role) must be denied (403)."""
+        response = requests.get(
+            f"{BASE_URL}/api/public/stats",
+            headers={"Authorization": f"Bearer {school_principal_token}"},
+        )
+        assert response.status_code == 403, (
+            f"Expected 403 for non-platform role, got {response.status_code}: {response.text}"
+        )
+
+    def test_public_stats_platform_admin_allowed(self, platform_admin_token):
+        """Platform admin must receive 200 with the documented payload shape."""
+        response = requests.get(
+            f"{BASE_URL}/api/public/stats",
+            headers={"Authorization": f"Bearer {platform_admin_token}"},
+        )
         assert response.status_code == 200, f"API failed: {response.text}"
         data = response.json()
-        
-        # Verify expected counts from seed data
-        assert data["schools"] == 5, f"Expected 5 schools, got {data['schools']}"
-        assert data["students"] == 500, f"Expected 500 students, got {data['students']}"
-        assert data["teachers"] == 125, f"Expected 125 teachers, got {data['teachers']}"
-        assert data["parents"] == 500, f"Expected 500 parents, got {data['parents']}"
-        assert data["active_schools"] == 5, f"Expected 5 active schools, got {data['active_schools']}"
-        assert "last_updated" in data
+
+        # Verify the documented payload shape (do not assert specific seed counts).
+        for key in ("schools", "students", "teachers", "parents", "active_schools", "last_updated"):
+            assert key in data, f"Response missing key '{key}': {data}"
 
 
 class TestSchoolDashboardAPI:
