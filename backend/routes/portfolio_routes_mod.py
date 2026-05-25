@@ -1428,10 +1428,21 @@ class IntroSave(BaseModel):
 async def save_intro(payload: IntroSave, current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "teacher":
         raise HTTPException(status_code=403, detail="غير مصرح")
-    await _lock_teacher_meta(current_user["id"])
-    meta = await _save_meta(current_user["id"], current_user.get("tenant_id"),
-                            {"intro": (payload.text or "").strip()})
-    return {"success": True, "intro": meta.get("intro", "")}
+    teacher_id = current_user["id"]
+    intro_text = (payload.text or "").strip()
+    try:
+        await _lock_teacher_meta(teacher_id)
+        meta = await _save_meta(teacher_id, current_user.get("tenant_id"),
+                                {"intro": intro_text})
+    except Exception as exc:
+        logger.error("save_intro failed for teacher=%s: %s", teacher_id, exc)
+        raise HTTPException(status_code=500, detail="فشل حفظ المقدمة، يرجى المحاولة مرة أخرى")
+    saved = meta.get("intro", "")
+    if saved != intro_text:
+        logger.error("save_intro keying mismatch: sent=%r stored=%r teacher=%s",
+                     intro_text[:40], saved[:40], teacher_id)
+        raise HTTPException(status_code=500, detail="فشل حفظ المقدمة، يرجى المحاولة مرة أخرى")
+    return {"success": True, "intro": saved}
 
 
 # ---- Vision / Mission / Values ----

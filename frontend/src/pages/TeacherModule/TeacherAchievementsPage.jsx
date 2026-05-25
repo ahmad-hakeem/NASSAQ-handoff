@@ -230,7 +230,7 @@ export default function TeacherAchievementsPage() {
   const { t } = useTranslation();
   const { api, isRTL, user } = useAuth();
   const teacherId = user?.id;
-  const { showAlert } = useNassaqAlert();
+  const { showAlert, nassaqError } = useNassaqAlert();
   const [loading, setLoading] = useState(true);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [portfolio, setPortfolio] = useState(null);
@@ -539,10 +539,11 @@ export default function TeacherAchievementsPage() {
   const handleSaveIntro = async () => {
     setIntroBusy(true);
     try {
-      await api.put('/teacher/portfolio/intro', { text: introDraft });
+      const res = await api.put('/teacher/portfolio/intro', { text: introDraft });
+      if (!res.data?.success) throw new Error('save-failed');
       toast.success('تم حفظ المقدمة');
       fetchPortfolio();
-    } catch (e) { toast.error('فشل الحفظ'); }
+    } catch (e) { nassaqError('فشل حفظ المقدمة. يرجى المحاولة مرة أخرى.'); }
     finally { setIntroBusy(false); }
   };
 
