@@ -153,6 +153,9 @@ function FloatingIcon({ icon: Icon, className, delay = '0s' }) {
   );
 }
 
+// Set to true to re-enable the pricing/packages section and its navbar link.
+const SHOW_PRICING = false;
+
 export const LandingPage = () => {
   const { isRTL, toggleLanguage, toggleTheme, isDark } = useTheme();
   const { t } = useTranslation();
@@ -173,7 +176,7 @@ export const LandingPage = () => {
     { id: 'ecosystem',    ar: 'الأدوار',  en: 'Roles' },
     { id: 'proof',        ar: 'النتائج', en: 'Results' },
     { id: 'faq',          ar: 'الأسئلة الشائعة', en: 'FAQ' },
-    { id: 'plans',        ar: 'الباقات', en: 'Plans' },
+    ...(SHOW_PRICING ? [{ id: 'plans', ar: 'الباقات', en: 'Plans' }] : []),
   ]), []);
 
   const [activeSection, setActiveSection] = useState('');
@@ -1763,8 +1766,8 @@ export const LandingPage = () => {
         </div>
       </section>
 
-      {/* ========== PRICING TIERS — merged from client demo ========== */}
-      <section
+      {/* ========== PRICING TIERS — hidden via SHOW_PRICING flag ========== */}
+      {SHOW_PRICING && <section
         className="relative py-20 lg:py-28 scroll-mt-24 overflow-hidden"
         data-testid="pricing-section"
         id="plans"
@@ -1953,7 +1956,7 @@ export const LandingPage = () => {
               : 'Full Arabic support · no setup fees · cancel anytime'}
           </p>
         </div>
-      </section>
+      </section>}
 
       {/* ========== CALL TO ACTION ========== */}
       <section
