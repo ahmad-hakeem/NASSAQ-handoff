@@ -1,27 +1,64 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Globe, Sun, Moon, Menu, X, LogIn } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
+import { LandingPage } from '../../pages/LandingPage';
+import { TeacherExperiencePage } from '../../pages/TeacherExperiencePage';
 
 const TABS = [
   { id: 'home', path: '/', ar: 'الرئيسية', en: 'Home' },
   { id: 'teacher', path: '/for-teachers', ar: 'معلم نسق', en: 'NASSAQ Teacher' },
 ];
 
-export const PublicShell = ({ children }) => {
-  // `children` is supported for ad-hoc wrapping; when used as a layout
-  // route (recommended), the nested route content arrives via <Outlet />.
+const TAB_COMPONENTS = {
+  home: LandingPage,
+  teacher: TeacherExperiencePage,
+};
+
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+export const PublicShell = () => {
   const { isRTL, toggleLanguage, toggleTheme, isDark } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
 
   const activeId = location.pathname === '/for-teachers' ? 'teacher' : 'home';
   const tabRefs = useRef({});
-  const isFirstRender = useRef(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef(null);
   const mobileTriggerRef = useRef(null);
+
+  // Track which tabs have been visited so we lazy-mount the second one only
+  // after the user first navigates to it (avoids paying for both pages on
+  // the very first paint).
+  const [visited, setVisited] = useState(() => ({
+    home: activeId === 'home',
+    teacher: activeId === 'teacher',
+  }));
+  useEffect(() => {
+    setVisited((prev) => (prev[activeId] ? prev : { ...prev, [activeId]: true }));
+  }, [activeId]);
+
+  // Save per-tab window scroll position so switching back restores where the
+  // user was instead of jumping to top. The previous behaviour (smooth
+  // scroll-to-top on every pathname change) is preserved when entering a
+  // tab for the first time, because the saved value defaults to 0.
+  const scrollPositions = useRef({ home: 0, teacher: 0 });
+  const prevActiveRef = useRef(activeId);
+  useLayoutEffect(() => {
+    const prev = prevActiveRef.current;
+    if (prev === activeId) return;
+    if (typeof window !== 'undefined') {
+      scrollPositions.current[prev] = window.scrollY;
+      const target = scrollPositions.current[activeId] ?? 0;
+      window.scrollTo({ top: target, behavior: 'auto' });
+    }
+    prevActiveRef.current = activeId;
+  }, [activeId]);
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -52,16 +89,6 @@ export const PublicShell = ({ children }) => {
     };
   }, [mobileMenuOpen]);
 
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  }, [location.pathname]);
-
   const goToTab = (path) => {
     if (location.pathname !== path) navigate(path);
   };
@@ -79,6 +106,8 @@ export const PublicShell = ({ children }) => {
   };
 
   const registerHref = activeId === 'teacher' ? '/teacher-register' : '/register';
+
+  const crossfadeDuration = prefersReducedMotion() ? 0 : 0.2;
 
   return (
     <div
@@ -266,21 +295,41 @@ export const PublicShell = ({ children }) => {
         </nav>
       </header>
 
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.main
-          key={location.pathname}
-          id="public-shell-panel"
-          role="tabpanel"
-          aria-labelledby={`public-tab-${activeId}`}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.28, ease: 'easeOut' }}
-          className="flex-1"
-        >
-          {children ?? <Outlet />}
-        </motion.main>
-      </AnimatePresence>
+      {/* Persistent tab panels.
+          Both pages stay mounted after first visit so switching between
+          /  and /for-teachers preserves scroll position, autoplaying
+          carousels and the typed-text animation, and the crossfade is
+          driven by opacity rather than a remount. The inactive panel is
+          taken out of layout via position:absolute so window scrollHeight
+          tracks the active panel and there's no double-scroll. */}
+      <div
+        id="public-shell-panel"
+        role="tabpanel"
+        aria-labelledby={`public-tab-${activeId}`}
+        className="relative flex-1"
+      >
+        {TABS.map((tab) => {
+          if (!visited[tab.id]) return null;
+          const isActive = tab.id === activeId;
+          const Component = TAB_COMPONENTS[tab.id];
+          return (
+            <div
+              key={tab.id}
+              data-testid={`public-tab-panel-${tab.id}`}
+              data-active={isActive ? 'true' : 'false'}
+              aria-hidden={!isActive}
+              inert={!isActive}
+              className={isActive ? 'relative' : 'absolute inset-0 pointer-events-none'}
+              style={{
+                opacity: isActive ? 1 : 0,
+                transition: `opacity ${crossfadeDuration}s ease-out`,
+              }}
+            >
+              <Component />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };

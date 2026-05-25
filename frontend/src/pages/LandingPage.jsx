@@ -32,6 +32,7 @@ import {
   Zap,
   Shield,
   ArrowRight,
+  Globe,
 } from 'lucide-react';
 
 const LOGO_WHITE = '/nassaq-logo-white.png';

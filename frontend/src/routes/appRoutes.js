@@ -11,13 +11,14 @@ const ParentStudentTabRedirect = ({ tab }) => {
 };
 
 // --- Eager: small + first-paint critical (no recharts/jspdf chains) ---
-import { LandingPage } from "../pages/LandingPage";
 import { LoginPage } from "../pages/LoginPage";
+// PublicShell eagerly imports both LandingPage and TeacherExperiencePage
+// and keeps them mounted between tab switches (task #495) so switching
+// between / and /for-teachers preserves scroll position and in-progress
+// animations and the transition is an opacity crossfade rather than a
+// remount. Routing therefore renders PublicShell directly for both
+// paths and the shell picks which page to display.
 import { PublicShell } from "../components/layout/PublicShell";
-// Eager — paired with LandingPage under <PublicShell> so the two-tab
-// switcher (الرئيسية / معلم نسق) can crossfade without a Suspense
-// fallback flashing between content trees on the first tab switch.
-import { TeacherExperiencePage } from "../pages/TeacherExperiencePage";
 
 // --- Lazy: every other page becomes its own chunk ---
 // Webpack dedupes shared modules across these chunks, so heavy deps (recharts,
@@ -200,14 +201,14 @@ export default function AppRoutes() {
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         {/* Public Routes */}
-        {/* Shared public shell — persistent across tab switches so the
-            two-tab segmented switcher animates content via
-            <AnimatePresence> without remounting the shell, and the
-            scroll-to-top effect fires on every tab change. */}
-        <Route element={<PublicShell />}>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/for-teachers" element={<TeacherExperiencePage />} />
-        </Route>
+        {/* Shared public shell — task #495: both LandingPage and
+            TeacherExperiencePage are rendered inside PublicShell and
+            kept mounted between tab switches. PublicShell selects the
+            visible panel based on location.pathname and crossfades
+            with opacity, preserving scroll position and in-progress
+            animations on the inactive tab. */}
+        <Route path="/" element={<PublicShell />} />
+        <Route path="/for-teachers" element={<PublicShell />} />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/terms" element={<TermsAndConditionsPage />} />
         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
