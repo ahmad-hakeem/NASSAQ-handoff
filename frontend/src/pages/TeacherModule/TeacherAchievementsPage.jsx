@@ -261,7 +261,7 @@ export default function TeacherAchievementsPage() {
       }
     } catch (err) {
       if (token !== editUploadTokenRef.current) return;
-      toast.error(err?.response?.data?.detail || 'فشل رفع الملف');
+      nassaqError(err?.response?.data?.detail || 'فشل رفع الملف');
     } finally {
       if (token === editUploadTokenRef.current) setEditFileUploading(false);
     }
@@ -466,7 +466,7 @@ export default function TeacherAchievementsPage() {
       }
     } catch (err) {
       if (token !== manualEvUploadTokenRef.current) return;
-      toast.error(err?.response?.data?.detail || 'فشل رفع الملف');
+      nassaqError(err?.response?.data?.detail || 'فشل رفع الملف');
     } finally {
       if (token === manualEvUploadTokenRef.current) setManualEvUploading(false);
     }
@@ -577,7 +577,7 @@ export default function TeacherAchievementsPage() {
       await api.put('/teacher/portfolio/vmv', vmvDraft);
       toast.success('تم حفظ الرؤية والرسالة والقيم');
       fetchPortfolio();
-    } catch (e) { toast.error('فشل الحفظ'); }
+    } catch (e) { nassaqError('فشل الحفظ'); }
     finally { setVmvBusy(false); }
   };
 
@@ -684,7 +684,7 @@ export default function TeacherAchievementsPage() {
           await api.delete(`/teacher/portfolio/cv-item/${item.id}`);
           await fetchPortfolio();
           toast.success('تم الحذف');
-        } catch (e) { toast.error(e?.response?.data?.detail || 'فشل الحذف'); }
+        } catch (e) { nassaqError(e?.response?.data?.detail || 'فشل الحذف'); }
       },
     });
   };
@@ -861,6 +861,7 @@ export default function TeacherAchievementsPage() {
           fetchPortfolio();
         } catch (err) {
           console.error('Delete error:', err);
+          nassaqError(err?.response?.data?.detail || 'فشل الحذف');
         }
       },
     });
