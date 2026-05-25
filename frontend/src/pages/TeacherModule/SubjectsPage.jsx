@@ -33,7 +33,7 @@ export default function SubjectsPage() {
     try {
       const res = await api.get('/subjects');
       const list = Array.isArray(res.data) ? res.data : (res.data?.subjects || []);
-      setSubjects(list.filter((s) => s.is_active !== false));
+      setSubjects(list);
     } catch (err) {
       const detail = err?.response?.data?.detail;
       nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر جلب المواد' : 'Could not load subjects'));

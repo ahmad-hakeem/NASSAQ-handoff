@@ -1419,7 +1419,7 @@ export default function TeacherClassesPage() {
                         className="h-9 px-3 font-cairo text-xs flex items-center"
                       >
                         {(t('workspaceClassesUsageChip') || '{0} / {1}')
-                          .replace('{0}', workspaceClassCount ?? classes.length)
+                          .replace('{0}', classes.length)
                           .replace('{1}', 5)}
                       </Badge>
                       <Button

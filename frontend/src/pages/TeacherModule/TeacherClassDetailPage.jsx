@@ -290,7 +290,8 @@ export default function TeacherClassDetailPage() {
       setShowAddLesson(false);
       fetchCurriculum();
     } catch (err) {
-      nassaqError(t('errorAddingLesson'));
+      const detail = err?.response?.data?.detail;
+      nassaqError(typeof detail === 'string' ? detail : t('errorAddingLesson'));
     }
   };
 
