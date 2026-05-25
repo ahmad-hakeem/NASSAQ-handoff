@@ -44,6 +44,7 @@ import BulkSubstitutionPanel from '../components/schedule/BulkSubstitutionPanel'
 import ScheduleTabNav from '../components/schedule/ScheduleTabNav';
 import ScheduleSettingsTabContent from '../components/schedule/ScheduleSettingsTabContent';
 import FilledCell from '../components/schedule/FilledCell';
+import MobileScheduleAgenda from '../components/schedule/MobileScheduleAgenda';
 import SessionEditDrawer from '../components/schedule/SessionEditDrawer';
 import { DndContext } from '@dnd-kit/core';
 import { DraggableSession, DroppableSlot, useDragSensors } from '../components/schedule/MasterMatrixDnd';
@@ -1971,7 +1972,33 @@ export default function SchedulePageNew() {
             page surface; daily mode never scrolls horizontally,
             weekly mode scrolls horizontally inside the container
             while the teacher column and headers stay sticky. */}
-        <div className="relative flex flex-col flex-grow min-h-0" data-testid="master-matrix-region">
+        {/* Mobile-only agenda (period-first vertical list). The
+            desktop `MasterMatrix` below is unchanged and hidden on
+            phones via `hidden md:flex` — see Task #526. */}
+        <div className="md:hidden flex-grow min-h-0 overflow-auto" data-testid="master-matrix-mobile">
+          <MobileScheduleAgenda
+            teachers={teacherRows}
+            cells={cellsByTeacher}
+            days={days}
+            periods={periods}
+            dayLabelMap={dayLabelMap}
+            viewMode={viewMode}
+            selectedDay={selectedDay}
+            today={grid?.today}
+            periodTimes={grid?.period_times || {}}
+            canEdit={scheduleView === 'draft' && !!grid?.timetable_id}
+            onEditSession={({ session }) => {
+              setEditDrawerMode('edit');
+              setEditDrawerContext({ session });
+              setEditDrawerOpen(true);
+            }}
+            onVacantClick={handleVacantClick}
+            loading={loading}
+            error={error}
+            onRetry={() => loadGrid()}
+          />
+        </div>
+        <div className="relative hidden md:flex flex-col flex-grow min-h-0" data-testid="master-matrix-region">
           {viewMode === 'weekly' && (
             <>
               <div
