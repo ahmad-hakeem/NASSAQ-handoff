@@ -73,11 +73,12 @@ export default function TeacherHomePage() {
   }, []);
 
   const fetchDayStatus = useCallback(async () => {
+    if (isIndependentTeacher) return;
     try {
       const res = await api.get('/school/day-status');
       setDayStatus(res.data);
     } catch (err) { /* silent */ }
-  }, [api]);
+  }, [api, isIndependentTeacher]);
 
   const fetchPortfolioProgress = useCallback(async () => {
     if (!teacherId) return;

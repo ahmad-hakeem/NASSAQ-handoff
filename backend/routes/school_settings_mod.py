@@ -518,6 +518,23 @@ async def get_school_day_status(
     current_user: dict = Depends(get_current_user),
     x_school_context: str = Header(default=None, alias="X-School-Context")
 ):
+    _neutral_payload = {
+        "is_school_time": False,
+        "is_working_day": False,
+        "time_slots": [],
+        "total_periods": 0,
+        "current_period": 0,
+        "progress": 0,
+        "day_start": None,
+        "day_end": None,
+        "current_period_name": "",
+        "is_break": False,
+    }
+    caller_role = (current_user or {}).get("role", "")
+    caller_tenant = (current_user or {}).get("tenant_id") or (current_user or {}).get("school_id")
+    if caller_role == "independent_teacher" or not caller_tenant:
+        return _neutral_payload
+
     school_id = await get_school_id_from_context(current_user, x_school_context)
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")

@@ -65,9 +65,7 @@ const SchoolDayProgress = ({ isRTL }) => {
     try {
       const res = await api.get('/school/day-status');
       setDayStatus(res.data);
-    } catch (err) {
-      console.error('Error fetching day status:', err);
-    }
+    } catch (err) { /* silent */ }
   }, [api]);
 
   useEffect(() => {

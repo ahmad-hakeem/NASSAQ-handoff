@@ -164,13 +164,12 @@ export default function TeacherMainDashboard() {
   }, []);
 
   const fetchDayStatus = useCallback(async () => {
+    if (isIndependentTeacher) return;
     try {
       const res = await api.get('/school/day-status');
       setDayStatus(res.data);
-    } catch (err) {
-      console.error('Error fetching day status:', err);
-    }
-  }, [api]);
+    } catch (err) { /* silent */ }
+  }, [api, isIndependentTeacher]);
 
   useEffect(() => {
     fetchDayStatus();
