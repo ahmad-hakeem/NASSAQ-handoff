@@ -1631,25 +1631,25 @@ export const LandingPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {[
               {
-                icon: Shield,
-                titleAr: 'بُنيت بمعايير حماية البيانات',
-                titleEn: 'Built to data-protection standards',
-                bodyAr: 'نَسَّق مصمَّمة بما يتوافق مع متطلبات نظام حماية البيانات الشخصية (PDPL)، مع تشفير كامل أثناء النقل والتخزين، ونسخ احتياطي يومي لبيانات كل مدرسة.',
-                bodyEn: 'NASSAQ is designed in line with the Personal Data Protection Law (PDPL): full encryption in transit and at rest, with daily backups for every school.',
-              },
-              {
-                icon: Building2,
-                titleAr: 'فصل صارم بين المدارس',
-                titleEn: 'Strict tenant separation',
-                bodyAr: 'كل استعلام على بيانات الطلاب أو المعلمين مرتبط بمعرّف مدرستك — لا يمكن لأي مستخدم من مدرسة أخرى الوصول إلى صفك أو طالبك، حتى بالخطأ.',
-                bodyEn: 'Every query on student or teacher data is bound to your school’s tenant ID — no user from another school can reach your class or your student, even by mistake.',
-              },
-              {
                 icon: Zap,
                 titleAr: 'جاهز خلال 24 ساعة',
                 titleEn: 'Ready in 24 hours',
                 bodyAr: 'لا حاجة لخادم أو تركيب. نُجهّز مساحة مدرستك ونستورد طلابك ومعلميك في أقل من يوم عمل واحد.',
                 bodyEn: 'No server, no installation. We set up your school space and import your students and teachers in less than one working day.',
+              },
+              {
+                icon: Globe,
+                titleAr: 'العربية في صميم التجربة',
+                titleEn: 'Arabic at the core of the experience',
+                bodyAr: 'من الواجهة إلى التقارير والمصطلحات التعليمية، صُمم نَسَّق ليعمل بالعربية بشكل طبيعي وواضح، بما يناسب استخدام المدارس والمعلمين يوميًا.',
+                bodyEn: 'From the interface to the reports and educational terminology, NASSAQ is designed to work in Arabic naturally and clearly — fit for daily school and teacher use.',
+              },
+              {
+                icon: Sparkles,
+                titleAr: 'ذكاء اصطناعي يخدم القرار',
+                titleEn: 'AI that supports the decision',
+                bodyAr: 'يوظّف نَسَّق الذكاء الاصطناعي داخل المنصة لتبسيط قراءة البيانات، إبراز المؤشرات المهمة، ومساعدة الفرق التعليمية على الوصول إلى قرارات أسرع وأكثر وضوحًا.',
+                bodyEn: 'NASSAQ embeds AI inside the platform to simplify reading the data, surface the indicators that matter, and help educational teams reach faster, clearer decisions.',
               },
             ].map((pillar, i) => {
               const Icon = pillar.icon;
