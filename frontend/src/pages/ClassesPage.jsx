@@ -24,7 +24,9 @@ import {
   Loader2,
   ArrowLeft,
   UserCheck,
+  RotateCcw,
 } from 'lucide-react';
+import { Switch } from '../components/ui/switch';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -69,6 +71,7 @@ export const ClassesPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSchool, setSelectedSchool] = useState('all');
   const [submitting, setSubmitting] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
   
   // Check if user is a school-level user (not platform admin)
   const { nassaqError, nassaqWarning, nassaqConfirm } = useNassaqAlert();
@@ -93,12 +96,13 @@ export const ClassesPage = () => {
     homeroom_teacher_id: '',
   });
 
-  const fetchData = async () => {
+  const fetchData = async (opts = {}) => {
+    const includeInactive = opts.includeInactive ?? showInactive;
     try {
       // For school-level users, only fetch classes and teachers (tenant-scoped by backend)
       // For platform admins, also fetch schools for filtering
       const [classesRes, teachersRes] = await Promise.all([
-        api.get('/classes'),
+        api.get('/classes', { params: includeInactive ? { include_inactive: true } : {} }),
         api.get('/teachers'),
       ]);
       setClasses(classesRes.data);
@@ -136,7 +140,13 @@ export const ClassesPage = () => {
     if (userSchoolId) {
       setNewClass(prev => ({ ...prev, school_id: userSchoolId }));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  useEffect(() => {
+    fetchData({ includeInactive: showInactive });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showInactive]);
 
   // Auto-generate class name
   useEffect(() => {
@@ -177,6 +187,16 @@ export const ClassesPage = () => {
     }
   };
 
+  const handleReactivateClass = async (classId) => {
+    try {
+      await api.put(`/classes/${classId}`, { is_active: true });
+      toast.success(t('classReactivated'));
+      setClasses(prev => prev.map(c => c.id === classId ? { ...c, is_active: true } : c));
+    } catch (error) {
+      nassaqError(error.response?.data?.detail || (t('operationFailed')));
+    }
+  };
+
   const handleDeleteClass = async (classId) => {
     nassaqConfirm(
       t('areYouSureYouWantToDeleteThisClassAllRelatedDataWi'),
@@ -200,12 +220,14 @@ export const ClassesPage = () => {
   };
 
   const filteredClasses = classes.filter(cls => {
-    if (cls.is_active === false) return false;
+    if (!showInactive && cls.is_active === false) return false;
     const matchesSearch = cls.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          cls.grade_level.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesSchool = selectedSchool === 'all' || cls.school_id === selectedSchool;
     return matchesSearch && matchesSchool;
   }).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+
+  const activeCount = filteredClasses.filter(c => c.is_active !== false).length;
 
   const getSchoolName = (schoolId) => {
     const school = schools.find(s => s.id === schoolId);
@@ -230,7 +252,7 @@ export const ClassesPage = () => {
                   {t('classesManagement')}
                 </h1>
                 <p className="text-sm text-muted-foreground font-tajawal">
-                  {isRTL ? `${filteredClasses.length} فصل` : `${filteredClasses.length} classes`}
+                  {isRTL ? `${activeCount} فصل` : `${activeCount} classes`}
                 </p>
               </div>
             </div>
@@ -260,6 +282,18 @@ export const ClassesPage = () => {
                 />
               </div>
               
+              <div className="flex items-center gap-2 px-3 rounded-xl border border-border bg-background">
+                <Switch
+                  id="show-inactive-classes"
+                  checked={showInactive}
+                  onCheckedChange={setShowInactive}
+                  data-testid="toggle-show-inactive-classes"
+                />
+                <Label htmlFor="show-inactive-classes" className="text-sm font-tajawal cursor-pointer whitespace-nowrap">
+                  {t('showInactiveClasses')}
+                </Label>
+              </div>
+
               {/* Only show school filter for platform admins */}
               {!isSchoolLevel && schools.length > 0 && (
                 <Select value={selectedSchool} onValueChange={setSelectedSchool}>
@@ -440,7 +474,11 @@ export const ClassesPage = () => {
                         </TableRow>
                       ) : (
                         filteredClasses.map((cls) => (
-                          <TableRow key={cls.id} data-testid={`class-row-${cls.id}`}>
+                          <TableRow
+                            key={cls.id}
+                            data-testid={`class-row-${cls.id}`}
+                            className={cls.is_active === false ? 'opacity-60' : ''}
+                          >
                             <TableCell>
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-brand-navy/10 flex items-center justify-center">
@@ -493,6 +531,15 @@ export const ClassesPage = () => {
                                     <Edit className="h-4 w-4 me-2" />
                                     {t('edit')}
                                   </DropdownMenuItem>
+                                  {cls.is_active === false && (
+                                    <DropdownMenuItem
+                                      onClick={() => handleReactivateClass(cls.id)}
+                                      data-testid={`reactivate-class-${cls.id}`}
+                                    >
+                                      <RotateCcw className="h-4 w-4 me-2" />
+                                      {t('reactivate')}
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuItem 
                                     className="text-red-600"
                                     onClick={() => handleDeleteClass(cls.id)}

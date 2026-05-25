@@ -18,8 +18,10 @@ import {
   Download, FileSpreadsheet, FileUp, FileDown, Save, Key, UserX,
   Sparkles, X, AlertTriangle, Wrench, ArrowRight, Clock,
   UserCircle, ChevronRight, ExternalLink, Zap, BarChart3,
-  LayoutGrid, List, Heart, Shield, ArrowUpDown, ArrowUp, ArrowDown, Star
+  LayoutGrid, List, Heart, Shield, ArrowUpDown, ArrowUp, ArrowDown, Star,
+  RotateCcw
 } from 'lucide-react';
+import { Switch } from '../components/ui/switch';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuTrigger, DropdownMenuSeparator
@@ -506,14 +508,15 @@ const ParentCard = ({ parent, isRTL, onView, onAction, onDelete, viewMode = 'gri
   );
 };
 
-const ClassCard = ({ classItem, isRTL, onEdit, onDelete, onView, viewMode = 'grid' }) => {
+const ClassCard = ({ classItem, isRTL, onEdit, onDelete, onView, onReactivate, viewMode = 'grid' }) => {
   const { t } = useTranslation();
   const pct = Math.min(100, ((classItem.student_count || 0) / (classItem.capacity || 30)) * 100);
   const tc = THEME_COLORS.class;
 
+  const isInactive = classItem.is_active === false;
   if (viewMode === 'list') {
     return (
-      <Card className={`group hover:shadow-md transition-all duration-200 border-border/50 ${tc.hoverBorder} cursor-pointer overflow-hidden`}
+      <Card className={`group hover:shadow-md transition-all duration-200 border-border/50 ${tc.hoverBorder} cursor-pointer overflow-hidden ${isInactive ? 'opacity-60' : ''}`}
         onClick={() => onView(classItem)}>
         <div className={`h-0.5 ${tc.bar}`} />
         <CardContent className="p-3 flex items-center gap-3">
@@ -524,6 +527,11 @@ const ClassCard = ({ classItem, isRTL, onEdit, onDelete, onView, viewMode = 'gri
             <h3 className="font-semibold text-sm truncate w-[140px]">{classItem.name}</h3>
             <span className="text-xs text-muted-foreground truncate hidden sm:inline">{classItem.grade} - {classItem.section}</span>
             <span className="text-xs text-muted-foreground hidden md:inline">{classItem.student_count || 0}/{classItem.capacity || 30}</span>
+            {isInactive && (
+              <Badge variant="outline" className="text-[10px] h-5 rounded-full border-red-300 text-red-700 bg-red-50">
+                {t('inactive')}
+              </Badge>
+            )}
           </div>
           <div className="w-20 hidden sm:block">
             <div className="w-full bg-muted rounded-full h-1.5">
@@ -537,6 +545,11 @@ const ClassCard = ({ classItem, isRTL, onEdit, onDelete, onView, viewMode = 'gri
             <DropdownMenuContent align="end" className="w-44" onClick={(e) => e.stopPropagation()}>
               <DropdownMenuItem onClick={() => onView(classItem)}><Eye className="h-3.5 w-3.5 me-2" />{t('viewDetails')}</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onEdit(classItem)}><Edit className="h-3.5 w-3.5 me-2" />{t('edit')}</DropdownMenuItem>
+              {isInactive && onReactivate && (
+                <DropdownMenuItem onClick={() => onReactivate(classItem)} data-testid={`reactivate-class-${classItem.id}`}>
+                  <RotateCcw className="h-3.5 w-3.5 me-2" />{t('reactivate')}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => onDelete(classItem)} className="text-red-600"><Trash2 className="h-3.5 w-3.5 me-2" />{t('delete')}</DropdownMenuItem>
             </DropdownMenuContent>
@@ -547,7 +560,7 @@ const ClassCard = ({ classItem, isRTL, onEdit, onDelete, onView, viewMode = 'gri
   }
 
   return (
-    <Card className={`group hover:shadow-lg transition-all duration-200 border-border/50 ${tc.hoverBorder} h-full cursor-pointer`}
+    <Card className={`group hover:shadow-lg transition-all duration-200 border-border/50 ${tc.hoverBorder} h-full cursor-pointer ${isInactive ? 'opacity-60' : ''}`}
       onClick={() => onView(classItem)}>
       <div className={`h-1.5 rounded-t-lg ${tc.bar}`} />
       <CardContent className="p-4">
@@ -559,6 +572,11 @@ const ClassCard = ({ classItem, isRTL, onEdit, onDelete, onView, viewMode = 'gri
             <div className="min-w-0">
               <h3 className="font-semibold text-sm truncate">{classItem.name}</h3>
               <p className="text-[11px] text-muted-foreground">{classItem.grade} - {classItem.section}</p>
+              {isInactive && (
+                <Badge variant="outline" className="mt-1 text-[10px] h-5 rounded-full border-red-300 text-red-700 bg-red-50">
+                  {t('inactive')}
+                </Badge>
+              )}
             </div>
           </div>
           <DropdownMenu>
@@ -568,6 +586,11 @@ const ClassCard = ({ classItem, isRTL, onEdit, onDelete, onView, viewMode = 'gri
             <DropdownMenuContent align="end" className="w-44" onClick={(e) => e.stopPropagation()}>
               <DropdownMenuItem onClick={() => onView(classItem)}><Eye className="h-3.5 w-3.5 me-2" />{t('viewDetails')}</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onEdit(classItem)}><Edit className="h-3.5 w-3.5 me-2" />{t('edit')}</DropdownMenuItem>
+              {isInactive && onReactivate && (
+                <DropdownMenuItem onClick={() => onReactivate(classItem)} data-testid={`reactivate-class-grid-${classItem.id}`}>
+                  <RotateCcw className="h-3.5 w-3.5 me-2" />{t('reactivate')}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => onDelete(classItem)} className="text-red-600"><Trash2 className="h-3.5 w-3.5 me-2" />{t('delete')}</DropdownMenuItem>
             </DropdownMenuContent>
@@ -843,6 +866,7 @@ export default function UsersClassesManagement() {
   const [parentProfileOpen, setParentProfileOpen] = useState(false);
   const [selectedParent, setSelectedParent] = useState(null);
   const [activeFilter, setActiveFilter] = useState(null);
+  const [showInactiveClasses, setShowInactiveClasses] = useState(false);
 
   const studentsNoClass = useMemo(() => students.filter(s => !s.class_id && !s.class_name), [students]);
   const teachersNoSubject = useMemo(() => teachers.filter(t => !t.specialization && (!t.subject_ids || t.subject_ids.length === 0)), [teachers]);
@@ -918,6 +942,7 @@ export default function UsersClassesManagement() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchAllData(); }, [user, schoolContext]);
+  useEffect(() => { fetchAllData(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [showInactiveClasses]);
   useEffect(() => {
     if (activeTab && activeTab !== 'all') setSearchParams({ filter: activeTab });
     else setSearchParams({});
@@ -948,12 +973,12 @@ export default function UsersClassesManagement() {
       const endpoints = [
         { key: 'students', url: '/students' },
         { key: 'teachers', url: '/teachers' },
-        { key: 'classes', url: '/classes' },
+        { key: 'classes', url: '/classes', params: showInactiveClasses ? { include_inactive: true } : undefined },
         { key: 'grades', url: '/reference/grades' },
         { key: 'parents', url: '/parents' },
       ];
       const results = await Promise.allSettled(
-        endpoints.map(e => api.get(e.url, { headers }))
+        endpoints.map(e => api.get(e.url, { headers, ...(e.params ? { params: e.params } : {}) }))
       );
       const failed = [];
       const dataByKey = {};
@@ -1060,14 +1085,26 @@ export default function UsersClassesManagement() {
   }, [parents, searchQuery, applySorting]);
 
   const filteredClasses = useMemo(() => {
-    let list = classes.filter(c => c.is_active !== false);
+    let list = showInactiveClasses ? classes : classes.filter(c => c.is_active !== false);
     if (activeFilter === 'overCapacity') list = list.filter(c => (c.student_count || 0) > (c.capacity || 30));
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       list = list.filter(c => c.name?.toLowerCase().includes(q));
     }
     return applySorting(list, 'class');
-  }, [classes, searchQuery, activeFilter, applySorting]);
+  }, [classes, searchQuery, activeFilter, applySorting, showInactiveClasses]);
+
+  const handleReactivateClass = async (classItem) => {
+    try {
+      const headers = {};
+      if (isImpersonating && schoolContext?.school_id) headers['X-School-Context'] = schoolContext.school_id;
+      await api.put(`/classes/${classItem.id}`, { is_active: true }, { headers });
+      toast.success(t('classReactivated'));
+      setClasses(prev => prev.map(c => c.id === classItem.id ? { ...c, is_active: true } : c));
+    } catch (error) {
+      nassaqError(error.response?.data?.detail || (t('operationFailed')));
+    }
+  };
 
   const handleAddSelect = (type) => {
     setShowAddPicker(false);
@@ -1427,7 +1464,7 @@ export default function UsersClassesManagement() {
             ) : (
               <ClassCard key={item.id} classItem={item} isRTL={isRTL} viewMode="list"
                 onEdit={(c) => handleEdit(c, 'class')} onDelete={(c) => handleDelete(c, 'class')}
-                onView={(c) => handleView(c, 'class')} />
+                onView={(c) => handleView(c, 'class')} onReactivate={handleReactivateClass} />
             )
           ))}
         </div>
@@ -1447,7 +1484,7 @@ export default function UsersClassesManagement() {
           ) : (
             <ClassCard key={item.id} classItem={item} isRTL={isRTL}
               onEdit={(c) => handleEdit(c, 'class')} onDelete={(c) => handleDelete(c, 'class')}
-              onView={(c) => handleView(c, 'class')} />
+              onView={(c) => handleView(c, 'class')} onReactivate={handleReactivateClass} />
           )
         ))}
       </div>
@@ -1688,6 +1725,20 @@ export default function UsersClassesManagement() {
               >
                 {isRTL ? 'عرضهم الآن' : 'Show them now'}
               </Button>
+            </div>
+          )}
+
+          {activeTab === 'classes' && (
+            <div className="flex items-center justify-end gap-2 px-1">
+              <Switch
+                id="show-inactive-classes-toggle"
+                checked={showInactiveClasses}
+                onCheckedChange={setShowInactiveClasses}
+                data-testid="toggle-show-inactive-classes"
+              />
+              <Label htmlFor="show-inactive-classes-toggle" className="text-sm font-tajawal cursor-pointer">
+                {t('showInactiveClasses')}
+              </Label>
             </div>
           )}
 

@@ -315,6 +315,7 @@ async def create_class(
 @router.get("/classes", response_model=List[ClassResponse])
 async def get_classes(
     grade_level: Optional[str] = None,
+    include_inactive: bool = Query(default=False),
     x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user)
 ):
@@ -345,7 +346,10 @@ async def get_classes(
         query["grade_level"] = grade_level
     
     all_classes = await gd_find(db.session, "classes", query, limit=1000)
-    classes = [c for c in all_classes if c.get("is_active") is not False]
+    if include_inactive:
+        classes = list(all_classes)
+    else:
+        classes = [c for c in all_classes if c.get("is_active") is not False]
     
     # Get teacher names
     teacher_ids = list(set([c.get("homeroom_teacher_id") for c in classes if c.get("homeroom_teacher_id")]))
