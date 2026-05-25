@@ -53,7 +53,7 @@ async def enforce_class_quota(session, current_user: dict) -> None:
     wsid = _workspace_id(current_user)
     if not wsid:
         return  # not an IT — quotas don't apply
-    count = await gd_count(session, "classes", {"school_id": wsid})
+    count = await gd_count(session, "classes", {"school_id": wsid, "is_active": {"$ne": False}})
     if count >= MAX_CLASSES:
         raise HTTPException(status_code=409, detail=_MSG_CLASSES)
 

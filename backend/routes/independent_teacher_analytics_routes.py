@@ -155,7 +155,7 @@ async def _resolve_class_filter(
         return None
     row = await gd_find_one(
         db.session, "classes",
-        {"id": cid, "school_id": workspace_id},
+        {"id": cid, "school_id": workspace_id, "is_active": {"$ne": False}},
     )
     if not row:
         raise HTTPException(status_code=404, detail=_MSG_CLASS_NOT_FOUND)

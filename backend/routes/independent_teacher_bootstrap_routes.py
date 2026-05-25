@@ -175,7 +175,7 @@ async def _existing_workspace_summary(workspace_id: str) -> Optional[dict]:
         db.session, "academic_terms", {"school_id": workspace_id}
     )
     teacher = await gd_find_one(db.session, "teachers", {"school_id": workspace_id})
-    class_count = await gd_count(db.session, "classes", {"school_id": workspace_id})
+    class_count = await gd_count(db.session, "classes", {"school_id": workspace_id, "is_active": {"$ne": False}})
     return {
         "workspace_id": workspace_id,
         "school": {

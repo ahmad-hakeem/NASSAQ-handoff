@@ -307,6 +307,8 @@ class Class(Base):
     homeroom_teacher_name = Column(String, nullable=True)
     classroom_id = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    deleted_by = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 

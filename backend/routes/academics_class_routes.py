@@ -553,51 +553,95 @@ async def update_class(
 @router.delete("/classes/{class_id}")
 async def delete_class(
     class_id: str,
+    force: bool = False,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
-    """Delete class — full removal from system. IT callers are pinned to
-    their own workspace (cross-workspace ids return 404)."""
+    """Soft-delete a class. Returns a requires_confirmation envelope when
+    blocking active records exist and force=False. On force=True, cascades
+    soft-deactivation to dependent rows without touching historical records
+    (attendance, grades, behaviour_records, assessments).
+    IT callers are pinned to their own workspace (cross-workspace ids return 404)."""
     from auth_scope import is_independent_teacher, independent_workspace_id
     if is_independent_teacher(current_user):
         wsid = independent_workspace_id(current_user)
-        class_doc = await gd_find_one(db.session, "classes", {"id": class_id, "school_id": wsid})
+        class_doc = await gd_find_one(db.session, "classes", {"id": class_id, "school_id": wsid, "is_active": {"$ne": False}})
     else:
-        class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
+        class_doc = await gd_find_one(db.session, "classes", {"id": class_id, "is_active": {"$ne": False}})
     if not class_doc:
         raise HTTPException(status_code=404, detail="الفصل غير موجود")
-    
+
     student_count = await gd_count(db.session, "students", {"class_id": class_id, "is_active": {"$ne": False}})
     if student_count > 0:
         raise HTTPException(
             status_code=409,
             detail=f"لا يمكن حذف الفصل لوجود {student_count} طالب مرتبط به. يرجى نقل الطلاب أولاً."
         )
-    
-    school_id = class_doc.get("school_id")
-    cleanup = {}
-    await gd_delete_one(db.session, "classes", {"id": class_id})
-    r = await gd_delete_many(db.session, "teacher_assignments", {"class_id": class_id})
-    cleanup["teacher_assignments"] = r
-    r = await gd_delete_many(db.session, "teacher_class_assignments", {"class_id": class_id})
-    cleanup["teacher_class_assignments"] = r
-    r = await gd_delete_many(db.session, "class_subjects", {"class_id": class_id})
-    cleanup["class_subjects"] = r
-    r = await gd_delete_many(db.session, "timetable_sessions", {"class_id": class_id})
-    cleanup["timetable_sessions"] = r
-    r = await gd_delete_many(db.session, "class_sessions", {"class_id": class_id})
-    cleanup["class_sessions"] = r
-    r = await gd_delete_many(db.session, "attendance", {"class_id": class_id})
-    cleanup["attendance"] = r
-    r = await gd_delete_many(db.session, "session_attendance", {"class_id": class_id})
-    cleanup["session_attendance"] = r
-    r = await gd_delete_many(db.session, "assessments", {"class_id": class_id})
-    cleanup["assessments"] = r
-    r = await gd_delete_many(db.session, "grades", {"class_id": class_id})
-    cleanup["grades"] = r
-    r = await gd_delete_many(db.session, "behaviour_records", {"class_id": class_id})
-    cleanup["behaviour_records"] = r
 
-    return {"message": "تم حذف الفصل وجميع البيانات المرتبطة به بنجاح", "success": True, "cleanup": cleanup}
+    teacher_assignments_count = await gd_count(db.session, "teacher_assignments", {"class_id": class_id, "is_active": {"$ne": False}})
+    class_subjects_count = await gd_count(db.session, "class_subjects", {"class_id": class_id, "is_active": {"$ne": False}})
+    timetable_sessions_count = await gd_count(db.session, "timetable_sessions", {"class_id": class_id, "is_active": {"$ne": False}})
+
+    blocking_count = teacher_assignments_count + class_subjects_count + timetable_sessions_count
+    if blocking_count > 0 and not force:
+        return {
+            "warning": True,
+            "requires_confirmation": True,
+            "message": (
+                f"هذا الفصل مرتبط بـ {teacher_assignments_count} إسناد معلم"
+                f"، و{class_subjects_count} مادة دراسية"
+                f"، و{timetable_sessions_count} حصة جدولة. هل تريد المتابعة؟"
+            ),
+            "dependencies": {
+                "teacher_assignments": teacher_assignments_count,
+                "class_subjects": class_subjects_count,
+                "timetable_sessions": timetable_sessions_count,
+            },
+        }
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    soft_delete_payload = {
+        "is_active": False,
+        "deleted_at": now_iso,
+        "deleted_by": current_user["id"],
+    }
+
+    await gd_update_one(db.session, "classes", {"id": class_id}, soft_delete_payload)
+
+    deactivated = {}
+    r = await gd_update_many(db.session, "teacher_assignments", {"class_id": class_id, "is_active": {"$ne": False}}, {"is_active": False})
+    deactivated["teacher_assignments"] = r
+    r = await gd_update_many(db.session, "teacher_class_assignments", {"class_id": class_id, "is_active": {"$ne": False}}, {"is_active": False})
+    deactivated["teacher_class_assignments"] = r
+    r = await gd_update_many(db.session, "class_subjects", {"class_id": class_id}, {"is_active": False})
+    deactivated["class_subjects"] = r
+    r = await gd_update_many(db.session, "timetable_sessions", {"class_id": class_id}, {"is_active": False})
+    deactivated["timetable_sessions"] = r
+    r = await gd_update_many(db.session, "class_sessions", {"class_id": class_id}, {"is_active": False})
+    deactivated["class_sessions"] = r
+    r = await gd_update_many(db.session, "curriculum_lessons", {"class_id": class_id}, {"is_active": False})
+    deactivated["curriculum_lessons"] = r
+
+    school_id = class_doc.get("school_id")
+    audit_log = {
+        "id": str(uuid.uuid4()),
+        "school_id": school_id,
+        "action": "delete",
+        "entity_type": "class",
+        "entity_id": class_id,
+        "old_data": {"name": class_doc.get("name"), "is_active": True},
+        "new_data": {"is_active": False},
+        "performed_by": current_user["id"],
+        "performed_by_name": current_user.get("full_name", ""),
+        "timestamp": now_iso,
+        "ip_address": None,
+    }
+    await gd_insert(db.session, "audit_logs", audit_log)
+
+    return {
+        "message": "تم حذف الفصل بنجاح",
+        "success": True,
+        "deactivated": deactivated,
+    }
 
 
 
