@@ -1889,6 +1889,15 @@ async def switch_role(
                 raise HTTPException(404, "المدرسة غير موجودة")
             if (school.get("status") or "") in _it_excluded_statuses:
                 raise HTTPException(403, "لا يمكن معاينة مساحة معلم مستقل كمدير مدرسة")
+            active_principal_count = await gd_count(
+                db.session, "users",
+                {"role": "school_principal", "tenant_id": target_school_id, "is_active": True},
+            )
+            if active_principal_count == 0:
+                raise HTTPException(
+                    422,
+                    "لا يوجد مدير مدرسة نشط في هذه المدرسة — يرجى إضافة مدير قبل المعاينة",
+                )
         else:
             raise HTTPException(400, "يجب تحديد المدرسة للتبديل")
     else:

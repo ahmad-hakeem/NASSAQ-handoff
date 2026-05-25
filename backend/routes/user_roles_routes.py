@@ -129,6 +129,10 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
                     if s_id.startswith("itw_") or s_status in _it_excluded_statuses:
                         continue
                     s_name = school.get("name") or school.get("name_en")
+                    active_principal_count = await gd_count(
+                        db.session, "users",
+                        {"role": "school_principal", "tenant_id": s_id, "is_active": True},
+                    )
                     available_roles.append({
                         "role": "school_principal",
                         "role_name_ar": "معاينة كمدير مدرسة",
@@ -139,7 +143,8 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
                         "tenant_name": s_name,
                         "is_current": False,
                         "is_primary": False,
-                        "is_preview": True
+                        "is_preview": True,
+                        "no_principal": active_principal_count == 0,
                     })
 
             return {
