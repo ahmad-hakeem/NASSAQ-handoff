@@ -1136,8 +1136,13 @@ async def set_active_role_context(
             "is_active": True
         }
     else:
-        # Check linked roles
+        # Check linked roles. Some legacy user records keep `linked_roles`
+        # as a list of plain role strings (e.g. Platform Admin). Skip
+        # non-dict entries defensively so the route fails closed with a
+        # 400 "الدور غير متوفر للمستخدم" instead of a 500.
         for role in user_roles:
+            if not isinstance(role, dict):
+                continue
             if role.get("role") == context.role_id and role.get("is_active", True):
                 if context.school_id:
                     if role.get("tenant_id") == context.school_id:
@@ -1539,6 +1544,11 @@ async def get_user_roles(
     
     # Linked roles
     for linked in user.get("linked_roles", []):
+        # Audit 2026-05-25 (H1 sibling): defend against legacy records
+        # whose `linked_roles` is a list of plain role strings — calling
+        # `.get()` on a str would 500 with AttributeError.
+        if not isinstance(linked, dict):
+            continue
         if linked.get("is_active"):
             roles.append({
                 "role": linked.get("role"),
@@ -1576,6 +1586,12 @@ async def switch_user_role(
     available_roles.append({"role": primary_role, "tenant_id": primary_tenant})
     
     for linked in user.get("linked_roles", []):
+        # Legacy user records may store `linked_roles` as a list of plain
+        # role strings (e.g. Platform Admin). Skip non-dict entries so the
+        # route returns 400 "ليس لديك صلاحية..." instead of crashing with a
+        # 500 AttributeError on str.get().
+        if not isinstance(linked, dict):
+            continue
         if linked.get("is_active"):
             available_roles.append({
                 "role": linked.get("role"),

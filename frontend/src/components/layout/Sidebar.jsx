@@ -300,10 +300,15 @@ export const Sidebar = ({ children }) => {
   }, [api, logout, nassaqWarning, navigate, t]);
 
   // Handle exit from school context (impersonation mode)
+  // Audit 2026-05-25 (H2): await exitSchoolContext so the server-side
+  // /role-switch/restore JTI revocation completes before navigation.
   // eslint-disable-next-line no-unused-vars
-  const handleExitSchoolContext = useCallback(() => {
-    exitSchoolContext();
-    navigate('/admin/tenants');
+  const handleExitSchoolContext = useCallback(async () => {
+    try {
+      await exitSchoolContext();
+    } finally {
+      navigate('/admin/tenants');
+    }
   }, [exitSchoolContext, navigate]);
 
   const effectiveRole = getEffectiveRole ? getEffectiveRole() : user?.role;

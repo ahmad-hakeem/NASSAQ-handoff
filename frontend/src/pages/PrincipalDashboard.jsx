@@ -32,12 +32,18 @@ export default function PrincipalDashboard() {
     };
   }, []);
   
-  const handleExitImpersonation = () => {
-    exitSchoolContext();
-    if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current);
-    exitTimeoutRef.current = setTimeout(() => {
+  const handleExitImpersonation = async () => {
+    // Audit 2026-05-25 (H2): await exitSchoolContext so the server-side
+    // /role-switch/restore (which revokes the impersonation JTI) actually
+    // completes before we navigate away. Previously the 100ms setTimeout
+    // raced the network call and the impersonation token could stay
+    // alive for its full 15-min TTL after the user thought they exited.
+    try {
+      await exitSchoolContext();
+    } finally {
+      if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current);
       window.location.href = '/admin/tenants';
-    }, 100);
+    }
   };
 
   return (

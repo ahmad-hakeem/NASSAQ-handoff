@@ -2867,12 +2867,20 @@ export const AccountSettingsPage = () => {
     return (
       <PreviewModeAccountSettingsGuard
         schoolContext={schoolContext}
-        onExit={() => {
-          exitSchoolContext();
-          if (typeof window !== 'undefined') {
-            // Re-navigate to /account/settings so the page remounts in
-            // the Platform Admin's own shell without preview state.
-            window.location.assign('/account/settings');
+        onExit={async () => {
+          // Audit 2026-05-25 (H2): await exitSchoolContext so the
+          // server-side /role-switch/restore JTI revocation completes
+          // before we navigate. Without the await the navigation can
+          // abort the in-flight restore and leave the impersonation
+          // token valid for its full TTL.
+          try {
+            await exitSchoolContext();
+          } finally {
+            if (typeof window !== 'undefined') {
+              // Re-navigate to /account/settings so the page remounts in
+              // the Platform Admin's own shell without preview state.
+              window.location.assign('/account/settings');
+            }
           }
         }}
       />

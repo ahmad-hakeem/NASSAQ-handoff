@@ -319,9 +319,15 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
             await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": "role_switched",
+                # Audit M2 (2026-05-25): match the hardened
+                # /role-switch/switch schema so SIEM filtering by severity
+                # / actor_role works uniformly across both surfaces.
+                "severity": "high",
+                "actor_role": from_role,
                 "user_id": user_id,
                 "performed_by": user_id,
                 "performed_by_name": user.get("full_name"),
+                "tenant_id": target_tenant_id,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "ip_address": client_ip,
                 "details": {

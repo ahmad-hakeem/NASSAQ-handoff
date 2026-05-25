@@ -898,26 +898,55 @@ export const AuthProvider = ({ children }) => {
 
   // Exit School Context (Return to Platform Admin).
   //
-  // Task #511: restore the parked Platform-Admin bearer token saved by
-  // enterSchoolContext. If no parked token is found (e.g. the page was
-  // reloaded mid-preview and sessionStorage was cleared), fall back to
-  // the original behavior of just clearing the preview flags and let
-  // the existing `nassaq_token` decide the next action.
+  // Audit 2026-05-25 (H2): previously this was a pure client-side cleanup —
+  // sessionStorage was dropped and the parked PA token was reinstated, but
+  // the impersonation JWT (issued by /role-switch/switch) was NEVER revoked
+  // on the backend and kept passing get_current_user for its full 15-min
+  // TTL. We now call the hardened /role-switch/restore endpoint FIRST so
+  // the impersonation JTI is server-side revoked. The parked-token client
+  // restore remains only as a fallback for the network-failure /
+  // no-parked-token branch (e.g. mid-preview reload).
   const exitSchoolContext = async () => {
     const originalToken = sessionStorage.getItem('nassaq_original_token');
+    let serverRestoredToken = null;
+    try {
+      const response = await api.post('/role-switch/restore', {});
+      // The hardened restore returns { token: "<new PA access>", ... }.
+      // Accept either field name for forward-compat.
+      serverRestoredToken =
+        response?.data?.token || response?.data?.access_token || null;
+    } catch (_serverErr) {
+      // Fall through to the parked-token fallback below. Do NOT block
+      // the preview-exit UX on a transient network/server error.
+    }
     sessionStorage.removeItem('nassaq_school_context');
     sessionStorage.removeItem('nassaq_impersonating');
     sessionStorage.removeItem('nassaq_original_token');
     setSchoolContext(null);
     setIsImpersonating(false);
-    if (originalToken) {
+    const tokenToUse = serverRestoredToken || originalToken;
+    if (tokenToUse) {
       try {
-        await updateToken(originalToken);
+        await updateToken(tokenToUse);
       } catch (_e) {
         // updateToken already swallows /auth/me failures and logs them;
         // we must not block the preview-exit UX on a transient network
         // error here.
       }
+    } else {
+      // Audit 2026-05-25 (H2 hardening): both the server restore failed
+      // AND no parked Platform-Admin token is available (e.g. mid-preview
+      // reload after session storage was cleared). Do NOT silently keep
+      // the impersonation bearer in localStorage — that would diverge UI
+      // (exited preview) from token state (still impersonating). Clear
+      // the bearer so the route guard sends the user back through login.
+      try {
+        localStorage.removeItem('nassaq_token');
+      } catch (_storageErr) {
+        // ignore — already in the worst-case branch
+      }
+      setToken(null);
+      setUser(null);
     }
   };
   
