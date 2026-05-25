@@ -579,6 +579,11 @@ const TeacherMonitoringSection = ({ isRTL, api, isTeacher = false, userKey = '' 
   const monitorReqIdRef = useRef(0);
 
   useEffect(() => {
+    // Defense-in-depth: teachers have no access to admin-only report endpoints.
+    // The primary guard is at the render site (!isTeacher), but we bail here too
+    // in case the component is accidentally mounted for a teacher role in the future.
+    if (isTeacher) return;
+
     // Reset on auth identity change so the previous user's numbers do not
     // flash before the new fetch resolves (Task #154 / M1).
     setMonitorData(null);
@@ -1614,9 +1619,11 @@ export const AIInsightsPage = () => {
           )}
 
           {/* ══════ TEACHER MONITORING INSIGHTS ══════ */}
-          <div className="ai-slide-in">
-            <TeacherMonitoringSection isRTL={isRTL} api={api} isTeacher={isTeacher} userKey={userKey} />
-          </div>
+          {!isTeacher && (
+            <div className="ai-slide-in">
+              <TeacherMonitoringSection isRTL={isRTL} api={api} isTeacher={isTeacher} userKey={userKey} />
+            </div>
+          )}
 
           {/* ══════ ALL SECTIONS ══════ */}
           <div className="space-y-6">
