@@ -143,6 +143,14 @@ export const AdminCalendar = ({
     );
   }, [events, _location.pathname, _location.search, _navigate]);
 
+  const todayISO = useMemo(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }, []);
+
   const todayLabel = useMemo(() => {
     try { return formatFullDate(new Date(), lang)?.full || ''; } catch { return ''; }
   }, [lang]);
@@ -154,7 +162,7 @@ export const AdminCalendar = ({
 
   const openAddForm = () => {
     setEditing(null);
-    setForm({ title_ar: '', title_en: '', type: 'meeting', date: new Date().toISOString().slice(0, 10) });
+    setForm({ title_ar: '', title_en: '', type: 'meeting', date: todayISO });
     setShowForm(true);
   };
 
@@ -170,6 +178,13 @@ export const AdminCalendar = ({
   };
 
   const saveEvent = async () => {
+    if (form.date < todayISO) {
+      nassaqError(
+        isRTL ? 'تاريخ غير صالح' : 'Invalid Date',
+        isRTL ? 'لا يمكن إضافة حدث بتاريخ ماضٍ' : 'Events cannot be scheduled for a past date.',
+      );
+      return;
+    }
     setBusy(true);
     try {
       const payload = {
@@ -517,6 +532,7 @@ export const AdminCalendar = ({
                 <input
                   type="date"
                   value={form.date}
+                  min={todayISO}
                   onChange={(e) => setForm({ ...form, date: e.target.value })}
                   className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm"
                 />
