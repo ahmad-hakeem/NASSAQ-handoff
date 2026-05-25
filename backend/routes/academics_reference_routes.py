@@ -66,9 +66,20 @@ async def get_reference_stages(current_user: dict = Depends(get_current_user)):
     return stages
 
 @router.get("/reference/grades")
-async def get_reference_grades(current_user: dict = Depends(get_current_user)):
+async def get_reference_grades(
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
+    current_user: dict = Depends(get_current_user),
+):
     """Get all grades. Falls back across reference_grades → academic_grades →
-    school's grade_levels → distinct grade values on the school's classes."""
+    school's grade_levels → distinct grade values on the school's classes.
+
+    Task #511: align the school-scoped fallbacks with the same
+    `resolve_school_id` resolver used by /students, /teachers, /parents
+    and /classes so that a Platform Admin previewing a school via
+    `X-School-Context` deterministically sees that school's grade list
+    (and an empty list when previewing a brand-new school), instead of
+    silently degrading on a missing `current_user.tenant_id` claim.
+    """
     grades = await gd_find(db.session, "reference_grades", {}, order_by="order", desc_order=False, limit=50)
     if not grades:
         grades = await gd_find(db.session, "academic_grades", {"is_active": True}, order_by="order", desc_order=False, limit=50)
@@ -76,11 +87,16 @@ async def get_reference_grades(current_user: dict = Depends(get_current_user)):
     if grades:
         return grades
 
-    school_id = (
-        current_user.get("school_id")
-        or current_user.get("tenant_id")
-        or current_user.get("primary_tenant_id")
-    )
+    from utils.tenant_scope import resolve_school_id
+    if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
+        school_id = resolve_school_id(current_user, x_school_context)
+    else:
+        school_id = (
+            resolve_school_id(current_user, x_school_context)
+            or current_user.get("school_id")
+            or current_user.get("tenant_id")
+            or current_user.get("primary_tenant_id")
+        )
     if not school_id:
         return []
 

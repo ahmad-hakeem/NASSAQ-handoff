@@ -934,6 +934,14 @@ export default function UsersClassesManagement() {
 
   const fetchAllData = async () => {
     setLoading(true);
+    // Task #511: defensive reset so previously-loaded data from another
+    // previewed school cannot momentarily render under a new (empty)
+    // school while the in-flight directory requests resolve.
+    setStudents([]);
+    setTeachers([]);
+    setClasses([]);
+    setGrades([]);
+    setParents([]);
     try {
       const headers = {};
       if (isImpersonating && schoolContext?.school_id) headers['X-School-Context'] = schoolContext.school_id;

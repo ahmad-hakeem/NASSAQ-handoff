@@ -209,9 +209,18 @@ export default function PlatformSchoolDetailPage() {
     }
   };
 
-  const handleEnterDashboard = () => {
+  const handleEnterDashboard = async () => {
     if (!detail?.school) return;
-    enterSchoolContext(detail.school);
+    // Task #511: enterSchoolContext now mints an impersonation token
+    // via /role-switch/switch (MFA step-up handled by the axios
+    // interceptor). Only post-step-up failures surface here.
+    try {
+      await enterSchoolContext(detail.school);
+    } catch (err) {
+      const dt = err?.response?.data?.detail;
+      nassaqError(typeof dt === 'string' ? dt : t('errorSwitchingRole'));
+      return;
+    }
     toast.success(isRTL ? `تم الدخول إلى ${detail.school.name}` : `Entered ${detail.school.name_en || detail.school.name}`);
     navigate('/principal');
   };

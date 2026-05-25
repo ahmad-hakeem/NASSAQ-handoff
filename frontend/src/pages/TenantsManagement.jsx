@@ -172,12 +172,21 @@ export default function TenantsManagement() {
     setActiveStatusFilter(prev => prev === status ? null : status);
   };
 
-  const handleEnterSchoolDashboard = (school) => {
+  const handleEnterSchoolDashboard = async (school) => {
     if (!school?.id) {
       nassaqError(t('errorInvalidSchoolData'));
       return;
     }
-    enterSchoolContext(school);
+    // Task #511: enterSchoolContext now mints an impersonation token
+    // via /role-switch/switch (MFA step-up handled by the axios
+    // interceptor). Only post-step-up failures surface here.
+    try {
+      await enterSchoolContext(school);
+    } catch (err) {
+      const dt = err?.response?.data?.detail;
+      nassaqError(typeof dt === 'string' ? dt : t('errorSwitchingRole'));
+      return;
+    }
     toast.success(
       isRTL ? `تم الدخول إلى ${school.name} كمدير مدرسة` : `Entered ${school.name_en || school.name} as School Manager`
     );

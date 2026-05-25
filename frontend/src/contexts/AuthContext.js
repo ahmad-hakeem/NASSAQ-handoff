@@ -609,6 +609,7 @@ export const AuthProvider = ({ children }) => {
     clearAllAuthTokens();
     sessionStorage.removeItem('nassaq_school_context');
     sessionStorage.removeItem('nassaq_impersonating');
+    sessionStorage.removeItem('nassaq_original_token');
     setToken(null);
     setUser(null);
     setSchoolContext(null);
@@ -773,6 +774,7 @@ export const AuthProvider = ({ children }) => {
     clearAllAuthTokens();
     sessionStorage.removeItem('nassaq_school_context');
     sessionStorage.removeItem('nassaq_impersonating');
+    sessionStorage.removeItem('nassaq_original_token');
     setToken(null);
     setUser(null);
     setSchoolContext(null);
@@ -811,29 +813,88 @@ export const AuthProvider = ({ children }) => {
     }
   };
   
-  // Enter School Context (Platform Admin simulation of School Manager)
-  const enterSchoolContext = (school) => {
+  // Enter School Context (Platform Admin previewing a school as its
+  // School Principal).
+  //
+  // Task #511: Previously this only flipped sessionStorage flags and
+  // React state — the bearer token stayed a plain platform-admin token
+  // with `is_impersonating=False` and no `tenant_id` claim, so the
+  // backend's `resolve_school_id()` could not honor the
+  // `X-School-Context` header and the four directory endpoints
+  // (/students, /teachers, /parents, /classes) silently degraded into
+  // unscoped cross-tenant dumps.
+  //
+  // We now route Command-Center preview through the same hardened
+  // /role-switch/switch endpoint the Sidebar role-switcher uses. The
+  // axios interceptor handles MFA step-up transparently (HTTP 403 +
+  // canonical envelope → passkey assertion → replay), so this call
+  // resolves with `{ token, role, school_id, is_impersonating: true,
+  // original_role }` once the user has completed any required MFA. The
+  // original PA bearer is parked in sessionStorage so exitSchoolContext
+  // can restore it without forcing another /auth/me round-trip.
+  const enterSchoolContext = async (school, opts = {}) => {
+    if (!school?.id) {
+      throw new Error('school.id is required');
+    }
+    const reason = (opts.reason || 'معاينة المدرسة من مركز تحكم المنصة').trim();
+
+    const originalToken = localStorage.getItem('nassaq_token');
+
+    const response = await api.post('/role-switch/switch', {
+      target_role: 'school_principal',
+      school_id: school.id,
+      reason,
+    });
+
+    const newToken = response?.data?.token;
+    if (!newToken) {
+      throw new Error('role-switch/switch returned no token');
+    }
+
+    if (originalToken) {
+      sessionStorage.setItem('nassaq_original_token', originalToken);
+    }
+
     const ctx = {
       school_id: school.id,
       school_name: school.name,
       school_name_en: school.name_en,
       school_code: school.code,
       original_role: user?.role,
-      entered_at: new Date().toISOString()
+      entered_at: new Date().toISOString(),
     };
     sessionStorage.setItem('nassaq_school_context', JSON.stringify(ctx));
     sessionStorage.setItem('nassaq_impersonating', 'true');
     setSchoolContext(ctx);
     setIsImpersonating(true);
+
+    await updateToken(newToken);
     return ctx;
   };
-  
-  // Exit School Context (Return to Platform Admin)
-  const exitSchoolContext = () => {
+
+  // Exit School Context (Return to Platform Admin).
+  //
+  // Task #511: restore the parked Platform-Admin bearer token saved by
+  // enterSchoolContext. If no parked token is found (e.g. the page was
+  // reloaded mid-preview and sessionStorage was cleared), fall back to
+  // the original behavior of just clearing the preview flags and let
+  // the existing `nassaq_token` decide the next action.
+  const exitSchoolContext = async () => {
+    const originalToken = sessionStorage.getItem('nassaq_original_token');
     sessionStorage.removeItem('nassaq_school_context');
     sessionStorage.removeItem('nassaq_impersonating');
+    sessionStorage.removeItem('nassaq_original_token');
     setSchoolContext(null);
     setIsImpersonating(false);
+    if (originalToken) {
+      try {
+        await updateToken(originalToken);
+      } catch (_e) {
+        // updateToken already swallows /auth/me failures and logs them;
+        // we must not block the preview-exit UX on a transient network
+        // error here.
+      }
+    }
   };
   
   // Get effective role (simulated or actual)

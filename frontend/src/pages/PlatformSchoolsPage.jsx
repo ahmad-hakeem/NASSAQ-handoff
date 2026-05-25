@@ -165,23 +165,29 @@ export const PlatformSchoolsPage = () => {
   };
   
   // Enter School Dashboard - Full context switch
-  const handleEnterSchoolDashboard = (school) => {
+  const handleEnterSchoolDashboard = async (school) => {
     if (!school || !school.id) {
       nassaqError(t('errorInvalidSchoolData'));
       return;
     }
-    
-    // Enter school context
-    enterSchoolContext(school);
-    
-    // Show success message
+
+    // Task #511: enterSchoolContext now mints an impersonation token
+    // via /role-switch/switch. The axios interceptor handles any MFA
+    // step-up transparently; only post-step-up failures surface here.
+    try {
+      await enterSchoolContext(school);
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      nassaqError(typeof detail === 'string' ? detail : t('errorSwitchingRole'));
+      return;
+    }
+
     toast.success(
-      isRTL 
-        ? `تم الدخول إلى ${school.name} كمدير مدرسة` 
+      isRTL
+        ? `تم الدخول إلى ${school.name} كمدير مدرسة`
         : `Entered ${school.name_en || school.name} as School Manager`
     );
-    
-    // Navigate to school principal dashboard
+
     navigate('/principal');
   };
 
