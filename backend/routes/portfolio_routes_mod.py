@@ -387,13 +387,17 @@ async def _load_meta(teacher_id: str) -> Dict[str, Any]:
 
 async def _save_meta(teacher_id: str, school_id: Optional[str], updates: Dict[str, Any]) -> Dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
+    existing = await _load_meta(teacher_id)
     payload = {
+        **existing,
         "teacher_id": teacher_id,
-        "school_id": school_id or "",
+        "school_id": school_id if school_id is not None else existing.get("school_id", ""),
         "updated_at": now,
         **updates,
     }
+    payload.pop("_id", None)
     await gd_upsert(db.session, "teacher_portfolio_meta", {"teacher_id": teacher_id}, payload)
+    await db.session.commit()
     return await _load_meta(teacher_id)
 
 

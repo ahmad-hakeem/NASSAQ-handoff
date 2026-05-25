@@ -660,10 +660,12 @@ export default function TeacherAchievementsPage() {
         file_url: cvForm.file_url || null,
         file_name: cvForm.file_name || null,
       });
-      toast.success('تمت الإضافة');
       setCvDialog({ open: false, kind: 'training_attended' });
-      fetchPortfolio();
-    } catch (e) { toast.error('فشل الحفظ'); }
+      await fetchPortfolio();
+      toast.success('تمت الإضافة');
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'فشل الحفظ');
+    }
     finally { setCvSaving(false); }
   };
 
@@ -679,9 +681,9 @@ export default function TeacherAchievementsPage() {
       onConfirm: async () => {
         try {
           await api.delete(`/teacher/portfolio/cv-item/${item.id}`);
+          await fetchPortfolio();
           toast.success('تم الحذف');
-          fetchPortfolio();
-        } catch { toast.error('فشل الحذف'); }
+        } catch (e) { toast.error(e?.response?.data?.detail || 'فشل الحذف'); }
       },
     });
   };
