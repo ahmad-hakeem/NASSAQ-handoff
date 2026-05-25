@@ -41,6 +41,8 @@ const getTimeUntilLesson = (lessonTime) => {
 
 import OnboardingTrigger from '../../components/teacher/OnboardingTour/OnboardingTrigger';
 
+const showMobileCards = false;
+
 export default function TeacherHomePage() {
   const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
@@ -487,7 +489,7 @@ export default function TeacherHomePage() {
             );
           })()}
 
-          {classMetrics && (
+          {showMobileCards && classMetrics && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
                 { label: t('attendance2'), value: `${classMetrics.avgAttendance}%`, icon: CheckCircle2, gradient: 'from-emerald-500 to-emerald-600' },
@@ -653,25 +655,27 @@ export default function TeacherHomePage() {
           ) : null}
 
           {/* Quick Navigation */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
-            {[
-              { icon: BookOpen, label: t('myClasses2'), path: '/teacher/classes', gradient: 'from-blue-500 to-blue-600' },
-              { icon: Users, label: t('myStudents2'), path: '/teacher/students', gradient: 'from-emerald-500 to-emerald-600' },
-              { icon: BarChart3, label: t('aiInsights'), path: '/ai-insights', gradient: 'from-purple-500 to-purple-600' },
-              { icon: Award, label: t('myAchievements'), path: '/teacher/achievements', gradient: 'from-amber-500 to-amber-600' },
-            ].map(nav => (
-              <button
-                key={nav.path}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl border border-border/50 bg-background hover:border-brand-turquoise/30 hover:shadow-md transition-shadow group"
-                onClick={() => navigate(nav.path)}
-              >
-                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${nav.gradient} flex items-center justify-center group-hover:scale-110 transition-transform shadow-md`}>
-                  <nav.icon className="h-5 w-5 text-white" />
-                </div>
-                <span className="text-xs font-cairo font-medium text-foreground">{nav.label}</span>
-              </button>
-            ))}
-          </div>
+          {showMobileCards && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
+              {[
+                { icon: BookOpen, label: t('myClasses2'), path: '/teacher/classes', gradient: 'from-blue-500 to-blue-600' },
+                { icon: Users, label: t('myStudents2'), path: '/teacher/students', gradient: 'from-emerald-500 to-emerald-600' },
+                { icon: BarChart3, label: t('aiInsights'), path: '/ai-insights', gradient: 'from-purple-500 to-purple-600' },
+                { icon: Award, label: t('myAchievements'), path: '/teacher/achievements', gradient: 'from-amber-500 to-amber-600' },
+              ].map(nav => (
+                <button
+                  key={nav.path}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-border/50 bg-background hover:border-brand-turquoise/30 hover:shadow-md transition-shadow group"
+                  onClick={() => navigate(nav.path)}
+                >
+                  <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${nav.gradient} flex items-center justify-center group-hover:scale-110 transition-transform shadow-md`}>
+                    <nav.icon className="h-5 w-5 text-white" />
+                  </div>
+                  <span className="text-xs font-cairo font-medium text-foreground">{nav.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
         </div>
       </div>
