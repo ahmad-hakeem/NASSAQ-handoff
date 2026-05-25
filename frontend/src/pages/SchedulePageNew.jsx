@@ -1509,14 +1509,24 @@ export default function SchedulePageNew() {
   if (tab === 'standby') {
     // تبويب جدول حصص الانتظار — يُضمَّن المحتوى نفسه المستخدم في الصفحة
     // المستقلة `/school/standby` بدون لمس مصدر بياناته.
+    //
+    // ملاحظة تخطيطية: الغلاف الخارجي مطابق تماماً للغلاف المستخدم في تبويب
+    // «الجدول الرئيسي» أدناه (نفس الارتفاع، بدون حشو علوي، بدون gap)، حتى
+    // يبدأ محتوى التبويبَين من نفس النقطة الرأسية ولا يحدث أيّ انزياح بصري
+    // عند التبديل بينهما. الحشو الأفقي والمسافة العلوية الموحَّدة (pt-3) تُطبَّق
+    // على غلاف داخلي يلفّ StandbyRosterContent، تماماً كما تفعل شريحة KPI في
+    // تبويب الجدول الرئيسي. هذا يُبقي StandbyRosterContent نفسه دون تعديل،
+    // فلا تتأثَّر صفحة `/school/standby` المستقلة.
     return (
       <Sidebar>
         <div
           dir={direction}
-          className="flex flex-col h-[calc(100dvh-3.5rem)] lg:h-[100dvh] p-4 md:p-6 gap-5 bg-slate-50 text-slate-900 overflow-hidden"
+          className="flex flex-col h-[100dvh] bg-slate-50 text-slate-900 overflow-hidden"
         >
           <ScheduleTabNav active="standby" />
-          <StandbyRosterContent />
+          <div className="flex-1 min-h-0 flex flex-col gap-5 px-4 md:px-6 pt-3 pb-4 md:pb-6 [&>*:first-child]:mt-0">
+            <StandbyRosterContent />
+          </div>
         </div>
       </Sidebar>
     );
