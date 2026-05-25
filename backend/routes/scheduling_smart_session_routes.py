@@ -832,21 +832,35 @@ async def _verify_class_access(class_id: str, current_user: dict, *, write: bool
         tid = current_user.get("teacher_id") or current_user.get("id")
         if cls.get("homeroom_teacher_id") and tid and cls.get("homeroom_teacher_id") == tid:
             return
-        assignments = await gd_find(db.session, "class_subjects", {"class_id": class_id, "teacher_id": tid}, limit=1)
-        if assignments:
-            return
-        schedules = await gd_find(db.session, "schedule_entries", {"class_id": class_id, "teacher_id": tid}, limit=1)
-        if schedules:
-            return
-        teacher_assignments = await gd_find(db.session, "teacher_assignments", {"class_id": class_id, "teacher_id": tid}, limit=1)
-        if teacher_assignments:
-            return
-        class_sessions = await gd_find(db.session, "class_sessions", {"class_id": class_id, "teacher_id": tid}, limit=1)
-        if class_sessions:
-            return
-        tca = await gd_find(db.session, "teacher_class_assignments", {"class_id": class_id, "teacher_id": tid}, limit=1)
-        if tca:
-            return
+        # Canonical "teacher has access to class" check: any linkage row in
+        # one of the sanctioned assignment tables grants access. Extend this
+        # list when new flows persist teacher↔class linkage elsewhere.
+        linkage_tables = (
+            "class_subjects",
+            "schedule_entries",
+            "teacher_assignments",
+            "class_sessions",
+            "teacher_class_assignments",
+        )
+        for table in linkage_tables:
+            rows = await gd_find(
+                db.session, table,
+                {"class_id": class_id, "teacher_id": tid},
+                limit=1,
+            )
+            if rows:
+                return
+        logger.debug(
+            "scheduling._verify_class_access denied teacher",
+            extra={
+                "class_id": class_id,
+                "teacher_id": tid,
+                "tenant_id": class_school,
+                "homeroom_teacher_id": cls.get("homeroom_teacher_id"),
+                "tables_checked": ("homeroom_teacher_id", *linkage_tables),
+                "write": write,
+            },
+        )
         raise HTTPException(status_code=403, detail="غير مصرح بالوصول إلى هذا الفصل")
     if role in ("school_admin", "school_sub_admin", "school_principal"):
         user_tenant = current_user.get("tenant_id") or current_user.get("school_id")
