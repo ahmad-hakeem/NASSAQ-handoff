@@ -594,13 +594,13 @@ const TeacherMonitoringSection = ({ isRTL, api, isTeacher = false, userKey = '' 
       try {
         const [overviewRes, behaviorRes, gradesRes] = await Promise.all([
           api.get('/reports/school/overview').catch(() => ({ data: null })),
-          api.get('/reports/school/behavior').catch(() => ({ data: null })),
+          isTeacher ? Promise.resolve({ data: null }) : api.get('/reports/school/behavior').catch(() => ({ data: null })),
           api.get('/reports/school/grades').catch(() => ({ data: null })),
         ]);
         if (myReqId !== monitorReqIdRef.current) return;
 
         const overview = overviewRes.data || {};
-        const behavior = behaviorRes.data || {};
+        const behavior = isTeacher ? {} : (behaviorRes.data || {});
         const grades = Array.isArray(gradesRes.data) ? gradesRes.data : [];
 
         const totalSubjects = grades.length;
