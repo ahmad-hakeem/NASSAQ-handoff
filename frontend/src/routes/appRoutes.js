@@ -14,6 +14,10 @@ const ParentStudentTabRedirect = ({ tab }) => {
 import { LandingPage } from "../pages/LandingPage";
 import { LoginPage } from "../pages/LoginPage";
 import { PublicShell } from "../components/layout/PublicShell";
+// Eager — paired with LandingPage under <PublicShell> so the two-tab
+// switcher (الرئيسية / معلم نسق) can crossfade without a Suspense
+// fallback flashing between content trees on the first tab switch.
+import { TeacherExperiencePage } from "../pages/TeacherExperiencePage";
 
 // --- Lazy: every other page becomes its own chunk ---
 // Webpack dedupes shared modules across these chunks, so heavy deps (recharts,
@@ -22,7 +26,6 @@ import { PublicShell } from "../components/layout/PublicShell";
 
 const RegisterPage = lazy(() => import("../pages/RegisterPage").then(m => ({ default: m.RegisterPage })));
 const TeacherSelfRegistration = lazy(() => import("../pages/TeacherSelfRegistration").then(m => ({ default: m.TeacherSelfRegistration })));
-const TeacherExperiencePage = lazy(() => import("../pages/TeacherExperiencePage").then(m => ({ default: m.TeacherExperiencePage })));
 const RegistrationConfirmationPage = lazy(() => import("../pages/RegistrationConfirmationPage"));
 const ForgotPasswordPage = lazy(() => import("../pages/ForgotPasswordPage"));
 const ResetPasswordPage = lazy(() => import("../pages/ResetPasswordPage"));
@@ -206,19 +209,7 @@ export default function AppRoutes() {
         <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/teacher-register" element={<TeacherSelfRegistration />} />
-        <Route
-          path="/for-teachers"
-          element={
-            <PublicShell>
-              {/* Local Suspense keeps the shared shell + tab switcher
-                  visible on first lazy-chunk load instead of bubbling
-                  to the app-level fallback. */}
-              <Suspense fallback={<div className="min-h-[60vh]" aria-hidden="true" />}>
-                <TeacherExperiencePage />
-              </Suspense>
-            </PublicShell>
-          }
-        />
+        <Route path="/for-teachers" element={<PublicShell><TeacherExperiencePage /></PublicShell>} />
         {/* Task #206 — IT §6.2c public parent-invitation landing. The
             page swaps the one-shot bearer for an authenticated session
             and deep-links into /parent?student_id=…. Unauthenticated
