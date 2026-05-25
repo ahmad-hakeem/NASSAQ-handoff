@@ -2045,7 +2045,7 @@ export default function SchedulePageNew() {
           ref={matrixContainerRef}
           data-testid="master-matrix-container"
           data-matrix-overflow={viewMode === 'weekly' ? 'horizontal' : 'none'}
-          className={`relative bg-white border border-slate-200 rounded-xl shadow-[0_1px_3px_rgba(15,42,75,0.04)] ${
+          className={`relative bg-white border border-slate-200/70 rounded-2xl shadow-[0_1px_2px_rgba(15,42,75,0.04),0_8px_24px_-12px_rgba(15,42,75,0.12)] ${
             viewMode === 'weekly'
               // Weekly mode: intentional two-axis scroll container.
               // overflow-x:auto handles horizontal scroll (wide day columns).
@@ -2552,7 +2552,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
       {/* الزاوية العلوية الجانبية (تقاطع رأس + عمود المعلم) — أعلى z-index */}
       <div
         data-testid="master-matrix-corner"
-        className={`sticky bg-slate-50 text-slate-700 text-xs font-semibold flex items-center justify-center border-b border-l border-slate-200 ${teacherStickyShadow}`}
+        className={`sticky bg-slate-50 text-slate-700 text-xs font-semibold flex items-center justify-center border-b border-l border-slate-200 rounded-ts-2xl ${teacherStickyShadow}`}
         style={{
           // In weekly mode the container is the scroll parent (not the page),
           // so headers stick at top:0. Daily mode remains page-level sticky.
@@ -2566,7 +2566,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
         <div
           key={`day-h-${dayKey}`}
           data-testid={`master-matrix-day-band-${dayKey}`}
-          className={`sticky z-20 ${getDayBandClass(dayKey)} ${getDayTextOnBand(dayKey)} text-sm font-cairo font-bold text-center flex items-center justify-center tracking-wide ${dayIdx > 0 ? 'border-s-2 border-s-white/70' : ''} shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.12),0_1px_2px_rgba(15,42,75,0.08)]`}
+          className={`sticky z-20 ${getDayBandClass(dayKey)} ${getDayTextOnBand(dayKey)} text-sm font-cairo font-bold text-center flex items-center justify-center tracking-wide ${dayIdx > 0 ? 'border-s-2 border-s-white/70' : ''} ${dayIdx === displayDays.length - 1 ? 'rounded-te-2xl' : ''} shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.12),0_1px_2px_rgba(15,42,75,0.08)]`}
           style={{ top: isDaily ? 'var(--sticky-band-h, 88px)' : 0, gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
         >
           {dayLabelMap[dayKey] || dayKey}
