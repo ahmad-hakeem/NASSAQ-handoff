@@ -175,11 +175,26 @@ export const SubjectsPage = () => {
       t('areYouSureYouWantToDeleteThisSubject'),
       async () => {
         try {
-          await api.delete(`/subjects/${subjectId}`);
-          toast.success(t('subjectDeleted'));
-          setSubjects(prev => prev.filter(s => s.id !== subjectId));
+          const response = await api.delete(`/subjects/${subjectId}`);
+          if (response.data?.requires_confirmation) {
+            nassaqConfirm(
+              response.data.message,
+              async () => {
+                try {
+                  await api.delete(`/subjects/${subjectId}?force=true`);
+                  toast.success(t('subjectDeleted'));
+                  setSubjects(prev => prev.filter(s => s.id !== subjectId));
+                } catch (forceError) {
+                  nassaqError(forceError.response?.data?.detail || t('failedToDeleteSubject'));
+                }
+              }
+            );
+          } else {
+            toast.success(t('subjectDeleted'));
+            setSubjects(prev => prev.filter(s => s.id !== subjectId));
+          }
         } catch (error) {
-          nassaqError(t('failedToDeleteSubject'));
+          nassaqError(error.response?.data?.detail || t('failedToDeleteSubject'));
         }
       }
     );

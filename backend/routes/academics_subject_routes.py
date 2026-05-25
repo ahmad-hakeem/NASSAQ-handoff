@@ -519,7 +519,7 @@ async def update_subject(
 async def delete_subject(
     subject_id: str,
     force: bool = False,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
     """Delete subject (soft delete). Tenant-scoped for non-platform
     callers; cross-workspace ids return 404 (spec §8 inv. 3). Fails
