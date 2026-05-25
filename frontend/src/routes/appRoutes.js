@@ -200,7 +200,14 @@ export default function AppRoutes() {
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         {/* Public Routes */}
-        <Route path="/" element={<PublicShell><LandingPage /></PublicShell>} />
+        {/* Shared public shell — persistent across tab switches so the
+            two-tab segmented switcher animates content via
+            <AnimatePresence> without remounting the shell, and the
+            scroll-to-top effect fires on every tab change. */}
+        <Route element={<PublicShell />}>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/for-teachers" element={<TeacherExperiencePage />} />
+        </Route>
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/terms" element={<TermsAndConditionsPage />} />
         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
@@ -209,7 +216,6 @@ export default function AppRoutes() {
         <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/teacher-register" element={<TeacherSelfRegistration />} />
-        <Route path="/for-teachers" element={<PublicShell><TeacherExperiencePage /></PublicShell>} />
         {/* Task #206 — IT §6.2c public parent-invitation landing. The
             page swaps the one-shot bearer for an authenticated session
             and deep-links into /parent?student_id=…. Unauthenticated

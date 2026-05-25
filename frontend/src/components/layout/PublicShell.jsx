@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Globe, Sun, Moon } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -10,6 +10,8 @@ const TABS = [
 ];
 
 export const PublicShell = ({ children }) => {
+  // `children` is supported for ad-hoc wrapping; when used as a layout
+  // route (recommended), the nested route content arrives via <Outlet />.
   const { isRTL, toggleLanguage, toggleTheme, isDark } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
@@ -171,7 +173,7 @@ export const PublicShell = ({ children }) => {
           transition={{ duration: 0.28, ease: 'easeOut' }}
           className="flex-1"
         >
-          {children}
+          {children ?? <Outlet />}
         </motion.main>
       </AnimatePresence>
     </div>
