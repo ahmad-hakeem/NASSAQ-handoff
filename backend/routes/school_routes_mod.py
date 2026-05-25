@@ -21,6 +21,36 @@ _PUBLIC_STATS_TTL = 60
 # enumeration. Cached aggressively to blunt scraping.
 _public_schools_count_cache = {"data": None, "expires": 0}
 _PUBLIC_SCHOOLS_COUNT_TTL = 300
+_public_growth_cache = {"data": None, "expires": 0}
+_PUBLIC_GROWTH_TTL = 300
+
+
+def _bucket_display(n: int) -> str:
+    """Bucket a raw count into a vetted display string.
+
+    SECURITY: never returns the raw value. The output is one of a small set
+    of preformatted, monotonic strings ("10+", "25+", ... "1K+", "2.5K+", ...)
+    so the browser cannot reverse-engineer the exact count from the response.
+    """
+    try:
+        n = int(n or 0)
+    except (TypeError, ValueError):
+        n = 0
+    if n <= 0:
+        return "10+"
+    buckets = [
+        (10, "10+"), (25, "25+"), (50, "50+"), (100, "100+"),
+        (250, "250+"), (500, "500+"), (1000, "1K+"),
+        (2500, "2.5K+"), (5000, "5K+"), (10000, "10K+"),
+        (25000, "25K+"), (50000, "50K+"), (100000, "100K+"),
+    ]
+    chosen = "10+"
+    for threshold, label in buckets:
+        if n >= threshold:
+            chosen = label
+        else:
+            break
+    return chosen
 
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
@@ -1054,6 +1084,44 @@ async def get_public_schools_count():
         # Preserve the display floor on the error path too, so a transient
         # backend hiccup doesn't blank out the landing-page social proof.
         return {"count": 1}
+
+
+# ============== PUBLIC GROWTH INDICATORS (curated, landing-page only) ==============
+# SECURITY: deliberately public, but never returns raw aggregate counts. The
+# response is composed of *preformatted, bucketed display strings* (e.g. "100+",
+# "1K+") chosen from a small fixed vocabulary, so the browser cannot
+# reverse-engineer the exact platform-wide totals from the payload. Used by the
+# landing-page "نمو متزايد بثقة" trust section. Cached aggressively to blunt
+# scraping.
+@router.get("/public/growth-indicators")
+async def get_public_growth_indicators():
+    try:
+        _now = _time.monotonic()
+        if _public_growth_cache["data"] and _now < _public_growth_cache["expires"]:
+            return _public_growth_cache["data"]
+
+        try:
+            schools_n = await gd_count(db.session, "schools", {"status": "active"})
+        except Exception:
+            schools_n = 0
+        try:
+            teachers_n = await gd_count(db.session, "teachers", {"is_active": True})
+        except Exception:
+            try:
+                teachers_n = await gd_count(db.session, "teachers", {})
+            except Exception:
+                teachers_n = 0
+
+        result = {
+            "schools": _bucket_display(schools_n),
+            "teachers": _bucket_display(teachers_n),
+        }
+        _public_growth_cache["data"] = result
+        _public_growth_cache["expires"] = _now + _PUBLIC_GROWTH_TTL
+        return result
+    except Exception as e:
+        logging.error(f"Error fetching public growth indicators: {e}")
+        return {"schools": "10+", "teachers": "10+"}
 
 
 @router.get("/public/stats")

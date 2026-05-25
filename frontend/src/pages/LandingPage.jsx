@@ -241,6 +241,26 @@ export const LandingPage = () => {
     parents: 0,
   });
 
+  // Sanitized, server-provided display indicators for the trust section.
+  // The backend returns ONLY preformatted bucketed strings (e.g. "100+",
+  // "1K+") — never raw aggregate counts — so the browser cannot reconstruct
+  // the exact platform-wide totals.
+  const [growthIndicators, setGrowthIndicators] = useState({
+    schools: null,
+    teachers: null,
+  });
+
+  // Single normalized display rule for all growth counters in this section.
+  // Accepts an already-vetted string from the server and returns it unchanged
+  // when it already ends in "+"; otherwise appends exactly one "+". Never
+  // concatenates a prefix-plus with a suffix-plus.
+  const formatGrowthIndicator = (raw) => {
+    if (raw == null) return null;
+    const trimmed = String(raw).trim().replace(/^\++/, '').replace(/\++$/, '');
+    if (!trimmed) return null;
+    return `${trimmed}+`;
+  };
+
   const hakimMessages = useMemo(() => isRTL
     ? [
         'مرحبًا… أنا حكيم. العقل الذكي داخل منصة نَسَّق. أساعد المدارس على فهم بياناتها وتحويلها إلى قرارات تعليمية واضحة.',
@@ -274,6 +294,25 @@ export const LandingPage = () => {
       }
     };
     fetchStats();
+  }, [api]);
+
+  useEffect(() => {
+    // Trust section: pulls vetted, preformatted display strings only.
+    // The server bucketizes raw counts into a fixed vocabulary so this
+    // request never exposes platform-wide totals to the browser.
+    const fetchGrowth = async () => {
+      try {
+        const response = await api.get('/public/growth-indicators');
+        const data = response?.data || {};
+        setGrowthIndicators({
+          schools: typeof data.schools === 'string' ? data.schools : null,
+          teachers: typeof data.teachers === 'string' ? data.teachers : null,
+        });
+      } catch (error) {
+        // Silent — cards hide themselves when no indicator is available.
+      }
+    };
+    fetchGrowth();
   }, [api]);
 
   useEffect(() => {
@@ -1525,30 +1564,68 @@ export const LandingPage = () => {
             </div>
             <h2 className="font-cairo font-bold text-white text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
               {isRTL ? (
-                <>منصة سعودية، مبنية لـ <span className="text-brand-turquoise">المدارس السعودية.</span></>
+                <>نَسَّق<span className="text-brand-turquoise">...</span> نمو متزايد بثقة.</>
               ) : (
-                <>A Saudi platform, built for <span className="text-brand-turquoise">Saudi schools.</span></>
+                <>NASSAQ<span className="text-brand-turquoise">...</span> growing, trusted, steady.</>
               )}
             </h2>
           </div>
 
-          {/* Live stat strip — real numbers only */}
-          {platformStats.schools > 0 && (
-            <div className="relative bg-white/5 border border-brand-turquoise/30 rounded-2xl px-8 py-10 mb-12 text-center shadow-xl backdrop-blur-sm">
-              <p className="font-tajawal text-white/70 text-sm mb-3">
-                {isRTL ? 'مدارس فعّلت نَسَّق حتى اليوم' : 'Schools live on NASSAQ today'}
-              </p>
-              <div className="font-cairo font-black text-white text-6xl lg:text-7xl mb-3">
-                <AnimatedCounter target={platformStats.schools} />
-                <span className="text-brand-turquoise">+</span>
+          {/* Growth indicators — two equal cards, server-sanitized display
+              strings only. No raw aggregate counts are sent to the browser. */}
+          {(() => {
+            const schoolsDisplay = formatGrowthIndicator(growthIndicators.schools);
+            const teachersDisplay = formatGrowthIndicator(growthIndicators.teachers);
+            if (!schoolsDisplay && !teachersDisplay) return null;
+
+            const cards = [
+              {
+                show: !!schoolsDisplay,
+                value: schoolsDisplay,
+                titleAr: 'مدارس فعّلت نَسَّق',
+                titleEn: 'Schools using NASSAQ',
+                subAr: 'مؤشر نمو عام',
+                subEn: 'General growth indicator',
+                icon: Building2,
+              },
+              {
+                show: !!teachersDisplay,
+                value: teachersDisplay,
+                titleAr: 'معلمون يستخدمون نَسَّق',
+                titleEn: 'Teachers using NASSAQ',
+                subAr: 'تحديثات دورية تعكس اتساع الاستخدام',
+                subEn: 'Updated periodically to reflect adoption',
+                icon: Users,
+              },
+            ].filter((c) => c.show);
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-12 max-w-4xl mx-auto">
+                {cards.map((card, idx) => {
+                  const Icon = card.icon;
+                  return (
+                    <div
+                      key={idx}
+                      className="relative bg-white/5 border border-brand-turquoise/30 rounded-2xl px-8 py-10 text-center shadow-xl backdrop-blur-sm flex flex-col items-center justify-between min-h-[240px]"
+                    >
+                      <div className="w-12 h-12 rounded-xl bg-brand-turquoise/15 flex items-center justify-center mb-4">
+                        <Icon className="h-6 w-6 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+                      </div>
+                      <p className="font-tajawal text-white/70 text-sm mb-3">
+                        {isRTL ? card.titleAr : card.titleEn}
+                      </p>
+                      <div className="font-cairo font-black text-white text-5xl lg:text-6xl mb-3 tracking-tight">
+                        {card.value}
+                      </div>
+                      <p className="font-tajawal text-white/60 text-xs">
+                        {isRTL ? card.subAr : card.subEn}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
-              <p className="font-tajawal text-white/70 text-sm">
-                {isRTL
-                  ? 'ينمو الرقم كل أسبوع · بيانات حية من المنصة'
-                  : 'Growing weekly · live count from the platform'}
-              </p>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Trust pillars — factual claims about architecture, not fake testimonials */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
