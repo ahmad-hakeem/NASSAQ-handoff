@@ -102,7 +102,11 @@ export const ClassesPage = () => {
       // For school-level users, only fetch classes and teachers (tenant-scoped by backend)
       // For platform admins, also fetch schools for filtering
       const [classesRes, teachersRes] = await Promise.all([
-        api.get('/classes', { params: includeInactive ? { include_inactive: true } : {} }),
+        api.get('/classes', {
+          params: includeInactive
+            ? { include_inactive: true, include_deleted: true }
+            : {},
+        }),
         api.get('/teachers'),
       ]);
       setClasses(classesRes.data);
@@ -511,9 +515,18 @@ export const ClassesPage = () => {
                               </div>
                             </TableCell>
                             <TableCell>
-                              <Badge className={cls.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
-                                {cls.is_active ? (t('active')) : (t('inactive'))}
-                              </Badge>
+                              {cls.deleted_at ? (
+                                <Badge
+                                  className="bg-red-100 text-red-700"
+                                  data-testid={`class-deleted-badge-${cls.id}`}
+                                >
+                                  {isRTL ? 'محذوف' : 'Deleted'}
+                                </Badge>
+                              ) : (
+                                <Badge className={cls.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
+                                  {cls.is_active ? (t('active')) : (t('inactive'))}
+                                </Badge>
+                              )}
                             </TableCell>
                             <TableCell>
                               <DropdownMenu>
@@ -523,7 +536,10 @@ export const ClassesPage = () => {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    disabled={cls.is_active === false}
+                                    data-testid={`edit-class-${cls.id}`}
+                                  >
                                     <Edit className="h-4 w-4 me-2" />
                                     {t('edit')}
                                   </DropdownMenuItem>

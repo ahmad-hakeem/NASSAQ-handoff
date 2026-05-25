@@ -316,6 +316,7 @@ async def create_class(
 async def get_classes(
     grade_level: Optional[str] = None,
     include_inactive: bool = Query(default=False),
+    include_deleted: bool = Query(default=False),
     x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user)
 ):
@@ -341,12 +342,24 @@ async def get_classes(
         from auth_scope import independent_workspace_id as _itw_id
         scoped = resolve_school_id(current_user, x_school_context)
         query["school_id"] = scoped or current_user.get("tenant_id") or _itw_id(current_user)
-    
+
+    # Task #627 — `include_deleted` exposes soft-deleted rows (is_active=False
+    # with deleted_at/deleted_by populated) so admins can audit recent
+    # deletions and discover candidates for restoration. Restricted to
+    # platform/school admin roles; other callers silently get the active-only
+    # view regardless of the param.
+    _admin_roles = {
+        UserRole.PLATFORM_ADMIN.value,
+        UserRole.SCHOOL_PRINCIPAL.value,
+        UserRole.SCHOOL_ADMIN.value,
+    }
+    show_deleted = bool(include_deleted) and current_user.get("role") in _admin_roles
+
     if grade_level:
         query["grade_level"] = grade_level
-    
+
     all_classes = await gd_find(db.session, "classes", query, limit=1000)
-    if include_inactive:
+    if include_inactive or show_deleted:
         classes = list(all_classes)
     else:
         classes = [c for c in all_classes if c.get("is_active") is not False]

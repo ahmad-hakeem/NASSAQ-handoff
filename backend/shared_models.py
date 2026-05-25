@@ -567,6 +567,8 @@ class ClassResponse(BaseModel):
     name_ar: Optional[str] = None
     name_en: Optional[str] = None
     class_type: Optional[str] = None
+    deleted_at: Optional[str] = None
+    deleted_by: Optional[str] = None
 
 class SubjectCreate(BaseModel):
     name: str
