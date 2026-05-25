@@ -333,18 +333,26 @@ def create_teacher_attendance_routes(db, get_current_user, require_roles, UserRo
             UserRole.SCHOOL_PRINCIPAL,
             UserRole.SCHOOL_ADMIN,
             UserRole.PLATFORM_ADMIN,
+            UserRole.TEACHER,
         ]))
     ):
         """Get teacher attendance summary report"""
         school_id = current_user.get("tenant_id")
         if not school_id and current_user["role"] != "platform_admin":
             raise HTTPException(status_code=403, detail="No school association")
-        
+
         query = {}
         if school_id:
             query["school_id"] = school_id
-        
-        # Get all records for this school
+
+        # Teachers may only see their own attendance records.
+        if current_user["role"] == UserRole.TEACHER.value:
+            teacher_id = current_user.get("teacher_id")
+            if not teacher_id:
+                raise HTTPException(status_code=403, detail="لا يوجد سجل معلم مرتبط بهذا الحساب")
+            query["teacher_id"] = teacher_id
+
+        # Get all records for this school (or this teacher only)
         all_records = await gd_find(db.session, "teacher_attendance", query, limit=10000)
         
         # Calculate stats

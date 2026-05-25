@@ -1238,7 +1238,7 @@ export const AIInsightsPage = () => {
         api.get('/ai/insights/alerts').catch(() => ({ data: [] })),
         api.get('/ai/insights/at-risk-students').catch(() => ({ data: [] })),
         api.get('/school/dashboard').catch(() => ({ data: null })),
-        api.get('/teacher-attendance/report/summary').catch(() => ({ data: null })),
+        isTeacher ? Promise.resolve({ data: null }) : api.get('/teacher-attendance/report/summary').catch(() => ({ data: null })),
         isTeacher ? Promise.resolve({ data: null }) : api.get('/attendance/report/summary').catch(() => ({ data: null })),
         isTeacher ? Promise.resolve({ data: [] }) : api.get('/teachers').catch(() => ({ data: [] })),
         isTeacher ? Promise.resolve({ data: [] }) : api.get('/teacher-attendance/school-admins').catch(() => ({ data: [] })),
