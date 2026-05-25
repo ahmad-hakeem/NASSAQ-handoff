@@ -1706,9 +1706,9 @@ export const LandingPage = () => {
             </div>
             <h2 className="font-cairo font-black text-foreground text-3xl md:text-5xl lg:text-[3.5rem] leading-tight">
               {isRTL ? (
-                <>إجابات صريحة على <span className="text-brand-turquoise">ما يقلقك.</span></>
+                <>أسئلة يطرحها المدراء <span className="text-brand-turquoise">قبل البدء.</span></>
               ) : (
-                <>Straight answers to <span className="text-brand-turquoise">what worries you.</span></>
+                <>Questions principals ask <span className="text-brand-turquoise">before they start.</span></>
               )}
             </h2>
           </div>
