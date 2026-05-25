@@ -971,8 +971,10 @@ export default function UsersClassesManagement() {
       setClasses(dataByKey.classes);
       setGrades(dataByKey.grades);
       setParents(dataByKey.parents);
-      if (failed.length > 0) {
+      if (failed.length === endpoints.length) {
         nassaqError(t('errorLoadingData'));
+      } else if (failed.length > 0) {
+        console.warn('Partial data load failure for endpoints:', failed);
       }
     } catch (error) {
       nassaqError(t('errorLoadingData'));
