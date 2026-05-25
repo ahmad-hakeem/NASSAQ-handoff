@@ -453,7 +453,7 @@ async def get_portfolio_sections(current_user: dict = Depends(get_current_user))
     other teachers' portfolios should go through a dedicated endpoint with an explicit
     teacher_id parameter and proper tenant scoping.
     """
-    if current_user["role"] != "teacher":
+    if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin", "independent_teacher"):
         raise HTTPException(status_code=403, detail="غير مصرح")
 
     teacher_id = current_user["id"]
