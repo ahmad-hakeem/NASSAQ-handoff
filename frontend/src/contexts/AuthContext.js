@@ -812,6 +812,30 @@ export const AuthProvider = ({ children }) => {
       console.error('Failed to fetch user after token update:', error);
     }
   };
+
+  // Task #528 — Single source of truth for the "exit preview / return
+  // to original role" flow used by both RoleSwitcherDialog and the
+  // persistent PreviewModeBanner in the app shell. Wraps the hardened
+  // `/user-roles/return-to-original` endpoint, swaps the bearer token,
+  // and clears any school-context impersonation flags. Callers handle
+  // navigation and user-facing toasts so this stays UI-agnostic.
+  const returnToOriginalRole = useCallback(async () => {
+    const response = await api.post('/user-roles/return-to-original', {});
+    if (response?.data?.success) {
+      sessionStorage.removeItem('nassaq_school_context');
+      sessionStorage.removeItem('nassaq_impersonating');
+      sessionStorage.removeItem('nassaq_original_token');
+      setSchoolContext(null);
+      setIsImpersonating(false);
+      await updateToken(response.data.access_token);
+      return {
+        success: true,
+        redirectTo: response.data.redirect_to || '/admin',
+        message: response.data.message,
+      };
+    }
+    return { success: false };
+  }, [api]);
   
   // Enter School Context (Platform Admin previewing a school as its
   // School Principal).
@@ -1025,6 +1049,7 @@ export const AuthProvider = ({ children }) => {
     isImpersonating,
     enterSchoolContext,
     exitSchoolContext,
+    returnToOriginalRole,
     getEffectiveRole,
     getEffectiveTenantId,
     preferredLanguage,

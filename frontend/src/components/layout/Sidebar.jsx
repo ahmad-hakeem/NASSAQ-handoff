@@ -33,6 +33,7 @@ import {
 import SidebarContent from './sidebar/SidebarContent';
 import RoleSwitcherDialog from './sidebar/RoleSwitcherDialog';
 import PreviewReasonDialog from './sidebar/PreviewReasonDialog';
+import PreviewModeBanner from './PreviewModeBanner';
 
 export const Sidebar = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
@@ -47,7 +48,7 @@ export const Sidebar = ({ children }) => {
   const {
     user, logout, isImpersonating, schoolContext, getEffectiveRole,
     exitSchoolContext, token, updateToken, isSwitchedRole, originalRole,
-    api, fetchPermissions,
+    api, fetchPermissions, returnToOriginalRole,
   } = useAuth();
 
   // Phase 0 §4.B-6 backed sidebar permission gate.
@@ -157,19 +158,20 @@ export const Sidebar = ({ children }) => {
     && user?.role === 'platform_admin',
   [user?.role]);
 
-  // Task #525 — hide the Platform Admin's own "self" row from the
-  // role-switch popup. The backend still returns it (is_current=true,
-  // role='platform_admin', is_primary=true) but it isn't a valid
-  // switch target — restoring to the original role is handled by the
-  // dedicated "العودة للدور الأصلي" button at the bottom of the
-  // dialog. Other roles keep their full list, and the row is only
-  // hidden for actual platform_admin users.
+  // Task #525 / Task #528 — hide the Platform Admin's own "self" row
+  // from the role-switch popup. The backend still returns it
+  // (role='platform_admin', is_primary=true, and either is_current
+  // when not previewing or just a stale self-row while impersonating)
+  // but it isn't a valid switch target — restoring to the original
+  // role is handled by the dedicated "العودة للدور الأصلي" button at
+  // the bottom of the dialog and by the persistent PreviewModeBanner
+  // in the app shell. Task #528 tightens the filter so the row is
+  // dropped for any platform_admin viewer regardless of is_current /
+  // is_impersonating state, so it never appears inline next to the
+  // previewable schools.
   const displayableRoles = useMemo(() => {
     if (user?.role !== 'platform_admin') return availableRoles;
-    return (availableRoles || []).filter((role) => !(
-      role?.role === 'platform_admin'
-      && (role?.is_current === true || role?.is_primary === true)
-    ));
+    return (availableRoles || []).filter((role) => role?.role !== 'platform_admin');
   }, [availableRoles, user?.role]);
 
   const _detailString = (error) => {
@@ -251,16 +253,18 @@ export const Sidebar = ({ children }) => {
     setPreviewReasonRole(null);
   }, [switchingRole]);
 
+  // Task #528 — Delegates the network/token swap to AuthContext so the
+  // dialog button and the persistent PreviewModeBanner share a single
+  // implementation. UI concerns (spinner, dialog close, toast, navigation)
+  // still live here at the call site.
   const handleReturnToOriginal = useCallback(async () => {
     setSwitchingRole(true);
     try {
-      const response = await api.post('/user-roles/return-to-original', {});
-      if (response.data.success) {
-        await updateToken(response.data.access_token);
-        toast.success(response.data.message || (t('returnedToOriginalRole')));
+      const result = await returnToOriginalRole();
+      if (result?.success) {
+        toast.success(result.message || t('returnedToOriginalRole'));
         setShowRoleSwitcher(false);
-        const redirectTo = response.data.redirect_to || '/admin';
-        navigate(redirectTo);
+        navigate(result.redirectTo);
       }
     } catch (error) {
       console.error('Error returning to original role:', error);
@@ -268,7 +272,7 @@ export const Sidebar = ({ children }) => {
     } finally {
       setSwitchingRole(false);
     }
-  }, [api, nassaqError, navigate, t, updateToken]);
+  }, [returnToOriginalRole, nassaqError, navigate, t]);
 
   const handleLogout = useCallback(() => {
     nassaqWarning(
@@ -480,6 +484,11 @@ export const Sidebar = ({ children }) => {
           }
         `}
       >
+        {/* Task #528 — Persistent preview banner. Lives in the app shell
+            so it stays visible across navigation while a Platform Admin
+            is impersonating a school. Renders nothing when not in
+            preview mode. */}
+        <PreviewModeBanner />
         {children}
       </main>
 
