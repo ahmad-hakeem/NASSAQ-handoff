@@ -657,5 +657,75 @@ async def delete_class(
     }
 
 
+@router.post("/classes/{class_id}/restore")
+async def restore_class(
+    class_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
+):
+    """Restore a soft-deleted class. Clears ``is_active=False`` and the
+    ``deleted_at`` / ``deleted_by`` markers so the row reappears in
+    ``GET /classes``. Dependent rows (teacher_assignments, class_subjects,
+    timetable_sessions, class_sessions, curriculum_lessons,
+    teacher_class_assignments) are NOT auto-reactivated — the response
+    body lists the inactive counts so the UI can prompt the principal to
+    re-link them. Only classes where ``is_active=False`` AND
+    ``deleted_at IS NOT NULL`` are restorable (a class deactivated for
+    other reasons cannot be restored through this endpoint).
+    IT callers are pinned to their own workspace (cross-workspace ids
+    return 404 per spec §8 inv. 3)."""
+    from auth_scope import is_independent_teacher, independent_workspace_id
+    base_filter = {"id": class_id, "is_active": False, "deleted_at": {"$ne": None}}
+    if is_independent_teacher(current_user):
+        wsid = independent_workspace_id(current_user)
+        base_filter["school_id"] = wsid
+    class_doc = await gd_find_one(db.session, "classes", base_filter)
+    if not class_doc:
+        raise HTTPException(status_code=404, detail="الفصل غير موجود")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    restore_payload = {
+        "is_active": True,
+        "deleted_at": None,
+        "deleted_by": None,
+    }
+    await gd_update_one(db.session, "classes", {"id": class_id}, restore_payload)
+
+    inactive_dependents = {
+        "teacher_assignments": await gd_count(db.session, "teacher_assignments", {"class_id": class_id, "is_active": False}),
+        "teacher_class_assignments": await gd_count(db.session, "teacher_class_assignments", {"class_id": class_id, "is_active": False}),
+        "class_subjects": await gd_count(db.session, "class_subjects", {"class_id": class_id, "is_active": False}),
+        "timetable_sessions": await gd_count(db.session, "timetable_sessions", {"class_id": class_id, "is_active": False}),
+        "class_sessions": await gd_count(db.session, "class_sessions", {"class_id": class_id, "is_active": False}),
+        "curriculum_lessons": await gd_count(db.session, "curriculum_lessons", {"class_id": class_id, "is_active": False}),
+    }
+
+    school_id = class_doc.get("school_id")
+    audit_log = {
+        "id": str(uuid.uuid4()),
+        "school_id": school_id,
+        "action": "restore",
+        "entity_type": "class",
+        "entity_id": class_id,
+        "old_data": {
+            "name": class_doc.get("name"),
+            "is_active": False,
+            "deleted_at": class_doc.get("deleted_at"),
+            "deleted_by": class_doc.get("deleted_by"),
+        },
+        "new_data": {"is_active": True, "deleted_at": None, "deleted_by": None},
+        "performed_by": current_user["id"],
+        "performed_by_name": current_user.get("full_name", ""),
+        "timestamp": now_iso,
+        "ip_address": None,
+    }
+    await gd_insert(db.session, "audit_logs", audit_log)
+
+    return {
+        "message": "تمت استعادة الفصل بنجاح",
+        "success": True,
+        "inactive_dependents": inactive_dependents,
+    }
+
+
 
 
