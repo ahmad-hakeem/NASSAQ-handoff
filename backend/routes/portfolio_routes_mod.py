@@ -1426,7 +1426,7 @@ class IntroSave(BaseModel):
 
 @router.put("/teacher/portfolio/intro")
 async def save_intro(payload: IntroSave, current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "teacher":
+    if current_user["role"] not in ("teacher", "independent_teacher"):
         raise HTTPException(status_code=403, detail="غير مصرح")
     teacher_id = current_user["id"]
     intro_text = (payload.text or "").strip()
@@ -1455,7 +1455,7 @@ class VMVSave(BaseModel):
 
 @router.put("/teacher/portfolio/vmv")
 async def save_vmv(payload: VMVSave, current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "teacher":
+    if current_user["role"] not in ("teacher", "independent_teacher"):
         raise HTTPException(status_code=403, detail="غير مصرح")
     await _lock_teacher_meta(current_user["id"])
     meta = await _save_meta(current_user["id"], current_user.get("tenant_id"), {
@@ -1589,7 +1589,7 @@ async def generate_evidence_description(
     payload: EvidenceDescAIRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    if current_user["role"] != "teacher":
+    if current_user["role"] not in ("teacher", "independent_teacher"):
         raise HTTPException(status_code=403, detail="غير مصرح")
     mode = (payload.mode or "generate").strip().lower()
     if mode not in ("generate", "improve"):
@@ -1612,7 +1612,7 @@ async def generate_evidence_description(
 
 @router.post("/teacher/portfolio/generate-intro")
 async def generate_intro(payload: AIGenerateRequest, current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "teacher":
+    if current_user["role"] not in ("teacher", "independent_teacher"):
         raise HTTPException(status_code=403, detail="غير مصرح")
     mode = (payload.mode or "generate").strip().lower()
     if mode not in ("generate", "improve"):
@@ -1646,7 +1646,7 @@ class VMVGenerateRequest(BaseModel):
 
 @router.post("/teacher/portfolio/generate-vmv")
 async def generate_vmv(payload: VMVGenerateRequest, current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "teacher":
+    if current_user["role"] not in ("teacher", "independent_teacher"):
         raise HTTPException(status_code=403, detail="غير مصرح")
     mode = (payload.mode or "generate").strip().lower()
     if mode not in ("generate", "improve"):
