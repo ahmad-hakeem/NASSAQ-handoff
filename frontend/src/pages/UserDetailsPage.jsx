@@ -194,9 +194,16 @@ const ACTION_TRANSLATIONS = {
   'user_activated': 'تفعيل مستخدم',
   'user_role_changed': 'تغيير الدور',
   'permissions_updated': 'تحديث الصلاحيات',
+  'password_changed': 'تغيير كلمة المرور',
   'password_reset': 'إعادة تعيين كلمة المرور',
   'settings_updated': 'تحديث الإعدادات',
   'data_exported': 'تصدير البيانات',
+};
+
+const humanizeActionKey = (raw) => {
+  if (!raw || typeof raw !== 'string') return 'تحديث في الحساب';
+  const cleaned = raw.replace(/^[a-z]+\./i, '').replace(/[_\-]+/g, ' ').trim();
+  return cleaned ? cleaned : 'تحديث في الحساب';
 };
 
 // Generate random password
@@ -933,7 +940,7 @@ ${API_URL}/login
                     ) : (
                       <div className="space-y-3">
                         {activities.map((activity, idx) => {
-                          const actionLabel = activity.action_ar || ACTION_TRANSLATIONS[activity.action] || activity.action;
+                          const actionLabel = activity.action_ar || ACTION_TRANSLATIONS[activity.action] || humanizeActionKey(activity.action);
                           const deviceBrowser = activity.device_info?.browser;
                           const deviceOs = activity.device_info?.os;
                           const deviceLabel = (deviceBrowser && deviceBrowser !== 'غير معروف')
