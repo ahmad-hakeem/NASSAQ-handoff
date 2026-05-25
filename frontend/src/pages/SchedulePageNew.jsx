@@ -1533,30 +1533,36 @@ export default function SchedulePageNew() {
   }
 
   if (tab === 'settings') {
+    // الغلاف الخارجي مطابق تماماً لتبويبَي «الجدول الرئيسي» و«جدول حصص
+    // الانتظار» حتى يبدأ المحتوى من نفس النقطة الرأسية بلا انزياح بصري عند
+    // التبديل بين التبويبات الثلاثة. الحشو الأفقي والمسافة العلوية الموحَّدة
+    // (pt-3) تُطبَّق على غلاف داخلي يلفّ الترويسة ومحتوى الإعدادات.
     return (
       <Sidebar>
         <div
           dir={direction}
-          className="min-h-[calc(100dvh-3.5rem)] lg:min-h-[100dvh] bg-slate-50 text-slate-900"
+          className="flex flex-col h-[100dvh] bg-slate-50 text-slate-900 overflow-hidden"
         >
-          <div className="p-4 md:p-6 flex flex-col gap-5">
-            {/* ── Primary tab nav (Master / Standby / Settings) ─────────── */}
-            <ScheduleTabNav active="settings" />
+          {/* ── Primary tab nav (Master / Standby / Settings) ─────────── */}
+          <ScheduleTabNav active="settings" />
 
-            {/* ── Header ───────────────────────────────────────────────── */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-              <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-[#1C3D74] flex items-center gap-2">
-                  <Settings className="h-7 w-7 text-[#1C3D74]" />
-                  {t('settingsScheduleTitle')}
-                </h1>
-                <p className="text-sm text-slate-500 mt-1">
-                  {t('settingsScheduleSubtitle')}
-                </p>
+          <div className="flex-1 min-h-0 overflow-auto">
+            <div className="flex flex-col gap-5 px-4 md:px-6 pt-3 pb-4 md:pb-6 [&>*:first-child]:mt-0">
+              {/* ── Header ───────────────────────────────────────────── */}
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div>
+                  <h1 className="text-2xl md:text-3xl font-bold text-[#1C3D74] flex items-center gap-2">
+                    <Settings className="h-7 w-7 text-[#1C3D74]" />
+                    {t('settingsScheduleTitle')}
+                  </h1>
+                  <p className="text-sm text-slate-500 mt-1">
+                    {t('settingsScheduleSubtitle')}
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <ScheduleSettingsTabContent />
+              <ScheduleSettingsTabContent />
+            </div>
           </div>
         </div>
       </Sidebar>
