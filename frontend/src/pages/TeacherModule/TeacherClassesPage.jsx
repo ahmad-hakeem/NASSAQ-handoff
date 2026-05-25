@@ -582,7 +582,30 @@ export default function TeacherClassesPage() {
         toast.success(t('classAddedSuccessfully'));
         setShowAddClassDialog(false);
         setWorkspaceClassForm({ name_ar: '', grade_label: '', subject_id: '', capacity: 30 });
-        fetchClasses();
+        // Fetch workspace classes directly — more reliable than the
+        // assignment-scoped /teacher/classes endpoint which may lag behind
+        // newly created workspace classes (IT §5.3 stale-list fix).
+        try {
+          const wsRes = await api.get('/classes').catch(() => ({ data: [] }));
+          const wsList = Array.isArray(wsRes.data) ? wsRes.data : (wsRes.data?.classes || []);
+          setClasses(prev => {
+            const collabOnly = prev.filter(c => c._collab);
+            const wsEnriched = wsList.map(cls => {
+              const existing = prev.find(c => c.id === cls.id);
+              return {
+                ...cls,
+                attendance_rate: existing?.attendance_rate ?? 0,
+                participation_rate: existing?.participation_rate ?? 0,
+                avg_performance: existing?.avg_performance ?? 0,
+                total_sessions: existing?.total_sessions ?? 0,
+              };
+            });
+            const wsIds = new Set(wsList.map(c => c.id));
+            return [...wsEnriched, ...collabOnly.filter(c => !wsIds.has(c.id))];
+          });
+        } catch (_) {
+          fetchClasses();
+        }
         fetchWorkspaceClassCount();
       } catch (err) {
         const status = err?.response?.status;
@@ -646,10 +669,37 @@ export default function TeacherClassesPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const resolveGradeName = useCallback((cls) => {
+    if (cls.grade_id && gradeOptions.length > 0) {
+      const opt = gradeOptions.find(g => g.id === cls.grade_id);
+      if (opt) {
+        return isRTL
+          ? (opt.name_ar || opt.name_en || opt.name || '')
+          : (opt.name_en || opt.name_ar || opt.name || '');
+      }
+    }
+    return cls.grade_name || '';
+  }, [gradeOptions, isRTL]);
+
   const grades = useMemo(() => {
-    const g = [...new Set(classes.map(c => c.grade_level || c.grade_id || ''))].filter(Boolean).sort();
-    return g;
-  }, [classes]);
+    const seen = new Map();
+    for (const c of classes) {
+      const rawId = c.grade_level || c.grade_id || '';
+      if (!rawId || seen.has(rawId)) continue;
+      let label = '';
+      if (c.grade_id && gradeOptions.length > 0) {
+        const opt = gradeOptions.find(g => g.id === c.grade_id);
+        if (opt) {
+          label = isRTL
+            ? (opt.name_ar || opt.name_en || opt.name || '')
+            : (opt.name_en || opt.name_ar || opt.name || '');
+        }
+      }
+      if (!label) label = c.grade_name || rawId;
+      seen.set(rawId, label);
+    }
+    return [...seen.entries()].map(([id, label]) => ({ id, label })).sort((a, b) => a.id.localeCompare(b.id));
+  }, [classes, gradeOptions, isRTL]);
 
   const filteredClasses = useMemo(() => {
     let result = classes.filter(cls => {
@@ -791,7 +841,7 @@ export default function TeacherClassesPage() {
               </div>
               <div className="min-w-0">
                 <CardTitle className="text-base font-cairo truncate">{cls.name}</CardTitle>
-                <p className={`text-xs ${gc.text} font-medium`}>{cls.grade_name}</p>
+                <p className={`text-xs ${gc.text} font-medium`}>{resolveGradeName(cls)}</p>
                 {renderNextSession(cls)}
               </div>
             </div>
@@ -932,7 +982,7 @@ export default function TeacherClassesPage() {
             </div>
             <div className="min-w-0">
               <p className="font-medium font-cairo text-sm truncate">{cls.name}</p>
-              <p className={`text-xs ${gc.text}`}>{cls.grade_name}</p>
+              <p className={`text-xs ${gc.text}`}>{resolveGradeName(cls)}</p>
             </div>
           </div>
         );
@@ -1370,8 +1420,8 @@ export default function TeacherClassesPage() {
                     <SelectContent>
                       <SelectItem value="all">{t('allGrades')}</SelectItem>
                       {grades.map(g => (
-                        <SelectItem key={g} value={String(g)}>
-                          {t('gradeLevel')} {g}
+                        <SelectItem key={g.id} value={String(g.id)}>
+                          {g.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
