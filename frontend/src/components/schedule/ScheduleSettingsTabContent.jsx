@@ -106,7 +106,7 @@ export default function ScheduleSettingsTabContent() {
     return (
       <div
         dir={direction}
-        className="flex items-center justify-center py-20 text-slate-500"
+        className="flex items-center justify-center py-20 min-h-[60vh] text-slate-500"
         data-testid="schedule-settings-loader"
       >
         <Loader2 className="h-6 w-6 animate-spin me-2" />

@@ -45,7 +45,7 @@ export default function ScheduleTabNav({ active }) {
 
   return (
     <div
-      className="bg-white rounded-2xl p-1.5 shadow-sm border border-slate-200 flex flex-row gap-1 shrink-0"
+      className="bg-white rounded-2xl p-1.5 shadow-sm border border-slate-200 flex flex-row flex-nowrap gap-1 shrink-0 overflow-x-auto sm:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       role="tablist"
       data-testid="schedule-tab-nav"
     >
@@ -60,14 +60,14 @@ export default function ScheduleTabNav({ active }) {
             aria-selected={isActive}
             onClick={() => navigate(tab.path)}
             data-testid={`schedule-nav-${tab.id}`}
-            className={`flex-1 min-w-0 rounded-xl px-3 py-2.5 text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+            className={`flex-none sm:flex-1 sm:min-w-0 whitespace-nowrap rounded-xl px-3 py-2.5 text-xs sm:text-sm font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
               isActive
                 ? 'bg-[#1C3D74] text-white shadow-md'
                 : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
             }`}
           >
             <Icon className="h-4 w-4 shrink-0" />
-            <span className="truncate">{t(tab.labelKey)}</span>
+            <span className="whitespace-nowrap">{t(tab.labelKey)}</span>
           </button>
         );
       })}
