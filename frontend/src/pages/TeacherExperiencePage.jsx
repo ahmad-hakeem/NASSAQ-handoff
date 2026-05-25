@@ -109,6 +109,7 @@ const MONTHLY_FEATURES = [
 export const TeacherExperiencePage = () => {
   const { isRTL } = useTheme();
   const [activeAlertType, setActiveAlertType] = useState(0);
+  const showTeacherPricing = false;
 
   const ar = (a, e) => isRTL ? a : e;
 
@@ -463,6 +464,7 @@ export const TeacherExperiencePage = () => {
       </section>
 
       {/* ── PRICING — navy ────────────────────────────────────── */}
+      {showTeacherPricing && (
       <section className="relative bg-brand-navy py-24 lg:py-32 overflow-hidden">
         <div
           className="absolute inset-0 bg-cover bg-center opacity-[0.05]"
@@ -545,6 +547,7 @@ export const TeacherExperiencePage = () => {
           </p>
         </div>
       </section>
+      )}
 
       {/* ── FINAL CTA — light ─────────────────────────────────── */}
       <section className="py-24 lg:py-32 bg-gradient-to-b from-background via-background to-background relative overflow-hidden">
