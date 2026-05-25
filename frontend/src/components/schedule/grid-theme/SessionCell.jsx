@@ -14,7 +14,7 @@
  */
 import React from 'react';
 import { Lock, AlertTriangle } from 'lucide-react';
-import { getDayTintClass } from './dayPalette';
+import { getDayTintClass, getDayBandClass } from './dayPalette';
 
 export default function SessionCell({
   session,
@@ -25,6 +25,7 @@ export default function SessionCell({
   compact = true,
 }) {
   const tint = getDayTintClass(dayKey);
+  const band = getDayBandClass(dayKey);
   const handleActivate = (e) => {
     if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
     e.preventDefault?.();
@@ -67,13 +68,20 @@ export default function SessionCell({
       onKeyDown={handleActivate}
       aria-label={ariaLabel}
       data-testid={`session-cell-${session?.id}`}
-      className={`group relative h-full ${containerSize} min-w-0 overflow-hidden rounded-lg cursor-pointer ${tint} border border-white/70 shadow-[0_1px_2px_rgba(15,42,75,0.05)] transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_6px_14px_rgba(15,42,75,0.12)] hover:z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-1 motion-reduce:hover:translate-y-0 ${isLocked ? 'opacity-80' : ''}`}
+      className={`group relative h-full ${containerSize} min-w-0 overflow-hidden rounded-lg cursor-pointer bg-white border border-slate-200/80 shadow-[0_1px_2px_rgba(15,42,75,0.06),0_1px_3px_rgba(15,42,75,0.04)] transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_8px_18px_rgba(15,42,75,0.14)] hover:border-slate-300 hover:z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-1 motion-reduce:hover:translate-y-0 ${isLocked ? 'opacity-80' : ''}`}
     >
-      {/* Soft top highlight — gives the day-tinted surface dimension
-          without changing its hue. Pure decoration, click-through. */}
+      {/* Day-band colored top stripe — preserves the day-color signal
+          (matches the sticky day-band header) while the card body
+          stays a crisp white "tile" instead of a flat tinted square. */}
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-1/2 rounded-t-lg bg-gradient-to-b from-white/55 to-transparent"
+        className={`pointer-events-none absolute inset-x-0 top-0 h-[3px] ${band}`}
+      />
+      {/* Day-tint echo at the bottom — very faint, repeats the day
+          color so weekly mode still scans by color at a glance. */}
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-x-0 bottom-0 h-1/3 opacity-50 ${tint}`}
       />
       {isLocked && (
         <Lock

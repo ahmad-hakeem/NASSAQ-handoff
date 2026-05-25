@@ -160,15 +160,15 @@ function KpiCard({ icon: Icon, label, value, suffix, accent }) {
   // spot critical metrics at a glance, but reclaims ~60px of vertical
   // space for the grid below.
   return (
-    <div className={`group relative bg-white rounded-xl border border-slate-200/80 border-s-[3px] ${accent.topBorder.replace('border-t-', 'border-s-')} shadow-[0_1px_2px_rgba(15,42,75,0.04)] hover:shadow-[0_4px_12px_rgba(15,42,75,0.08)] transition-shadow duration-200 flex items-center gap-3 px-3.5 py-2.5 min-w-0`}>
-      <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${accent.iconBg} ring-1 ring-inset ring-white/60`}>
-        <Icon className={`h-4 w-4 ${accent.iconText}`} strokeWidth={1.5} aria-hidden="true" />
+    <div className={`group relative overflow-hidden bg-white rounded-xl border border-slate-200/80 border-s-4 ${accent.topBorder.replace('border-t-', 'border-s-')} shadow-[0_1px_2px_rgba(15,42,75,0.04),0_1px_3px_rgba(15,42,75,0.05)] hover:shadow-[0_6px_16px_rgba(15,42,75,0.1)] hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-3 px-4 py-3 min-w-0`}>
+      <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${accent.iconBg} ring-1 ring-inset ring-white/70`}>
+        <Icon className={`h-5 w-5 ${accent.iconText}`} strokeWidth={1.5} aria-hidden="true" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 leading-tight truncate">{label}</p>
-        <div className="flex items-baseline gap-1 leading-tight mt-0.5">
-          <span className={`text-xl font-bold tabular-nums ${accent.valueText}`}>{value}</span>
-          {suffix && <span className="text-[11px] font-medium text-slate-400 tabular-nums">{suffix}</span>}
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 leading-tight truncate">{label}</p>
+        <div className="flex items-baseline gap-1 leading-none mt-1">
+          <span className={`text-2xl font-bold tabular-nums tracking-tight ${accent.valueText}`}>{value}</span>
+          {suffix && <span className="text-xs font-semibold text-slate-400 tabular-nums">{suffix}</span>}
         </div>
       </div>
     </div>
