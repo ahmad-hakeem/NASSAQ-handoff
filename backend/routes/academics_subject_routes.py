@@ -20,7 +20,8 @@ from dependencies import (
     smart_scheduling_engine, TimetableRunStatus, TimetableStatus,
     ConflictType, ConflictSeverity, PreValidationResult, GenerationResult,
     hakim_engine, reporting_engine, export_engine, session_engine,
-    REPORT_TYPES, generate_student_qr_code
+    REPORT_TYPES, generate_student_qr_code,
+    require_recent_mfa_403_if_independent_teacher,
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
 
@@ -30,6 +31,8 @@ from shared_models import (
 )
 
 router = APIRouter()
+
+_REQUIRE_RECENT_MFA_403_IT = require_recent_mfa_403_if_independent_teacher()
 
 
 async def get_school_id_from_context(current_user: dict, x_school_context: str = None) -> str:
@@ -519,7 +522,8 @@ async def update_subject(
 async def delete_subject(
     subject_id: str,
     force: bool = False,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER])),
+    _mfa: dict = Depends(_REQUIRE_RECENT_MFA_403_IT),
 ):
     """Delete subject (soft delete). Tenant-scoped for non-platform
     callers; cross-workspace ids return 404 (spec §8 inv. 3). Fails
@@ -548,7 +552,7 @@ async def delete_subject(
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
 
     if not force:
-        ref_query_base = {"subject_id": subject_id}
+        ref_query_base = {"subject_id": subject_id, "is_active": {"$ne": False}}
         if scope_school_id:
             ref_query_base["school_id"] = scope_school_id
         classes_count = await gd_count(db.session, "classes", ref_query_base)
@@ -635,8 +639,20 @@ async def delete_school_subject(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    await gd_delete_one(db.session, "subjects", {"id": subject_id, "tenant_id": school_id})
-    
+    subject = await gd_find_one(db.session, "subjects", {"id": subject_id, "tenant_id": school_id})
+    if not subject:
+        raise HTTPException(status_code=404, detail="المادة غير موجودة")
+
+    await gd_update_one(
+        db.session, "subjects",
+        {"id": subject_id, "tenant_id": school_id},
+        {
+            "is_active": False,
+            "deleted_at": datetime.now(timezone.utc).isoformat(),
+            "deleted_by": current_user["id"],
+        },
+    )
+
     return {"message": "تم حذف المادة الدراسية"}
 
 
