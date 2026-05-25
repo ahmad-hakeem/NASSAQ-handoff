@@ -45,6 +45,19 @@ import {
 } from '../components/users-management';
 
 import { useTranslation } from '../contexts/ThemeContext';
+// Operational toggles — schools & independent teachers self-register today,
+// so the manual-vetting tabs are temporarily hidden. Re-enable by flipping
+// either flag to true; underlying queries, schemas, and tab components are
+// preserved.
+const showIndependentTeacherRequests = false;
+const showSchoolRequests = false;
+
+const isApprovalTypeVisible = (config) => {
+  if (config?.tabValue === 'requests') return showIndependentTeacherRequests;
+  if (config?.tabValue === 'school-requests') return showSchoolRequests;
+  return true;
+};
+
 export default function UsersManagement() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -52,12 +65,17 @@ export default function UsersManagement() {
   const { nassaqError } = useNassaqAlert();
   const isRTL = true;
 
+  const visibleApprovalEntries = useMemo(
+    () => Object.entries(APPROVAL_TYPE_CONFIG).filter(([, config]) => isApprovalTypeVisible(config)),
+    []
+  );
+
   const initialTab = useMemo(() => {
     const tabParam = searchParams.get('tab');
     if (!tabParam) return 'users';
-    const validTabs = ['users', 'school-users', ...Object.values(APPROVAL_TYPE_CONFIG).map(c => c.tabValue)];
+    const validTabs = ['users', 'school-users', ...visibleApprovalEntries.map(([, c]) => c.tabValue)];
     return validTabs.includes(tabParam) ? tabParam : 'users';
-  }, [searchParams]);
+  }, [searchParams, visibleApprovalEntries]);
 
   const [users, setUsers] = useState([]);
   const [schoolUsers, setSchoolUsers] = useState({});
@@ -430,14 +448,18 @@ export default function UsersManagement() {
           <UsersStatsCards stats={stats} />
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full max-w-3xl grid-cols-4 mb-4">
+            <TabsList
+              className={`grid w-full max-w-3xl mb-4 ${
+                ['grid-cols-2', 'grid-cols-3', 'grid-cols-4'][visibleApprovalEntries.length] || 'grid-cols-4'
+              }`}
+            >
               <TabsTrigger value="users" className="font-cairo text-xs sm:text-sm">
                 <Users className="h-4 w-4 ms-2" />مستخدمين
               </TabsTrigger>
               <TabsTrigger value="school-users" className="font-cairo text-xs sm:text-sm">
                 <Building2 className="h-4 w-4 ms-2" />مستخدمو المدارس
               </TabsTrigger>
-              {Object.entries(APPROVAL_TYPE_CONFIG).map(([type, config]) => {
+              {visibleApprovalEntries.map(([type, config]) => {
                 const TabIcon = config.tabIcon;
                 const pending = getPendingCount(type);
                 return (
@@ -574,7 +596,7 @@ export default function UsersManagement() {
               />
             </TabsContent>
 
-            {Object.entries(APPROVAL_TYPE_CONFIG).map(([requestType, config]) => (
+            {visibleApprovalEntries.map(([requestType, config]) => (
               <TabsContent key={requestType} value={config.tabValue} className="space-y-4">
                 <ApprovalRequestsTab
                   requestType={requestType}
