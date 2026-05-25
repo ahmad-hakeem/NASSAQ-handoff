@@ -1643,6 +1643,7 @@
   "latestActivitiesAndUpdates": "Latest activities and updates",
   "layout": "Layout:",
   "legendaryTeacher": "Legendary Teacher",
+  "errorAddingLesson": "An error occurred while adding the lesson",
   "lessonAdded": "Lesson added",
   "lessonCompleted": "Lesson completed",
   "lessonDeleted": "Lesson deleted",

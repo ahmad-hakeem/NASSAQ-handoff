@@ -835,8 +835,11 @@ async def _verify_class_access(class_id: str, current_user: dict, *, write: bool
         class_sessions = await gd_find(db.session, "class_sessions", {"class_id": class_id, "teacher_id": tid}, limit=1)
         if class_sessions:
             return
+        tca = await gd_find(db.session, "teacher_class_assignments", {"class_id": class_id, "teacher_id": tid}, limit=1)
+        if tca:
+            return
         raise HTTPException(status_code=403, detail="غير مصرح بالوصول إلى هذا الفصل")
-    if role in ("school_admin", "school_sub_admin"):
+    if role in ("school_admin", "school_sub_admin", "school_principal"):
         user_tenant = current_user.get("tenant_id") or current_user.get("school_id")
         if user_tenant and class_school == user_tenant:
             return

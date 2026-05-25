@@ -221,11 +221,11 @@ export default function TeacherClassDetailPage() {
       (res.data?.lessons || []).forEach(l => { weeks[l.week] = true; });
       setExpandedWeeks(weeks);
     } catch (err) {
-      console.error('Error loading curriculum:', err);
+      nassaqError(t('errorLoadingCurriculum'));
     } finally {
       setCurriculumLoading(false);
     }
-  }, [api, classId]);
+  }, [api, classId, nassaqError, t]);
 
   const fetchGradeColumns = useCallback(async () => {
     if (!classId) return;
@@ -290,7 +290,7 @@ export default function TeacherClassDetailPage() {
       setShowAddLesson(false);
       fetchCurriculum();
     } catch (err) {
-      console.error(err);
+      nassaqError(t('errorAddingLesson'));
     }
   };
 

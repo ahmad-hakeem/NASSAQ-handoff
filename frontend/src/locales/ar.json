@@ -1647,6 +1647,7 @@
   "latestActivitiesAndUpdates": "أحدث الأنشطة والتحديثات",
   "layout": "المخطط:",
   "legendaryTeacher": "معلم أسطوري",
+  "errorAddingLesson": "حدث خطأ أثناء إضافة الدرس",
   "lessonAdded": "تم إضافة الدرس",
   "lessonCompleted": "تم إكمال الدرس",
   "lessonDeleted": "تم حذف الدرس",
