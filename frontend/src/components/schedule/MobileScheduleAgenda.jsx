@@ -25,6 +25,7 @@ import {
   Clock,
   Coffee,
   Repeat,
+  TriangleAlert,
   UserMinus,
   Users,
 } from 'lucide-react';
@@ -37,15 +38,16 @@ const STATUS_DOT = {
   absent: 'bg-amber-500',
   substituted: 'bg-emerald-500',
   substitute: 'bg-violet-500',
+  conflict: 'bg-orange-500',
   normal: 'bg-brand-turquoise',
 };
 
-function statusOf(cell, teacherAbsent, isToday) {
+function statusOf(cell, teacherAbsent, isToday, hasConflict) {
   if (!cell) return null;
-  if (cell.is_vacant) return 'vacant';
+  if (cell.is_vacant) return hasConflict ? 'conflict' : 'vacant';
   if (cell.is_substituted) return 'substituted';
   if (cell.is_substitute) return 'substitute';
-  if (teacherAbsent && isToday) return 'absent';
+  if (teacherAbsent && isToday) return hasConflict ? 'conflict' : 'absent';
   return 'normal';
 }
 
@@ -72,6 +74,11 @@ function StatusBadge({ status, t }) {
       Icon: Repeat,
       label: t('substituteShortLabel'),
     },
+    conflict: {
+      cls: 'bg-orange-50 text-orange-700 border-orange-200',
+      Icon: TriangleAlert,
+      label: t('vacantLabel'),
+    },
   };
   const meta = map[status];
   if (!meta) return null;
@@ -88,12 +95,16 @@ function StatusBadge({ status, t }) {
 
 function PeriodSection({
   period,
-  periodTime,
+  startTime,
+  endTime,
   isBreak,
   entries,
   onPickEntry,
   t,
 }) {
+  const timeLabel = startTime && endTime
+    ? `${startTime} – ${endTime}`
+    : (startTime || endTime || null);
   return (
     <section
       data-testid={`mobile-period-section-${period}`}
@@ -107,10 +118,10 @@ function PeriodSection({
           <span className="text-xs font-semibold text-slate-800">
             {t('periodAbbrev')} {period}
           </span>
-          {periodTime && (
+          {timeLabel && (
             <span className="text-[10px] text-slate-500 inline-flex items-center gap-1">
               <Clock className="h-3 w-3" strokeWidth={1.5} aria-hidden="true" />
-              <span className="tabular-nums">{periodTime}</span>
+              <span className="tabular-nums" dir="ltr">{timeLabel}</span>
             </span>
           )}
         </div>
@@ -185,6 +196,7 @@ function DayAgenda({
   periods,
   periodTimes,
   today,
+  conflictKeys,
   onPickEntry,
   t,
 }) {
@@ -207,18 +219,20 @@ function DayAgenda({
           !rawCell.is_substitute
             ? { ...rawCell, is_vacant: true }
             : rawCell;
-        const status = statusOf(cell, teacher.is_absent_today, isToday);
+        const hasConflict = conflictKeys?.has(`${teacher.id}|${dayKey}|${p}`);
+        const status = statusOf(cell, teacher.is_absent_today, isToday, hasConflict);
         entries.push({ teacher, cell, status });
       }
       const meta = periodTimes?.[pStr] || {};
       return {
         period: p,
-        periodTime: meta.start_time || meta.start || null,
+        startTime: meta.start_time || meta.start || null,
+        endTime: meta.end_time || meta.end || null,
         isBreak: !!meta.is_break,
         entries,
       };
     });
-  }, [periods, teachers, cells, dayKey, today, periodTimes]);
+  }, [periods, teachers, cells, dayKey, today, periodTimes, conflictKeys]);
 
   const hasAny = sections.some((s) => s.entries.length > 0);
   if (!hasAny) {
@@ -238,7 +252,8 @@ function DayAgenda({
         <PeriodSection
           key={s.period}
           period={s.period}
-          periodTime={s.periodTime}
+          startTime={s.startTime}
+          endTime={s.endTime}
           isBreak={s.isBreak}
           entries={s.entries}
           onPickEntry={onPickEntry}
@@ -290,6 +305,7 @@ export default function MobileScheduleAgenda({
   selectedDay,
   today,
   periodTimes,
+  unresolvedConflicts,
   canEdit,
   onEditSession,
   onVacantClick,
@@ -297,6 +313,20 @@ export default function MobileScheduleAgenda({
   error,
   onRetry,
 }) {
+  // Build a Set of "teacher|day|period" conflict keys so the agenda
+  // cards can render the orange conflict badge in parity with the
+  // desktop matrix (`conflictsByCell` in `MasterMatrix`). We accept
+  // only conflicts that are bound to a teacher — unassigned items
+  // surface inside the Hakim insights chip on the control band.
+  const conflictKeys = useMemo(() => {
+    const s = new Set();
+    if (!Array.isArray(unresolvedConflicts)) return s;
+    for (const c of unresolvedConflicts) {
+      if (!c?.day_of_week || !c?.period_number || !c?.teacher_id) continue;
+      s.add(`${c.teacher_id}|${c.day_of_week}|${c.period_number}`);
+    }
+    return s;
+  }, [unresolvedConflicts]);
   const { t } = useTranslation();
   const [expandedDays, setExpandedDays] = useState(() => {
     const initial = {};
@@ -447,6 +477,7 @@ export default function MobileScheduleAgenda({
                     periods={safePeriods}
                     periodTimes={periodTimes}
                     today={today}
+                    conflictKeys={conflictKeys}
                     onPickEntry={handlePickEntry}
                     t={t}
                   />
@@ -488,6 +519,7 @@ export default function MobileScheduleAgenda({
         periods={safePeriods}
         periodTimes={periodTimes}
         today={today}
+        conflictKeys={conflictKeys}
         onPickEntry={handlePickEntry}
         t={t}
       />

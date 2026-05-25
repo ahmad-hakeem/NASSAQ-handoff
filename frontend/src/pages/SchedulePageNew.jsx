@@ -1927,12 +1927,12 @@ export default function SchedulePageNew() {
           {viewMode === 'daily' && days.length > 0 && (
             <div
               data-testid="day-tabs-row"
-              className="flex flex-wrap items-center gap-2 px-4 md:px-6 pb-2"
+              className="flex items-center gap-2 px-4 md:px-6 pb-2 overflow-x-auto md:overflow-visible md:flex-wrap [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
               <div
                 role="tablist"
                 aria-label={t('selectDayLabel')}
-                className={`inline-flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm ${loading ? 'opacity-70' : ''}`}
+                className={`inline-flex flex-nowrap md:flex-wrap gap-1 rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm ${loading ? 'opacity-70' : ''}`}
               >
                 {days.map((dayKey) => {
                   const isActive = selectedDay === dayKey;
@@ -1986,6 +1986,7 @@ export default function SchedulePageNew() {
             selectedDay={selectedDay}
             today={grid?.today}
             periodTimes={grid?.period_times || {}}
+            unresolvedConflicts={unresolvedConflicts}
             canEdit={scheduleView === 'draft' && !!grid?.timetable_id}
             onEditSession={({ session }) => {
               setEditDrawerMode('edit');
