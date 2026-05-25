@@ -8,7 +8,7 @@ import csv
 import io
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import date as _date, datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -99,6 +99,12 @@ def _normalize_type(raw: Optional[str]) -> str:
 def _validate_date(value: str) -> str:
     if not value or not isinstance(value, str) or not _DATE_RE.match(value):
         raise HTTPException(status_code=422, detail="تاريخ غير صالح. استخدم الصيغة YYYY-MM-DD")
+    try:
+        parsed = _date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="تاريخ غير صالح. استخدم الصيغة YYYY-MM-DD")
+    if parsed < _date.today():
+        raise HTTPException(status_code=422, detail="لا يمكن إضافة أو تعديل حدث بتاريخ سابق. الرجاء اختيار تاريخ اليوم أو تاريخ مستقبلي")
     return value
 
 
