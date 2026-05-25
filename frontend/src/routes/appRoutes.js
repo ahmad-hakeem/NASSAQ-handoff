@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { ProtectedRoute, PublicRoute } from "../components/guards/RouteGuards";
+import { useAuth } from "../contexts/AuthContext";
 
 // Redirect helper: maps the legacy standalone parent child sub-routes
 // (/parent/child/:childId, /schedule, /homework, /behaviour) onto the unified
@@ -197,9 +198,23 @@ function RouteFallback() {
 }
 
 export default function AppRoutes() {
+  // Audit 2026-05-25 (L2): key the entire <Routes> tree off the
+  // effective tenant + role so React fully unmounts and remounts on
+  // impersonation enter/exit. This guarantees per-page filter state
+  // (selectedClass, selectedGrade, etc.) does not leak across a role
+  // switch within the same user.id, even on flows that don't trigger a
+  // hard page reload.
+  const { getEffectiveTenantId, getEffectiveRole } = useAuth();
+  const _tid = (typeof getEffectiveTenantId === 'function'
+    ? getEffectiveTenantId()
+    : null) || 'self';
+  const _role = (typeof getEffectiveRole === 'function'
+    ? getEffectiveRole()
+    : null) || 'anon';
+  const routesKey = `${_role}:${_tid}`;
   return (
     <Suspense fallback={<RouteFallback />}>
-      <Routes>
+      <Routes key={routesKey}>
         {/* Public Routes */}
         {/* Shared public shell — task #495: both LandingPage and
             TeacherExperiencePage are rendered inside PublicShell and

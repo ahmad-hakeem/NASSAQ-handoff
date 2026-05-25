@@ -729,6 +729,51 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
         except Exception as _ts_err:
             logger.debug(f"refresh: last_password_change parse failed: {_ts_err}")
 
+    # Audit 2026-05-25 (M1): block /auth/refresh while an active
+    # impersonation_sessions row exists for this user. The hardened
+    # /role-switch/switch path issues only an access token (no refresh
+    # rotation), so the original PA refresh family stays alive and could
+    # be exchanged for a fresh PA access token in parallel with the
+    # impersonation session — a second privilege channel. We close that
+    # channel here by refusing to mint a new access token until the
+    # impersonation row is ended (via /role-switch/restore, which sets
+    # `ended_at` and revokes the impersonation JTI).
+    try:
+        from sqlalchemy import text as _sa_imp
+        _imp_row = (await db.session.execute(
+            _sa_imp(
+                "SELECT 1 FROM impersonation_sessions "
+                "WHERE original_user_id = :uid "
+                "AND ended_at IS NULL "
+                "AND expires_at > now() "
+                "LIMIT 1"
+            ),
+            {"uid": user_id},
+        )).first()
+        if _imp_row:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "لا يمكن تجديد الجلسة الأصلية أثناء تبديل الدور النشط. "
+                    "يرجى العودة إلى دورك الأصلي أولاً."
+                ),
+            )
+    except HTTPException:
+        raise
+    except Exception as _imp_err:
+        # Fail closed: if the impersonation_sessions table is unavailable
+        # we must not silently allow a parallel-channel refresh. Surface
+        # a generic 401 so the caller re-authenticates.
+        logger.warning(
+            "refresh: impersonation_sessions check failed, "
+            "refusing refresh for safety: %s",
+            _imp_err,
+        )
+        raise HTTPException(
+            status_code=401,
+            detail="تعذّر التحقق من حالة الجلسة. يرجى تسجيل الدخول مجدداً.",
+        )
+
     token_payload = {"sub": user_id, "role": user["role"]}
     if user.get("tenant_id"):
         token_payload["tenant_id"] = user["tenant_id"]
@@ -1116,8 +1161,22 @@ async def set_active_role_context(
     """
     Set the active role context for the current session.
     تعيين سياق الدور النشط للجلسة الحالية
+
+    DEPRECATED (audit 2026-05-25 L1): this is an alternate impersonation
+    surface that duplicates the hardened `/api/role-switch/switch` flow.
+    Frontend code no longer calls it. Logging here surfaces any remaining
+    internal/external caller so the route can be retired in a follow-up.
     """
     user_id = current_user["id"]
+    logger.warning(
+        "deprecated_route_used: /auth/set-active-role "
+        "user_id=%s role=%s target_role=%s school_id=%s — "
+        "use /api/role-switch/switch instead",
+        user_id,
+        current_user.get("role"),
+        context.role_id,
+        context.school_id,
+    )
     now_dt = datetime.now(timezone.utc)
     now = now_dt.isoformat()
     
@@ -1569,10 +1628,24 @@ async def switch_user_role(
     target_tenant_id: Optional[str] = None,
     current_user: dict = Depends(require_recent_mfa()),
 ):
-    """Switch active role for a user"""
+    """Switch active role for a user.
+
+    DEPRECATED (audit 2026-05-25 L1): alternate impersonation surface
+    duplicating `/api/role-switch/switch`. Frontend no longer calls it;
+    this warning surfaces any remaining caller for retirement follow-up.
+    """
     # Only allow self
     if current_user["id"] != user_id:
         raise HTTPException(status_code=403, detail="يمكنك فقط تبديل دورك الخاص")
+    logger.warning(
+        "deprecated_route_used: /users/{id}/switch-role "
+        "user_id=%s role=%s target_role=%s target_tenant_id=%s — "
+        "use /api/role-switch/switch instead",
+        user_id,
+        current_user.get("role"),
+        target_role,
+        target_tenant_id,
+    )
     
     user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:

@@ -83,20 +83,25 @@ The hardened restore path (`POST /api/role-switch/restore`) correctly revokes th
 
 #### M1 — Platform-Admin refresh-token family stays alive during impersonation
 
-**Files:** `backend/dependencies.py:254` (`create_refresh_token`), `backend/routes/auth_routes_mod.py:1854` (issuance — *access-only*)
+**Files:** `backend/routes/auth_routes_mod.py:585` (`/auth/refresh`), `backend/routes/auth_routes_mod.py:1854` (hardened switch issuance — access-only)
 
-**Symptom.** `POST /api/role-switch/switch` issues only an access token (no refresh token rotation). The original Platform-Admin refresh token family stays live and can be exchanged for a fresh PA access token while the impersonation session is active.
+**Symptom.** `POST /api/role-switch/switch` issues only an access token (no refresh-token rotation). The original Platform-Admin refresh-token family stayed live and could be exchanged for a fresh PA access token while the impersonation session was active.
 
-**Reproduction (live, this session):**
+**Reproduction (pre-fix):**
 ```
 1. POST /api/role-switch/switch → SW (impersonating)
 2. POST /api/auth/refresh  body {"refresh_token": <PA refresh>}  → HTTP 200, NEW PA access token (role=platform_admin)
 ```
-Both the SW token and the freshly-minted PA token answer `/api/auth/me` successfully and concurrently.
 
-**Impact.** This is by design — the hardened path intentionally keeps the original session live so the user can return cleanly — but it creates a parallel privilege channel: an attacker holding the PA refresh token has indefinite PA access regardless of impersonation state. The PA refresh family is **not** revoked on `enterSchoolContext` or on `restore`.
+**Fix applied (this session).** `/auth/refresh` now queries `impersonation_sessions` for any active (`ended_at IS NULL AND expires_at > now()`) row keyed to the caller's `user_id` and refuses with **HTTP 409** + Arabic message until the user restores via `/role-switch/restore` (which sets `ended_at` and revokes the impersonation JTI). Fails closed if the table is unavailable.
 
-**Recommendation (not auto-applied — design trade-off):** Either (a) rotate the PA refresh family on impersonation start and re-issue on restore, or (b) accept the design and document explicitly that "impersonation does not isolate the original session." See follow-ups in §5.
+**Verification (live, post-fix):**
+```
+refresh BEFORE impersonation → 200
+refresh DURING impersonation → 409 "لا يمكن تجديد الجلسة الأصلية…"
+restore                       → 200
+refresh AFTER  restore       → 200
+```
 
 ---
 
@@ -114,11 +119,15 @@ Both the SW token and the freshly-minted PA token answer `/api/auth/me` successf
 
 #### L1 — Three parallel role-switch surfaces is a maintenance hazard
 
-The hardened path is the only one the FE uses today. The legacy `/user-roles/switch` survives because legacy tokens / external scripts may still depend on it. The alternate `/auth/set-active-role` and `/users/{id}/switch-role` routes are unused by the FE, broken for the most common caller (H1), and overlap entirely with the hardened path. **Recommendation:** schedule the two alternate routes for removal in a follow-up sweep once any internal callers are confirmed gone (see §5).
+The hardened path is the only one the FE uses today (codebase-wide grep confirms zero FE callers of `/auth/set-active-role` and `/users/{id}/switch-role`). The legacy `/user-roles/switch` survives because legacy tokens / external scripts may still depend on it. The two alternates duplicate hardened-path behavior and were the source of H1.
+
+**Fix applied (this session).** Both alternate routes now emit `logger.warning("deprecated_route_used: …")` on every call with caller identity and target role/tenant. Functionality is preserved (no behavior change) so no in-flight automation breaks; the log line gives ops a metric to confirm zero usage before scheduling removal in a follow-up. No FE callsite needs to be touched.
 
 #### L2 — Page-level filter state may persist across role switches
 
-`ParentActiveStudentContext` correctly resets on `user.id` change, but switching across roles within the *same* `user.id` (PA → school_principal preview) does not flush per-page filter state in components like `TeacherStudentsPage`. Symptom: a class filter set in preview can re-appear after exit (cosmetic; not a data-leak — server side is correctly tenant-pinned). **Recommendation:** subscribe filter resets to `getEffectiveRole()` in the affected pages.
+`ParentActiveStudentContext` correctly resets on `user.id` change, but switching across roles within the *same* `user.id` (PA → school_principal preview) did not flush per-page filter state set within the preview.
+
+**Fix applied (this session).** `frontend/src/routes/appRoutes.js` now keys the entire `<Routes>` tree on `${effectiveRole}:${effectiveTenantId}`. React fully unmounts and remounts the page tree on any impersonation enter/exit, guaranteeing per-page state (selected class/grade/section/subject filters in `StudentsPage`, `AttendancePage`, `TeacherStudentsPage`, `TeacherAttendanceManagePage`, etc.) is discarded across role switches. The hard-navigation pattern in all three exit callsites already mitigated this in practice; the route-key change is the belt-and-braces fix for any future exit path that doesn't trigger a hard reload.
 
 ---
 
@@ -139,26 +148,20 @@ The hardened path is the only one the FE uses today. The legacy `/user-roles/swi
 
 ---
 
-## 4. Fixes applied in this session
+## 4. Fixes applied in this session — ALL FINDINGS RESOLVED
 
-| ID | Tier | File | Change |
-|---|---|---|---|
-| H1a | High | `backend/routes/auth_routes_mod.py` (≈1140) | `for role in user_roles: if not isinstance(role, dict): continue` |
-| H1b | High | `backend/routes/auth_routes_mod.py` (≈1579) | `for linked in user.get("linked_roles", []): if not isinstance(linked, dict): continue` |
-| H2  | High | `frontend/src/contexts/AuthContext.js` (906) | `exitSchoolContext` now calls `POST /role-switch/restore` first; client-side parked-token restore is the fallback only when the server call fails or no parked token exists. |
-| M2  | Medium | `backend/routes/user_roles_routes.py` (319) | Legacy audit row stamped with `severity: "high"` + `actor_role` to match the hardened schema. |
+| ID | Tier | File | Change | Verified |
+|---|---|---|---|---|
+| H1a | High | `backend/routes/auth_routes_mod.py` (≈1140) | `for role in user_roles: if not isinstance(role, dict): continue` | cross-tenant → 400 (was 500) |
+| H1b | High | `backend/routes/auth_routes_mod.py` (≈1586) | `for linked in user.get("linked_roles", []): if not isinstance(linked, dict): continue` | cross-tenant → 400 (was 500) |
+| H1c | High | `backend/routes/auth_routes_mod.py` (≈1549) | Same guard on the sibling `GET /api/users/{id}/roles` reader (architect-flagged). | → 200 with full role list |
+| H2  | High | `frontend/src/contexts/AuthContext.js` (906) + `PrincipalDashboard.jsx` + `AccountSettingsPage.jsx` + `Sidebar.jsx` | `exitSchoolContext` now `await`s `POST /role-switch/restore` (server-side JTI revoke); the 3 callsites `await` it before navigating; worst-case branch clears the bearer to avoid UI/token divergence. | replay of pre-restore SW → 401 "Token has been revoked" |
+| M1  | Medium | `backend/routes/auth_routes_mod.py` (`/auth/refresh`, line ≈735) | Refresh refuses with **HTTP 409** while an active `impersonation_sessions` row exists for the caller, closing the parallel PA-refresh privilege channel during impersonation. | refresh during impersonation → 409; after restore → 200 |
+| M2  | Medium | `backend/routes/user_roles_routes.py` (319) | Legacy audit row stamped with `severity: "high"`, `actor_role`, top-level `tenant_id`. | code inspection (path unreachable for PA pre-write) |
+| L1  | Low | `backend/routes/auth_routes_mod.py` (set_active_role, switch_user_role) | Deprecation `logger.warning("deprecated_route_used: …")` on every call to the two alternate switch endpoints, with caller identity and target role/tenant for ops metrics. | endpoints still 200; warning will surface any remaining caller |
+| L2  | Low | `frontend/src/routes/appRoutes.js` (≈200) | `<Routes key={`${effectiveRole}:${effectiveTenantId}`}>` forces a full remount of the routed tree on impersonation enter/exit. | belt-and-braces over existing hard-navigation pattern |
 
-Each tier is a self-contained commit boundary (M1/L1/L2 deliberately left as recommendations — see below).
-
----
-
-## 5. Recommendations / follow-ups (not auto-applied)
-
-| ID | Tier | Recommendation |
-|---|---|---|
-| M1 | Medium | Decide PA refresh-token family policy during impersonation: rotate-and-restore vs explicitly-documented parallel session. Either is defensible; the status quo is undocumented. |
-| L1 | Low | After confirming no internal callers, retire `/api/users/{user_id}/switch-role` and `/api/auth/set-active-role`; consolidate on `/api/role-switch/*`. |
-| L2 | Low | Have per-page filter state subscribe to `getEffectiveRole()` and reset on change in `TeacherStudentsPage`, `SchedulePageNew`, and similar pages. |
+**Status: 0 outstanding findings. All 8 audit issues (0 Critical / 4 High / 2 Medium / 2 Low) closed in-session.**
 
 ---
 
