@@ -710,8 +710,35 @@ export const LandingPage = () => {
               </div>
             </div>
 
-            {/* RTL End = Left: Dashboard mockup */}
-            <div className="order-1 lg:order-2 relative pb-20 sm:pb-24 lg:pb-0">
+            {/* RTL End = Left: Dashboard mockup (Hakim sits above-left, visually attached) */}
+            <div className="order-1 lg:order-2 relative pt-16 sm:pt-20 lg:pt-24 xl:pt-28">
+              {/* Hakim welcome mascot — perched on top of the dashboard's left edge,
+                  feet resting on the dashboard top so the two read as one connected
+                  composition. Restrained size keeps the dashboard dominant. */}
+              <div
+                className="pointer-events-none select-none absolute z-20
+                           -top-1 -end-2
+                           sm:-top-2 sm:-end-3
+                           lg:-top-3 lg:-end-4
+                           xl:-top-4 xl:-end-6
+                           w-20 h-28
+                           sm:w-24 sm:h-32
+                           lg:w-28 lg:h-40
+                           xl:w-36 xl:h-48"
+                aria-hidden="true"
+              >
+                {/* Soft turquoise halo — blends the cutout into the navy hero */}
+                <div className="absolute inset-x-0 bottom-0 mx-auto w-[120%] h-[60%] rounded-full bg-brand-turquoise/25 blur-3xl -translate-x-[8%] rtl:translate-x-[8%]" />
+                <img
+                  src="/hakim-welcome.png"
+                  alt=""
+                  width="320"
+                  height="320"
+                  loading="lazy"
+                  className="relative w-full h-full object-contain object-bottom drop-shadow-2xl animate-float motion-reduce:animate-none"
+                />
+              </div>
+
               <div
                 className="relative z-10 w-full bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transform hover:scale-[1.02] transition-transform duration-500"
                 data-testid="hero-mockup"
@@ -747,33 +774,6 @@ export const LandingPage = () => {
                   ? 'لقطة حقيقية من لوحة مدير المدرسة'
                   : 'Real screenshot from the principal dashboard'}
               </p>
-
-              {/* Hakim welcome mascot — restrained supporting visual:
-                  small, anchored just past the dashboard's lower-end corner so only his
-                  outer shoulder/arm overlaps the mockup edge. Dashboard stays dominant. */}
-              <div
-                className="pointer-events-none select-none absolute z-20
-                           -bottom-2 -end-3
-                           sm:-bottom-3 sm:-end-4
-                           lg:-bottom-6 lg:-end-8
-                           xl:-bottom-8 xl:-end-10
-                           w-24 h-24
-                           sm:w-28 sm:h-28
-                           lg:w-36 lg:h-36
-                           xl:w-44 xl:h-44"
-                aria-hidden="true"
-              >
-                {/* Soft turquoise halo — blends the cutout into the navy hero */}
-                <div className="absolute inset-0 m-auto w-[110%] h-[110%] rounded-full bg-brand-turquoise/20 blur-3xl" />
-                <img
-                  src="/hakim-welcome.png"
-                  alt=""
-                  width="320"
-                  height="320"
-                  loading="lazy"
-                  className="relative w-full h-full object-contain object-bottom drop-shadow-2xl animate-float motion-reduce:animate-none"
-                />
-              </div>
             </div>
           </div>
         </div>
