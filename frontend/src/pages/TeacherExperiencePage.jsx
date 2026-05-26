@@ -62,7 +62,7 @@ const ACHIEVEMENT_RECORDS = [
     date: '١٢ مايو', dateEn: '12 May',
     subject: 'خطة توزيع المنهج الدراسي', subjectEn: 'Curriculum distribution plan',
     note: 'تم إرفاق الخطة الزمنية للفصل الدراسي الأول', noteEn: 'Term-one timeline attached',
-    tag: 'تحضير', tagEn: 'Planning', tagColor: 'bg-brand-turquoise/10 text-brand-turquoise',
+    tag: 'تحضير', tagEn: 'Planning', tagColor: 'bg-brand-turquoise/10 text-teal-700',
     icon: FileText,
   },
   {
@@ -83,7 +83,7 @@ const ACHIEVEMENT_RECORDS = [
     date: '٩ مايو', dateEn: '9 May',
     subject: 'شهادة حضور دورة تدريبية', subjectEn: 'Training course certificate',
     note: 'التطوير المهني المستمر', noteEn: 'Continuous professional development',
-    tag: 'تطوير', tagEn: 'Development', tagColor: 'bg-amber-500/10 text-amber-600',
+    tag: 'تطوير', tagEn: 'Development', tagColor: 'bg-amber-500/10 text-amber-700',
     icon: Award,
   },
 ];
@@ -264,13 +264,15 @@ export const TeacherExperiencePage = () => {
               <FileText className="h-4 w-4 text-white" strokeWidth={1.5} aria-hidden="true" />
               <span className="text-white text-sm font-tajawal font-medium">{ar('ملف الإنجاز التلقائي', 'Auto Achievement File')}</span>
             </div>
-            <h2 className="font-cairo font-black text-white text-3xl md:text-5xl lg:text-[3.5rem] leading-tight">
-              {ar(
-                <>ملف إنجاز مهني يُبنى<br /><span className="text-brand-turquoise">تلقائياً من اليوم الأول.</span></>,
-                <>A professional portfolio built<br /><span className="text-brand-turquoise">automatically from day one.</span></>
-              )}
-            </h2>
-            <p className="font-tajawal text-white/70 text-lg leading-relaxed max-w-lg">
+            <div className="space-y-3">
+              <h2 className="font-cairo font-black text-white text-4xl md:text-5xl lg:text-[3.75rem] leading-[1.05] tracking-tight">
+                {ar('ملف إنجاز مهني', 'A professional portfolio')}
+              </h2>
+              <p className="font-cairo font-bold text-brand-turquoise text-2xl md:text-3xl lg:text-[2rem] leading-tight">
+                {ar('يُبنى تلقائياً من اليوم الأول.', 'Built automatically from day one.')}
+              </p>
+            </div>
+            <p className="font-tajawal text-white/65 text-base md:text-[1.0625rem] leading-relaxed max-w-lg pt-1">
               {ar(
                 'وداعاً للورق والمجلدات. نَسَّق يقوم بجمع وتوثيق شواهدك اليومية، تحضيرك، وتقييماتك تلقائياً في ملف إنجاز احترافي جاهز للمشاركة مع الإدارة أو المشرفين في أي وقت.',
                 'Goodbye to paper and folders. NASSAQ automatically gathers and documents your daily evidence, lesson plans, and assessments into a professional portfolio ready to share with administration or supervisors anytime.'
@@ -293,49 +295,49 @@ export const TeacherExperiencePage = () => {
 
           {/* achievement file card */}
           <div aria-label={ar('ملف الإنجاز المهني — الأستاذ إبراهيم', 'Professional Portfolio — Mr Ibrahim')}>
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
+            <div className="bg-white border border-slate-200/70 rounded-2xl overflow-hidden shadow-[0_20px_60px_-20px_rgba(2,12,46,0.45)] ring-1 ring-black/5">
               {/* card header */}
-              <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+              <div className="px-5 py-4 border-b border-slate-200/80 flex items-center justify-between bg-gradient-to-b from-slate-50/60 to-white">
                 <div>
-                  <p className="font-cairo text-white font-bold text-base">{ar('ملف الإنجاز المهني — الأستاذ إبراهيم', 'Professional Portfolio — Mr Ibrahim')}</p>
-                  <p className="font-tajawal text-white/40 text-xs mt-0.5">{ar('الفصل الثاني · ١٤٤٦', 'Term 2 · 2024')}</p>
+                  <p className="font-cairo text-brand-navy font-bold text-base">{ar('ملف الإنجاز المهني — الأستاذ إبراهيم', 'Professional Portfolio — Mr Ibrahim')}</p>
+                  <p className="font-tajawal text-slate-500 text-xs mt-0.5">{ar('الفصل الثاني · ١٤٤٦', 'Term 2 · 2024')}</p>
                 </div>
-                <button className="flex items-center gap-1.5 font-tajawal text-xs text-brand-turquoise border border-brand-turquoise/30 rounded-lg px-3 py-1.5 hover:bg-brand-turquoise/10 transition-colors">
+                <button className="flex items-center gap-1.5 font-tajawal text-xs font-medium text-brand-navy border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 hover:border-slate-300 transition-colors">
                   <Download className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
                   {ar('تصدير', 'Export')}
                 </button>
               </div>
 
               {/* stats */}
-              <div className="grid grid-cols-3 divide-x divide-white/10 rtl:divide-x-reverse border-b border-white/10">
+              <div className="grid grid-cols-3 divide-x divide-slate-200/70 rtl:divide-x-reverse border-b border-slate-200/80 bg-white">
                 {[
-                  { value: '٤٥', label: ar('الشواهد المكتملة', 'Evidence completed') },
-                  { value: '١٢', label: ar('الأنشطة الموثقة', 'Documented activities') },
-                  { value: ar('متميز', 'Excellent'), label: ar('التقييم العام', 'Overall rating') },
+                  { value: '٤٥', label: ar('الشواهد المكتملة', 'Evidence completed'), accent: 'text-teal-700' },
+                  { value: '١٢', label: ar('الأنشطة الموثقة', 'Documented activities'), accent: 'text-brand-navy' },
+                  { value: ar('متميز', 'Excellent'), label: ar('التقييم العام', 'Overall rating'), accent: 'text-teal-700' },
                 ].map((s, i) => (
                   <div key={i} className="py-4 px-3 text-center">
-                    <p className="font-cairo font-black text-brand-turquoise text-xl">{s.value}</p>
-                    <p className="font-tajawal text-white/40 text-xs mt-0.5">{s.label}</p>
+                    <p className={`font-cairo font-black text-xl ${s.accent}`}>{s.value}</p>
+                    <p className="font-tajawal text-slate-600 text-xs mt-1">{s.label}</p>
                   </div>
                 ))}
               </div>
 
               {/* records */}
-              <div className="px-5 py-4">
-                <p className="font-tajawal text-white/40 text-xs mb-3">{ar('آخر السجلات — تُبنى تلقائياً', 'Latest records — auto-built')}</p>
-                <div className="space-y-2">
+              <div className="px-5 py-4 bg-white">
+                <p className="font-tajawal text-slate-500 text-xs mb-3">{ar('آخر السجلات — تُبنى تلقائياً', 'Latest records — auto-built')}</p>
+                <div className="space-y-1">
                   {ACHIEVEMENT_RECORDS.map((rec, i) => {
                     const Icon = rec.icon;
                     return (
-                      <div key={i} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
-                        <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
-                          <Icon className="h-4 w-4 text-white/40" strokeWidth={1.5} aria-hidden="true" />
+                      <div key={i} className="flex items-center gap-3 py-2 border-b border-slate-100 last:border-0">
+                        <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
+                          <Icon className="h-4 w-4 text-slate-500" strokeWidth={1.5} aria-hidden="true" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="font-cairo text-xs font-medium text-white/80 truncate">{ar(rec.subject, rec.subjectEn)}</p>
-                          <p className="font-tajawal text-[11px] text-white/40 truncate">{ar(rec.note, rec.noteEn)}</p>
+                          <p className="font-cairo text-xs font-semibold text-brand-navy truncate">{ar(rec.subject, rec.subjectEn)}</p>
+                          <p className="font-tajawal text-[11px] text-slate-600 truncate">{ar(rec.note, rec.noteEn)}</p>
                         </div>
-                        <span className={`shrink-0 font-tajawal text-[10px] px-2 py-0.5 rounded-full ${rec.tagColor}`}>{ar(rec.tag, rec.tagEn)}</span>
+                        <span className={`shrink-0 font-tajawal text-[10px] font-medium px-2 py-0.5 rounded-full ${rec.tagColor}`}>{ar(rec.tag, rec.tagEn)}</span>
                       </div>
                     );
                   })}
