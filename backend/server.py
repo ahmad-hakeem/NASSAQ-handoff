@@ -19,8 +19,6 @@ import json
 import logging
 import os
 import sys
-
-
 class StructuredJsonFormatter(logging.Formatter):
     """Emit each log record as a single JSON line for structured log ingestion."""
 

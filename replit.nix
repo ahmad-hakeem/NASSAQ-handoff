@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.lsof
     pkgs.psmisc
     pkgs.libgbm
     pkgs.freetype
