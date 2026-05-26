@@ -1194,17 +1194,18 @@ export const LandingPage = () => {
             })}
           </div>
 
-          <div className="grid lg:grid-cols-2 gap-8 lg:gap-10 items-start">
+          <div className="grid lg:grid-cols-2 gap-8 lg:gap-10 items-stretch">
             {/* AI Feature Card */}
             <div
+              className="flex h-full"
               onMouseEnter={() => setAIPaused(true)}
               onMouseLeave={() => setAIPaused(false)}
             >
-              <Card className="relative overflow-hidden bg-white/[0.04] border-white/10 rounded-2xl p-7 md:p-8 transition-all duration-500 backdrop-blur-sm hover:bg-white/[0.06] hover:border-brand-turquoise/20 group">
+              <Card className="relative overflow-hidden bg-white/[0.04] border-white/10 rounded-2xl p-7 md:p-8 transition-all duration-500 backdrop-blur-sm hover:bg-white/[0.06] hover:border-brand-turquoise/20 group flex flex-col w-full h-full">
                 <div className="absolute top-0 end-0 w-48 h-48 bg-gradient-to-bl from-brand-turquoise/5 to-transparent rounded-bl-full" />
                 <div className="absolute inset-0 animate-shimmer opacity-0 group-hover:opacity-100 transition-opacity" />
 
-                <div className="relative z-10">
+                <div className="relative z-10 flex flex-col flex-1">
                   <div className="flex items-center gap-4 mb-6">
                     <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-turquoise to-cyan-500 flex items-center justify-center shadow-xl shadow-brand-turquoise/25 group-hover:scale-110 transition-transform">
                       {(() => { const Icon = aiCapabilities[activeAIStep].icon; return <Icon className="h-7 w-7 text-white" />; })()}
@@ -1235,7 +1236,7 @@ export const LandingPage = () => {
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-3 mt-6 pt-4 border-t border-white/5">
+                  <div className="flex items-center gap-3 mt-auto pt-4 border-t border-white/5">
                     <div className="flex-1 relative h-1.5 bg-white/10 rounded-full overflow-hidden">
                       <div
                         className="absolute inset-y-0 start-0 bg-gradient-to-r from-brand-turquoise to-cyan-500 rounded-full transition-all duration-500 ease-in-out"
@@ -1260,7 +1261,7 @@ export const LandingPage = () => {
 
             {/* Analysis Layers + CTA */}
             <div
-              className="space-y-5"
+              className="flex flex-col h-full gap-5"
               onMouseEnter={() => setAIPaused(true)}
               onMouseLeave={() => setAIPaused(false)}
             >
@@ -1305,7 +1306,7 @@ export const LandingPage = () => {
                   const hakimBtn = document.querySelector('[data-testid="hakim-toggle-btn"]');
                   if (hakimBtn) hakimBtn.click();
                 }}
-                className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-brand-turquoise to-cyan-500 hover:from-brand-turquoise-light hover:to-cyan-400 text-white rounded-2xl px-6 py-4 font-cairo font-bold text-lg shadow-xl shadow-brand-turquoise/25 hover:shadow-2xl hover:shadow-brand-turquoise/40 transition-all active:scale-[0.98] hover:scale-[1.02] animate-pulse-glow"
+                className="mt-auto w-full flex items-center justify-center gap-3 bg-gradient-to-r from-brand-turquoise to-cyan-500 hover:from-brand-turquoise-light hover:to-cyan-400 text-white rounded-2xl px-6 py-4 font-cairo font-bold text-lg shadow-xl shadow-brand-turquoise/25 hover:shadow-2xl hover:shadow-brand-turquoise/40 transition-all active:scale-[0.98] hover:scale-[1.02] animate-pulse-glow"
               >
                 <Brain className="h-5 w-5" />
                 {t('askHakim2')}
