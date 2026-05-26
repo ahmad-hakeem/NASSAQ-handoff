@@ -42,6 +42,7 @@ export function createApiService(api) {
       create: (data) => api.post('/classes', data),
       update: (id, data) => api.put(`/classes/${id}`, data),
       delete: (id) => api.delete(`/classes/${id}`),
+      restoreClass: (id) => api.post(`/classes/${id}/restore`),
     },
 
     subjects: {

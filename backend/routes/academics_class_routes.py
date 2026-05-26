@@ -352,6 +352,10 @@ async def get_classes(
         UserRole.PLATFORM_ADMIN.value,
         UserRole.SCHOOL_PRINCIPAL.value,
         UserRole.SCHOOL_ADMIN.value,
+        # Task #631 — IT owns its workspace, so it is the sole party that
+        # can restore one of its own soft-deleted classes. Allow it to see
+        # the soft-deleted rows in its own workspace.
+        UserRole.INDEPENDENT_TEACHER.value,
     }
     show_deleted = bool(include_deleted) and current_user.get("role") in _admin_roles
 
@@ -368,6 +372,29 @@ async def get_classes(
     teacher_ids = list(set([c.get("homeroom_teacher_id") for c in classes if c.get("homeroom_teacher_id")]))
     teachers = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=100)
     teacher_map = {t.get("id"): t.get("full_name") or t.get("full_name_ar") for t in teachers}
+
+    # Task #631 — when soft-deleted rows are included, resolve a display
+    # name for ``deleted_by`` (a users.id) so the "Recently deleted classes"
+    # surface can show *who* deleted each class without a follow-up
+    # per-row lookup from the frontend.
+    deleted_by_map: Dict[str, str] = {}
+    if show_deleted:
+        deleter_ids = list({c.get("deleted_by") for c in classes if c.get("deleted_by")})
+        if deleter_ids:
+            try:
+                deleter_rows = await gd_find(
+                    db.session, "users", {"id": {"$in": deleter_ids}}, limit=200
+                )
+                deleted_by_map = {
+                    u.get("id"): (u.get("full_name") or u.get("email") or "")
+                    for u in deleter_rows
+                    if u.get("id")
+                }
+            except Exception as _deleter_err:
+                logger.warning(
+                    f"Failed to resolve deleted_by names for classes: {_deleter_err}"
+                )
+                deleted_by_map = {}
 
     # Aggregate live student counts per class so the UI cards can render
     # "{student_count} / {capacity} طلاب" and the fill progress instead of
@@ -407,6 +434,8 @@ async def get_classes(
     result = []
     for c in classes:
         c["homeroom_teacher_name"] = teacher_map.get(c.get("homeroom_teacher_id"))
+        if show_deleted and c.get("deleted_by"):
+            c["deleted_by_name"] = deleted_by_map.get(c.get("deleted_by"))
         # Normalize field names - map name_ar to name if needed
         if not c.get("name") and c.get("name_ar"):
             c["name"] = c["name_ar"]

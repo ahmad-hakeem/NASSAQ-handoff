@@ -25,6 +25,9 @@ import {
   ArrowLeft,
   UserCheck,
   RotateCcw,
+  ChevronDown,
+  ChevronUp,
+  Undo2,
 } from 'lucide-react';
 import { Switch } from '../components/ui/switch';
 import {
@@ -72,9 +75,11 @@ export const ClassesPage = () => {
   const [selectedSchool, setSelectedSchool] = useState('all');
   const [submitting, setSubmitting] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
-  
+  const [deletedExpanded, setDeletedExpanded] = useState(false);
+  const [restoringId, setRestoringId] = useState(null);
+
   // Check if user is a school-level user (not platform admin)
-  const { nassaqError, nassaqWarning, nassaqConfirm } = useNassaqAlert();
+  const { nassaqError, nassaqWarning, nassaqConfirm, nassaqSuccess, showAlert } = useNassaqAlert();
   const isSchoolLevel = user?.role && !user.role.startsWith('platform_');
   const userSchoolId = user?.tenant_id;
   
@@ -101,12 +106,14 @@ export const ClassesPage = () => {
     try {
       // For school-level users, only fetch classes and teachers (tenant-scoped by backend)
       // For platform admins, also fetch schools for filtering
+      // Task #631 — always request include_deleted=true so the
+      // "Recently deleted" section is populated regardless of the
+      // showInactive toggle. The backend silently ignores the flag for
+      // non-admin callers.
+      const classParams = { include_deleted: true };
+      if (includeInactive) classParams.include_inactive = true;
       const [classesRes, teachersRes] = await Promise.all([
-        api.get('/classes', {
-          params: includeInactive
-            ? { include_inactive: true, include_deleted: true }
-            : {},
-        }),
+        api.get('/classes', { params: classParams }),
         api.get('/teachers'),
       ]);
       setClasses(classesRes.data);
@@ -197,6 +204,7 @@ export const ClassesPage = () => {
     }
   };
 
+  // Task #637 — dependency-aware delete with optional force fallback.
   const performDeleteClass = async (classId, { force = false } = {}) => {
     try {
       const res = await api.delete(`/classes/${classId}`, force ? { params: { force: true } } : undefined);
@@ -252,6 +260,84 @@ export const ClassesPage = () => {
     }
   };
 
+  // Task #631 — restore a soft-deleted class. The backend keeps the
+  // class's dependent rows (teacher_assignments, class_subjects,
+  // timetable_sessions, class_sessions, curriculum_lessons,
+  // teacher_class_assignments) inactive on purpose so the principal can
+  // re-link them deliberately. We surface those counts in a
+  // NassaqAlertDialog so they know what still needs attention.
+  const handleRestoreClass = async (cls) => {
+    const className = cls?.name || '';
+    nassaqConfirm(
+      isRTL
+        ? `هل تريد استعادة الفصل "${className}"؟ سيظهر الفصل مرة أخرى في القائمة، لكنك ستحتاج إلى إعادة ربط المعلمين والمواد والجدول يدويًا.`
+        : `Restore class "${className}"? It will reappear in the list, but you'll need to re-link its teachers, subjects, and schedule manually.`,
+      async () => {
+        setRestoringId(cls.id);
+        try {
+          const res = await api.post(`/classes/${cls.id}/restore`);
+          const dependents = res?.data?.inactive_dependents || {};
+          const labelMap = {
+            teacher_assignments: isRTL ? 'إسنادات المعلمين' : 'Teacher assignments',
+            teacher_class_assignments: isRTL ? 'إسنادات معلم-فصل' : 'Teacher–class links',
+            class_subjects: isRTL ? 'المواد الدراسية' : 'Class subjects',
+            timetable_sessions: isRTL ? 'حصص الجدول' : 'Timetable sessions',
+            class_sessions: isRTL ? 'حصص الفصل' : 'Class sessions',
+            curriculum_lessons: isRTL ? 'دروس المنهج' : 'Curriculum lessons',
+          };
+          const lines = Object.entries(dependents)
+            .filter(([, v]) => Number(v) > 0)
+            .map(([k, v]) => `• ${labelMap[k] || k}: ${v}`);
+          const header = isRTL
+            ? `تمت استعادة الفصل "${className}" بنجاح.`
+            : `Class "${className}" was restored successfully.`;
+          const followUp = lines.length
+            ? (isRTL
+                ? `\n\nهذه العناصر المرتبطة لا تزال غير مُفعَّلة وتحتاج إلى إعادة ربط:\n${lines.join('\n')}`
+                : `\n\nThe following linked items are still inactive and need to be re-linked:\n${lines.join('\n')}`)
+            : (isRTL
+                ? '\n\nلا توجد عناصر مرتبطة بحاجة إلى إعادة ربط.'
+                : '\n\nNo linked items need re-linking.');
+          showAlert({
+            type: lines.length ? 'warning' : 'success',
+            title: isRTL ? 'تمت استعادة الفصل' : 'Class restored',
+            message: header + followUp,
+            confirmText: isRTL ? 'حسناً' : 'OK',
+          });
+          await fetchData({ includeInactive: showInactive });
+        } catch (error) {
+          nassaqError(
+            error.response?.data?.detail
+              || (isRTL ? 'فشل استعادة الفصل' : 'Failed to restore class')
+          );
+        } finally {
+          setRestoringId(null);
+        }
+      },
+      {
+        title: isRTL ? 'تأكيد الاستعادة' : 'Confirm restore',
+        confirmText: isRTL ? 'نعم، استعادة' : 'Yes, restore',
+        cancelText: isRTL ? 'إلغاء' : 'Cancel',
+      }
+    );
+  };
+
+  const formatDeletedAt = (iso) => {
+    if (!iso) return '-';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString(isRTL ? 'ar' : 'en', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return iso;
+    }
+  };
+
   const handleDeleteClass = async (classId) => {
     nassaqConfirm(
       t('areYouSureYouWantToDeleteThisClassAllRelatedDataWi'),
@@ -262,13 +348,27 @@ export const ClassesPage = () => {
     );
   };
 
+  // Task #631 — soft-deleted classes (is_active=false AND deleted_at!=null)
+  // live in their own "Recently deleted" section, not the main table.
+  const isDeleted = (cls) => cls.is_active === false && !!cls.deleted_at;
+
   const filteredClasses = classes.filter(cls => {
+    if (isDeleted(cls)) return false;
     if (!showInactive && cls.is_active === false) return false;
     const matchesSearch = cls.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          cls.grade_level.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesSchool = selectedSchool === 'all' || cls.school_id === selectedSchool;
     return matchesSearch && matchesSchool;
   }).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+
+  const deletedClasses = classes
+    .filter(cls => isDeleted(cls))
+    .filter(cls => selectedSchool === 'all' || cls.school_id === selectedSchool)
+    .sort((a, b) => {
+      const ad = a.deleted_at || '';
+      const bd = b.deleted_at || '';
+      return bd.localeCompare(ad);
+    });
 
   const activeCount = filteredClasses.length;
 
@@ -614,6 +714,106 @@ export const ClassesPage = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* Task #631 — Recently deleted classes (soft-deleted rows that
+              can be restored via POST /classes/{id}/restore). Only
+              rendered when there is at least one such row. */}
+          {deletedClasses.length > 0 && (
+            <Card className="card-nassaq border-red-200" data-testid="recently-deleted-classes-card">
+              <CardContent className="p-0">
+                <button
+                  type="button"
+                  onClick={() => setDeletedExpanded(v => !v)}
+                  className="w-full flex items-center justify-between px-6 py-4 text-start"
+                  data-testid="recently-deleted-toggle"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                      <Trash2 className="h-5 w-5 text-red-600" aria-hidden="true" strokeWidth={1.5} />
+                    </div>
+                    <div>
+                      <div className="font-cairo font-bold text-foreground">
+                        {isRTL ? 'الفصول المحذوفة حديثاً' : 'Recently deleted classes'}
+                      </div>
+                      <div className="text-sm text-muted-foreground font-tajawal">
+                        {isRTL
+                          ? `${deletedClasses.length} فصل قابل للاستعادة`
+                          : `${deletedClasses.length} class${deletedClasses.length === 1 ? '' : 'es'} can be restored`}
+                      </div>
+                    </div>
+                  </div>
+                  {deletedExpanded ? (
+                    <ChevronUp className="h-5 w-5 text-muted-foreground" aria-hidden="true" strokeWidth={1.5} />
+                  ) : (
+                    <ChevronDown className="h-5 w-5 text-muted-foreground" aria-hidden="true" strokeWidth={1.5} />
+                  )}
+                </button>
+
+                {deletedExpanded && (
+                  <div className="rounded-b-xl overflow-hidden border-t border-border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{t('class')}</TableHead>
+                          <TableHead>{isRTL ? 'حُذف بواسطة' : 'Deleted by'}</TableHead>
+                          <TableHead>{isRTL ? 'تاريخ الحذف' : 'Deleted at'}</TableHead>
+                          {!isSchoolLevel && <TableHead>{t('school')}</TableHead>}
+                          <TableHead className="w-32"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {deletedClasses.map((cls) => (
+                          <TableRow
+                            key={cls.id}
+                            data-testid={`deleted-class-row-${cls.id}`}
+                          >
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-full bg-red-50 flex items-center justify-center">
+                                  <FolderOpen className="h-4 w-4 text-red-600" aria-hidden="true" strokeWidth={1.5} />
+                                </div>
+                                <div>
+                                  <div className="font-medium">{cls.name}</div>
+                                  <div className="text-xs text-muted-foreground">{cls.grade_level}</div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {cls.deleted_by_name
+                                || (cls.deleted_by ? (isRTL ? 'مستخدم محذوف' : 'Unknown user') : '-')}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {formatDeletedAt(cls.deleted_at)}
+                            </TableCell>
+                            {!isSchoolLevel && (
+                              <TableCell>{getSchoolName(cls.school_id)}</TableCell>
+                            )}
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleRestoreClass(cls)}
+                                disabled={restoringId === cls.id}
+                                className="rounded-xl border-brand-turquoise text-brand-turquoise hover:bg-brand-turquoise/10"
+                                data-testid={`restore-class-${cls.id}`}
+                              >
+                                {restoringId === cls.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin me-2" aria-hidden="true" />
+                                ) : (
+                                  <Undo2 className="h-4 w-4 me-2" aria-hidden="true" strokeWidth={1.5} />
+                                )}
+                                {isRTL ? 'استعادة' : 'Restore'}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
       <HakimAssistant />
