@@ -596,7 +596,7 @@ async def update_class(
 async def delete_class(
     class_id: str,
     force: bool = False,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
     """Soft-delete a class. Returns a requires_confirmation envelope when
     blocking active records exist and force=False. On force=True, cascades
@@ -689,7 +689,7 @@ async def delete_class(
 @router.post("/classes/{class_id}/restore")
 async def restore_class(
     class_id: str,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
     """Restore a soft-deleted class. Clears ``is_active=False`` and the
     ``deleted_at`` / ``deleted_by`` markers so the row reappears in
@@ -756,5 +756,221 @@ async def restore_class(
     }
 
 
+# ---- Re-link wizard ----------------------------------------------------------
+#
+# After restoring a soft-deleted class, the principal needs a way to selectively
+# reactivate the dependent rows that were soft-deleted alongside it. The class
+# itself must already be active before any of these endpoints will operate
+# (otherwise the principal must restore it first via /classes/{id}/restore).
+#
+# All endpoints below:
+#   - require an active class (404 if missing or still deleted)
+#   - pin Independent-Teacher callers to their own workspace (spec §8 inv. 3)
+#   - flip is_active back to True ONLY for rows whose class_id matches the
+#     just-restored class, optionally narrowed by an explicit ids list
+#   - emit a single audit_logs row per call describing what was reactivated
+
+_RELINK_TABLES = {
+    "teacher_assignments",
+    "teacher_class_assignments",
+    "class_subjects",
+    "timetable_sessions",
+    "class_sessions",
+    "curriculum_lessons",
+}
 
 
+async def _load_active_class_for_relink(class_id: str, current_user: dict) -> dict:
+    from auth_scope import is_independent_teacher, independent_workspace_id
+    base_filter: Dict[str, Any] = {"id": class_id, "is_active": True}
+    if is_independent_teacher(current_user):
+        base_filter["school_id"] = independent_workspace_id(current_user)
+    class_doc = await gd_find_one(db.session, "classes", base_filter)
+    if not class_doc:
+        raise HTTPException(status_code=404, detail="الفصل غير موجود")
+    return class_doc
+
+
+def _candidate_label(table: str, row: Dict[str, Any]) -> Dict[str, Any]:
+    """Pick a small set of attributes that the wizard can display per row."""
+    base = {"id": row.get("id")}
+    if table == "teacher_assignments":
+        base.update({
+            "teacher_id": row.get("teacher_id"),
+            "teacher_name": row.get("teacher_name"),
+            "subject_id": row.get("subject_id"),
+            "subject_name": row.get("subject_name"),
+            "weekly_sessions": row.get("weekly_sessions") or row.get("periods_per_week"),
+        })
+    elif table == "teacher_class_assignments":
+        base.update({
+            "teacher_id": row.get("teacher_id"),
+            "teacher_name": row.get("teacher_name"),
+        })
+    elif table == "class_subjects":
+        base.update({
+            "subject_id": row.get("subject_id"),
+            "subject_name": row.get("subject_name"),
+            "weekly_periods": row.get("weekly_periods") or row.get("weekly_sessions"),
+        })
+    elif table == "timetable_sessions":
+        base.update({
+            "day_of_week": row.get("day_of_week"),
+            "period_number": row.get("period_number"),
+            "teacher_id": row.get("teacher_id"),
+            "subject_id": row.get("subject_id"),
+        })
+    elif table == "class_sessions":
+        base.update({
+            "date": row.get("date"),
+            "subject_id": row.get("subject_id"),
+            "status": row.get("status"),
+        })
+    elif table == "curriculum_lessons":
+        base.update({
+            "title": row.get("title"),
+            "week": row.get("week"),
+            "subject_id": row.get("subject_id"),
+        })
+    return base
+
+
+@router.get("/classes/{class_id}/relink-candidates")
+async def list_relink_candidates(
+    class_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER])),
+):
+    """List inactive dependents for a just-restored class, grouped by table.
+
+    Powers the "Re-link previous assignments" wizard. The class must already
+    be active (typically immediately after POST /classes/{id}/restore).
+    Returns up to 200 rows per group with the minimum attributes needed to
+    render a row label."""
+    await _load_active_class_for_relink(class_id, current_user)
+    preview_limit = 200
+    groups: Dict[str, Dict[str, Any]] = {}
+    for table in _RELINK_TABLES:
+        filt = {"class_id": class_id, "is_active": False}
+        total = await gd_count(db.session, table, filt)
+        rows = await gd_find(db.session, table, filt, limit=preview_limit) if total > 0 else []
+        groups[table] = {
+            # `count` is the true number of inactive dependents for this table;
+            # `items` is a bounded preview the wizard can render. The wizard
+            # still uses the "Reactivate all" path (server-side filter) to
+            # cover anything past the preview window.
+            "count": total,
+            "preview_limit": preview_limit,
+            "items": [_candidate_label(table, r) for r in rows],
+        }
+    return {"class_id": class_id, "groups": groups}
+
+
+class RelinkRequest(BaseModel):
+    ids: Optional[List[str]] = None
+    all: bool = False
+
+    model_config = ConfigDict(extra="forbid")
+
+
+async def _reactivate_dependents(
+    class_id: str,
+    table: str,
+    payload: RelinkRequest,
+    current_user: dict,
+) -> Dict[str, Any]:
+    if table not in _RELINK_TABLES:
+        raise HTTPException(status_code=404, detail="نوع غير مدعوم")
+    class_doc = await _load_active_class_for_relink(class_id, current_user)
+
+    filters: Dict[str, Any] = {"class_id": class_id, "is_active": False}
+    if not payload.all:
+        ids = [i for i in (payload.ids or []) if isinstance(i, str) and i]
+        if not ids:
+            raise HTTPException(status_code=400, detail="لم يتم تحديد أي عناصر")
+        filters["id"] = {"$in": ids}
+
+    reactivated = await gd_update_many(
+        db.session, table, filters, {"is_active": True}
+    )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    audit_log = {
+        "id": str(uuid.uuid4()),
+        "school_id": class_doc.get("school_id"),
+        "action": "relink",
+        "entity_type": table,
+        "entity_id": class_id,
+        "old_data": {"is_active": False},
+        "new_data": {
+            "is_active": True,
+            "scope": "all" if payload.all else "selected",
+            "selected_ids": None if payload.all else (payload.ids or []),
+            "reactivated": reactivated,
+        },
+        "performed_by": current_user["id"],
+        "performed_by_name": current_user.get("full_name", ""),
+        "timestamp": now_iso,
+        "ip_address": None,
+    }
+    await gd_insert(db.session, "audit_logs", audit_log)
+
+    return {
+        "success": True,
+        "table": table,
+        "class_id": class_id,
+        "reactivated": reactivated,
+    }
+
+
+@router.post("/classes/{class_id}/relink/teacher_assignments")
+async def relink_teacher_assignments(
+    class_id: str,
+    payload: RelinkRequest = Body(...),
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER])),
+):
+    return await _reactivate_dependents(class_id, "teacher_assignments", payload, current_user)
+
+
+@router.post("/classes/{class_id}/relink/teacher_class_assignments")
+async def relink_teacher_class_assignments(
+    class_id: str,
+    payload: RelinkRequest = Body(...),
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER])),
+):
+    return await _reactivate_dependents(class_id, "teacher_class_assignments", payload, current_user)
+
+
+@router.post("/classes/{class_id}/relink/class_subjects")
+async def relink_class_subjects(
+    class_id: str,
+    payload: RelinkRequest = Body(...),
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER])),
+):
+    return await _reactivate_dependents(class_id, "class_subjects", payload, current_user)
+
+
+@router.post("/classes/{class_id}/relink/timetable_sessions")
+async def relink_timetable_sessions(
+    class_id: str,
+    payload: RelinkRequest = Body(...),
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER])),
+):
+    return await _reactivate_dependents(class_id, "timetable_sessions", payload, current_user)
+
+
+@router.post("/classes/{class_id}/relink/class_sessions")
+async def relink_class_sessions(
+    class_id: str,
+    payload: RelinkRequest = Body(...),
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER])),
+):
+    return await _reactivate_dependents(class_id, "class_sessions", payload, current_user)
+
+
+@router.post("/classes/{class_id}/relink/curriculum_lessons")
+async def relink_curriculum_lessons(
+    class_id: str,
+    payload: RelinkRequest = Body(...),
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER])),
+):
+    return await _reactivate_dependents(class_id, "curriculum_lessons", payload, current_user)

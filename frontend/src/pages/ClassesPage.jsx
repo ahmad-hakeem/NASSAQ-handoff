@@ -61,6 +61,7 @@ import {
   TableRow,
 } from '../components/ui/table';
 import { Link } from 'react-router-dom';
+import { RelinkAssignmentsWizard } from '../components/classes/RelinkAssignmentsWizard';
 
 export const ClassesPage = () => {
   const { t } = useTranslation();
@@ -77,6 +78,8 @@ export const ClassesPage = () => {
   const [showInactive, setShowInactive] = useState(false);
   const [deletedExpanded, setDeletedExpanded] = useState(false);
   const [restoringId, setRestoringId] = useState(null);
+  const [relinkClassId, setRelinkClassId] = useState(null);
+  const [relinkOpen, setRelinkOpen] = useState(false);
 
   // Check if user is a school-level user (not platform admin)
   const { nassaqError, nassaqWarning, nassaqConfirm, nassaqSuccess, showAlert } = useNassaqAlert();
@@ -196,9 +199,32 @@ export const ClassesPage = () => {
 
   const handleReactivateClass = async (classId) => {
     try {
-      await api.put(`/classes/${classId}`, { is_active: true });
+      let inactiveDependents = null;
+      try {
+        const res = await api.post(`/classes/${classId}/restore`);
+        inactiveDependents = res.data?.inactive_dependents || null;
+      } catch (restoreErr) {
+        // Fallback to the legacy reactivate path when /restore isn't applicable:
+        //  - 404: the class was merely deactivated (no deleted_at), so it isn't
+        //    restorable through /restore.
+        //  - 403: the caller's role (e.g. school_sub_admin) is allowed to
+        //    reactivate via PUT but not to call /restore.
+        const status = restoreErr.response?.status;
+        if (status === 404 || status === 403) {
+          await api.put(`/classes/${classId}`, { is_active: true });
+        } else {
+          throw restoreErr;
+        }
+      }
       toast.success(t('classReactivated'));
       await fetchData({ includeInactive: showInactive });
+      const hasDependents =
+        inactiveDependents &&
+        Object.values(inactiveDependents).some((v) => Number(v) > 0);
+      if (hasDependents) {
+        setRelinkClassId(classId);
+        setRelinkOpen(true);
+      }
     } catch (error) {
       nassaqError(error.response?.data?.detail || (t('operationFailed')));
     }
@@ -817,6 +843,13 @@ export const ClassesPage = () => {
         </div>
       </div>
       <HakimAssistant />
+      <RelinkAssignmentsWizard
+        open={relinkOpen}
+        onOpenChange={setRelinkOpen}
+        classId={relinkClassId}
+        api={api}
+        onDone={() => fetchData({ includeInactive: showInactive })}
+      />
     </Sidebar>
   );
 };
