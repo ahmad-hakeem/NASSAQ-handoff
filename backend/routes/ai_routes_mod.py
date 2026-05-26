@@ -1166,6 +1166,13 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest, request: Request
     messages_list.append({"role": "user", "content": req.message[:2000]})
 
     def event_stream():
+        # PROXY-FLUSH PRIMER: emit an SSE comment as the very first bytes
+        # so the upstream proxy (Replit's outer proxy, nginx, Cloudflare)
+        # flushes response headers + first byte to the browser BEFORE the
+        # LLM call completes. Without this, some proxies hold the entire
+        # response buffered in memory until the connection closes, making
+        # the chat UI look like it returned the whole answer at once.
+        yield b": stream-start\n\n"
         any_text = False
         # SECURITY (task #674): bound a single streamed response by wall
         # time and chunk count so a stuck upstream connection cannot hold

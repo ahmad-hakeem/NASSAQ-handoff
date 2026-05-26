@@ -337,7 +337,8 @@ const HakimAssistantInner = () => {
     handleUserInteraction();
     cancelInFlightStream();
 
-    const userMessage = { role: 'user', content: text };
+    const userMessageId = `u_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const userMessage = { id: userMessageId, role: 'user', content: text };
     const historyForRequest = messages
       .filter((m) => m.role === 'user' || m.role === 'assistant')
       .slice(-6)
@@ -347,10 +348,13 @@ const HakimAssistantInner = () => {
     setInput('');
     setLoading(true);
     setHakimState(HakimState.THINKING);
-    // The user just sent a message — anchor them at the bottom so they see it
-    // and so subsequent streaming auto-follows by default.
-    followModeRef.current = true;
-    trackTimeout(() => scrollToBottom('smooth'), 30);
+    // Anchor the user's just-sent question at the TOP of the viewport so the
+    // user sees their question and reads Hakim's reply from its first word
+    // downwards. We intentionally do NOT auto-scroll-to-bottom anymore:
+    // jumping to the bottom on every chunk was making streaming feel like the
+    // answer landed all at once at the end of the bubble.
+    followModeRef.current = false;
+    trackTimeout(() => scrollMessageToTop(userMessageId), 30);
 
     if (!isPublic) {
       // Authenticated flow is untouched — non-streaming.
@@ -400,13 +404,10 @@ const HakimAssistantInner = () => {
       setMessages((prev) => [...prev, {
         id: assistantId, role: 'assistant', content: '', suggestions: [], streaming: true,
       }]);
-      // Anchor the new bubble at the top of the viewport so the user reads
-      // from the first line. We mark this as a programmatic scroll so the
-      // scroll listener does NOT flip follow-mode off — if the user was
-      // pinned to the bottom before sending, we keep auto-follow enabled
-      // and `followInFlightIfNeeded` will start scrolling once the bubble
-      // grows past the viewport.
-      trackTimeout(() => scrollMessageToTop(assistantId), 40);
+      // We already anchored the user's question at the top of the viewport
+      // when the request was sent. The assistant bubble appears immediately
+      // below, so its first tokens are visible without any extra scroll —
+      // and crucially the viewport STAYS at that anchor as the bubble grows.
     };
 
     const appendChunk = (piece) => {
@@ -415,7 +416,8 @@ const HakimAssistantInner = () => {
       setMessages((prev) => prev.map((m) => (
         m.id === assistantId ? { ...m, content: (m.content || '') + piece } : m
       )));
-      trackTimeout(followInFlightIfNeeded, 0);
+      // No auto-follow during streaming — the user reads from the start of
+      // the answer and scrolls down manually if they want to follow the tail.
     };
 
     const cleanupStreamRefs = () => {
