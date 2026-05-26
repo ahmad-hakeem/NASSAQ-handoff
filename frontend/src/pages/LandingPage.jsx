@@ -747,6 +747,33 @@ export const LandingPage = () => {
                   ? 'لقطة حقيقية من لوحة مدير المدرسة'
                   : 'Real screenshot from the principal dashboard'}
               </p>
+
+              {/* Hakim welcome mascot — emerges from the dashboard's lower-end corner;
+                  z-20 places him in front so his shoulder/arm overlap reads as one scene,
+                  and the natural torso crop is anchored by the mockup edge instead of floating. */}
+              <div
+                className="pointer-events-none select-none absolute z-20
+                           bottom-2 -end-2
+                           sm:bottom-4 sm:-end-3
+                           lg:bottom-10 lg:-end-10
+                           xl:bottom-14 xl:-end-14
+                           w-36 h-36
+                           sm:w-48 sm:h-48
+                           lg:w-64 lg:h-64
+                           xl:w-72 xl:h-72"
+                aria-hidden="true"
+              >
+                {/* Soft turquoise halo — blends the cutout into the navy hero */}
+                <div className="absolute inset-0 m-auto w-[110%] h-[110%] rounded-full bg-brand-turquoise/20 blur-3xl" />
+                <img
+                  src="/hakim-welcome.png"
+                  alt=""
+                  width="320"
+                  height="320"
+                  loading="lazy"
+                  className="relative w-full h-full object-contain object-bottom drop-shadow-2xl animate-float motion-reduce:animate-none"
+                />
+              </div>
             </div>
           </div>
         </div>
