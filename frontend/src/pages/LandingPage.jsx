@@ -602,130 +602,130 @@ export const LandingPage = () => {
         </div>
 
         <div className="relative max-w-7xl mx-auto px-6 py-16 lg:py-24">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+          {/* Two strictly balanced columns: identical height via items-stretch.
+              Left = dashboard visual group. Right = content group.
+              Both share the same top and bottom boundary. */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:items-stretch">
 
-            {/* RTL Start = Right: Content */}
-            <div className="space-y-8 text-start order-2 lg:order-1 lg:[&]:order-none">
-              {/* Eyebrow badge — names the audience, not the product */}
-              <div className="inline-flex items-center gap-2 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full ps-2 pe-4 py-1.5 backdrop-blur-sm">
-                <CheckCircle2 className="h-4 w-4 text-brand-turquoise" />
-                <span className="font-tajawal text-sm text-brand-turquoise">
-                  {isRTL ? 'المؤسسات التعليمية · المعلمين المستقلين' : 'Educational institutions & independent teachers'}
-                </span>
-              </div>
+            {/* ── RIGHT PANEL (RTL Start): content distributed top → bottom ── */}
+            <div className="flex flex-col justify-between gap-8 text-start order-2 lg:order-1">
 
-              {/* H1 — outcome-specific, pain-aware */}
-              <h1
-                className="font-cairo font-bold text-white leading-tight text-4xl sm:text-5xl lg:text-6xl"
-                data-testid="platform-name"
-              >
-                <span className="text-brand-turquoise">نَسَّق</span>
-              </h1>
-
-              {/* Sub-heading — names the mechanism, doesn't repeat the headline */}
-              <p className="font-tajawal text-lg text-white/80 leading-relaxed max-w-xl">
-                {isRTL
-                  ? 'منصة تساعدك على فهم رحلة الطالب بشكل أعمق.'
-                  : 'A platform that helps you understand each student\'s journey more deeply.'}
-              </p>
-
-              {/* CTAs */}
-              <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  asChild
-                  className="bg-brand-turquoise hover:bg-brand-turquoise-light text-white hover:text-white font-cairo rounded-lg px-8 py-3 h-auto text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all"
-                  data-testid="hero-cta-btn"
-                >
-                  <Link to="/register" className="flex items-center gap-2">
-                    {isRTL ? 'ابدأ تجربتك المجانية' : 'Start your free trial'}
-                    {isRTL ? <ArrowLeft className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
-                  </Link>
-                </Button>
-                <Button
-                  asChild
-                  variant="ghost"
-                  className="bg-transparent border-2 border-white/30 text-white hover:bg-white/10 hover:text-white hover:border-white/50 font-cairo rounded-lg px-6 py-3 h-auto text-base transition-colors"
-                  data-testid="hero-secondary-cta"
-                >
-                  <a href="#how-it-works" className="flex items-center gap-2">
-                    {isRTL ? 'كيف يعمل' : 'How it works'}
-                  </a>
-                </Button>
-              </div>
-
-              {/* Risk-reversal microcopy under CTA */}
-              <p className="font-tajawal text-xs text-white/60 -mt-4">
-                {isRTL
-                  ? 'بدون بطاقة ائتمان · إعداد خلال 24 ساعة · إلغاء في أي وقت'
-                  : 'No credit card · Setup in 24 hours · Cancel anytime'}
-              </p>
-
-              {/* Social proof — only renders when we have real platform numbers */}
-              {platformStats.schools > 0 && (
-                <div className="flex items-center gap-3" data-testid="traction-section">
-                  <div className="flex -space-x-2 rtl:space-x-reverse">
-                    {['bg-brand-navy', 'bg-brand-turquoise', 'bg-brand-purple', 'bg-amber-500'].map((bgClass, i) => (
-                      <div
-                        key={i}
-                        className={`w-8 h-8 rounded-full border-2 border-brand-navy flex items-center justify-center text-white text-xs font-cairo font-bold shadow-sm ${bgClass}`}
-                      >
-                        ن
-                      </div>
-                    ))}
-                  </div>
-                  <p className="font-tajawal text-sm text-white/75" data-testid="hero-school-count">
-                    {isRTL ? (
-                      <>
-                        <span className="font-bold text-white">
-                          <AnimatedCounter target={platformStats.schools} />
-                          {' '}مدرسة
-                        </span>{' '}
-                        تستخدم نسق الآن
-                      </>
-                    ) : (
-                      <>
-                        <span className="font-bold text-white">
-                          <AnimatedCounter target={platformStats.schools} />
-                          {' '}schools
-                        </span>{' '}
-                        use NASSAQ today
-                      </>
-                    )}
-                  </p>
+              {/* TOP GROUP: badge + headline + subheading */}
+              <div className="space-y-6">
+                <div className="inline-flex items-center gap-2 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full ps-2 pe-4 py-1.5 backdrop-blur-sm">
+                  <CheckCircle2 className="h-4 w-4 text-brand-turquoise" />
+                  <span className="font-tajawal text-sm text-brand-turquoise">
+                    {isRTL ? 'المؤسسات التعليمية · المعلمين المستقلين' : 'Educational institutions & independent teachers'}
+                  </span>
                 </div>
-              )}
+                <h1
+                  className="font-cairo font-bold text-white leading-tight text-4xl sm:text-5xl lg:text-6xl"
+                  data-testid="platform-name"
+                >
+                  <span className="text-brand-turquoise">نَسَّق</span>
+                </h1>
+                <p className="font-tajawal text-lg text-white/80 leading-relaxed max-w-xl">
+                  {isRTL
+                    ? 'منصة تساعدك على فهم رحلة الطالب بشكل أعمق.'
+                    : "A platform that helps you understand each student's journey more deeply."}
+                </p>
+              </div>
 
-              {/* Features ticker */}
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-4 border-t border-white/10">
-                {[
-                  isRTL ? 'جاهز خلال 24 ساعة' : 'Ready in 24 hours',
-                  isRTL ? 'بدون تعقيد تقني' : 'No technical setup',
-                  isRTL ? 'يعمل مع نظامك الحالي' : 'Works with your current stack',
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-brand-turquoise" />
-                    <span className="font-tajawal text-sm text-white/80">{item}</span>
+              {/* MIDDLE GROUP: CTAs + trust microcopy */}
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    asChild
+                    className="bg-brand-turquoise hover:bg-brand-turquoise-light text-white hover:text-white font-cairo rounded-lg px-8 py-3 h-auto text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition-all"
+                    data-testid="hero-cta-btn"
+                  >
+                    <Link to="/register" className="flex items-center gap-2">
+                      {isRTL ? 'ابدأ تجربتك المجانية' : 'Start your free trial'}
+                      {isRTL ? <ArrowLeft className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
+                    </Link>
+                  </Button>
+                  <Button
+                    asChild
+                    variant="ghost"
+                    className="bg-transparent border-2 border-white/30 text-white hover:bg-white/10 hover:text-white hover:border-white/50 font-cairo rounded-lg px-6 py-3 h-auto text-base transition-colors"
+                    data-testid="hero-secondary-cta"
+                  >
+                    <a href="#how-it-works" className="flex items-center gap-2">
+                      {isRTL ? 'كيف يعمل' : 'How it works'}
+                    </a>
+                  </Button>
+                </div>
+                <p className="font-tajawal text-xs text-white/60">
+                  {isRTL
+                    ? 'بدون بطاقة ائتمان · إعداد خلال 24 ساعة · إلغاء في أي وقت'
+                    : 'No credit card · Setup in 24 hours · Cancel anytime'}
+                </p>
+              </div>
+
+              {/* BOTTOM GROUP: social proof + feature ticker */}
+              <div className="space-y-4">
+                {platformStats.schools > 0 && (
+                  <div className="flex items-center gap-3" data-testid="traction-section">
+                    <div className="flex -space-x-2 rtl:space-x-reverse">
+                      {['bg-brand-navy', 'bg-brand-turquoise', 'bg-brand-purple', 'bg-amber-500'].map((bgClass, i) => (
+                        <div
+                          key={i}
+                          className={`w-8 h-8 rounded-full border-2 border-brand-navy flex items-center justify-center text-white text-xs font-cairo font-bold shadow-sm ${bgClass}`}
+                        >
+                          ن
+                        </div>
+                      ))}
+                    </div>
+                    <p className="font-tajawal text-sm text-white/75" data-testid="hero-school-count">
+                      {isRTL ? (
+                        <>
+                          <span className="font-bold text-white">
+                            <AnimatedCounter target={platformStats.schools} />
+                            {' '}مدرسة
+                          </span>{' '}
+                          تستخدم نسق الآن
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-bold text-white">
+                            <AnimatedCounter target={platformStats.schools} />
+                            {' '}schools
+                          </span>{' '}
+                          use NASSAQ today
+                        </>
+                      )}
+                    </p>
                   </div>
-                ))}
+                )}
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-3 border-t border-white/10">
+                  {[
+                    isRTL ? 'جاهز خلال 24 ساعة' : 'Ready in 24 hours',
+                    isRTL ? 'بدون تعقيد تقني' : 'No technical setup',
+                    isRTL ? 'يعمل مع نظامك الحالي' : 'Works with your current stack',
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-brand-turquoise" />
+                      <span className="font-tajawal text-sm text-white/80">{item}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* RTL End = Left: Dashboard mockup — Hakim stacked above in flow */}
+            {/* ── LEFT PANEL (RTL End): Hakim + dashboard contained in same height envelope ── */}
             <div className="order-1 lg:order-2 flex flex-col">
-              {/* Hakim welcome mascot — in-flow row above the dashboard.
-                  Top aligns with the badge on the text column (items-start grid).
-                  Bottom (feet) lands exactly on the dashboard's browser bar.
-                  Anchored to the end (left in RTL) via self-end. */}
+              {/* Hakim: fixed-height header row, anchored to the end (left in RTL).
+                  Sized so left column height = Hakim height + dashboard height + footnote.
+                  Feet meet the top edge of the dashboard browser bar. */}
               <div
-                className="pointer-events-none select-none self-end z-20 relative
-                           w-24 h-32
-                           sm:w-28 sm:h-40
-                           lg:w-32 lg:h-44
-                           xl:w-36 xl:h-52"
+                className="pointer-events-none select-none self-end relative z-20
+                           w-28 h-28
+                           sm:w-32 sm:h-32
+                           lg:w-36 lg:h-36
+                           xl:w-40 xl:h-40"
                 aria-hidden="true"
               >
-                {/* Soft turquoise halo fading downward into the dashboard */}
-                <div className="absolute inset-x-0 bottom-0 mx-auto w-[130%] h-[50%] rounded-full bg-brand-turquoise/20 blur-3xl" />
+                <div className="absolute inset-x-0 bottom-0 mx-auto w-[130%] h-[55%] rounded-full bg-brand-turquoise/20 blur-3xl" />
                 <img
                   src="/hakim-welcome.png"
                   alt=""
@@ -736,8 +736,9 @@ export const LandingPage = () => {
                 />
               </div>
 
+              {/* Dashboard: fills the remaining height — flex-1 so it grows to match right panel */}
               <div
-                className="relative z-10 w-full bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transform hover:scale-[1.02] transition-transform duration-500"
+                className="relative z-10 flex-1 w-full bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transform hover:scale-[1.02] transition-transform duration-500"
                 data-testid="hero-mockup"
               >
                 {/* Browser chrome */}
@@ -756,22 +757,23 @@ export const LandingPage = () => {
                   </div>
                 </div>
 
-                {/* Real product screenshot */}
+                {/* Real product screenshot — fills card height */}
                 <img
                   src="/images/landing-dashboard-preview.png"
                   alt={isRTL ? 'لقطة من لوحة مدير المدرسة في نَسَّق' : 'NASSAQ principal dashboard screenshot'}
-                  className="block w-full h-auto"
+                  className="block w-full h-full object-cover object-top"
                   loading="lazy"
                 />
               </div>
 
-              {/* Footnote below mockup */}
-              <p className="font-tajawal text-xs text-white/60 text-center mt-4">
+              {/* Footnote anchored to bottom of left panel */}
+              <p className="font-tajawal text-xs text-white/60 text-center mt-3 shrink-0">
                 {isRTL
                   ? 'لقطة حقيقية من لوحة مدير المدرسة'
                   : 'Real screenshot from the principal dashboard'}
               </p>
             </div>
+
           </div>
         </div>
       </section>
