@@ -363,10 +363,15 @@ async def get_classes(
         query["grade_level"] = grade_level
 
     all_classes = await gd_find(db.session, "classes", query, limit=1000)
-    if include_inactive or show_deleted:
-        classes = list(all_classes)
-    else:
-        classes = [c for c in all_classes if c.get("is_active") is not False]
+    classes = list(all_classes)
+    # Filter 1: hide soft-deleted rows (deleted_at IS NOT NULL) unless admin
+    # explicitly asked for them via include_deleted.
+    if not show_deleted:
+        classes = [c for c in classes if c.get("deleted_at") is None]
+    # Filter 2: hide genuinely-inactive rows (is_active=False, not deleted)
+    # unless the caller asked for them via include_inactive.
+    if not include_inactive:
+        classes = [c for c in classes if c.get("is_active") is not False]
     
     # Get teacher names
     teacher_ids = list(set([c.get("homeroom_teacher_id") for c in classes if c.get("homeroom_teacher_id")]))
