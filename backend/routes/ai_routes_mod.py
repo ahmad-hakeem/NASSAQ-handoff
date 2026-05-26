@@ -1039,18 +1039,29 @@ def _is_forbidden_public_topic(message: str) -> bool:
 
 @router.post("/public/hakim/chat/stream")
 async def public_hakim_chat_stream(req: PublicHakimChatRequest, request: Request):
-    """Streaming variant of the public Hakim chat. Emits NDJSON chunks.
+    """Streaming variant of the public Hakim chat. Emits Server-Sent Events.
 
-    Wire format (one JSON object per line, terminated with `\n`):
-      {"type":"chunk","text":"..."}     - a partial token/text fragment
-      {"type":"done","suggestions":[]}  - end of stream, includes suggestions
+    Wire format (`text/event-stream`, one event per `data:` line terminated
+    by a blank line `\n\n`):
+      data: {"type":"chunk","text":"..."}     - a partial token/text fragment
+      data: {"type":"done","suggestions":[]}  - end of stream, includes suggestions
+      data: {"type":"error","text":"..."}     - terminal provider/stream error
     Refusals and provider errors emit a single chunk then done.
+
+    SSE is used (rather than NDJSON) because HTTP proxies — including
+    Replit's outer proxy — universally pass `text/event-stream` through
+    unbuffered, whereas `application/x-ndjson` is commonly buffered and
+    arrives at the browser as one block, defeating progressive rendering.
     """
     locale = "en" if (req.locale or "ar").lower() == "en" else "ar"
     suggestions = _PUBLIC_HAKIM_SUGGESTIONS[locale]
 
+    # SSE wire format: `data: <json>\n\n` per event.
+    # text/event-stream is universally passed through unbuffered by HTTP proxies
+    # (Replit's outer proxy, nginx, Cloudflare), whereas application/x-ndjson is
+    # commonly buffered and arrives as one block.
     def _line(obj: dict) -> bytes:
-        return (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
+        return ("data: " + json.dumps(obj, ensure_ascii=False) + "\n\n").encode("utf-8")
 
     def _one_shot_stream(text: str):
         def gen():
@@ -1061,7 +1072,8 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest, request: Request
     headers = {
         "Cache-Control": "no-cache, no-transform",
         "X-Accel-Buffering": "no",
-        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Connection": "keep-alive",
     }
 
     # SECURITY (task #674): per-IP / per-IP+UA abuse cap backed by a
@@ -1076,21 +1088,21 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest, request: Request
         if _limit.retry_after:
             _hdrs["Retry-After"] = str(_limit.retry_after)
         return StreamingResponse(_one_shot_stream(_PUBLIC_HAKIM_ERROR[locale])(),
-                                 media_type="application/x-ndjson", headers=_hdrs)
+                                 media_type="text/event-stream", headers=_hdrs)
 
     if not req.message or not req.message.strip():
         return StreamingResponse(_one_shot_stream(_PUBLIC_HAKIM_ERROR[locale])(),
-                                 media_type="application/x-ndjson", headers=headers)
+                                 media_type="text/event-stream", headers=headers)
 
     # Deterministic refusal: short-circuit before any LLM call.
     if _is_forbidden_public_topic(req.message):
         return StreamingResponse(_one_shot_stream(_PUBLIC_HAKIM_REFUSAL[locale])(),
-                                 media_type="application/x-ndjson", headers=headers)
+                                 media_type="text/event-stream", headers=headers)
 
     client = get_openai_client()
     if client is None:
         return StreamingResponse(_one_shot_stream(_PUBLIC_HAKIM_ERROR[locale])(),
-                                 media_type="application/x-ndjson", headers=headers)
+                                 media_type="text/event-stream", headers=headers)
 
     messages_list: List[Dict[str, str]] = [
         {"role": "system", "content": _public_hakim_system_prompt(locale)},
@@ -1161,7 +1173,7 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest, request: Request
             yield _line({"type": "error", "text": _PUBLIC_HAKIM_ERROR[locale],
                           "suggestions": suggestions})
 
-    return StreamingResponse(event_stream(), media_type="application/x-ndjson", headers=headers)
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=headers)
 
 
 @router.post("/public/hakim/chat", response_model=HakimResponse)

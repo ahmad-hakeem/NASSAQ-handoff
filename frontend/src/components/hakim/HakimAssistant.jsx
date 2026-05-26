@@ -462,7 +462,7 @@ const HakimAssistantInner = () => {
       const res = await fetch(`${baseURL}/public/hakim/chat/stream`, {
         method: 'POST',
         signal: controller.signal,
-        headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
         body: JSON.stringify({
           message: text,
           locale,
@@ -477,46 +477,71 @@ const HakimAssistantInner = () => {
       let suggestionsOut = [];
       let done = false;
 
+      // Parse Server-Sent Events: each event is separated by a blank line
+      // ("\n\n"). Each event has one or more `data: <payload>` lines whose
+      // payloads are joined with "\n". We use SSE because HTTP proxies
+      // (Replit's outer proxy, nginx, Cloudflare) buffer arbitrary
+      // streamed bodies but pass `text/event-stream` through unbuffered.
+      const parseSseEvent = (rawEvent) => {
+        const dataLines = [];
+        for (const rawLine of rawEvent.split('\n')) {
+          const line = rawLine.replace(/\r$/, '');
+          if (line.startsWith('data:')) {
+            dataLines.push(line.slice(5).replace(/^ /, ''));
+          }
+          // Other SSE fields (event:, id:, retry:) are ignored.
+        }
+        if (!dataLines.length) return null;
+        const payload = dataLines.join('\n');
+        try { return JSON.parse(payload); } catch (_) { return null; }
+      };
+
       while (!done) {
         // eslint-disable-next-line no-await-in-loop
         const { value, done: streamDone } = await reader.read();
         if (streamDone) break;
         buffer += decoder.decode(value, { stream: true });
-        let nl;
-        while ((nl = buffer.indexOf('\n')) !== -1) {
-          const line = buffer.slice(0, nl).trim();
-          buffer = buffer.slice(nl + 1);
-          if (!line) continue;
-          try {
-            const evt = JSON.parse(line);
-            if (evt.type === 'chunk' && typeof evt.text === 'string') {
-              appendChunk(evt.text);
-            } else if (evt.type === 'error') {
-              // Terminal error from backend (e.g. provider failure
-              // mid-stream): replace the in-flight bubble with the
-              // localized safe error so the user never sees an
-              // orphaned partial answer.
-              replaceWithSafeError();
-              return;
-            } else if (evt.type === 'done') {
-              suggestionsOut = Array.isArray(evt.suggestions) ? evt.suggestions : [];
-              done = true;
-              break;
-            }
-          } catch (_) {
-            // ignore malformed line
+        let sep;
+        // SSE events end at the first "\n\n" (also tolerate "\r\n\r\n").
+        while (true) {
+          const lf = buffer.indexOf('\n\n');
+          const crlf = buffer.indexOf('\r\n\r\n');
+          if (lf === -1 && crlf === -1) break;
+          let sepLen = 2;
+          if (lf === -1) { sep = crlf; sepLen = 4; }
+          else if (crlf === -1) { sep = lf; sepLen = 2; }
+          else if (crlf < lf) { sep = crlf; sepLen = 4; }
+          else { sep = lf; sepLen = 2; }
+
+          const rawEvent = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + sepLen);
+          const evt = parseSseEvent(rawEvent);
+          if (!evt) continue;
+          if (evt.type === 'chunk' && typeof evt.text === 'string') {
+            appendChunk(evt.text);
+          } else if (evt.type === 'error') {
+            // Terminal error from backend (e.g. provider failure
+            // mid-stream): replace the in-flight bubble with the
+            // localized safe error so the user never sees an
+            // orphaned partial answer.
+            replaceWithSafeError();
+            return;
+          } else if (evt.type === 'done') {
+            suggestionsOut = Array.isArray(evt.suggestions) ? evt.suggestions : [];
+            done = true;
+            break;
           }
         }
       }
-      // Flush any tail in buffer
+      // Flush any tail in buffer (server may close without a trailing blank line)
       const tail = buffer.trim();
       if (tail) {
-        try {
-          const evt = JSON.parse(tail);
+        const evt = parseSseEvent(tail);
+        if (evt) {
           if (evt.type === 'chunk' && typeof evt.text === 'string') appendChunk(evt.text);
           else if (evt.type === 'error') { replaceWithSafeError(); return; }
           else if (evt.type === 'done' && Array.isArray(evt.suggestions)) suggestionsOut = evt.suggestions;
-        } catch (_) { /* ignore */ }
+        }
       }
 
       if (!firstChunkSeen) {
