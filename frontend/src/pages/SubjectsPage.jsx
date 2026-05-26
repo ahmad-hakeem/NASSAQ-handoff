@@ -190,8 +190,7 @@ export const SubjectsPage = () => {
           t('subjectDeleteAnywayHint') || 'سيؤدي الحذف إلى إخفاء المادة دون حذف الفصول أو الحصص المرتبطة. هل تريد المتابعة؟',
         ];
         setDeletingId(null);
-        nassaqConfirm(lines.join('\n'), async (ok) => {
-          if (!ok) return;
+        nassaqConfirm(lines.join('\n'), async () => {
           await performDelete(subjectId, { force: true });
         }, {
           confirmText: t('deleteAnyway') || 'حذف على أي حال',
@@ -211,8 +210,7 @@ export const SubjectsPage = () => {
   const handleDeleteSubject = (subject) => {
     const label = subject.name || subject.name_en || '';
     const message = t('areYouSureYouWantToDeleteThisSubject') + (label ? `\n${label}` : '');
-    nassaqConfirm(message, async (ok) => {
-      if (!ok) return;
+    nassaqConfirm(message, async () => {
       await performDelete(subject.id);
     });
   };

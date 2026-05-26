@@ -628,20 +628,47 @@ async def create_school_subject(
 
 
 @router.delete("/school/settings/subjects/{subject_id}")
-async def delete_school_subject(
+async def delete_school_settings_subject(
     subject_id: str,
+    force: bool = False,
     current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN])),
     x_school_context: str = Header(default=None, alias="X-School-Context")
 ):
-    """Delete subject - حذف مادة دراسية"""
+    """Delete subject - حذف مادة دراسية.
+
+    Returns a requires_confirmation envelope when the subject is still
+    referenced by active teacher assignments, schedule sessions, or classes,
+    and force=False. The caller must re-issue with ?force=true to proceed.
+    """
     school_id = await get_school_id_from_context(current_user, x_school_context)
-    
+
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
-    
+
     subject = await gd_find_one(db.session, "subjects", {"id": subject_id, "tenant_id": school_id})
     if not subject:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
+
+    if not force:
+        ref_query = {"subject_id": subject_id, "is_active": {"$ne": False}, "school_id": school_id}
+        classes_count = await gd_count(db.session, "classes", ref_query)
+        assignments_count = await gd_count(db.session, "teacher_assignments", ref_query)
+        sessions_count = await gd_count(db.session, "schedule_sessions", ref_query)
+        total = classes_count + assignments_count + sessions_count
+        if total > 0:
+            return {
+                "warning": True,
+                "requires_confirmation": True,
+                "message": (
+                    f"هذه المادة مرتبطة بـ {classes_count} فصل و{assignments_count} "
+                    f"إسناد للمعلمين و{sessions_count} حصة. هل تريد الحذف؟"
+                ),
+                "dependencies": {
+                    "classes": classes_count,
+                    "teacher_assignments": assignments_count,
+                    "schedule_sessions": sessions_count,
+                },
+            }
 
     await gd_update_one(
         db.session, "subjects",

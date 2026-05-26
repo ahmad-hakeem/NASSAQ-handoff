@@ -197,23 +197,66 @@ export const ClassesPage = () => {
     }
   };
 
+  const performDeleteClass = async (classId, { force = false } = {}) => {
+    try {
+      const res = await api.delete(`/classes/${classId}`, force ? { params: { force: true } } : undefined);
+      const data = res?.data;
+
+      if (data && data.requires_confirmation) {
+        const deps = data.dependencies || {};
+        const teacherAssignments = deps.teacher_assignments || 0;
+        const classSubjects = deps.class_subjects || 0;
+        const timetableSessions = deps.timetable_sessions || 0;
+        const lines = [
+          data.message || 'هذا الفصل مرتبط بسجلات أخرى.',
+          teacherAssignments > 0 ? `• ${t('teacherAssignments') || 'إسنادات المعلمين'}: ${teacherAssignments}` : null,
+          classSubjects > 0 ? `• ${t('classSubjects') || 'المواد الدراسية'}: ${classSubjects}` : null,
+          timetableSessions > 0 ? `• ${t('scheduleSessions') || 'الحصص في الجدول'}: ${timetableSessions}` : null,
+        ].filter(Boolean);
+        nassaqConfirm(lines.join('\n'), async () => {
+          await performDeleteClass(classId, { force: true });
+        }, {
+          title: t('dependenciesFound') || 'توجد ارتباطات',
+          confirmText: t('forceDelete') || 'حذف إجباري',
+          cancelText: t('cancel') || 'إلغاء',
+        });
+        return;
+      }
+
+      const deactivated = data?.deactivated;
+      let msg = t('classDeletedSuccessfully');
+      if (deactivated) {
+        const parts = Object.entries(deactivated).filter(([_, v]) => v > 0).map(([k, v]) => `${k}: ${v}`);
+        if (parts.length > 0) msg += ` (${parts.join(', ')})`;
+      }
+      toast.success(msg);
+      await fetchData({ includeInactive: showInactive });
+    } catch (error) {
+      const status = error?.response?.status;
+      const detail = error?.response?.data?.detail;
+      if (status === 409) {
+        nassaqError(
+          typeof detail === 'string'
+            ? detail
+            : 'لا يمكن حذف الفصل بسبب وجود بيانات مرتبطة به. يرجى نقل الطلاب أولاً.',
+          { title: t('cannotDelete') || 'تعذّر الحذف' }
+        );
+      } else {
+        nassaqError(
+          typeof detail === 'string'
+            ? detail
+            : 'حدث خطأ أثناء الحذف. يرجى المحاولة مرة أخرى.',
+          { title: t('error') || 'خطأ' }
+        );
+      }
+    }
+  };
+
   const handleDeleteClass = async (classId) => {
     nassaqConfirm(
       t('areYouSureYouWantToDeleteThisClassAllRelatedDataWi'),
       async () => {
-        try {
-          const res = await api.delete(`/classes/${classId}`);
-          const cleanup = res.data?.cleanup;
-          let msg = t('classDeletedSuccessfully');
-          if (cleanup) {
-            const parts = Object.entries(cleanup).filter(([_, v]) => v > 0).map(([k, v]) => `${k}: ${v}`);
-            if (parts.length > 0) msg += ` (${parts.join(', ')})`;
-          }
-          toast.success(msg);
-          await fetchData({ includeInactive: showInactive });
-        } catch (error) {
-          nassaqError(error.response?.data?.detail || (t('failedToDeleteClass')));
-        }
+        await performDeleteClass(classId);
       },
       { title: t('confirmPermanentDelete'), confirmText: t('yesDeletePermanently'), cancelText: t('cancel') }
     );
