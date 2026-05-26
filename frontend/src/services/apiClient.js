@@ -43,6 +43,7 @@ export function createApiService(api) {
       update: (id, data) => api.put(`/classes/${id}`, data),
       delete: (id) => api.delete(`/classes/${id}`),
       restoreClass: (id) => api.post(`/classes/${id}/restore`),
+      reactivateDependents: (id) => api.post(`/classes/${id}/reactivate-dependents`),
     },
 
     subjects: {

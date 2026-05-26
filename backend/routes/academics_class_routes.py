@@ -774,6 +774,10 @@ async def restore_class(
 #   - flip is_active back to True ONLY for rows whose class_id matches the
 #     just-restored class, optionally narrowed by an explicit ids list
 #   - emit a single audit_logs row per call describing what was reactivated
+#
+# Task #644 also adds the all-tables convenience route
+# POST /classes/{id}/reactivate-dependents (defined below) which is what the
+# post-restore NassaqAlertDialog's "Reactivate linked items" button calls.
 
 _RELINK_TABLES = {
     "teacher_assignments",
@@ -783,6 +787,67 @@ _RELINK_TABLES = {
     "class_sessions",
     "curriculum_lessons",
 }
+
+
+@router.post("/classes/{class_id}/reactivate-dependents")
+async def reactivate_class_dependents(
+    class_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER]))
+):
+    """Task #644 — re-activate every inactive dependent row attached to
+    ``class_id`` in one shot (teacher_assignments,
+    teacher_class_assignments, class_subjects, timetable_sessions,
+    class_sessions, curriculum_lessons). This is the all-tables
+    convenience route invoked by the post-restore dialog's "Reactivate
+    linked items" button; the per-table ``/relink/<table>`` wizard
+    routes below are the granular alternative.
+
+    The class itself must already be active — callers are expected to
+    hit ``POST /classes/{id}/restore`` first. Returns the per-table
+    reactivated counts and the remaining inactive counts. Tenant-scoped
+    via ``_load_active_class_for_relink`` (IT callers are pinned to
+    their own workspace; cross-workspace ids return 404 per spec §8
+    inv. 3)."""
+    class_doc = await _load_active_class_for_relink(class_id, current_user)
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    reactivated: Dict[str, int] = {}
+    for table in _RELINK_TABLES:
+        count = await gd_update_many(
+            db.session,
+            table,
+            {"class_id": class_id, "is_active": False},
+            {"is_active": True},
+        )
+        reactivated[table] = int(count or 0)
+
+    remaining_inactive: Dict[str, int] = {}
+    for table in _RELINK_TABLES:
+        remaining_inactive[table] = await gd_count(
+            db.session, table, {"class_id": class_id, "is_active": False}
+        )
+
+    audit_log = {
+        "id": str(uuid.uuid4()),
+        "school_id": class_doc.get("school_id"),
+        "action": "reactivate_dependents",
+        "entity_type": "class",
+        "entity_id": class_id,
+        "old_data": None,
+        "new_data": {"reactivated": reactivated},
+        "performed_by": current_user["id"],
+        "performed_by_name": current_user.get("full_name", ""),
+        "timestamp": now_iso,
+        "ip_address": None,
+    }
+    await gd_insert(db.session, "audit_logs", audit_log)
+
+    return {
+        "message": "تمت إعادة تفعيل العناصر المرتبطة بنجاح",
+        "success": True,
+        "reactivated": reactivated,
+        "inactive_dependents": remaining_inactive,
+    }
 
 
 async def _load_active_class_for_relink(class_id: str, current_user: dict) -> dict:

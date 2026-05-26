@@ -69,6 +69,8 @@ export const NassaqAlertProvider = ({ children }) => {
     onConfirm: null,
     onCancel: null,
     showCancel: false,
+    secondaryActionText: '',
+    onSecondaryAction: null,
   });
 
   const showAlert = useCallback(({
@@ -80,6 +82,8 @@ export const NassaqAlertProvider = ({ children }) => {
     onConfirm,
     onCancel,
     showCancel = false,
+    secondaryActionText,
+    onSecondaryAction,
   }) => {
     setAlertState({
       open: true,
@@ -91,6 +95,8 @@ export const NassaqAlertProvider = ({ children }) => {
       onConfirm: onConfirm || null,
       onCancel: onCancel || null,
       showCancel,
+      secondaryActionText: secondaryActionText || '',
+      onSecondaryAction: onSecondaryAction || null,
     });
   }, []);
 
@@ -136,6 +142,13 @@ export const NassaqAlertProvider = ({ children }) => {
     if (alertState.onCancel) alertState.onCancel();
   }, [alertState.onCancel, closeAlert]);
 
+  const handleSecondaryAction = useCallback(async () => {
+    closeAlert();
+    if (alertState.onSecondaryAction) {
+      await alertState.onSecondaryAction();
+    }
+  }, [alertState.onSecondaryAction, closeAlert]);
+
   const config = ALERT_TYPES[alertState.type] || ALERT_TYPES.warning;
   const IconComponent = config.icon;
 
@@ -175,6 +188,16 @@ export const NassaqAlertProvider = ({ children }) => {
             >
               {alertState.confirmText}
             </Button>
+            {alertState.secondaryActionText && alertState.onSecondaryAction && (
+              <Button
+                variant="outline"
+                onClick={handleSecondaryAction}
+                data-testid="nassaq-alert-secondary-action"
+                className="rounded-xl px-6 py-2.5 text-sm font-bold font-cairo border-indigo-300 text-indigo-700 hover:bg-indigo-50 mt-0"
+              >
+                {alertState.secondaryActionText}
+              </Button>
+            )}
             {alertState.showCancel && (
               <Button
                 variant="outline"

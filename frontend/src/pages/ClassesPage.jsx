@@ -324,11 +324,22 @@ export const ClassesPage = () => {
             : (isRTL
                 ? '\n\nلا توجد عناصر مرتبطة بحاجة إلى إعادة ربط.'
                 : '\n\nNo linked items need re-linking.');
+          // Task #644 — when at least one dependent count > 0, offer a
+          // one-click "Reactivate linked items" companion action that
+          // calls POST /classes/{id}/reactivate-dependents and reports
+          // the per-table counts in a follow-up dialog.
+          const hasDependents = lines.length > 0;
           showAlert({
-            type: lines.length ? 'warning' : 'success',
+            type: hasDependents ? 'warning' : 'success',
             title: isRTL ? 'تمت استعادة الفصل' : 'Class restored',
             message: header + followUp,
             confirmText: isRTL ? 'حسناً' : 'OK',
+            secondaryActionText: hasDependents
+              ? (isRTL ? 'إعادة تفعيل العناصر المرتبطة' : 'Reactivate linked items')
+              : undefined,
+            onSecondaryAction: hasDependents
+              ? () => handleReactivateDependents(cls)
+              : undefined,
           });
           await fetchData({ includeInactive: showInactive });
         } catch (error) {
@@ -346,6 +357,53 @@ export const ClassesPage = () => {
         cancelText: isRTL ? 'إلغاء' : 'Cancel',
       }
     );
+  };
+
+  // Task #644 — companion to handleRestoreClass. Calls
+  // POST /classes/{id}/reactivate-dependents which flips
+  // teacher_assignments, teacher_class_assignments, class_subjects,
+  // timetable_sessions, class_sessions, and curriculum_lessons rows for
+  // this class back to is_active=True in one shot, then reports the
+  // per-table counts in a follow-up dialog.
+  const handleReactivateDependents = async (cls) => {
+    const className = cls?.name || '';
+    setRestoringId(cls.id);
+    try {
+      const res = await api.post(`/classes/${cls.id}/reactivate-dependents`);
+      const reactivated = res?.data?.reactivated || {};
+      const labelMap = {
+        teacher_assignments: isRTL ? 'إسنادات المعلمين' : 'Teacher assignments',
+        teacher_class_assignments: isRTL ? 'إسنادات معلم-فصل' : 'Teacher–class links',
+        class_subjects: isRTL ? 'المواد الدراسية' : 'Class subjects',
+        timetable_sessions: isRTL ? 'حصص الجدول' : 'Timetable sessions',
+        class_sessions: isRTL ? 'حصص الفصل' : 'Class sessions',
+        curriculum_lessons: isRTL ? 'دروس المنهج' : 'Curriculum lessons',
+      };
+      const lines = Object.entries(reactivated)
+        .filter(([, v]) => Number(v) > 0)
+        .map(([k, v]) => `• ${labelMap[k] || k}: ${v}`);
+      const total = Object.values(reactivated).reduce((a, b) => a + Number(b || 0), 0);
+      const header = isRTL
+        ? `تمت إعادة تفعيل العناصر المرتبطة بالفصل "${className}".`
+        : `Linked items for class "${className}" have been reactivated.`;
+      const body = total
+        ? (isRTL ? `\n\nتم تفعيل:\n${lines.join('\n')}` : `\n\nReactivated:\n${lines.join('\n')}`)
+        : (isRTL ? '\n\nلا توجد عناصر بحاجة إلى إعادة تفعيل.' : '\n\nNo items needed reactivation.');
+      showAlert({
+        type: 'success',
+        title: isRTL ? 'تم إعادة التفعيل' : 'Reactivation complete',
+        message: header + body,
+        confirmText: isRTL ? 'حسناً' : 'OK',
+      });
+      await fetchData({ includeInactive: showInactive });
+    } catch (error) {
+      nassaqError(
+        error.response?.data?.detail
+          || (isRTL ? 'فشل إعادة تفعيل العناصر المرتبطة' : 'Failed to reactivate linked items')
+      );
+    } finally {
+      setRestoringId(null);
+    }
   };
 
   const formatDeletedAt = (iso) => {
