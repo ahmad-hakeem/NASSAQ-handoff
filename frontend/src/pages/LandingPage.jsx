@@ -711,34 +711,9 @@ export const LandingPage = () => {
             </div>
 
             {/* RTL End = Left: Dashboard mockup */}
-            <div className="order-1 lg:order-2 relative pb-12 sm:pb-16 lg:pb-0">
-              {/* Hakim welcome mascot — anchored to the lower-left edge of the mockup, never over the dashboard label */}
+            <div className="order-1 lg:order-2 relative pb-20 sm:pb-24 lg:pb-0">
               <div
-                className="pointer-events-none select-none absolute z-20
-                           -bottom-2 -end-2
-                           sm:-bottom-4 sm:-end-4
-                           lg:-bottom-10 lg:-end-10
-                           xl:-bottom-14 xl:-end-16"
-                aria-hidden="true"
-              >
-                {/* Soft radial glow — blends the cutout into the navy hero */}
-                <div className="absolute inset-0 m-auto w-[110%] h-[110%] rounded-full bg-brand-turquoise/25 blur-3xl" />
-                <img
-                  src="/hakim-welcome.png"
-                  alt=""
-                  width="320"
-                  height="320"
-                  loading="lazy"
-                  className="relative object-contain drop-shadow-2xl animate-float motion-reduce:animate-none
-                             w-24 h-24
-                             sm:w-32 sm:h-32
-                             lg:w-44 lg:h-44
-                             xl:w-56 xl:h-56"
-                />
-              </div>
-
-              <div
-                className="relative w-full bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transform hover:scale-[1.02] transition-transform duration-500"
+                className="relative z-10 w-full bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transform hover:scale-[1.02] transition-transform duration-500"
                 data-testid="hero-mockup"
               >
                 {/* Browser chrome */}
