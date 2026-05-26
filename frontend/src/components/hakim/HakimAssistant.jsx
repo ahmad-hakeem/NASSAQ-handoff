@@ -356,40 +356,11 @@ const HakimAssistantInner = () => {
     followModeRef.current = false;
     trackTimeout(() => scrollMessageToTop(userMessageId), 30);
 
-    if (!isPublic) {
-      // Authenticated flow is untouched — non-streaming.
-      try {
-        const response = await api.post('/hakim/chat', {
-          message: text,
-          context: null,
-          user_role: user?.role,
-          tenant_id: user?.tenant_id,
-          current_page: location.pathname,
-        });
-        setHakimState(HakimState.RESPONDING);
-        setMessages((prev) => [...prev, {
-          role: 'assistant',
-          content: response.data.response,
-          suggestions: response.data.suggestions || [],
-        }]);
-        // Auth flow is non-streaming — keep the new assistant reply in view
-        // by scrolling to bottom (matches the pre-streaming UX).
-        trackTimeout(() => scrollToBottom('smooth'), 40);
-        trackTimeout(() => setHakimState(HakimState.IDLE), 1000);
-      } catch (error) {
-        console.error('Hakim error:', error);
-        setMessages((prev) => [...prev, {
-          role: 'assistant', content: t('hakimError'), suggestions: [],
-        }]);
-        trackTimeout(() => scrollToBottom('smooth'), 40);
-        setHakimState(HakimState.IDLE);
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    // Public/landing flow: stream chunks over fetch.
+    // Both flows stream over SSE. The only differences between the
+    // public/landing surface and the authenticated sitewide surface are
+    // the endpoint path, the request body shape, and whether a Bearer
+    // token is attached — the stream-consume / scroll / error-recovery
+    // logic below is identical.
     const controller = new AbortController();
     streamAbortRef.current = controller;
     const assistantId = `a_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -461,15 +432,37 @@ const HakimAssistantInner = () => {
 
     try {
       const baseURL = api?.defaults?.baseURL || '';
-      const res = await fetch(`${baseURL}/public/hakim/chat/stream`, {
+
+      // Pick endpoint + body shape per surface. Auth path attaches the
+      // JWT manually because the axios interceptor that normally injects
+      // `Authorization` does NOT run for `fetch()` calls.
+      const streamPath = isPublic ? '/public/hakim/chat/stream' : '/hakim/chat/stream';
+      const streamBody = isPublic
+        ? { message: text, locale, conversation_history: historyForRequest }
+        : {
+            message: text,
+            context: null,
+            user_role: user?.role,
+            tenant_id: user?.tenant_id,
+            current_page: location.pathname,
+            conversation_history: historyForRequest,
+          };
+      const streamHeaders = {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+      };
+      if (!isPublic) {
+        try {
+          const token = localStorage.getItem('nassaq_token');
+          if (token) streamHeaders.Authorization = `Bearer ${token}`;
+        } catch (_) { /* localStorage unavailable — let the request 401 */ }
+      }
+
+      const res = await fetch(`${baseURL}${streamPath}`, {
         method: 'POST',
         signal: controller.signal,
-        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-        body: JSON.stringify({
-          message: text,
-          locale,
-          conversation_history: historyForRequest,
-        }),
+        headers: streamHeaders,
+        body: JSON.stringify(streamBody),
       });
       if (!res.ok || !res.body) throw new Error(`stream HTTP ${res.status}`);
 

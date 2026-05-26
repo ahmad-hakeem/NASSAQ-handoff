@@ -580,106 +580,120 @@ async def _build_parent_child_context(child_id: str, school_id: str) -> str:
     return "\n".join(context_parts)
 
 
-@router.post("/hakim/chat", response_model=HakimResponse)
-async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depends(get_current_user)):
-    try:
-        client = get_openai_client()
-        if client is None:
-            return JSONResponse(status_code=503, content=AI_NOT_CONFIGURED_RESPONSE)
+async def _prepare_hakim_chat(
+    message: HakimChatRequest, current_user: dict
+):
+    """Build the LLM prompt + session key for the authenticated Hakim chat.
 
-        # Trust the server-side role over anything the client claims; only fall
-        # back to the request's `user_role` when the auth payload omits it.
-        user_role = current_user.get("role") or (message.user_role or "unknown")
-        is_parent = user_role == "parent" or message.context == "parent_portal"
+    Returns a 5-tuple: (short_circuit_response, messages_list, session_key,
+    user_content, is_parent).
 
-        # Parent tenant scope is pinned strictly to the authenticated
-        # tenant — a client-supplied `message.tenant_id` must NEVER widen
-        # the allow-list of children (threat model: cross-tenant disclosure).
-        # Non-parent roles keep the legacy fallback for unauthenticated-
-        # tenant platform contexts.
-        if is_parent:
-            school_id = current_user.get("tenant_id")
-        else:
-            school_id = current_user.get("tenant_id") or message.tenant_id
+    - If ``short_circuit_response`` is not None, the caller MUST return it
+      directly without invoking the LLM (e.g. parent with zero linked
+      students — never let the AI hallucinate over an empty allow-list).
+    - Otherwise the other four fields are ready for the LLM call and for
+      the post-call session-memory write.
 
-        child_context = ""
-        allowed_students: List[Dict[str, Any]] = []
+    SECURITY: this helper is the single source of truth for the strict
+    parent allow-list / tenant-pinning rules. Both ``/hakim/chat`` (sync)
+    and ``/hakim/chat/stream`` (SSE) MUST go through it so the
+    streaming surface cannot drift from the non-streaming one on
+    parent-IDOR coverage.
+    """
+    # Trust the server-side role over anything the client claims; only fall
+    # back to the request's `user_role` when the auth payload omits it.
+    user_role = current_user.get("role") or (message.user_role or "unknown")
+    is_parent = user_role == "parent" or message.context == "parent_portal"
 
-        if is_parent:
-            # Use the same canonical resolver the parent portal uses so
-            # Hakim sees exactly the dashboard's allow-list — including
-            # principal-managed linkages where `students.parent_id` is a
-            # `parents.id` and `guardian_links.parent_ref` may carry either
-            # a `users.id` or a `parents.id`. Tenant is pinned to the
-            # authenticated `school_id`, never a client-supplied value.
-            allowed_students = await resolve_parent_children(current_user, school_id or "")
-            allowed_ids = {s["id"] for s in allowed_students}
+    # Parent tenant scope is pinned strictly to the authenticated tenant —
+    # a client-supplied `message.tenant_id` must NEVER widen the
+    # allow-list of children (threat model: cross-tenant disclosure).
+    if is_parent:
+        school_id = current_user.get("tenant_id")
+    else:
+        school_id = current_user.get("tenant_id") or message.tenant_id
 
-            # Graceful "no linked students" path — never let the AI hallucinate.
-            if not allowed_students:
-                return HakimResponse(
+    child_context = ""
+    allowed_students: List[Dict[str, Any]] = []
+
+    if is_parent:
+        # Use the same canonical resolver the parent portal uses so
+        # Hakim sees exactly the dashboard's allow-list — including
+        # principal-managed linkages where `students.parent_id` is a
+        # `parents.id` and `guardian_links.parent_ref` may carry either
+        # a `users.id` or a `parents.id`. Tenant is pinned to the
+        # authenticated `school_id`, never a client-supplied value.
+        allowed_students = await resolve_parent_children(current_user, school_id or "")
+        allowed_ids = {s["id"] for s in allowed_students}
+
+        # Graceful "no linked students" path — never let the AI hallucinate.
+        if not allowed_students:
+            return (
+                HakimResponse(
                     response=(
                         "مرحباً! أنا **حكيم** 🌟\n\n"
                         "لم أعثر على أي طالب مرتبط بحسابك حالياً. لذلك لا يمكنني عرض بيانات أكاديمية مخصصة. "
                         "يرجى التواصل مع إدارة المدرسة لربط حساب ولي الأمر بأبنائك."
                     ),
                     suggestions=["كيف أربط ابني بحسابي؟", "ما هي ميزات بوابة ولي الأمر؟"],
+                ),
+                None, None, None, True,
+            )
+
+        # If a specific child was requested, it MUST be inside the allow-list.
+        if message.child_id:
+            if message.child_id not in allowed_ids:
+                raise HTTPException(
+                    status_code=403,
+                    detail="ليس لديك صلاحية الوصول إلى بيانات هذا الطالب",
                 )
+            child_context = await _build_parent_child_context(message.child_id, school_id or "")
+        elif len(allowed_students) == 1:
+            # Exactly one linked child — auto-scope without nagging the parent.
+            only_child = allowed_students[0]
+            child_context = await _build_parent_child_context(only_child["id"], school_id or "")
 
-            # If a specific child was requested, it MUST be inside the allow-list.
-            if message.child_id:
-                if message.child_id not in allowed_ids:
-                    raise HTTPException(
-                        status_code=403,
-                        detail="ليس لديك صلاحية الوصول إلى بيانات هذا الطالب",
-                    )
-                child_context = await _build_parent_child_context(message.child_id, school_id or "")
-            elif len(allowed_students) == 1:
-                # Exactly one linked child — auto-scope without nagging the parent.
-                only_child = allowed_students[0]
-                child_context = await _build_parent_child_context(only_child["id"], school_id or "")
-
-        school_context = ""
-        if school_id and not is_parent:
-            school = await gd_find_one(db.session, "schools", {"id": school_id})
-            total_students = await gd_count(db.session, "students", {"school_id": school_id})
-            total_teachers = await gd_count(db.session, "teachers", {"school_id": school_id})
-            total_classes = await gd_count(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}})
-            attendance_query = {"school_id": school_id}
-            total_att = await gd_count(db.session, "attendance", attendance_query)
-            present_att = await gd_count(db.session, "attendance", {**attendance_query, "status": "present"})
-            att_rate = round((present_att / total_att) * 100, 1) if total_att > 0 else 0
-            school_name = (school.get("name_ar") or school.get("name", "")) if school else ""
-            school_context = f"""
+    school_context = ""
+    if school_id and not is_parent:
+        school = await gd_find_one(db.session, "schools", {"id": school_id})
+        total_students = await gd_count(db.session, "students", {"school_id": school_id})
+        total_teachers = await gd_count(db.session, "teachers", {"school_id": school_id})
+        total_classes = await gd_count(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}})
+        attendance_query = {"school_id": school_id}
+        total_att = await gd_count(db.session, "attendance", attendance_query)
+        present_att = await gd_count(db.session, "attendance", {**attendance_query, "status": "present"})
+        att_rate = round((present_att / total_att) * 100, 1) if total_att > 0 else 0
+        school_name = (school.get("name_ar") or school.get("name", "")) if school else ""
+        school_context = f"""
 بيانات المدرسة الحالية ({school_name}):
 - عدد الطلاب: {total_students}
 - عدد المعلمين: {total_teachers}
 - عدد الفصول: {total_classes}
 - نسبة الحضور العامة: {att_rate}%"""
 
-        page_context = ""
-        if message.current_page:
-            page_map = {
-                "/school/dashboard": "مركز القيادة - لوحة التحكم الرئيسية للمدير",
-                "/school/schedule": "الجدول الدراسي - إنشاء وإدارة الجداول",
-                "/school/assessments": "الاختبارات والتقييمات - إدارة الاختبارات والدرجات",
-                "/school/communication": "مركز التواصل والإشعارات",
-                "/school/ai-insights": "رؤى الذكاء الاصطناعي - التحليلات والتنبؤات",
-                "/admin/attendance": "إدارة الحضور والغياب",
-                "/admin/students": "إدارة الطلاب",
-                "/admin/teachers": "إدارة المعلمين",
-                "/admin/users-management": "إدارة المستخدمين",
-                "/admin/classes": "إدارة الفصول",
-            }
-            page_name = page_map.get(message.current_page, message.current_page)
-            page_context = f"\nالمستخدم حالياً في صفحة: {page_name}"
+    page_context = ""
+    if message.current_page:
+        page_map = {
+            "/school/dashboard": "مركز القيادة - لوحة التحكم الرئيسية للمدير",
+            "/school/schedule": "الجدول الدراسي - إنشاء وإدارة الجداول",
+            "/school/assessments": "الاختبارات والتقييمات - إدارة الاختبارات والدرجات",
+            "/school/communication": "مركز التواصل والإشعارات",
+            "/school/ai-insights": "رؤى الذكاء الاصطناعي - التحليلات والتنبؤات",
+            "/admin/attendance": "إدارة الحضور والغياب",
+            "/admin/students": "إدارة الطلاب",
+            "/admin/teachers": "إدارة المعلمين",
+            "/admin/users-management": "إدارة المستخدمين",
+            "/admin/classes": "إدارة الفصول",
+        }
+        page_name = page_map.get(message.current_page, message.current_page)
+        page_context = f"\nالمستخدم حالياً في صفحة: {page_name}"
 
-        if is_parent:
-            allowed_lines = "\n".join(
-                f"- {s.get('full_name', 'طالب')} (المعرّف: {s['id']})"
-                for s in allowed_students
-            )
-            scope_block = f"""
+    if is_parent:
+        allowed_lines = "\n".join(
+            f"- {s.get('full_name', 'طالب')} (المعرّف: {s['id']})"
+            for s in allowed_students
+        )
+        scope_block = f"""
 ## نطاق الوصول الصارم (مهم جداً — قاعدة أمنية لا تُخالف):
 - يُسمح لك حصراً بمناقشة الطلاب التاليين المرتبطين رسمياً بهذا ولي الأمر:
 {allowed_lines}
@@ -688,7 +702,7 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
 - استخدم فقط البيانات الفعلية المُرفقة أدناه. لا تخترع درجات أو إحصاءات أو أحداثاً.
 """
 
-            system_prompt = f"""أنت حكيم، المساعد الذكي لأولياء الأمور في منصة نَسَّق التعليمية.
+        system_prompt = f"""أنت حكيم، المساعد الذكي لأولياء الأمور في منصة نَسَّق التعليمية.
 مهمتك مساعدة ولي الأمر في فهم أداء ابنه/ابنته الدراسي وتقديم نصائح تربوية مخصصة.
 
 ## قواعد مهمة:
@@ -713,8 +727,8 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
 {scope_block}
 
 دور المستخدم: ولي أمر"""
-        else:
-            nav_links = """
+    else:
+        nav_links = """
 روابط صفحات النظام المتاحة (استخدمها عند التوجيه):
 - مركز القيادة: /school/dashboard
 - الجدول الدراسي: /school/schedule
@@ -728,7 +742,7 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
 - إدارة المستخدمين: /admin/users-management
 - التقارير: /admin/reports"""
 
-            system_prompt = f"""أنت حكيم، المساعد الذكي الرسمي لمنصة نَسَّق لإدارة المدارس.
+        system_prompt = f"""أنت حكيم، المساعد الذكي الرسمي لمنصة نَسَّق لإدارة المدارس.
 أنت خبير في الشؤون التعليمية والإدارية المدرسية.
 
 ## قواعد تنسيق الرد (مهمة جداً):
@@ -763,51 +777,72 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
 {school_context}{page_context}
 دور المستخدم الحالي: {user_role}"""
 
-        user_id = current_user.get('id', 'anon')
-        if is_parent:
-            # SECURITY: never honor a client-supplied session_id for parents.
-            # Force a server-derived key so a parent cannot hop into another
-            # parent's (or another child's) conversation history.
-            session_child = message.child_id or (allowed_students[0]["id"] if len(allowed_students) == 1 else "all")
-            session_key = f"hakim_{user_id}_{session_child}"
-        else:
-            session_key = message.session_id or f"hakim_{user_id}"
+    user_id = current_user.get('id', 'anon')
+    if is_parent:
+        # SECURITY: never honor a client-supplied session_id for parents.
+        # Force a server-derived key so a parent cannot hop into another
+        # parent's (or another child's) conversation history.
+        session_child = message.child_id or (allowed_students[0]["id"] if len(allowed_students) == 1 else "all")
+        session_key = f"hakim_{user_id}_{session_child}"
+    else:
+        session_key = message.session_id or f"hakim_{user_id}"
 
-        messages_list = [{"role": "system", "content": system_prompt}]
+    messages_list = [{"role": "system", "content": system_prompt}]
 
-        if session_key in _hakim_sessions:
-            messages_list.extend(_hakim_sessions[session_key][-20:])
+    if session_key in _hakim_sessions:
+        messages_list.extend(_hakim_sessions[session_key][-20:])
 
-        if message.conversation_history:
-            for msg in message.conversation_history[-10:]:
-                role = msg.get("role", "user")
-                if role in ("user", "assistant"):
-                    messages_list.append({"role": role, "content": msg.get("content", "")})
+    if message.conversation_history:
+        for msg in message.conversation_history[-10:]:
+            role = msg.get("role", "user")
+            if role in ("user", "assistant"):
+                messages_list.append({"role": role, "content": msg.get("content", "")})
 
-        context_info = ""
-        if message.context:
-            context_info = f"\n\n[سياق إضافي: {message.context}]"
+    context_info = ""
+    if message.context:
+        context_info = f"\n\n[سياق إضافي: {message.context}]"
 
-        user_content = message.message + context_info
-        messages_list.append({"role": "user", "content": user_content})
+    user_content = message.message + context_info
+    messages_list.append({"role": "user", "content": user_content})
+
+    return (None, messages_list, session_key, user_content, is_parent)
+
+
+def _persist_hakim_session(session_key: str, user_content: str, reply: str) -> None:
+    """Append the user turn + assistant reply into the in-memory session
+    store, capping history so it can't grow unbounded."""
+    if not reply or not reply.strip():
+        return
+    if session_key not in _hakim_sessions:
+        _hakim_sessions[session_key] = []
+    _hakim_sessions[session_key].append({"role": "user", "content": user_content})
+    _hakim_sessions[session_key].append({"role": "assistant", "content": reply})
+    if len(_hakim_sessions[session_key]) > 40:
+        _hakim_sessions[session_key] = _hakim_sessions[session_key][-30:]
+
+
+@router.post("/hakim/chat", response_model=HakimResponse)
+async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depends(get_current_user)):
+    try:
+        client = get_openai_client()
+        if client is None:
+            return JSONResponse(status_code=503, content=AI_NOT_CONFIGURED_RESPONSE)
+
+        short, messages_list, session_key, user_content, is_parent = (
+            await _prepare_hakim_chat(message, current_user)
+        )
+        if short is not None:
+            return short
 
         response = client.chat.completions.create(
             model="gpt-5-mini",
             messages=messages_list,
             max_completion_tokens=8192,
         )
-
         reply = response.choices[0].message.content or ""
 
-        if session_key not in _hakim_sessions:
-            _hakim_sessions[session_key] = []
-        _hakim_sessions[session_key].append({"role": "user", "content": user_content})
-        _hakim_sessions[session_key].append({"role": "assistant", "content": reply})
-        if len(_hakim_sessions[session_key]) > 40:
-            _hakim_sessions[session_key] = _hakim_sessions[session_key][-30:]
-
+        _persist_hakim_session(session_key, user_content, reply)
         suggestions = _generate_hakim_suggestions(message.message, is_parent=is_parent)
-
         return HakimResponse(response=reply, suggestions=suggestions)
 
     except HTTPException:
@@ -815,6 +850,140 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
     except Exception as e:
         logging.error(f"Hakim LLM error: {str(e)}")
         return _hakim_fallback(message.message)
+
+
+# Hard ceilings on a single authenticated streamed reply — slightly more
+# generous than the public-stream caps because authenticated answers may
+# legitimately include longer Markdown / data summaries, but still bounded
+# so a stuck upstream connection cannot pin a worker open indefinitely.
+_AUTH_HAKIM_STREAM_MAX_DURATION_S = 90.0
+_AUTH_HAKIM_STREAM_MAX_CHUNKS = 2000
+
+
+@router.post("/hakim/chat/stream")
+async def chat_with_hakim_stream(
+    message: HakimChatRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """SSE stream of the authenticated Hakim chat.
+
+    Mirrors ``/hakim/chat`` exactly in authorization (parent allow-list,
+    tenant pinning, child-id validation, session-id rules) via the shared
+    ``_prepare_hakim_chat`` helper, then streams the LLM reply token-by-
+    token as ``text/event-stream`` so the UI can render incrementally.
+
+    Wire format: lines of ``data: <json>\\n\\n``. Event types:
+      - ``{"type":"chunk","text":...}``  – an incremental token
+      - ``{"type":"done","suggestions":[...]}`` – terminal success event
+      - ``{"type":"error","text":...,"suggestions":[...]}`` – terminal
+        error event the FE swaps in for the in-flight bubble
+
+    Session memory is persisted only AFTER the full streamed reply has
+    been accumulated, so a mid-stream cancel cannot half-write history.
+    """
+    client = get_openai_client()
+    if client is None:
+        return JSONResponse(status_code=503, content=AI_NOT_CONFIGURED_RESPONSE)
+
+    try:
+        short, messages_list, session_key, user_content, is_parent = (
+            await _prepare_hakim_chat(message, current_user)
+        )
+    except HTTPException as exc:
+        # Surface the 403/etc. as a normal JSON error so the FE axios-style
+        # error path still works for parent IDOR / step-up cases.
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+    headers = {
+        "Cache-Control": "no-cache, no-store, no-transform",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+    }
+
+    def _sse(payload: Dict[str, Any]) -> bytes:
+        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
+
+    suggestions = _generate_hakim_suggestions(message.message, is_parent=is_parent)
+
+    # Short-circuit (parent with no linked children) — emit the canned
+    # response as a single chunk so the FE can use the same parser.
+    if short is not None:
+        def short_stream():
+            # PROXY-FLUSH PRIMER — see public stream for why this matters.
+            yield b": stream-start\n\n"
+            yield _sse({"type": "chunk", "text": short.response})
+            yield _sse({"type": "done", "suggestions": list(short.suggestions or [])})
+        return StreamingResponse(
+            short_stream(), media_type="text/event-stream", headers=headers
+        )
+
+    def event_stream():
+        # PROXY-FLUSH PRIMER: force the upstream proxy (Replit / nginx /
+        # Cloudflare) to flush headers + first byte to the browser BEFORE
+        # the LLM call returns its first token. Without this some proxies
+        # buffer the entire response, defeating SSE.
+        yield b": stream-start\n\n"
+        started = _time.monotonic()
+        chunk_count = 0
+        truncated = False
+        accumulated: List[str] = []
+        any_text = False
+        try:
+            stream = client.with_options(
+                timeout=_AUTH_HAKIM_STREAM_MAX_DURATION_S
+            ).chat.completions.create(
+                model="gpt-5-mini",
+                messages=messages_list,
+                max_completion_tokens=8192,
+                stream=True,
+            )
+            for event in stream:
+                if (_time.monotonic() - started) >= _AUTH_HAKIM_STREAM_MAX_DURATION_S:
+                    truncated = True
+                    break
+                if chunk_count >= _AUTH_HAKIM_STREAM_MAX_CHUNKS:
+                    truncated = True
+                    break
+                try:
+                    choices = getattr(event, "choices", None) or []
+                    if not choices:
+                        continue
+                    delta = getattr(choices[0], "delta", None)
+                    piece = getattr(delta, "content", None) if delta is not None else None
+                    if piece:
+                        any_text = True
+                        chunk_count += 1
+                        accumulated.append(piece)
+                        yield _sse({"type": "chunk", "text": piece})
+                except Exception:
+                    continue
+            try:
+                stream.close()  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
+            if not any_text:
+                # Provider returned no usable text — fall back to the same
+                # localized fallback the non-streaming path uses.
+                fb = _hakim_fallback(message.message)
+                yield _sse({"type": "chunk", "text": fb.response})
+                yield _sse({"type": "done", "suggestions": list(fb.suggestions or [])})
+                return
+
+            full_reply = "".join(accumulated)
+            _persist_hakim_session(session_key, user_content, full_reply)
+            yield _sse({"type": "done", "suggestions": suggestions, "truncated": truncated})
+        except Exception as e:
+            logging.error(f"Hakim auth stream error: {e}")
+            yield _sse({
+                "type": "error",
+                "text": "عذراً، حدث خطأ أثناء الإجابة. يرجى المحاولة مرة أخرى.",
+                "suggestions": suggestions,
+            })
+
+    return StreamingResponse(
+        event_stream(), media_type="text/event-stream", headers=headers
+    )
 
 
 def _generate_hakim_suggestions(msg: str, is_parent: bool = False) -> list:
