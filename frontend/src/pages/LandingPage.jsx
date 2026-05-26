@@ -769,7 +769,7 @@ export const LandingPage = () => {
               </div>
 
               {/* Footnote below mockup */}
-              <p className="font-tajawal text-xs text-slate-500 text-center mt-4">
+              <p className="font-tajawal text-xs text-white/60 text-center mt-4">
                 {isRTL
                   ? 'لقطة حقيقية من لوحة مدير المدرسة'
                   : 'Real screenshot from the principal dashboard'}
