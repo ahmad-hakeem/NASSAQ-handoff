@@ -15,7 +15,8 @@ broad/unscoped query.
 from typing import Optional
 
 import jwt
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException
+from starlette.requests import HTTPConnection
 
 from dependencies import UserRole, get_current_user, JWT_SECRET, JWT_ALGORITHM
 
@@ -130,7 +131,7 @@ async def require_full_school_tenant(
     return current_user
 
 
-async def require_workspace_materialised(request: Request) -> None:
+async def require_workspace_materialised(request: HTTPConnection) -> None:
     """Phase 1 (#183) — fail-closed gate for Independent-Teacher accounts.
 
     Mounted as a global dependency on the ``/api`` router so every
@@ -149,7 +150,7 @@ async def require_workspace_materialised(request: Request) -> None:
     lookups on the hot path. Failures of decode / type-check fall
     through silently — the downstream auth dep will reject as usual.
     """
-    method = (request.method or "").upper()
+    method = (getattr(request, "method", "GET") or "").upper()
     if method == "OPTIONS":
         return  # CORS preflight
 
