@@ -170,9 +170,9 @@ export const Sidebar = ({ children }) => {
   // is_impersonating state, so it never appears inline next to the
   // previewable schools.
   const displayableRoles = useMemo(() => {
-    if (user?.role !== 'platform_admin') return availableRoles;
+    if (user?.role !== 'platform_admin' && !isImpersonating) return availableRoles;
     return (availableRoles || []).filter((role) => role?.role !== 'platform_admin');
-  }, [availableRoles, user?.role]);
+  }, [availableRoles, user?.role, isImpersonating]);
 
   const _detailString = (error) => {
     const d = error?.response?.data?.detail;
@@ -182,6 +182,8 @@ export const Sidebar = ({ children }) => {
 
   const handleSwitchRole = useCallback(async (role) => {
     if (role.is_current) return;
+
+    if (isImpersonating && role?.role === 'platform_admin') return;
 
     if (isPlatformAdminPreview(role)) {
       setPreviewReasonRole(role);
@@ -209,7 +211,7 @@ export const Sidebar = ({ children }) => {
     } finally {
       setSwitchingRole(false);
     }
-  }, [api, isPlatformAdminPreview, nassaqError, navigate, t, updateToken]);
+  }, [api, isImpersonating, isPlatformAdminPreview, nassaqError, navigate, t, updateToken]);
 
   // Task #498: hardened impersonation flow for platform admins previewing
   // a specific school as its principal. Posts to /role-switch/switch with
