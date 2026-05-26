@@ -117,7 +117,7 @@ export const SubjectsPage = () => {
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user]);
 
   const resetForm = () => {
     setNewSubject({
@@ -140,11 +140,11 @@ export const SubjectsPage = () => {
 
     setSubmitting(true);
     try {
-      const response = await api.post('/subjects', newSubject);
+      await api.post('/subjects', newSubject);
       toast.success(t('subjectAddedSuccessfully'));
       setCreateDialogOpen(false);
       resetForm();
-      setSubjects(prev => [...prev, response.data]);
+      fetchData();
     } catch (error) {
       nassaqError(error.response?.data?.detail || (t('failedToAddSubject')));
     } finally {
@@ -160,11 +160,11 @@ export const SubjectsPage = () => {
 
     setSubmitting(true);
     try {
-      const response = await api.put(`/subjects/${editingSubject.id}`, editingSubject);
+      await api.put(`/subjects/${editingSubject.id}`, editingSubject);
       toast.success(t('subjectUpdatedSuccessfully'));
       setEditDialogOpen(false);
       setEditingSubject(null);
-      setSubjects(prev => prev.map(s => s.id === editingSubject.id ? response.data : s));
+      fetchData();
     } catch (error) {
       nassaqError(error.response?.data?.detail || (t('failedToUpdateSubject')));
     } finally {
