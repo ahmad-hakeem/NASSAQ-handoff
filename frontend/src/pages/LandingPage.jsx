@@ -602,7 +602,7 @@ export const LandingPage = () => {
         </div>
 
         <div className="relative max-w-7xl mx-auto px-6 py-16 lg:py-24">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
 
             {/* RTL Start = Right: Content */}
             <div className="space-y-8 text-start order-2 lg:order-1 lg:[&]:order-none">
@@ -710,25 +710,22 @@ export const LandingPage = () => {
               </div>
             </div>
 
-            {/* RTL End = Left: Dashboard mockup (Hakim sits above-left, visually attached) */}
-            <div className="order-1 lg:order-2 relative pt-16 sm:pt-20 lg:pt-24 xl:pt-28">
-              {/* Hakim welcome mascot — perched on top of the dashboard's left edge,
-                  feet resting on the dashboard top so the two read as one connected
-                  composition. Restrained size keeps the dashboard dominant. */}
+            {/* RTL End = Left: Dashboard mockup — Hakim stacked above in flow */}
+            <div className="order-1 lg:order-2 flex flex-col">
+              {/* Hakim welcome mascot — in-flow row above the dashboard.
+                  Top aligns with the badge on the text column (items-start grid).
+                  Bottom (feet) lands exactly on the dashboard's browser bar.
+                  Anchored to the end (left in RTL) via self-end. */}
               <div
-                className="pointer-events-none select-none absolute z-20
-                           -top-1 -end-2
-                           sm:-top-2 sm:-end-3
-                           lg:-top-3 lg:-end-4
-                           xl:-top-4 xl:-end-6
-                           w-20 h-28
-                           sm:w-24 sm:h-32
-                           lg:w-28 lg:h-40
-                           xl:w-36 xl:h-48"
+                className="pointer-events-none select-none self-end z-20 relative
+                           w-24 h-32
+                           sm:w-28 sm:h-40
+                           lg:w-32 lg:h-44
+                           xl:w-36 xl:h-52"
                 aria-hidden="true"
               >
-                {/* Soft turquoise halo — blends the cutout into the navy hero */}
-                <div className="absolute inset-x-0 bottom-0 mx-auto w-[120%] h-[60%] rounded-full bg-brand-turquoise/25 blur-3xl -translate-x-[8%] rtl:translate-x-[8%]" />
+                {/* Soft turquoise halo fading downward into the dashboard */}
+                <div className="absolute inset-x-0 bottom-0 mx-auto w-[130%] h-[50%] rounded-full bg-brand-turquoise/20 blur-3xl" />
                 <img
                   src="/hakim-welcome.png"
                   alt=""
