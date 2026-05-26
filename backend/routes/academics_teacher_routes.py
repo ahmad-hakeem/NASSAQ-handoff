@@ -743,6 +743,7 @@ async def create_teacher(
 
 @router.get("/teachers", response_model=List[TeacherResponse])
 async def get_teachers(
+    include_deleted: bool = Query(default=False),
     x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user)
 ):
@@ -757,6 +758,13 @@ async def get_teachers(
     and returns an empty list — never an unscoped cross-tenant
     teacher directory. Non-platform callers are pinned to their own
     tenant via `resolve_school_id` (mismatched override → 403).
+
+    Task #645 — `include_deleted` exposes soft-deleted teachers
+    (``is_active=False`` with ``deleted_at``/``deleted_by`` populated)
+    so admins can audit recent deletions and surface candidates for
+    restoration. Restricted to platform/school admin roles and IT
+    callers (who own their workspace); other callers silently get the
+    active-only view regardless of the param.
     """
     from utils.tenant_scope import resolve_school_id
     query = {"status": {"$ne": "closed"}}
@@ -767,9 +775,39 @@ async def get_teachers(
         query["school_id"] = scoped
     else:
         query["school_id"] = resolve_school_id(current_user, x_school_context)
-    
+
+    _admin_roles = {
+        UserRole.PLATFORM_ADMIN.value,
+        UserRole.SCHOOL_PRINCIPAL.value,
+        UserRole.SCHOOL_ADMIN.value,
+        UserRole.SCHOOL_SUB_ADMIN.value,
+        UserRole.INDEPENDENT_TEACHER.value,
+    }
+    show_deleted = bool(include_deleted) and current_user.get("role") in _admin_roles
+
     teachers = await gd_find(db.session, "teachers", query, limit=1000)
-    
+    if not show_deleted:
+        teachers = [t for t in teachers if t.get("is_active") is not False or not t.get("deleted_at")]
+
+    deleted_by_map: Dict[str, str] = {}
+    if show_deleted:
+        deleter_ids = list({t.get("deleted_by") for t in teachers if t.get("deleted_by")})
+        if deleter_ids:
+            try:
+                deleter_rows = await gd_find(
+                    db.session, "users", {"id": {"$in": deleter_ids}}, limit=200
+                )
+                deleted_by_map = {
+                    u.get("id"): (u.get("full_name") or u.get("email") or "")
+                    for u in deleter_rows
+                    if u.get("id")
+                }
+            except Exception as _deleter_err:
+                logger.warning(
+                    f"Failed to resolve deleted_by names for teachers: {_deleter_err}"
+                )
+                deleted_by_map = {}
+
     # Normalize field names for consistency
     result = []
     for t in teachers:
@@ -779,6 +817,8 @@ async def get_teachers(
         # Map subject_name to specialization if needed
         if not t.get("specialization") and t.get("subject_name"):
             t["specialization"] = t["subject_name"]
+        if show_deleted and t.get("deleted_by"):
+            t["deleted_by_name"] = deleted_by_map.get(t.get("deleted_by"))
         result.append(TeacherResponse(**t))
     return result
 
@@ -879,47 +919,175 @@ async def update_teacher(
 @router.delete("/teachers/{teacher_id}")
 async def delete_teacher(
     teacher_id: str,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
-    """Delete teacher — full removal from system"""
+    """Soft-delete teacher (Task #645).
+
+    Marks the teacher row as ``is_active=False`` with ``deleted_at`` /
+    ``deleted_by`` populated so the row can be surfaced in the
+    "Recently deleted teachers" panel and restored via
+    ``POST /teachers/{id}/restore``. Dependent rows
+    (assignments, subjects, sessions, attendance, linked user
+    account) are soft-deactivated rather than hard-deleted so a
+    restore can re-link them deliberately. IT callers are pinned to
+    their own workspace; cross-workspace ids return 404 per spec §8
+    inv. 3.
+    """
     from utils.tenant_scope import assert_school_access
-    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+    from auth_scope import is_independent_teacher, independent_workspace_id
+    if is_independent_teacher(current_user):
+        wsid = independent_workspace_id(current_user)
+        teacher = await gd_find_one(
+            db.session,
+            "teachers",
+            {"id": teacher_id, "school_id": wsid, "is_active": {"$ne": False}},
+        )
+    else:
+        teacher = await gd_find_one(
+            db.session,
+            "teachers",
+            {"id": teacher_id, "is_active": {"$ne": False}},
+        )
     if not teacher:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
-    assert_school_access(current_user, teacher.get("school_id"))
-    
+    if not is_independent_teacher(current_user):
+        assert_school_access(current_user, teacher.get("school_id"))
+
     school_id = teacher.get("school_id")
     user_id = teacher.get("user_id")
+    now_iso = datetime.now(timezone.utc).isoformat()
 
-    cleanup = {}
-    await gd_delete_one(db.session, "teachers", {"id": teacher_id})
+    cleanup: Dict[str, Any] = {}
+    await gd_update_one(
+        db.session,
+        "teachers",
+        {"id": teacher_id},
+        {"is_active": False, "deleted_at": now_iso, "deleted_by": current_user["id"]},
+    )
 
     await _gd_inc(db.session, "schools", {"id": school_id}, {"current_teachers": -1})
 
-    r = await gd_delete_many(db.session, "teacher_assignments", {"teacher_id": teacher_id})
-    cleanup["teacher_assignments"] = r
-    r = await gd_delete_many(db.session, "teacher_class_assignments", {"teacher_id": teacher_id})
-    cleanup["teacher_class_assignments"] = r
-    r = await gd_delete_many(db.session, "teacher_subjects", {"teacher_id": teacher_id})
-    cleanup["teacher_subjects"] = r
-    r = await gd_delete_many(db.session, "teacher_attendance", {"teacher_id": teacher_id})
-    cleanup["teacher_attendance"] = r
-    r = await gd_delete_many(db.session, "timetable_sessions", {"teacher_id": teacher_id})
-    cleanup["timetable_sessions"] = r
-    r = await gd_delete_many(db.session, "class_sessions", {"teacher_id": teacher_id})
-    cleanup["class_sessions"] = r
-    r = await gd_delete_many(db.session, "session_event_log", {"teacher_id": teacher_id})
-    cleanup["session_event_log"] = r
-    r = await gd_delete_many(db.session, "user_relationships", {"$or": [{"source_id": teacher_id}, {"target_id": teacher_id}]})
-    cleanup["user_relationships"] = r
+    cleanup["teacher_assignments"] = await gd_update_many(
+        db.session, "teacher_assignments", {"teacher_id": teacher_id, "is_active": {"$ne": False}}, {"is_active": False}
+    )
+    cleanup["teacher_class_assignments"] = await gd_update_many(
+        db.session, "teacher_class_assignments", {"teacher_id": teacher_id, "is_active": {"$ne": False}}, {"is_active": False}
+    )
+    cleanup["teacher_subjects"] = await gd_update_many(
+        db.session, "teacher_subjects", {"teacher_id": teacher_id, "is_active": {"$ne": False}}, {"is_active": False}
+    )
+    cleanup["timetable_sessions"] = await gd_update_many(
+        db.session, "timetable_sessions", {"teacher_id": teacher_id, "is_active": {"$ne": False}}, {"is_active": False}
+    )
+    cleanup["class_sessions"] = await gd_update_many(
+        db.session, "class_sessions", {"teacher_id": teacher_id, "is_active": {"$ne": False}}, {"is_active": False}
+    )
 
     if user_id:
-        await gd_delete_one(db.session, "users", {"id": user_id})
-        await gd_delete_many(db.session, "user_roles", {"user_id": user_id})
-        await gd_delete_many(db.session, "user_identities", {"user_id": user_id})
+        await gd_update_one(db.session, "users", {"id": user_id}, {"is_active": False})
         cleanup["user_account"] = 1
 
-    return {"message": "تم حذف المعلم وجميع بياناته من النظام بالكامل", "success": True, "cleanup": cleanup}
+    audit_log = {
+        "id": str(uuid.uuid4()),
+        "school_id": school_id,
+        "action": "delete",
+        "entity_type": "teacher",
+        "entity_id": teacher_id,
+        "old_data": {"full_name": teacher.get("full_name"), "is_active": True},
+        "new_data": {"is_active": False, "deleted_at": now_iso, "deleted_by": current_user["id"]},
+        "performed_by": current_user["id"],
+        "performed_by_name": current_user.get("full_name", ""),
+        "timestamp": now_iso,
+        "ip_address": None,
+    }
+    try:
+        await gd_insert(db.session, "audit_logs", audit_log)
+    except Exception as _audit_err:
+        logger.warning(f"Failed to record teacher delete audit log: {_audit_err}")
+
+    return {
+        "message": "تم حذف المعلم بنجاح",
+        "success": True,
+        "cleanup": cleanup,
+    }
+
+
+@router.post("/teachers/{teacher_id}/restore")
+async def restore_teacher(
+    teacher_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
+):
+    """Restore a soft-deleted teacher (Task #645).
+
+    Clears ``is_active=False`` and the ``deleted_at`` / ``deleted_by``
+    markers so the row reappears in ``GET /teachers``. Re-activates the
+    linked user account if present. Dependent rows
+    (teacher_assignments, teacher_class_assignments, teacher_subjects,
+    timetable_sessions, class_sessions) are NOT auto-reactivated — the
+    response body lists the inactive counts so the UI can prompt the
+    principal to re-link them. Only teachers where ``is_active=False``
+    AND ``deleted_at IS NOT NULL`` are restorable. IT callers are
+    pinned to their own workspace (cross-workspace ids return 404 per
+    spec §8 inv. 3).
+    """
+    from auth_scope import is_independent_teacher, independent_workspace_id
+    base_filter: Dict[str, Any] = {"id": teacher_id, "is_active": False, "deleted_at": {"$ne": None}}
+    if is_independent_teacher(current_user):
+        base_filter["school_id"] = independent_workspace_id(current_user)
+    teacher = await gd_find_one(db.session, "teachers", base_filter)
+    if not teacher:
+        raise HTTPException(status_code=404, detail="المعلم غير موجود")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await gd_update_one(
+        db.session,
+        "teachers",
+        {"id": teacher_id},
+        {"is_active": True, "deleted_at": None, "deleted_by": None},
+    )
+    user_id = teacher.get("user_id")
+    if user_id:
+        await gd_update_one(db.session, "users", {"id": user_id}, {"is_active": True})
+
+    school_id = teacher.get("school_id")
+    await _gd_inc(db.session, "schools", {"id": school_id}, {"current_teachers": 1})
+
+    inactive_dependents = {
+        "teacher_assignments": await gd_count(db.session, "teacher_assignments", {"teacher_id": teacher_id, "is_active": False}),
+        "teacher_class_assignments": await gd_count(db.session, "teacher_class_assignments", {"teacher_id": teacher_id, "is_active": False}),
+        "teacher_subjects": await gd_count(db.session, "teacher_subjects", {"teacher_id": teacher_id, "is_active": False}),
+        "timetable_sessions": await gd_count(db.session, "timetable_sessions", {"teacher_id": teacher_id, "is_active": False}),
+        "class_sessions": await gd_count(db.session, "class_sessions", {"teacher_id": teacher_id, "is_active": False}),
+    }
+
+    audit_log = {
+        "id": str(uuid.uuid4()),
+        "school_id": school_id,
+        "action": "restore",
+        "entity_type": "teacher",
+        "entity_id": teacher_id,
+        "old_data": {
+            "full_name": teacher.get("full_name"),
+            "is_active": False,
+            "deleted_at": teacher.get("deleted_at"),
+            "deleted_by": teacher.get("deleted_by"),
+        },
+        "new_data": {"is_active": True, "deleted_at": None, "deleted_by": None},
+        "performed_by": current_user["id"],
+        "performed_by_name": current_user.get("full_name", ""),
+        "timestamp": now_iso,
+        "ip_address": None,
+    }
+    try:
+        await gd_insert(db.session, "audit_logs", audit_log)
+    except Exception as _audit_err:
+        logger.warning(f"Failed to record teacher restore audit log: {_audit_err}")
+
+    return {
+        "message": "تمت استعادة المعلم بنجاح",
+        "success": True,
+        "inactive_dependents": inactive_dependents,
+    }
 
 
 @router.delete("/parents/{parent_id}")

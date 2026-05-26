@@ -393,6 +393,7 @@ async def create_subject(
 @router.get("/subjects", response_model=List[SubjectResponse])
 async def get_subjects(
     include_inactive: bool = False,
+    include_deleted: bool = Query(default=False),
     x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user)
 ):
@@ -410,8 +411,16 @@ async def get_subjects(
     platform admins can opt in via `include_inactive=true`."""
     from auth_scope import is_independent_teacher, independent_workspace_id
     from utils.tenant_scope import resolve_school_id
+    _admin_roles = {
+        UserRole.PLATFORM_ADMIN.value,
+        UserRole.SCHOOL_PRINCIPAL.value,
+        UserRole.SCHOOL_ADMIN.value,
+        UserRole.SCHOOL_SUB_ADMIN.value,
+        UserRole.INDEPENDENT_TEACHER.value,
+    }
+    show_deleted = bool(include_deleted) and current_user.get("role") in _admin_roles
     query = {}
-    if not include_inactive:
+    if not include_inactive and not show_deleted:
         query["is_active"] = {"$ne": False}
     is_platform = current_user.get("role") == UserRole.PLATFORM_ADMIN.value
     if is_platform:
@@ -434,12 +443,34 @@ async def get_subjects(
         query["school_id"] = caller_tenant
 
     subjects = await gd_find(db.session, "subjects", query, limit=1000)
+
+    deleted_by_map: Dict[str, str] = {}
+    if show_deleted:
+        deleter_ids = list({s.get("deleted_by") for s in subjects if s.get("deleted_by")})
+        if deleter_ids:
+            try:
+                deleter_rows = await gd_find(
+                    db.session, "users", {"id": {"$in": deleter_ids}}, limit=200
+                )
+                deleted_by_map = {
+                    u.get("id"): (u.get("full_name") or u.get("email") or "")
+                    for u in deleter_rows
+                    if u.get("id")
+                }
+            except Exception as _deleter_err:
+                logger.warning(
+                    f"Failed to resolve deleted_by names for subjects: {_deleter_err}"
+                )
+                deleted_by_map = {}
+
     result = []
     for s in subjects:
         if "name" not in s and "name_ar" in s:
             s["name"] = s["name_ar"]
         if "weekly_periods" not in s and "weekly_hours" in s:
             s["weekly_periods"] = s["weekly_hours"]
+        if show_deleted and s.get("deleted_by"):
+            s["deleted_by_name"] = deleted_by_map.get(s.get("deleted_by"))
         try:
             result.append(SubjectResponse(**s))
         except Exception as e:
@@ -574,8 +605,117 @@ async def delete_subject(
                 },
             }
 
-    await gd_update_one(db.session, "subjects", subject_query, {"is_active": False})
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await gd_update_one(
+        db.session,
+        "subjects",
+        subject_query,
+        {"is_active": False, "deleted_at": now_iso, "deleted_by": current_user["id"]},
+    )
+
+    audit_log = {
+        "id": str(uuid.uuid4()),
+        "school_id": subject.get("school_id"),
+        "action": "delete",
+        "entity_type": "subject",
+        "entity_id": subject_id,
+        "old_data": {"name": subject.get("name"), "is_active": True},
+        "new_data": {"is_active": False, "deleted_at": now_iso, "deleted_by": current_user["id"]},
+        "performed_by": current_user["id"],
+        "performed_by_name": current_user.get("full_name", ""),
+        "timestamp": now_iso,
+        "ip_address": None,
+    }
+    try:
+        await gd_insert(db.session, "audit_logs", audit_log)
+    except Exception as _audit_err:
+        logger.warning(f"Failed to record subject delete audit log: {_audit_err}")
+
     return {"message": "تم حذف المادة"}
+
+
+@router.post("/subjects/{subject_id}/restore")
+async def restore_subject(
+    subject_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER])),
+):
+    """Restore a soft-deleted subject (Task #645).
+
+    Clears ``is_active=False`` and the ``deleted_at`` / ``deleted_by``
+    markers so the row reappears in ``GET /subjects``. Dependent rows
+    (classes/teacher_assignments/schedule_sessions) are NOT
+    auto-reactivated — the response body lists their inactive counts
+    so the UI can prompt the principal to re-link them. Only subjects
+    where ``is_active=False`` AND ``deleted_at IS NOT NULL`` are
+    restorable. Tenant-scoped for non-platform callers; cross-
+    workspace ids return 404 (spec §8 inv. 3).
+    """
+    from auth_scope import is_independent_teacher, independent_workspace_id
+    subject_query: Dict[str, Any] = {
+        "id": subject_id,
+        "is_active": False,
+        "deleted_at": {"$ne": None},
+    }
+    scope_school_id = None
+    if current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
+        caller_tenant = (
+            independent_workspace_id(current_user) if is_independent_teacher(current_user)
+            else current_user.get("tenant_id")
+        )
+        if not caller_tenant:
+            raise HTTPException(status_code=403, detail="غير مصرح")
+        subject_query["school_id"] = caller_tenant
+        scope_school_id = caller_tenant
+
+    subject = await gd_find_one(db.session, "subjects", subject_query)
+    if not subject:
+        raise HTTPException(status_code=404, detail="المادة غير موجودة")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await gd_update_one(
+        db.session,
+        "subjects",
+        {"id": subject_id},
+        {"is_active": True, "deleted_at": None, "deleted_by": None},
+    )
+
+    ref_query_base: Dict[str, Any] = {"subject_id": subject_id, "is_active": False}
+    if scope_school_id:
+        ref_query_base["school_id"] = scope_school_id
+    inactive_dependents = {
+        "classes": await gd_count(db.session, "classes", ref_query_base),
+        "teacher_assignments": await gd_count(db.session, "teacher_assignments", ref_query_base),
+        "schedule_sessions": await gd_count(db.session, "schedule_sessions", ref_query_base),
+    }
+
+    audit_log = {
+        "id": str(uuid.uuid4()),
+        "school_id": subject.get("school_id"),
+        "action": "restore",
+        "entity_type": "subject",
+        "entity_id": subject_id,
+        "old_data": {
+            "name": subject.get("name"),
+            "is_active": False,
+            "deleted_at": subject.get("deleted_at"),
+            "deleted_by": subject.get("deleted_by"),
+        },
+        "new_data": {"is_active": True, "deleted_at": None, "deleted_by": None},
+        "performed_by": current_user["id"],
+        "performed_by_name": current_user.get("full_name", ""),
+        "timestamp": now_iso,
+        "ip_address": None,
+    }
+    try:
+        await gd_insert(db.session, "audit_logs", audit_log)
+    except Exception as _audit_err:
+        logger.warning(f"Failed to record subject restore audit log: {_audit_err}")
+
+    return {
+        "message": "تمت استعادة المادة بنجاح",
+        "success": True,
+        "inactive_dependents": inactive_dependents,
+    }
 
 
 

@@ -446,6 +446,9 @@ class TeacherResponse(BaseModel):
     max_daily_periods: Optional[int] = None
     preferences: Optional[Dict[str, Any]] = None
     constraints: Optional[Dict[str, Any]] = None
+    deleted_at: Optional[str] = None
+    deleted_by: Optional[str] = None
+    deleted_by_name: Optional[str] = None
 
 class StudentCreate(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -590,6 +593,9 @@ class SubjectResponse(BaseModel):
     school_id: str
     is_active: bool = True
     created_at: Optional[str] = None
+    deleted_at: Optional[str] = None
+    deleted_by: Optional[str] = None
+    deleted_by_name: Optional[str] = None
 
 class TeacherRankEnum(str, Enum):
     TEACHER = "معلم"

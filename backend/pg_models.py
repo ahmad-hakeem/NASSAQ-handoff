@@ -216,6 +216,8 @@ class Teacher(Base):
     teacher_id = Column(String, nullable=True, index=True)
     qr_code = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    deleted_by = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
@@ -337,6 +339,8 @@ class Subject(Base):
     applicable_stages = Column(JSONB, default=list)
     is_active = Column(Boolean, default=True)
     is_global = Column(Boolean, default=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    deleted_by = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 

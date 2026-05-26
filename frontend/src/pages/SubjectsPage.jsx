@@ -25,6 +25,9 @@ import {
   ArrowLeft,
   Clock,
   BookMarked,
+  ChevronDown,
+  ChevronUp,
+  Undo2,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -61,7 +64,7 @@ import { Link } from 'react-router-dom';
 export const SubjectsPage = () => {
   const { user, api } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
-  const { nassaqError, nassaqWarning, nassaqConfirm } = useNassaqAlert();
+  const { nassaqError, nassaqWarning, nassaqConfirm, showAlert } = useNassaqAlert();
   const { t } = useTranslation();
   const [subjects, setSubjects] = useState([]);
   const [schools, setSchools] = useState([]);
@@ -73,6 +76,9 @@ export const SubjectsPage = () => {
   const [selectedSchool, setSelectedSchool] = useState('all');
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [deletedExpanded, setDeletedExpanded] = useState(false);
+  const [restoringId, setRestoringId] = useState(null);
+  const isSchoolLevel = user?.role && !user.role.startsWith('platform_');
   
   const [newSubject, setNewSubject] = useState({
     name: '',
@@ -100,12 +106,15 @@ export const SubjectsPage = () => {
 
   const fetchData = async () => {
     try {
+      // Task #645 — always request include_deleted=true so the
+      // "Recently deleted" section is populated. The backend silently
+      // ignores the flag for non-admin callers.
       const [subjectsRes, schoolsRes] = await Promise.all([
-        api.get('/subjects'),
-        api.get('/schools'),
+        api.get('/subjects', { params: { include_deleted: true } }),
+        api.get('/schools').catch(() => ({ data: [] })),
       ]);
       setSubjects(subjectsRes.data);
-      setSchools(schoolsRes.data);
+      setSchools(schoolsRes.data || []);
     } catch (error) {
       console.error('Failed to fetch data:', error);
       nassaqError(t('failedToLoadData'));
@@ -220,12 +229,98 @@ export const SubjectsPage = () => {
     setEditDialogOpen(true);
   };
 
+  // Task #645 — restore a soft-deleted subject. Dependent rows
+  // (classes/teacher_assignments/schedule_sessions) stay inactive on
+  // purpose so the principal can re-link them deliberately.
+  const handleRestoreSubject = async (subject) => {
+    const sName = subject?.name || '';
+    nassaqConfirm(
+      isRTL
+        ? `هل تريد استعادة المادة "${sName}"؟ ستظهر المادة مرة أخرى في القائمة، لكنك ستحتاج إلى إعادة ربط الفصول والإسنادات والجدول يدويًا.`
+        : `Restore subject "${sName}"? It will reappear in the list, but you'll need to re-link its classes, assignments, and schedule manually.`,
+      async () => {
+        setRestoringId(subject.id);
+        try {
+          const res = await api.post(`/subjects/${subject.id}/restore`);
+          const dependents = res?.data?.inactive_dependents || {};
+          const labelMap = {
+            classes: isRTL ? 'الفصول' : 'Classes',
+            teacher_assignments: isRTL ? 'إسنادات المعلمين' : 'Teacher assignments',
+            schedule_sessions: isRTL ? 'حصص الجدول' : 'Schedule sessions',
+          };
+          const lines = Object.entries(dependents)
+            .filter(([, v]) => Number(v) > 0)
+            .map(([k, v]) => `• ${labelMap[k] || k}: ${v}`);
+          const header = isRTL
+            ? `تمت استعادة المادة "${sName}" بنجاح.`
+            : `Subject "${sName}" was restored successfully.`;
+          const followUp = lines.length
+            ? (isRTL
+                ? `\n\nهذه العناصر المرتبطة لا تزال غير مُفعَّلة وتحتاج إلى إعادة ربط:\n${lines.join('\n')}`
+                : `\n\nThe following linked items are still inactive and need to be re-linked:\n${lines.join('\n')}`)
+            : (isRTL
+                ? '\n\nلا توجد عناصر مرتبطة بحاجة إلى إعادة ربط.'
+                : '\n\nNo linked items need re-linking.');
+          showAlert({
+            type: lines.length ? 'warning' : 'success',
+            title: isRTL ? 'تمت استعادة المادة' : 'Subject restored',
+            message: header + followUp,
+            confirmText: isRTL ? 'حسناً' : 'OK',
+          });
+          await fetchData();
+        } catch (error) {
+          nassaqError(
+            error.response?.data?.detail
+              || (isRTL ? 'فشل استعادة المادة' : 'Failed to restore subject')
+          );
+        } finally {
+          setRestoringId(null);
+        }
+      },
+      {
+        title: isRTL ? 'تأكيد الاستعادة' : 'Confirm restore',
+        confirmText: isRTL ? 'نعم، استعادة' : 'Yes, restore',
+        cancelText: isRTL ? 'إلغاء' : 'Cancel',
+      }
+    );
+  };
+
+  const formatDeletedAt = (iso) => {
+    if (!iso) return '-';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString(isRTL ? 'ar' : 'en', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return iso;
+    }
+  };
+
+  // Task #645 — soft-deleted subjects (is_active=false AND deleted_at!=null)
+  // live in their own "Recently deleted" section, not the main table.
+  const isDeleted = (subject) => subject.is_active === false && !!subject.deleted_at;
+
   const filteredSubjects = subjects.filter(subject => {
+    if (isDeleted(subject)) return false;
     const matchesSearch = subject.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (subject.code && subject.code.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesSchool = selectedSchool === 'all' || subject.school_id === selectedSchool;
     return matchesSearch && matchesSchool;
   });
+
+  const deletedSubjects = subjects
+    .filter(subject => isDeleted(subject))
+    .filter(subject => selectedSchool === 'all' || subject.school_id === selectedSchool)
+    .sort((a, b) => {
+      const ad = a.deleted_at || '';
+      const bd = b.deleted_at || '';
+      return bd.localeCompare(ad);
+    });
 
   const getSchoolName = (schoolId) => {
     const school = schools.find(s => s.id === schoolId);
@@ -686,6 +781,106 @@ export const SubjectsPage = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* Task #645 — Recently deleted subjects (soft-deleted rows
+              restorable via POST /subjects/{id}/restore). Only rendered
+              when there is at least one such row. */}
+          {deletedSubjects.length > 0 && (
+            <Card className="card-nassaq border-red-200" data-testid="recently-deleted-subjects-card">
+              <CardContent className="p-0">
+                <button
+                  type="button"
+                  onClick={() => setDeletedExpanded(v => !v)}
+                  className="w-full flex items-center justify-between px-6 py-4 text-start"
+                  data-testid="recently-deleted-toggle"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                      <Trash2 className="h-5 w-5 text-red-600" aria-hidden="true" strokeWidth={1.5} />
+                    </div>
+                    <div>
+                      <div className="font-cairo font-bold text-foreground">
+                        {isRTL ? 'المواد المحذوفة حديثاً' : 'Recently deleted subjects'}
+                      </div>
+                      <div className="text-sm text-muted-foreground font-tajawal">
+                        {isRTL
+                          ? `${deletedSubjects.length} مادة قابلة للاستعادة`
+                          : `${deletedSubjects.length} subject${deletedSubjects.length === 1 ? '' : 's'} can be restored`}
+                      </div>
+                    </div>
+                  </div>
+                  {deletedExpanded ? (
+                    <ChevronUp className="h-5 w-5 text-muted-foreground" aria-hidden="true" strokeWidth={1.5} />
+                  ) : (
+                    <ChevronDown className="h-5 w-5 text-muted-foreground" aria-hidden="true" strokeWidth={1.5} />
+                  )}
+                </button>
+
+                {deletedExpanded && (
+                  <div className="rounded-b-xl overflow-hidden border-t border-border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{t('subject')}</TableHead>
+                          <TableHead>{isRTL ? 'حُذف بواسطة' : 'Deleted by'}</TableHead>
+                          <TableHead>{isRTL ? 'تاريخ الحذف' : 'Deleted at'}</TableHead>
+                          {!isSchoolLevel && <TableHead>{t('school')}</TableHead>}
+                          <TableHead className="w-32"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {deletedSubjects.map((subject) => (
+                          <TableRow
+                            key={subject.id}
+                            data-testid={`deleted-subject-row-${subject.id}`}
+                          >
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-full bg-red-50 flex items-center justify-center">
+                                  <BookMarked className="h-4 w-4 text-red-600" aria-hidden="true" strokeWidth={1.5} />
+                                </div>
+                                <div>
+                                  <div className="font-medium">{subject.name}</div>
+                                  <div className="text-xs text-muted-foreground">{subject.code || subject.name_en || ''}</div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {subject.deleted_by_name
+                                || (subject.deleted_by ? (isRTL ? 'مستخدم محذوف' : 'Unknown user') : '-')}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {formatDeletedAt(subject.deleted_at)}
+                            </TableCell>
+                            {!isSchoolLevel && (
+                              <TableCell>{getSchoolName(subject.school_id)}</TableCell>
+                            )}
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleRestoreSubject(subject)}
+                                disabled={restoringId === subject.id}
+                                className="rounded-xl border-brand-turquoise text-brand-turquoise hover:bg-brand-turquoise/10"
+                                data-testid={`restore-subject-${subject.id}`}
+                              >
+                                {restoringId === subject.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin me-2" aria-hidden="true" />
+                                ) : (
+                                  <Undo2 className="h-4 w-4 me-2" aria-hidden="true" strokeWidth={1.5} />
+                                )}
+                                {isRTL ? 'استعادة' : 'Restore'}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
       <HakimAssistant />

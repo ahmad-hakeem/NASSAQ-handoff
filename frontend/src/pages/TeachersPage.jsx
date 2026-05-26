@@ -28,6 +28,9 @@ import {
   Upload,
   UserPlus,
   GraduationCap,
+  ChevronDown,
+  ChevronUp,
+  Undo2,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -84,9 +87,11 @@ export const TeachersPage = () => {
   const [selectedSchool, setSelectedSchool] = useState('all');
   const [submitting, setSubmitting] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState(null);
-  
+  const [deletedExpanded, setDeletedExpanded] = useState(false);
+  const [restoringId, setRestoringId] = useState(null);
+
   // Check if user is a school-level user (not platform admin)
-  const { nassaqError, nassaqWarning, nassaqConfirm } = useNassaqAlert();
+  const { nassaqError, nassaqWarning, nassaqConfirm, nassaqSuccess, showAlert } = useNassaqAlert();
   const isSchoolLevel = user?.role && !user.role.startsWith('platform_');
   const userSchoolId = user?.tenant_id;
   
@@ -106,7 +111,10 @@ export const TeachersPage = () => {
     try {
       // For school-level users, only fetch teachers (tenant-scoped by backend)
       // For platform admins, also fetch schools for filtering
-      const teachersRes = await api.get('/teachers');
+      // Task #645 — always request include_deleted=true so the
+      // "Recently deleted" section is populated. The backend silently
+      // ignores the flag for non-admin callers.
+      const teachersRes = await api.get('/teachers', { params: { include_deleted: true } });
       setTeachers(teachersRes.data);
       
       // Fetch grades and classes for student wizard, plus subjects/settings
@@ -204,16 +212,97 @@ export const TeachersPage = () => {
             if (parts.length > 0) msg += ` (${parts.join(', ')})`;
           }
           toast.success(msg);
-          setTeachers(prev => prev.filter(t => t.id !== teacherId));
+          await fetchData();
         } catch (error) {
           nassaqError(error.response?.data?.detail || (t('failedToDeleteTeacher')));
         }
       },
-      { title: t('confirmPermanentDelete'), confirmText: t('yesDeletePermanently'), cancelText: t('cancel') }
+      { title: t('confirmDelete'), confirmText: t('yesDelete') || (isRTL ? 'نعم، حذف' : 'Yes, delete'), cancelText: t('cancel') }
     );
   };
 
+  // Task #645 — restore a soft-deleted teacher. Dependent rows
+  // (teacher_assignments, teacher_class_assignments, teacher_subjects,
+  // timetable_sessions, class_sessions) stay inactive on purpose so the
+  // principal can re-link them deliberately; we surface those counts in
+  // a NassaqAlertDialog.
+  const handleRestoreTeacher = async (teacher) => {
+    const tName = teacher?.full_name || '';
+    nassaqConfirm(
+      isRTL
+        ? `هل تريد استعادة المعلم "${tName}"؟ سيظهر المعلم مرة أخرى في القائمة، لكنك ستحتاج إلى إعادة ربط الفصول والمواد والجدول والحساب يدويًا.`
+        : `Restore teacher "${tName}"? They will reappear in the list, but you'll need to re-link their classes, subjects, schedule, and user account manually.`,
+      async () => {
+        setRestoringId(teacher.id);
+        try {
+          const res = await api.post(`/teachers/${teacher.id}/restore`);
+          const dependents = res?.data?.inactive_dependents || {};
+          const labelMap = {
+            teacher_assignments: isRTL ? 'إسنادات المعلم' : 'Teacher assignments',
+            teacher_class_assignments: isRTL ? 'إسنادات معلم-فصل' : 'Teacher–class links',
+            teacher_subjects: isRTL ? 'مواد المعلم' : 'Teacher subjects',
+            timetable_sessions: isRTL ? 'حصص الجدول' : 'Timetable sessions',
+            class_sessions: isRTL ? 'حصص الفصل' : 'Class sessions',
+          };
+          const lines = Object.entries(dependents)
+            .filter(([, v]) => Number(v) > 0)
+            .map(([k, v]) => `• ${labelMap[k] || k}: ${v}`);
+          const header = isRTL
+            ? `تمت استعادة المعلم "${tName}" بنجاح.`
+            : `Teacher "${tName}" was restored successfully.`;
+          const followUp = lines.length
+            ? (isRTL
+                ? `\n\nهذه العناصر المرتبطة لا تزال غير مُفعَّلة وتحتاج إلى إعادة ربط:\n${lines.join('\n')}`
+                : `\n\nThe following linked items are still inactive and need to be re-linked:\n${lines.join('\n')}`)
+            : (isRTL
+                ? '\n\nلا توجد عناصر مرتبطة بحاجة إلى إعادة ربط.'
+                : '\n\nNo linked items need re-linking.');
+          showAlert({
+            type: lines.length ? 'warning' : 'success',
+            title: isRTL ? 'تمت استعادة المعلم' : 'Teacher restored',
+            message: header + followUp,
+            confirmText: isRTL ? 'حسناً' : 'OK',
+          });
+          await fetchData();
+        } catch (error) {
+          nassaqError(
+            error.response?.data?.detail
+              || (isRTL ? 'فشل استعادة المعلم' : 'Failed to restore teacher')
+          );
+        } finally {
+          setRestoringId(null);
+        }
+      },
+      {
+        title: isRTL ? 'تأكيد الاستعادة' : 'Confirm restore',
+        confirmText: isRTL ? 'نعم، استعادة' : 'Yes, restore',
+        cancelText: isRTL ? 'إلغاء' : 'Cancel',
+      }
+    );
+  };
+
+  const formatDeletedAt = (iso) => {
+    if (!iso) return '-';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString(isRTL ? 'ar' : 'en', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return iso;
+    }
+  };
+
+  // Task #645 — soft-deleted teachers (is_active=false AND deleted_at!=null)
+  // live in their own "Recently deleted" section, not the main table.
+  const isDeleted = (teacher) => teacher.is_active === false && !!teacher.deleted_at;
+
   const filteredTeachers = teachers.filter(teacher => {
+    if (isDeleted(teacher)) return false;
     const q = (searchTerm || '').toLowerCase();
     const matchesSearch = (teacher.full_name || '').toLowerCase().includes(q) ||
                          (teacher.email || '').toLowerCase().includes(q) ||
@@ -221,6 +310,15 @@ export const TeachersPage = () => {
     const matchesSchool = selectedSchool === 'all' || teacher.school_id === selectedSchool;
     return matchesSearch && matchesSchool;
   }).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'ar'));
+
+  const deletedTeachers = teachers
+    .filter(teacher => isDeleted(teacher))
+    .filter(teacher => selectedSchool === 'all' || teacher.school_id === selectedSchool)
+    .sort((a, b) => {
+      const ad = a.deleted_at || '';
+      const bd = b.deleted_at || '';
+      return bd.localeCompare(ad);
+    });
 
   const getSchoolName = (schoolId) => {
     const school = schools.find(s => s.id === schoolId);
@@ -564,6 +662,106 @@ export const TeachersPage = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* Task #645 — Recently deleted teachers (soft-deleted rows
+              restorable via POST /teachers/{id}/restore). Only rendered
+              when there is at least one such row. */}
+          {deletedTeachers.length > 0 && (
+            <Card className="card-nassaq border-red-200" data-testid="recently-deleted-teachers-card">
+              <CardContent className="p-0">
+                <button
+                  type="button"
+                  onClick={() => setDeletedExpanded(v => !v)}
+                  className="w-full flex items-center justify-between px-6 py-4 text-start"
+                  data-testid="recently-deleted-toggle"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                      <Trash2 className="h-5 w-5 text-red-600" aria-hidden="true" strokeWidth={1.5} />
+                    </div>
+                    <div>
+                      <div className="font-cairo font-bold text-foreground">
+                        {isRTL ? 'المعلمون المحذوفون حديثاً' : 'Recently deleted teachers'}
+                      </div>
+                      <div className="text-sm text-muted-foreground font-tajawal">
+                        {isRTL
+                          ? `${deletedTeachers.length} معلم قابل للاستعادة`
+                          : `${deletedTeachers.length} teacher${deletedTeachers.length === 1 ? '' : 's'} can be restored`}
+                      </div>
+                    </div>
+                  </div>
+                  {deletedExpanded ? (
+                    <ChevronUp className="h-5 w-5 text-muted-foreground" aria-hidden="true" strokeWidth={1.5} />
+                  ) : (
+                    <ChevronDown className="h-5 w-5 text-muted-foreground" aria-hidden="true" strokeWidth={1.5} />
+                  )}
+                </button>
+
+                {deletedExpanded && (
+                  <div className="rounded-b-xl overflow-hidden border-t border-border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{t('teacher2')}</TableHead>
+                          <TableHead>{isRTL ? 'حُذف بواسطة' : 'Deleted by'}</TableHead>
+                          <TableHead>{isRTL ? 'تاريخ الحذف' : 'Deleted at'}</TableHead>
+                          {!isSchoolLevel && <TableHead>{t('school')}</TableHead>}
+                          <TableHead className="w-32"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {deletedTeachers.map((teacher) => (
+                          <TableRow
+                            key={teacher.id}
+                            data-testid={`deleted-teacher-row-${teacher.id}`}
+                          >
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-full bg-red-50 flex items-center justify-center">
+                                  <UserCheck className="h-4 w-4 text-red-600" aria-hidden="true" strokeWidth={1.5} />
+                                </div>
+                                <div>
+                                  <div className="font-medium">{teacher.full_name}</div>
+                                  <div className="text-xs text-muted-foreground">{teacher.specialization || teacher.email}</div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {teacher.deleted_by_name
+                                || (teacher.deleted_by ? (isRTL ? 'مستخدم محذوف' : 'Unknown user') : '-')}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {formatDeletedAt(teacher.deleted_at)}
+                            </TableCell>
+                            {!isSchoolLevel && (
+                              <TableCell>{getSchoolName(teacher.school_id)}</TableCell>
+                            )}
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleRestoreTeacher(teacher)}
+                                disabled={restoringId === teacher.id}
+                                className="rounded-xl border-brand-turquoise text-brand-turquoise hover:bg-brand-turquoise/10"
+                                data-testid={`restore-teacher-${teacher.id}`}
+                              >
+                                {restoringId === teacher.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin me-2" aria-hidden="true" />
+                                ) : (
+                                  <Undo2 className="h-4 w-4 me-2" aria-hidden="true" strokeWidth={1.5} />
+                                )}
+                                {isRTL ? 'استعادة' : 'Restore'}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
         
         {/* Add Teacher Wizard */}
