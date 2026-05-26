@@ -109,6 +109,14 @@ const HakimAssistantInner = () => {
   const greetingIndexRef = useRef(0);
   const lastInteractionRef = useRef(Date.now());
   const timeoutRefs = useRef([]);
+  const scrollAreaRef = useRef(null);
+  const viewportRef = useRef(null);
+  const messageNodesRef = useRef(new Map());
+  const followModeRef = useRef(true);
+  const userScrollIntentRef = useRef(false);
+  const streamAbortRef = useRef(null);
+  const streamingIdRef = useRef(null);
+  const [streamingId, setStreamingId] = useState(null);
   const { api, user } = useAuth();
   const { isRTL } = useTheme();
   const { language } = useTranslation();
@@ -172,7 +180,15 @@ const HakimAssistantInner = () => {
   }, [welcomeMessage, currentPageInfo, defaultSuggestions]);
 
   useEffect(() => {
-    return () => { timeoutRefs.current.forEach(clearTimeout); };
+    const timeouts = timeoutRefs.current;
+    const abortRef = streamAbortRef;
+    return () => {
+      timeouts.forEach(clearTimeout);
+      if (abortRef.current) {
+        try { abortRef.current.abort(); } catch (_) { /* noop */ }
+        abortRef.current = null;
+      }
+    };
   }, []);
 
   const trackTimeout = useCallback((fn, ms) => {
@@ -181,11 +197,83 @@ const HakimAssistantInner = () => {
     return id;
   }, []);
 
-  const scrollToBottom = useCallback(() => {
-    trackTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
-  }, [trackTimeout]);
+  const getViewport = useCallback(() => {
+    if (viewportRef.current) return viewportRef.current;
+    const root = scrollAreaRef.current;
+    if (!root) return null;
+    const vp = root.querySelector('[data-radix-scroll-area-viewport]');
+    viewportRef.current = vp;
+    return vp;
+  }, []);
 
-  useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
+  const isNearBottom = useCallback(() => {
+    const vp = getViewport();
+    if (!vp) return true;
+    const threshold = 48;
+    return vp.scrollHeight - vp.scrollTop - vp.clientHeight <= threshold;
+  }, [getViewport]);
+
+  const scrollToBottom = useCallback((behavior = 'auto') => {
+    const vp = getViewport();
+    if (!vp) return;
+    vp.scrollTo({ top: vp.scrollHeight, behavior });
+  }, [getViewport]);
+
+  const scrollMessageToTop = useCallback((id) => {
+    const vp = getViewport();
+    const node = messageNodesRef.current.get(id);
+    if (!vp || !node) return;
+    const top = Math.max(0, node.offsetTop - 8);
+    vp.scrollTo({ top, behavior: 'smooth' });
+  }, [getViewport]);
+
+  // Auto-follow the bottom edge of the in-flight assistant bubble only if it
+  // would otherwise scroll past the viewport — preserves the top-anchor while
+  // the bubble fits, and starts scrolling once the content outgrows it.
+  const followInFlightIfNeeded = useCallback(() => {
+    if (!followModeRef.current) return;
+    const vp = getViewport();
+    if (!vp) return;
+    const id = streamingIdRef.current;
+    const node = id ? messageNodesRef.current.get(id) : null;
+    if (node) {
+      const nodeBottom = node.offsetTop + node.offsetHeight;
+      const viewportBottom = vp.scrollTop + vp.clientHeight;
+      if (nodeBottom <= viewportBottom - 8) return;
+    }
+    vp.scrollTo({ top: vp.scrollHeight, behavior: 'auto' });
+  }, [getViewport]);
+
+  // Track whether the user is pinned to the bottom of the chat so we know
+  // when to auto-follow streaming chunks vs. respect their scroll position.
+  // We distinguish user-initiated scrolls from our own programmatic ones by
+  // listening for the input events that precede a user scroll (wheel,
+  // touchmove, keydown). Each such event sets a one-shot "intent" flag that
+  // the next scroll event consumes — programmatic `scrollTo` calls don't
+  // set this flag, so they never accidentally flip follow-mode off, but
+  // even a single user wheel/swipe mid-stream is honored immediately.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const vp = getViewport();
+    if (!vp) return undefined;
+    const markIntent = () => { userScrollIntentRef.current = true; };
+    const onScroll = () => {
+      if (!userScrollIntentRef.current) return;
+      userScrollIntentRef.current = false;
+      followModeRef.current = isNearBottom();
+    };
+    vp.addEventListener('wheel', markIntent, { passive: true });
+    vp.addEventListener('touchmove', markIntent, { passive: true });
+    vp.addEventListener('keydown', markIntent);
+    vp.addEventListener('scroll', onScroll, { passive: true });
+    followModeRef.current = isNearBottom();
+    return () => {
+      vp.removeEventListener('wheel', markIntent);
+      vp.removeEventListener('touchmove', markIntent);
+      vp.removeEventListener('keydown', markIntent);
+      vp.removeEventListener('scroll', onScroll);
+    };
+  }, [isOpen, getViewport, isNearBottom, messages.length]);
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
@@ -237,57 +325,221 @@ const HakimAssistantInner = () => {
     setIsOpen(false);
   }, [navigate]);
 
+  const cancelInFlightStream = useCallback(() => {
+    if (streamAbortRef.current) {
+      try { streamAbortRef.current.abort(); } catch (_) { /* noop */ }
+      streamAbortRef.current = null;
+    }
+  }, []);
+
   const sendMessage = async (text) => {
     if (!text.trim() || loading) return;
     handleUserInteraction();
+    cancelInFlightStream();
 
     const userMessage = { role: 'user', content: text };
+    const historyForRequest = messages
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .slice(-6)
+      .map((m) => ({ role: m.role, content: m.content }));
+
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setLoading(true);
     setHakimState(HakimState.THINKING);
+    // The user just sent a message — anchor them at the bottom so they see it
+    // and so subsequent streaming auto-follows by default.
+    followModeRef.current = true;
+    trackTimeout(() => scrollToBottom('smooth'), 30);
+
+    if (!isPublic) {
+      // Authenticated flow is untouched — non-streaming.
+      try {
+        const response = await api.post('/hakim/chat', {
+          message: text,
+          context: null,
+          user_role: user?.role,
+          tenant_id: user?.tenant_id,
+          current_page: location.pathname,
+        });
+        setHakimState(HakimState.RESPONDING);
+        setMessages((prev) => [...prev, {
+          role: 'assistant',
+          content: response.data.response,
+          suggestions: response.data.suggestions || [],
+        }]);
+        // Auth flow is non-streaming — keep the new assistant reply in view
+        // by scrolling to bottom (matches the pre-streaming UX).
+        trackTimeout(() => scrollToBottom('smooth'), 40);
+        trackTimeout(() => setHakimState(HakimState.IDLE), 1000);
+      } catch (error) {
+        console.error('Hakim error:', error);
+        setMessages((prev) => [...prev, {
+          role: 'assistant', content: t('hakimError'), suggestions: [],
+        }]);
+        trackTimeout(() => scrollToBottom('smooth'), 40);
+        setHakimState(HakimState.IDLE);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Public/landing flow: stream chunks over fetch.
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+    const assistantId = `a_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    let firstChunkSeen = false;
+
+    const flipToStreaming = () => {
+      if (firstChunkSeen) return;
+      firstChunkSeen = true;
+      streamingIdRef.current = assistantId;
+      setStreamingId(assistantId);
+      setHakimState(HakimState.RESPONDING);
+      setMessages((prev) => [...prev, {
+        id: assistantId, role: 'assistant', content: '', suggestions: [], streaming: true,
+      }]);
+      // Anchor the new bubble at the top of the viewport so the user reads
+      // from the first line. We mark this as a programmatic scroll so the
+      // scroll listener does NOT flip follow-mode off — if the user was
+      // pinned to the bottom before sending, we keep auto-follow enabled
+      // and `followInFlightIfNeeded` will start scrolling once the bubble
+      // grows past the viewport.
+      trackTimeout(() => scrollMessageToTop(assistantId), 40);
+    };
+
+    const appendChunk = (piece) => {
+      if (!piece) return;
+      flipToStreaming();
+      setMessages((prev) => prev.map((m) => (
+        m.id === assistantId ? { ...m, content: (m.content || '') + piece } : m
+      )));
+      trackTimeout(followInFlightIfNeeded, 0);
+    };
+
+    const cleanupStreamRefs = () => {
+      streamingIdRef.current = null;
+      setStreamingId(null);
+      setLoading(false);
+      setHakimState(HakimState.IDLE);
+      if (streamAbortRef.current === controller) streamAbortRef.current = null;
+    };
+
+    const finalize = (suggestionList) => {
+      setMessages((prev) => prev.map((m) => (
+        m.id === assistantId
+          ? { ...m, streaming: false, suggestions: suggestionList || [] }
+          : m
+      )));
+      cleanupStreamRefs();
+    };
+
+    // Replace the in-flight bubble (if any) with the localized safe error.
+    // Used for both stream errors / network drops and user-initiated aborts
+    // so the user never sees a half-written, orphaned assistant message.
+    const replaceWithSafeError = () => {
+      if (firstChunkSeen) {
+        setMessages((prev) => prev.map((m) => (
+          m.id === assistantId
+            ? { ...m, content: t('hakimError'), suggestions: [], streaming: false }
+            : m
+        )));
+      } else {
+        // No placeholder was ever added (no chunk arrived). For non-abort
+        // failures, append a fresh error bubble so the user gets feedback;
+        // for clean aborts (close/clear/new-send before any token) there
+        // is nothing visible to replace, so the caller can skip this.
+        setMessages((prev) => [...prev, {
+          role: 'assistant', content: t('hakimError'), suggestions: [],
+        }]);
+      }
+      cleanupStreamRefs();
+    };
 
     try {
-      const response = isPublic
-        ? await api.post('/public/hakim/chat', {
-            message: text,
-            locale,
-            conversation_history: messages
-              .filter((m) => m.role === 'user' || m.role === 'assistant')
-              .slice(-6)
-              .map((m) => ({ role: m.role, content: m.content })),
-          })
-        : await api.post('/hakim/chat', {
-            message: text,
-            context: null,
-            user_role: user?.role,
-            tenant_id: user?.tenant_id,
-            current_page: location.pathname,
-          });
+      const baseURL = api?.defaults?.baseURL || '';
+      const res = await fetch(`${baseURL}/public/hakim/chat/stream`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
+        body: JSON.stringify({
+          message: text,
+          locale,
+          conversation_history: historyForRequest,
+        }),
+      });
+      if (!res.ok || !res.body) throw new Error(`stream HTTP ${res.status}`);
 
-      setHakimState(HakimState.RESPONDING);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let suggestionsOut = [];
+      let done = false;
 
-      const assistantMessage = {
-        role: 'assistant',
-        content: response.data.response,
-        suggestions: response.data.suggestions || [],
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
+      while (!done) {
+        // eslint-disable-next-line no-await-in-loop
+        const { value, done: streamDone } = await reader.read();
+        if (streamDone) break;
+        buffer += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buffer.indexOf('\n')) !== -1) {
+          const line = buffer.slice(0, nl).trim();
+          buffer = buffer.slice(nl + 1);
+          if (!line) continue;
+          try {
+            const evt = JSON.parse(line);
+            if (evt.type === 'chunk' && typeof evt.text === 'string') {
+              appendChunk(evt.text);
+            } else if (evt.type === 'error') {
+              // Terminal error from backend (e.g. provider failure
+              // mid-stream): replace the in-flight bubble with the
+              // localized safe error so the user never sees an
+              // orphaned partial answer.
+              replaceWithSafeError();
+              return;
+            } else if (evt.type === 'done') {
+              suggestionsOut = Array.isArray(evt.suggestions) ? evt.suggestions : [];
+              done = true;
+              break;
+            }
+          } catch (_) {
+            // ignore malformed line
+          }
+        }
+      }
+      // Flush any tail in buffer
+      const tail = buffer.trim();
+      if (tail) {
+        try {
+          const evt = JSON.parse(tail);
+          if (evt.type === 'chunk' && typeof evt.text === 'string') appendChunk(evt.text);
+          else if (evt.type === 'error') { replaceWithSafeError(); return; }
+          else if (evt.type === 'done' && Array.isArray(evt.suggestions)) suggestionsOut = evt.suggestions;
+        } catch (_) { /* ignore */ }
+      }
 
-      trackTimeout(() => setHakimState(HakimState.IDLE), 1000);
+      if (!firstChunkSeen) {
+        // Stream closed without any content — show the safe error.
+        replaceWithSafeError();
+        return;
+      }
+      finalize(suggestionsOut);
     } catch (error) {
-      console.error('Hakim error:', error);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: t('hakimError'),
-          suggestions: [],
-        },
-      ]);
-      setHakimState(HakimState.IDLE);
-    } finally {
-      setLoading(false);
+      if (error?.name === 'AbortError') {
+        // User cancelled (close / clear / new send): if we already painted
+        // any tokens, replace that half-written bubble with the localized
+        // safe error so the user never sees an orphaned partial message.
+        // If nothing was shown yet, just clean up silently.
+        if (firstChunkSeen) {
+          replaceWithSafeError();
+        } else {
+          cleanupStreamRefs();
+        }
+        return;
+      }
+      console.error('Hakim stream error:', error);
+      replaceWithSafeError();
     }
   };
 
@@ -297,22 +549,40 @@ const HakimAssistantInner = () => {
   };
 
   const clearChat = useCallback(() => {
+    cancelInFlightStream();
+    streamingIdRef.current = null;
+    setStreamingId(null);
+    setLoading(false);
+    messageNodesRef.current.clear();
     setMessages([{
       role: 'assistant',
       content: welcomeMessage,
       suggestions: currentPageInfo?.suggestions || defaultSuggestions,
     }]);
-  }, [welcomeMessage, currentPageInfo, defaultSuggestions]);
+  }, [welcomeMessage, currentPageInfo, defaultSuggestions, cancelInFlightStream]);
+
+  const closeChat = useCallback(() => {
+    // Single close path — every dismiss (launcher toggle, header X, etc.)
+    // must cancel any in-flight stream so the user isn't billed for an
+    // answer they won't see and so the next open isn't haunted by a stale
+    // streaming bubble.
+    cancelInFlightStream();
+    setShowGreeting(false);
+    setDismissCount(prev => prev + 1);
+    setIsOpen(false);
+  }, [cancelInFlightStream]);
 
   const toggleOpen = () => {
     handleUserInteraction();
-    setShowGreeting(false);
-    setDismissCount(prev => isOpen ? prev + 1 : 0);
-    setIsOpen(!isOpen);
-    if (!isOpen) {
-      setHakimState(HakimState.IDLE);
-      hakimEngine.fireEvent(SYSTEM_EVENTS.HELP_REQUESTED);
+    if (isOpen) {
+      closeChat();
+      return;
     }
+    setShowGreeting(false);
+    setDismissCount(0);
+    setIsOpen(true);
+    setHakimState(HakimState.IDLE);
+    hakimEngine.fireEvent(SYSTEM_EVENTS.HELP_REQUESTED);
   };
 
   const stateGlow = useMemo(() => {
@@ -422,7 +692,7 @@ const HakimAssistantInner = () => {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setIsOpen(false)}
+                onClick={closeChat}
                 className="text-white/60 hover:text-white hover:bg-white/15 h-9 w-9"
               >
                 <X className="h-[18px] w-[18px]" />
@@ -430,11 +700,16 @@ const HakimAssistantInner = () => {
             </div>
           </div>
 
-          <ScrollArea className="flex-1 min-h-0">
+          <ScrollArea ref={scrollAreaRef} className="flex-1 min-h-0">
             <div className="p-4 space-y-4">
               {messages.map((message, index) => (
                 <div
-                  key={index}
+                  key={message.id || index}
+                  ref={(el) => {
+                    if (!message.id) return;
+                    if (el) messageNodesRef.current.set(message.id, el);
+                    else messageNodesRef.current.delete(message.id);
+                  }}
                   className={`flex gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}
                 >
                   {message.role === 'assistant' && (
@@ -475,7 +750,7 @@ const HakimAssistantInner = () => {
                 </div>
               ))}
 
-              {loading && (
+              {loading && !streamingId && (
                 <div className="flex gap-3">
                   <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#7C3AED]/15 to-[#1B93A4]/15 overflow-hidden flex-shrink-0">
                     <img src={hakimThinkingAvatar} alt={t("hakimAvatarAlt")} className="hakim-img w-full h-full object-contain" />

@@ -1030,6 +1030,93 @@ def _is_forbidden_public_topic(message: str) -> bool:
     return False
 
 
+@router.post("/public/hakim/chat/stream")
+async def public_hakim_chat_stream(req: PublicHakimChatRequest):
+    """Streaming variant of the public Hakim chat. Emits NDJSON chunks.
+
+    Wire format (one JSON object per line, terminated with `\n`):
+      {"type":"chunk","text":"..."}     - a partial token/text fragment
+      {"type":"done","suggestions":[]}  - end of stream, includes suggestions
+    Refusals and provider errors emit a single chunk then done.
+    """
+    locale = "en" if (req.locale or "ar").lower() == "en" else "ar"
+    suggestions = _PUBLIC_HAKIM_SUGGESTIONS[locale]
+
+    def _line(obj: dict) -> bytes:
+        return (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
+
+    def _one_shot_stream(text: str):
+        def gen():
+            yield _line({"type": "chunk", "text": text})
+            yield _line({"type": "done", "suggestions": suggestions})
+        return gen
+
+    headers = {
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+    }
+
+    if not req.message or not req.message.strip():
+        return StreamingResponse(_one_shot_stream(_PUBLIC_HAKIM_ERROR[locale])(),
+                                 media_type="application/x-ndjson", headers=headers)
+
+    # Deterministic refusal: short-circuit before any LLM call.
+    if _is_forbidden_public_topic(req.message):
+        return StreamingResponse(_one_shot_stream(_PUBLIC_HAKIM_REFUSAL[locale])(),
+                                 media_type="application/x-ndjson", headers=headers)
+
+    client = get_openai_client()
+    if client is None:
+        return StreamingResponse(_one_shot_stream(_PUBLIC_HAKIM_ERROR[locale])(),
+                                 media_type="application/x-ndjson", headers=headers)
+
+    messages_list: List[Dict[str, str]] = [
+        {"role": "system", "content": _public_hakim_system_prompt(locale)},
+    ]
+    if req.conversation_history:
+        for msg in req.conversation_history[-6:]:
+            role = msg.get("role")
+            content = msg.get("content", "")
+            if role in ("user", "assistant") and isinstance(content, str) and content.strip():
+                messages_list.append({"role": role, "content": content[:2000]})
+    messages_list.append({"role": "user", "content": req.message[:2000]})
+
+    def event_stream():
+        any_text = False
+        try:
+            stream = client.chat.completions.create(
+                model="gpt-5-mini",
+                messages=messages_list,
+                max_completion_tokens=1024,
+                stream=True,
+            )
+            for event in stream:
+                try:
+                    choices = getattr(event, "choices", None) or []
+                    if not choices:
+                        continue
+                    delta = getattr(choices[0], "delta", None)
+                    piece = getattr(delta, "content", None) if delta is not None else None
+                    if piece:
+                        any_text = True
+                        yield _line({"type": "chunk", "text": piece})
+                except Exception:
+                    continue
+            if not any_text:
+                yield _line({"type": "chunk", "text": _PUBLIC_HAKIM_ERROR[locale]})
+            yield _line({"type": "done", "suggestions": suggestions})
+        except Exception as e:
+            logging.error(f"Public Hakim chat stream error: {e}")
+            # Emit a terminal error event so the client can REPLACE the
+            # in-flight bubble with the localized safe error (rather than
+            # leaving a half-written, orphaned partial answer behind).
+            yield _line({"type": "error", "text": _PUBLIC_HAKIM_ERROR[locale],
+                          "suggestions": suggestions})
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson", headers=headers)
+
+
 @router.post("/public/hakim/chat", response_model=HakimResponse)
 async def public_hakim_chat(req: PublicHakimChatRequest):
     """Unauthenticated landing-page Hakim chat. Public-safe scope only."""
