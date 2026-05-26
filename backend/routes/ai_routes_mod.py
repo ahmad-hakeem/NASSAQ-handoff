@@ -32,6 +32,11 @@ from utils.parent_children_resolution import resolve_parent_children
 from utils.trusted_proxy import extract_client_ip
 from utils.public_hakim_limiter import (
     check_and_increment as _public_hakim_check_and_increment,
+    read_or_mint_fingerprint as _public_hakim_read_or_mint_fp,
+    derive_header_fingerprint as _public_hakim_header_fp,
+    FINGERPRINT_COOKIE_NAME as _PUBLIC_HAKIM_FP_COOKIE_NAME,
+    FINGERPRINT_COOKIE_PATH as _PUBLIC_HAKIM_FP_COOKIE_PATH,
+    FINGERPRINT_COOKIE_MAX_AGE as _PUBLIC_HAKIM_FP_COOKIE_MAX_AGE,
     STREAM_MAX_DURATION_S as _PUBLIC_HAKIM_STREAM_MAX_DURATION_S,
     STREAM_MAX_CHUNKS as _PUBLIC_HAKIM_STREAM_MAX_CHUNKS,
 )
@@ -1080,29 +1085,74 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest, request: Request
     # Postgres counter so the budget holds across worker processes.
     # Limit-trip degrades to the canonical localized safe-error envelope
     # rather than a raw 429, so the FE chat UI shows a graceful message.
+    #
+    # SECURITY (task #675): also throttle on a non-IP fingerprint to
+    # catch a single attacker session that rotates through a residential
+    # proxy pool. We prefer a short-lived HMAC-signed opaque cookie
+    # (minted on first visit — no PII, no cross-site identifier), and
+    # fall back to hash(UA, Accept-Language) when no valid cookie is
+    # present. The cookie is set on the response below so a legitimate
+    # first-time visitor isn't denied — they get the cookie on the
+    # outbound side and are throttled normally on subsequent calls.
     _client_ip = extract_client_ip(request)
     _ua = request.headers.get("user-agent", "")
-    _limit = await _public_hakim_check_and_increment(_client_ip, _ua)
+    _al = request.headers.get("accept-language", "")
+    _fp_id, _fp_set_cookie = _public_hakim_read_or_mint_fp(
+        request.cookies.get(_PUBLIC_HAKIM_FP_COOKIE_NAME)
+    )
+    # SECURITY: only use the cookie-derived key when the inbound cookie
+    # was validated (``_fp_set_cookie is None`` means we did NOT mint a
+    # fresh id this request). A bot stripping cookies would otherwise
+    # get a brand-new opaque id on every request and trivially bypass
+    # the per-fp budget — fall back to the header-derived fingerprint
+    # in that case so cookie-stripping + IP rotation still trips a cap.
+    # The header fallback bucket is SHARED across all visitors with the
+    # same UA + Accept-Language, so we tell the limiter to apply the
+    # looser ``fingerprint_shared`` cap there — otherwise a popular
+    # browser/locale tuple would lock out legitimate first-time users.
+    _fp_shared = _fp_set_cookie is not None
+    _fp_key = _public_hakim_header_fp(_ua, _al) if _fp_shared else ("c:" + _fp_id)
+    _limit = await _public_hakim_check_and_increment(
+        _client_ip, _ua, _fp_key, fingerprint_shared=_fp_shared
+    )
+
+    def _apply_fp_cookie(resp):
+        if _fp_set_cookie:
+            resp.set_cookie(
+                key=_PUBLIC_HAKIM_FP_COOKIE_NAME,
+                value=_fp_set_cookie,
+                max_age=_PUBLIC_HAKIM_FP_COOKIE_MAX_AGE,
+                path=_PUBLIC_HAKIM_FP_COOKIE_PATH,
+                httponly=True,
+                secure=True,
+                samesite="lax",
+            )
+        return resp
+
     if _limit.denied:
         _hdrs = dict(headers)
         if _limit.retry_after:
             _hdrs["Retry-After"] = str(_limit.retry_after)
-        return StreamingResponse(_one_shot_stream(_PUBLIC_HAKIM_ERROR[locale])(),
-                                 media_type="text/event-stream", headers=_hdrs)
+        return _apply_fp_cookie(StreamingResponse(
+            _one_shot_stream(_PUBLIC_HAKIM_ERROR[locale])(),
+            media_type="text/event-stream", headers=_hdrs))
 
     if not req.message or not req.message.strip():
-        return StreamingResponse(_one_shot_stream(_PUBLIC_HAKIM_ERROR[locale])(),
-                                 media_type="text/event-stream", headers=headers)
+        return _apply_fp_cookie(StreamingResponse(
+            _one_shot_stream(_PUBLIC_HAKIM_ERROR[locale])(),
+            media_type="text/event-stream", headers=headers))
 
     # Deterministic refusal: short-circuit before any LLM call.
     if _is_forbidden_public_topic(req.message):
-        return StreamingResponse(_one_shot_stream(_PUBLIC_HAKIM_REFUSAL[locale])(),
-                                 media_type="text/event-stream", headers=headers)
+        return _apply_fp_cookie(StreamingResponse(
+            _one_shot_stream(_PUBLIC_HAKIM_REFUSAL[locale])(),
+            media_type="text/event-stream", headers=headers))
 
     client = get_openai_client()
     if client is None:
-        return StreamingResponse(_one_shot_stream(_PUBLIC_HAKIM_ERROR[locale])(),
-                                 media_type="text/event-stream", headers=headers)
+        return _apply_fp_cookie(StreamingResponse(
+            _one_shot_stream(_PUBLIC_HAKIM_ERROR[locale])(),
+            media_type="text/event-stream", headers=headers))
 
     messages_list: List[Dict[str, str]] = [
         {"role": "system", "content": _public_hakim_system_prompt(locale)},
@@ -1173,47 +1223,72 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest, request: Request
             yield _line({"type": "error", "text": _PUBLIC_HAKIM_ERROR[locale],
                           "suggestions": suggestions})
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=headers)
+    return _apply_fp_cookie(StreamingResponse(
+        event_stream(), media_type="text/event-stream", headers=headers))
 
 
-@router.post("/public/hakim/chat", response_model=HakimResponse)
+@router.post("/public/hakim/chat")
 async def public_hakim_chat(req: PublicHakimChatRequest, request: Request):
     """Unauthenticated landing-page Hakim chat. Public-safe scope only."""
     locale = "en" if (req.locale or "ar").lower() == "en" else "ar"
     suggestions = _PUBLIC_HAKIM_SUGGESTIONS[locale]
 
     # SECURITY (task #674): shared cross-worker per-IP / per-IP+UA cap.
-    # Limit-trip returns the canonical localized safe-error response so
-    # the chat UI degrades gracefully (no raw 429 surfaced to users).
+    # SECURITY (task #675): plus a non-IP fingerprint axis — short-lived
+    # HMAC-signed opaque cookie minted on first visit, with a header
+    # hash(UA, Accept-Language) fallback when no valid cookie is sent.
+    # First-time legitimate visitors get the cookie via the response;
+    # they are not denied on the inbound side.
     _client_ip = extract_client_ip(request)
     _ua = request.headers.get("user-agent", "")
-    _limit = await _public_hakim_check_and_increment(_client_ip, _ua)
-    if _limit.denied:
-        return HakimResponse(
-            response=_PUBLIC_HAKIM_ERROR[locale],
-            suggestions=suggestions,
+    _al = request.headers.get("accept-language", "")
+    _fp_id, _fp_set_cookie = _public_hakim_read_or_mint_fp(
+        request.cookies.get(_PUBLIC_HAKIM_FP_COOKIE_NAME)
+    )
+    # SECURITY: cookie-derived key only when the inbound cookie was
+    # validated. A freshly minted id (``_fp_set_cookie is not None``)
+    # must NOT be used as the limiter key this request — otherwise a
+    # cookie-stripping bot gets a brand-new bucket every call. Fall
+    # back to the header-derived fingerprint in that case, and tell the
+    # limiter that bucket is shared across many real visitors so it
+    # applies the looser shared cap (otherwise a popular UA+locale
+    # tuple would lock out legitimate first-time users).
+    _fp_shared = _fp_set_cookie is not None
+    _fp_key = _public_hakim_header_fp(_ua, _al) if _fp_shared else ("c:" + _fp_id)
+    _limit = await _public_hakim_check_and_increment(
+        _client_ip, _ua, _fp_key, fingerprint_shared=_fp_shared
+    )
+
+    def _envelope(text: str) -> JSONResponse:
+        resp = JSONResponse(
+            HakimResponse(response=text, suggestions=suggestions).model_dump()
         )
+        if _fp_set_cookie:
+            resp.set_cookie(
+                key=_PUBLIC_HAKIM_FP_COOKIE_NAME,
+                value=_fp_set_cookie,
+                max_age=_PUBLIC_HAKIM_FP_COOKIE_MAX_AGE,
+                path=_PUBLIC_HAKIM_FP_COOKIE_PATH,
+                httponly=True,
+                secure=True,
+                samesite="lax",
+            )
+        return resp
+
+    if _limit.denied:
+        return _envelope(_PUBLIC_HAKIM_ERROR[locale])
 
     if not req.message or not req.message.strip():
-        return HakimResponse(
-            response=_PUBLIC_HAKIM_ERROR[locale],
-            suggestions=suggestions,
-        )
+        return _envelope(_PUBLIC_HAKIM_ERROR[locale])
 
     # Deterministic refusal: short-circuit before any LLM call so a
     # jailbreak/forbidden-topic prompt cannot influence the model output.
     if _is_forbidden_public_topic(req.message):
-        return HakimResponse(
-            response=_PUBLIC_HAKIM_REFUSAL[locale],
-            suggestions=suggestions,
-        )
+        return _envelope(_PUBLIC_HAKIM_REFUSAL[locale])
 
     client = get_openai_client()
     if client is None:
-        return HakimResponse(
-            response=_PUBLIC_HAKIM_ERROR[locale],
-            suggestions=suggestions,
-        )
+        return _envelope(_PUBLIC_HAKIM_ERROR[locale])
 
     try:
         messages_list: List[Dict[str, str]] = [
@@ -1235,15 +1310,12 @@ async def public_hakim_chat(req: PublicHakimChatRequest, request: Request):
         reply = (response.choices[0].message.content or "").strip()
         if not reply:
             reply = _PUBLIC_HAKIM_ERROR[locale]
-        return HakimResponse(response=reply, suggestions=suggestions)
+        return _envelope(reply)
     except HTTPException:
         raise
     except Exception as e:
         logging.error(f"Public Hakim chat error: {e}")
-        return HakimResponse(
-            response=_PUBLIC_HAKIM_ERROR[locale],
-            suggestions=suggestions,
-        )
+        return _envelope(_PUBLIC_HAKIM_ERROR[locale])
 
 
 
