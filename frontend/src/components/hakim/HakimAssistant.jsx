@@ -36,13 +36,6 @@ const PAGE_CONTEXT_MAP = {
   '/teacher/students': { name: 'طلابي', suggestions: ['كيف أتابع طالب؟', 'من يحتاج متابعة؟'] },
 };
 
-const IDLE_GREETINGS = [
-  'السلام عليكم 👋',
-  'أهلاً! كيف أساعدك؟',
-  'مرحباً! أنا هنا 🌟',
-  'هل تحتاج مساعدة؟',
-];
-
 const HakimState = {
   IDLE: 'idle',
   LISTENING: 'listening',
@@ -118,8 +111,11 @@ const HakimAssistantInner = () => {
   const timeoutRefs = useRef([]);
   const { api, user } = useAuth();
   const { isRTL } = useTheme();
+  const { language } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
+  const isPublic = !user;
+  const locale = language === 'en' ? 'en' : 'ar';
 
   useEffect(() => {
     const userRole = user?.role || user?.user_role || 'school_principal';
@@ -140,24 +136,40 @@ const HakimAssistantInner = () => {
   const hakimThinkingAvatar = useMemo(() => getPose('ai-thinking'), []);
   const hakimRespondingAvatar = useMemo(() => getPose('explaining-concept'), []);
 
-  const welcomeMessage = useMemo(() => {
-    const pageName = currentPageInfo?.name;
-    const base = 'مرحباً! أنا **حكيم**، مساعدك الذكي في منصة **نَسَّق** 🌟';
-    const pageNote = pageName ? `\n\nأنت حالياً في **${pageName}**. كيف يمكنني مساعدتك؟` : '\n\nكيف يمكنني مساعدتك اليوم؟';
-    return base + pageNote;
-  }, [currentPageInfo]);
-
-  const hasInitialized = useRef(false);
-  useEffect(() => {
-    if (!hasInitialized.current) {
-      hasInitialized.current = true;
-      setMessages([{
-        role: 'assistant',
-        content: welcomeMessage,
-        suggestions: currentPageInfo?.suggestions || ['ما هي إمكانيات النظام؟', 'ساعدني في البدء', 'أعطني ملخص سريع'],
-      }]);
+  const defaultSuggestions = useMemo(() => {
+    if (isPublic) {
+      return [t('hakimPublicSuggestion1'), t('hakimPublicSuggestion2'), t('hakimPublicSuggestion3')];
     }
-  }, [welcomeMessage, currentPageInfo]);
+    return [t('hakimDefaultSuggestion1'), t('hakimDefaultSuggestion2'), t('hakimDefaultSuggestion3')];
+  }, [t, isPublic]);
+
+  const welcomeMessage = useMemo(() => {
+    if (isPublic) {
+      return t('hakimPublicWelcome');
+    }
+    const pageName = currentPageInfo?.name;
+    const base = t('hakimWelcomeBase');
+    const pageNote = pageName
+      ? '\n\n' + t('hakimWelcomeOnPage', { page: pageName })
+      : '\n\n' + t('hakimWelcomeGeneric');
+    return base + pageNote;
+  }, [currentPageInfo, t, isPublic]);
+
+  useEffect(() => {
+    setMessages((prev) => {
+      // Initial mount, or only the welcome card is present (no user turns yet):
+      // (re)hydrate the welcome + starter chips in the current locale so a
+      // language toggle immediately swaps the visible starter content.
+      if (prev.length === 0 || (prev.length === 1 && prev[0].role === 'assistant')) {
+        return [{
+          role: 'assistant',
+          content: welcomeMessage,
+          suggestions: currentPageInfo?.suggestions || defaultSuggestions,
+        }];
+      }
+      return prev;
+    });
+  }, [welcomeMessage, currentPageInfo, defaultSuggestions]);
 
   useEffect(() => {
     return () => { timeoutRefs.current.forEach(clearTimeout); };
@@ -190,6 +202,12 @@ const HakimAssistantInner = () => {
       const delay = Math.min(30000 + dismissCount * 20000, 120000);
 
       if (elapsed >= delay) {
+        const IDLE_GREETINGS = [
+          t('hakimIdleGreeting1'),
+          t('hakimIdleGreeting2'),
+          t('hakimIdleGreeting3'),
+          t('hakimIdleGreeting4'),
+        ];
         const greeting = IDLE_GREETINGS[greetingIndexRef.current % IDLE_GREETINGS.length];
         greetingIndexRef.current++;
         setGreetingText(greeting);
@@ -207,7 +225,7 @@ const HakimAssistantInner = () => {
 
     idleTimerRef.current = setInterval(handleIdleGreeting, 10000);
     return () => clearInterval(idleTimerRef.current);
-  }, [isOpen, dismissCount, trackTimeout]);
+  }, [isOpen, dismissCount, trackTimeout, t]);
 
   const handleUserInteraction = useCallback(() => {
     lastInteractionRef.current = Date.now();
@@ -230,13 +248,22 @@ const HakimAssistantInner = () => {
     setHakimState(HakimState.THINKING);
 
     try {
-      const response = await api.post('/hakim/chat', {
-        message: text,
-        context: null,
-        user_role: user?.role,
-        tenant_id: user?.tenant_id,
-        current_page: location.pathname,
-      });
+      const response = isPublic
+        ? await api.post('/public/hakim/chat', {
+            message: text,
+            locale,
+            conversation_history: messages
+              .filter((m) => m.role === 'user' || m.role === 'assistant')
+              .slice(-6)
+              .map((m) => ({ role: m.role, content: m.content })),
+          })
+        : await api.post('/hakim/chat', {
+            message: text,
+            context: null,
+            user_role: user?.role,
+            tenant_id: user?.tenant_id,
+            current_page: location.pathname,
+          });
 
       setHakimState(HakimState.RESPONDING);
 
@@ -254,7 +281,7 @@ const HakimAssistantInner = () => {
         ...prev,
         {
           role: 'assistant',
-          content: '⚠️ عذراً، حدث خطأ أثناء معالجة طلبك. يرجى المحاولة مرة أخرى.',
+          content: t('hakimError'),
           suggestions: [],
         },
       ]);
@@ -273,9 +300,9 @@ const HakimAssistantInner = () => {
     setMessages([{
       role: 'assistant',
       content: welcomeMessage,
-      suggestions: currentPageInfo?.suggestions || ['ما هي إمكانيات النظام؟', 'ساعدني في البدء', 'أعطني ملخص سريع'],
+      suggestions: currentPageInfo?.suggestions || defaultSuggestions,
     }]);
-  }, [welcomeMessage, currentPageInfo]);
+  }, [welcomeMessage, currentPageInfo, defaultSuggestions]);
 
   const toggleOpen = () => {
     handleUserInteraction();
@@ -342,7 +369,7 @@ const HakimAssistantInner = () => {
           ) : (
             <img
               src={currentAvatar}
-              alt="حكيم"
+              alt={t("hakimAvatarAlt")}
               className="w-full h-full object-contain bg-gradient-to-br from-[#7C3AED]/10 to-[#1B93A4]/10"
             />
           )}
@@ -366,7 +393,7 @@ const HakimAssistantInner = () => {
           <div className="bg-gradient-to-r from-[#7C3AED] via-[#6D28D9] to-[#1B93A4] p-4 flex items-center gap-3.5 shrink-0">
             <div className="relative">
               <div className="w-16 h-16 rounded-xl bg-white/20 overflow-hidden flex-shrink-0 ring-2 ring-white/30 p-0.5">
-                <img src={currentAvatar} alt="حكيم" className="w-full h-full object-contain" />
+                <img src={currentAvatar} alt={t("hakimAvatarAlt")} className="w-full h-full object-contain" />
               </div>
               <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[#7C3AED] ${
                 hakimState === HakimState.THINKING ? 'bg-amber-400 animate-pulse' :
@@ -375,11 +402,11 @@ const HakimAssistantInner = () => {
               }`} />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-cairo font-bold text-white text-base leading-tight">حكيم</h3>
+              <h3 className="font-cairo font-bold text-white text-base leading-tight">{t('hakimName')}</h3>
               <p className="text-white/80 text-sm mt-0.5">
-                {hakimState === HakimState.THINKING ? '⏳ يفكر...' :
-                 hakimState === HakimState.RESPONDING ? '💬 يجيب...' :
-                 '🟢 المساعد الذكي'}
+                {hakimState === HakimState.THINKING ? `⏳ ${t('hakimThinking')}` :
+                 hakimState === HakimState.RESPONDING ? `💬 ${t('hakimResponding')}` :
+                 `🟢 ${t('hakimSmartAssistant')}`}
               </p>
             </div>
             <div className="flex items-center gap-1.5">
@@ -388,7 +415,7 @@ const HakimAssistantInner = () => {
                 size="icon"
                 onClick={clearChat}
                 className="text-white/60 hover:text-white hover:bg-white/15 h-9 w-9"
-                title="مسح المحادثة"
+                title={t('hakimClearChat')}
               >
                 <Trash2 className="h-[18px] w-[18px]" />
               </Button>
@@ -412,7 +439,7 @@ const HakimAssistantInner = () => {
                 >
                   {message.role === 'assistant' && (
                     <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#7C3AED]/15 to-[#1B93A4]/15 overflow-hidden flex-shrink-0 mt-0.5">
-                      <img src={hakimAvatar} alt="حكيم" className="hakim-img w-full h-full object-contain" />
+                      <img src={hakimAvatar} alt={t("hakimAvatarAlt")} className="hakim-img w-full h-full object-contain" />
                     </div>
                   )}
                   <div
@@ -451,7 +478,7 @@ const HakimAssistantInner = () => {
               {loading && (
                 <div className="flex gap-3">
                   <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#7C3AED]/15 to-[#1B93A4]/15 overflow-hidden flex-shrink-0">
-                    <img src={hakimThinkingAvatar} alt="حكيم" className="hakim-img w-full h-full object-contain" />
+                    <img src={hakimThinkingAvatar} alt={t("hakimAvatarAlt")} className="hakim-img w-full h-full object-contain" />
                   </div>
                   <div className="bg-muted/60 dark:bg-muted/30 border border-border/40 rounded-2xl rounded-bl-md px-5 py-3.5">
                     <div className="flex items-center gap-2.5">
@@ -460,7 +487,7 @@ const HakimAssistantInner = () => {
                         <div className="w-2.5 h-2.5 rounded-full bg-[#1B93A4] animate-bounce" style={{ animationDelay: '150ms' }} />
                         <div className="w-2.5 h-2.5 rounded-full bg-[#7C3AED] animate-bounce" style={{ animationDelay: '300ms' }} />
                       </div>
-                      <span className="text-sm text-muted-foreground font-cairo font-medium">حكيم يفكر...</span>
+                      <span className="text-sm text-muted-foreground font-cairo font-medium">{t('hakimThinkingDetailed')}</span>
                     </div>
                   </div>
                 </div>
