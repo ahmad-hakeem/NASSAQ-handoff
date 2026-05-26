@@ -748,19 +748,19 @@ export const LandingPage = () => {
                   : 'Real screenshot from the principal dashboard'}
               </p>
 
-              {/* Hakim welcome mascot — emerges from the dashboard's lower-end corner;
-                  z-20 places him in front so his shoulder/arm overlap reads as one scene,
-                  and the natural torso crop is anchored by the mockup edge instead of floating. */}
+              {/* Hakim welcome mascot — restrained supporting visual:
+                  small, anchored just past the dashboard's lower-end corner so only his
+                  outer shoulder/arm overlaps the mockup edge. Dashboard stays dominant. */}
               <div
                 className="pointer-events-none select-none absolute z-20
-                           bottom-2 -end-2
-                           sm:bottom-4 sm:-end-3
-                           lg:bottom-10 lg:-end-10
-                           xl:bottom-14 xl:-end-14
-                           w-36 h-36
-                           sm:w-48 sm:h-48
-                           lg:w-64 lg:h-64
-                           xl:w-72 xl:h-72"
+                           -bottom-2 -end-3
+                           sm:-bottom-3 sm:-end-4
+                           lg:-bottom-6 lg:-end-8
+                           xl:-bottom-8 xl:-end-10
+                           w-24 h-24
+                           sm:w-28 sm:h-28
+                           lg:w-36 lg:h-36
+                           xl:w-44 xl:h-44"
                 aria-hidden="true"
               >
                 {/* Soft turquoise halo — blends the cutout into the navy hero */}
