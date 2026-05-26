@@ -29,6 +29,13 @@ from shared_models import (
 )
 from utils.parent_resolution import resolve_student_parent_user_id, PARENT_NOT_FOUND_AR
 from utils.parent_children_resolution import resolve_parent_children
+from utils.trusted_proxy import extract_client_ip
+from utils.public_hakim_limiter import (
+    check_and_increment as _public_hakim_check_and_increment,
+    STREAM_MAX_DURATION_S as _PUBLIC_HAKIM_STREAM_MAX_DURATION_S,
+    STREAM_MAX_CHUNKS as _PUBLIC_HAKIM_STREAM_MAX_CHUNKS,
+)
+import time as _time
 from openai import OpenAI
 from typing import Literal
 
@@ -1031,7 +1038,7 @@ def _is_forbidden_public_topic(message: str) -> bool:
 
 
 @router.post("/public/hakim/chat/stream")
-async def public_hakim_chat_stream(req: PublicHakimChatRequest):
+async def public_hakim_chat_stream(req: PublicHakimChatRequest, request: Request):
     """Streaming variant of the public Hakim chat. Emits NDJSON chunks.
 
     Wire format (one JSON object per line, terminated with `\n`):
@@ -1056,6 +1063,20 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest):
         "X-Accel-Buffering": "no",
         "Content-Type": "application/x-ndjson; charset=utf-8",
     }
+
+    # SECURITY (task #674): per-IP / per-IP+UA abuse cap backed by a
+    # Postgres counter so the budget holds across worker processes.
+    # Limit-trip degrades to the canonical localized safe-error envelope
+    # rather than a raw 429, so the FE chat UI shows a graceful message.
+    _client_ip = extract_client_ip(request)
+    _ua = request.headers.get("user-agent", "")
+    _limit = await _public_hakim_check_and_increment(_client_ip, _ua)
+    if _limit.denied:
+        _hdrs = dict(headers)
+        if _limit.retry_after:
+            _hdrs["Retry-After"] = str(_limit.retry_after)
+        return StreamingResponse(_one_shot_stream(_PUBLIC_HAKIM_ERROR[locale])(),
+                                 media_type="application/x-ndjson", headers=_hdrs)
 
     if not req.message or not req.message.strip():
         return StreamingResponse(_one_shot_stream(_PUBLIC_HAKIM_ERROR[locale])(),
@@ -1084,14 +1105,34 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest):
 
     def event_stream():
         any_text = False
+        # SECURITY (task #674): bound a single streamed response by wall
+        # time and chunk count so a stuck upstream connection cannot hold
+        # a worker open indefinitely. Counts emitted chunks only — the
+        # caps are well above a typical 2-5 paragraph reply.
+        started = _time.monotonic()
+        chunk_count = 0
+        truncated = False
         try:
-            stream = client.chat.completions.create(
+            # SECURITY (task #674): bound the *upstream* HTTP read on the
+            # SDK itself so a stalled provider connection can't pin the
+            # worker open between events — the in-loop wall-clock check
+            # only fires while we're receiving chunks, so the timeout
+            # below is the real hard ceiling on stuck reads.
+            stream = client.with_options(
+                timeout=_PUBLIC_HAKIM_STREAM_MAX_DURATION_S
+            ).chat.completions.create(
                 model="gpt-5-mini",
                 messages=messages_list,
                 max_completion_tokens=1024,
                 stream=True,
             )
             for event in stream:
+                if (_time.monotonic() - started) >= _PUBLIC_HAKIM_STREAM_MAX_DURATION_S:
+                    truncated = True
+                    break
+                if chunk_count >= _PUBLIC_HAKIM_STREAM_MAX_CHUNKS:
+                    truncated = True
+                    break
                 try:
                     choices = getattr(event, "choices", None) or []
                     if not choices:
@@ -1100,12 +1141,18 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest):
                     piece = getattr(delta, "content", None) if delta is not None else None
                     if piece:
                         any_text = True
+                        chunk_count += 1
                         yield _line({"type": "chunk", "text": piece})
                 except Exception:
                     continue
+            try:
+                stream.close()  # type: ignore[attr-defined]
+            except Exception:
+                pass
             if not any_text:
                 yield _line({"type": "chunk", "text": _PUBLIC_HAKIM_ERROR[locale]})
-            yield _line({"type": "done", "suggestions": suggestions})
+            yield _line({"type": "done", "suggestions": suggestions,
+                          "truncated": truncated})
         except Exception as e:
             logging.error(f"Public Hakim chat stream error: {e}")
             # Emit a terminal error event so the client can REPLACE the
@@ -1118,10 +1165,22 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest):
 
 
 @router.post("/public/hakim/chat", response_model=HakimResponse)
-async def public_hakim_chat(req: PublicHakimChatRequest):
+async def public_hakim_chat(req: PublicHakimChatRequest, request: Request):
     """Unauthenticated landing-page Hakim chat. Public-safe scope only."""
     locale = "en" if (req.locale or "ar").lower() == "en" else "ar"
     suggestions = _PUBLIC_HAKIM_SUGGESTIONS[locale]
+
+    # SECURITY (task #674): shared cross-worker per-IP / per-IP+UA cap.
+    # Limit-trip returns the canonical localized safe-error response so
+    # the chat UI degrades gracefully (no raw 429 surfaced to users).
+    _client_ip = extract_client_ip(request)
+    _ua = request.headers.get("user-agent", "")
+    _limit = await _public_hakim_check_and_increment(_client_ip, _ua)
+    if _limit.denied:
+        return HakimResponse(
+            response=_PUBLIC_HAKIM_ERROR[locale],
+            suggestions=suggestions,
+        )
 
     if not req.message or not req.message.strip():
         return HakimResponse(

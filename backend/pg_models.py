@@ -1789,3 +1789,23 @@ class NoorImportDraft(Base):
         Index("ix_noor_import_drafts_owner", "principal_id", "school_id"),
         Index("ix_noor_import_drafts_expires_at", "expires_at"),
     )
+
+
+class PublicHakimRateCounter(Base):
+    """Shared, cross-worker rate-limit counters for the public landing-page
+    Hakim chat endpoints. Keyed by a versioned bucket identifier
+    (``v1:<scope>:<identity>:<bucket>``) where bucket is a minute or day
+    epoch. Atomically incremented via ``INSERT ... ON CONFLICT DO UPDATE
+    SET count = count + 1 RETURNING count``. Rows are opportunistically
+    cleaned up once ``expires_at`` has passed.
+    """
+
+    __tablename__ = "public_hakim_rate_counters"
+
+    key = Column(String(160), primary_key=True)
+    count = Column(Integer, nullable=False, server_default=text("0"))
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        Index("ix_public_hakim_rate_counters_expires_at", "expires_at"),
+    )
