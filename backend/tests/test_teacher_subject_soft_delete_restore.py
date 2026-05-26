@@ -279,6 +279,33 @@ async def test_restore_teacher_404_on_active_row(client, tenant_a):
 
 
 @pytest.mark.asyncio
+async def test_restore_teacher_cross_tenant_principal_blocked(client, tenant_a, tenant_b):
+    """A principal of tenant A may not restore a soft-deleted teacher
+    owned by tenant B even when the target row IS in the restorable
+    state (Task #670 — close the asymmetry with DELETE)."""
+    owner = await _mk_user(UserRole.SCHOOL_PRINCIPAL, tenant_b)
+    intruder = await _mk_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    foreign_teacher_id = await _mk_teacher(tenant_b)
+
+    # Owner soft-deletes their own teacher row so the target IS restorable.
+    del_resp = await client.delete(
+        f"/teachers/{foreign_teacher_id}",
+        headers=_bearer(owner["id"], owner["role"], tenant_b),
+    )
+    assert del_resp.status_code == 200
+
+    resp = await client.post(
+        f"/teachers/{foreign_teacher_id}/restore",
+        headers=_bearer(intruder["id"], intruder["role"], tenant_a),
+    )
+    assert resp.status_code in (403, 404), resp.text
+
+    row = await gd_find_one(db.session, "teachers", {"id": foreign_teacher_id})
+    assert row.get("is_active") is False
+    assert row.get("deleted_at") is not None
+
+
+@pytest.mark.asyncio
 async def test_restore_teacher_it_cross_workspace_404(client):
     owner = await _mk_it_workspace()
     intruder = await _mk_it_workspace()

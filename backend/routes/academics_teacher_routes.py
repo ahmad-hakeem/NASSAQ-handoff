@@ -1032,8 +1032,14 @@ async def restore_teacher(
     """
     from auth_scope import is_independent_teacher, independent_workspace_id
     base_filter: Dict[str, Any] = {"id": teacher_id, "is_active": False, "deleted_at": {"$ne": None}}
-    if is_independent_teacher(current_user):
-        base_filter["school_id"] = independent_workspace_id(current_user)
+    if current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
+        caller_tenant = (
+            independent_workspace_id(current_user) if is_independent_teacher(current_user)
+            else current_user.get("tenant_id")
+        )
+        if not caller_tenant:
+            raise HTTPException(status_code=403, detail="غير مصرح")
+        base_filter["school_id"] = caller_tenant
     teacher = await gd_find_one(db.session, "teachers", base_filter)
     if not teacher:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
