@@ -113,6 +113,13 @@ webpackConfig.devServer = (devServerConfig) => {
   // We translate the two legacy hooks into the v5 API and strip the old keys so
   // CRA's dev middleware (eval-source-map, proxy setup, served-path redirect,
   // no-op service worker) keeps working without downgrading webpack-dev-server.
+  //
+  // This shim is the documented stabilization of the CRA/wds-v5 mismatch — see
+  // docs/frontend-toolchain.md. webpack-dev-server is pinned to an EXACT version
+  // in package.json (resolutions + overrides) so the schema this shim targets
+  // cannot drift silently on a fresh install. The transform below is covered by
+  // src/__tests__/cracoDevServer.test.js, which validates the result against
+  // webpack-dev-server's own options schema; run that test before bumping wds.
   const legacyBefore = devServerConfig.onBeforeSetupMiddleware;
   const legacyAfter = devServerConfig.onAfterSetupMiddleware;
   delete devServerConfig.onBeforeSetupMiddleware;
