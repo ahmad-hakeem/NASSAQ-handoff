@@ -59,6 +59,7 @@ export default function PlatformSchoolDetailPage() {
 
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [activeTab, setActiveTab] = useState('general');
 
   const [editMode, setEditMode] = useState(false);
@@ -89,6 +90,7 @@ export default function PlatformSchoolDetailPage() {
 
   const fetchDetail = useCallback(async () => {
     setLoading(true);
+    setError(false);
     try {
       const res = await api.get(`/schools/${schoolId}/detail`);
       setDetail(res.data);
@@ -102,6 +104,7 @@ export default function PlatformSchoolDetailPage() {
         address: res.data.school?.address || '',
       });
     } catch (err) {
+      setError(true);
       nassaqError(t('failedToLoadSchoolData'));
     } finally {
       setLoading(false);
@@ -238,7 +241,34 @@ export default function PlatformSchoolDetailPage() {
     );
   }
 
-  if (!detail) return null;
+  if (error || !detail) {
+    return (
+      <Sidebar>
+        <div className="min-h-screen flex items-center justify-center p-4" dir={isRTL ? 'rtl' : 'ltr'}>
+          <Card className="max-w-md w-full">
+            <CardContent className="p-8 text-center space-y-5">
+              <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto">
+                <AlertTriangle className="h-7 w-7 text-red-600" strokeWidth={1.5} aria-hidden="true" />
+              </div>
+              <p className="font-cairo text-lg font-semibold text-slate-800 dark:text-white">
+                {t('failedToLoadSchoolData')}
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                <Button onClick={() => fetchDetail()} className="w-full sm:w-auto">
+                  <RefreshCw className="h-4 w-4 me-1.5" strokeWidth={1.5} aria-hidden="true" />
+                  {t('retry')}
+                </Button>
+                <Button variant="outline" onClick={() => navigate('/admin/schools')} className="w-full sm:w-auto">
+                  <ChevronRight className="h-4 w-4 me-1.5 rtl:rotate-180" strokeWidth={1.5} aria-hidden="true" />
+                  {t('schoolsManagement')}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </Sidebar>
+    );
+  }
 
   const school = detail.school;
   const status = school?.status || 'active';
