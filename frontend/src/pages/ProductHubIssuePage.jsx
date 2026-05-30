@@ -38,6 +38,7 @@ export function ProductHubIssuePage() {
   const navigate = useNavigate();
   const [issue, setIssue] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [commentType, setCommentType] = useState('general');
   const [submittingComment, setSubmittingComment] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
@@ -52,16 +53,19 @@ export function ProductHubIssuePage() {
   const isMainAdmin = perms.is_main_admin || false;
 
   const fetchIssue = useCallback(async () => {
+    setLoading(true);
+    setError(false);
     try {
       const res = await axios.get(`/api/product-hub/issues/${issueId}`, { headers: authHeaders() });
       setIssue(res.data);
     } catch (e) {
+      console.error('Error loading issue:', e);
+      setError(true);
       toast.error('فشل في تحميل التحدي');
-      navigate('/admin/product-hub');
     } finally {
       setLoading(false);
     }
-  }, [issueId, navigate]);
+  }, [issueId]);
 
   useEffect(() => { fetchIssue(); }, [fetchIssue]);
 
@@ -190,7 +194,32 @@ export function ProductHubIssuePage() {
     );
   }
 
-  if (!issue) return null;
+  if (error || !issue) {
+    return (
+      <Sidebar>
+        <div className="flex justify-center items-center min-h-screen p-4" dir="rtl">
+          <Card className="max-w-md w-full">
+            <CardContent className="p-8 text-center space-y-5">
+              <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto">
+                <AlertTriangle className="h-7 w-7 text-red-600" strokeWidth={1.5} aria-hidden="true" />
+              </div>
+              <p className="font-semibold text-lg text-slate-800 dark:text-white">فشل في تحميل التحدي</p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-1">
+                <Button onClick={() => fetchIssue()} className="w-full sm:w-auto">
+                  <RefreshCw className="h-4 w-4 me-1.5" strokeWidth={1.5} aria-hidden="true" />
+                  إعادة المحاولة
+                </Button>
+                <Button variant="outline" onClick={() => navigate('/admin/product-hub')} className="w-full sm:w-auto">
+                  <ArrowRight className="h-4 w-4 me-1.5" strokeWidth={1.5} aria-hidden="true" />
+                  العودة إلى قائمة التحديات
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </Sidebar>
+    );
+  }
 
   const typeCfg = TYPE_CONFIG[issue.issue_type] || TYPE_CONFIG.other;
   const TypeIcon = typeCfg.icon;

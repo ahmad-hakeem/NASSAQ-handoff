@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import {
   Users, GraduationCap, Search, Sun, Moon, Globe, MoreHorizontal,
-  Edit, Trash2, BookOpen, Loader2, Eye, UserCheck, Key, Building2,
+  Edit, Trash2, BookOpen, Loader2, Eye, UserCheck, Key, Building2, RefreshCw, AlertTriangle,
   UserX, ArrowLeft, ArrowRight, ChevronRight, Star, UserPlus,
   Calendar, Hash, LayoutGrid, List, Download
 } from 'lucide-react';
@@ -240,6 +240,7 @@ export default function ClassDetailPage() {
   const { nassaqConfirm, nassaqError } = useNassaqAlert();
 
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [classData, setClassData] = useState(null);
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -258,6 +259,7 @@ export default function ClassDetailPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setError(false);
     try {
       const [classRes, studentsRes, classesRes, gradesRes] = await Promise.all([
         api.get(`/classes/${classId}`, { headers }),
@@ -270,6 +272,7 @@ export default function ClassDetailPage() {
       setClasses(Array.isArray(classesRes.data) ? classesRes.data : []);
       setGrades(Array.isArray(gradesRes.data) ? gradesRes.data : []);
     } catch (error) {
+      setError(true);
       const status = error?.response?.status;
       if (status === 403) {
         nassaqError('هذا الفصل غير مسند إليك أو لا تملك صلاحية استعراضه');
@@ -412,17 +415,27 @@ export default function ClassDetailPage() {
     );
   }
 
-  if (!classData) {
+  if (error || !classData) {
     return (
       <Sidebar>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <Building2 className="h-16 w-16 mx-auto text-muted-foreground/20 mb-4" />
-            <p className="text-lg font-semibold mb-2">{t('classNotFound')}</p>
-            <Button variant="outline" onClick={() => navigate(managementPath)}>
-              <BackArrow className="h-4 w-4 me-2" />
-              {t('backToUserManagement')}
-            </Button>
+        <div className="min-h-screen flex items-center justify-center p-4">
+          <div className="text-center max-w-md w-full space-y-5">
+            <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto">
+              <AlertTriangle className="h-7 w-7 text-red-600" strokeWidth={1.5} aria-hidden="true" />
+            </div>
+            <p className="text-lg font-semibold">
+              {error ? t('errorLoadingClassData') : t('classNotFound')}
+            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <Button onClick={() => fetchData()} className="w-full sm:w-auto">
+                <RefreshCw className="h-4 w-4 me-2" strokeWidth={1.5} aria-hidden="true" />
+                {t('retry')}
+              </Button>
+              <Button variant="outline" onClick={() => navigate(managementPath)} className="w-full sm:w-auto">
+                <BackArrow className="h-4 w-4 me-2" />
+                {t('backToUserManagement')}
+              </Button>
+            </div>
           </div>
         </div>
       </Sidebar>

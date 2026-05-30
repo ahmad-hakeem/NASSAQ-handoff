@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Sidebar } from '../components/layout/Sidebar';
@@ -226,6 +226,7 @@ export default function UserDetailsPage() {
   
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [activities, setActivities] = useState([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
@@ -251,41 +252,26 @@ export default function UserDetailsPage() {
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   
   // Fetch user data
+  const fetchUser = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const response = await api.get(`/users/${userId}`);
+      setUser(response.data);
+      setEditForm(response.data);
+      setUserPermissions(response.data.permissions || []);
+    } catch (err) {
+      console.error('Error fetching user:', err);
+      setError(true);
+      nassaqError('فشل في تحميل بيانات المستخدم');
+    } finally {
+      setLoading(false);
+    }
+  }, [api, userId]);
+
   useEffect(() => {
-    const fetchUser = async () => {
-      setLoading(true);
-      try {
-        const response = await api.get(`/users/${userId}`);
-        setUser(response.data);
-        setEditForm(response.data);
-        setUserPermissions(response.data.permissions || []);
-      } catch (error) {
-        console.error('Error fetching user:', error);
-        // Show error instead of using mock data
-        nassaqError('فشل في تحميل بيانات المستخدم');
-        // Use the userId to construct a basic user object with loading indicator
-        setUser({
-          id: userId,
-          full_name: 'جاري التحميل...',
-          full_name_ar: 'جاري التحميل...',
-          full_name_en: 'Loading...',
-          email: 'loading@nassaq.com',
-          phone: '',
-          role: 'platform_admin',
-          is_active: true,
-          ai_enabled: false,
-          permissions: [],
-          last_login: null,
-          created_at: new Date().toISOString(),
-          _loadError: true, // Flag to indicate data didn't load
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-    
     fetchUser();
-  }, [userId]);
+  }, [fetchUser]);
 
   const fetchActivities = async () => {
     setActivitiesLoading(true);
@@ -488,14 +474,27 @@ ${API_URL}/login
     );
   }
   
-  if (!user) {
+  if (error || !user) {
     return (
       <Sidebar>
-        <div className="min-h-screen bg-background flex items-center justify-center" dir="rtl">
-          <Card className="p-8 text-center">
-            <XCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-            <h2 className="text-xl font-bold mb-2">المستخدم غير موجود</h2>
-            <Button onClick={() => navigate('/admin/users')}>العودة للقائمة</Button>
+        <div className="min-h-screen bg-background flex items-center justify-center p-4" dir={isRTL ? 'rtl' : 'ltr'}>
+          <Card className="max-w-md w-full p-8 text-center space-y-5">
+            <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto">
+              <AlertTriangle className="h-7 w-7 text-red-600" strokeWidth={1.5} aria-hidden="true" />
+            </div>
+            <h2 className="text-lg font-bold text-slate-800 dark:text-white">
+              {isRTL ? 'فشل في تحميل بيانات المستخدم' : 'Failed to load user data'}
+            </h2>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-1">
+              <Button onClick={() => fetchUser()} className="w-full sm:w-auto">
+                <RefreshCw className="h-4 w-4 me-1.5" strokeWidth={1.5} aria-hidden="true" />
+                {isRTL ? 'إعادة المحاولة' : 'Retry'}
+              </Button>
+              <Button variant="outline" onClick={() => navigate('/admin/users')} className="w-full sm:w-auto">
+                <ArrowLeft className="h-4 w-4 me-1.5 rtl:rotate-180" strokeWidth={1.5} aria-hidden="true" />
+                {isRTL ? 'العودة للقائمة' : 'Back to list'}
+              </Button>
+            </div>
           </Card>
         </div>
       </Sidebar>

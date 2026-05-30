@@ -13,7 +13,8 @@ import {
   User, Edit, Star, Download, Sun, Moon, Globe, GraduationCap,
   ChevronRight, ChevronLeft, Key, UserX, UserCheck, Trash2, Send,
   Calendar, CheckCircle, Sparkles, ThumbsUp, Trophy,
-  MoreVertical, Eye, BarChart3, Heart, Medal, ClipboardList, ScrollText
+  MoreVertical, Eye, BarChart3, Heart, Medal, ClipboardList, ScrollText,
+  RefreshCw, AlertTriangle
 } from 'lucide-react';
 import { StatCard } from '../components/student-profile/ProfileComponents';
 import { OverviewTab, AcademicTab, TalentsTab, BehaviourTab, ActivitiesTab, PlansTab, LongitudinalTab } from '../components/student-profile/StudentTabsContent';
@@ -36,7 +37,7 @@ export default function StudentProfilePage() {
   const hook = useStudentProfile();
   const {
     isRTL, isDark, toggleTheme, toggleLanguage, navigate,
-    student, loading, rolePrefix, isTeacher,
+    student, loading, error, fetchStudent, rolePrefix, isTeacher,
     activeTab, setActiveTab,
     resolvedClassName, resolvedClassId,
     attendanceRate, loadingAttendance, homeworkRate, loadingHomework,
@@ -87,17 +88,27 @@ export default function StudentProfilePage() {
     );
   }
 
-  if (!student) {
+  if (error || !student) {
     return (
       <div className="flex min-h-screen bg-background">
         <Sidebar />
-        <div className="flex-1 flex items-center justify-center">
-          <Card className="p-8 text-center max-w-md">
-            <User className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
-            <p className="text-muted-foreground">{t('studentNotFound')}</p>
-            <Button variant="outline" className="mt-4" onClick={handleBack}>
-              <BackArrow className="h-4 w-4 me-2" /> {t('goBack')}
-            </Button>
+        <div className="flex-1 flex items-center justify-center p-4">
+          <Card className="p-8 text-center max-w-md w-full space-y-5">
+            <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto">
+              <AlertTriangle className="h-7 w-7 text-red-600" strokeWidth={1.5} aria-hidden="true" />
+            </div>
+            <p className="text-base font-semibold text-foreground">
+              {error ? t('errorLoadingStudentData') : t('studentNotFound')}
+            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <Button onClick={() => fetchStudent()} className="w-full sm:w-auto">
+                <RefreshCw className="h-4 w-4 me-2" strokeWidth={1.5} aria-hidden="true" />
+                {t('retry')}
+              </Button>
+              <Button variant="outline" onClick={handleBack} className="w-full sm:w-auto">
+                <BackArrow className="h-4 w-4 me-2" /> {t('goBack')}
+              </Button>
+            </div>
           </Card>
         </div>
       </div>

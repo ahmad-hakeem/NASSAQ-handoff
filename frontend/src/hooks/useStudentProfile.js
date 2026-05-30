@@ -20,6 +20,7 @@ export function useStudentProfile() {
 
   const [student, setStudent] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({});
   const [activeTab, setActiveTab] = useState('overview');
@@ -106,6 +107,7 @@ export function useStudentProfile() {
 
   const fetchStudent = useCallback(async () => {
     setLoading(true);
+    setError(false);
     try {
       const [studentRes, classesRes] = await Promise.all([
         api.get(`/students/${studentId}`, { headers }),
@@ -117,6 +119,7 @@ export function useStudentProfile() {
       setClasses(Array.isArray(classesRes.data) ? classesRes.data : []);
     } catch (e) {
       console.error('Error loading student data:', e);
+      setError(true);
       nassaqError(t('errorLoadingStudentData'));
     } finally {
       setLoading(false);
@@ -652,7 +655,7 @@ export function useStudentProfile() {
   return {
     studentId, navigate, user, isRTL, isDark, toggleTheme, toggleLanguage, nassaqConfirm, nassaqError, nassaqWarning,
     classNameFromState, rolePrefix, isTeacher, headers,
-    student, loading, saving, formData, setFormData, activeTab, setActiveTab, classes,
+    student, loading, error, saving, formData, setFormData, activeTab, setActiveTab, classes,
     editProfileOpen, setEditProfileOpen,
     attendanceSummary, loadingAttendance, homeworkRate, loadingHomework,
     riskData, loadingRisk, remedialPlan, enrichmentPlan, loadingRemedial, loadingEnrichment,
