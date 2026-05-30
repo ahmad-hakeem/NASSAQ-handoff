@@ -104,6 +104,53 @@ webpackConfig.devServer = (devServerConfig) => {
   devServerConfig.port = 5000;
   devServerConfig.allowedHosts = "all";
 
+  // COMPAT: react-scripts 5.0.1 emits a webpack-dev-server v4 config that uses
+  // the `onBeforeSetupMiddleware` / `onAfterSetupMiddleware` hooks. This project
+  // pins webpack-dev-server to v5 (security resolution), which removed those
+  // hooks in favour of a single `setupMiddlewares(middlewares, devServer)` and
+  // hard-fails schema validation if the old keys are present:
+  //   "options has an unknown property 'onAfterSetupMiddleware'".
+  // We translate the two legacy hooks into the v5 API and strip the old keys so
+  // CRA's dev middleware (eval-source-map, proxy setup, served-path redirect,
+  // no-op service worker) keeps working without downgrading webpack-dev-server.
+  const legacyBefore = devServerConfig.onBeforeSetupMiddleware;
+  const legacyAfter = devServerConfig.onAfterSetupMiddleware;
+  delete devServerConfig.onBeforeSetupMiddleware;
+  delete devServerConfig.onAfterSetupMiddleware;
+
+  // COMPAT: webpack-dev-server v5 dropped the top-level `https` option in favour
+  // of `server: { type: 'https', options }`. react-scripts 5.0.1 still emits
+  // `https`, which v5 rejects as an unknown property. Translate it and strip the
+  // legacy key. The Replit preview terminates TLS upstream, so the dev server
+  // itself runs plain HTTP unless HTTPS is explicitly requested.
+  if ("https" in devServerConfig) {
+    const httpsValue = devServerConfig.https;
+    delete devServerConfig.https;
+    if (httpsValue && typeof httpsValue === "object") {
+      devServerConfig.server = { type: "https", options: httpsValue };
+    } else if (httpsValue === true) {
+      devServerConfig.server = "https";
+    } else {
+      devServerConfig.server = "http";
+    }
+  }
+
+  if (legacyBefore || legacyAfter) {
+    const craSetupMiddlewares = devServerConfig.setupMiddlewares;
+    devServerConfig.setupMiddlewares = (middlewares, devServer) => {
+      if (typeof legacyBefore === "function") {
+        legacyBefore(devServer);
+      }
+      if (typeof craSetupMiddlewares === "function") {
+        middlewares = craSetupMiddlewares(middlewares, devServer);
+      }
+      if (typeof legacyAfter === "function") {
+        legacyAfter(devServer);
+      }
+      return middlewares;
+    };
+  }
+
   // Replit preview is an iframe-proxied (mTLS) tunnel that does not relay
   // WebSocket upgrade frames on custom paths reliably — webpack-dev-server's
   // HMR client errored with "Invalid frame header" on every reconnect and
