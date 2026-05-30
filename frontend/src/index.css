@@ -238,6 +238,12 @@
         scrollbar-width: thin;
         scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
     }
+
+    /* Hide the redundant Radix overlay scrollbar (ghost) inside the sidebar
+       only — the native viewport scrollbar above is the intended white one. */
+    .sidebar-scrollbar [data-radix-scroll-area-scrollbar] {
+        display: none;
+    }
 }
 
 /* ═══════════════ Mobile Enhancements ═══════════════ */
