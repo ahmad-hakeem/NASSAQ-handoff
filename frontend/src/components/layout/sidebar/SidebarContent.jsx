@@ -71,60 +71,123 @@ export default function SidebarContent({
   return (
     <div className="flex flex-col h-full">
       <CommandPalette />
-      {/* Logo */}
-      <div className="p-4 flex flex-col items-center">
-        <div className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'} w-full`}>
-          {!collapsed && (
+
+      {/* ── Top area ── */}
+      {collapsed ? (
+        /* Collapsed: clean vertical stack, everything centered */
+        <div className="flex flex-col items-center gap-1 py-3 px-2">
+          {/* Logo */}
+          <Link
+            to="/"
+            className="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-white/10 transition-colors flex-shrink-0"
+          >
+            <img src={LOGO_WHITE} alt="نَسَّق" className="h-8 w-8 rounded-lg object-contain" />
+          </Link>
+
+          {/* Expand toggle */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleCollapsed}
+            className="text-white/70 hover:text-white hover:bg-white/10 hidden lg:flex w-11 h-11"
+            data-testid="sidebar-collapse-btn"
+            title={t('expandSidebar') || 'توسيع الشريط الجانبي'}
+          >
+            {isRTL ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+          </Button>
+
+          {/* Settings — platform_admin only */}
+          {user?.role === 'platform_admin' && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => { onNavigate('/settings'); onCloseMobile(); }}
+              className={`text-white/70 hover:text-white hover:bg-white/10 w-11 h-11 ${
+                locationPathname === '/settings' ? 'bg-white/15 text-white' : ''
+              }`}
+              data-testid="sidebar-settings-btn"
+              title={t('systemSettings')}
+            >
+              <Settings className="h-5 w-5" />
+            </Button>
+          )}
+
+          {/* Role switcher */}
+          {availableRoles.length > 1 && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onOpenRoleSwitcher}
+              className="text-white/70 hover:text-white hover:bg-white/10 w-11 h-11"
+              data-testid="sidebar-role-switch-btn"
+              title={t('switchRole')}
+            >
+              <ArrowLeftRight className="h-5 w-5" />
+            </Button>
+          )}
+
+          {/* Command palette — independent_teacher only */}
+          {effectiveRole === 'independent_teacher' && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => window.dispatchEvent(new CustomEvent('nassaq:open-command-palette'))}
+              className="text-white/70 hover:text-white hover:bg-white/10 w-11 h-11"
+              data-testid="sidebar-cmdk-btn"
+              title={t('cmdkOpen')}
+            >
+              <Search className="h-5 w-5" />
+            </Button>
+          )}
+        </div>
+      ) : (
+        /* Expanded: logo row + inline controls */
+        <div className="p-4">
+          <div className="flex items-center justify-between w-full">
             <Link to="/" className="flex items-center gap-2">
               <img src={LOGO_WHITE} alt="نَسَّق" className="h-10 w-auto rounded-xl" />
               <BetaBadge />
             </Link>
-          )}
-          {collapsed && (
-            <Link to="/" className="flex-shrink-0">
-              <img src={LOGO_WHITE} alt="نَسَّق" className="h-8 w-8 rounded-lg object-contain" />
-            </Link>
-          )}
-          <div className="flex items-center gap-1">
-            {effectiveRole === 'independent_teacher' && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => window.dispatchEvent(new CustomEvent('nassaq:open-command-palette'))}
-                className="text-white/70 hover:text-white hover:bg-white/10"
-                data-testid="sidebar-cmdk-btn"
-                title={t('cmdkOpen')}
-              >
-                <Search className="h-5 w-5" />
-              </Button>
-            )}
-            {availableRoles.length > 1 && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onOpenRoleSwitcher}
-                className="text-white/70 hover:text-white hover:bg-white/10"
-                data-testid="sidebar-role-switch-btn"
-                title={t('switchRole')}
-              >
-                <ArrowLeftRight className="h-5 w-5" />
-              </Button>
-            )}
-            {user?.role === 'platform_admin' && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => { onNavigate('/settings'); onCloseMobile(); }}
-                className={`text-white/70 hover:text-white hover:bg-white/10 ${
-                  locationPathname === '/settings' ? 'bg-white/15 text-white' : ''
-                }`}
-                data-testid="sidebar-settings-btn"
-                title={t('systemSettings')}
-              >
-                <Settings className="h-5 w-5" />
-              </Button>
-            )}
-            {!collapsed && (
+
+            <div className="flex items-center gap-1">
+              {effectiveRole === 'independent_teacher' && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => window.dispatchEvent(new CustomEvent('nassaq:open-command-palette'))}
+                  className="text-white/70 hover:text-white hover:bg-white/10"
+                  data-testid="sidebar-cmdk-btn"
+                  title={t('cmdkOpen')}
+                >
+                  <Search className="h-5 w-5" />
+                </Button>
+              )}
+              {availableRoles.length > 1 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onOpenRoleSwitcher}
+                  className="text-white/70 hover:text-white hover:bg-white/10"
+                  data-testid="sidebar-role-switch-btn"
+                  title={t('switchRole')}
+                >
+                  <ArrowLeftRight className="h-5 w-5" />
+                </Button>
+              )}
+              {user?.role === 'platform_admin' && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => { onNavigate('/settings'); onCloseMobile(); }}
+                  className={`text-white/70 hover:text-white hover:bg-white/10 ${
+                    locationPathname === '/settings' ? 'bg-white/15 text-white' : ''
+                  }`}
+                  data-testid="sidebar-settings-btn"
+                  title={t('systemSettings')}
+                >
+                  <Settings className="h-5 w-5" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -134,37 +197,17 @@ export default function SidebarContent({
               >
                 {isRTL ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
               </Button>
-            )}
+            </div>
           </div>
         </div>
-
-        {collapsed && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onToggleCollapsed}
-            className="text-white/70 hover:text-white hover:bg-white/10 mt-2 hidden lg:flex"
-            data-testid="sidebar-collapse-btn"
-          >
-            {isRTL ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
-          </Button>
-        )}
-
-        {collapsed && user && (
-          <div className="mt-3 text-center">
-            <p className="text-xs font-medium text-white truncate max-w-[60px]">
-              {user.full_name?.split(' ')[0]}
-            </p>
-            <p className="text-[10px] text-white/50 truncate max-w-[60px]">
-              {getRoleLabel(user.role, isRTL)}
-            </p>
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Menu Items */}
-      <ScrollArea className="flex-1 px-3" dir={isRTL ? 'rtl' : 'ltr'}>
-        <nav className="space-y-1 py-4" dir={isRTL ? 'rtl' : 'ltr'}>
+      <ScrollArea
+        className={`flex-1 px-2 sidebar-scrollbar${collapsed ? ' collapsed' : ''}`}
+        dir={isRTL ? 'rtl' : 'ltr'}
+      >
+        <nav className={`space-y-1 py-2${collapsed ? '' : ' px-1'}`} dir={isRTL ? 'rtl' : 'ltr'}>
           {menuItems.map((item) => {
             const hasSubItems = item.subItems && item.subItems.length > 0;
             const isGroupExpanded = expandedGroups[item.href];
@@ -213,9 +256,10 @@ export default function SidebarContent({
                 onClick={onCloseMobile}
                 data-testid={`sidebar-link-${item.href.replace(/\//g, '-')}`}
                 data-tour={item.dataTour}
-                className={`sidebar-item ${
+                className={`sidebar-item relative ${collapsed ? 'justify-center px-0 py-3' : ''} ${
                   isActive(item.href) ? 'sidebar-item-active' : 'sidebar-item-inactive'
                 }`}
+                title={collapsed ? item.label : undefined}
               >
                 <item.icon className="h-5 w-5 flex-shrink-0" />
                 {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
@@ -315,16 +359,14 @@ export default function SidebarContent({
       )}
 
       {collapsed && user && (
-        <div className="p-3 border-t border-white/10 space-y-2">
+        <div className="py-3 px-2 border-t border-white/10 flex flex-col items-center gap-1">
           {isSwitchedRole && (
-            <div className="w-full flex justify-center">
-              <div className="w-3 h-3 rounded-full bg-brand-turquoise animate-pulse" title={t('switchedRole')} />
-            </div>
+            <div className="w-2 h-2 rounded-full bg-brand-turquoise animate-pulse mb-1" title={t('switchedRole')} />
           )}
           <button
             type="button"
             onClick={() => { onNavigate('/account/settings'); onCloseMobile(); }}
-            className="w-full flex justify-center rounded-lg p-1 hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-brand-turquoise/60 transition-colors"
+            className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-brand-turquoise/60 transition-colors"
             title={t('accountSettings')}
             aria-label={t('accountSettings')}
             data-testid="sidebar-footer-account-collapsed"
@@ -342,7 +384,7 @@ export default function SidebarContent({
             size="icon"
             onClick={onLogout}
             disabled={loggingOut}
-            className="w-full text-red-300/70 hover:text-red-200 hover:bg-red-500/20"
+            className="w-11 h-11 text-red-300/70 hover:text-red-200 hover:bg-red-500/20 rounded-xl"
             title={t('logout')}
             aria-label={t('logout')}
             data-testid="logout-btn-collapsed"
