@@ -39,6 +39,8 @@ import {
   Clock,
   FileText,
   Shield,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 
 
@@ -141,6 +143,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
   const [options, setOptions] = useState({
     subjects: [], grades: [], degrees: [], ranks: [], contractTypes: [], nationalities: []
   });
+  const [subjectsError, setSubjectsError] = useState(false);
 
   useEffect(() => {
     if (open) fetchOptions();
@@ -150,9 +153,11 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
 
   const fetchOptions = async () => {
     setLoading(true);
+    setSubjectsError(false);
+    let subjectsFailed = false;
     try {
       const [subjectsRes, gradesRes, degreesRes, ranksRes, contractsRes, nationsRes] = await Promise.all([
-        apiClient.get('/teachers/options/subjects').catch(() => ({ data: { subjects: [] } })),
+        apiClient.get('/teachers/options/subjects').catch(() => { subjectsFailed = true; return { data: { subjects: [] } }; }),
         apiClient.get('/teachers/options/grades').catch(() => ({ data: { grades: [] } })),
         apiClient.get('/teachers/options/academic-degrees').catch(() => ({ data: { degrees: [] } })),
         apiClient.get('/teachers/options/teacher-ranks').catch(() => ({ data: { ranks: [] } })),
@@ -167,8 +172,9 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
         contractTypes: contractsRes.data.types || [],
         nationalities: nationsRes.data.nationalities || [],
       });
+      setSubjectsError(subjectsFailed);
     } catch (error) {
-      console.error('Error fetching options:', error);
+      setSubjectsError(true);
     } finally {
       setLoading(false);
     }
@@ -406,6 +412,28 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                 <SectionHeader icon={BookOpen} title={t('subjectsGrades')} subtitle={t('selectTeachingSubjectsAndGrades')} color="purple" />
 
                 <div className="space-y-4">
+                  {subjectsError ? (
+                    <div
+                      className="flex flex-col items-center gap-3 rounded-lg border-2 border-red-200 bg-red-50 p-6 text-center dark:border-red-900 dark:bg-red-950/30"
+                      data-testid="subjects-load-error"
+                    >
+                      <AlertCircle className="h-7 w-7 text-red-500" strokeWidth={1.5} aria-hidden="true" />
+                      <p className="text-sm font-medium text-red-700 dark:text-red-300">{t('subjectsLoadError')}</p>
+                      <Button type="button" variant="outline" size="sm" className="gap-1.5 rounded-lg" onClick={fetchOptions}>
+                        <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+                        {t('retry')}
+                      </Button>
+                    </div>
+                  ) : (options.subjects?.length || 0) === 0 ? (
+                    <div
+                      className="flex flex-col items-center gap-3 rounded-lg border-2 border-amber-200 bg-amber-50 p-6 text-center dark:border-amber-900 dark:bg-amber-950/30"
+                      data-testid="subjects-empty-state"
+                    >
+                      <BookOpen className="h-7 w-7 text-amber-500" strokeWidth={1.5} aria-hidden="true" />
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{t('noSubjectsConfigured')}</p>
+                    </div>
+                  ) : (
+                  <>
                   <div>
                     <Label className="mb-2 block text-sm font-medium">{t('subjects2')} <span className="text-red-500">*</span></Label>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
@@ -431,6 +459,8 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                       </SelectContent>
                     </Select>
                   </FormField>
+                  </>
+                  )}
 
                   <div>
                     <Label className="mb-2 block text-sm font-medium">{t('grades2')} <span className="text-red-500">*</span></Label>
@@ -604,7 +634,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
             <div className="flex gap-2">
               <Button variant="ghost" size="sm" className="rounded-lg h-9" onClick={() => handleCloseDialog(false)} disabled={submitting}>{t('cancel')}</Button>
               {currentStep < 5 ? (
-                <Button size="sm" onClick={handleNext} className="bg-green-600 hover:bg-green-700 gap-1.5 rounded-lg h-9 px-5">
+                <Button size="sm" onClick={handleNext} disabled={currentStep === 3 && (subjectsError || (options.subjects?.length || 0) === 0)} className="bg-green-600 hover:bg-green-700 gap-1.5 rounded-lg h-9 px-5">
                   {t('next')}
                   {isRTL ? <ArrowLeft className="h-3.5 w-3.5" /> : <ArrowRight className="h-3.5 w-3.5" />}
                 </Button>

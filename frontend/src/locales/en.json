@@ -2992,6 +2992,8 @@
   "selectOneOrMoreStudents": "Select one or more students",
   "selectPeriod": "Select period",
   "selectPrimarySubject": "Select primary subject",
+  "subjectsLoadError": "Could not load the subjects list. Please try again.",
+  "noSubjectsConfigured": "No subjects have been added for your school yet. Please add subjects from School Settings before adding a new teacher.",
   "selectRank": "Select rank",
   "selectRecipients": "Select Recipients",
   "selectRegion": "Select region",

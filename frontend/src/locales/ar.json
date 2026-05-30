@@ -2994,6 +2994,8 @@
   "selectOneOrMoreStudents": "اختر طالباً أو أكثر",
   "selectPeriod": "اختر الحصة",
   "selectPrimarySubject": "اختر المادة الأساسية",
+  "subjectsLoadError": "تعذر تحميل قائمة المواد الدراسية. يرجى إعادة المحاولة.",
+  "noSubjectsConfigured": "لم تتم إضافة مواد دراسية لمدرستك بعد. يرجى إضافة المواد من إعدادات المدرسة أولاً قبل إضافة معلم جديد.",
   "selectRank": "اختر الرتبة",
   "selectRecipients": "اختر المستلمين",
   "selectRegion": "اختر المنطقة",

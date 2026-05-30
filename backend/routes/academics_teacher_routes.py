@@ -58,31 +58,44 @@ async def get_teacher_subjects_options(current_user: dict = Depends(get_current_
 
     Sources, in order of preference:
       1. School-scoped + global subjects from `subjects` table
-      2. Reference subjects from `reference_subjects`
-      3. A built-in fallback list of standard Saudi subjects so the UI is
-         never empty (the previous behaviour returned [] and broke the
-         add-teacher wizard for any tenant whose tables hadn't been seeded).
+      2. Reference subjects from `reference_subjects` (the standard catalog)
+
+    Returns a (possibly empty) list under ``subjects``. When the school has
+    no subjects of its own and the reference catalog is empty, an empty list
+    is returned so the wizard can show a clear "add subjects first" empty
+    state instead of fabricating display-only rows with non-UUID ids that
+    would later fail validation on teacher creation.
     """
     tenant_id = current_user.get("tenant_id")
 
-    collected: list = []
-    if tenant_id:
-        # School-scoped + global subjects from the main subjects table
-        collected = await gd_find(
-            db.session,
-            "subjects",
-            {
-                "$or": [
-                    {"school_id": tenant_id},
-                    {"is_global": True},
-                ],
-                "is_active": True,
-            },
-            limit=300,
-        )
+    try:
+        collected: list = []
+        if tenant_id:
+            # School-scoped + global subjects from the main subjects table
+            collected = await gd_find(
+                db.session,
+                "subjects",
+                {
+                    "$or": [
+                        {"school_id": tenant_id},
+                        {"is_global": True},
+                    ],
+                    "is_active": True,
+                },
+                limit=300,
+            )
 
-    if not collected:
-        collected = await gd_find(db.session, "reference_subjects", {"is_active": True}, limit=300)
+        if not collected:
+            collected = await gd_find(db.session, "reference_subjects", {"is_active": True}, limit=300)
+    except Exception as exc:
+        logger.warning(
+            "Failed to load teacher subject options for tenant %s: %s",
+            tenant_id, exc,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="تعذر تحميل قائمة المواد الدراسية. يرجى المحاولة مرة أخرى.",
+        )
 
     # Deduplicate by Arabic name and normalise the shape
     seen_names = set()
@@ -99,26 +112,6 @@ async def get_teacher_subjects_options(current_user: dict = Depends(get_current_
                 "code": s.get("code", ""),
                 "color": s.get("color", "#3B82F6"),
             })
-
-    if not unique_subjects:
-        # Built-in safety net so the wizard is never blank
-        FALLBACK = [
-            ("math", "الرياضيات", "Mathematics"),
-            ("arabic", "اللغة العربية", "Arabic Language"),
-            ("english", "اللغة الإنجليزية", "English Language"),
-            ("science", "العلوم", "Science"),
-            ("social", "الدراسات الاجتماعية", "Social Studies"),
-            ("islamic", "التربية الإسلامية", "Islamic Studies"),
-            ("quran", "القرآن الكريم", "Quran"),
-            ("pe", "التربية البدنية", "Physical Education"),
-            ("art", "التربية الفنية", "Art"),
-            ("computer", "الحاسب الآلي", "Computer Science"),
-        ]
-        unique_subjects = [
-            {"id": code, "name": ar, "name_ar": ar, "name_en": en,
-             "code": code, "color": "#3B82F6"}
-            for code, ar, en in FALLBACK
-        ]
 
     return {"subjects": unique_subjects}
 
