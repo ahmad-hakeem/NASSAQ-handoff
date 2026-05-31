@@ -90,3 +90,9 @@ id = "KGNhlWU_KKW9n96GJj_5O"
 uri = "file://reports/platform-admin-qa-audit-2026-05-31.md"
 type = "text"
 title = "Platform Admin QA Audit Report"
+
+[[outputs]]
+id = "Gj2hPFRg6MPWf_VOBtQ1R"
+uri = "file://.local/it-audit/IT_QA_REPORT.md"
+type = "text"
+title = "Independent Teacher — End-to-End QA Audit Report"
