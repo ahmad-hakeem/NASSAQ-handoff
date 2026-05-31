@@ -483,16 +483,16 @@ ${API_URL}/login
               <AlertTriangle className="h-7 w-7 text-red-600" strokeWidth={1.5} aria-hidden="true" />
             </div>
             <h2 className="text-lg font-bold text-slate-800 dark:text-white">
-              {isRTL ? 'فشل في تحميل بيانات المستخدم' : 'Failed to load user data'}
+              {t('failedToLoad')}
             </h2>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-1">
               <Button onClick={() => fetchUser()} className="w-full sm:w-auto">
                 <RefreshCw className="h-4 w-4 me-1.5" strokeWidth={1.5} aria-hidden="true" />
-                {isRTL ? 'إعادة المحاولة' : 'Retry'}
+                {t('retry')}
               </Button>
               <Button variant="outline" onClick={() => navigate('/admin/users')} className="w-full sm:w-auto">
                 <ArrowLeft className="h-4 w-4 me-1.5 rtl:rotate-180" strokeWidth={1.5} aria-hidden="true" />
-                {isRTL ? 'العودة للقائمة' : 'Back to list'}
+                {t('backToList')}
               </Button>
             </div>
           </Card>

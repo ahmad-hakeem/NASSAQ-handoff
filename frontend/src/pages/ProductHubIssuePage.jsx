@@ -11,6 +11,7 @@ import { Progress } from '../components/ui/progress';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Separator } from '../components/ui/separator';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from '../contexts/ThemeContext';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
@@ -35,6 +36,7 @@ const authHeaders = () => {
 export function ProductHubIssuePage() {
   const { issueId } = useParams();
   const { user } = useAuth();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [issue, setIssue] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -203,15 +205,15 @@ export function ProductHubIssuePage() {
               <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto">
                 <AlertTriangle className="h-7 w-7 text-red-600" strokeWidth={1.5} aria-hidden="true" />
               </div>
-              <p className="font-semibold text-lg text-slate-800 dark:text-white">فشل في تحميل التحدي</p>
+              <p className="font-semibold text-lg text-slate-800 dark:text-white">{t('failedToLoad')}</p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-1">
                 <Button onClick={() => fetchIssue()} className="w-full sm:w-auto">
                   <RefreshCw className="h-4 w-4 me-1.5" strokeWidth={1.5} aria-hidden="true" />
-                  إعادة المحاولة
+                  {t('retry')}
                 </Button>
                 <Button variant="outline" onClick={() => navigate('/admin/product-hub')} className="w-full sm:w-auto">
                   <ArrowRight className="h-4 w-4 me-1.5" strokeWidth={1.5} aria-hidden="true" />
-                  العودة إلى قائمة التحديات
+                  {t('backToList')}
                 </Button>
               </div>
             </CardContent>
