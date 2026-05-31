@@ -540,7 +540,19 @@ def _build_workbook(sheets: Dict[str, List[Dict[str, Any]]]) -> bytes:
     formatting, frozen header row, and per-sheet column widths.
     """
     buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
+    # Disable xlsxwriter's automatic string-to-formula / string-to-url
+    # conversion so a roster name like ``=HYPERLINK(...)`` is written as
+    # a literal text cell instead of an evaluated formula when the
+    # workbook is opened in Excel / LibreOffice (CSV/XLSX injection
+    # hardening — parity with the analytics export).
+    with pd.ExcelWriter(
+        buf,
+        engine="xlsxwriter",
+        engine_kwargs={"options": {
+            "strings_to_formulas": False,
+            "strings_to_urls": False,
+        }},
+    ) as writer:
         workbook = writer.book
         header_fmt = workbook.add_format({
             "bold": True,

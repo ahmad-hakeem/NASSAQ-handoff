@@ -113,6 +113,13 @@ def is_generic_name(name: Optional[str]) -> bool:
     return False
 
 
+# Spreadsheet formula-injection metacharacters. A real personal name
+# never begins with one of these; rejecting them here stops a payload
+# like ``=cmd|calc`` from being stored and later emitted as a live
+# formula by an XLSX / CSV export.
+_FORMULA_INJECTION_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
 def validate_personal_name(name: Optional[str]) -> tuple:
     if not name or not name.strip():
         return False, "الاسم الشخصي مطلوب"
@@ -121,6 +128,9 @@ def validate_personal_name(name: Optional[str]) -> tuple:
 
     if len(cleaned) < 3:
         return False, "الاسم قصير جداً — يجب أن يكون 3 أحرف على الأقل"
+
+    if cleaned[0] in _FORMULA_INJECTION_CHARS:
+        return False, "الاسم يحتوي على رمز غير مسموح به"
 
     if is_generic_name(cleaned):
         return False, "يجب استخدام اسمك الشخصي الحقيقي بدلاً من اسم عام أو وظيفي"

@@ -357,10 +357,20 @@ async def get_class_students(
             if tenant:
                 query["school_id"] = tenant
 
-    students = await gd_find(db.session, "students", query, limit=1000)
+    # §8 inv. 3 — a by-id roster read MUST 404 (never return 200 []) for a
+    # class the caller cannot see, so the endpoint does not silently
+    # confirm or deny the existence of a foreign-workspace / non-existent
+    # class. Scope the existence check to the same school_id the student
+    # query is pinned to.
+    _class_scope = {"id": class_id}
+    if query.get("school_id"):
+        _class_scope["school_id"] = query["school_id"]
+    cls = await gd_find_one(db.session, "classes", _class_scope)
+    if not cls:
+        raise HTTPException(status_code=404, detail="الفصل غير موجود")
+    class_name = cls.get("name")
 
-    cls = await gd_find_one(db.session, "classes", {"id": class_id})
-    class_name = cls.get("name") if cls else None
+    students = await gd_find(db.session, "students", query, limit=1000)
 
     # IT §6.7 — cross-workspace collaborators receive a strictly
     # downscoped roster: only the minimum classroom-teaching fields.

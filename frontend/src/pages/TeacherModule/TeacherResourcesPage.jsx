@@ -35,8 +35,8 @@ export default function TeacherResourcesPage() {
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [resources, setResources] = useState([]);
-  const [selectedClass, setSelectedClass] = useState('');
-  const [selectedSubject, setSelectedSubject] = useState('');
+  const [selectedClass, setSelectedClass] = useState('all');
+  const [selectedSubject, setSelectedSubject] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('all');
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -130,8 +130,8 @@ export default function TeacherResourcesPage() {
     const matchesSearch = r.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          r.description?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType = activeTab === 'all' || r.type === activeTab;
-    const matchesClass = !selectedClass || r.class_ids?.includes(selectedClass);
-    const matchesSubject = !selectedSubject || r.subject_id === selectedSubject;
+    const matchesClass = selectedClass === 'all' || r.class_ids?.includes(selectedClass);
+    const matchesSubject = selectedSubject === 'all' || r.subject_id === selectedSubject;
     
     return matchesSearch && matchesType && matchesClass && matchesSubject;
   });
@@ -197,7 +197,7 @@ export default function TeacherResourcesPage() {
                 <SelectValue placeholder={t('allClasses')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">{t('allClasses')}</SelectItem>
+                <SelectItem value="all">{t('allClasses')}</SelectItem>
                 {classes.map(cls => (
                   <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
                 ))}
@@ -208,7 +208,7 @@ export default function TeacherResourcesPage() {
                 <SelectValue placeholder={t('allSubjects')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">{t('allSubjects')}</SelectItem>
+                <SelectItem value="all">{t('allSubjects')}</SelectItem>
                 {subjects.map(sub => (
                   <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
                 ))}
