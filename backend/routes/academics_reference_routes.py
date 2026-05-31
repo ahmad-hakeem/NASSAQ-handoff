@@ -166,12 +166,45 @@ async def get_reference_tracks(current_user: dict = Depends(get_current_user)):
     return tracks
 
 @router.get("/reference/subjects")
-async def get_reference_subjects(current_user: dict = Depends(get_current_user)):
-    """Get all reference subjects"""
+async def get_reference_subjects(
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get reference subjects (global curriculum catalog).
+
+    The `reference_subjects` table is shared platform-wide and may be
+    returned to any authenticated caller. When it is empty we fall back to
+    the tenant-owned `subjects` table; that fallback MUST be scoped to the
+    caller's own school. Previously the fallback ran an unscoped query and
+    leaked every tenant's (non-global) subjects to any authenticated user
+    — a cross-tenant information disclosure (threat_model.md). Platform
+    admins may preview a single school via X-School-Context; without an
+    override they receive the global catalog only (no cross-tenant fan-out).
+    """
     subjects = await gd_find(db.session, "reference_subjects", {"is_active": True}, limit=500)
-    if not subjects:
-        subjects = await gd_find(db.session, "subjects", {"is_active": True}, limit=100)
-    return subjects
+    if subjects:
+        return subjects
+
+    from utils.tenant_scope import resolve_school_id
+    from auth_scope import is_independent_teacher, independent_workspace_id
+    query = {"is_active": True}
+    if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
+        scoped = resolve_school_id(current_user, x_school_context)
+        if not scoped:
+            return []
+        query["school_id"] = scoped
+    else:
+        caller_tenant = (
+            (independent_workspace_id(current_user) if is_independent_teacher(current_user) else None)
+            or current_user.get("tenant_id")
+        )
+        if x_school_context is not None:
+            scoped = resolve_school_id(current_user, x_school_context)
+            caller_tenant = scoped or caller_tenant
+        if not caller_tenant:
+            return []
+        query["school_id"] = caller_tenant
+    return await gd_find(db.session, "subjects", query, limit=100)
 
 @router.get("/reference/teacher-ranks")
 async def get_reference_teacher_ranks(current_user: dict = Depends(get_current_user)):

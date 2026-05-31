@@ -157,7 +157,16 @@ async def get_academic_years(
         query["school_id"] = caller_tenant
 
     academic_years = await gd_find(db.session, "academic_years", query, order_by="start_date", desc_order=True, limit=100)
-    return [AcademicYearResponse(**normalize_academic_year(ay)) for ay in academic_years]
+    result = []
+    for ay in academic_years:
+        try:
+            result.append(AcademicYearResponse(**normalize_academic_year(ay)))
+        except Exception as e:
+            # A single malformed/legacy row (e.g. a cross-tenant row missing a
+            # required field in the platform-admin unscoped view) must not 500
+            # the whole list. Skip it and keep serving the rest.
+            logger.warning(f"Failed to serialize academic_year {ay.get('id', 'unknown')}: {e}")
+    return result
 
 @router.get("/academic-years/{academic_year_id}", response_model=AcademicYearResponse)
 async def get_academic_year(
@@ -317,12 +326,16 @@ async def get_terms(
         query["academic_year_id"] = academic_year_id
     
     terms = await gd_find(db.session, "terms", query, order_by="start_date", desc_order=True, limit=100)
-    normalized = []
+    result = []
     for t in terms:
         t["start_date"] = _normalize_date_str(t.get("start_date"))
         t["end_date"] = _normalize_date_str(t.get("end_date"))
-        normalized.append(t)
-    return [TermResponse(**t) for t in normalized]
+        try:
+            result.append(TermResponse(**t))
+        except Exception as e:
+            # Don't let one malformed/legacy row 500 the whole list.
+            logger.warning(f"Failed to serialize term {t.get('id', 'unknown')}: {e}")
+    return result
 
 @router.get("/terms/{term_id}", response_model=TermResponse)
 async def get_term(

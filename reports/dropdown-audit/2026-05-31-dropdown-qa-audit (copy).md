@@ -156,16 +156,3 @@ ranks, contract types, nationalities, teacher grades, `/classes/options/grades` 
 ---
 
 *First pass complete (data + scoping layer). Interactive UI pass and IT/principal coverage pending.*
-
----
-
-## 7. Resolution log (2026-05-31)
-
-| Finding | Status | Action |
-|---|---|---|
-| **HIGH-1** `/reference/subjects` cross-tenant leak | ✅ Fixed & verified | Fallback to the tenant-owned `subjects` table is now scoped to the caller's school (platform admin gets the global catalog only, no cross-tenant fan-out). Re-probe: every role now sees only its own 14 subjects, zero foreign tenants. |
-| **MED-1** `/academic-years` 500 for platform admin | ✅ Fixed & verified | Per-row serialization is now guarded so one malformed/legacy cross-tenant row can't 500 the list. Same guard applied to `/terms`. Re-probe: platform admin now `200` (n=47), school admin `200` (n=1). |
-| **LOW-1** inconsistent grade sources / empty `/grade-levels` | ✅ No change needed | The only direct `/grade-levels` consumer (`TeacherStudentsPage`) is gated to **independent teachers**, whose workspaces *do* populate `grade_levels` — so the source is correct there. No regular-school dropdown depends on the empty result; changing it would break IT. Left as-is intentionally. |
-| **LOW-2** empty year/term dropdowns | ✅ No change needed | The term `<Select>`s already render a localized placeholder item (`noTermSelected` / `selectTermPlaceholder`) when empty, and the year/term management views have explicit empty-state cards. No bare/broken popover exists. |
-| **LOW-3** teacher can enumerate full school roster | ⏳ Needs product decision | Same-tenant only (no cross-tenant leak) and likely intended for selectors. Restricting teacher `/students`/`/teachers` to assigned classes is an access-control change with real regression risk to teacher selector flows — deferred pending owner confirmation rather than changed unilaterally. |
-
