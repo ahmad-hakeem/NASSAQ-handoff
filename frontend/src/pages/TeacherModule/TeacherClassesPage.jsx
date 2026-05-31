@@ -478,7 +478,7 @@ export default function TeacherClassesPage() {
   const fetchWorkspaceSubjects = useCallback(async () => {
     if (!isIndependentTeacher) return;
     try {
-      const res = await api.get('/subjects').catch(() => ({ data: [] }));
+      const res = await api.get('/subjects');
       const subjects = Array.isArray(res.data) ? res.data : (res.data?.subjects || []);
       // Defensive filter: backend already excludes soft-deleted rows, but
       // belt-and-suspenders so a stale cache never surfaces a tombstoned
@@ -498,7 +498,7 @@ export default function TeacherClassesPage() {
   const fetchSubjectsForSettings = useCallback(async () => {
     setSubjectsLoading(true);
     try {
-      const res = await api.get('/subjects').catch(() => ({ data: [] }));
+      const res = await api.get('/subjects');
       const subjects = Array.isArray(res.data) ? res.data : (res.data?.subjects || []);
       setSubjectsForSettings(subjects.filter(s => s?.is_active !== false));
     } catch (err) {

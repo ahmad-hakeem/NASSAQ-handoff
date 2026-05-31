@@ -434,8 +434,8 @@ async def get_subjects(
         # the strict override validation when the caller actually sent
         # a header — otherwise `resolve_school_id` would 403 for IT.
         caller_tenant = (
-            current_user.get("tenant_id")
-            or (independent_workspace_id(current_user) if is_independent_teacher(current_user) else None)
+            (independent_workspace_id(current_user) if is_independent_teacher(current_user) else None)
+            or current_user.get("tenant_id")
         )
         if x_school_context is not None:
             scoped = resolve_school_id(current_user, x_school_context)
