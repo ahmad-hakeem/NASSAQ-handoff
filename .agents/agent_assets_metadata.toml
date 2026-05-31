@@ -96,3 +96,9 @@ id = "Gj2hPFRg6MPWf_VOBtQ1R"
 uri = "file://.local/it-audit/IT_QA_REPORT.md"
 type = "text"
 title = "Independent Teacher — End-to-End QA Audit Report"
+
+[[outputs]]
+id = "Ef1lQiZuMJGwUCzJL7GO2"
+uri = "file://reports/dropdown-audit/2026-05-31-dropdown-qa-audit.md"
+type = "text"
+title = "Dropdown QA Audit — First Pass (2026-05-31)"
