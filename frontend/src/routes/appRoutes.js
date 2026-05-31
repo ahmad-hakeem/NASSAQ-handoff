@@ -49,7 +49,6 @@ const TermsAndConditionsPage = lazy(() => import("../pages/TermsAndConditionsPag
 const AdminDashboard = lazy(() => import("../pages/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
 const SchoolDashboard = lazy(() => import("../pages/SchoolDashboard").then(m => ({ default: m.SchoolDashboard })));
 const TeacherDashboard = lazy(() => import("../pages/TeacherDashboard"));
-const ParentDashboard = lazy(() => import("../pages/ParentDashboard"));
 const PrincipalDashboard = lazy(() => import("../pages/PrincipalDashboard"));
 
 const TeachersPage = lazy(() => import("../pages/TeachersPage").then(m => ({ default: m.TeachersPage })));
