@@ -84,3 +84,9 @@ id = "wwj2_0vS_0DKiSpfJPgRv"
 uri = "file://.local/qa/task-706/02_master_schedule.png"
 type = "image"
 title = "الجدول المدرسي (سياق BUG-03 و BUG-05)"
+
+[[outputs]]
+id = "KGNhlWU_KKW9n96GJj_5O"
+uri = "file://reports/platform-admin-qa-audit-2026-05-31.md"
+type = "text"
+title = "Platform Admin QA Audit Report"
