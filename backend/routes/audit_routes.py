@@ -638,15 +638,30 @@ def setup_audit_routes(db, get_current_user, require_roles, UserRole, require_re
         except Exception as exc:
             logger.warning(f"mfa_audit_export: audit log failed: {exc}")
 
+        # Materialise every row INSIDE the request scope. Previously the
+        # query executed lazily from within the StreamingResponse generator,
+        # which runs AFTER the route returns — by then pg_session_middleware
+        # has already issued ``session.rollback()`` on the same request-scoped
+        # asyncpg connection, so the lazy ``execute`` raised
+        # "cannot perform operation: another operation is in progress" and the
+        # whole export 500'd. Fetching here binds the DB work to the live
+        # session; we then stream the already-encoded lines from memory. The
+        # result set is bounded (only ``action LIKE 'mfa.%'`` rows), so this is
+        # safe to hold in memory.
+        result = await db.session.execute(sql, params)
+        rows = result.mappings().all()
+
+        def _encode_row(row) -> bytes:
+            rec = dict(row)
+            # Make the row JSON-serialisable (datetime, JSONB).
+            ts = rec.get("timestamp")
+            if isinstance(ts, datetime):
+                rec["timestamp"] = ts.isoformat()
+            return (_json.dumps(rec, ensure_ascii=False, default=str) + "\n").encode("utf-8")
+
         async def _generator():
-            result = await db.session.execute(sql, params)
-            for row in result.mappings():
-                rec = dict(row)
-                # Make the row JSON-serialisable (datetime, JSONB).
-                ts = rec.get("timestamp")
-                if isinstance(ts, datetime):
-                    rec["timestamp"] = ts.isoformat()
-                yield (_json.dumps(rec, ensure_ascii=False, default=str) + "\n").encode("utf-8")
+            for row in rows:
+                yield _encode_row(row)
 
         return StreamingResponse(
             _generator(),

@@ -484,7 +484,13 @@ async def suspend_school(
     school_id: str,
     body: SchoolStatusChangeRequest,
     request: Request,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+    # Suspend is as destructive as its inverse — it flips the tenant to
+    # ``suspended`` AND disables every user account in it. It must carry the
+    # same fresh-MFA posture as ``activate_school``. When the global MFA
+    # kill switch (``MFA_ENFORCEMENT_DISABLED``) is engaged this dependency
+    # short-circuits to a no-op, so it is safe while MFA is paused.
+    _stepup: dict = Depends(require_recent_mfa()),
 ):
     """Suspend a school with reason - logs full audit trail"""
     school = await gd_find_one(db.session, "schools", {"id": school_id})
@@ -522,7 +528,10 @@ async def suspend_school(
             "reason": body.reason,
             "performed_by_email": current_user.get("email", ""),
             "school_name": school.get("name", ""),
-        }
+        },
+        actor_role=current_user.get("role"),
+        actor_email=current_user.get("email"),
+        actor_name=current_user.get("full_name"),
     )
 
     return {
@@ -590,7 +599,10 @@ async def activate_school(
             "reason": body.reason,
             "performed_by_email": current_user.get("email", ""),
             "school_name": school.get("name", ""),
-        }
+        },
+        actor_role=current_user.get("role"),
+        actor_email=current_user.get("email"),
+        actor_name=current_user.get("full_name"),
     )
 
     return {

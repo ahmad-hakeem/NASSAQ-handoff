@@ -209,7 +209,14 @@ class AuditLogEngine:
             entity_id=user_id,
             details=details,
             ip_address=kwargs.get("ip_address"),
-            user_agent=kwargs.get("user_agent")
+            user_agent=kwargs.get("user_agent"),
+            # Enrich the human-readable actor columns so auth.* entries are
+            # attributable at a glance. ``email`` is already passed by every
+            # call site; ``role``/``full_name`` are passed where the user row
+            # is in scope. Falls back to the explicit actor_* kwargs.
+            actor_role=kwargs.get("role") or kwargs.get("actor_role"),
+            actor_email=kwargs.get("email") or kwargs.get("actor_email"),
+            actor_name=kwargs.get("full_name") or kwargs.get("actor_name"),
         )
 
     async def log_data_change(

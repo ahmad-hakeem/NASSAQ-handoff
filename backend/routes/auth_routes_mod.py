@@ -234,6 +234,8 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
             tenant_id=user.get("tenant_id"),
             success=False,
             email=credentials.email,
+            role=user.get("role"),
+            full_name=user.get("full_name"),
             reason="invalid_password"
         )
         raise HTTPException(status_code=401, detail="بيانات الدخول غير صحيحة")
@@ -246,6 +248,8 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
             tenant_id=user.get("tenant_id"),
             success=False,
             email=credentials.email,
+            role=user.get("role"),
+            full_name=user.get("full_name"),
             reason="account_disabled"
         )
         raise HTTPException(status_code=401, detail="الحساب معطل")
@@ -257,6 +261,8 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
             tenant_id=user.get("tenant_id"),
             success=False,
             email=credentials.email,
+            role=user.get("role"),
+            full_name=user.get("full_name"),
             reason="account_locked"
         )
         raise HTTPException(status_code=401, detail="الحساب مقفل. يرجى التواصل مع الإدارة")
@@ -275,6 +281,8 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
                 tenant_id=user.get("tenant_id"),
                 success=False,
                 email=credentials.email,
+                role=user.get("role"),
+                full_name=user.get("full_name"),
                 reason="student_login_disabled",
             )
         except Exception as _audit_err:
@@ -310,6 +318,8 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
                     tenant_id=_ws_id,
                     success=False,
                     email=credentials.email,
+                    role=_maybe_user.get("role"),
+                    full_name=_maybe_user.get("full_name"),
                     reason="workspace_archived",
                 )
                 raise HTTPException(
@@ -502,7 +512,7 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
     # session is committed/closed by the middleware before the background task
     # would otherwise run, which corrupts the pooled connection.
     # Failure logs above remain synchronous to guarantee they're persisted.
-    async def _log_login_async(uid, tid, email):
+    async def _log_login_async(uid, tid, email, role=None, full_name=None):
         try:
             from db import async_session_factory
             from repositories import Repos
@@ -517,6 +527,8 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
                     tenant_id=tid,
                     success=True,
                     email=email,
+                    role=role,
+                    full_name=full_name,
                 )
                 try:
                     await gd_update_one(
@@ -531,7 +543,8 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
             logger.debug(f"Background login audit failed: {_e}")
 
     background_tasks.add_task(
-        _log_login_async, user_id, user.get("tenant_id"), credentials.email
+        _log_login_async, user_id, user.get("tenant_id"), credentials.email,
+        user.get("role"), user.get("full_name")
     )
     
     from engines.name_validation import is_generic_name
@@ -1011,6 +1024,8 @@ async def logout(
             tenant_id=current_user.get("tenant_id"),
             success=True,
             email=current_user.get("email"),
+            role=current_user.get("role"),
+            full_name=current_user.get("full_name"),
             ip_address=ip_address,
             user_agent=user_agent,
         )

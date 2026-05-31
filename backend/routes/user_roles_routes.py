@@ -539,6 +539,9 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
                 "user_id": user_id,
                 "performed_by": user_id,
                 "performed_by_name": user.get("full_name"),
+                "actor_role": from_role or user.get("role"),
+                "actor_email": user.get("email"),
+                "actor_name": user.get("full_name"),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "ip_address": client_ip,
                 "details": {
