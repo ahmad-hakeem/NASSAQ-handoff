@@ -1,3 +1,4 @@
+import { useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ChevronRight,
@@ -70,6 +71,30 @@ export default function SidebarContent({
   loggingOut,
 }) {
   const { toggleLanguage } = useTheme();
+
+  const scrollRef = useRef(null);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.classList.add('is-scrolling');
+    clearTimeout(el._scrollHideTimer);
+    el._scrollHideTimer = setTimeout(() => {
+      el.classList.remove('is-scrolling');
+    }, 800);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', handleScroll);
+      clearTimeout(el._scrollHideTimer);
+    };
+  }, [handleScroll]);
+
+
   return (
     <div className="flex flex-col h-full">
       <CommandPalette />
@@ -206,6 +231,7 @@ export default function SidebarContent({
 
       {/* Menu Items */}
       <div
+        ref={scrollRef}
         className={`flex-1 overflow-y-auto px-2 sidebar-scrollbar${collapsed ? ' collapsed' : ''}`}
         dir={isRTL ? 'rtl' : 'ltr'}
       >

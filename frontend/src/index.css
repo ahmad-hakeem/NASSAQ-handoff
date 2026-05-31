@@ -215,28 +215,47 @@
         @apply bg-brand-navy/30 rounded-full hover:bg-brand-navy/50;
     }
 
-    /* Sidebar dark scrollbar — slim, blends with navy background */
+    /* Sidebar scrollbar — white, hidden until hover/active-scroll, no arrow buttons */
     .sidebar-scrollbar::-webkit-scrollbar {
         width: 4px;
+    }
+
+    .sidebar-scrollbar::-webkit-scrollbar-button {
+        display: none;
+        height: 0;
+        width: 0;
     }
 
     .sidebar-scrollbar::-webkit-scrollbar-track {
         background: transparent;
     }
 
+    /* Hidden by default — transparent thumb */
     .sidebar-scrollbar::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.12);
+        background: transparent;
         border-radius: 9999px;
+        transition: background 0.2s ease;
     }
 
-    .sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
-        background: rgba(255, 255, 255, 0.22);
+    /* Reveal white thumb on hover */
+    .sidebar-scrollbar:hover::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.55);
     }
 
-    /* Firefox */
+    /* Reveal white thumb while actively scrolling */
+    .sidebar-scrollbar.is-scrolling::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.55);
+    }
+
+    /* Firefox — hidden by default, white on hover/scroll (Firefox doesn't support :hover on scrollbar-color, so we rely on the JS class) */
     .sidebar-scrollbar {
         scrollbar-width: thin;
-        scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+        scrollbar-color: transparent transparent;
+    }
+
+    .sidebar-scrollbar:hover,
+    .sidebar-scrollbar.is-scrolling {
+        scrollbar-color: rgba(255, 255, 255, 0.55) transparent;
     }
 }
 
