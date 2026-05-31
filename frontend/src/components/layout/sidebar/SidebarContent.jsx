@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
-import { ScrollArea } from '../../ui/scroll-area';
 import { BetaBadge } from '../../BetaDisclaimer';
 import CommandPalette from '../../teacher/CommandPalette';
 
@@ -203,8 +202,8 @@ export default function SidebarContent({
       )}
 
       {/* Menu Items */}
-      <ScrollArea
-        className={`flex-1 px-2 sidebar-scrollbar${collapsed ? ' collapsed' : ''}`}
+      <div
+        className={`flex-1 overflow-y-auto px-2 sidebar-scrollbar${collapsed ? ' collapsed' : ''}`}
         dir={isRTL ? 'rtl' : 'ltr'}
       >
         <nav className={`space-y-1 py-2${collapsed ? '' : ' px-1'}`} dir={isRTL ? 'rtl' : 'ltr'}>
@@ -276,7 +275,7 @@ export default function SidebarContent({
             );
           })}
         </nav>
-      </ScrollArea>
+      </div>
 
       {/* User Info & Logout */}
       {!collapsed && user && (

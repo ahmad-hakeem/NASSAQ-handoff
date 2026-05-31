@@ -216,33 +216,27 @@
     }
 
     /* Sidebar dark scrollbar — slim, blends with navy background */
-    .sidebar-scrollbar [data-radix-scroll-area-viewport]::-webkit-scrollbar {
+    .sidebar-scrollbar::-webkit-scrollbar {
         width: 4px;
     }
 
-    .sidebar-scrollbar [data-radix-scroll-area-viewport]::-webkit-scrollbar-track {
+    .sidebar-scrollbar::-webkit-scrollbar-track {
         background: transparent;
     }
 
-    .sidebar-scrollbar [data-radix-scroll-area-viewport]::-webkit-scrollbar-thumb {
+    .sidebar-scrollbar::-webkit-scrollbar-thumb {
         background: rgba(255, 255, 255, 0.12);
         border-radius: 9999px;
     }
 
-    .sidebar-scrollbar [data-radix-scroll-area-viewport]::-webkit-scrollbar-thumb:hover {
+    .sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
         background: rgba(255, 255, 255, 0.22);
     }
 
     /* Firefox */
-    .sidebar-scrollbar [data-radix-scroll-area-viewport] {
+    .sidebar-scrollbar {
         scrollbar-width: thin;
         scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
-    }
-
-    /* Hide the redundant Radix overlay scrollbar (ghost) inside the sidebar
-       only — the native viewport scrollbar above is the intended white one. */
-    .sidebar-scrollbar [data-radix-scroll-area-scrollbar] {
-        display: none;
     }
 }
 
