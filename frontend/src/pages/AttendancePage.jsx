@@ -740,7 +740,11 @@ export const AttendancePage = () => {
                     <CardContent>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="text-center p-4 bg-muted rounded-xl">
-                          <p className="text-3xl font-bold text-brand-turquoise">{summaryReport.overall.attendance_rate}%</p>
+                          {summaryReport.overall.total_records > 0 ? (
+                            <p className="text-3xl font-bold text-brand-turquoise">{summaryReport.overall.attendance_rate}%</p>
+                          ) : (
+                            <p className="text-base font-bold text-muted-foreground">{isRTL ? 'لا توجد بيانات' : 'No data'}</p>
+                          )}
                           <p className="text-sm text-muted-foreground">{t('attendanceRate2')}</p>
                         </div>
                         <div className="text-center p-4 bg-muted rounded-xl">

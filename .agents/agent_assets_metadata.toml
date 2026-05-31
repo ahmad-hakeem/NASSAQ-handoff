@@ -66,3 +66,21 @@ id = "9tA_r-5VpN1jIcH6kcd-U"
 uri = "file://reports/تقرير_الأمان_نسّق.docx"
 type = "word_document"
 title = "تقرير الأمان والحماية لمنصة نَسَّق (Word)"
+
+[[outputs]]
+id = "VVSOZ6M1koOLm5TSyTBzh"
+uri = "file://.local/qa/task-706/تقرير-مراجعة-الجداول-والحضور.md"
+type = "text"
+title = "تقرير مراجعة الجودة — الجداول والجدول المدرسي والحضور"
+
+[[outputs]]
+id = "xMq9dR5Crcriy5IyxLsCa"
+uri = "file://.local/qa/task-706/07_after_save_click.png"
+type = "image"
+title = "BUG-01: فشل حفظ حضور الطلاب لمدير المدرسة (403)"
+
+[[outputs]]
+id = "wwj2_0vS_0DKiSpfJPgRv"
+uri = "file://.local/qa/task-706/02_master_schedule.png"
+type = "image"
+title = "الجدول المدرسي (سياق BUG-03 و BUG-05)"

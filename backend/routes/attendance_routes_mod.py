@@ -127,7 +127,7 @@ async def create_attendance(
     current_user: dict = Depends(get_current_user)
 ):
     """Create a single attendance record"""
-    if current_user['role'] not in ['teacher', 'school_principal', 'school_sub_admin', 'platform_admin', 'independent_teacher']:
+    if current_user['role'] not in ['teacher', 'school_principal', 'school_admin', 'school_sub_admin', 'platform_admin', 'independent_teacher']:
         raise HTTPException(status_code=403, detail="ليس لديك صلاحية لتسجيل الحضور")
     # IT callers carry tenant_id only on the JWT, not on the DB users row.
     from auth_scope import independent_workspace_id as _itw_id
@@ -304,7 +304,7 @@ async def create_bulk_attendance(
     current_user: dict = Depends(get_current_user)
 ):
     """Create multiple attendance records at once (for a whole class)"""
-    if current_user['role'] not in ['teacher', 'school_principal', 'school_sub_admin', 'platform_admin', 'independent_teacher']:
+    if current_user['role'] not in ['teacher', 'school_principal', 'school_admin', 'school_sub_admin', 'platform_admin', 'independent_teacher']:
         raise HTTPException(status_code=403, detail="Not authorized to record attendance")
 
     from auth_scope import independent_workspace_id as _itw_id
@@ -721,6 +721,14 @@ async def get_attendance_summary(
     # whose `tenant_id` was missing. Use the canonical adapter instead.
     school_id = require_request_school_id(current_user)
     query = {'tenant_id': school_id}
+
+    # Reject inverted date ranges (end before start) instead of silently
+    # returning an empty result set that reads as "0% attendance".
+    if start_date and end_date and end_date < start_date:
+        raise HTTPException(
+            status_code=400,
+            detail="نطاق التاريخ غير صالح: تاريخ النهاية أسبق من تاريخ البداية",
+        )
 
     # Task #428: teachers must provide a class_id they are assigned to;
     # school-wide or cross-class queries are admin-only.

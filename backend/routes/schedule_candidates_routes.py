@@ -24,6 +24,7 @@ router = APIRouter()
 
 _PRINCIPAL_ROLES = [
     UserRole.SCHOOL_PRINCIPAL,
+    UserRole.SCHOOL_ADMIN,
     UserRole.SCHOOL_SUB_ADMIN,
 ]
 

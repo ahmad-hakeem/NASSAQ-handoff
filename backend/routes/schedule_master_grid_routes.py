@@ -12,6 +12,7 @@ teacher_attendance) ولا تعدِّل أي endpoint قائم.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -258,6 +259,26 @@ _RANK_ALIASES = {
     "senior": "expert",
     "junior": "assistant",
 }
+
+
+_BARE_UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+
+
+def _clean_label(raw) -> str:
+    """يُنظِّف تسمية تُعرَض في الجدول (اسم مادة/تخصّص).
+
+    يُرجِع نصاً فارغاً إذا كانت القيمة معرّفاً (UUID) خاماً تسرّب من بيانات
+    اختبار/إدخال غير سليم — كي لا تظهر سلسلة UUID مكان الاسم في الواجهة.
+    """
+    if not raw:
+        return ""
+    text = str(raw).strip()
+    if _BARE_UUID_RE.match(text):
+        return ""
+    return text
 
 
 def _normalize_rank(raw) -> str:
@@ -623,7 +644,9 @@ async def get_master_grid(
         day_cells = teacher_cells.setdefault(day, {})
         cls_id = sess.get("class_id")
         cls_name = class_name_map.get(cls_id, sess.get("class_name") or "")
-        subj_name = subject_name_map.get(sess.get("subject_id"), sess.get("subject_name") or "")
+        subj_name = _clean_label(
+            subject_name_map.get(sess.get("subject_id"), sess.get("subject_name") or "")
+        )
         is_vacant_today = (day == today_key) and (tid in absent_ids)
         cell_doc: dict[str, object] = {
             "session_id": sess.get("id"),
@@ -750,7 +773,7 @@ async def get_master_grid(
         teacher_rows.append({
             "id": tid,
             "full_name": t.get("full_name") or "",
-            "subject": t.get("specialization") or t.get("subject") or "",
+            "subject": _clean_label(t.get("specialization") or t.get("subject") or ""),
             "rank": _normalize_rank(t.get("rank")),
             "weekly_quota": quota,
             "assigned_periods": assigned,

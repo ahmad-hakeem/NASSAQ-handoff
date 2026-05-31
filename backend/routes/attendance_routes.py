@@ -115,6 +115,7 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([
             UserRole.PLATFORM_ADMIN,
             UserRole.SCHOOL_PRINCIPAL,
+            UserRole.SCHOOL_ADMIN,
             UserRole.TEACHER
         ]))
     ):
@@ -182,6 +183,7 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([
             UserRole.PLATFORM_ADMIN,
             UserRole.SCHOOL_PRINCIPAL,
+            UserRole.SCHOOL_ADMIN,
             UserRole.TEACHER
         ]))
     ):
@@ -230,6 +232,7 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([
             UserRole.PLATFORM_ADMIN,
             UserRole.SCHOOL_PRINCIPAL,
+            UserRole.SCHOOL_ADMIN,
             UserRole.TEACHER
         ]))
     ):
