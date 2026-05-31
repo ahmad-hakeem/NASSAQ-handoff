@@ -114,3 +114,9 @@ id = "u5nRWbS5cgNyquezirmYu"
 uri = "file://docs/qa/2026-05-31-teacher-role-qa-audit.md"
 type = "text"
 title = "School Teacher Role — QA Audit Report (2026-05-31)"
+
+[[outputs]]
+id = "K7HkxNHc0YQleAbeXEgd3"
+uri = "file://.local/audit/FINDINGS-REPORT.md"
+type = "text"
+title = "NASSAQ Security & QA Audit — Findings Report"
