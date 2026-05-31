@@ -232,6 +232,9 @@ export default function TeacherClassesPage() {
   // Subject options for the IT workspace dialog. Sourced from /subjects
   // which is already tenant-scoped server-side via `current_user.tenant_id`.
   const [workspaceSubjects, setWorkspaceSubjects] = useState([]);
+  // Tracks a failed /subjects load for the Add-Class dialog so the subject
+  // dropdown can surface an inline error + retry instead of a blank list.
+  const [workspaceSubjectsError, setWorkspaceSubjectsError] = useState(false);
   // Subjects fetched for the Lesson Settings modal. Populated for all
   // teacher roles (not just IT) via the /subjects endpoint which is
   // already tenant-scoped server-side.
@@ -484,8 +487,10 @@ export default function TeacherClassesPage() {
       // belt-and-suspenders so a stale cache never surfaces a tombstoned
       // subject in the create-class dropdown (Task #190).
       setWorkspaceSubjects(subjects.filter(s => s?.is_active !== false));
+      setWorkspaceSubjectsError(false);
     } catch (err) {
       console.error('Error fetching subjects:', err);
+      setWorkspaceSubjectsError(true);
     }
   }, [api, isIndependentTeacher]);
 
@@ -1248,7 +1253,23 @@ export default function TeacherClassesPage() {
                   <SelectValue placeholder={t('workspaceClassSubjectPlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  {workspaceSubjects.length > 0 ? workspaceSubjects.map(s => (
+                  {workspaceSubjectsError ? (
+                    <div className="px-3 py-2 space-y-2">
+                      <div className="text-xs text-destructive font-tajawal">
+                        {t('workspaceClassSubjectsLoadError')}
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="font-cairo gap-1 w-full"
+                        onClick={() => fetchWorkspaceSubjects()}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        {t('retry')}
+                      </Button>
+                    </div>
+                  ) : workspaceSubjects.length > 0 ? workspaceSubjects.map(s => (
                     <SelectItem key={s.id} value={s.id}>
                       {isRTL ? (s.name_ar || s.name) : (s.name_en || s.name || s.name_ar)}
                     </SelectItem>
