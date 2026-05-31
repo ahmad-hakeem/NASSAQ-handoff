@@ -180,6 +180,30 @@ export const WebSocketProvider = ({ children }) => {
     
   }, [playNotificationSound, showBrowserNotification]);
   
+  // Safely tear down a socket without triggering the browser's
+  // "WebSocket is closed before the connection is established" warning, which
+  // fires when close() is called on a still-CONNECTING socket (e.g. the React
+  // StrictMode dev double-mount cleanup). In that case defer the close until the
+  // socket finishes opening.
+  const safeCloseSocket = useCallback((ws, code, reason) => {
+    if (!ws) return;
+    ws.onclose = null;
+    ws.onerror = null;
+    ws.onmessage = null;
+    if (ws.pingInterval) {
+      clearInterval(ws.pingInterval);
+      ws.pingInterval = null;
+    }
+    try {
+      if (ws.readyState === WebSocket.CONNECTING) {
+        ws.onopen = () => { try { ws.close(code, reason); } catch (_e) { /* no-op */ } };
+      } else if (ws.readyState === WebSocket.OPEN) {
+        ws.onopen = null;
+        ws.close(code, reason);
+      }
+    } catch (_e) { /* no-op */ }
+  }, []);
+
   // Connect to WebSocket
   const connect = useCallback(() => {
     if (!token || !WS_URL) return;
@@ -192,13 +216,7 @@ export const WebSocketProvider = ({ children }) => {
     }
     
     if (wsRef.current) {
-      if (wsRef.current.pingInterval) {
-        clearInterval(wsRef.current.pingInterval);
-      }
-      wsRef.current.onclose = null;
-      wsRef.current.onerror = null;
-      wsRef.current.onmessage = null;
-      wsRef.current.close(1000, 'Replacing connection');
+      safeCloseSocket(wsRef.current, 1000, 'Replacing connection');
       wsRef.current = null;
     }
     
@@ -335,19 +353,21 @@ export const WebSocketProvider = ({ children }) => {
       isConnectingRef.current = false;
       console.error('WebSocket connection error:', err);
     }
-  }, [token, handleNotification]);
+  }, [token, handleNotification, safeCloseSocket]);
   
   // Disconnect
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
     if (wsRef.current) {
-      wsRef.current.close(1000, 'User logout');
+      safeCloseSocket(wsRef.current, 1000, 'User logout');
       wsRef.current = null;
     }
+    isConnectingRef.current = false;
     setIsConnected(false);
-  }, []);
+  }, [safeCloseSocket]);
   
   // Connect when token changes
   useEffect(() => {

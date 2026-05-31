@@ -258,11 +258,16 @@ export const PlatformSchoolsPage = () => {
     }
   };
 
+  const activeCount = schools.filter(s => s.status === 'active').length;
+  const suspendedCount = schools.filter(s => s.status === 'suspended').length;
   const stats = {
     total: schools.length,
-    active: schools.filter(s => s.status === 'active').length,
-    pending: schools.filter(s => s.status === 'pending').length,
-    suspended: schools.filter(s => s.status === 'suspended').length,
+    active: activeCount,
+    // Everything that is neither active nor suspended (pending, setup, or any
+    // other onboarding state) is counted as pending so the status cards always
+    // reconcile to the total.
+    pending: schools.length - activeCount - suspendedCount,
+    suspended: suspendedCount,
     aiEnabled: schools.filter(s => s.ai_enabled).length,
     totalStudents: schools.reduce((sum, s) => sum + (s.current_students || 0), 0),
     totalTeachers: schools.reduce((sum, s) => sum + (s.current_teachers || 0), 0),

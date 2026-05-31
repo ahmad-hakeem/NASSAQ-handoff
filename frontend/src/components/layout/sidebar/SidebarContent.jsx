@@ -9,11 +9,13 @@ import {
   Shield,
   RefreshCw,
   LogOut,
+  Globe,
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { BetaBadge } from '../../BetaDisclaimer';
 import CommandPalette from '../../teacher/CommandPalette';
+import { useTheme } from '../../../contexts/ThemeContext';
 
 const LOGO_WHITE = '/nassaq-logo-white.png';
 
@@ -67,6 +69,7 @@ export default function SidebarContent({
   onLogout,
   loggingOut,
 }) {
+  const { toggleLanguage } = useTheme();
   return (
     <div className="flex flex-col h-full">
       <CommandPalette />
@@ -340,6 +343,17 @@ export default function SidebarContent({
             <Button
               variant="ghost"
               size="icon"
+              onClick={toggleLanguage}
+              className="flex-shrink-0 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
+              data-testid="sidebar-language-toggle"
+              title={isRTL ? 'English' : 'العربية'}
+              aria-label={isRTL ? 'Switch to English' : 'التبديل إلى العربية'}
+            >
+              <Globe className="h-5 w-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={onLogout}
               disabled={loggingOut}
               className="flex-shrink-0 text-red-300/70 hover:text-red-200 hover:bg-red-500/20 rounded-xl transition-colors"
@@ -378,6 +392,17 @@ export default function SidebarContent({
               )}
             </div>
           </button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleLanguage}
+            className="w-11 h-11 text-white/70 hover:text-white hover:bg-white/10 rounded-xl"
+            data-testid="sidebar-language-toggle-collapsed"
+            title={isRTL ? 'English' : 'العربية'}
+            aria-label={isRTL ? 'Switch to English' : 'التبديل إلى العربية'}
+          >
+            <Globe className="h-5 w-5" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"

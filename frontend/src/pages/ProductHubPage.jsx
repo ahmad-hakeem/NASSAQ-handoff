@@ -85,7 +85,10 @@ export function ProductHubPage() {
 
   useEffect(() => { fetchConfig(); }, [fetchConfig]);
   useEffect(() => { fetchIssues(); }, [fetchIssues]);
-  useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
+  // The dashboard/analytics endpoint is main-admin-only; only fetch it when
+  // the resolved config grants main-admin access. A plain platform_admin can
+  // use the issues list but would otherwise get a silent 403 here.
+  useEffect(() => { if (isMainAdmin) fetchDashboard(); }, [fetchDashboard, isMainAdmin]);
 
   useEffect(() => {
     const tab = searchParams.get('tab');
@@ -207,7 +210,7 @@ export function ProductHubPage() {
                   variant="outline"
                   size="sm"
                   className="border-white/20 text-white hover:bg-white/10"
-                  onClick={() => { fetchIssues(); fetchDashboard(); }}
+                  onClick={() => { fetchIssues(); if (isMainAdmin) fetchDashboard(); }}
                 >
                   <RefreshCw className="h-4 w-4" />
                 </Button>
@@ -227,7 +230,7 @@ export function ProductHubPage() {
             <DashboardView data={dashboard} loading={dashLoading} isAdmin={isMainAdmin} navigate={navigate} />
           )}
 
-          {activeTab !== 'dashboard' && (
+          {(activeTab !== 'dashboard' || !isMainAdmin) && (
             <div className="space-y-5">
               <FilterToolbar
                 filters={filters}

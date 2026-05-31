@@ -69,6 +69,18 @@ import {
 } from 'lucide-react';
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartPie, Pie, Cell } from 'recharts';
 
+// Defers chart mounting until after the first paint so recharts'
+// ResponsiveContainer measures a laid-out parent and never logs the
+// "width(-1) and height(-1) should be greater than 0" dev warning.
+const ChartMount = ({ children }) => {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  return ready ? children : null;
+};
+
 // Translations
 // Empty initial states - data will be fetched from API
 const INITIAL_ERRORS = [];
@@ -513,6 +525,7 @@ export const SystemMonitoringPage = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="h-[300px]">
+                    <ChartMount>
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={performanceData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
@@ -530,6 +543,7 @@ export const SystemMonitoringPage = () => {
                         <Area type="monotone" dataKey="responseTime" stroke="#06B6D4" fill="#06B6D4" fillOpacity={0.2} name={t('avgResponseTime')} />
                       </AreaChart>
                     </ResponsiveContainer>
+                    </ChartMount>
                   </div>
                 </CardContent>
               </Card>

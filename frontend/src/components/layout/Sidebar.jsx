@@ -320,10 +320,12 @@ export const Sidebar = ({ children }) => {
     // Platform Admin Menu Items - مدير المنصة
     const platformAdminItems = [
       { icon: LayoutDashboard, label: t('controlDashboard'), href: '/admin', roles: ['platform_admin'] },
-      { icon: Building2, label: t('schoolsManagement'), href: '/admin/schools', roles: ['platform_admin'] },
+      { icon: Building2, label: t('schoolsManagement'), href: '/admin/schools-table', roles: ['platform_admin'] },
       { icon: Users, label: t('usersManagement'), href: '/admin/users', roles: ['platform_admin'] },
       { icon: Activity, label: t('systemMonitoring'), href: '/admin/monitoring', roles: ['platform_admin'] },
-      { icon: Network, label: t('aiInsights'), href: '/principal/ai-insights', roles: ['platform_admin'] },
+      // AI Insights intentionally omitted for platform_admin: /principal/ai-insights
+      // is a school-scoped page and a platform admin has no school context, so the
+      // link only produced errors. Re-add a platform-wide AI page here if one is built.
       { icon: Link2, label: t('integrations'), href: '/admin/integrations', roles: ['platform_admin'] },
       { icon: Shield, label: t('securityCenter'), href: '/admin/security', roles: ['platform_admin'] },
       // Task #225 — IT §6.8 platform-admin hard-delete UI for archived workspaces.
