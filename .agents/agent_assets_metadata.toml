@@ -102,3 +102,9 @@ id = "Ef1lQiZuMJGwUCzJL7GO2"
 uri = "file://reports/dropdown-audit/2026-05-31-dropdown-qa-audit.md"
 type = "text"
 title = "Dropdown QA Audit — First Pass (2026-05-31)"
+
+[[outputs]]
+id = "JQLXUiPp5o6zxOUMPQgtY"
+uri = "file://docs/qa/2026-05-31-parent-dropdowns-audit.md"
+type = "text"
+title = "Parent Role — Dropdown/Filter QA Audit (2026-05-31)"
