@@ -37,6 +37,7 @@ import {
   Phone,
   Mail,
   BarChart3,
+  RefreshCw,
 } from 'lucide-react';
 
 
@@ -71,6 +72,7 @@ const ChildDetailsPage = () => {
   const [grades, setGrades] = useState(cachedDetails?.grades ?? null);
   const [attendance, setAttendance] = useState(cachedDetails?.attendance ?? null);
   const [schedule, setSchedule] = useState(cachedDetails?.schedule ?? null);
+  const [error, setError] = useState(false);
 
   // Task #148 — basic identity (name, grade, class, avatar, school) is
   // already in the global active-student context after Task #146, so we
@@ -99,6 +101,7 @@ const ChildDetailsPage = () => {
     if (!hasLoadedChildren || !childId) return;
     let cancelled = false;
     const requestedFor = childId;
+    setError(false);
     // Task #149 — render cached data immediately if we have it, otherwise
     // show the skeleton. Either way we kick off a background refresh.
     const cached = getCachedEndpoint(requestedFor, 'details');
@@ -134,9 +137,10 @@ const ChildDetailsPage = () => {
         setSchedule(next.schedule);
       } catch (error) {
         if (cancelled || String(activeChildRef.current) !== String(requestedFor)) return;
-        // On cold-load failure surface the error; if we already had cached
-        // data we keep showing it and stay quiet (background refresh failed).
-        if (!cached) nassaqError(t('errorFetchingData'));
+        // On cold-load failure surface a recoverable error screen; if we
+        // already had cached data we keep showing it and stay quiet
+        // (background refresh failed).
+        if (!cached) setError(true);
       } finally {
         if (!cancelled && String(activeChildRef.current) === String(requestedFor)) {
           setLoading(false);
@@ -187,6 +191,35 @@ const ChildDetailsPage = () => {
         <div className="p-4 space-y-4">
           <Skeleton className="h-32 w-full rounded-2xl" />
           <Skeleton className="h-64 w-full rounded-2xl" />
+        </div>
+      </PortalLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <PortalLayout portalType="parent">
+        <div className="p-4">
+          <Card className="rounded-2xl border-0 shadow-sm">
+            <CardContent className="py-12 text-center">
+              <AlertCircle className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" strokeWidth={1.5} aria-hidden="true" />
+              <h3 className="font-bold font-cairo text-lg text-foreground mb-4">
+                {t('couldNotLoadData')}
+              </h3>
+              <div className="flex items-center justify-center gap-3">
+                <Button onClick={() => { setError(false); setLoading(true); setRefreshBump((b) => b + 1); }}>
+                  <RefreshCw className="h-4 w-4 me-2" strokeWidth={1.5} aria-hidden="true" />
+                  {t('retry')}
+                </Button>
+                <Link to="/parent">
+                  <Button variant="outline">
+                    <ChevronLeft className="h-4 w-4 me-2" strokeWidth={1.5} aria-hidden="true" />
+                    {t('goBack')}
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </PortalLayout>
     );

@@ -13,7 +13,7 @@ import {
   User, Calendar, Bell, GraduationCap, Clock, CheckCircle2,
   AlertCircle, TrendingUp, Award, FileText, BookOpen, Users,
   Phone, Mail, BarChart3, CalendarDays, MessageSquare, Home,
-  Settings, ChevronLeft, ChevronRight, Loader2
+  Settings, ChevronLeft, ChevronRight, Loader2, RefreshCw
 } from 'lucide-react';
 import { formatHijriDate } from '../utils/hijriDate';
 
@@ -25,10 +25,12 @@ export default function ParentDashboard() {
   const [parentData, setParentData] = useState(null);
   const [children, setChildren] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [error, setError] = useState(false);
 
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const fetchParentData = useCallback(async () => {
     setLoading(true);
+    setError(false);
     try {
       const parentId = user?.parent_id || user?.id;
       
@@ -72,7 +74,7 @@ export default function ParentDashboard() {
       }
     } catch (error) {
       console.error('Error fetching parent data:', error);
-      nassaqError('خطأ في جلب البيانات');
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -98,6 +100,23 @@ export default function ParentDashboard() {
           <Loader2 className="h-12 w-12 animate-spin text-indigo-600 mx-auto mb-4" />
           <p className="text-muted-foreground">جارٍ التحميل...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl" data-testid="parent-dashboard-error">
+        <Card className="max-w-md w-full rounded-2xl border-0 shadow-sm">
+          <CardContent className="py-12 text-center">
+            <AlertCircle className="h-16 w-16 mx-auto mb-4 text-gray-300" strokeWidth={1.5} aria-hidden="true" />
+            <h3 className="font-bold text-lg text-gray-700 mb-4 font-cairo">تعذر تحميل البيانات</h3>
+            <Button onClick={fetchParentData} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
+              <RefreshCw className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+              إعادة المحاولة
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }

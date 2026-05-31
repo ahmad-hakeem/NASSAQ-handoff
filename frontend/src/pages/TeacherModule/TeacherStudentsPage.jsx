@@ -74,6 +74,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
   const [workspaceGrades, setWorkspaceGrades] = useState([]);
   const [workspaceClasses, setWorkspaceClasses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
   // 2026-05-19 — IT-only: default to the workspace-wide pool ("الكل")
@@ -181,6 +182,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
     if (!teacherId) return;
     
     setLoading(true);
+    setError(false);
     try {
       const classesRes = await api.get(`/teacher/classes/${teacherId}`);
       setClasses(classesRes.data || []);
@@ -202,6 +204,8 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
         nassaqError('هذا الفصل غير مسند إليك أو لا تملك صلاحية استعراضه');
       } else if (status === 404) {
         nassaqError('المعلم غير موجود');
+      } else {
+        setError(true);
       }
     } finally {
       setLoading(false);
@@ -218,6 +222,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
       return;
     }
     setLoading(true);
+    setError(false);
     try {
       // 2026-05-19 — Three filter modes (IT-only pool routes; non-IT
       // never reaches `isPool` because the sentinel values are not
@@ -266,7 +271,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
       setStudents(enrichedStudents);
     } catch (error) {
       console.error('Error:', error);
-      nassaqError(t('errorLoadingStudents'));
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -755,6 +760,23 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
             <div className="flex items-center justify-center py-20">
               <Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" />
             </div>
+          ) : error ? (
+            <Card data-testid="teacher-students-error-state">
+              <CardContent className="text-center py-16">
+                <AlertTriangle className="h-16 w-16 mx-auto mb-4 text-red-400" strokeWidth={1.5} aria-hidden="true" />
+                <h3 className="font-bold text-lg mb-2 font-cairo">{t('couldNotLoadData')}</h3>
+                <p className="text-muted-foreground text-sm font-tajawal mb-5 max-w-md mx-auto">
+                  {isRTL ? 'حدث خطأ أثناء تحميل الطلاب. حاول مرة أخرى.' : 'Something went wrong loading students. Please try again.'}
+                </p>
+                <Button
+                  onClick={() => { fetchClasses(); fetchStudents(); }}
+                  className="rounded-xl gap-2 px-5"
+                >
+                  <RefreshCw className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+                  {t('retry')}
+                </Button>
+              </CardContent>
+            </Card>
           ) : filteredStudents.length === 0 ? (
             // Task #287 — IT-focused empty state when the workspace has
             // zero students. Mirrors the §5.8 classes empty state: same

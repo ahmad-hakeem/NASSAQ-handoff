@@ -54,6 +54,7 @@ export default function TeacherClassDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, api, isRTL } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [classData, setClassData] = useState(null);
   const [students, setStudents] = useState([]);
   const [schedule, setSchedule] = useState([]);
@@ -147,6 +148,7 @@ export default function TeacherClassDetailPage() {
   const fetchClassData = useCallback(async () => {
     if (!classId) return;
     setLoading(true);
+    setError(false);
     try {
       const [classRes, studentsRes, scheduleRes, statsRes] = await Promise.all([
         api.get(`/classes/${classId}`).catch(() => null),
@@ -154,6 +156,14 @@ export default function TeacherClassDetailPage() {
         teacherId ? api.get(`/teacher/schedule/${teacherId}`).catch(() => null) : Promise.resolve(null),
         api.get(`/classes/${classId}/student-stats`).catch(() => null),
       ]);
+
+      // The class record is the single record this page is built around;
+      // if it failed to load, surface a recoverable error screen rather
+      // than rendering an empty placeholder shell.
+      if (!classRes) {
+        setError(true);
+        return;
+      }
 
       const scheduleData = Array.isArray(scheduleRes?.data) ? scheduleRes.data : [];
       const classSchedule = scheduleData.filter(s => s.class_id === classId);
@@ -201,7 +211,7 @@ export default function TeacherClassDetailPage() {
       setSchedule(classSchedule);
     } catch (error) {
       console.error('Error loading class data:', error);
-      nassaqError(t('errorLoadingClassData'));
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -937,6 +947,31 @@ export default function TeacherClassDetailPage() {
       </DialogContent>
     </Dialog>
   );
+
+  if (error) {
+    return (
+      <Sidebar>
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4" dir={isRTL ? 'rtl' : 'ltr'}>
+          <Card className="max-w-md w-full rounded-2xl border-0 shadow-sm">
+            <CardContent className="py-12 text-center">
+              <AlertTriangle className="h-16 w-16 mx-auto mb-4 text-red-400" strokeWidth={1.5} aria-hidden="true" />
+              <h3 className="font-bold text-lg text-foreground mb-4 font-cairo">{t('couldNotLoadData')}</h3>
+              <div className="flex items-center justify-center gap-3">
+                <Button onClick={fetchClassData} className="gap-2">
+                  <RefreshCw className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+                  {t('retry')}
+                </Button>
+                <Button variant="outline" onClick={() => navigate('/teacher/classes')} className="gap-2">
+                  <ChevronLeft className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+                  {t('goBack')}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </Sidebar>
+    );
+  }
 
   return (
     <Sidebar>

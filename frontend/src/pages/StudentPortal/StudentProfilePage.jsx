@@ -4,13 +4,14 @@ import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
+import { Button } from '../../components/ui/button';
 import { Progress } from '../../components/ui/progress';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import CumulativeAnalytics from '../../components/parent/CumulativeAnalytics';
 import {
   User, GraduationCap, MapPin, Calendar, CheckCircle,
-  TrendingUp, Star, Award, Mail, Phone, Hash, Activity
+  TrendingUp, Star, Award, Mail, Phone, Hash, Activity, AlertCircle, RefreshCw
 } from 'lucide-react';
 
 
@@ -21,9 +22,11 @@ const StudentProfilePage = () => {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
   const [activities, setActivities] = useState([]);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
+      setError(false);
       try {
         const headers = { Authorization: `Bearer ${token}` };
         const [profileRes, actRes] = await Promise.all([
@@ -34,6 +37,7 @@ const StudentProfilePage = () => {
         setActivities(actRes.data?.activities || []);
       } catch (err) {
         console.error('Error fetching profile:', err);
+        setError(true);
       } finally {
         setLoading(false);
       }
@@ -48,6 +52,27 @@ const StudentProfilePage = () => {
           <Skeleton className="h-48 w-full rounded-2xl" />
           <Skeleton className="h-32 w-full rounded-2xl" />
           <Skeleton className="h-32 w-full rounded-2xl" />
+        </div>
+      </PortalLayout>
+    );
+  }
+
+  if (error || !profile) {
+    return (
+      <PortalLayout portalType="student">
+        <div className="p-4">
+          <Card className="rounded-2xl border-0 shadow-sm">
+            <CardContent className="py-16 text-center">
+              <AlertCircle className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" strokeWidth={1.5} aria-hidden="true" />
+              <h3 className="font-bold font-cairo text-lg text-foreground mb-4">
+                {t('couldNotLoadData')}
+              </h3>
+              <Button onClick={() => window.location.reload()} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
+                <RefreshCw className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+                {t('retry')}
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       </PortalLayout>
     );

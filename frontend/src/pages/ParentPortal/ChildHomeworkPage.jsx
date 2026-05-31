@@ -6,10 +6,11 @@ import { useSyncRouteChildToActive, useParentActiveStudent } from '../../context
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
+import { Button } from '../../components/ui/button';
 import { Skeleton } from '../../components/ui/skeleton';
 import BackgroundRefreshChip from '../../components/parent/BackgroundRefreshChip';
 import {
-  ClipboardList, Clock, CheckCircle, AlertCircle, BookOpen, Calendar
+  ClipboardList, Clock, CheckCircle, AlertCircle, BookOpen, Calendar, RefreshCw
 } from 'lucide-react';
 
 
@@ -32,6 +33,7 @@ const ChildHomeworkPage = () => {
   const [loading, setLoading] = useState(!cachedHomework);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState(cachedHomework ?? null);
+  const [error, setError] = useState(false);
 
   // Stale-response guard against out-of-order responses on rapid switches.
   const activeChildRef = useRef(null);
@@ -50,6 +52,7 @@ const ChildHomeworkPage = () => {
     if (!hasLoadedChildren || !childId) return;
     let cancelled = false;
     const requestedFor = childId;
+    setError(false);
     const cached = getCachedEndpoint(requestedFor, 'homework');
     if (cached) {
       setData(cached);
@@ -68,7 +71,7 @@ const ChildHomeworkPage = () => {
         setData(res.data);
       } catch {
         if (cancelled || String(activeChildRef.current) !== String(requestedFor)) return;
-        if (!cached) setData(null);
+        if (!cached) { setData(null); setError(true); }
       } finally {
         if (!cancelled && String(activeChildRef.current) === String(requestedFor)) {
           setLoading(false);
@@ -98,6 +101,27 @@ const ChildHomeworkPage = () => {
         <div className="p-4 space-y-4">
           <Skeleton className="h-24 rounded-2xl" />
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-20 rounded-2xl" />)}
+        </div>
+      </PortalLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <PortalLayout portalType="parent">
+        <div className="p-4">
+          <Card className="rounded-2xl border-0 shadow-sm">
+            <CardContent className="py-12 text-center">
+              <AlertCircle className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" strokeWidth={1.5} aria-hidden="true" />
+              <h3 className="font-bold font-cairo text-lg text-foreground mb-4">
+                {t('couldNotLoadData')}
+              </h3>
+              <Button onClick={() => { setError(false); setLoading(true); setRefreshBump((b) => b + 1); }}>
+                <RefreshCw className="h-4 w-4 me-2" strokeWidth={1.5} aria-hidden="true" />
+                {t('retry')}
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       </PortalLayout>
     );

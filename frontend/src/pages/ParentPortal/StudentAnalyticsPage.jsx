@@ -6,9 +6,10 @@ import { useSyncRouteChildToActive, useParentActiveStudent } from '../../context
 import PortalLayout from '../../components/portal/PortalLayout';
 import { GaugeChart, PerformanceLine, SubjectRadar } from '../../components/parent/AnalyticsCharts';
 import { Card, CardContent } from '../../components/ui/card';
+import { Button } from '../../components/ui/button';
 import { Skeleton } from '../../components/ui/skeleton';
 import BackgroundRefreshChip from '../../components/parent/BackgroundRefreshChip';
-import { ChevronLeft, TrendingUp, TrendingDown, Activity, CheckCircle, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { ChevronLeft, TrendingUp, TrendingDown, Activity, CheckCircle, AlertTriangle, ShieldAlert, RefreshCw } from 'lucide-react';
 
 const StudentAnalyticsPage = () => {
   const { t } = useTranslation();
@@ -28,6 +29,7 @@ const StudentAnalyticsPage = () => {
   const [data, setData] = useState(cachedAnalytics ?? null);
   const [loading, setLoading] = useState(!cachedAnalytics);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(false);
 
   // Stale-response guard against out-of-order responses on rapid switches.
   const activeChildRef = useRef(null);
@@ -46,6 +48,7 @@ const StudentAnalyticsPage = () => {
     if (!hasLoadedChildren || !childId) return;
     let cancelled = false;
     const requestedFor = childId;
+    setError(false);
     const cached = getCachedEndpoint(requestedFor, 'analytics');
     if (cached) {
       setData(cached);
@@ -64,7 +67,7 @@ const StudentAnalyticsPage = () => {
         setData(res.data);
       } catch {
         if (cancelled || String(activeChildRef.current) !== String(requestedFor)) return;
-        if (!cached) setData(null);
+        if (!cached) { setData(null); setError(true); }
       } finally {
         if (!cancelled && String(activeChildRef.current) === String(requestedFor)) {
           setLoading(false);
@@ -97,6 +100,32 @@ const StudentAnalyticsPage = () => {
           <Skeleton className="h-40 w-full rounded-2xl" />
           <Skeleton className="h-60 w-full rounded-2xl" />
           <Skeleton className="h-64 w-full rounded-2xl" />
+        </div>
+      </PortalLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <PortalLayout portalType="parent">
+        <div className="p-4">
+          <Card className="rounded-2xl border-0 shadow-sm">
+            <CardContent className="py-12 text-center">
+              <AlertTriangle className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" strokeWidth={1.5} aria-hidden="true" />
+              <h3 className="font-bold font-cairo text-lg text-foreground mb-4">
+                {t('couldNotLoadData')}
+              </h3>
+              <div className="flex items-center justify-center gap-3">
+                <Button onClick={() => { setError(false); setLoading(true); setRefreshBump((b) => b + 1); }}>
+                  <RefreshCw className="h-4 w-4 me-2" strokeWidth={1.5} aria-hidden="true" />
+                  {t('retry')}
+                </Button>
+                <Link to={`/parent/child/${childId}/profile`}>
+                  <Button variant="outline">{t('goBack')}</Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </PortalLayout>
     );

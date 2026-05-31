@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import BackgroundRefreshChip from '../../components/parent/BackgroundRefreshChip';
 import {
-  Calendar, BookOpen, ChevronLeft, Clock, User, Printer
+  Calendar, BookOpen, ChevronLeft, Clock, User, Printer, AlertCircle, RefreshCw
 } from 'lucide-react';
 
 
@@ -50,6 +50,7 @@ const ChildSchedulePage = () => {
   const [loading, setLoading] = useState(!cachedSchedule);
   const [refreshing, setRefreshing] = useState(false);
   const [schedule, setSchedule] = useState(cachedSchedule ?? null);
+  const [error, setError] = useState(false);
   // Task #148 — basic identity (name, class) is read from the global
   // active-student context instead of re-fetching `/parent-portal/child/:id`
   // on every navigation.
@@ -64,7 +65,10 @@ const ChildSchedulePage = () => {
   const fetchData = useCallback(async ({ silent = false } = {}) => {
     if (!hasLoadedChildren || !childId) return;
     const requestedFor = childId;
-    if (!silent) setRefreshing(true);
+    if (!silent) {
+      setRefreshing(true);
+      setError(false);
+    }
     try {
       // Task #148 — only fetch the page-specific schedule endpoint; basic
       // identity (name, class) comes from the global active-student context.
@@ -77,7 +81,7 @@ const ChildSchedulePage = () => {
       // Stay quiet on a background refresh failure if we already have data
       // on screen — the user shouldn't see an alert for a soft refresh.
       const hadData = !!getCachedEndpoint(requestedFor, 'schedule');
-      if (!silent && !hadData) nassaqError(t('errorFetchingSchedule'));
+      if (!silent && !hadData) setError(true);
     } finally {
       if (String(activeChildRef.current) === String(requestedFor)) {
         if (!silent) {
@@ -129,6 +133,35 @@ const ChildSchedulePage = () => {
         <div className="p-4 space-y-4">
           <Skeleton className="h-12 w-full rounded-xl" />
           <Skeleton className="h-64 w-full rounded-2xl" />
+        </div>
+      </PortalLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <PortalLayout portalType="parent">
+        <div className="p-4">
+          <Card className="rounded-2xl border-0 shadow-sm">
+            <CardContent className="py-16 text-center">
+              <AlertCircle className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" strokeWidth={1.5} aria-hidden="true" />
+              <h3 className="font-bold font-cairo text-lg text-foreground mb-4">
+                {t('couldNotLoadData')}
+              </h3>
+              <div className="flex items-center justify-center gap-3">
+                <Button onClick={() => { setError(false); setLoading(true); fetchData(); }}>
+                  <RefreshCw className="h-4 w-4 me-2" strokeWidth={1.5} aria-hidden="true" />
+                  {t('retry')}
+                </Button>
+                <Link to={`/parent/child/${childId}`}>
+                  <Button variant="outline">
+                    <ChevronLeft className="h-4 w-4 me-2" strokeWidth={1.5} aria-hidden="true" />
+                    {isRTL ? 'العودة' : 'Back'}
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </PortalLayout>
     );
