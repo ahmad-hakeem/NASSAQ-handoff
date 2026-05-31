@@ -108,3 +108,9 @@ id = "JQLXUiPp5o6zxOUMPQgtY"
 uri = "file://docs/qa/2026-05-31-parent-dropdowns-audit.md"
 type = "text"
 title = "Parent Role — Dropdown/Filter QA Audit (2026-05-31)"
+
+[[outputs]]
+id = "u5nRWbS5cgNyquezirmYu"
+uri = "file://docs/qa/2026-05-31-teacher-role-qa-audit.md"
+type = "text"
+title = "School Teacher Role — QA Audit Report (2026-05-31)"
