@@ -2455,11 +2455,21 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
     async def _resolve_parent_teacher_recipients(current_user: dict) -> list:
         """Resolve the set of teacher *user* accounts that the authenticated
-        parent is allowed to message. Walks parent → children → class
-        timetable_sessions → teachers.user_id → users(role=teacher,
+        parent is allowed to message. Walks parent → children → the child's
+        current class schedule (``schedule_sessions``, the canonical live
+        timetable table) → teachers.user_id → users(role=teacher,
         tenant_id=school_id, is_active=true). Returns a list of dicts:
         {recipient_user_id, teacher_name, child_labels: [..]}. Never includes
-        cross-tenant users; on resolution ambiguity, omits the entry."""
+        cross-tenant users; on resolution ambiguity, omits the entry.
+
+        NOTE: the recipient set is derived from ``schedule_sessions`` (scoped
+        by both class and tenant), NOT the legacy ``timetable_sessions``
+        document store. ``timetable_sessions`` accumulates a separate set of
+        rows per historical timetable run and is no longer anchored to any
+        ``timetables`` record, so querying it by class alone returned every
+        teacher ever associated with the class (over-disclosure). Tenants whose
+        live schedule lives only in ``schedule_sessions`` returned nothing.
+        See docs/qa/2026-05-31-parent-dropdowns-audit.md (Finding 1)."""
         school_id = current_user.get("tenant_id")
         if not school_id:
             return []
@@ -2477,8 +2487,12 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if not class_to_children:
             return []
         class_ids = list(class_to_children.keys())
-        sessions = await gd_find(db.session, "timetable_sessions",
-                                 {"class_id": {"$in": class_ids}}, limit=2000)
+        # Source of truth is ``schedule_sessions`` (the live timetable table),
+        # scoped by BOTH class and tenant. See the function docstring / Finding
+        # 1 for why ``timetable_sessions`` must not be used here.
+        sessions = await gd_find(db.session, "schedule_sessions",
+                                 {"class_id": {"$in": class_ids},
+                                  "school_id": school_id}, limit=2000)
         teacher_to_classes: dict = {}
         for s in sessions:
             tid = s.get("teacher_id")

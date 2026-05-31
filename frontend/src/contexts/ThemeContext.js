@@ -28,6 +28,16 @@ const applyLanguageDirection = (lang) => {
 
   document.title = 'NASSAQ | نَسَّق';
 
+  // The skip-to-content link lives in the static index.html shell (rendered
+  // before React boots), so it must be re-localized here on every language
+  // change. See parent-dropdowns audit Finding 5.
+  const skipLink = window.document.querySelector('.skip-link');
+  if (skipLink) {
+    const skipText = (locales[lang] && locales[lang].skipToContent)
+      || locales.ar.skipToContent;
+    if (skipText) skipLink.textContent = skipText;
+  }
+
   return dir;
 };
 

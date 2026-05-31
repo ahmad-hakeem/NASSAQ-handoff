@@ -117,7 +117,15 @@ RATE_LIMITS = {
     # running a tight loop and burning shared model quota or degrading
     # portal responsiveness for other users.  Per-child AI caching
     # (inside the handler) provides a second, complementary defence.
-    "/api/parent-portal/child/": {"max": 20, "window": 60},
+    #
+    # NOTE (2026-05-31 parent-dropdowns audit, Finding 2): this single prefix
+    # also covers the cheap read endpoints (analytics, attendance, grades,
+    # schedule) that the children hub fans out on every page load (~6 calls).
+    # The previous 20/60s cap was tripped by normal bursty browsing (a few
+    # page loads / child-switches within a minute returned 429 with blank
+    # panels).  Raised to 60/60s: still bounds a scripted tight loop, while
+    # the per-child AI cache remains the real defence for the LLM endpoints.
+    "/api/parent-portal/child/": {"max": 60, "window": 60},
     # SECURITY (task #446): the Hakim chat endpoint calls the live LLM on
     # every request and was previously unthrottled — any authenticated user
     # could script a tight loop and burn shared model quota.  20 requests
