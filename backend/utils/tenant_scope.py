@@ -310,6 +310,40 @@ def require_can_view_student_sync_check(allowed: bool) -> None:
         )
 
 
+async def get_teacher_allowed_class_ids(session, teacher_id: str) -> set:
+    """Canonical set of class_ids a regular/independent teacher may read
+    (rosters, attendance, class-level reports).
+
+    Source of truth = ACTIVE ``teacher_assignments`` ∪ ``class_sessions``.
+
+    ``teacher_class_assignments`` is INTENTIONALLY EXCLUDED: it is a
+    scheduling-convenience table that is auto-populated to link every
+    teacher to every class in the school (see
+    ``school_settings_mod._auto_populate_teacher_class_assignments``), so
+    trusting it as a visibility source silently grants a teacher access to
+    the entire school's rosters. ``can_view_class`` below checks single-class
+    membership against these same two sources and MUST stay in sync with
+    this helper. Only ``is_active != False`` assignments grant access so a
+    soft-revoked assignment stops disclosing that class.
+    """
+    from engines.sql_utils import gd_find  # local import to avoid cycles
+
+    if not teacher_id:
+        return set()
+    ta = await gd_find(
+        session, "teacher_assignments",
+        {"teacher_id": teacher_id, "is_active": {"$ne": False}}, limit=1000,
+    )
+    cs = await gd_find(
+        session, "class_sessions", {"teacher_id": teacher_id}, limit=1000,
+    )
+    return {
+        cid for cid in (
+            [a.get("class_id") for a in ta] + [s.get("class_id") for s in cs]
+        ) if cid
+    }
+
+
 async def can_view_class(session, current_user: dict, class_id: str) -> bool:
     """Return True iff `current_user` is authorized to read class-level data
     (attendance records, class reports, section summaries) for `class_id`.
@@ -338,8 +372,12 @@ async def can_view_class(session, current_user: dict, class_id: str) -> bool:
     teacher_id = current_user.get("teacher_id") or user_id
 
     if role in (UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value):
+        # Mirror get_teacher_allowed_class_ids(): only an ACTIVE assignment
+        # grants access — a soft-revoked (is_active=False) row must stop
+        # disclosing this class. teacher_class_assignments is never consulted.
         assign = await gd_find_one(
-            session, "teacher_assignments", {"teacher_id": teacher_id, "class_id": class_id}
+            session, "teacher_assignments",
+            {"teacher_id": teacher_id, "class_id": class_id, "is_active": {"$ne": False}},
         )
         if assign:
             return True

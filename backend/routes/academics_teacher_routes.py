@@ -777,6 +777,9 @@ async def get_teachers(
         UserRole.INDEPENDENT_TEACHER.value,
     }
     show_deleted = bool(include_deleted) and current_user.get("role") in _admin_roles
+    # Regular teachers get a name-only directory; only admin/IT roles see the
+    # full record (contact PII + scheduling config).
+    _privileged = current_user.get("role") in _admin_roles
 
     teachers = await gd_find(db.session, "teachers", query, limit=1000)
     if not show_deleted:
@@ -812,6 +815,13 @@ async def get_teachers(
             t["specialization"] = t["subject_name"]
         if show_deleted and t.get("deleted_by"):
             t["deleted_by_name"] = deleted_by_map.get(t.get("deleted_by"))
+        if not _privileged:
+            # A regular teacher only needs a name directory — withhold contact
+            # PII and operational scheduling config they have no need to read.
+            t["email"] = None
+            t["phone"] = None
+            t["preferences"] = None
+            t["constraints"] = None
         result.append(TeacherResponse(**t))
     return result
 

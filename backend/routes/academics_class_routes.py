@@ -372,7 +372,21 @@ async def get_classes(
     # unless the caller asked for them via include_inactive.
     if not include_inactive:
         classes = [c for c in classes if c.get("is_active") is not False]
-    
+
+    # Least-privilege for regular school teachers: scope the class directory
+    # to the classes actually assigned to the caller (ACTIVE teacher_assignments
+    # ∪ class_sessions) via the canonical helper. Previously this returned the
+    # whole tenant's classes, so teacher class-selectors defaulted to a class
+    # the teacher could not access (roster fetch 403), and "My Classes" counts
+    # were school-wide. teacher_class_assignments (auto-linked to all classes)
+    # is intentionally NOT used. INDEPENDENT_TEACHER, school-admin roles and
+    # platform admins are unaffected.
+    if current_user.get("role") == UserRole.TEACHER.value:
+        from utils.tenant_scope import get_teacher_allowed_class_ids
+        teacher_id = current_user.get("teacher_id") or current_user.get("id")
+        allowed_class_ids = await get_teacher_allowed_class_ids(db.session, teacher_id)
+        classes = [c for c in classes if c.get("id") in allowed_class_ids]
+
     # Get teacher names
     teacher_ids = list(set([c.get("homeroom_teacher_id") for c in classes if c.get("homeroom_teacher_id")]))
     teachers = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=100)

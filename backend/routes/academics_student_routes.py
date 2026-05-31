@@ -175,27 +175,20 @@ async def get_students(
 
     # Least-privilege for regular school teachers (dropdown-audit LOW-3):
     # a TEACHER token may only list students in classes actually assigned to
-    # them — same-tenant membership alone is NOT sufficient. This mirrors
-    # can_view_class() enforced by GET /classes/{class_id}/students. The
-    # authorized class set is the union of teacher_assignments,
-    # teacher_class_assignments and class_sessions (the same sources that
-    # /teacher/classes and can_view_class rely on), so no legitimate teacher
-    # screen loses rows. INDEPENDENT_TEACHER (workspace pool), school-admin
-    # roles and platform admins are intentionally unaffected.
+    # them — same-tenant membership alone is NOT sufficient. This uses the
+    # canonical get_teacher_allowed_class_ids() helper (ACTIVE
+    # teacher_assignments ∪ class_sessions), the exact same source of truth
+    # enforced by can_view_class() / GET /classes/{class_id}/students, so the
+    # two roster paths can no longer disagree. teacher_class_assignments is
+    # deliberately NOT consulted: it is auto-populated to link every teacher
+    # to every class, so trusting it leaked the whole school's students and
+    # let ?class_id=<not-taught> return a foreign roster (within-tenant IDOR).
+    # INDEPENDENT_TEACHER (workspace pool), school-admin roles and platform
+    # admins are intentionally unaffected.
     if current_user.get("role") == UserRole.TEACHER.value:
+        from utils.tenant_scope import get_teacher_allowed_class_ids
         teacher_id = current_user.get("teacher_id") or current_user.get("id")
-        # Only ACTIVE links grant visibility — a soft-revoked assignment
-        # (is_active=False) must not keep disclosing that class's roster.
-        ta = await gd_find(db.session, "teacher_assignments", {"teacher_id": teacher_id, "is_active": True}, limit=500)
-        tca = await gd_find(db.session, "teacher_class_assignments", {"teacher_id": teacher_id, "is_active": True}, limit=500)
-        cs = await gd_find(db.session, "class_sessions", {"teacher_id": teacher_id}, limit=500)
-        allowed_class_ids = {
-            cid for cid in (
-                [a.get("class_id") for a in ta]
-                + [d.get("class_id") for d in tca]
-                + [s.get("class_id") for s in cs]
-            ) if cid
-        }
+        allowed_class_ids = await get_teacher_allowed_class_ids(db.session, teacher_id)
         if not allowed_class_ids:
             return []
         if class_id:

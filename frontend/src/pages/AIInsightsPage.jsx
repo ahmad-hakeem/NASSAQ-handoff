@@ -996,8 +996,8 @@ const AttendanceReportsSection = ({
           </div>
         ) : (
           <>
-            <div className="w-full" style={{ height: 280 }}>
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="w-full" style={{ height: 280, minWidth: 0 }}>
+              <ResponsiveContainer width="99%" height="100%" minWidth={0} debounce={1}>
                 <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: -16, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-muted/20" />
                   <XAxis

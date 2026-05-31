@@ -1070,6 +1070,49 @@ async def get_teacher_sessions_list(
     return {"sessions": sessions_list}
 
 
+@router.get("/teacher/attendance/status")
+async def get_teacher_attendance_status(
+    date: Optional[str] = None,
+    current_user: dict = Depends(require_roles([UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER]))
+):
+    """Return the caller-teacher's classes that already have attendance
+    recorded for ``date`` (defaults to today, UTC). The Tasks page uses this
+    to split classes into completed vs pending. Scoped to the teacher's own
+    classes via get_teacher_allowed_class_ids — never the whole school.
+
+    Note: the ``attendance`` table has no ``teacher_id`` column, so we scope
+    by ``class_id`` ∈ the teacher's allowed class set, additionally tenant-pin
+    the query by ``school_id`` (project query-level isolation principle), and
+    bound it to a one-day date range.
+    """
+    from datetime import timedelta
+    from utils.tenant_scope import get_teacher_allowed_class_ids
+
+    teacher_id = current_user.get("teacher_id") or current_user.get("id")
+    allowed = await get_teacher_allowed_class_ids(db.session, teacher_id)
+    if not allowed:
+        return {"records": []}
+
+    day = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    try:
+        start = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+
+    attn_query = {
+        "class_id": {"$in": list(allowed)},
+        "date": {"$gte": start, "$lt": end},
+    }
+    school_id = current_user.get("tenant_id") or current_user.get("school_id")
+    if school_id:
+        attn_query["school_id"] = school_id
+
+    records = await gd_find(db.session, "attendance", attn_query, limit=5000)
+    done_ids = sorted({r.get("class_id") for r in records if r.get("class_id")})
+    return {"records": [{"class_id": cid} for cid in done_ids]}
+
+
 @router.get("/teacher/classes/{teacher_id}")
 async def get_teacher_classes(
     teacher_id: str,
@@ -1109,12 +1152,12 @@ async def get_teacher_classes(
 
     class_ids_from_assignments = set(a.get("class_id") for a in assignments if a.get("class_id"))
 
-    tca_docs = await gd_find(db.session, "teacher_class_assignments", {
-        "teacher_id": resolved_teacher_id
-    }, limit=200)
-    class_ids_from_tca = set(d.get("class_id") for d in tca_docs if d.get("class_id"))
-
-    all_class_ids = list(class_ids_from_assignments | class_ids_from_tca)
+    # teacher_class_assignments is a scheduling-convenience table that is
+    # auto-populated to link every teacher to every class, so it must NOT
+    # widen the teacher's visible class set (it surfaced the whole school as
+    # "My Classes"). Visibility is the ACTIVE teacher_assignments set only —
+    # the same source of truth as utils.tenant_scope.get_teacher_allowed_class_ids.
+    all_class_ids = list(class_ids_from_assignments)
     if not all_class_ids:
         return []
 
