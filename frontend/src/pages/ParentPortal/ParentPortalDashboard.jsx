@@ -381,9 +381,11 @@ const ParentPortalDashboard = () => {
               <Users className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
               <h3 className="font-bold text-lg text-foreground mb-2 font-cairo">{t('noChildrenEnrolled')}</h3>
               <p className="text-muted-foreground text-sm mb-4">{t('contactSchoolAdministrationToLinkYourAccount')}</p>
-              <Button variant="outline">
-                <MessageSquare className="h-4 w-4 me-2" />
-                {t('contactAdmin')}
+              <Button variant="outline" asChild>
+                <Link to="/parent/communication">
+                  <MessageSquare className="h-4 w-4 me-2" />
+                  {t('contactAdmin')}
+                </Link>
               </Button>
             </CardContent>
           </Card>
