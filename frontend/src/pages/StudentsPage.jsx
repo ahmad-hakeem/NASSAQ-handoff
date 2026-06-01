@@ -103,7 +103,11 @@ export const StudentsPage = () => {
         api.get('/classes'),
         api.get('/reference/grades').catch(() => ({ data: [] })),
       ]);
-      setStudents(studentsRes.data);
+      // The /students endpoint returns { students: [...], total: N } in its
+      // paginated shape, or a plain array in some legacy paths. Extract the
+      // array either way so students state is always Array.isArray() === true.
+      const studentsRaw = studentsRes.data;
+      setStudents(Array.isArray(studentsRaw) ? studentsRaw : (studentsRaw?.students || []));
       setClasses(classesRes.data);
       setGrades(gradesRes.data || []);
       
@@ -183,6 +187,12 @@ export const StudentsPage = () => {
       async () => {
         try {
           const res = await api.delete(`/students/${studentId}`);
+          // API integrity: treat an explicit error body as a failure even on
+          // HTTP 200, which some proxies emit when the real status is hidden.
+          if (res.data?.error) {
+            nassaqError(res.data?.detail || t('failedToDeleteStudent'));
+            return;
+          }
           const cleanup = res.data?.cleanup;
           let msg = t('studentDeletedSuccessfully');
           if (cleanup) {
@@ -190,9 +200,18 @@ export const StudentsPage = () => {
             if (parts.length > 0) msg += ` (${parts.join(', ')})`;
           }
           toast.success(msg);
-          setStudents(prev => prev.filter(s => s.id !== studentId));
+          // Functional update avoids stale-closure issues.
+          // String() coercion reconciles integer IDs (backend) with any string
+          // representation at the call site; _id fallback covers object-shape
+          // variants without requiring a data migration.
+          setStudents(prev =>
+            (Array.isArray(prev) ? prev : []).filter(s => {
+              const sid = s.id ?? s._id;
+              return String(sid) !== String(studentId);
+            })
+          );
         } catch (error) {
-          nassaqError(error.response?.data?.detail || (t('failedToDeleteStudent')));
+          nassaqError(error.response?.data?.detail || t('failedToDeleteStudent'));
         }
       },
       { title: t('confirmPermanentDelete'), confirmText: t('yesDeletePermanently'), cancelText: t('cancel') }
