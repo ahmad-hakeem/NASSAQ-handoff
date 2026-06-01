@@ -752,13 +752,16 @@ export default function TeacherClassesPage() {
     return cls.grade_name || '';
   }, [gradeOptions, isRTL]);
 
-  const gradeKey = (c) => String(c.grade_level || c.grade_id || '');
+  const gradeKey = (c) =>
+    c.grade_level ? String(c.grade_level)
+    : c.grade_id  ? String(c.grade_id)
+    : '__none__';
 
   const grades = useMemo(() => {
     const seen = new Map();
     for (const c of classes) {
       const key = gradeKey(c);
-      if (!key || seen.has(key)) continue;
+      if (key === '__none__' || seen.has(key)) continue;
       let label = '';
       if (c.grade_id && gradeOptions.length > 0) {
         const opt = gradeOptions.find(g => g.id === c.grade_id);
@@ -1789,8 +1792,6 @@ export default function TeacherClassesPage() {
             </div>
           )}
 
-          {/* DEBUG — remove after QA */}
-          {console.log('Classes after filter:', filteredClasses)}
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <Loader2 className="h-10 w-10 animate-spin text-brand-turquoise" />
