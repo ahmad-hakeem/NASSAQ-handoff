@@ -558,11 +558,10 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
       isRTL
         ? `هل تريد حذف الطالب "${student.full_name}" نهائياً؟ سيتم حذف كل بياناته.`
         : `Permanently delete student "${student.full_name}"? All their data will be removed.`,
-      async (ok) => {
-        if (!ok) return;
+      async () => {
         try {
           await api.delete(`/students/${student.id}`);
-          await fetchStudents();
+          setStudents(prev => prev.filter(s => s.id !== student.id));
           if (typeof fetchWorkspaceStudentCount === 'function') {
             await fetchWorkspaceStudentCount();
           }
@@ -571,6 +570,12 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
           const detail = err?.response?.data?.detail;
           nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر حذف الطالب' : 'Could not delete student'));
         }
+      },
+      {
+        title: isRTL ? 'تأكيد الحذف النهائي' : 'Confirm Permanent Delete',
+        confirmText: isRTL ? 'نعم، احذف نهائياً' : 'Yes, Delete Permanently',
+        cancelText: isRTL ? 'إلغاء' : 'Cancel',
+        type: 'error',
       }
     );
   };
