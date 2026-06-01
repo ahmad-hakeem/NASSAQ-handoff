@@ -1645,105 +1645,14 @@ export const LandingPage = () => {
           </div>
 
           <div className="space-y-3">
-            {[
-              {
-                qAr: 'ما هي منصة نَسَّق؟',
-                qEn: 'What is Nassaq?',
-                aAr: 'نَسَّق منصة ذكية تدير مدرستك من مكان واحد — حضور، جداول، تقييمات، وتقارير — مدعومة بالذكاء الاصطناعي لتحوّل بياناتك اليومية إلى قرارات أوضح ووقت أوفر.',
-                aEn: 'Nassaq runs your whole school from one place — attendance, schedules, assessments, and reports — powered by AI that turns daily data into clearer decisions and saved hours.',
-              },
-              {
-                qAr: 'هل نَسَّق مجرد نظام إدارة مدارس تقليدي؟',
-                qEn: 'Is Nassaq just a traditional school system?',
-                aAr: 'أكثر من نظام تقليدي. نَسَّق يجمع التشغيل اليومي مع جدولة ذكية ومساعد "حكيم" الذي ينبّهك مبكراً لما يحتاج انتباهك — حتى تقود مدرستك بثقة، لا أن تطاردها.',
-                aEn: 'More than a traditional system. Nassaq pairs everyday operations with smart scheduling and the Hakim AI assistant that flags what needs attention early — so you lead your school instead of chasing it.',
-              },
-              {
-                qAr: 'ما أبرز ما تقدّمه المنصة؟',
-                qEn: "What are the platform's main features?",
-                aAr: 'حضور دقيق، جداول ذكية بالسحب والإفلات، تقييمات ودرجات، تقارير وتحليلات لحظية، بوابة لأولياء الأمور، إشعارات فورية، ومساعد "حكيم" — كل ما تحتاجه مدرستك في منصة واحدة.',
-                aEn: 'Accurate attendance, smart drag-and-drop timetables, assessments and grading, live reports and analytics, a parent portal, instant notifications, and the Hakim AI assistant — everything your school needs in one platform.',
-              },
-              {
-                qAr: 'كيف يُستخدم الذكاء الاصطناعي داخل نَسَّق؟',
-                qEn: 'How does Nassaq use AI?',
-                aAr: 'يقرأ "حكيم" أداء الطلاب وتفاعلهم، ويبرز الطلاب الذين قد يحتاجون دعماً قبل تأخر الأوان، ويمنح معلميك وإدارتك رؤى جاهزة تختصر وقت اتخاذ القرار.',
-                aEn: "Hakim reads student performance and engagement, surfaces who may need support before it's too late, and gives your teachers and leadership ready insights that shorten decision time.",
-              },
-              {
-                qAr: 'هل تدعم المنصة المدارس الحكومية والخاصة؟',
-                qEn: 'Does it support public and private schools?',
-                aAr: 'نعم. تتكيّف نَسَّق مع مدارسك مهما اختلف نوعها وحجمها، بإعدادات وصلاحيات تُفصَّل على مقاس كل مدرسة.',
-                aEn: 'Yes. Nassaq adapts to schools of every type and size, with settings and permissions tailored to each one.',
-              },
-              {
-                qAr: 'هل بيانات المدرسة والطلاب آمنة؟',
-                qEn: 'Is school and student data secure?',
-                aAr: 'أمان مدرستك أولوية: صلاحيات دقيقة لكل دور، عزل كامل لبيانات كل مدرسة، تحقق ثنائي (MFA)، وسجل للعمليات الحساسة. بياناتك ملكك وتبقى تحت سيطرتك دائماً.',
-                aEn: "Your school's security comes first: precise role permissions, full data isolation per school, multi-factor authentication, and logging of sensitive actions. Your data is yours and stays under your control.",
-              },
-              {
-                qAr: 'هل يمكن لولي الأمر متابعة أبنائه عبر المنصة؟',
-                qEn: 'Can parents follow their children through the platform?',
-                aAr: 'نعم. تمنح بوابة أولياء الأمور العائلة صورة واضحة عن أبنائها — الحضور، الدرجات، الملاحظات، والجدول — مع تواصل مباشر مع المعلمين وإشعارات بكل ما يهم.',
-                aEn: 'Yes. The parent portal gives families a clear view of their children — attendance, grades, notes, and schedule — with direct teacher communication and alerts on what matters.',
-              },
-              {
-                qAr: 'هل تعمل المنصة على الجوال؟',
-                qEn: 'Does it work on mobile?',
-                aAr: 'نعم. نَسَّق يعمل بسلاسة على الجوال والحاسب من المتصفح مباشرة، فيستخدمه معلموك وأولياء الأمور في أي وقت ومكان دون تثبيت أي تطبيق.',
-                aEn: 'Yes. Nassaq runs smoothly on phone and desktop straight from the browser, so teachers and parents use it anytime, anywhere — no app to install.',
-              },
-              {
-                qAr: 'هل يمكن تخصيص صلاحيات المستخدمين؟',
-                qEn: 'Can user permissions be customized?',
-                aAr: 'نعم. لكل دور صلاحياته — المدير، المعلم، ولي الأمر، الطالب — فيرى كل مستخدم ما يخصه فقط، بأمان ووضوح.',
-                aEn: 'Yes. Every role has its own access — principal, teacher, parent, student — so each user sees only what\'s relevant to them, securely and clearly.',
-              },
-              {
-                qAr: 'هل تدعم المنصة الإشعارات؟',
-                qEn: 'Does the platform support notifications?',
-                aAr: 'نعم. إشعارات فورية داخل المنصة لحظة وقوع الأحداث المهمة، مع تنبيهات بالبريد الإلكتروني لأمور مثل الدعوات وإعادة تعيين كلمة المرور — فلا يفوت فريقك شيء.',
-                aEn: 'Yes. Instant in-app notifications the moment something important happens, plus email alerts for things like invitations and password resets — so your team never misses a beat.',
-              },
-              {
-                qAr: 'هل تتكامل نَسَّق مع أنظمتنا الحالية؟',
-                qEn: 'Does Nassaq integrate with our current systems?',
-                aAr: 'نعم. استورد بيانات طلابك ومعلميك من نظام نور عبر ملفات Excel في دقائق، وتعمل نَسَّق بجانب أدواتك الحالية مثل مدرستي دون تعارض.',
-                aEn: 'Yes. Import your students and teachers from Noor via Excel in minutes, and Nassaq works alongside your current tools like Madrasati without conflict.',
-              },
-              {
-                qAr: 'كيف يتم إنشاء الحسابات؟',
-                qEn: 'How are accounts created?',
-                aAr: 'تبدأ المدارس والمعلمون المستقلون بالتسجيل مباشرة، وتُضاف حسابات المعلمين وأولياء الأمور والطلاب عبر دعوات المدرسة أو الاستيراد المجمّع من نور — انطلاقة سريعة وصلاحيات مضبوطة.',
-                aEn: 'Schools and independent teachers start by registering directly, while teacher, parent, and student accounts are added through school invitations or bulk import from Noor — fast to launch, fully controlled.',
-              },
-              {
-                qAr: 'هل تصلح المنصة لإدارة عدة مدارس؟',
-                qEn: 'Can it manage multiple schools?',
-                aAr: 'نعم. بُنيت نَسَّق لتنمو معك: أدِر عدة مدارس على منصة واحدة ببيانات معزولة تماماً لكل مدرسة.',
-                aEn: 'Yes. Nassaq is built to scale with you: manage multiple schools on one platform, each with fully isolated data.',
-              },
-              {
-                qAr: 'هل توفّر المنصة تقارير وتحليلات للإدارة؟',
-                qEn: 'Does it provide reports and analytics for administrators?',
-                aAr: 'نعم. لوحات ومؤشرات لحظية للحضور والأداء على مستوى المدرسة والمعلم والطالب، مع تصدير احترافي بصيغ PDF وExcel وCSV جاهزة للمشاركة.',
-                aEn: 'Yes. Live dashboards for attendance and performance at school, teacher, and student levels, with professional PDF, Excel, and CSV exports ready to share.',
-              },
-              {
-                qAr: 'كيف نبدأ باستخدام نَسَّق؟',
-                qEn: 'How do we get started?',
-                aAr: 'سجّل مدرستك الآن وابدأ الإعداد خلال دقائق، أو تواصل معنا لنرافقك خطوة بخطوة في تهيئة الحسابات واستيراد بياناتك.',
-                aEn: 'Register your school now and start setup in minutes, or contact us to walk you through accounts and data import step by step.',
-              },
-            ].map((faq, i) => (
+            {Array.from({ length: 15 }, (_, idx) => idx + 1).map((n) => (
               <details
-                key={i}
+                key={n}
                 className="group bg-card/80 border border-border/50 rounded-2xl overflow-hidden backdrop-blur-sm transition-all duration-300 hover:border-brand-turquoise/30 hover:shadow-md open:border-brand-turquoise/40 open:shadow-xl open:shadow-brand-turquoise/5"
               >
                 <summary className="flex items-center justify-between gap-4 px-6 py-5 cursor-pointer list-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-2xl">
                   <span className="font-cairo font-bold text-foreground text-base text-start">
-                    {isRTL ? faq.qAr : faq.qEn}
+                    {t(`landingFaqQ${n}`)}
                   </span>
                   <span className="shrink-0 w-8 h-8 rounded-lg bg-brand-turquoise/10 flex items-center justify-center transition-colors group-hover:bg-brand-turquoise/15 group-open:bg-gradient-to-br group-open:from-brand-turquoise group-open:to-cyan-500">
                     <ChevronDown className="h-4 w-4 text-brand-turquoise group-open:text-white group-open:rotate-180 transition-all" strokeWidth={2} aria-hidden="true" />
@@ -1751,7 +1660,7 @@ export const LandingPage = () => {
                 </summary>
                 <div className="px-6 pb-5 -mt-1">
                   <p className="font-tajawal text-sm text-muted-foreground leading-relaxed">
-                    {isRTL ? faq.aAr : faq.aEn}
+                    {t(`landingFaqA${n}`)}
                   </p>
                 </div>
               </details>
