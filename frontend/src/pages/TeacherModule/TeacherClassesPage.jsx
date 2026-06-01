@@ -339,8 +339,17 @@ export default function TeacherClassesPage() {
       // an accepted *collaborator* on classes owned by another IT
       // workspace. Surface those alongside their own classes with a
       // "shared with <host>" badge so the entry point exists.
+      //
+      // IT workspace classes are created via /classes/create and may not
+      // have corresponding teacher_assignments rows, so /teacher/classes/{id}
+      // returns [] for IT users. Use /classes (the same endpoint the
+      // post-add-class refresh uses) as the primary source for IT teachers.
+      const classesEndpoint = isIndependentTeacher
+        ? api.get('/classes').catch(() => ({ data: [] }))
+        : api.get(`/teacher/classes/${teacherId}`);
+
       const [classesRes, metricsRes, sharedRes] = await Promise.all([
-        api.get(`/teacher/classes/${teacherId}`),
+        classesEndpoint,
         api.get(`/teacher/${teacherId}/class-metrics`).catch(() => ({ data: {} })),
         isIndependentTeacher
           ? api.get('/independent-teacher/workspace-collaborators/shared-with-me').catch(() => ({ data: { items: [] } }))
@@ -357,7 +366,7 @@ export default function TeacherClassesPage() {
       } else if (Array.isArray(_raw?.items)) {
         classesData = _raw.items;
       } else {
-        console.warn('TeacherClassesPage: unrecognised /teacher/classes response shape', _raw);
+        console.warn('TeacherClassesPage: unrecognised classes response shape', _raw);
         classesData = [];
       }
       const metricsData = metricsRes.data || {};
