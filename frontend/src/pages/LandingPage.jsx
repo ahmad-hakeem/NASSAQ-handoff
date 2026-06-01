@@ -1632,15 +1632,11 @@ export const LandingPage = () => {
             <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-turquoise/15 to-brand-turquoise/5 border border-brand-turquoise/25 rounded-full px-5 py-2.5 mb-6 backdrop-blur-sm animate-pulse-glow">
               <Lightbulb className="h-4 w-4 text-brand-turquoise animate-pulse" strokeWidth={1.5} aria-hidden="true" />
               <span className="text-brand-turquoise text-sm font-tajawal font-medium">
-                {isRTL ? 'الأسئلة التي يطرحها المدراء قبل البدء' : 'Questions principals ask before starting'}
+                {t('landingFaqEyebrow')}
               </span>
             </div>
             <h2 className="font-cairo font-black text-foreground text-3xl md:text-5xl lg:text-[3.5rem] leading-tight">
-              {isRTL ? (
-                <>أسئلة يطرحها المدراء <span className="text-brand-turquoise">قبل البدء.</span></>
-              ) : (
-                <>Questions principals ask <span className="text-brand-turquoise">before they start.</span></>
-              )}
+              {t('landingFaqHeadingLead')} <span className="text-brand-turquoise">{t('landingFaqHeadingAccent')}</span>
             </h2>
           </div>
 
@@ -1725,10 +1721,8 @@ export const LandingPage = () => {
                 priceEn: 'Free',
                 priceNoteAr: 'برنامج تجريبي محدود',
                 priceNoteEn: 'Limited pilot program',
-                metaAr: 'حتى ٣٠ طالب · معلم واحد · جاهز خلال ٢٤ ساعة',
-                metaEn: 'Up to 30 students · 1 teacher · ready in 24 hours',
-                ctaAr: 'اطلب Pilot',
-                ctaEn: 'Request a Pilot',
+                metaKey: 'landingPricingPilotMeta',
+                ctaKey: 'landingPricingPilotCta',
                 ctaLink: '/register',
                 features: [
                   ['إدارة المستويات الأكاديمية', 'Academic levels management'],
@@ -1749,10 +1743,8 @@ export const LandingPage = () => {
                 priceEn: 'Per-student pricing',
                 priceNoteAr: 'وحجم المؤسسة',
                 priceNoteEn: 'and institution size',
-                metaAr: 'تسعير شفاف بدون رسوم إعداد · إلغاء في أي وقت',
-                metaEn: 'Transparent pricing, no setup fees · cancel anytime',
-                ctaAr: 'احجز عرضًا',
-                ctaEn: 'Book a demo',
+                metaKey: 'landingPricingSchoolsMeta',
+                ctaKey: 'landingPricingSchoolsCta',
                 ctaLink: '/register',
                 features: [
                   ['كل ما في Pilot', 'Everything in Pilot'],
@@ -1775,10 +1767,8 @@ export const LandingPage = () => {
                 priceEn: 'Custom pricing',
                 priceNoteAr: 'تواصل معنا',
                 priceNoteEn: 'Contact us',
-                metaAr: 'تخصيص كامل للشبكات التعليمية',
-                metaEn: 'Full customization for education networks',
-                ctaAr: 'تواصل مع المبيعات',
-                ctaEn: 'Contact sales',
+                metaKey: 'landingPricingGroupsMeta',
+                ctaKey: 'landingPricingGroupsCta',
                 ctaLink: '/register',
                 features: [
                   ['كل ما في باقة المدارس', 'Everything in the Schools plan'],
@@ -1832,7 +1822,7 @@ export const LandingPage = () => {
                       : 'bg-white/10 border border-white/20 hover:bg-white/15 hover:border-brand-turquoise/40 text-white hover:text-white backdrop-blur-sm'
                   }`}
                 >
-                  <Link to={tier.ctaLink}>{isRTL ? tier.ctaAr : tier.ctaEn}</Link>
+                  <Link to={tier.ctaLink}>{t(tier.ctaKey)}</Link>
                 </Button>
 
                 <ul className="space-y-3 flex-1">
@@ -1847,7 +1837,7 @@ export const LandingPage = () => {
                 </ul>
 
                 <p className="font-tajawal text-xs mt-6 pt-5 border-t text-white/55 border-white/10">
-                  {isRTL ? tier.metaAr : tier.metaEn}
+                  {t(tier.metaKey)}
                 </p>
               </div>
             ))}
