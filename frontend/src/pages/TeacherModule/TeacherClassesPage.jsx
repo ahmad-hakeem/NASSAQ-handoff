@@ -346,6 +346,7 @@ export default function TeacherClassesPage() {
         const m = metricsData[cls.id] || {};
         return {
           ...cls,
+          name: cls.name || cls.name_ar || '',
           attendance_rate: m.attendance_rate ?? 0,
           participation_rate: m.participation_rate ?? 0,
           avg_performance: m.avg_performance ?? 0,
@@ -558,6 +559,11 @@ export default function TeacherClassesPage() {
     // non-IT teachers, classes are still provisioned by the school admin so
     // we keep the friendly toast explanation.
     if (isIndependentTeacher) {
+      const ownCount = workspaceClassCount ?? classes.filter(c => !c._collab).length;
+      if (ownCount >= 5) {
+        nassaqWarning('عذراً، لقد وصلت إلى الحد الأقصى (5 فصول). يرجى حذف فصل أولاً لإضافة فصل جديد.');
+        return;
+      }
       setWorkspaceClassForm({ name_ar: '', grade_label: '', subject_id: '', capacity: 30 });
       fetchWorkspaceSubjects();
       fetchGradeOptions();
@@ -637,6 +643,7 @@ export default function TeacherClassesPage() {
               const existing = prev.find(c => c.id === cls.id);
               return {
                 ...cls,
+                name: cls.name || cls.name_ar || '',
                 attendance_rate: existing?.attendance_rate ?? 0,
                 participation_rate: existing?.participation_rate ?? 0,
                 avg_performance: existing?.avg_performance ?? 0,
@@ -748,6 +755,7 @@ export default function TeacherClassesPage() {
     let result = classes.filter(cls => {
       const matchSearch = !searchQuery ||
         cls.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cls.name_ar?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         cls.grade_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (cls.subjects || []).some(s => s.toLowerCase().includes(searchQuery.toLowerCase()));
       const matchGrade = gradeFilter === 'all' || String(cls.grade_level || cls.grade_id) === gradeFilter;
@@ -883,7 +891,7 @@ export default function TeacherClassesPage() {
                 <GraduationCap className="h-5 w-5 text-white" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="text-base font-cairo truncate">{cls.name}</CardTitle>
+                <CardTitle className="text-base font-cairo truncate">{cls.name || cls.name_ar}</CardTitle>
                 <p className={`text-xs ${gc.text} font-medium`}>{resolveGradeName(cls)}</p>
                 {renderNextSession(cls)}
               </div>
@@ -1024,7 +1032,7 @@ export default function TeacherClassesPage() {
               <GraduationCap className="h-4 w-4 text-white" />
             </div>
             <div className="min-w-0">
-              <p className="font-medium font-cairo text-sm truncate">{cls.name}</p>
+              <p className="font-medium font-cairo text-sm truncate">{cls.name || cls.name_ar}</p>
               <p className={`text-xs ${gc.text}`}>{resolveGradeName(cls)}</p>
             </div>
           </div>
