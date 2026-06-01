@@ -76,6 +76,7 @@ export default function TeacherClassDetailPage() {
 
   const [curriculumData, setCurriculumData] = useState({ lessons: [], total: 0, completed: 0, progress: 0 });
   const [curriculumLoading, setCurriculumLoading] = useState(false);
+  const [curriculumError, setCurriculumError] = useState(false);
   const [expandedWeeks, setExpandedWeeks] = useState({});
   const [showAddLesson, setShowAddLesson] = useState(false);
   const [newLessonTitle, setNewLessonTitle] = useState('');
@@ -224,6 +225,7 @@ export default function TeacherClassDetailPage() {
   const fetchCurriculum = useCallback(async () => {
     if (!classId) return;
     setCurriculumLoading(true);
+    setCurriculumError(false);
     try {
       const res = await api.get(`/class/${classId}/curriculum-plan`);
       setCurriculumData(res.data || { lessons: [], total: 0, completed: 0, progress: 0 });
@@ -231,11 +233,11 @@ export default function TeacherClassDetailPage() {
       (res.data?.lessons || []).forEach(l => { weeks[l.week] = true; });
       setExpandedWeeks(weeks);
     } catch (err) {
-      nassaqError(t('errorLoadingCurriculum'));
+      setCurriculumError(true);
     } finally {
       setCurriculumLoading(false);
     }
-  }, [api, classId, nassaqError, t]);
+  }, [api, classId]);
 
   const fetchGradeColumns = useCallback(async () => {
     if (!classId) return;
@@ -450,6 +452,18 @@ export default function TeacherClassDetailPage() {
 
   const renderCurriculumTab = () => (
     <div className="space-y-4">
+      {curriculumError && (
+        <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0" aria-hidden="true" />
+            <p className="text-sm text-red-700 dark:text-red-300 font-tajawal">{t('errorLoadingCurriculum')}</p>
+          </div>
+          <Button size="sm" variant="outline" className="gap-1.5 border-red-300 text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/30 shrink-0" onClick={fetchCurriculum}>
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+            {t('retry')}
+          </Button>
+        </div>
+      )}
       <div className="grid sm:grid-cols-3 gap-3">
         <Card className="bg-brand-turquoise/5 border-brand-turquoise/20">
           <CardContent className="p-4 text-center">

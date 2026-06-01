@@ -818,8 +818,26 @@ async def _verify_class_access(class_id: str, current_user: dict, *, write: bool
         # Ownership check: if the class belongs to the caller's own workspace,
         # grant access immediately (both read and write).
         wsid = independent_workspace_id(current_user)
+        # Harden: if wsid could not be reconstructed from the user record
+        # (e.g. the `id` field is absent or aliased differently), fall back
+        # to the tenant_id stored on the user — for IT teachers this is
+        # explicitly set to itw_{user_id} during bootstrap and token refresh.
+        if not wsid:
+            _t = current_user.get("tenant_id") or current_user.get("school_id")
+            if _t and isinstance(_t, str) and _t.startswith("itw_"):
+                wsid = _t
         if wsid and str(class_school) == str(wsid):
             return
+        logger.debug(
+            "scheduling._verify_class_access: IT ownership check failed",
+            extra={
+                "class_id": class_id,
+                "class_school": class_school,
+                "wsid": wsid,
+                "user_id": current_user.get("id"),
+                "user_tenant_id": current_user.get("tenant_id"),
+            },
+        )
         # Cross-workspace: only collaborators may proceed.
         mode = await caller_collab_mode_for_class(db.session, current_user, class_id)
         if mode is not None:
