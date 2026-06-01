@@ -320,10 +320,10 @@ export const TeacherExperiencePage = () => {
         <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/5 blur-[120px] animate-pulse" style={{ animationDuration: '10s' }} aria-hidden="true" />
         <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-brand-purple/5 blur-[100px] animate-pulse" style={{ animationDelay: '2s', animationDuration: '8s' }} aria-hidden="true" />
 
-        <div className="relative max-w-6xl mx-auto px-6 grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+        <div className="relative max-w-6xl mx-auto px-6 grid lg:grid-cols-2 gap-12 lg:gap-16 items-stretch">
           {/* send form mockup */}
-          <div>
-            <div className="bg-card/80 border border-border/50 rounded-2xl overflow-hidden shadow-sm">
+          <div className="flex">
+            <div className="bg-card/80 border border-border/50 rounded-2xl overflow-hidden shadow-sm w-full flex flex-col">
               {/* header */}
               <div className="px-5 py-4 border-b border-border/50 flex items-center justify-between">
                 <div>
@@ -358,19 +358,19 @@ export const TeacherExperiencePage = () => {
               </div>
 
               {/* message preview */}
-              <div className="px-5 py-4 border-b border-border/50">
+              <div className="px-5 py-4 border-b border-border/50 flex-1 flex flex-col">
                 <p className="font-tajawal text-xs text-muted-foreground mb-2">{t('teacherExpPcPreviewLabel')}</p>
-                <div className="bg-slate-50 rounded-xl p-3 font-tajawal text-sm text-foreground/80 leading-relaxed border border-border/30">
-                  {t('teacherExpPcMessageBody')}
+                <div className="bg-slate-50 rounded-xl p-3 font-tajawal text-sm text-foreground/80 leading-relaxed border border-border/30 flex-1 min-h-[88px] transition-all duration-300">
+                  {t(`teacherExpPcMessageBody${activeAlertType + 1}`)}
                 </div>
               </div>
 
               {/* hakim suggestion */}
-              <div className="px-5 py-3 border-b border-border/50 flex items-start gap-2.5">
+              <div className="px-5 py-3 border-b border-border/50 flex items-start gap-2.5 min-h-[64px]">
                 <div className="w-6 h-6 rounded-full bg-brand-purple flex items-center justify-center font-cairo font-bold text-[10px] text-white shrink-0 mt-0.5">ح</div>
                 <p className="font-tajawal text-xs text-muted-foreground leading-relaxed">
                   <span className="text-brand-purple font-bold font-cairo">{t('teacherExpPcHakimLabel')}</span>
-                  {t('teacherExpPcHakimSuggestion')}
+                  {t(`teacherExpPcHakimSuggestion${activeAlertType + 1}`)}
                 </p>
               </div>
 
@@ -388,8 +388,8 @@ export const TeacherExperiencePage = () => {
           </div>
 
           {/* copy */}
-          <div className="space-y-6">
-            <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-turquoise/15 to-brand-turquoise/5 border border-brand-turquoise/25 rounded-full px-5 py-2.5">
+          <div className="flex flex-col justify-center space-y-6">
+            <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-turquoise/15 to-brand-turquoise/5 border border-brand-turquoise/25 rounded-full px-5 py-2.5 w-fit">
               <MessageCircle className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
               <span className="text-brand-turquoise text-sm font-tajawal font-medium">{t('teacherExpPcEyebrow')}</span>
             </div>
