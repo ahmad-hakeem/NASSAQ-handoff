@@ -49,7 +49,10 @@ export const TeacherExperiencePage = () => {
   const { isRTL } = useTheme();
   const { t } = useTranslation();
   const [activeAlertType, setActiveAlertType] = useState(0);
+  const [faqExpanded, setFaqExpanded] = useState(false);
   const showTeacherPricing = false;
+  const FAQ_COLLAPSED_COUNT = 5;
+  const FAQ_TOTAL = 15;
 
   return (
     <div className="min-h-screen" dir={isRTL ? 'rtl' : 'ltr'} data-testid="teacher-experience-page">
@@ -451,7 +454,9 @@ export const TeacherExperiencePage = () => {
           </div>
 
           <div className="space-y-3">
-            {Array.from({ length: 15 }, (_, idx) => idx + 1).map((n) => (
+            {Array.from({ length: FAQ_TOTAL }, (_, idx) => idx + 1)
+              .slice(0, faqExpanded ? FAQ_TOTAL : FAQ_COLLAPSED_COUNT)
+              .map((n) => (
               <details
                 key={n}
                 className="group bg-white/5 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-sm transition-all duration-300 hover:border-brand-turquoise/30 hover:shadow-md open:border-brand-turquoise/40 open:shadow-xl open:shadow-brand-turquoise/5"
@@ -472,6 +477,25 @@ export const TeacherExperiencePage = () => {
               </details>
             ))}
           </div>
+
+          {FAQ_TOTAL > FAQ_COLLAPSED_COUNT && (
+            <div className="mt-8 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setFaqExpanded((v) => !v)}
+                aria-expanded={faqExpanded}
+                data-testid="teacher-faq-toggle"
+                className="inline-flex items-center gap-2 font-cairo font-bold text-sm px-6 py-3 rounded-xl bg-white/5 border border-brand-turquoise/30 text-brand-turquoise hover:bg-brand-turquoise/10 hover:border-brand-turquoise/50 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-2 focus-visible:ring-offset-brand-navy"
+              >
+                {faqExpanded ? t('faqShowLess') : t('faqShowMore')}
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${faqExpanded ? 'rotate-180' : ''}`}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                />
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
