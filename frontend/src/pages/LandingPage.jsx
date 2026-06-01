@@ -1635,8 +1635,8 @@ export const LandingPage = () => {
                 {t('landingFaqEyebrow')}
               </span>
             </div>
-            <h2 className="font-cairo font-black text-foreground text-3xl md:text-5xl lg:text-[3.5rem] leading-tight">
-              {t('landingFaqHeadingLead')} <span className="text-brand-turquoise">{t('landingFaqHeadingAccent')}</span>
+            <h2 className="font-cairo font-bold text-3xl md:text-4xl text-slate-900 dark:text-white text-center mb-12 leading-tight">
+              {t('landingFaqHeading')}
             </h2>
           </div>
 
