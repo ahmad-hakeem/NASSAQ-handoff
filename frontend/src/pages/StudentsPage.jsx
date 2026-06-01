@@ -185,14 +185,49 @@ export const StudentsPage = () => {
     nassaqConfirm(
       t('areYouSureYouWantToDeleteThisStudentAllRelatedData'),
       async () => {
+        if (process.env.NODE_ENV === 'development') {
+          // Step 4 — callback entry: confirms the confirmation dialog invoked the callback.
+          // If this never appears in the console the dialog is swallowing the callback.
+          console.debug('[handleDeleteStudent] callback entered', {
+            studentId,
+            studentIdType: typeof studentId,
+            selectedSchool,
+            selectedClass,
+          });
+        }
+
+        // Step 1 — pre-call trace: surfaces ID value/type and active filter state.
+        if (process.env.NODE_ENV === 'development') {
+          console.debug('[handleDeleteStudent] pre-call', {
+            studentId,
+            studentIdType: typeof studentId,
+            selectedSchool,
+            selectedClass,
+          });
+        }
+
         try {
           const res = await api.delete(`/students/${studentId}`);
+
+          // Step 2 — response trace: surfaces soft-errors (HTTP 200 with error:true)
+          // that would silently bail out of the state update.
+          if (process.env.NODE_ENV === 'development') {
+            console.debug('[handleDeleteStudent] API response', res.data);
+          }
+
           // API integrity: treat an explicit error body as a failure even on
           // HTTP 200, which some proxies emit when the real status is hidden.
           if (res.data?.error) {
+            if (process.env.NODE_ENV === 'development') {
+              console.debug('[handleDeleteStudent] soft-error bail-out', {
+                error: res.data?.error,
+                detail: res.data?.detail,
+              });
+            }
             nassaqError(res.data?.detail || t('failedToDeleteStudent'));
             return;
           }
+
           const cleanup = res.data?.cleanup;
           let msg = t('studentDeletedSuccessfully');
           if (cleanup) {
@@ -200,16 +235,35 @@ export const StudentsPage = () => {
             if (parts.length > 0) msg += ` (${parts.join(', ')})`;
           }
           toast.success(msg);
+
           // Functional update avoids stale-closure issues.
-          // String() coercion reconciles integer IDs (backend) with any string
-          // representation at the call site; _id fallback covers object-shape
-          // variants without requiring a data migration.
-          setStudents(prev =>
-            (Array.isArray(prev) ? prev : []).filter(s => {
-              const sid = s.id ?? s._id;
-              return String(sid) !== String(studentId);
-            })
-          );
+          // Both sides are explicitly wrapped in String() to reconcile integer
+          // IDs from the backend with any string representation at the call
+          // site. The `?? s._id` fallback handles object-shape variants without
+          // requiring a data migration. Do NOT simplify either String() call.
+          setStudents(prev => {
+            const safePrev = Array.isArray(prev) ? prev : [];
+
+            // Step 3 — filter trace: confirms whether the functional update
+            // actually removed the target record.
+            if (process.env.NODE_ENV === 'development') {
+              const comparisons = safePrev.map(s => ({
+                sid: s.id ?? s._id,
+                sidStr: String(s.id ?? s._id),
+                studentIdStr: String(studentId),
+                willKeep: String(s.id ?? s._id) !== String(studentId),
+              }));
+              const removed = comparisons.filter(c => !c.willKeep);
+              console.debug('[handleDeleteStudent] filter pass', {
+                prevCount: safePrev.length,
+                removedCount: removed.length,
+                removedIds: removed.map(c => c.sid),
+                comparisons,
+              });
+            }
+
+            return safePrev.filter(s => String(s.id ?? s._id) !== String(studentId));
+          });
         } catch (error) {
           nassaqError(error.response?.data?.detail || t('failedToDeleteStudent'));
         }
