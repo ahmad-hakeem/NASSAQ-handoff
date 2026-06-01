@@ -84,6 +84,11 @@ const HakimChatWidget = ({ childId, childName }) => {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const timeoutRefs = useRef([]);
+  const revealTimerRef = useRef(null);
+  // Bumped on every reveal stop/reset so an already-scheduled typewriter tick
+  // can detect it belongs to a stale thread and bail instead of patching the
+  // newly reset/switched conversation.
+  const revealGenRef = useRef(0);
 
   const hakimAvatar = useMemo(() => getPose('friendly-greeting'), []);
   const hakimListeningAvatar = useMemo(() => getPose('listening'), []);
@@ -96,8 +101,17 @@ const HakimChatWidget = ({ childId, childName }) => {
     return id;
   }, []);
 
+  // Stop any in-flight typewriter reveal and invalidate stale ticks.
+  const stopReveal = useCallback(() => {
+    if (revealTimerRef.current) { clearInterval(revealTimerRef.current); revealTimerRef.current = null; }
+    revealGenRef.current += 1;
+  }, []);
+
   useEffect(() => {
-    return () => { timeoutRefs.current.forEach(clearTimeout); };
+    return () => {
+      timeoutRefs.current.forEach(clearTimeout);
+      if (revealTimerRef.current) clearInterval(revealTimerRef.current);
+    };
   }, []);
 
   const welcomeMessage = useMemo(() => {
@@ -107,12 +121,15 @@ const HakimChatWidget = ({ childId, childName }) => {
 
   // Reset thread when the selected child changes so context never bleeds.
   useEffect(() => {
+    stopReveal();
+    setLoading(false);
+    setHakimState(HakimState.IDLE);
     setMessages([{
       role: 'assistant',
       content: welcomeMessage,
       suggestions: PARENT_DEFAULT_SUGGESTIONS,
     }]);
-  }, [childId, welcomeMessage]);
+  }, [childId, welcomeMessage, stopReveal]);
 
   useEffect(() => {
     trackTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
@@ -146,11 +163,46 @@ const HakimChatWidget = ({ childId, childName }) => {
         })),
       });
 
+      // The AI provider returns the whole reply at once, so reveal it with a
+      // steady typewriter pace for a progressive, ChatGPT-style feel. Input
+      // stays disabled (loading) until the reveal completes.
       setHakimState(HakimState.RESPONDING);
       const reply = res?.data?.response || res?.data?.message || 'لم أتمكن من الإجابة في الوقت الحالي. حاول مرة أخرى من فضلك.';
       const suggestions = res?.data?.suggestions || PARENT_DEFAULT_SUGGESTIONS;
-      setMessages((prev) => [...prev, { role: 'assistant', content: reply, suggestions }]);
-      trackTimeout(() => setHakimState(HakimState.IDLE), 1000);
+
+      // Push an empty assistant bubble, then progressively fill it.
+      setMessages((prev) => [...prev, { role: 'assistant', content: '', suggestions: [] }]);
+
+      const updateLastAssistant = (patch) => {
+        setMessages((prev) => {
+          const next = [...prev];
+          for (let k = next.length - 1; k >= 0; k--) {
+            if (next[k].role === 'assistant') { next[k] = { ...next[k], ...patch }; break; }
+          }
+          return next;
+        });
+      };
+
+      const step = Math.max(2, Math.ceil(reply.length / 280));
+      let shown = 0;
+      stopReveal();
+      const myGen = revealGenRef.current;
+      const timerId = setInterval(() => {
+        // Bail if the thread was reset/closed/switched mid-reveal so a stale
+        // tick never patches the wrong (new) assistant message.
+        if (revealGenRef.current !== myGen) { clearInterval(timerId); return; }
+        shown += step;
+        if (shown >= reply.length) {
+          clearInterval(timerId);
+          if (revealTimerRef.current === timerId) revealTimerRef.current = null;
+          updateLastAssistant({ content: reply, suggestions });
+          trackTimeout(() => setHakimState(HakimState.IDLE), 1000);
+          setLoading(false);
+          return;
+        }
+        updateLastAssistant({ content: reply.slice(0, shown) });
+      }, 18);
+      revealTimerRef.current = timerId;
     } catch (err) {
       const status = err?.response?.status;
       let friendly;
@@ -163,7 +215,6 @@ const HakimChatWidget = ({ childId, childName }) => {
       }
       setMessages((prev) => [...prev, { role: 'assistant', content: friendly, suggestions: [] }]);
       setHakimState(HakimState.IDLE);
-    } finally {
       setLoading(false);
     }
   };
@@ -174,6 +225,9 @@ const HakimChatWidget = ({ childId, childName }) => {
   };
 
   const clearChat = () => {
+    stopReveal();
+    setLoading(false);
+    setHakimState(HakimState.IDLE);
     setMessages([{
       role: 'assistant',
       content: welcomeMessage,
@@ -181,9 +235,17 @@ const HakimChatWidget = ({ childId, childName }) => {
     }]);
   };
 
+  const closeChat = useCallback(() => {
+    stopReveal();
+    setLoading(false);
+    setHakimState(HakimState.IDLE);
+    setIsOpen(false);
+  }, [stopReveal]);
+
   const toggleOpen = () => {
-    setIsOpen((prev) => !prev);
-    if (!isOpen) setHakimState(HakimState.IDLE);
+    if (isOpen) { closeChat(); return; }
+    setIsOpen(true);
+    setHakimState(HakimState.IDLE);
   };
 
   const stateGlow = useMemo(() => {
@@ -284,7 +346,7 @@ const HakimChatWidget = ({ childId, childName }) => {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setIsOpen(false)}
+                onClick={closeChat}
                 className="text-white/60 hover:text-white hover:bg-white/15 h-9 w-9"
               >
                 <X className="h-[18px] w-[18px]" />
@@ -338,7 +400,7 @@ const HakimChatWidget = ({ childId, childName }) => {
                 </div>
               ))}
 
-              {loading && (
+              {loading && hakimState === HakimState.THINKING && (
                 <div className="flex gap-3">
                   <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#7C3AED]/15 to-[#1B93A4]/15 overflow-hidden flex-shrink-0">
                     <img src={hakimThinkingAvatar} alt="حكيم" className="hakim-img w-full h-full object-contain" />

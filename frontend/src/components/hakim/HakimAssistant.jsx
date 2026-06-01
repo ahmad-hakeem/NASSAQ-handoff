@@ -7,7 +7,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { ScrollArea } from '../ui/scroll-area';
 import { Card } from '../ui/card';
-import { X, Send, Loader2, ChevronDown, Trash2, ExternalLink } from 'lucide-react';
+import { X, Send, ChevronDown, Trash2, ExternalLink, Square } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { getPoseForPath, getPose } from './hakimPoses';
@@ -117,6 +117,11 @@ const HakimAssistantInner = () => {
   const streamAbortRef = useRef(null);
   const streamingIdRef = useRef(null);
   const [streamingId, setStreamingId] = useState(null);
+  // Holds the active reveal buffer so the Stop button (rendered outside the
+  // send closure) can flush + finalize it. stopAndKeep()/finalize() set the
+  // per-request `finished` flag synchronously, so the stream's AbortError
+  // handler becomes a no-op and never overwrites the kept answer with an error.
+  const pendingRef = useRef(null);
   const { api, user } = useAuth();
   const { isRTL } = useTheme();
   const { language } = useTranslation();
@@ -332,6 +337,14 @@ const HakimAssistantInner = () => {
     }
   }, []);
 
+  // Stop button: abort the in-flight read and immediately flush whatever text
+  // is still buffered into the bubble, keeping the answer shown so far.
+  const stopGeneration = useCallback(() => {
+    cancelInFlightStream();
+    const p = pendingRef.current;
+    if (p && typeof p.stopAndKeep === 'function') p.stopAndKeep();
+  }, [cancelInFlightStream]);
+
   const sendMessage = async (text) => {
     if (!text.trim() || loading) return;
     handleUserInteraction();
@@ -365,6 +378,17 @@ const HakimAssistantInner = () => {
     streamAbortRef.current = controller;
     const assistantId = `a_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     let firstChunkSeen = false;
+    let finished = false;
+
+    // Typewriter reveal buffer. Replit's AI provider (modelfarm) delivers the
+    // whole completion in one burst rather than token-by-token, so we decouple
+    // *received* text (`pending.text`) from *displayed* text and reveal it at a
+    // steady pace — giving a ChatGPT-style progressive feel no matter how the
+    // provider chunks the response.
+    const pending = { text: '', complete: false, suggestions: [], timer: null };
+    pendingRef.current = pending;
+    const REVEAL_INTERVAL_MS = 18;
+    const REVEAL_TARGET_TICKS = 280; // caps even a very long answer at ~5s of reveal
 
     const flipToStreaming = () => {
       if (firstChunkSeen) return;
@@ -381,17 +405,13 @@ const HakimAssistantInner = () => {
       // and crucially the viewport STAYS at that anchor as the bubble grows.
     };
 
-    const appendChunk = (piece) => {
-      if (!piece) return;
-      flipToStreaming();
-      setMessages((prev) => prev.map((m) => (
-        m.id === assistantId ? { ...m, content: (m.content || '') + piece } : m
-      )));
-      // No auto-follow during streaming — the user reads from the start of
-      // the answer and scrolls down manually if they want to follow the tail.
+    const stopReveal = () => {
+      if (pending.timer) { clearInterval(pending.timer); pending.timer = null; }
     };
 
     const cleanupStreamRefs = () => {
+      stopReveal();
+      if (pendingRef.current === pending) pendingRef.current = null;
       streamingIdRef.current = null;
       setStreamingId(null);
       setLoading(false);
@@ -400,6 +420,7 @@ const HakimAssistantInner = () => {
     };
 
     const finalize = (suggestionList) => {
+      finished = true;
       setMessages((prev) => prev.map((m) => (
         m.id === assistantId
           ? { ...m, streaming: false, suggestions: suggestionList || [] }
@@ -409,9 +430,10 @@ const HakimAssistantInner = () => {
     };
 
     // Replace the in-flight bubble (if any) with the localized safe error.
-    // Used for both stream errors / network drops and user-initiated aborts
-    // so the user never sees a half-written, orphaned assistant message.
+    // Used for both stream errors / network drops and unexpected aborts so the
+    // user never sees a half-written, orphaned assistant message.
     const replaceWithSafeError = () => {
+      finished = true;
       if (firstChunkSeen) {
         setMessages((prev) => prev.map((m) => (
           m.id === assistantId
@@ -428,6 +450,50 @@ const HakimAssistantInner = () => {
         }]);
       }
       cleanupStreamRefs();
+    };
+
+    // Reveal one paced slice of the buffer per tick. The step grows with the
+    // remaining buffer so a long answer still fully reveals within ~5s, while
+    // it eases out naturally as the step shrinks to the floor near the end.
+    // Once the buffer is drained AND the upstream stream has closed, finalize.
+    const revealStep = () => {
+      if (pending.text.length > 0) {
+        const step = Math.max(2, Math.ceil(pending.text.length / REVEAL_TARGET_TICKS));
+        const piece = pending.text.slice(0, step);
+        pending.text = pending.text.slice(step);
+        setMessages((prev) => prev.map((m) => (
+          m.id === assistantId ? { ...m, content: (m.content || '') + piece } : m
+        )));
+        return;
+      }
+      if (pending.complete) finalize(pending.suggestions);
+    };
+
+    const startReveal = () => {
+      if (pending.timer) return;
+      pending.timer = setInterval(revealStep, REVEAL_INTERVAL_MS);
+    };
+
+    // Buffer an incoming chunk and ensure the paced reveal loop is running.
+    const appendChunk = (piece) => {
+      if (!piece) return;
+      flipToStreaming();
+      pending.text += piece;
+      startReveal();
+    };
+
+    // Stop button: flush whatever is still buffered into the bubble instantly
+    // and finalize, keeping the answer shown so far rather than discarding it.
+    pending.stopAndKeep = () => {
+      stopReveal();
+      const rest = pending.text;
+      pending.text = '';
+      if (rest) {
+        setMessages((prev) => prev.map((m) => (
+          m.id === assistantId ? { ...m, content: (m.content || '') + rest } : m
+        )));
+      }
+      finalize(pending.suggestions);
     };
 
     try {
@@ -469,7 +535,6 @@ const HakimAssistantInner = () => {
       const reader = res.body.getReader();
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
-      let suggestionsOut = [];
       let done = false;
 
       // Parse Server-Sent Events: each event is separated by a blank line
@@ -522,7 +587,8 @@ const HakimAssistantInner = () => {
             replaceWithSafeError();
             return;
           } else if (evt.type === 'done') {
-            suggestionsOut = Array.isArray(evt.suggestions) ? evt.suggestions : [];
+            pending.suggestions = Array.isArray(evt.suggestions) ? evt.suggestions : [];
+            pending.complete = true;
             done = true;
             break;
           }
@@ -535,7 +601,10 @@ const HakimAssistantInner = () => {
         if (evt) {
           if (evt.type === 'chunk' && typeof evt.text === 'string') appendChunk(evt.text);
           else if (evt.type === 'error') { replaceWithSafeError(); return; }
-          else if (evt.type === 'done' && Array.isArray(evt.suggestions)) suggestionsOut = evt.suggestions;
+          else if (evt.type === 'done') {
+            pending.suggestions = Array.isArray(evt.suggestions) ? evt.suggestions : [];
+            pending.complete = true;
+          }
         }
       }
 
@@ -544,13 +613,19 @@ const HakimAssistantInner = () => {
         replaceWithSafeError();
         return;
       }
-      finalize(suggestionsOut);
+      // All chunks received and buffered. Mark complete and let the paced
+      // reveal loop finalize the bubble once the buffer is fully drained.
+      pending.complete = true;
+      startReveal();
     } catch (error) {
+      // The bubble was already finalized (e.g. user pressed Stop, which aborts
+      // the in-flight read after keeping the revealed text) — nothing to do.
+      if (finished) return;
       if (error?.name === 'AbortError') {
-        // User cancelled (close / clear / new send): if we already painted
-        // any tokens, replace that half-written bubble with the localized
-        // safe error so the user never sees an orphaned partial message.
-        // If nothing was shown yet, just clean up silently.
+        // Unintentional cancel (close / clear / new send): if we already
+        // painted any tokens, replace that half-written bubble with the
+        // localized safe error so the user never sees an orphaned partial
+        // message. If nothing was shown yet, just clean up silently.
         if (firstChunkSeen) {
           replaceWithSafeError();
         } else {
@@ -804,15 +879,29 @@ const HakimAssistantInner = () => {
                 className="flex-1 rounded-xl text-[15px] h-12 border-border/50 focus:border-[#1B93A4] focus:ring-[#1B93A4]/20"
                 disabled={loading}
               />
-              <Button
-                type="submit"
-                size="icon"
-                disabled={loading || !input.trim()}
-                className="bg-gradient-to-r from-[#7C3AED] to-[#1B93A4] hover:from-[#6D28D9] hover:to-[#157a89] rounded-xl h-12 w-12 shrink-0 transition-all disabled:opacity-40"
-                data-testid="hakim-send-btn"
-              >
-                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-              </Button>
+              {loading ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  onClick={stopGeneration}
+                  className="bg-gradient-to-r from-[#7C3AED] to-[#1B93A4] hover:from-[#6D28D9] hover:to-[#157a89] rounded-xl h-12 w-12 shrink-0 transition-all"
+                  data-testid="hakim-stop-btn"
+                  title={t('hakimStop')}
+                  aria-label={t('hakimStop')}
+                >
+                  <Square className="h-4 w-4 fill-current" aria-hidden="true" />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  size="icon"
+                  disabled={!input.trim()}
+                  className="bg-gradient-to-r from-[#7C3AED] to-[#1B93A4] hover:from-[#6D28D9] hover:to-[#157a89] rounded-xl h-12 w-12 shrink-0 transition-all disabled:opacity-40"
+                  data-testid="hakim-send-btn"
+                >
+                  <Send className="h-5 w-5" />
+                </Button>
+              )}
             </div>
             <p className="mt-2 text-[11px] leading-tight text-center text-muted-foreground/70 font-cairo select-none">
               {t('hakimDisclaimer')}
