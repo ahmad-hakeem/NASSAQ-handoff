@@ -752,11 +752,13 @@ export default function TeacherClassesPage() {
     return cls.grade_name || '';
   }, [gradeOptions, isRTL]);
 
+  const gradeKey = (c) => String(c.grade_level || c.grade_id || '');
+
   const grades = useMemo(() => {
     const seen = new Map();
     for (const c of classes) {
-      const rawId = c.grade_level || c.grade_id || '';
-      if (!rawId || seen.has(rawId)) continue;
+      const key = gradeKey(c);
+      if (!key || seen.has(key)) continue;
       let label = '';
       if (c.grade_id && gradeOptions.length > 0) {
         const opt = gradeOptions.find(g => g.id === c.grade_id);
@@ -766,20 +768,21 @@ export default function TeacherClassesPage() {
             : (opt.name_en || opt.name_ar || opt.name || '');
         }
       }
-      if (!label) label = c.grade_name || rawId;
-      seen.set(rawId, label);
+      if (!label) label = c.grade_name || key;
+      seen.set(key, label);
     }
     return [...seen.entries()].map(([id, label]) => ({ id, label })).sort((a, b) => a.id.localeCompare(b.id));
   }, [classes, gradeOptions, isRTL]);
 
   const filteredClasses = useMemo(() => {
+    const q = searchQuery.toLowerCase();
     let result = classes.filter(cls => {
       const matchSearch = !searchQuery ||
-        cls.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        cls.name_ar?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        cls.grade_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (cls.subjects || []).some(s => s.toLowerCase().includes(searchQuery.toLowerCase()));
-      const matchGrade = gradeFilter === 'all' || String(cls.grade_level || cls.grade_id) === gradeFilter;
+        cls.name?.toLowerCase().includes(q) ||
+        cls.name_ar?.toLowerCase().includes(q) ||
+        cls.grade_name?.toLowerCase().includes(q) ||
+        (cls.subjects || []).some(s => (typeof s === 'string' ? s : s?.name ?? '').toLowerCase().includes(q));
+      const matchGrade = gradeFilter === 'all' || gradeKey(cls) === gradeFilter;
       return matchSearch && matchGrade;
     });
 
