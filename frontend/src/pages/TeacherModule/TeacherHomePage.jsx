@@ -56,6 +56,7 @@ export default function TeacherHomePage() {
   const [stats, setStats] = useState({
     classesCount: 0,
     studentsCount: 0,
+    pendingAttendance: 0,
     stage: ''
   });
   const [classMetrics, setClassMetrics] = useState(null);
@@ -116,6 +117,7 @@ export default function TeacherHomePage() {
         setStats({
           classesCount: data.stats?.my_classes || 0,
           studentsCount: data.stats?.my_students || 0,
+          pendingAttendance: data.stats?.pending_attendance || 0,
           stage: data.school_stage || ''
         });
         const lessons = (data.today_schedule || []).map((lesson, idx) => ({
@@ -409,17 +411,18 @@ export default function TeacherHomePage() {
                   </div>
 
                   {/* Stats Grid */}
-                  <div className="grid grid-cols-4 gap-2 mt-3">
+                  <div className="grid grid-cols-5 gap-1.5 mt-3">
                     {[
-                      { icon: BookOpen, value: loading ? '-' : stats.classesCount, label: t('classes5') },
-                      { icon: Users, value: loading ? '-' : stats.studentsCount, label: t('students2') },
-                      { icon: Briefcase, value: loading ? '-' : (teacherInfo?.subjectsCount || 0), label: t('subjects5') },
-                      { icon: Calendar, value: loading ? '-' : (teacherInfo?.weeklySessions || 0), label: t('weeklySessionsShort') },
+                      { icon: BookOpen,     value: loading ? '-' : stats.classesCount,             label: t('myClasses') },
+                      { icon: Users,        value: loading ? '-' : stats.studentsCount,             label: t('myStudents') },
+                      { icon: Calendar,     value: loading ? '-' : todayLessons.length,             label: t('todaysLessons') },
+                      { icon: CheckCircle2, value: loading ? '-' : stats.pendingAttendance,         label: t('pendingAttendance') },
+                      { icon: Activity,     value: loading ? '-' : (teacherInfo?.weeklySessions || 0), label: t('weeklySessions') },
                     ].map((item, i) => (
-                      <div key={i} className="text-center p-2.5 rounded-xl bg-white/5 border border-white/5">
-                        <item.icon className="h-4 w-4 mx-auto mb-1 text-brand-turquoise" />
-                        <div className="font-bold text-lg leading-tight">{item.value}</div>
-                        <div className="text-[9px] text-white/40 font-tajawal leading-tight">{item.label}</div>
+                      <div key={i} className="text-center p-2 rounded-xl bg-white/5 border border-white/5">
+                        <item.icon className="h-3.5 w-3.5 mx-auto mb-0.5 text-brand-turquoise" />
+                        <div className="font-bold text-base leading-tight">{item.value}</div>
+                        <div className="text-[8px] text-white/40 font-tajawal leading-tight">{item.label}</div>
                       </div>
                     ))}
                   </div>

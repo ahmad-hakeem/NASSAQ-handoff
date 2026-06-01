@@ -547,11 +547,11 @@ export default function TeacherMainDashboard() {
 
                 <div className="flex items-center gap-4 md:gap-6 flex-shrink-0">
                   {/* Current Date */}
-                  <div className="hidden md:flex items-center gap-3 bg-white/5 backdrop-blur rounded-xl px-4 py-2.5 border border-white/10">
-                    <CalendarDays className="h-5 w-5 text-brand-turquoise" />
-                    <div>
-                      <p className="text-sm font-bold font-cairo">{dateInfo?.weekday || ''}</p>
-                      <p className="text-[11px] text-white/50 font-tajawal">{dateInfo?.full || ''}</p>
+                  <div className="flex items-center gap-2 md:gap-3 bg-white/5 backdrop-blur rounded-xl px-2.5 md:px-4 py-2 md:py-2.5 border border-white/10">
+                    <CalendarDays className="h-4 w-4 md:h-5 md:w-5 text-brand-turquoise flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs md:text-sm font-bold font-cairo truncate">{dateInfo?.weekday || ''}</p>
+                      <p className="text-[10px] md:text-[11px] text-white/50 font-tajawal truncate">{dateInfo?.full || ''}</p>
                     </div>
                   </div>
 
@@ -567,9 +567,9 @@ export default function TeacherMainDashboard() {
 
                   {/* School Day Number */}
                   {schoolDayNumber > 0 && (
-                    <div className="hidden lg:flex flex-col items-center bg-brand-turquoise/10 border border-brand-turquoise/20 rounded-xl px-4 py-2">
-                      <span className="text-[10px] text-brand-turquoise/70 font-tajawal">{t('schoolDayNumber')}</span>
-                      <span className="text-2xl font-bold font-cairo text-brand-turquoise">{schoolDayNumber}</span>
+                    <div className="flex flex-col items-center bg-brand-turquoise/10 border border-brand-turquoise/20 rounded-xl px-2.5 md:px-4 py-1.5 md:py-2">
+                      <span className="text-[9px] md:text-[10px] text-brand-turquoise/70 font-tajawal">{t('schoolDayNumber')}</span>
+                      <span className="text-xl md:text-2xl font-bold font-cairo text-brand-turquoise">{schoolDayNumber}</span>
                     </div>
                   )}
                 </div>
@@ -776,10 +776,9 @@ export default function TeacherMainDashboard() {
             {/* C) School Day Timeline moved into the Welcome Card above */}
           </section>
 
-          {/* Metric Cards — HIDDEN per request (logic kept intact) */}
-          {false && (
+          {/* Metric Cards */}
           <section>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 md:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3 md:gap-4">
               {[
                 {
                   title: t('todaysLessons'),
@@ -813,6 +812,14 @@ export default function TeacherMainDashboard() {
                   gradient: stats.pendingAttendance > 0 ? 'from-orange-500 to-orange-600' : 'from-slate-500 to-slate-600',
                   onClick: () => navigate('/teacher/tasks'),
                 },
+                {
+                  title: t('weeklySessions'),
+                  value: stats.totalSessions,
+                  subtitle: t('thisWeek'),
+                  icon: Activity,
+                  gradient: 'from-teal-500 to-teal-600',
+                  onClick: () => navigate('/teacher/schedule'),
+                },
               ].map((card, i) => (
                 <button
                   key={i}
@@ -837,7 +844,6 @@ export default function TeacherMainDashboard() {
               ))}
             </div>
           </section>
-          )}
 
           {/* Teaching Performance — HIDDEN per request (logic kept intact) */}
           {false && teachingMetrics && (

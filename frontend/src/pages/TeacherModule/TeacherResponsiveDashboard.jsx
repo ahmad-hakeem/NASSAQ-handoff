@@ -1,16 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useLayoutEffect } from 'react';
 import TeacherHomePage from './TeacherHomePage';
 import TeacherMainDashboard from './TeacherMainDashboard';
 
 const MOBILE_BREAKPOINT = 768;
 
 export default function TeacherResponsiveDashboard() {
-  const [isMobile, setIsMobile] = useState(window.innerWidth < MOBILE_BREAKPOINT);
+  const [isMobile, setIsMobile] = useState(false);
 
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+  useLayoutEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
   }, []);
 
   return isMobile ? <TeacherHomePage /> : <TeacherMainDashboard />;
