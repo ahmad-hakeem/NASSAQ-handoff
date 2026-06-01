@@ -7,7 +7,9 @@ A comprehensive, multi-tenant school management platform with AI-powered feature
 - **Typecheck**: `mypy backend/` (backend), `npm run typecheck` (frontend)
 - **Codegen**: `alembic revision --autogenerate -m "description"` (DB migrations), `python -m src.shared_models` (Pydantic models)
 - **DB Push**: `alembic upgrade head`
+- **Deploy migrations**: `build.sh` runs `alembic upgrade head` once per release (build phase — single run, no autoscale race). The app then refuses to boot in production if the live schema is not at head (startup gate in `backend/app/lifecycle.py`).
 - **Schema drift check**: `cd backend && alembic upgrade head && pytest tests/test_schema_orm_drift.py -v` — fails when a column/table is in `pg_models.py` but not in Postgres (missing migration), or vice versa. Update the allowlist in the test only when a divergence is intentional.
+- **Destructive-migration guard**: `cd backend && pytest tests/test_migration_destructive_ops_guard.py -v` — fails when a migration's `upgrade()` drops a table/column or runs raw DROP/TRUNCATE/DELETE SQL without an explicit entry in `ALLOWED_DESTRUCTIVE`. Add the revision id + reason to that allowlist as the review sign-off; take a `pg_dump` first (see `docs/runbooks/database-backup-restore.md`).
 - **Required Env Vars**: `DATABASE_URL`, `SECRET_KEY`, `ALGORITHM`, `MFA_ENCRYPTION_KEY` (Fernet key — generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`; rotate via Replit secrets)
 
 ## Stack

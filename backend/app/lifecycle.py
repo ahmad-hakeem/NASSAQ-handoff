@@ -89,9 +89,33 @@ async def startup_tasks():
         logger.error(f"DEPLOYMENT SAFETY: Pre-flight checks FAILED: {failed}")
 
     try:
-        await init_pg_tables()
+        schema_status = await init_pg_tables()
         logger.info("PostgreSQL tables verified on startup")
+        # Runtime-only sequences (not Alembic-owned). Isolated from the schema
+        # gate so a DDL/privilege issue here can never block production boot.
+        try:
+            from db import ensure_runtime_sequences
+            await ensure_runtime_sequences()
+        except Exception as seq_err:
+            logger.warning(f"Runtime sequence ensure skipped: {seq_err}")
+        # DEPLOYMENT SAFETY: in production, refuse to serve traffic against a
+        # schema that is not at the latest Alembic head. This fails fast on a
+        # partial/forgotten migration instead of silently serving 500s (or, on
+        # a fresh/empty DB, booting with no tables at all).
+        if config.is_production() and not schema_status.get("at_head"):
+            msg = (
+                "DEPLOYMENT SAFETY: Database schema is not at the latest Alembic head "
+                f"(db={schema_status.get('db_version')}, head={schema_status.get('head_version')}). "
+                "Run 'alembic upgrade head' against this database before serving traffic."
+            )
+            logger.critical(msg)
+            raise RuntimeError(msg)
+    except RuntimeError:
+        raise
     except Exception as e:
+        if config.is_production():
+            logger.critical(f"DEPLOYMENT SAFETY: PostgreSQL schema verification failed in production: {e}")
+            raise
         logger.warning(f"PostgreSQL init on startup: {e}")
 
     try:
