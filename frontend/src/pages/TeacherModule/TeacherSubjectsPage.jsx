@@ -143,8 +143,7 @@ export function TeacherSubjectsPanel({ embedded = false }) {
             || 'سيؤدي الحذف إلى إخفاء المادة دون حذف الفصول أو الحصص المرتبطة. هل تريد المتابعة؟',
         ];
         setDeletingId(null);
-        nassaqConfirm(lines.join('\n'), async (ok) => {
-          if (!ok) return;
+        nassaqConfirm(lines.join('\n'), async () => {
           await performDelete(subjectId, { force: true });
         }, {
           confirmText: t('deleteAnyway') || 'حذف على أي حال',
@@ -164,8 +163,7 @@ export function TeacherSubjectsPanel({ embedded = false }) {
   const handleDelete = (subject) => {
     const label = subject.name || subject.name_ar || subject.name_en || '';
     const message = (t('confirmDelete') || 'هل أنت متأكد من الحذف؟') + (label ? `\n${label}` : '');
-    nassaqConfirm(message, async (ok) => {
-      if (!ok) return;
+    nassaqConfirm(message, async () => {
       await performDelete(subject.id);
     });
   };
