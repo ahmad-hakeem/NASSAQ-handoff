@@ -1513,8 +1513,8 @@ export const LandingPage = () => {
               {
                 show: !!schoolsDisplay,
                 value: schoolsDisplay,
-                titleAr: 'مدارس فعّلت نَسَّق',
-                titleEn: 'Schools using NASSAQ',
+                titleAr: 'مدارس',
+                titleEn: 'Schools',
                 subAr: 'مؤشر نمو عام',
                 subEn: 'General growth indicator',
                 icon: Building2,
@@ -1522,8 +1522,8 @@ export const LandingPage = () => {
               {
                 show: !!teachersDisplay,
                 value: teachersDisplay,
-                titleAr: 'معلمون يستخدمون نَسَّق',
-                titleEn: 'Teachers using NASSAQ',
+                titleAr: 'معلمون',
+                titleEn: 'Teachers',
                 subAr: 'تحديثات دورية تعكس اتساع الاستخدام',
                 subEn: 'Updated periodically to reflect adoption',
                 icon: Users,
@@ -1542,7 +1542,7 @@ export const LandingPage = () => {
                       <div className="w-12 h-12 rounded-xl bg-brand-turquoise/15 flex items-center justify-center mb-4">
                         <Icon className="h-6 w-6 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
                       </div>
-                      <p className="font-tajawal text-white/70 text-sm mb-3">
+                      <p className="font-tajawal text-white font-semibold text-xl mb-2">
                         {isRTL ? card.titleAr : card.titleEn}
                       </p>
                       <div className="font-cairo font-black text-white text-5xl lg:text-6xl mb-3 tracking-tight">
