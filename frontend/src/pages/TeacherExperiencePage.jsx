@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme, useTranslation } from '../contexts/ThemeContext';
 import { Footer } from '../components/layout/Footer';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
@@ -10,6 +10,7 @@ import {
   Calendar, BookOpen, Users, TrendingUp, Bell, Download,
   FileText, MessageCircle,
   GraduationCap, AlertTriangle, Target, Lightbulb,
+  HelpCircle, ChevronDown,
 } from 'lucide-react';
 
 const BG_PATTERN = '/nassaq-pattern.png';
@@ -108,6 +109,7 @@ const MONTHLY_FEATURES = [
 
 export const TeacherExperiencePage = () => {
   const { isRTL } = useTheme();
+  const { t } = useTranslation();
   const [activeAlertType, setActiveAlertType] = useState(0);
   const showTeacherPricing = false;
 
@@ -461,6 +463,59 @@ export const TeacherExperiencePage = () => {
                 );
               })}
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FAQ — navy + nassaq texture ───────────────────────── */}
+      <section
+        className="relative bg-brand-navy py-24 lg:py-32 overflow-hidden"
+        id="teacher-faq"
+        data-testid="teacher-faq-section"
+      >
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-[0.05]"
+          style={{ backgroundImage: `url('/nassaq-background.png')` }}
+          aria-hidden="true"
+        />
+        <div className="absolute inset-0 bg-brand-navy/70" aria-hidden="true" />
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/6 blur-[120px] animate-pulse" style={{ animationDuration: '10s' }} aria-hidden="true" />
+        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-brand-purple/6 blur-[100px] animate-pulse" style={{ animationDelay: '3s', animationDuration: '8s' }} aria-hidden="true" />
+
+        <div className="relative max-w-3xl mx-auto px-6">
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center gap-2.5 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full px-5 py-2.5 mb-6 backdrop-blur-sm">
+              <HelpCircle className="h-4 w-4 text-brand-turquoise animate-pulse" strokeWidth={1.5} aria-hidden="true" />
+              <span className="text-brand-turquoise text-sm font-tajawal font-medium">
+                {t('teacherFaqEyebrow')}
+              </span>
+            </div>
+            <h2 className="font-cairo font-black text-white text-3xl md:text-4xl text-center leading-tight">
+              {t('teacherFaqHeading')}
+            </h2>
+          </div>
+
+          <div className="space-y-3">
+            {Array.from({ length: 15 }, (_, idx) => idx + 1).map((n) => (
+              <details
+                key={n}
+                className="group bg-white/5 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-sm transition-all duration-300 hover:border-brand-turquoise/30 hover:shadow-md open:border-brand-turquoise/40 open:shadow-xl open:shadow-brand-turquoise/5"
+              >
+                <summary className="flex items-center justify-between gap-4 px-6 py-5 cursor-pointer list-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-2 focus-visible:ring-offset-brand-navy rounded-2xl">
+                  <span className="font-cairo font-bold text-white text-base text-start">
+                    {t(`teacherFaqQ${n}`)}
+                  </span>
+                  <span className="shrink-0 w-8 h-8 rounded-lg bg-brand-turquoise/10 flex items-center justify-center transition-colors group-hover:bg-brand-turquoise/15 group-open:bg-gradient-to-br group-open:from-brand-turquoise group-open:to-cyan-500">
+                    <ChevronDown className="h-4 w-4 text-brand-turquoise group-open:text-white group-open:rotate-180 transition-all" strokeWidth={2} aria-hidden="true" />
+                  </span>
+                </summary>
+                <div className="px-6 pb-5 -mt-1">
+                  <p className="font-tajawal text-sm text-white/70 leading-relaxed">
+                    {t(`teacherFaqA${n}`)}
+                  </p>
+                </div>
+              </details>
+            ))}
           </div>
         </div>
       </section>
