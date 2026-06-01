@@ -276,17 +276,11 @@ export const LandingPage = () => {
     return `${trimmed}+`;
   };
 
-  const hakimMessages = useMemo(() => isRTL
-    ? [
-        'مرحبًا… أنا حكيم. العقل الذكي داخل منصة نَسَّق. أساعد المدارس على فهم بياناتها وتحويلها إلى قرارات تعليمية واضحة.',
-        'هل ترغب أن أريك كيف يمكن للذكاء الاصطناعي أن يساعد مدرستك؟',
-        'من الحضور إلى الأداء الأكاديمي… أنا أرى الصورة كاملة وأكتشف ما تعنيه الأرقام.',
-      ]
-    : [
-        "Hello… I'm Hakim. The smart mind inside NASSAQ. I help schools understand their data and turn it into clear educational decisions.",
-        'Would you like me to show you how AI can help your school?',
-        'From attendance to academic performance… I see the full picture and discover what the numbers mean.',
-      ], [isRTL]);
+  const hakimMessages = useMemo(() => [
+    t('landingHakimIntro1'),
+    t('landingHakimIntro2'),
+    t('landingHakimIntro3'),
+  ], [t]);
 
   const typedHakimText = useTypedText(hakimMessages, 35, 4000);
 
@@ -361,213 +355,110 @@ export const LandingPage = () => {
     return () => clearInterval(interval);
   }, [ecosystemPaused]);
 
-  const journeySteps = isRTL ? [
+  const journeySteps = [
     {
-      title: 'الواقع اليومي للمدرسة',
-      subtitle: 'كل مدرسة تنتج آلاف البيانات يوميًا',
-      content: 'تسجيل حضور الطلاب، تقييم الواجبات، تسجيل السلوك، مشاركة الطلاب داخل الفصل، نتائج الاختبارات، ملاحظات المعلمين. لكن هذه البيانات غالبًا تكون موزعة ومجزأة.',
-      hakimSays: 'المدارس تولد آلاف البيانات كل يوم… لكن القليل منها يستطيع تحويل هذه البيانات إلى معرفة.',
+      title: t('landingJourneyStep1Title'),
+      subtitle: t('landingJourneyStep1Subtitle'),
+      content: t('landingJourneyStep1Content'),
+      hakimSays: t('landingJourneyStep1HakimSays'),
       icons: [BarChart3, Calendar, Brain, BookOpen],
       phase: '01',
     },
     {
-      title: 'جمع البيانات داخل نَسَّق',
-      subtitle: 'هنا يبدأ دور منصة نَسَّق',
-      content: 'يقوم النظام بجمع كل هذه البيانات داخل منصة واحدة: الحضور والانصراف، الأداء الأكاديمي، السلوك اليومي، التفاعل داخل الحصة، الواجبات والتقييمات.',
-      hakimSays: 'مهمتي هي تنظيم هذه البيانات وتحويلها إلى صورة واضحة للمدرسة.',
+      title: t('landingJourneyStep2Title'),
+      subtitle: t('landingJourneyStep2Subtitle'),
+      content: t('landingJourneyStep2Content'),
+      hakimSays: t('landingJourneyStep2HakimSays'),
       icons: [Database, TrendingUp, CheckCircle2, Award],
       phase: '02',
     },
     {
-      title: 'تحليل البيانات بالذكاء الاصطناعي',
-      subtitle: 'عندما يبدأ الذكاء الاصطناعي بالتحليل',
-      content: 'اكتشاف الطلاب الذين يحتاجون دعمًا، تحليل الأنماط السلوكية داخل الفصول، رصد تراجع الأداء الأكاديمي، تحديد فرص تحسين المشاركة.',
-      hakimSays: 'أنا لا أعرض الأرقام فقط… بل أكتشف ما تعنيه هذه الأرقام.',
+      title: t('landingJourneyStep3Title'),
+      subtitle: t('landingJourneyStep3Subtitle'),
+      content: t('landingJourneyStep3Content'),
+      hakimSays: t('landingJourneyStep3HakimSays'),
       icons: [Brain, Lightbulb, TrendingUp, Target],
       phase: '03',
     },
     {
-      title: 'اتخاذ القرار',
-      subtitle: 'من البيانات… إلى القرار',
-      content: 'خطط دعم الطلاب، تقارير الأداء، قرارات تعليمية دقيقة مبنية على بيانات حقيقية تساعد في تحسين جودة العملية التعليمية.',
-      hakimSays: 'البيانات وحدها لا تغيّر التعليم… لكن القرارات الصحيحة تفعل.',
-      icons: [CheckCircle2, Award, Target, TrendingUp],
-      phase: '04',
-    },
-  ] : [
-    {
-      title: 'Daily School Reality',
-      subtitle: 'Every school produces thousands of data points daily',
-      content: 'Recording attendance, evaluating assignments, recording behavior, student participation, test results, teacher notes. But this data is often distributed and fragmented.',
-      hakimSays: 'Schools generate thousands of data points every day... but few can turn this data into knowledge.',
-      icons: [BarChart3, Calendar, Brain, BookOpen],
-      phase: '01',
-    },
-    {
-      title: 'Data Collection in NASSAQ',
-      subtitle: 'Here is where NASSAQ platform begins',
-      content: 'The system collects all this data in one platform: attendance, academic performance, daily behavior, in-class interaction, assignments and assessments.',
-      hakimSays: 'My mission is to organize this data and turn it into a clear picture for the school.',
-      icons: [Database, TrendingUp, CheckCircle2, Award],
-      phase: '02',
-    },
-    {
-      title: 'AI Data Analysis',
-      subtitle: 'When AI starts analyzing',
-      content: 'Discovering students who need support, analyzing behavioral patterns, tracking academic decline, identifying participation improvement opportunities.',
-      hakimSays: "I don't just display numbers... I discover what these numbers mean.",
-      icons: [Brain, Lightbulb, TrendingUp, Target],
-      phase: '03',
-    },
-    {
-      title: 'Decision Making',
-      subtitle: 'From Data... to Decisions',
-      content: 'Student support plans, performance reports, precise educational decisions based on real data that help improve education quality.',
-      hakimSays: "Data alone doesn't change education... but the right decisions do.",
+      title: t('landingJourneyStep4Title'),
+      subtitle: t('landingJourneyStep4Subtitle'),
+      content: t('landingJourneyStep4Content'),
+      hakimSays: t('landingJourneyStep4HakimSays'),
       icons: [CheckCircle2, Award, Target, TrendingUp],
       phase: '04',
     },
   ];
 
-  const aiCapabilities = isRTL ? [
+  const aiCapabilities = [
     {
-      title: 'تحليل أداء الطلاب',
-      subtitle: 'فهم الطالب قبل أن تظهر المشكلة',
-      content: 'يقوم الذكاء الاصطناعي بتحليل الحضور، المشاركة، الواجبات، التقييمات، والسلوك بشكل مستمر لاكتشاف الطلاب الذين يحتاجون دعمًا مبكرًا.',
-      hakimSays: 'يمكنني اكتشاف الطالب الذي يحتاج دعمًا… قبل أن تتحول المشكلة إلى أزمة تعليمية.',
+      title: t('landingAiCap1Title'),
+      subtitle: t('landingAiCap1Subtitle'),
+      content: t('landingAiCap1Content'),
+      hakimSays: t('landingAiCap1HakimSays'),
       icon: Activity,
     },
     {
-      title: 'الجداول الدراسية الذكية',
-      subtitle: 'عندما تصبح الجداول الدراسية عملية ذكية',
-      content: 'إنشاء جدول مدرسي متوازن يراعي المعلمين، الفصول، المواد، القاعات، وعدد الحصص. الذكاء الاصطناعي يحلل آلاف الاحتمالات.',
-      hakimSays: 'يمكنني تحليل آلاف الاحتمالات في ثوانٍ لبناء جدول مدرسي متوازن.',
+      title: t('landingAiCap2Title'),
+      subtitle: t('landingAiCap2Subtitle'),
+      content: t('landingAiCap2Content'),
+      hakimSays: t('landingAiCap2HakimSays'),
       icon: Calendar,
     },
     {
-      title: 'التقارير التعليمية الذكية',
-      subtitle: 'التقارير التي تفهمها… لا مجرد تقرأها',
-      content: 'بدلاً من عرض الأرقام فقط، يقوم النظام بتحويل البيانات إلى رؤى تعليمية واضحة: أداء الفصول، تطور الطلاب، الأنماط السلوكية.',
-      hakimSays: 'الأرقام وحدها لا تكفي… مهمتي هي تحويلها إلى رؤية تساعد المدرسة على اتخاذ القرار.',
+      title: t('landingAiCap3Title'),
+      subtitle: t('landingAiCap3Subtitle'),
+      content: t('landingAiCap3Content'),
+      hakimSays: t('landingAiCap3HakimSays'),
       icon: BarChart3,
     },
     {
-      title: 'التنبيهات المبكرة',
-      subtitle: 'رصد المشكلات قبل حدوثها',
-      content: 'يراقب النظام أنماط السلوك والأداء باستمرار ويرسل تنبيهات مبكرة عند اكتشاف تراجع في أداء طالب أو فصل بأكمله.',
-      hakimSays: 'كل يوم تولد المدرسة آلاف البيانات… مهمتي هي أن أفهم ما تعنيه هذه البيانات.',
-      icon: Database,
-    },
-  ] : [
-    {
-      title: 'Student Performance Analysis',
-      subtitle: 'Understanding the student before problems appear',
-      content: 'AI continuously analyzes attendance, participation, assignments, assessments, and behavior to discover students who need early support.',
-      hakimSays: 'I can detect a student who needs support... before the problem becomes an educational crisis.',
-      icon: Activity,
-    },
-    {
-      title: 'Smart Scheduling',
-      subtitle: 'When scheduling becomes an intelligent process',
-      content: 'Creating a balanced school schedule considering teachers, classes, subjects, rooms, and sessions. AI analyzes thousands of possibilities.',
-      hakimSays: 'I can analyze thousands of possibilities in seconds to build a balanced schedule.',
-      icon: Calendar,
-    },
-    {
-      title: 'Smart Educational Reports',
-      subtitle: 'Reports you understand... not just read',
-      content: 'Instead of just displaying numbers, the system transforms data into clear educational insights: class performance, student progress, behavioral patterns.',
-      hakimSays: "Numbers alone aren't enough... my mission is to turn them into vision that helps the school make decisions.",
-      icon: BarChart3,
-    },
-    {
-      title: 'Early Alerts',
-      subtitle: 'Detecting issues before they happen',
-      content: 'The system continuously monitors behavior and performance patterns and sends early alerts when detecting decline in a student or entire class performance.',
-      hakimSays: 'Every day the school generates thousands of data points... my mission is to understand what this data means.',
+      title: t('landingAiCap4Title'),
+      subtitle: t('landingAiCap4Subtitle'),
+      content: t('landingAiCap4Content'),
+      hakimSays: t('landingAiCap4HakimSays'),
       icon: Database,
     },
   ];
 
-  const aiAnalysisLayers = isRTL
-    ? [
-        { label: 'الحضور والانضباط', icon: ClipboardCheck, color: 'from-emerald-500 to-emerald-600', pct: 92 },
-        { label: 'الواجبات والتقييمات', icon: BookOpen, color: 'from-sky-500 to-sky-600', pct: 78 },
-        { label: 'المشاركة الصفية', icon: Activity, color: 'from-amber-500 to-amber-600', pct: 85 },
-        { label: 'السلوك اليومي', icon: Star, color: 'from-purple-500 to-purple-600', pct: 88 },
-        { label: 'الأداء الأكاديمي', icon: TrendingUp, color: 'from-rose-500 to-rose-600', pct: 74 },
-      ]
-    : [
-        { label: 'Attendance & Discipline', icon: ClipboardCheck, color: 'from-emerald-500 to-emerald-600', pct: 92 },
-        { label: 'Homework & Assessments', icon: BookOpen, color: 'from-sky-500 to-sky-600', pct: 78 },
-        { label: 'Class Participation', icon: Activity, color: 'from-amber-500 to-amber-600', pct: 85 },
-        { label: 'Daily Behaviour', icon: Star, color: 'from-purple-500 to-purple-600', pct: 88 },
-        { label: 'Academic Performance', icon: TrendingUp, color: 'from-rose-500 to-rose-600', pct: 74 },
-      ];
+  const aiAnalysisLayers = [
+    { label: t('landingAiLayer1Label'), icon: ClipboardCheck, color: 'from-emerald-500 to-emerald-600', pct: 92 },
+    { label: t('landingAiLayer2Label'), icon: BookOpen, color: 'from-sky-500 to-sky-600', pct: 78 },
+    { label: t('landingAiLayer3Label'), icon: Activity, color: 'from-amber-500 to-amber-600', pct: 85 },
+    { label: t('landingAiLayer4Label'), icon: Star, color: 'from-purple-500 to-purple-600', pct: 88 },
+    { label: t('landingAiLayer5Label'), icon: TrendingUp, color: 'from-rose-500 to-rose-600', pct: 74 },
+  ];
 
-  const ecosystemRoles = isRTL ? [
+  const ecosystemRoles = [
     {
-      role: 'مدير المدرسة',
-      title: 'المدرسة كاملة… في لوحة تحكم واحدة',
-      content: 'عندما يدخل مدير المدرسة إلى نَسَّق، يرى صورة كاملة عن المدرسة: حضور الطلاب، أداء الفصول، نشاط المعلمين، السلوك الطلابي، تقارير الأداء.',
-      hakimSays: 'بدل البحث في عشرات التقارير… يمكنني عرض صورة كاملة عن المدرسة في شاشة واحدة.',
+      role: t('landingEcoRole1Role'),
+      title: t('landingEcoRole1Title'),
+      content: t('landingEcoRole1Content'),
+      hakimSays: t('landingEcoRole1HakimSays'),
       icon: Building2,
       gradient: 'from-brand-turquoise to-cyan-600',
     },
     {
-      role: 'المعلم',
-      title: 'إدارة الحصة أصبحت أكثر ذكاءً',
-      content: 'تسجيل الحضور، متابعة تفاعل الطلاب، تقييم الإجابات، تسجيل السلوك، إضافة التقييمات. كل ذلك في واجهة بسيطة وسريعة.',
-      hakimSays: 'أثناء الحصة… أساعد المعلم على فهم مستوى التفاعل داخل الفصل.',
+      role: t('landingEcoRole2Role'),
+      title: t('landingEcoRole2Title'),
+      content: t('landingEcoRole2Content'),
+      hakimSays: t('landingEcoRole2HakimSays'),
       icon: UserCheck,
       gradient: 'from-emerald-500 to-emerald-600',
     },
     {
-      role: 'المعلم المستقل',
-      title: 'مساحة عمل كاملة… للمعلم الذي يدير طلابه بنفسه',
-      content: 'مساحة عمل مستقلة بطلابك وأولياء أمورهم وخططك وجدولك — دون الحاجة لمدرسة. دعوات أولياء الأمور بضغطة، خطط الدروس، جدول الحصص، تقارير الأداء، وتعاون اختياري مع زميل في حصة مشتركة.',
-      hakimSays: 'لست بحاجة لمدرسة لتعمل باحترافية… أرتّب لك يومك التعليمي وأرصد إشارات كل طالب على حدة.',
+      role: t('landingEcoRole3Role'),
+      title: t('landingEcoRole3Title'),
+      content: t('landingEcoRole3Content'),
+      hakimSays: t('landingEcoRole3HakimSays'),
       icon: BookOpen,
       gradient: 'from-brand-purple to-violet-600',
     },
     {
-      role: 'ولي الأمر',
-      title: 'متابعة حقيقية لأداء الابن',
-      content: 'متابعة الحضور، الواجبات، السلوك، التقييمات عبر لوحة بسيطة وواضحة ومتاحة في أي وقت.',
-      hakimSays: 'عندما يكون ولي الأمر جزءًا من الصورة… تصبح العملية التعليمية أكثر نجاحًا.',
-      icon: Users,
-      gradient: 'from-amber-500 to-orange-600',
-    },
-  ] : [
-    {
-      role: 'School Principal',
-      title: 'The entire school... in one dashboard',
-      content: 'See a complete picture of the school: student attendance, class performance, teacher activity, student behavior, performance reports.',
-      hakimSays: 'Instead of searching through dozens of reports... I can display a complete picture on one screen.',
-      icon: Building2,
-      gradient: 'from-brand-turquoise to-cyan-600',
-    },
-    {
-      role: 'Teacher',
-      title: 'Class management is now smarter',
-      content: 'Record attendance, track interaction, evaluate answers, record behavior, add assessments. All in a simple and fast interface.',
-      hakimSays: 'During class... I help the teacher understand the level of interaction in the classroom.',
-      icon: UserCheck,
-      gradient: 'from-emerald-500 to-emerald-600',
-    },
-    {
-      role: 'Independent Teacher',
-      title: 'A full workspace... for the teacher running their own students',
-      content: 'A standalone workspace with your students, their parents, your lesson plans and your schedule — no school required. One-click parent invitations, lesson planning, class timetable, performance reports, and optional co-teaching with a colleague on a shared class.',
-      hakimSays: "You don't need a school to work professionally... I organize your teaching day and track signals for every student individually.",
-      icon: BookOpen,
-      gradient: 'from-brand-purple to-violet-600',
-    },
-    {
-      role: 'Parent',
-      title: "Real follow-up on your child's performance",
-      content: "Follow attendance, assignments, behavior, assessments through a simple and clear dashboard available anytime.",
-      hakimSays: 'When parents are part of the picture... education becomes more successful.',
+      role: t('landingEcoRole4Role'),
+      title: t('landingEcoRole4Title'),
+      content: t('landingEcoRole4Content'),
+      hakimSays: t('landingEcoRole4HakimSays'),
       icon: Users,
       gradient: 'from-amber-500 to-orange-600',
     },
@@ -615,7 +506,7 @@ export const LandingPage = () => {
                 <div className="inline-flex items-center gap-2 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full ps-2 pe-4 py-1.5 backdrop-blur-sm">
                   <CheckCircle2 className="h-4 w-4 text-brand-turquoise" />
                   <span className="font-tajawal text-sm text-brand-turquoise">
-                    {isRTL ? 'المؤسسات التعليمية · المعلمين المستقلين' : 'Educational institutions & independent teachers'}
+                    {t('landingHeroBadge')}
                   </span>
                 </div>
                 <h1
@@ -625,9 +516,7 @@ export const LandingPage = () => {
                   <span className="text-white">{isRTL ? 'نَسَّق' : 'NASSAQ'}</span>
                 </h1>
                 <p className="font-tajawal text-lg text-white/80 leading-relaxed max-w-xl">
-                  {isRTL
-                    ? 'منصة تساعدك على فهم رحلة الطالب بشكل أعمق.'
-                    : "A platform that helps you understand each student's journey more deeply."}
+                  {t('landingHeroSubheading')}
                 </p>
               </div>
 
@@ -640,7 +529,7 @@ export const LandingPage = () => {
                     data-testid="hero-cta-btn"
                   >
                     <Link to="/register" className="flex items-center gap-2">
-                      {isRTL ? 'ابدأ تجربتك المجانية' : 'Start your free trial'}
+                      {t('landingHeroCtaPrimary')}
                       {isRTL ? <ArrowLeft className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
                     </Link>
                   </Button>
@@ -651,14 +540,12 @@ export const LandingPage = () => {
                     data-testid="hero-secondary-cta"
                   >
                     <a href="#how-it-works" className="flex items-center gap-2">
-                      {isRTL ? 'كيف يعمل' : 'How it works'}
+                      {t('landingHeroCtaSecondary')}
                     </a>
                   </Button>
                 </div>
                 <p className="font-tajawal text-xs text-white/60">
-                  {isRTL
-                    ? 'بدون بطاقة ائتمان · إعداد خلال 24 ساعة · إلغاء في أي وقت'
-                    : 'No credit card · Setup in 24 hours · Cancel anytime'}
+                  {t('landingHeroTrustMicrocopy')}
                 </p>
               </div>
 
@@ -677,31 +564,19 @@ export const LandingPage = () => {
                       ))}
                     </div>
                     <p className="font-tajawal text-sm text-white/75" data-testid="hero-school-count">
-                      {isRTL ? (
-                        <>
-                          <span className="font-bold text-white">
-                            <AnimatedCounter target={platformStats.schools} />
-                            {' '}مدرسة
-                          </span>{' '}
-                          تستخدم نسق الآن
-                        </>
-                      ) : (
-                        <>
-                          <span className="font-bold text-white">
-                            <AnimatedCounter target={platformStats.schools} />
-                            {' '}schools
-                          </span>{' '}
-                          use NASSAQ today
-                        </>
-                      )}
+                      <span className="font-bold text-white">
+                        <AnimatedCounter target={platformStats.schools} />
+                        {' '}{t('landingHeroSchoolCountUnit')}
+                      </span>{' '}
+                      {t('landingHeroSchoolCountSuffix')}
                     </p>
                   </div>
                 )}
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-3 border-t border-white/10">
                   {[
-                    isRTL ? 'جاهز خلال 24 ساعة' : 'Ready in 24 hours',
-                    isRTL ? 'بدون تعقيد تقني' : 'No technical setup',
-                    isRTL ? 'يعمل مع نظامك الحالي' : 'Works with your current stack',
+                    t('landingHeroTicker1'),
+                    t('landingHeroTicker2'),
+                    t('landingHeroTicker3'),
                   ].map((item, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <CheckCircle2 className="h-4 w-4 text-brand-turquoise" />
@@ -745,10 +620,10 @@ export const LandingPage = () => {
                 <div className="flex items-center justify-between gap-2 px-4 h-9 bg-slate-50 border-b border-slate-100">
                   <div className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                    <span className="font-tajawal text-[11px] text-slate-500">{isRTL ? 'مباشر' : 'Live'}</span>
+                    <span className="font-tajawal text-[11px] text-slate-500">{t('landingHeroLive')}</span>
                   </div>
                   <span className="font-tajawal text-[11px] text-slate-500">
-                    {isRTL ? 'نسق · لوحة مدير المدرسة' : 'NASSAQ · Principal Dashboard'}
+                    {t('landingHeroDashboardTab')}
                   </span>
                   <div className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-slate-200" />
@@ -760,7 +635,7 @@ export const LandingPage = () => {
                 {/* Real product screenshot — fills card height */}
                 <img
                   src="/images/landing-dashboard-preview.png"
-                  alt={isRTL ? 'لقطة من لوحة مدير المدرسة في نَسَّق' : 'NASSAQ principal dashboard screenshot'}
+                  alt={t('landingHeroDashboardAlt')}
                   className="block w-full h-full object-cover object-top"
                   loading="lazy"
                 />
@@ -768,9 +643,7 @@ export const LandingPage = () => {
 
               {/* Footnote anchored to bottom of left panel */}
               <p className="font-tajawal text-xs text-white/60 text-center mt-3 shrink-0">
-                {isRTL
-                  ? 'لقطة حقيقية من لوحة مدير المدرسة'
-                  : 'Real screenshot from the principal dashboard'}
+                {t('landingHeroDashboardFootnote')}
               </p>
             </div>
 
@@ -788,20 +661,14 @@ export const LandingPage = () => {
             <div className="inline-flex items-center gap-2 bg-brand-turquoise/10 border border-brand-turquoise/30 rounded-full ps-2 pe-4 py-1.5 mb-5">
               <Bell className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
               <span className="font-tajawal text-sm text-brand-turquoise">
-                {isRTL ? 'إشارات تعرفها كل مدرسة' : 'Signals every school knows'}
+                {t('landingPainEyebrow')}
               </span>
             </div>
             <h2 className="font-cairo font-bold text-brand-navy dark:text-white text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4 lg:whitespace-nowrap">
-              {isRTL ? (
-                <>هل تواجه هذه الإشارات <span className="text-brand-turquoise">كل أسبوع؟</span></>
-              ) : (
-                <>Are these signals showing up <span className="text-brand-turquoise">every week?</span></>
-              )}
+              {t('landingPainHeadingLead')}<span className="text-brand-turquoise">{t('landingPainHeadingAccent')}</span>
             </h2>
             <p className="font-tajawal text-base text-slate-600 dark:text-slate-300 leading-relaxed">
-              {isRTL
-                ? 'لو تكررت أي اثنتين منها، فأنت تخسر وقتًا وقرارات وفُرص تدخّل — والبيانات موجودة، لكنها مبعثرة.'
-                : 'If any two of these recur, you are losing time, decisions and intervention windows — the data exists, but it is scattered.'}
+              {t('landingPainSubheading')}
             </p>
           </div>
 
@@ -809,37 +676,25 @@ export const LandingPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {[
               {
-                roleAr: 'الإدارة',
-                roleEn: 'Administration',
+                role: t('landingPainCol1Role'),
                 icon: Building2,
-                titleAr: 'القرارات تتأخّر حتى تظهر المشكلة.',
-                titleEn: 'Decisions are delayed until the problem surfaces.',
-                bodyAr: 'الإدارة تتدخل بعد انخفاض النتائج فعليًا — وليس عند ظهور المؤشرات الأكاديمية الأولى.',
-                bodyEn: 'Leadership intervenes after grades drop — not when the first academic signals appear.',
-                tagAr: 'التراجع يُكتشف متأخرًا',
-                tagEn: 'Decline caught too late',
+                title: t('landingPainCol1Title'),
+                body: t('landingPainCol1Body'),
+                tag: t('landingPainCol1Tag'),
               },
               {
-                roleAr: 'طاقم التدريس',
-                roleEn: 'Teaching staff',
+                role: t('landingPainCol2Role'),
                 icon: GraduationCap,
-                titleAr: 'الوقت يُستهلك في المتابعة لا في التدريس.',
-                titleEn: 'Time gets spent on tracking, not teaching.',
-                bodyAr: 'المعلم يقضي ساعات أسبوعيًا في تسجيل الحضور وتحضير التقارير — ساعات لا تنتج تدخّلًا أكاديميًا فعليًا.',
-                bodyEn: 'Teachers spend hours per week on attendance and reports — hours that produce no real academic intervention.',
-                tagAr: 'وقت تدريس فعلي أقل من 40%',
-                tagEn: 'Actual teaching time under 40%',
+                title: t('landingPainCol2Title'),
+                body: t('landingPainCol2Body'),
+                tag: t('landingPainCol2Tag'),
               },
               {
-                roleAr: 'ولي الأمر',
-                roleEn: 'The parent',
+                role: t('landingPainCol3Role'),
                 icon: Users,
-                titleAr: 'يعلم بالمشكلة بعد فوات الأوان.',
-                titleEn: 'They learn about the problem too late.',
-                bodyAr: 'ولي الأمر لا يطّلع على المؤشرات الأكاديمية إلا بعد تفاقمها وظهور أثرها في كشف الدرجات.',
-                bodyEn: "Parents only see academic signals after they've already escalated into the grade report.",
-                tagAr: 'المشكلة ظاهرة قبل أن يعلم ولي الأمر',
-                tagEn: 'Problem visible before the parent knows',
+                title: t('landingPainCol3Title'),
+                body: t('landingPainCol3Body'),
+                tag: t('landingPainCol3Tag'),
               },
             ].map((col, i) => {
               const Icon = col.icon;
@@ -853,19 +708,19 @@ export const LandingPage = () => {
                       <Icon className="h-5 w-5 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
                     </div>
                     <span className="font-cairo text-xs font-bold text-brand-turquoise uppercase tracking-wider">
-                      {isRTL ? col.roleAr : col.roleEn}
+                      {col.role}
                     </span>
                   </div>
                   <h3 className="font-cairo font-bold text-brand-navy dark:text-white text-lg leading-snug mb-3">
-                    {isRTL ? col.titleAr : col.titleEn}
+                    {col.title}
                   </h3>
                   <p className="font-tajawal text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-5 flex-1">
-                    {isRTL ? col.bodyAr : col.bodyEn}
+                    {col.body}
                   </p>
                   <div className="flex items-center gap-2 pt-4 border-t border-slate-100 dark:border-slate-700">
                     <TrendingUp className="h-3.5 w-3.5 text-brand-turquoise shrink-0" strokeWidth={1.5} aria-hidden="true" />
                     <span className="font-tajawal text-xs text-slate-500 dark:text-slate-400">
-                      {isRTL ? col.tagAr : col.tagEn}
+                      {col.tag}
                     </span>
                   </div>
                 </div>
@@ -874,9 +729,7 @@ export const LandingPage = () => {
           </div>
 
           <p className="font-tajawal text-center text-slate-500 dark:text-slate-400 text-sm mt-10">
-            {isRTL
-              ? 'نَسَّق بُني خصيصًا ليُغلق هذه الفجوات — واحدة تلو الأخرى.'
-              : 'NASSAQ was built specifically to close these gaps — one by one.'}
+            {t('landingPainFooter')}
           </p>
         </div>
       </section>
@@ -905,49 +758,32 @@ export const LandingPage = () => {
             <div className="inline-flex items-center gap-2 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full ps-2 pe-4 py-1.5 mb-5 backdrop-blur-sm">
               <Zap className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
               <span className="font-tajawal text-sm text-brand-turquoise">
-                {isRTL ? 'العمل اليومي في نَسَّق' : 'The daily NASSAQ loop'}
+                {t('landingLoopEyebrow')}
               </span>
             </div>
             <h2 className="font-cairo font-bold text-white text-3xl sm:text-4xl md:text-5xl leading-tight tracking-normal text-center max-w-5xl mx-auto mb-4 selection:bg-brand-turquoise/30 selection:text-white">
-              {isRTL ? (
-                <>
-                  <span className="block mb-4 md:whitespace-nowrap selection:bg-brand-turquoise/30 selection:text-white">أربع خطوات تحوّل الإشارات اليومية إلى</span>
-                  <span className="block text-brand-turquoise selection:bg-brand-turquoise/30 selection:text-white">قرارات واضحة.</span>
-                </>
-              ) : (
-                <>
-                  <span className="block mb-4 md:whitespace-nowrap selection:bg-brand-turquoise/30 selection:text-white">Four steps that turn daily signals into</span>
-                  <span className="block text-brand-turquoise selection:bg-brand-turquoise/30 selection:text-white">clear decisions.</span>
-                </>
-              )}
+              <span className="block mb-4 md:whitespace-nowrap selection:bg-brand-turquoise/30 selection:text-white">{t('landingLoopHeadingLead')}</span>
+              <span className="block text-brand-turquoise selection:bg-brand-turquoise/30 selection:text-white">{t('landingLoopHeadingAccent')}</span>
             </h2>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {[
               {
-                titleAr: 'رصد الإشارات اليومية',
-                titleEn: 'Capture daily signals',
-                bodyAr: 'يرصد الأداء والحضور والتفاعل السلوكي من كل مصدر — تلقائيًا، يوميًا، دون تدخل يدوي.',
-                bodyEn: 'Pulls performance, attendance and behavior from every source — automatically, daily, without manual entry.',
+                title: t('landingLoopStep1Title'),
+                body: t('landingLoopStep1Body'),
               },
               {
-                titleAr: 'اكتشاف التراجع مبكرًا',
-                titleEn: 'Catch decline early',
-                bodyAr: 'يكتشف الانحرافات عن المسار الطبيعي قبل ظهور أثرها في النتائج — حين لا يزال التدخل ممكنًا.',
-                bodyEn: "Detects deviations from a student's normal trajectory before they show up in grades — while intervention still works.",
+                title: t('landingLoopStep2Title'),
+                body: t('landingLoopStep2Body'),
               },
               {
-                titleAr: 'ترتيب الأولويات',
-                titleEn: 'Prioritize',
-                bodyAr: 'يُنشئ قائمة تدخّل يومية واضحة لكل دور — الإدارة والمعلم وولي الأمر — مرتّبة حسب الأهمية.',
-                bodyEn: 'Builds a clear daily intervention list for every role — admin, teacher, parent — ranked by urgency.',
+                title: t('landingLoopStep3Title'),
+                body: t('landingLoopStep3Body'),
               },
               {
-                titleAr: 'التدخّل والمتابعة',
-                titleEn: 'Act & follow up',
-                bodyAr: 'توصيات قابلة للتنفيذ مباشرة، مع متابعة أثر كل تدخّل — حتى تعرف أن التحسّن فعلي.',
-                bodyEn: 'Directly actionable recommendations, with follow-up on the impact of every intervention — so you know the improvement is real.',
+                title: t('landingLoopStep4Title'),
+                body: t('landingLoopStep4Body'),
               },
             ].map((step, i) => (
               <div
@@ -958,10 +794,10 @@ export const LandingPage = () => {
                   {String(i + 1).padStart(2, '0')}
                 </div>
                 <h3 className="font-cairo font-bold text-white text-base mb-2 leading-snug">
-                  {isRTL ? step.titleAr : step.titleEn}
+                  {step.title}
                 </h3>
                 <p className="font-tajawal text-sm text-white/70 leading-relaxed">
-                  {isRTL ? step.bodyAr : step.bodyEn}
+                  {step.body}
                 </p>
               </div>
             ))}
@@ -1456,7 +1292,7 @@ export const LandingPage = () => {
                 <div className="relative z-10 flex items-center justify-center gap-2 bg-gradient-to-r from-brand-turquoise/10 to-brand-purple/10 border-t border-brand-turquoise/15 px-4 py-3 backdrop-blur-sm">
                   <Brain className="h-4 w-4 text-brand-turquoise animate-pulse" aria-hidden="true" />
                   <span className="text-[11px] font-tajawal text-muted-foreground font-medium">
-                    {isRTL ? 'مدعوم بالذكاء الاصطناعي' : 'AI-Powered Platform'}
+                    {t('landingEcoAiChip')}
                   </span>
                   <Sparkles className="h-3.5 w-3.5 text-brand-purple animate-pulse" style={{ animationDelay: '0.5s' }} aria-hidden="true" />
                 </div>
@@ -1490,15 +1326,11 @@ export const LandingPage = () => {
             <div className="inline-flex items-center gap-2 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full ps-2 pe-4 py-1.5 mb-5 backdrop-blur-sm">
               <Shield className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
               <span className="font-tajawal text-sm text-brand-turquoise">
-                {isRTL ? 'لماذا تثق بنا المدارس' : 'Why schools trust us'}
+                {t('landingProofEyebrow')}
               </span>
             </div>
             <h2 className="font-cairo font-bold text-white text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
-              {isRTL ? (
-                <>نَسَّق<span className="text-brand-turquoise">...</span> نمو متزايد بثقة.</>
-              ) : (
-                <>NASSAQ<span className="text-brand-turquoise">...</span> growing, trusted, steady.</>
-              )}
+              {t('landingProofHeadingLead')}<span className="text-brand-turquoise">...</span>{t('landingProofHeadingTail')}
             </h2>
           </div>
 
@@ -1513,19 +1345,15 @@ export const LandingPage = () => {
               {
                 show: !!schoolsDisplay,
                 value: schoolsDisplay,
-                titleAr: 'مدارس',
-                titleEn: 'Schools',
-                subAr: 'مؤشر نمو عام',
-                subEn: 'General growth indicator',
+                title: t('landingProofCard1Title'),
+                sub: t('landingProofCard1Sub'),
                 icon: Building2,
               },
               {
                 show: !!teachersDisplay,
                 value: teachersDisplay,
-                titleAr: 'معلمون',
-                titleEn: 'Teachers',
-                subAr: 'تحديثات دورية تعكس اتساع الاستخدام',
-                subEn: 'Updated periodically to reflect adoption',
+                title: t('landingProofCard2Title'),
+                sub: t('landingProofCard2Sub'),
                 icon: Users,
               },
             ].filter((c) => c.show);
@@ -1543,13 +1371,13 @@ export const LandingPage = () => {
                         <Icon className="h-6 w-6 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
                       </div>
                       <p className="font-tajawal text-white font-semibold text-xl mb-2">
-                        {isRTL ? card.titleAr : card.titleEn}
+                        {card.title}
                       </p>
                       <div className="font-cairo font-black text-white text-5xl lg:text-6xl mb-3 tracking-tight">
                         {card.value}
                       </div>
                       <p className="font-tajawal text-white/60 text-xs">
-                        {isRTL ? card.subAr : card.subEn}
+                        {card.sub}
                       </p>
                     </div>
                   );
@@ -1563,24 +1391,18 @@ export const LandingPage = () => {
             {[
               {
                 icon: Zap,
-                titleAr: 'جاهز خلال 24 ساعة',
-                titleEn: 'Ready in 24 hours',
-                bodyAr: 'لا حاجة لخادم أو تركيب. نُجهّز مساحة مدرستك ونستورد طلابك ومعلميك في أقل من يوم عمل واحد.',
-                bodyEn: 'No server, no installation. We set up your school space and import your students and teachers in less than one working day.',
+                title: t('landingProofPillar1Title'),
+                body: t('landingProofPillar1Body'),
               },
               {
                 icon: Globe,
-                titleAr: 'العربية في صميم التجربة',
-                titleEn: 'Arabic at the core of the experience',
-                bodyAr: 'من الواجهة إلى التقارير والمصطلحات التعليمية، صُمم نَسَّق ليعمل بالعربية بشكل طبيعي وواضح، بما يناسب استخدام المدارس والمعلمين يوميًا.',
-                bodyEn: 'From the interface to the reports and educational terminology, NASSAQ is designed to work in Arabic naturally and clearly — fit for daily school and teacher use.',
+                title: t('landingProofPillar2Title'),
+                body: t('landingProofPillar2Body'),
               },
               {
                 icon: Sparkles,
-                titleAr: 'ذكاء اصطناعي يخدم القرار',
-                titleEn: 'AI that supports the decision',
-                bodyAr: 'يوظّف نَسَّق الذكاء الاصطناعي داخل المنصة لتبسيط قراءة البيانات، إبراز المؤشرات المهمة، ومساعدة الفرق التعليمية على الوصول إلى قرارات أسرع وأكثر وضوحًا.',
-                bodyEn: 'NASSAQ embeds AI inside the platform to simplify reading the data, surface the indicators that matter, and help educational teams reach faster, clearer decisions.',
+                title: t('landingProofPillar3Title'),
+                body: t('landingProofPillar3Body'),
               },
             ].map((pillar, i) => {
               const Icon = pillar.icon;
@@ -1593,10 +1415,10 @@ export const LandingPage = () => {
                     <Icon className="h-6 w-6 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
                   </div>
                   <h3 className="font-cairo font-bold text-white text-lg mb-2">
-                    {isRTL ? pillar.titleAr : pillar.titleEn}
+                    {pillar.title}
                   </h3>
                   <p className="font-tajawal text-sm text-white/70 leading-relaxed">
-                    {isRTL ? pillar.bodyAr : pillar.bodyEn}
+                    {pillar.body}
                   </p>
                 </div>
               );
@@ -1605,9 +1427,7 @@ export const LandingPage = () => {
 
           {/* Honesty note — we don't have testimonials yet, so we say so */}
           <p className="font-tajawal text-center text-white/50 text-xs mt-10">
-            {isRTL
-              ? 'قصص شركائنا من المدارس الرائدة قيد الإعداد للنشر — بإذنهم وبلا تجميل.'
-              : "Stories from our early partner schools are being prepared for publication — with their consent, unedited."}
+            {t('landingProofHonestyNote')}
           </p>
         </div>
       </section>
@@ -1692,20 +1512,14 @@ export const LandingPage = () => {
             <div className="inline-flex items-center gap-2 bg-white/10 border border-white/25 rounded-full ps-2 pe-4 py-1.5 mb-5 backdrop-blur-sm">
               <Award className="h-4 w-4 text-white" strokeWidth={1.5} aria-hidden="true" />
               <span className="font-tajawal text-sm font-medium text-white">
-                {isRTL ? 'الباقات' : 'Plans'}
+                {t('landingPricingEyebrow')}
               </span>
             </div>
             <h2 className="font-cairo font-bold text-white text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
-              {isRTL ? (
-                <>ابدأ بـ <span className="text-brand-turquoise">Pilot</span> — وطوّر مع نمو مدرستك.</>
-              ) : (
-                <>Start with a <span className="text-brand-turquoise">Pilot</span> — then scale as your school grows.</>
-              )}
+              {t('landingPricingHeadingLead')}<span className="text-brand-turquoise">Pilot</span>{t('landingPricingHeadingTail')}
             </h2>
             <p className="font-tajawal text-base text-white/70 leading-relaxed">
-              {isRTL
-                ? 'ابدأ بتجربة مجانية محدودة، وانتقل إلى باقة المدارس متى احتجت — أو خصّص حلًا للمجموعات التعليمية.'
-                : 'Start with a limited free trial, move to the schools plan whenever you need — or customize a solution for education groups.'}
+              {t('landingPricingSubheading')}
             </p>
           </div>
 
@@ -1713,105 +1527,92 @@ export const LandingPage = () => {
             {[
               {
                 badge: null,
-                nameAr: 'Pilot',
-                nameEn: 'Pilot',
-                taglineAr: 'للمدارس الراغبة في التجربة',
-                taglineEn: 'For schools that want to try first',
-                priceAr: 'مجانًا',
-                priceEn: 'Free',
-                priceNoteAr: 'برنامج تجريبي محدود',
-                priceNoteEn: 'Limited pilot program',
+                name: t('landingPricingPilotName'),
+                tagline: t('landingPricingPilotTagline'),
+                price: t('landingPricingPilotPrice'),
+                priceNote: t('landingPricingPilotPriceNote'),
                 metaKey: 'landingPricingPilotMeta',
                 ctaKey: 'landingPricingPilotCta',
                 ctaLink: '/register',
                 features: [
-                  ['إدارة المستويات الأكاديمية', 'Academic levels management'],
-                  ['تسجيل الحضور', 'Attendance tracking'],
-                  ['السلوك والمشاركة', 'Behavior & participation'],
-                  ['تقارير بسيطة', 'Basic reports'],
+                  t('landingPricingPilotFeature1'),
+                  t('landingPricingPilotFeature2'),
+                  t('landingPricingPilotFeature3'),
+                  t('landingPricingPilotFeature4'),
                 ],
                 highlight: false,
               },
               {
-                badgeAr: 'الأكثر اختيارًا',
-                badgeEn: 'Most popular',
-                nameAr: 'للمدارس',
-                nameEn: 'Schools',
-                taglineAr: 'الحل الشامل للاكتشاف المبكر والتدخل الأكاديمي والسلوكي',
-                taglineEn: 'The full solution for early detection and academic & behavioral intervention',
-                priceAr: 'حسب عدد الطلاب',
-                priceEn: 'Per-student pricing',
-                priceNoteAr: 'وحجم المؤسسة',
-                priceNoteEn: 'and institution size',
+                badge: t('landingPricingSchoolsBadge'),
+                name: t('landingPricingSchoolsName'),
+                tagline: t('landingPricingSchoolsTagline'),
+                price: t('landingPricingSchoolsPrice'),
+                priceNote: t('landingPricingSchoolsPriceNote'),
                 metaKey: 'landingPricingSchoolsMeta',
                 ctaKey: 'landingPricingSchoolsCta',
                 ctaLink: '/register',
                 features: [
-                  ['كل ما في Pilot', 'Everything in Pilot'],
-                  ['توصيات يومية ذكية', 'Smart daily recommendations'],
-                  ['الاكتشاف المبكر للتعثر', 'Early detection of decline'],
-                  ['تدخّلات مقترحة لكل حالة', 'Suggested interventions for every case'],
-                  ['تقارير تنفيذية للإدارة', 'Executive reports for leadership'],
-                  ['متابعة أولياء الأمور', 'Parent follow-up'],
-                  ['قياس أثر التدخلات', 'Intervention impact tracking'],
+                  t('landingPricingSchoolsFeature1'),
+                  t('landingPricingSchoolsFeature2'),
+                  t('landingPricingSchoolsFeature3'),
+                  t('landingPricingSchoolsFeature4'),
+                  t('landingPricingSchoolsFeature5'),
+                  t('landingPricingSchoolsFeature6'),
+                  t('landingPricingSchoolsFeature7'),
                 ],
                 highlight: true,
               },
               {
                 badge: null,
-                nameAr: 'للمجموعات التعليمية',
-                nameEn: 'Education groups',
-                taglineAr: 'شبكات ومجموعات تعليمية وجهات حكومية',
-                taglineEn: 'Networks, education groups and government bodies',
-                priceAr: 'تسعير مخصّص',
-                priceEn: 'Custom pricing',
-                priceNoteAr: 'تواصل معنا',
-                priceNoteEn: 'Contact us',
+                name: t('landingPricingGroupsName'),
+                tagline: t('landingPricingGroupsTagline'),
+                price: t('landingPricingGroupsPrice'),
+                priceNote: t('landingPricingGroupsPriceNote'),
                 metaKey: 'landingPricingGroupsMeta',
                 ctaKey: 'landingPricingGroupsCta',
                 ctaLink: '/register',
                 features: [
-                  ['كل ما في باقة المدارس', 'Everything in the Schools plan'],
-                  ['ربط أنظمة خارجية', 'External systems integration'],
-                  ['تسجيل دخول موحّد (SSO)', 'Single sign-on (SSO)'],
-                  ['لوحات مخصّصة بالكامل', 'Fully customized dashboards'],
-                  ['مدير نجاح مخصّص', 'Dedicated success manager'],
-                  ['تدريب وتشغيل كامل', 'End-to-end training & onboarding'],
+                  t('landingPricingGroupsFeature1'),
+                  t('landingPricingGroupsFeature2'),
+                  t('landingPricingGroupsFeature3'),
+                  t('landingPricingGroupsFeature4'),
+                  t('landingPricingGroupsFeature5'),
+                  t('landingPricingGroupsFeature6'),
                 ],
                 highlight: false,
               },
             ].map((tier, i) => (
               <div
                 key={i}
-                aria-label={tier.highlight ? (isRTL ? 'الباقة الموصى بها' : 'Recommended plan') : undefined}
+                aria-label={tier.highlight ? t('landingPricingRecommendedAria') : undefined}
                 className={`relative flex flex-col rounded-2xl p-7 backdrop-blur-sm transition-all duration-300 ${
                   tier.highlight
                     ? 'bg-white/10 text-white border-2 border-brand-turquoise shadow-2xl shadow-brand-turquoise/20 scale-100 md:scale-[1.03]'
                     : 'bg-white/5 border border-white/10 hover:bg-white/10 hover:border-brand-turquoise/40 hover:shadow-lg'
                 }`}
               >
-                {tier.badgeAr && (
+                {tier.badge && (
                   <div className="absolute -top-3 inset-x-0 flex justify-center">
                     <span className="bg-gradient-to-r from-brand-turquoise to-cyan-500 text-white font-cairo text-xs font-bold px-4 py-1 rounded-full shadow-lg shadow-brand-turquoise/30">
-                      {isRTL ? tier.badgeAr : tier.badgeEn}
+                      {tier.badge}
                     </span>
                   </div>
                 )}
 
                 <h3 className="font-cairo font-bold text-xl mb-1 text-white">
-                  {isRTL ? tier.nameAr : tier.nameEn}
+                  {tier.name}
                 </h3>
                 <p className="font-tajawal text-sm mb-6 text-white/65">
-                  {isRTL ? tier.taglineAr : tier.taglineEn}
+                  {tier.tagline}
                 </p>
 
                 <div className="mb-2">
                   <span className={`font-cairo font-black text-3xl ${tier.highlight ? 'text-brand-turquoise' : 'text-white'}`}>
-                    {isRTL ? tier.priceAr : tier.priceEn}
+                    {tier.price}
                   </span>
                 </div>
                 <p className="font-tajawal text-xs mb-6 text-white/55">
-                  {isRTL ? tier.priceNoteAr : tier.priceNoteEn}
+                  {tier.priceNote}
                 </p>
 
                 <Button
@@ -1826,11 +1627,11 @@ export const LandingPage = () => {
                 </Button>
 
                 <ul className="space-y-3 flex-1">
-                  {tier.features.map(([ar, en], j) => (
+                  {tier.features.map((feature, j) => (
                     <li key={j} className="flex items-start gap-2.5">
                       <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-brand-turquoise" strokeWidth={2} aria-hidden="true" />
                       <span className="font-tajawal text-sm leading-snug text-white/85">
-                        {isRTL ? ar : en}
+                        {feature}
                       </span>
                     </li>
                   ))}
@@ -1844,9 +1645,7 @@ export const LandingPage = () => {
           </div>
 
           <p className="font-tajawal text-center text-white/60 text-sm mt-10">
-            {isRTL
-              ? 'دعم عربي كامل · بدون رسوم إعداد · إلغاء في أي وقت'
-              : 'Full Arabic support · no setup fees · cancel anytime'}
+            {t('landingPricingFooter')}
           </p>
         </div>
       </section>}
@@ -1876,7 +1675,7 @@ export const LandingPage = () => {
           <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-turquoise/15 to-brand-turquoise/5 border border-brand-turquoise/30 rounded-full px-5 py-2.5 mb-6 backdrop-blur-sm animate-pulse-glow">
             <Sparkles className="h-4 w-4 text-brand-turquoise animate-pulse" strokeWidth={1.5} aria-hidden="true" />
             <span className="text-brand-turquoise text-sm font-tajawal font-medium">
-              {isRTL ? 'ابدأ رحلتك مع نَسَّق' : 'Start your NASSAQ journey'}
+              {t('landingCtaEyebrow')}
             </span>
           </div>
 
@@ -1884,9 +1683,7 @@ export const LandingPage = () => {
             {t('readyToStart')}
           </h2>
           <p className="text-lg md:text-xl text-white/75 font-tajawal max-w-2xl mx-auto leading-relaxed mb-12">
-            {isRTL
-              ? 'سواء كنت مدرسة أو معلمًا — نَسَّق يحوّل بياناتك إلى قرارات أوضح في دقائق.'
-              : 'Whether you run a school or teach a class — NASSAQ turns your data into clearer decisions in minutes.'}
+            {t('landingCtaSubheading')}
           </p>
 
           <div className="grid md:grid-cols-2 gap-5 mb-12">
