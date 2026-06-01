@@ -338,7 +338,9 @@ export default function TeacherClassesPage() {
           ? api.get('/independent-teacher/workspace-collaborators/shared-with-me').catch(() => ({ data: { items: [] } }))
           : Promise.resolve({ data: { items: [] } }),
       ]);
-      const classesData = classesRes.data || [];
+      const classesData = Array.isArray(classesRes.data)
+        ? classesRes.data
+        : (classesRes.data?.classes || classesRes.data?.items || []);
       const metricsData = metricsRes.data || {};
       const sharedItems = (sharedRes.data?.items) || [];
 
@@ -1765,6 +1767,8 @@ export default function TeacherClassesPage() {
             </div>
           )}
 
+          {/* DEBUG — remove after QA */}
+          {console.log('Classes after filter:', filteredClasses)}
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <Loader2 className="h-10 w-10 animate-spin text-brand-turquoise" />
