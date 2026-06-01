@@ -622,7 +622,7 @@ export const LandingPage = () => {
                   className="font-cairo font-bold text-white leading-tight text-4xl sm:text-5xl lg:text-6xl"
                   data-testid="platform-name"
                 >
-                  <span className="text-brand-turquoise">نَسَّق</span>
+                  <span className="text-white">{isRTL ? 'نَسَّق' : 'NASSAQ'}</span>
                 </h1>
                 <p className="font-tajawal text-lg text-white/80 leading-relaxed max-w-xl">
                   {isRTL
