@@ -141,7 +141,7 @@ export const TeacherExperiencePage = () => {
             </div>
 
             <h1 className="font-cairo font-bold text-white text-5xl md:text-6xl lg:text-7xl leading-none tracking-tight">
-              نَسَّق
+              {isRTL ? 'نَسَّق' : 'NASSAQ'}
             </h1>
 
             <p className="font-tajawal text-lg text-white/75 leading-relaxed max-w-xl">
