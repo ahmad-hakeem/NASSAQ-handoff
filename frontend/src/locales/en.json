@@ -5160,5 +5160,16 @@
   "landingPricingRecommendedAria": "Recommended plan",
   "landingPricingFooter": "Full Arabic support · no setup fees · cancel anytime",
   "landingCtaEyebrow": "Start your NASSAQ journey",
-  "landingCtaSubheading": "Whether you run a school or teach a class — NASSAQ turns your data into clearer decisions in minutes."
+  "landingCtaSubheading": "Whether you run a school or teach a class — NASSAQ turns your data into clearer decisions in minutes.",
+  "landingOnboardingEyebrow": "From sign-up to running",
+  "landingOnboardingHeading": "How to start with NASSAQ",
+  "landingOnboardingIntro": "Clear, ordered steps that take you from your first sign-up to running the platform with confidence — no complexity.",
+  "landingOnboardingStep1Title": "Register or request to start",
+  "landingOnboardingStep1Desc": "Register your school or teacher account, or reach out and we'll guide you from the start.",
+  "landingOnboardingStep2Title": "Set up and activate",
+  "landingOnboardingStep2Desc": "We help you prepare and activate your account so it's ready to use.",
+  "landingOnboardingStep3Title": "Configure for your role",
+  "landingOnboardingStep3Desc": "Tailor the platform to your organization and your users' roles.",
+  "landingOnboardingStep4Title": "Start working on the platform",
+  "landingOnboardingStep4Desc": "Begin managing your teaching day and tracking your data from one place."
 }

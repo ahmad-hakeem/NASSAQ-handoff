@@ -1753,6 +1753,52 @@ export const LandingPage = () => {
         </div>
       </section>
 
+      {/* ========== ONBOARDING JOURNEY — light breather before footer ========== */}
+      <section
+        className="relative py-20 lg:py-24 bg-white border-t border-slate-200/70"
+        id="onboarding"
+        data-testid="onboarding-section"
+      >
+        <div className="relative max-w-6xl mx-auto px-6">
+          <div className="text-center max-w-2xl mx-auto mb-12">
+            <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-turquoise/15 to-brand-turquoise/5 border border-brand-turquoise/25 rounded-full px-5 py-2.5 mb-5 w-fit mx-auto">
+              <span className="text-brand-turquoise text-sm font-tajawal font-medium">
+                {t('landingOnboardingEyebrow')}
+              </span>
+            </div>
+            <h2 className="font-cairo font-bold text-3xl md:text-4xl text-brand-navy leading-tight mb-4">
+              {t('landingOnboardingHeading')}
+            </h2>
+            <p className="font-tajawal text-base md:text-lg text-slate-600 leading-relaxed">
+              {t('landingOnboardingIntro')}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {[1, 2, 3, 4].map((n) => (
+              <div
+                key={n}
+                className="relative bg-slate-50 border border-slate-200/70 rounded-2xl p-6 hover:border-brand-turquoise/40 hover:shadow-md transition-all"
+                data-testid={`onboarding-step-${n}`}
+              >
+                <div className="flex items-baseline gap-3 mb-3">
+                  <span className="font-cairo font-black text-3xl text-brand-turquoise/40">
+                    {n.toLocaleString(isRTL ? 'ar-EG' : 'en-US')}
+                  </span>
+                  <span className="h-px flex-1 bg-slate-200" aria-hidden="true" />
+                </div>
+                <h3 className="font-cairo font-bold text-base text-brand-navy mb-2 text-start">
+                  {t(`landingOnboardingStep${n}Title`)}
+                </h3>
+                <p className="font-tajawal text-sm text-slate-600 leading-relaxed text-start">
+                  {t(`landingOnboardingStep${n}Desc`)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <Footer />
       <HakimAssistant />
     </div>

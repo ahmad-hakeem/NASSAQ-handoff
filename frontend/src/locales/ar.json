@@ -5160,5 +5160,16 @@
   "landingPricingRecommendedAria": "الباقة الموصى بها",
   "landingPricingFooter": "دعم عربي كامل · بدون رسوم إعداد · إلغاء في أي وقت",
   "landingCtaEyebrow": "ابدأ رحلتك مع نَسَّق",
-  "landingCtaSubheading": "سواء كنت مدرسة أو معلمًا — نَسَّق يحوّل بياناتك إلى قرارات أوضح في دقائق."
+  "landingCtaSubheading": "سواء كنت مدرسة أو معلمًا — نَسَّق يحوّل بياناتك إلى قرارات أوضح في دقائق.",
+  "landingOnboardingEyebrow": "من التسجيل إلى التشغيل",
+  "landingOnboardingHeading": "كيف تبدأ مع نَسَّق",
+  "landingOnboardingIntro": "خطوات واضحة ومرتّبة تنقلك من أول تسجيل إلى تشغيل المنصة بثقة، دون تعقيد.",
+  "landingOnboardingStep1Title": "التسجيل أو طلب البدء",
+  "landingOnboardingStep1Desc": "سجّل مدرستك أو حسابك كمعلم، أو تواصل معنا لنرافقك في البداية.",
+  "landingOnboardingStep2Title": "تجهيز الحساب وتفعيله",
+  "landingOnboardingStep2Desc": "نساعدك في تهيئة الحساب وإعداده ليصبح جاهزًا للاستخدام.",
+  "landingOnboardingStep3Title": "الإعداد حسب دورك",
+  "landingOnboardingStep3Desc": "هيّئ المنصة بما يناسب جهتك وأدوار المستخدمين لديك.",
+  "landingOnboardingStep4Title": "ابدأ العمل على المنصة",
+  "landingOnboardingStep4Desc": "انطلق في إدارة يومك التعليمي ومتابعة بياناتك من مكان واحد."
 }
