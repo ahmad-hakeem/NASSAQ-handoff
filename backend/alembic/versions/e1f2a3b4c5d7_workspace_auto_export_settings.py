@@ -32,6 +32,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from migration_idempotent import has_column
 
 
 revision: str = "e1f2a3b4c5d7"
@@ -41,31 +42,36 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "workspace_quota",
-        sa.Column(
-            "auto_export_enabled", sa.Boolean(),
-            nullable=False, server_default=sa.text("false"),
-        ),
-    )
-    op.add_column(
-        "workspace_quota",
-        sa.Column("auto_export_dow", sa.SmallInteger(), nullable=True),
-    )
-    op.add_column(
-        "workspace_quota",
-        sa.Column("auto_export_hour", sa.SmallInteger(), nullable=True),
-    )
-    op.add_column(
-        "workspace_quota",
-        sa.Column(
-            "auto_export_last_run_at", sa.DateTime(timezone=True), nullable=True,
-        ),
-    )
-    op.add_column(
-        "workspace_quota",
-        sa.Column("auto_export_last_status", sa.Text(), nullable=True),
-    )
+    if not has_column("workspace_quota", "auto_export_enabled"):
+        op.add_column(
+            "workspace_quota",
+            sa.Column(
+                "auto_export_enabled", sa.Boolean(),
+                nullable=False, server_default=sa.text("false"),
+            ),
+        )
+    if not has_column("workspace_quota", "auto_export_dow"):
+        op.add_column(
+            "workspace_quota",
+            sa.Column("auto_export_dow", sa.SmallInteger(), nullable=True),
+        )
+    if not has_column("workspace_quota", "auto_export_hour"):
+        op.add_column(
+            "workspace_quota",
+            sa.Column("auto_export_hour", sa.SmallInteger(), nullable=True),
+        )
+    if not has_column("workspace_quota", "auto_export_last_run_at"):
+        op.add_column(
+            "workspace_quota",
+            sa.Column(
+                "auto_export_last_run_at", sa.DateTime(timezone=True), nullable=True,
+            ),
+        )
+    if not has_column("workspace_quota", "auto_export_last_status"):
+        op.add_column(
+            "workspace_quota",
+            sa.Column("auto_export_last_status", sa.Text(), nullable=True),
+        )
 
 
 def downgrade() -> None:

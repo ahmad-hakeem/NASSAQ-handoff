@@ -8,6 +8,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from migration_idempotent import has_column
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = 's1t2u3v4w5x6'
@@ -17,14 +18,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        'teachers',
-        sa.Column('preferences', JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
-    )
-    op.add_column(
-        'teachers',
-        sa.Column('constraints', JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
-    )
+    if not has_column('teachers', 'preferences'):
+        op.add_column(
+            'teachers',
+            sa.Column('preferences', JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        )
+    if not has_column('teachers', 'constraints'):
+        op.add_column(
+            'teachers',
+            sa.Column('constraints', JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        )
 
 
 def downgrade() -> None:

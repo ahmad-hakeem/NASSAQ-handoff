@@ -13,6 +13,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from migration_idempotent import has_column
 
 
 revision: str = "z3b4c5d6e7f8"
@@ -22,15 +23,17 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "noor_import_history",
-        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
-    )
+    if not has_column("noor_import_history", "deleted_at"):
+        op.add_column(
+            "noor_import_history",
+            sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+        )
     op.create_index(
         "idx_noor_import_history_school_active",
         "noor_import_history",
         ["school_id", "committed_at"],
         postgresql_where=sa.text("deleted_at IS NULL"),
+        if_not_exists=True,
     )
 
 

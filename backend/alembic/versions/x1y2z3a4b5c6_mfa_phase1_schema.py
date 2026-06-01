@@ -37,6 +37,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from migration_idempotent import has_table, has_column, has_constraint
+
 
 revision: str = "x1y2z3a4b5c6"
 down_revision: Union[str, Sequence[str], None] = "w1x2y3z4a5b6"
@@ -46,98 +48,109 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # ---- mfa_factors ----------------------------------------------------
-    op.create_table(
-        "mfa_factors",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("user_id", sa.String(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("kind", sa.String(), nullable=False),  # totp | webauthn | recovery_code
-        sa.Column("label", sa.String(), nullable=True),
-        sa.Column("is_primary", sa.Boolean(), nullable=False, server_default=sa.false()),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.false()),
-        # encrypted TOTP seed (Fernet ciphertext) — null for non-TOTP rows
-        sa.Column("totp_secret_encrypted", sa.LargeBinary(), nullable=True),
-        # WebAuthn — null for non-WebAuthn rows
-        sa.Column("webauthn_credential_id", sa.LargeBinary(), nullable=True),
-        sa.Column("webauthn_public_key", sa.LargeBinary(), nullable=True),
-        sa.Column("webauthn_sign_count", sa.Integer(), nullable=True),
-        sa.Column("webauthn_aaguid", sa.String(), nullable=True),
-        # 'platform' or 'cross-platform' — UX hint for "this device" vs "external key"
-        sa.Column("webauthn_attachment", sa.String(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("verified_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.create_index("idx_mfa_factors_user_kind", "mfa_factors", ["user_id", "kind"])
-    op.create_index("idx_mfa_factors_user_active", "mfa_factors", ["user_id", "is_active"])
+    if not has_table("mfa_factors"):
+        op.create_table(
+            "mfa_factors",
+            sa.Column("id", sa.String(), primary_key=True),
+            sa.Column("user_id", sa.String(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+            sa.Column("kind", sa.String(), nullable=False),  # totp | webauthn | recovery_code
+            sa.Column("label", sa.String(), nullable=True),
+            sa.Column("is_primary", sa.Boolean(), nullable=False, server_default=sa.false()),
+            sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.false()),
+            # encrypted TOTP seed (Fernet ciphertext) — null for non-TOTP rows
+            sa.Column("totp_secret_encrypted", sa.LargeBinary(), nullable=True),
+            # WebAuthn — null for non-WebAuthn rows
+            sa.Column("webauthn_credential_id", sa.LargeBinary(), nullable=True),
+            sa.Column("webauthn_public_key", sa.LargeBinary(), nullable=True),
+            sa.Column("webauthn_sign_count", sa.Integer(), nullable=True),
+            sa.Column("webauthn_aaguid", sa.String(), nullable=True),
+            # 'platform' or 'cross-platform' — UX hint for "this device" vs "external key"
+            sa.Column("webauthn_attachment", sa.String(), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+            sa.Column("verified_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
+        )
+    op.create_index("idx_mfa_factors_user_kind", "mfa_factors", ["user_id", "kind"], if_not_exists=True)
+    op.create_index("idx_mfa_factors_user_active", "mfa_factors", ["user_id", "is_active"], if_not_exists=True)
     # WebAuthn credential ids must be globally unique to prevent cross-account replay
-    op.create_unique_constraint(
-        "uq_mfa_factors_webauthn_credential_id",
-        "mfa_factors",
-        ["webauthn_credential_id"],
-    )
+    if not has_constraint("mfa_factors", "uq_mfa_factors_webauthn_credential_id"):
+        op.create_unique_constraint(
+            "uq_mfa_factors_webauthn_credential_id",
+            "mfa_factors",
+            ["webauthn_credential_id"],
+        )
 
     # ---- mfa_recovery_codes ---------------------------------------------
-    op.create_table(
-        "mfa_recovery_codes",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("user_id", sa.String(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("code_hash", sa.String(), nullable=False),  # bcrypt
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.create_index("idx_mfa_recovery_user_unused", "mfa_recovery_codes", ["user_id", "consumed_at"])
+    if not has_table("mfa_recovery_codes"):
+        op.create_table(
+            "mfa_recovery_codes",
+            sa.Column("id", sa.String(), primary_key=True),
+            sa.Column("user_id", sa.String(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+            sa.Column("code_hash", sa.String(), nullable=False),  # bcrypt
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+            sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
+        )
+    op.create_index("idx_mfa_recovery_user_unused", "mfa_recovery_codes", ["user_id", "consumed_at"], if_not_exists=True)
 
     # ---- mfa_pending_challenges -----------------------------------------
-    op.create_table(
-        "mfa_pending_challenges",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("user_id", sa.String(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("challenge_token_jti", sa.String(), nullable=False, unique=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("attempts", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("ip", sa.String(), nullable=True),
-        sa.Column("user_agent", sa.String(), nullable=True),
-        sa.Column("remember_me", sa.Boolean(), nullable=False, server_default=sa.false()),
-    )
-    op.create_index("idx_mfa_pending_expires", "mfa_pending_challenges", ["expires_at"])
+    if not has_table("mfa_pending_challenges"):
+        op.create_table(
+            "mfa_pending_challenges",
+            sa.Column("id", sa.String(), primary_key=True),
+            sa.Column("user_id", sa.String(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
+            sa.Column("challenge_token_jti", sa.String(), nullable=False, unique=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+            sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("attempts", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("ip", sa.String(), nullable=True),
+            sa.Column("user_agent", sa.String(), nullable=True),
+            sa.Column("remember_me", sa.Boolean(), nullable=False, server_default=sa.false()),
+        )
+    op.create_index("idx_mfa_pending_expires", "mfa_pending_challenges", ["expires_at"], if_not_exists=True)
 
     # ---- mfa_email_otps -------------------------------------------------
-    op.create_table(
-        "mfa_email_otps",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("user_id", sa.String(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
-        # salted sha256: stored as hex digest of (salt || code); salt stored separately
-        sa.Column("code_hash", sa.String(), nullable=False),
-        sa.Column("code_salt", sa.String(), nullable=False),
-        sa.Column("challenge_id", sa.String(), sa.ForeignKey("mfa_pending_challenges.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("sent_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("attempts", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.create_index("idx_mfa_email_otps_challenge", "mfa_email_otps", ["challenge_id"])
+    if not has_table("mfa_email_otps"):
+        op.create_table(
+            "mfa_email_otps",
+            sa.Column("id", sa.String(), primary_key=True),
+            sa.Column("user_id", sa.String(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
+            # salted sha256: stored as hex digest of (salt || code); salt stored separately
+            sa.Column("code_hash", sa.String(), nullable=False),
+            sa.Column("code_salt", sa.String(), nullable=False),
+            sa.Column("challenge_id", sa.String(), sa.ForeignKey("mfa_pending_challenges.id", ondelete="CASCADE"), nullable=False),
+            sa.Column("sent_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+            sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("attempts", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
+        )
+    op.create_index("idx_mfa_email_otps_challenge", "mfa_email_otps", ["challenge_id"], if_not_exists=True)
 
     # ---- mfa_webauthn_challenges ----------------------------------------
-    op.create_table(
-        "mfa_webauthn_challenges",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("user_id", sa.String(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("purpose", sa.String(), nullable=False),  # 'enroll' | 'verify'
-        sa.Column("challenge", sa.LargeBinary(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
-    )
-    op.create_index("idx_mfa_webauthn_challenges_expires", "mfa_webauthn_challenges", ["expires_at"])
+    if not has_table("mfa_webauthn_challenges"):
+        op.create_table(
+            "mfa_webauthn_challenges",
+            sa.Column("id", sa.String(), primary_key=True),
+            sa.Column("user_id", sa.String(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
+            sa.Column("purpose", sa.String(), nullable=False),  # 'enroll' | 'verify'
+            sa.Column("challenge", sa.LargeBinary(), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+            sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        )
+    op.create_index("idx_mfa_webauthn_challenges_expires", "mfa_webauthn_challenges", ["expires_at"], if_not_exists=True)
 
     # ---- users column additions -----------------------------------------
     with op.batch_alter_table("users") as batch:
-        batch.add_column(sa.Column("mfa_required", sa.Boolean(), nullable=False, server_default=sa.false()))
-        batch.add_column(sa.Column("mfa_enrolled_at", sa.DateTime(timezone=True), nullable=True))
-        batch.add_column(sa.Column("mfa_must_restore_factor", sa.Boolean(), nullable=False, server_default=sa.false()))
-        batch.add_column(sa.Column("mfa_recovery_codes_generated_at", sa.DateTime(timezone=True), nullable=True))
-        batch.add_column(sa.Column("mfa_recovery_codes_acknowledged", sa.Boolean(), nullable=False, server_default=sa.false()))
+        if not has_column("users", "mfa_required"):
+            batch.add_column(sa.Column("mfa_required", sa.Boolean(), nullable=False, server_default=sa.false()))
+        if not has_column("users", "mfa_enrolled_at"):
+            batch.add_column(sa.Column("mfa_enrolled_at", sa.DateTime(timezone=True), nullable=True))
+        if not has_column("users", "mfa_must_restore_factor"):
+            batch.add_column(sa.Column("mfa_must_restore_factor", sa.Boolean(), nullable=False, server_default=sa.false()))
+        if not has_column("users", "mfa_recovery_codes_generated_at"):
+            batch.add_column(sa.Column("mfa_recovery_codes_generated_at", sa.DateTime(timezone=True), nullable=True))
+        if not has_column("users", "mfa_recovery_codes_acknowledged"):
+            batch.add_column(sa.Column("mfa_recovery_codes_acknowledged", sa.Boolean(), nullable=False, server_default=sa.false()))
 
     # Backfill ``mfa_required`` for existing users in Tier A roles. The
     # mfa_policy helper is the source of truth at request time; this column
@@ -167,8 +180,10 @@ def upgrade() -> None:
 
     # ---- audit_logs hash-chain columns (mfa.* scope only) ---------------
     with op.batch_alter_table("audit_logs") as batch:
-        batch.add_column(sa.Column("prev_hash", sa.String(length=64), nullable=True))
-        batch.add_column(sa.Column("row_hash", sa.String(length=64), nullable=True))
+        if not has_column("audit_logs", "prev_hash"):
+            batch.add_column(sa.Column("prev_hash", sa.String(length=64), nullable=True))
+        if not has_column("audit_logs", "row_hash"):
+            batch.add_column(sa.Column("row_hash", sa.String(length=64), nullable=True))
 
     # ---- append-only trigger for mfa.* audit rows -----------------------
     # Application code must NEVER mutate a row whose action starts with

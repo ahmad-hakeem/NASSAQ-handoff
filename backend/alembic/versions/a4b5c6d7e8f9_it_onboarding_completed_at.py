@@ -19,6 +19,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from migration_idempotent import has_column
 
 
 revision: str = "a4b5c6d7e8f9"
@@ -28,14 +29,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "users",
-        sa.Column(
-            "it_onboarding_completed_at",
-            sa.DateTime(timezone=True),
-            nullable=True,
-        ),
-    )
+    if not has_column("users", "it_onboarding_completed_at"):
+        op.add_column(
+            "users",
+            sa.Column(
+                "it_onboarding_completed_at",
+                sa.DateTime(timezone=True),
+                nullable=True,
+            ),
+        )
 
 
 def downgrade() -> None:

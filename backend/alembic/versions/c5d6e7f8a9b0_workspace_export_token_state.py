@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from migration_idempotent import has_column
 
 
 revision = "c5d6e7f8a9b0"
@@ -23,14 +24,16 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "schools",
-        sa.Column("last_export_token_hash", sa.String(length=64), nullable=True),
-    )
-    op.add_column(
-        "schools",
-        sa.Column("last_export_consumed_at", sa.DateTime(timezone=True), nullable=True),
-    )
+    if not has_column("schools", "last_export_token_hash"):
+        op.add_column(
+            "schools",
+            sa.Column("last_export_token_hash", sa.String(length=64), nullable=True),
+        )
+    if not has_column("schools", "last_export_consumed_at"):
+        op.add_column(
+            "schools",
+            sa.Column("last_export_consumed_at", sa.DateTime(timezone=True), nullable=True),
+        )
 
 
 def downgrade() -> None:

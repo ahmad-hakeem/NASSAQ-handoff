@@ -28,6 +28,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from migration_idempotent import has_table, has_column
 from sqlalchemy.dialects import postgresql
 
 
@@ -38,67 +39,72 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "lesson_plans",
-        sa.Column("id", sa.String(), nullable=False),
-        sa.Column("workspace_school_id", sa.String(), nullable=False),
-        sa.Column("created_by", sa.String(), nullable=False),
-        sa.Column("subject", sa.String(length=200), nullable=True),
-        sa.Column("grade_level", sa.String(length=200), nullable=True),
-        sa.Column("topic", sa.String(length=500), nullable=False),
-        sa.Column("duration_minutes", sa.Integer(), nullable=True),
-        sa.Column("language", sa.String(length=8), nullable=False, server_default="ar"),
-        sa.Column("prompt", sa.Text(), nullable=True),
-        sa.Column("plan", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-        sa.Column("class_id", sa.String(), nullable=True),
-        sa.Column("is_saved", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column(
-            "created_at", sa.DateTime(timezone=True),
-            nullable=False, server_default=sa.text("CURRENT_TIMESTAMP"),
-        ),
-        sa.Column(
-            "updated_at", sa.DateTime(timezone=True),
-            nullable=False, server_default=sa.text("CURRENT_TIMESTAMP"),
-        ),
-        sa.ForeignKeyConstraint(
-            ["workspace_school_id"], ["schools.id"], ondelete="CASCADE",
-        ),
-        sa.ForeignKeyConstraint(
-            ["created_by"], ["users.id"], ondelete="CASCADE",
-        ),
-        sa.ForeignKeyConstraint(
-            ["class_id"], ["classes.id"], ondelete="SET NULL",
-        ),
-        sa.PrimaryKeyConstraint("id"),
-    )
+    if not has_table("lesson_plans"):
+        op.create_table(
+            "lesson_plans",
+            sa.Column("id", sa.String(), nullable=False),
+            sa.Column("workspace_school_id", sa.String(), nullable=False),
+            sa.Column("created_by", sa.String(), nullable=False),
+            sa.Column("subject", sa.String(length=200), nullable=True),
+            sa.Column("grade_level", sa.String(length=200), nullable=True),
+            sa.Column("topic", sa.String(length=500), nullable=False),
+            sa.Column("duration_minutes", sa.Integer(), nullable=True),
+            sa.Column("language", sa.String(length=8), nullable=False, server_default="ar"),
+            sa.Column("prompt", sa.Text(), nullable=True),
+            sa.Column("plan", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+            sa.Column("class_id", sa.String(), nullable=True),
+            sa.Column("is_saved", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+            sa.Column(
+                "created_at", sa.DateTime(timezone=True),
+                nullable=False, server_default=sa.text("CURRENT_TIMESTAMP"),
+            ),
+            sa.Column(
+                "updated_at", sa.DateTime(timezone=True),
+                nullable=False, server_default=sa.text("CURRENT_TIMESTAMP"),
+            ),
+            sa.ForeignKeyConstraint(
+                ["workspace_school_id"], ["schools.id"], ondelete="CASCADE",
+            ),
+            sa.ForeignKeyConstraint(
+                ["created_by"], ["users.id"], ondelete="CASCADE",
+            ),
+            sa.ForeignKeyConstraint(
+                ["class_id"], ["classes.id"], ondelete="SET NULL",
+            ),
+            sa.PrimaryKeyConstraint("id"),
+        )
     op.create_index(
         "ix_lesson_plans_ws_created",
         "lesson_plans",
         ["workspace_school_id", "created_at"],
+        if_not_exists=True,
     )
     op.create_index(
         "ix_lesson_plans_ws_author",
         "lesson_plans",
         ["workspace_school_id", "created_by"],
+        if_not_exists=True,
     )
 
     # Documentation-only columns on workspace_quota — runtime stores the
     # counters in the JSONB ``data`` blob via the GenericDocument
     # fallback, but mirroring them as typed columns keeps the schema
     # self-describing for ad-hoc queries / future promotion.
-    op.add_column(
-        "workspace_quota",
-        sa.Column(
-            "lesson_plans_today", sa.Integer(),
-            nullable=False, server_default="0",
-        ),
-    )
-    op.add_column(
-        "workspace_quota",
-        sa.Column(
-            "lesson_plans_today_date", sa.Date(), nullable=True,
-        ),
-    )
+    if not has_column("workspace_quota", "lesson_plans_today"):
+        op.add_column(
+            "workspace_quota",
+            sa.Column(
+                "lesson_plans_today", sa.Integer(),
+                nullable=False, server_default="0",
+            ),
+        )
+    if not has_column("workspace_quota", "lesson_plans_today_date"):
+        op.add_column(
+            "workspace_quota",
+            sa.Column(
+                "lesson_plans_today_date", sa.Date(), nullable=True,
+            ),
+        )
 
 
 def downgrade() -> None:

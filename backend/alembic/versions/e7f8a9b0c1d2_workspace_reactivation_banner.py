@@ -30,6 +30,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from migration_idempotent import has_column
 
 
 revision: str = "e7f8a9b0c1d2"
@@ -39,26 +40,29 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "schools",
-        sa.Column("last_reactivated_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.add_column(
-        "schools",
-        sa.Column(
-            "last_archive_cycle_archived_at",
-            sa.DateTime(timezone=True),
-            nullable=True,
-        ),
-    )
-    op.add_column(
-        "schools",
-        sa.Column(
-            "reactivation_banner_dismissed_at",
-            sa.DateTime(timezone=True),
-            nullable=True,
-        ),
-    )
+    if not has_column("schools", "last_reactivated_at"):
+        op.add_column(
+            "schools",
+            sa.Column("last_reactivated_at", sa.DateTime(timezone=True), nullable=True),
+        )
+    if not has_column("schools", "last_archive_cycle_archived_at"):
+        op.add_column(
+            "schools",
+            sa.Column(
+                "last_archive_cycle_archived_at",
+                sa.DateTime(timezone=True),
+                nullable=True,
+            ),
+        )
+    if not has_column("schools", "reactivation_banner_dismissed_at"):
+        op.add_column(
+            "schools",
+            sa.Column(
+                "reactivation_banner_dismissed_at",
+                sa.DateTime(timezone=True),
+                nullable=True,
+            ),
+        )
 
 
 def downgrade() -> None:

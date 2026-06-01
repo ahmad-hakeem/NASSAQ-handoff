@@ -24,6 +24,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from migration_idempotent import has_column, has_constraint
+
 
 revision: str = "t521a1b2c3d4"
 down_revision: Union[str, Sequence[str], None] = "629fb4a19af5"
@@ -32,31 +34,36 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "educational_stages",
-        sa.Column("tenant_id", sa.String(), nullable=True),
-    )
-    op.add_column(
-        "educational_stages",
-        sa.Column("is_global", sa.Boolean(), nullable=True),
-    )
-    op.create_foreign_key(
-        "fk_educational_stages_tenant_id_schools",
-        "educational_stages",
-        "schools",
-        ["tenant_id"],
-        ["id"],
-        ondelete="CASCADE",
-    )
+    if not has_column("educational_stages", "tenant_id"):
+        op.add_column(
+            "educational_stages",
+            sa.Column("tenant_id", sa.String(), nullable=True),
+        )
+    if not has_column("educational_stages", "is_global"):
+        op.add_column(
+            "educational_stages",
+            sa.Column("is_global", sa.Boolean(), nullable=True),
+        )
+    if not has_constraint("educational_stages", "fk_educational_stages_tenant_id_schools"):
+        op.create_foreign_key(
+            "fk_educational_stages_tenant_id_schools",
+            "educational_stages",
+            "schools",
+            ["tenant_id"],
+            ["id"],
+            ondelete="CASCADE",
+        )
     op.create_index(
         "idx_educational_stages_tenant_id",
         "educational_stages",
         ["tenant_id"],
+        if_not_exists=True,
     )
     op.create_index(
         "idx_educational_stages_is_global",
         "educational_stages",
         ["is_global"],
+        if_not_exists=True,
     )
     # Backfill: existing rows are assumed to be global defaults (the
     # seed route inserts them with is_global=True, tenant_id=None).

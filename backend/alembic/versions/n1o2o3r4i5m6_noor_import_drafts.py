@@ -22,6 +22,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from migration_idempotent import has_table
+
 
 revision: str = "n1o2o3r4i5m6"
 # Merge-point: this migration is sequenced after the pre-existing
@@ -38,46 +40,49 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "noor_import_drafts",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("principal_id", sa.String(), nullable=False, index=True),
-        sa.Column("school_id", sa.String(), nullable=False, index=True),
-        sa.Column("detected_type", sa.String(length=16), nullable=False),
-        sa.Column("header_row", sa.Integer(), nullable=False),
-        sa.Column(
-            "payload",
-            postgresql.JSONB(astext_type=sa.Text()),
-            nullable=False,
-            server_default=sa.text("'{}'::jsonb"),
-        ),
-        sa.Column(
-            "counts",
-            postgresql.JSONB(astext_type=sa.Text()),
-            nullable=False,
-            server_default=sa.text("'{}'::jsonb"),
-        ),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.text("now()"),
-        ),
-        sa.Column(
-            "expires_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-        ),
-    )
+    if not has_table("noor_import_drafts"):
+        op.create_table(
+            "noor_import_drafts",
+            sa.Column("id", sa.String(), primary_key=True),
+            sa.Column("principal_id", sa.String(), nullable=False, index=True),
+            sa.Column("school_id", sa.String(), nullable=False, index=True),
+            sa.Column("detected_type", sa.String(length=16), nullable=False),
+            sa.Column("header_row", sa.Integer(), nullable=False),
+            sa.Column(
+                "payload",
+                postgresql.JSONB(astext_type=sa.Text()),
+                nullable=False,
+                server_default=sa.text("'{}'::jsonb"),
+            ),
+            sa.Column(
+                "counts",
+                postgresql.JSONB(astext_type=sa.Text()),
+                nullable=False,
+                server_default=sa.text("'{}'::jsonb"),
+            ),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.text("now()"),
+            ),
+            sa.Column(
+                "expires_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+            ),
+        )
     op.create_index(
         "ix_noor_import_drafts_owner",
         "noor_import_drafts",
         ["principal_id", "school_id"],
+        if_not_exists=True,
     )
     op.create_index(
         "ix_noor_import_drafts_expires_at",
         "noor_import_drafts",
         ["expires_at"],
+        if_not_exists=True,
     )
 
 

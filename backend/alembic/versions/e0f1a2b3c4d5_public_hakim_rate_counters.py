@@ -13,6 +13,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from migration_idempotent import has_table
 
 
 revision: str = "e0f1a2b3c4d5"
@@ -22,16 +23,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "public_hakim_rate_counters",
-        sa.Column("key", sa.String(length=160), primary_key=True),
-        sa.Column("count", sa.Integer(), nullable=False, server_default=sa.text("0")),
-        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
-    )
+    if not has_table("public_hakim_rate_counters"):
+        op.create_table(
+            "public_hakim_rate_counters",
+            sa.Column("key", sa.String(length=160), primary_key=True),
+            sa.Column("count", sa.Integer(), nullable=False, server_default=sa.text("0")),
+            sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        )
     op.create_index(
         "ix_public_hakim_rate_counters_expires_at",
         "public_hakim_rate_counters",
         ["expires_at"],
+        if_not_exists=True,
     )
 
 

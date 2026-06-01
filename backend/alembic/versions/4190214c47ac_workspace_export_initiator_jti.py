@@ -14,6 +14,7 @@ Create Date: 2026-05-20
 from __future__ import annotations
 
 import sqlalchemy as sa
+from migration_idempotent import has_column
 from alembic import op
 
 
@@ -24,10 +25,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "schools",
-        sa.Column("last_export_initiator_jti", sa.String(length=128), nullable=True),
-    )
+    if not has_column("schools", "last_export_initiator_jti"):
+        op.add_column(
+            "schools",
+            sa.Column("last_export_initiator_jti", sa.String(length=128), nullable=True),
+        )
 
 
 def downgrade() -> None:

@@ -17,6 +17,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from migration_idempotent import has_table, has_column
+
 
 revision: str = "w1x2y3z4a5b6"
 down_revision: Union[str, Sequence[str], None] = "v1w2x3y4z5a6"
@@ -25,26 +27,28 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "revoked_token_families",
-        sa.Column("family_id", sa.String(), primary_key=True),
-        sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("reason", sa.String(), nullable=True),
-        sa.Column("user_id", sa.String(), nullable=True, index=True),
-    )
+    if not has_table("revoked_token_families"):
+        op.create_table(
+            "revoked_token_families",
+            sa.Column("family_id", sa.String(), primary_key=True),
+            sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("reason", sa.String(), nullable=True),
+            sa.Column("user_id", sa.String(), nullable=True, index=True),
+        )
 
     # Per-tenant AI consent flag. Default TRUE preserves the existing behaviour
     # for tenants already using Hakim; new sovereign deployments can flip this
     # off centrally to disable any outbound LLM call.
     with op.batch_alter_table("schools") as batch:
-        batch.add_column(
-            sa.Column(
-                "ai_consent_enabled",
-                sa.Boolean(),
-                nullable=False,
-                server_default=sa.true(),
+        if not has_column("schools", "ai_consent_enabled"):
+            batch.add_column(
+                sa.Column(
+                    "ai_consent_enabled",
+                    sa.Boolean(),
+                    nullable=False,
+                    server_default=sa.true(),
+                )
             )
-        )
 
 
 def downgrade() -> None:

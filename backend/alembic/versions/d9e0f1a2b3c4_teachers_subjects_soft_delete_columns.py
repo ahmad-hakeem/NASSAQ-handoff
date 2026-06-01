@@ -11,6 +11,7 @@ lacked the soft-delete bookkeeping columns; ``classes`` already has them
 """
 from alembic import op
 import sqlalchemy as sa
+from migration_idempotent import has_column
 
 revision = 'd9e0f1a2b3c4'
 down_revision = 'b7c8d9e0f1a2'
@@ -19,10 +20,14 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column('teachers', sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True))
-    op.add_column('teachers', sa.Column('deleted_by', sa.String(), nullable=True))
-    op.add_column('subjects', sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True))
-    op.add_column('subjects', sa.Column('deleted_by', sa.String(), nullable=True))
+    if not has_column('teachers', 'deleted_at'):
+        op.add_column('teachers', sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True))
+    if not has_column('teachers', 'deleted_by'):
+        op.add_column('teachers', sa.Column('deleted_by', sa.String(), nullable=True))
+    if not has_column('subjects', 'deleted_at'):
+        op.add_column('subjects', sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True))
+    if not has_column('subjects', 'deleted_by'):
+        op.add_column('subjects', sa.Column('deleted_by', sa.String(), nullable=True))
 
 
 def downgrade():

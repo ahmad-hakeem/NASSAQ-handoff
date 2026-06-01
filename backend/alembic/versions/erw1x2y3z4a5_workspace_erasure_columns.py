@@ -24,6 +24,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from migration_idempotent import has_column
+
 
 revision: str = "erw1x2y3z4a5"
 down_revision: Union[str, Sequence[str], None] = (
@@ -35,22 +37,24 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "schools",
-        sa.Column(
-            "erasure_requested_at",
-            sa.DateTime(timezone=True),
-            nullable=True,
-        ),
-    )
-    op.add_column(
-        "schools",
-        sa.Column(
-            "erasure_window_days",
-            sa.SmallInteger(),
-            nullable=True,
-        ),
-    )
+    if not has_column("schools", "erasure_requested_at"):
+        op.add_column(
+            "schools",
+            sa.Column(
+                "erasure_requested_at",
+                sa.DateTime(timezone=True),
+                nullable=True,
+            ),
+        )
+    if not has_column("schools", "erasure_window_days"):
+        op.add_column(
+            "schools",
+            sa.Column(
+                "erasure_window_days",
+                sa.SmallInteger(),
+                nullable=True,
+            ),
+        )
 
 
 def downgrade() -> None:

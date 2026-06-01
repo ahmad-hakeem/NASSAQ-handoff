@@ -10,6 +10,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from migration_idempotent import has_table
+
 revision: str = 'h1i2j3k4l5m6'
 down_revision: Union[str, Sequence[str], None] = 'g1h2i3j4k5l6'
 branch_labels: Union[str, Sequence[str], None] = None
@@ -17,41 +19,43 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table('events',
-        sa.Column('id', sa.String(), nullable=False),
-        sa.Column('tenant_id', sa.String(), nullable=True),
-        sa.Column('type', sa.String(), nullable=False),
-        sa.Column('status', sa.String(), nullable=True),
-        sa.Column('student_id', sa.String(), nullable=True),
-        sa.Column('class_id', sa.String(), nullable=True),
-        sa.Column('recorded_by', sa.String(), nullable=True),
-        sa.Column('date', sa.String(), nullable=True),
-        sa.Column('data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(['tenant_id'], ['schools.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['student_id'], ['students.id'], ondelete='SET NULL'),
-        sa.ForeignKeyConstraint(['class_id'], ['classes.id'], ondelete='SET NULL'),
-        sa.ForeignKeyConstraint(['recorded_by'], ['users.id'], ondelete='SET NULL'),
-        sa.PrimaryKeyConstraint('id'),
-    )
-    op.create_index('idx_events_tenant_type', 'events', ['tenant_id', 'type'])
-    op.create_index('idx_events_tenant_date', 'events', ['tenant_id', 'created_at'])
-    op.create_index(op.f('ix_events_type'), 'events', ['type'])
-    op.create_index(op.f('ix_events_tenant_id'), 'events', ['tenant_id'])
-    op.create_index(op.f('ix_events_student_id'), 'events', ['student_id'])
-    op.create_index(op.f('ix_events_class_id'), 'events', ['class_id'])
+    if not has_table('events'):
+        op.create_table('events',
+            sa.Column('id', sa.String(), nullable=False),
+            sa.Column('tenant_id', sa.String(), nullable=True),
+            sa.Column('type', sa.String(), nullable=False),
+            sa.Column('status', sa.String(), nullable=True),
+            sa.Column('student_id', sa.String(), nullable=True),
+            sa.Column('class_id', sa.String(), nullable=True),
+            sa.Column('recorded_by', sa.String(), nullable=True),
+            sa.Column('date', sa.String(), nullable=True),
+            sa.Column('data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+            sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+            sa.ForeignKeyConstraint(['tenant_id'], ['schools.id'], ondelete='CASCADE'),
+            sa.ForeignKeyConstraint(['student_id'], ['students.id'], ondelete='SET NULL'),
+            sa.ForeignKeyConstraint(['class_id'], ['classes.id'], ondelete='SET NULL'),
+            sa.ForeignKeyConstraint(['recorded_by'], ['users.id'], ondelete='SET NULL'),
+            sa.PrimaryKeyConstraint('id'),
+        )
+    op.create_index('idx_events_tenant_type', 'events', ['tenant_id', 'type'], if_not_exists=True)
+    op.create_index('idx_events_tenant_date', 'events', ['tenant_id', 'created_at'], if_not_exists=True)
+    op.create_index(op.f('ix_events_type'), 'events', ['type'], if_not_exists=True)
+    op.create_index(op.f('ix_events_tenant_id'), 'events', ['tenant_id'], if_not_exists=True)
+    op.create_index(op.f('ix_events_student_id'), 'events', ['student_id'], if_not_exists=True)
+    op.create_index(op.f('ix_events_class_id'), 'events', ['class_id'], if_not_exists=True)
 
-    op.create_table('system_settings',
-        sa.Column('id', sa.String(), nullable=False),
-        sa.Column('type', sa.String(), nullable=False),
-        sa.Column('data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column('updated_by', sa.String(), nullable=True),
-        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(['updated_by'], ['users.id'], ondelete='SET NULL'),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('type'),
-    )
-    op.create_index(op.f('ix_system_settings_type'), 'system_settings', ['type'], unique=True)
+    if not has_table('system_settings'):
+        op.create_table('system_settings',
+            sa.Column('id', sa.String(), nullable=False),
+            sa.Column('type', sa.String(), nullable=False),
+            sa.Column('data', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+            sa.Column('updated_by', sa.String(), nullable=True),
+            sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+            sa.ForeignKeyConstraint(['updated_by'], ['users.id'], ondelete='SET NULL'),
+            sa.PrimaryKeyConstraint('id'),
+            sa.UniqueConstraint('type'),
+        )
+    op.create_index(op.f('ix_system_settings_type'), 'system_settings', ['type'], unique=True, if_not_exists=True)
 
     conn = op.get_bind()
 

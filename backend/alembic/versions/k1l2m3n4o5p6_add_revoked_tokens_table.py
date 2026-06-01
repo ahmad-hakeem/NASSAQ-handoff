@@ -9,6 +9,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from migration_idempotent import has_table
+
 revision: str = 'k1l2m3n4o5p6'
 down_revision: Union[str, Sequence[str], None] = 'j1k2l3m4n5o6'
 branch_labels: Union[str, Sequence[str], None] = None
@@ -16,13 +18,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        'revoked_tokens',
-        sa.Column('jti', sa.String(36), primary_key=True, nullable=False),
-        sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
-        sa.Column('revoked_at', sa.DateTime(timezone=True), server_default=sa.text('NOW()'), nullable=False),
-    )
-    op.create_index('ix_revoked_tokens_expires_at', 'revoked_tokens', ['expires_at'])
+    if not has_table('revoked_tokens'):
+        op.create_table(
+            'revoked_tokens',
+            sa.Column('jti', sa.String(36), primary_key=True, nullable=False),
+            sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
+            sa.Column('revoked_at', sa.DateTime(timezone=True), server_default=sa.text('NOW()'), nullable=False),
+        )
+    op.create_index('ix_revoked_tokens_expires_at', 'revoked_tokens', ['expires_at'], if_not_exists=True)
 
 
 def downgrade() -> None:

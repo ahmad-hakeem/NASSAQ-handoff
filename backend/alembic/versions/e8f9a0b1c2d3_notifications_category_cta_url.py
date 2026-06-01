@@ -22,6 +22,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
+from migration_idempotent import has_column
+
 
 revision: str = "e8f9a0b1c2d3"
 down_revision: Union[str, Sequence[str], None] = "f1a2b3c4d5e7"
@@ -30,23 +32,26 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "notifications",
-        sa.Column(
-            "category",
-            sa.String(length=64),
-            nullable=False,
-            server_default=sa.text("'general'"),
-        ),
-    )
-    op.add_column(
-        "notifications",
-        sa.Column("cta_url", sa.String(length=512), nullable=True),
-    )
+    if not has_column("notifications", "category"):
+        op.add_column(
+            "notifications",
+            sa.Column(
+                "category",
+                sa.String(length=64),
+                nullable=False,
+                server_default=sa.text("'general'"),
+            ),
+        )
+    if not has_column("notifications", "cta_url"):
+        op.add_column(
+            "notifications",
+            sa.Column("cta_url", sa.String(length=512), nullable=True),
+        )
     op.create_index(
         "idx_pg_notifications_user_category_date",
         "notifications",
         ["user_id", "category", "created_at"],
+        if_not_exists=True,
     )
 
 

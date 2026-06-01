@@ -27,6 +27,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from migration_idempotent import has_table
 from sqlalchemy.dialects import postgresql
 
 
@@ -37,48 +38,49 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "workspace_collaborators",
-        sa.Column("id", sa.String(), nullable=False),
-        sa.Column("host_school_id", sa.String(), nullable=False),
-        sa.Column("collaborator_school_id", sa.String(), nullable=True),
-        sa.Column("class_id", sa.String(), nullable=False),
-        sa.Column("collaborator_email", sa.String(), nullable=True),
-        sa.Column("collaborator_user_id", sa.String(), nullable=True),
-        sa.Column("token_hash", sa.String(), nullable=False),
-        sa.Column(
-            "scope", postgresql.JSONB(astext_type=sa.Text()), nullable=False,
-            server_default=sa.text("'{\"mode\": \"read\"}'::jsonb"),
-        ),
-        sa.Column("status", sa.String(), nullable=False),
-        sa.Column("sent_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("accepted_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("created_by", sa.String(), nullable=True),
-        sa.Column(
-            "created_at", sa.DateTime(timezone=True), nullable=False,
-            server_default=sa.text("CURRENT_TIMESTAMP"),
-        ),
-        sa.Column(
-            "updated_at", sa.DateTime(timezone=True), nullable=False,
-            server_default=sa.text("CURRENT_TIMESTAMP"),
-        ),
-        sa.ForeignKeyConstraint(
-            ["host_school_id"], ["schools.id"], ondelete="CASCADE",
-        ),
-        sa.ForeignKeyConstraint(
-            ["collaborator_school_id"], ["schools.id"], ondelete="CASCADE",
-        ),
-        sa.ForeignKeyConstraint(
-            ["class_id"], ["classes.id"], ondelete="CASCADE",
-        ),
-        sa.CheckConstraint(
-            "status IN ('pending', 'accepted', 'revoked', 'cancelled', 'expired')",
-            name="ck_workspace_collaborators_status",
-        ),
-        sa.PrimaryKeyConstraint("id"),
-    )
+    if not has_table("workspace_collaborators"):
+        op.create_table(
+            "workspace_collaborators",
+            sa.Column("id", sa.String(), nullable=False),
+            sa.Column("host_school_id", sa.String(), nullable=False),
+            sa.Column("collaborator_school_id", sa.String(), nullable=True),
+            sa.Column("class_id", sa.String(), nullable=False),
+            sa.Column("collaborator_email", sa.String(), nullable=True),
+            sa.Column("collaborator_user_id", sa.String(), nullable=True),
+            sa.Column("token_hash", sa.String(), nullable=False),
+            sa.Column(
+                "scope", postgresql.JSONB(astext_type=sa.Text()), nullable=False,
+                server_default=sa.text("'{\"mode\": \"read\"}'::jsonb"),
+            ),
+            sa.Column("status", sa.String(), nullable=False),
+            sa.Column("sent_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("accepted_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("created_by", sa.String(), nullable=True),
+            sa.Column(
+                "created_at", sa.DateTime(timezone=True), nullable=False,
+                server_default=sa.text("CURRENT_TIMESTAMP"),
+            ),
+            sa.Column(
+                "updated_at", sa.DateTime(timezone=True), nullable=False,
+                server_default=sa.text("CURRENT_TIMESTAMP"),
+            ),
+            sa.ForeignKeyConstraint(
+                ["host_school_id"], ["schools.id"], ondelete="CASCADE",
+            ),
+            sa.ForeignKeyConstraint(
+                ["collaborator_school_id"], ["schools.id"], ondelete="CASCADE",
+            ),
+            sa.ForeignKeyConstraint(
+                ["class_id"], ["classes.id"], ondelete="CASCADE",
+            ),
+            sa.CheckConstraint(
+                "status IN ('pending', 'accepted', 'revoked', 'cancelled', 'expired')",
+                name="ck_workspace_collaborators_status",
+            ),
+            sa.PrimaryKeyConstraint("id"),
+        )
     # "At most one active accepted collab per host+collaborator+class".
     op.create_index(
         "ux_workspace_collab_accepted",
@@ -86,6 +88,7 @@ def upgrade() -> None:
         ["host_school_id", "collaborator_school_id", "class_id"],
         unique=True,
         postgresql_where=sa.text("status = 'accepted'"),
+        if_not_exists=True,
     )
     # "At most one open pending invite per host+class+email".
     op.create_index(
@@ -94,6 +97,7 @@ def upgrade() -> None:
         ["host_school_id", "class_id", "collaborator_email"],
         unique=True,
         postgresql_where=sa.text("status = 'pending'"),
+        if_not_exists=True,
     )
     # Read patterns: list-by-class (host view) and list-by-collaborator
     # (collaborator's "shared with me" view).
@@ -102,18 +106,21 @@ def upgrade() -> None:
         "workspace_collaborators",
         ["host_school_id", "class_id", "status"],
         unique=False,
+        if_not_exists=True,
     )
     op.create_index(
         "ix_workspace_collab_collab_status",
         "workspace_collaborators",
         ["collaborator_school_id", "status"],
         unique=False,
+        if_not_exists=True,
     )
     op.create_index(
         "ix_workspace_collab_token_hash",
         "workspace_collaborators",
         ["token_hash"],
         unique=False,
+        if_not_exists=True,
     )
 
 

@@ -29,6 +29,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from migration_idempotent import has_column
 
 
 revision: str = "b4c5d6e7f8a9"
@@ -38,34 +39,39 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "schools",
-        sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.add_column(
-        "schools",
-        sa.Column(
-            "pending_hard_delete",
-            sa.Boolean(),
-            nullable=False,
-            server_default=sa.text("false"),
-        ),
-    )
-    op.add_column(
-        "schools",
-        sa.Column("last_export_at", sa.DateTime(timezone=True), nullable=True),
-    )
+    if not has_column("schools", "archived_at"):
+        op.add_column(
+            "schools",
+            sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
+        )
+    if not has_column("schools", "pending_hard_delete"):
+        op.add_column(
+            "schools",
+            sa.Column(
+                "pending_hard_delete",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.text("false"),
+            ),
+        )
+    if not has_column("schools", "last_export_at"):
+        op.add_column(
+            "schools",
+            sa.Column("last_export_at", sa.DateTime(timezone=True), nullable=True),
+        )
     op.create_index(
         "idx_schools_archived_at",
         "schools",
         ["archived_at"],
         unique=False,
+        if_not_exists=True,
     )
     op.create_index(
         "idx_schools_pending_hard_delete",
         "schools",
         ["pending_hard_delete"],
         unique=False,
+        if_not_exists=True,
     )
 
 

@@ -25,6 +25,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from migration_idempotent import has_column
 from sqlalchemy.dialects import postgresql
 
 
@@ -35,33 +36,36 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "students",
-        sa.Column(
-            "talents",
-            postgresql.JSONB(astext_type=sa.Text()),
-            nullable=False,
-            server_default=sa.text("'[]'::jsonb"),
-        ),
-    )
-    op.add_column(
-        "students",
-        sa.Column(
-            "character_traits",
-            postgresql.JSONB(astext_type=sa.Text()),
-            nullable=False,
-            server_default=sa.text("'[]'::jsonb"),
-        ),
-    )
-    op.add_column(
-        "students",
-        sa.Column(
-            "is_gifted",
-            sa.Boolean(),
-            nullable=False,
-            server_default=sa.text("false"),
-        ),
-    )
+    if not has_column("students", "talents"):
+        op.add_column(
+            "students",
+            sa.Column(
+                "talents",
+                postgresql.JSONB(astext_type=sa.Text()),
+                nullable=False,
+                server_default=sa.text("'[]'::jsonb"),
+            ),
+        )
+    if not has_column("students", "character_traits"):
+        op.add_column(
+            "students",
+            sa.Column(
+                "character_traits",
+                postgresql.JSONB(astext_type=sa.Text()),
+                nullable=False,
+                server_default=sa.text("'[]'::jsonb"),
+            ),
+        )
+    if not has_column("students", "is_gifted"):
+        op.add_column(
+            "students",
+            sa.Column(
+                "is_gifted",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.text("false"),
+            ),
+        )
 
 
 def downgrade() -> None:

@@ -20,6 +20,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from migration_idempotent import has_column
+
 
 revision: str = "c9d0e1f2a3b4"
 down_revision: Union[str, Sequence[str], None] = "b3c4d5e6f7a8"
@@ -29,15 +31,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     with op.batch_alter_table("user_sessions") as batch:
-        batch.add_column(sa.Column("refresh_jti", sa.String(64), nullable=True))
-        batch.add_column(sa.Column("refresh_family_id", sa.String(64), nullable=True))
+        if not has_column("user_sessions", "refresh_jti"):
+            batch.add_column(sa.Column("refresh_jti", sa.String(64), nullable=True))
+        if not has_column("user_sessions", "refresh_family_id"):
+            batch.add_column(sa.Column("refresh_family_id", sa.String(64), nullable=True))
     op.create_index(
-        "ix_user_sessions_refresh_jti", "user_sessions", ["refresh_jti"]
+        "ix_user_sessions_refresh_jti", "user_sessions", ["refresh_jti"], if_not_exists=True
     )
     op.create_index(
         "ix_user_sessions_refresh_family_id",
         "user_sessions",
         ["refresh_family_id"],
+        if_not_exists=True,
     )
 
 

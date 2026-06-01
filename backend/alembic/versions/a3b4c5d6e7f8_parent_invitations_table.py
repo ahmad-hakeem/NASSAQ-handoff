@@ -33,6 +33,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from migration_idempotent import has_table
 
 
 revision: str = "a3b4c5d6e7f8"
@@ -55,54 +56,57 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "parent_invitations",
-        sa.Column("id", sa.String(), nullable=False),
-        sa.Column("workspace_school_id", sa.String(), nullable=False),
-        sa.Column("parent_email", sa.String(), nullable=True),
-        sa.Column("parent_phone", sa.String(), nullable=True),
-        sa.Column("student_id", sa.String(), nullable=False),
-        sa.Column("token_hash", sa.String(), nullable=False),
-        sa.Column("sent_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("accepted_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("status", sa.String(), nullable=False),
-        sa.Column("created_by", sa.String(), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.text("CURRENT_TIMESTAMP"),
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.text("CURRENT_TIMESTAMP"),
-        ),
-        sa.ForeignKeyConstraint(
-            ["workspace_school_id"], ["schools.id"], ondelete="CASCADE",
-        ),
-        sa.ForeignKeyConstraint(
-            ["student_id"], ["students.id"], ondelete="CASCADE",
-        ),
-        sa.CheckConstraint(
-            "status IN ('pending', 'accepted', 'expired', 'cancelled')",
-            name="ck_parent_invitations_status",
-        ),
-        sa.PrimaryKeyConstraint("id"),
-    )
+    if not has_table("parent_invitations"):
+        op.create_table(
+            "parent_invitations",
+            sa.Column("id", sa.String(), nullable=False),
+            sa.Column("workspace_school_id", sa.String(), nullable=False),
+            sa.Column("parent_email", sa.String(), nullable=True),
+            sa.Column("parent_phone", sa.String(), nullable=True),
+            sa.Column("student_id", sa.String(), nullable=False),
+            sa.Column("token_hash", sa.String(), nullable=False),
+            sa.Column("sent_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("accepted_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("status", sa.String(), nullable=False),
+            sa.Column("created_by", sa.String(), nullable=True),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.text("CURRENT_TIMESTAMP"),
+            ),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.text("CURRENT_TIMESTAMP"),
+            ),
+            sa.ForeignKeyConstraint(
+                ["workspace_school_id"], ["schools.id"], ondelete="CASCADE",
+            ),
+            sa.ForeignKeyConstraint(
+                ["student_id"], ["students.id"], ondelete="CASCADE",
+            ),
+            sa.CheckConstraint(
+                "status IN ('pending', 'accepted', 'expired', 'cancelled')",
+                name="ck_parent_invitations_status",
+            ),
+            sa.PrimaryKeyConstraint("id"),
+        )
     op.create_index(
         "ix_parent_invitations_workspace_student_status",
         "parent_invitations",
         ["workspace_school_id", "student_id", "status"],
         unique=False,
+        if_not_exists=True,
     )
     op.create_index(
         "ix_parent_invitations_token_hash",
         "parent_invitations",
         ["token_hash"],
         unique=False,
+        if_not_exists=True,
     )
 
 

@@ -25,6 +25,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
+from migration_idempotent import has_column
+
 
 revision: str = 'm1n2o3p4q5r6'
 down_revision: Union[str, Sequence[str], None] = 'l1m2n3o4p5q6'
@@ -33,14 +35,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        'messages',
-        sa.Column('data', JSONB(), nullable=True, server_default=sa.text("'{}'::jsonb")),
-    )
-    op.add_column(
-        'notifications',
-        sa.Column('data', JSONB(), nullable=True, server_default=sa.text("'{}'::jsonb")),
-    )
+    if not has_column('messages', 'data'):
+        op.add_column(
+            'messages',
+            sa.Column('data', JSONB(), nullable=True, server_default=sa.text("'{}'::jsonb")),
+        )
+    if not has_column('notifications', 'data'):
+        op.add_column(
+            'notifications',
+            sa.Column('data', JSONB(), nullable=True, server_default=sa.text("'{}'::jsonb")),
+        )
 
 
 def downgrade() -> None:

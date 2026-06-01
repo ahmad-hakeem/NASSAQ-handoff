@@ -24,6 +24,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from migration_idempotent import has_column
+
 
 revision: str = "t523a1b2c3d4"
 down_revision: Union[str, Sequence[str], None] = "t521a1b2c3d4"
@@ -32,22 +34,26 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "grade_levels",
-        sa.Column("name", sa.String(), nullable=True),
-    )
-    op.add_column(
-        "grade_levels",
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.add_column(
-        "grade_levels",
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.add_column(
-        "grade_levels",
-        sa.Column("created_by", sa.String(), nullable=True),
-    )
+    if not has_column("grade_levels", "name"):
+        op.add_column(
+            "grade_levels",
+            sa.Column("name", sa.String(), nullable=True),
+        )
+    if not has_column("grade_levels", "created_at"):
+        op.add_column(
+            "grade_levels",
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        )
+    if not has_column("grade_levels", "updated_at"):
+        op.add_column(
+            "grade_levels",
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+        )
+    if not has_column("grade_levels", "created_by"):
+        op.add_column(
+            "grade_levels",
+            sa.Column("created_by", sa.String(), nullable=True),
+        )
     # Backfill: keep existing rows visible to the route's response model by
     # giving them a non-null ``name`` (fall back to name_ar / name_en / code)
     # and a non-null ``created_at`` timestamp.

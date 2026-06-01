@@ -42,6 +42,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from migration_idempotent import has_column
+
 
 revision: str = "z1a2b3c4d5e6"
 down_revision: Union[str, Sequence[str], None] = "y1z2a3b4c5d6"
@@ -50,18 +52,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "students",
-        sa.Column("pending_parent_name", sa.Text(), nullable=True),
-    )
-    op.add_column(
-        "students",
-        sa.Column("pending_parent_phone", sa.Text(), nullable=True),
-    )
-    op.add_column(
-        "students",
-        sa.Column("pending_parent_email", sa.Text(), nullable=True),
-    )
+    if not has_column("students", "pending_parent_name"):
+        op.add_column(
+            "students",
+            sa.Column("pending_parent_name", sa.Text(), nullable=True),
+        )
+    if not has_column("students", "pending_parent_phone"):
+        op.add_column(
+            "students",
+            sa.Column("pending_parent_phone", sa.Text(), nullable=True),
+        )
+    if not has_column("students", "pending_parent_email"):
+        op.add_column(
+            "students",
+            sa.Column("pending_parent_email", sa.Text(), nullable=True),
+        )
 
     op.execute(
         """

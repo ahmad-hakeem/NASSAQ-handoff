@@ -14,6 +14,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from migration_idempotent import has_table
+
 
 revision: str = "b4d5e6f7a8b0"
 down_revision: Union[str, Sequence[str], None] = "b4c5d6e7f8a9"
@@ -22,36 +24,37 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "workspace_quota",
-        sa.Column("workspace_school_id", sa.String(), nullable=False),
-        sa.Column("max_students", sa.Integer(), nullable=False, server_default="200"),
-        sa.Column("max_classes", sa.Integer(), nullable=False, server_default="5"),
-        sa.Column(
-            "max_imports_per_day", sa.Integer(), nullable=False, server_default="5",
-        ),
-        sa.Column(
-            "max_rows_per_import", sa.Integer(), nullable=False, server_default="200",
-        ),
-        sa.Column("imports_today", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("imports_today_date", sa.Date(), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.text("CURRENT_TIMESTAMP"),
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.text("CURRENT_TIMESTAMP"),
-        ),
-        sa.ForeignKeyConstraint(
-            ["workspace_school_id"], ["schools.id"], ondelete="CASCADE",
-        ),
-        sa.PrimaryKeyConstraint("workspace_school_id"),
-    )
+    if not has_table("workspace_quota"):
+        op.create_table(
+            "workspace_quota",
+            sa.Column("workspace_school_id", sa.String(), nullable=False),
+            sa.Column("max_students", sa.Integer(), nullable=False, server_default="200"),
+            sa.Column("max_classes", sa.Integer(), nullable=False, server_default="5"),
+            sa.Column(
+                "max_imports_per_day", sa.Integer(), nullable=False, server_default="5",
+            ),
+            sa.Column(
+                "max_rows_per_import", sa.Integer(), nullable=False, server_default="200",
+            ),
+            sa.Column("imports_today", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("imports_today_date", sa.Date(), nullable=True),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.text("CURRENT_TIMESTAMP"),
+            ),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.text("CURRENT_TIMESTAMP"),
+            ),
+            sa.ForeignKeyConstraint(
+                ["workspace_school_id"], ["schools.id"], ondelete="CASCADE",
+            ),
+            sa.PrimaryKeyConstraint("workspace_school_id"),
+        )
 
     # Backfill existing IT workspaces with default quota rows so the
     # bulk-import endpoints work for accounts bootstrapped before this

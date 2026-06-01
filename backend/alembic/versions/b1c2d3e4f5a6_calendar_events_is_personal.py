@@ -20,6 +20,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from migration_idempotent import has_column
 
 
 revision: str = "b1c2d3e4f5a6"
@@ -29,19 +30,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "calendar_events",
-        sa.Column(
-            "is_personal",
-            sa.Boolean(),
-            nullable=True,
-            server_default=sa.text("false"),
-        ),
-    )
+    if not has_column("calendar_events", "is_personal"):
+        op.add_column(
+            "calendar_events",
+            sa.Column(
+                "is_personal",
+                sa.Boolean(),
+                nullable=True,
+                server_default=sa.text("false"),
+            ),
+        )
     op.create_index(
         "ix_calendar_events_tenant_personal_creator",
         "calendar_events",
         ["tenant_id", "is_personal", "created_by"],
+        if_not_exists=True,
     )
 
 

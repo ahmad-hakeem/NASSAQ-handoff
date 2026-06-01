@@ -9,6 +9,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from migration_idempotent import has_column
+
 revision: str = 'j1k2l3m4n5o6'
 down_revision: Union[str, Sequence[str], None] = 'i1j2k3l4m5n6'
 branch_labels: Union[str, Sequence[str], None] = None
@@ -16,8 +18,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('schools', sa.Column('principal_mobile', sa.String(), nullable=True))
-    op.add_column('schools', sa.Column('educational_pathway', sa.String(), nullable=True))
+    if not has_column('schools', 'principal_mobile'):
+        op.add_column('schools', sa.Column('principal_mobile', sa.String(), nullable=True))
+    if not has_column('schools', 'educational_pathway'):
+        op.add_column('schools', sa.Column('educational_pathway', sa.String(), nullable=True))
 
 
 def downgrade() -> None:

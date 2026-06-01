@@ -37,6 +37,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from migration_idempotent import has_table
 from sqlalchemy.dialects.postgresql import JSONB
 
 
@@ -47,40 +48,43 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "noor_import_history",
-        sa.Column("id", sa.String(), nullable=False),
-        sa.Column("school_id", sa.String(), nullable=False),
-        sa.Column("actor_id", sa.String(), nullable=False),
-        sa.Column("actor_name", sa.String(), nullable=True),
-        sa.Column("detected_type", sa.String(), nullable=False),
-        sa.Column("imported_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("updated_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("skipped_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("failed_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("duplicates_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("unclassified_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("created_ids", JSONB, nullable=True),
-        sa.Column("updated_ids", JSONB, nullable=True),
-        sa.Column("created_class_ids", JSONB, nullable=True),
-        sa.Column("credentials_csv", JSONB, nullable=True),
-        sa.Column(
-            "committed_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.text("NOW()"),
-        ),
-        sa.PrimaryKeyConstraint("id"),
-    )
+    if not has_table("noor_import_history"):
+        op.create_table(
+            "noor_import_history",
+            sa.Column("id", sa.String(), nullable=False),
+            sa.Column("school_id", sa.String(), nullable=False),
+            sa.Column("actor_id", sa.String(), nullable=False),
+            sa.Column("actor_name", sa.String(), nullable=True),
+            sa.Column("detected_type", sa.String(), nullable=False),
+            sa.Column("imported_count", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("updated_count", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("skipped_count", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("failed_count", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("duplicates_count", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("unclassified_count", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("created_ids", JSONB, nullable=True),
+            sa.Column("updated_ids", JSONB, nullable=True),
+            sa.Column("created_class_ids", JSONB, nullable=True),
+            sa.Column("credentials_csv", JSONB, nullable=True),
+            sa.Column(
+                "committed_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.text("NOW()"),
+            ),
+            sa.PrimaryKeyConstraint("id"),
+        )
     op.create_index(
         "idx_noor_import_history_school_committed",
         "noor_import_history",
         ["school_id", "committed_at"],
+        if_not_exists=True,
     )
     op.create_index(
         "ix_noor_import_history_school_id",
         "noor_import_history",
         ["school_id"],
+        if_not_exists=True,
     )
 
 

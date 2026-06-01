@@ -16,6 +16,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
+from migration_idempotent import has_table
+
 
 revision: str = "f9a0b1c2d3e4"
 down_revision: Union[str, Sequence[str], None] = "e8f9a0b1c2d3"
@@ -24,23 +26,25 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "notifications_preferences",
-        sa.Column("id", sa.String(length=64), primary_key=True),
-        sa.Column("user_id", sa.String(length=64), nullable=False),
-        sa.Column("category", sa.String(length=64), nullable=False),
-        sa.Column("in_app", sa.Boolean(), nullable=False, server_default=sa.text("TRUE")),
-        sa.Column("email", sa.Boolean(), nullable=False, server_default=sa.text("TRUE")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.UniqueConstraint("user_id", "category", name="uq_notif_prefs_user_category"),
-    )
+    if not has_table("notifications_preferences"):
+        op.create_table(
+            "notifications_preferences",
+            sa.Column("id", sa.String(length=64), primary_key=True),
+            sa.Column("user_id", sa.String(length=64), nullable=False),
+            sa.Column("category", sa.String(length=64), nullable=False),
+            sa.Column("in_app", sa.Boolean(), nullable=False, server_default=sa.text("TRUE")),
+            sa.Column("email", sa.Boolean(), nullable=False, server_default=sa.text("TRUE")),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
+                      server_default=sa.text("CURRENT_TIMESTAMP")),
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False,
+                      server_default=sa.text("CURRENT_TIMESTAMP")),
+            sa.UniqueConstraint("user_id", "category", name="uq_notif_prefs_user_category"),
+        )
     op.create_index(
         "idx_notif_prefs_user",
         "notifications_preferences",
         ["user_id"],
+        if_not_exists=True,
     )
 
 
