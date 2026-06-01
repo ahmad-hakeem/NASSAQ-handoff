@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -73,6 +73,12 @@ export const NassaqAlertProvider = ({ children }) => {
     onSecondaryAction: null,
   });
 
+  // Refs hold the latest callbacks so handleConfirm/handleCancel/handleSecondaryAction
+  // never suffer stale-closure misses regardless of React batching or render order.
+  const onConfirmRef = useRef(null);
+  const onCancelRef = useRef(null);
+  const onSecondaryActionRef = useRef(null);
+
   const showAlert = useCallback(({
     type = 'warning',
     title,
@@ -85,6 +91,12 @@ export const NassaqAlertProvider = ({ children }) => {
     secondaryActionText,
     onSecondaryAction,
   }) => {
+    // Keep refs in sync BEFORE the state update so any in-flight handler
+    // immediately sees the correct callbacks even before a re-render.
+    onConfirmRef.current = onConfirm || null;
+    onCancelRef.current = onCancel || null;
+    onSecondaryActionRef.current = onSecondaryAction || null;
+
     setAlertState({
       open: true,
       type,
@@ -127,27 +139,42 @@ export const NassaqAlertProvider = ({ children }) => {
   }, [showAlert]);
 
   const closeAlert = useCallback(() => {
-    setAlertState(prev => ({ ...prev, open: false }));
+    // Clear refs when the dialog closes so stale callbacks are never invoked
+    // on a subsequent open of an unrelated dialog type.
+    onConfirmRef.current = null;
+    onCancelRef.current = null;
+    onSecondaryActionRef.current = null;
+    setAlertState(prev => ({ ...prev, open: false, onConfirm: null, onCancel: null, onSecondaryAction: null }));
   }, []);
 
   const handleConfirm = useCallback(async () => {
-    closeAlert();
-    if (alertState.onConfirm) {
-      await alertState.onConfirm();
+    // Read the callback from the ref — always current, no stale-closure risk.
+    const fn = onConfirmRef.current;
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('[NassaqAlertDialog] handleConfirm fired', {
+        hasFn: typeof fn === 'function',
+        fnName: fn?.name || '(anonymous)',
+      });
     }
-  }, [alertState.onConfirm, closeAlert]);
+    closeAlert();
+    if (fn) {
+      await fn();
+    }
+  }, [closeAlert]);
 
   const handleCancel = useCallback(() => {
+    const fn = onCancelRef.current;
     closeAlert();
-    if (alertState.onCancel) alertState.onCancel();
-  }, [alertState.onCancel, closeAlert]);
+    if (fn) fn();
+  }, [closeAlert]);
 
   const handleSecondaryAction = useCallback(async () => {
+    const fn = onSecondaryActionRef.current;
     closeAlert();
-    if (alertState.onSecondaryAction) {
-      await alertState.onSecondaryAction();
+    if (fn) {
+      await fn();
     }
-  }, [alertState.onSecondaryAction, closeAlert]);
+  }, [closeAlert]);
 
   const config = ALERT_TYPES[alertState.type] || ALERT_TYPES.warning;
   const IconComponent = config.icon;
