@@ -58,12 +58,20 @@ export const TeacherExperiencePage = () => {
 
       {/* ── HERO — navy + nassaq texture ──────────────────────── */}
       <section className="relative bg-brand-navy overflow-hidden py-20 lg:py-28">
+        {/* Brand background image */}
         <div
-          className="absolute inset-0 bg-cover bg-center opacity-[0.07]"
+          className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: `url('/nassaq-background.png')` }}
           aria-hidden="true"
         />
-        <div className="absolute inset-0 bg-brand-navy/60" aria-hidden="true" />
+        {/* Subtle pattern overlay */}
+        <div
+          className="absolute inset-0 opacity-[0.08]"
+          style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center top' }}
+          aria-hidden="true"
+        />
+        {/* Navy tint to lock in contrast */}
+        <div className="absolute inset-0 bg-brand-navy/70" aria-hidden="true" />
         <div className="absolute top-0 left-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/8 blur-[120px]" aria-hidden="true" />
         <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-brand-purple/8 blur-[100px]" aria-hidden="true" />
 
@@ -203,11 +211,19 @@ export const TeacherExperiencePage = () => {
 
       {/* ── ACHIEVEMENT FILE — navy ────────────────────────────── */}
       <section className="relative bg-brand-navy py-24 lg:py-32 overflow-hidden">
+        {/* Brand background image */}
         <div
-          className="absolute inset-0 bg-cover bg-center opacity-[0.05]"
+          className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: `url('/nassaq-background.png')` }}
           aria-hidden="true"
         />
+        {/* Subtle pattern overlay */}
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center center' }}
+          aria-hidden="true"
+        />
+        {/* Navy tint to lock in contrast */}
         <div className="absolute inset-0 bg-brand-navy/70" aria-hidden="true" />
         <div className="absolute top-0 left-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/6 blur-[120px] animate-pulse" style={{ animationDuration: '10s' }} aria-hidden="true" />
         <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-brand-purple/6 blur-[100px] animate-pulse" style={{ animationDelay: '2s', animationDuration: '8s' }} aria-hidden="true" />
@@ -404,11 +420,19 @@ export const TeacherExperiencePage = () => {
         id="teacher-faq"
         data-testid="teacher-faq-section"
       >
+        {/* Brand background image */}
         <div
-          className="absolute inset-0 bg-cover bg-center opacity-[0.05]"
+          className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: `url('/nassaq-background.png')` }}
           aria-hidden="true"
         />
+        {/* Subtle pattern overlay */}
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center center' }}
+          aria-hidden="true"
+        />
+        {/* Navy tint to lock in contrast */}
         <div className="absolute inset-0 bg-brand-navy/70" aria-hidden="true" />
         <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/6 blur-[120px] animate-pulse" style={{ animationDuration: '10s' }} aria-hidden="true" />
         <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-brand-purple/6 blur-[100px] animate-pulse" style={{ animationDelay: '3s', animationDuration: '8s' }} aria-hidden="true" />
@@ -454,11 +478,19 @@ export const TeacherExperiencePage = () => {
       {/* ── PRICING — navy ────────────────────────────────────── */}
       {showTeacherPricing && (
       <section className="relative bg-brand-navy py-24 lg:py-32 overflow-hidden">
+        {/* Brand background image */}
         <div
-          className="absolute inset-0 bg-cover bg-center opacity-[0.05]"
+          className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: `url('/nassaq-background.png')` }}
           aria-hidden="true"
         />
+        {/* Subtle pattern overlay */}
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center center' }}
+          aria-hidden="true"
+        />
+        {/* Navy tint to lock in contrast */}
         <div className="absolute inset-0 bg-brand-navy/70" aria-hidden="true" />
         <div className="absolute top-0 left-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/5 blur-3xl animate-pulse" style={{ animationDuration: '10s' }} aria-hidden="true" />
         <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-brand-purple/5 blur-3xl animate-pulse" style={{ animationDelay: '2s', animationDuration: '8s' }} aria-hidden="true" />
