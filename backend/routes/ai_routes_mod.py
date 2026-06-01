@@ -28,6 +28,7 @@ from shared_models import (
     HakimMessage, HakimResponse
 )
 from utils.parent_resolution import resolve_student_parent_user_id, PARENT_NOT_FOUND_AR
+from utils.tenant_scope import can_view_student, can_view_class
 from utils.parent_children_resolution import resolve_parent_children
 from utils.trusted_proxy import extract_client_ip
 from utils.public_hakim_limiter import (
@@ -706,7 +707,7 @@ async def _prepare_hakim_chat(
 مهمتك مساعدة ولي الأمر في فهم أداء ابنه/ابنته الدراسي وتقديم نصائح تربوية مخصصة.
 
 ## قواعد مهمة:
-1. أجب دائماً باللغة العربية الفصحى بأسلوب ودود ومطمئن
+1. اللغة الافتراضية هي العربية الفصحى بأسلوب ودود ومطمئن؛ وإذا طلب المستخدم صراحةً الرد بلغة أخرى فاستجب بتلك اللغة مع الحفاظ على نفس القواعد
 2. استند في إجاباتك على بيانات الطالب الفعلية المتوفرة أدناه
 3. قدم نصائح عملية وواقعية يمكن لولي الأمر تطبيقها في المنزل
 4. استخدم Markdown للتنسيق (عناوين ##، قوائم -، نص **عريض**)
@@ -772,7 +773,7 @@ async def _prepare_hakim_chat(
 ## أسلوبك:
 - ودود ومهني وراقٍ
 - واضح ومنظم بصرياً
-- تستخدم اللغة العربية الفصحى
+- اللغة الافتراضية هي العربية الفصحى، وإذا طلب المستخدم صراحةً الرد بلغة أخرى فاستجب بتلك اللغة
 - تقدم إجابات عملية مع روابط مباشرة للصفحات ذات الصلة
 {school_context}{page_context}
 دور المستخدم الحالي: {user_role}"""
@@ -1064,6 +1065,13 @@ _PUBLIC_HAKIM_ERROR = {
     "en": "Sorry, I couldn’t respond right now. Please try again in a moment.",
 }
 
+# L2: an empty/whitespace prompt is NOT a failure — returning the transient
+# error envelope wrongly implies something broke. Guide the visitor instead.
+_PUBLIC_HAKIM_EMPTY = {
+    "ar": "اكتب سؤالك عن منصة نَسَّق وسأساعدك. مثلاً: ما المميزات التي تقدمها المنصة؟",
+    "en": "Type your question about NASSAQ and I’ll help. For example: what features does the platform offer?",
+}
+
 _PUBLIC_HAKIM_SUGGESTIONS = {
     "ar": [
         "ما هي منصة نَسَّق؟",
@@ -1308,7 +1316,7 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest, request: Request
 
     if not req.message or not req.message.strip():
         return _apply_fp_cookie(StreamingResponse(
-            _one_shot_stream(_PUBLIC_HAKIM_ERROR[locale])(),
+            _one_shot_stream(_PUBLIC_HAKIM_EMPTY[locale])(),
             media_type="text/event-stream", headers=headers))
 
     # Deterministic refusal: short-circuit before any LLM call.
@@ -1455,7 +1463,7 @@ async def public_hakim_chat(req: PublicHakimChatRequest, request: Request):
         return _envelope(_PUBLIC_HAKIM_ERROR[locale])
 
     if not req.message or not req.message.strip():
-        return _envelope(_PUBLIC_HAKIM_ERROR[locale])
+        return _envelope(_PUBLIC_HAKIM_EMPTY[locale])
 
     # Deterministic refusal: short-circuit before any LLM call so a
     # jailbreak/forbidden-topic prompt cannot influence the model output.
@@ -1549,10 +1557,12 @@ def _empty_insights_overview() -> Dict[str, Any]:
         "trend_value": 0,
         "has_data": False,
         "score_available": False,
+        "scope_level": "classes",
         "last_updated": datetime.now(timezone.utc).isoformat(),
         "metrics": {
             "attendance_rate": 0,
             "engagement_rate": 0,
+            "has_engagement_data": False,
             "student_teacher_ratio": 0,
             "total_students": 0,
             "total_teachers": 0,
@@ -1730,7 +1740,11 @@ def _scope_query_for(scope: Optional[Dict[str, Any]], school_id: Optional[str], 
 
 @router.get("/ai/insights/overview")
 async def get_ai_insights_overview(
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles([
+        UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_ADMIN,
+        UserRole.SCHOOL_SUB_ADMIN, UserRole.SCHOOL_PRINCIPAL,
+        UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER,
+    ]))
 ):
     """Get AI-powered insights overview for the school (or for the current
     teacher's classes when the caller is a teacher)."""
@@ -1764,9 +1778,17 @@ async def get_ai_insights_overview(
     student_teacher_ratio = round(total_students / total_teachers, 1) if total_teachers > 0 else 0
 
     # Real engagement rate: % of students with at least one assessment grade in the last 30 days.
+    #
+    # A3: engagement_rate of 0.0 is ambiguous — it can mean "students exist
+    # but none were graded recently" (a real 0%) OR "this workspace has no
+    # grade records at all" (no data to compute from). Distinguish the two
+    # with ``has_engagement_data`` so the UI shows an "insufficient data"
+    # state instead of presenting a fabricated 0.0 as a real reading.
     now_utc = datetime.now(timezone.utc)
     month_ago_iso = (now_utc - timedelta(days=30)).isoformat()
     engagement_rate = 0.0
+    total_grades = await gd_count(db.session, "grades", grades_q)
+    has_engagement_data = total_students > 0 and total_grades > 0
     if total_students > 0:
         active_grades = await gd_find(
             db.session, "grades",
@@ -1822,16 +1844,32 @@ async def get_ai_insights_overview(
         trend_value = 0
         prev_score = 0
 
+    # A2: label the scope so the UI can show whether these metrics cover the
+    # whole school, only the caller's own classes (teacher), or the platform.
+    # A teacher-scoped overview counts only their own students/classes, so the
+    # student_teacher_ratio denominator is just the teacher themselves and is
+    # not a meaningful staffing ratio — the label lets the UI present it
+    # correctly rather than implying a school-wide figure.
+    role = current_user.get("role", "")
+    if teacher_scope:
+        scope_level = "classes"
+    elif role == UserRole.PLATFORM_ADMIN.value and not current_user.get("tenant_id"):
+        scope_level = "platform"
+    else:
+        scope_level = "school"
+
     return {
         "overall_score": overall_score,
         "trend": trend,
         "trend_value": trend_value,
         "has_data": has_any_data,
         "score_available": score_available,
+        "scope_level": scope_level,
         "last_updated": now_utc.isoformat(),
         "metrics": {
             "attendance_rate": attendance_rate,
             "engagement_rate": engagement_rate,
+            "has_engagement_data": has_engagement_data,
             "student_teacher_ratio": student_teacher_ratio,
             "total_students": total_students,
             "total_teachers": total_teachers,
@@ -1842,7 +1880,11 @@ async def get_ai_insights_overview(
 
 @router.get("/ai/insights/predictions")
 async def get_ai_predictions(
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles([
+        UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_ADMIN,
+        UserRole.SCHOOL_SUB_ADMIN, UserRole.SCHOOL_PRINCIPAL,
+        UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER,
+    ]))
 ):
     """Get AI predictions for the school (or for the current teacher's classes
     when the caller is a teacher) based on real data analysis."""
@@ -1874,32 +1916,53 @@ async def get_ai_predictions(
     last_rate = round((last_week_present / last_week_total) * 100, 1) if last_week_total > 0 else 0
     att_trend = this_rate - last_rate
 
-    pred_id += 1
-    if att_trend > 2:
+    # A1: a week with zero (or near-zero) recorded attendance produces a
+    # fake 0% rate, which then shows up as a high-confidence "decline" against
+    # a week that did have data. Only emit a real trend when BOTH weeks have
+    # enough records to compare; otherwise surface a clearly-labelled
+    # "insufficient data" card (low impact/confidence) — and emit nothing at
+    # all when there is no attendance data in either week.
+    MIN_ATT_RECORDS = 5
+    have_attendance_signal = (
+        this_week_total >= MIN_ATT_RECORDS and last_week_total >= MIN_ATT_RECORDS
+    )
+    if have_attendance_signal:
+        pred_id += 1
+        if att_trend > 2:
+            predictions.append({
+                "id": str(pred_id),
+                "title": {"ar": "توقع تحسن الحضور", "en": "Attendance Improvement Predicted"},
+                "description": {"ar": f"ارتفعت نسبة الحضور من {last_rate}% إلى {this_rate}%. من المتوقع استمرار التحسن الأسبوع القادم", "en": f"Attendance rose from {last_rate}% to {this_rate}%. Improvement expected to continue"},
+                "confidence": min(90, 70 + int(att_trend)),
+                "impact": "positive",
+                "category": "attendance"
+            })
+        elif att_trend < -2:
+            predictions.append({
+                "id": str(pred_id),
+                "title": {"ar": "تحذير: انخفاض الحضور", "en": "Warning: Attendance Decline"},
+                "description": {"ar": f"انخفضت نسبة الحضور من {last_rate}% إلى {this_rate}%. يُنصح بالتدخل المبكر", "en": f"Attendance dropped from {last_rate}% to {this_rate}%. Early intervention advised"},
+                "confidence": min(90, 70 + int(abs(att_trend))),
+                "impact": "high",
+                "category": "attendance"
+            })
+        else:
+            predictions.append({
+                "id": str(pred_id),
+                "title": {"ar": "استقرار نسبة الحضور", "en": "Attendance Stable"},
+                "description": {"ar": f"نسبة الحضور الحالية {this_rate}% مستقرة مقارنة بالأسبوع الماضي ({last_rate}%)", "en": f"Current attendance {this_rate}% is stable compared to last week ({last_rate}%)"},
+                "confidence": 85,
+                "impact": "medium",
+                "category": "attendance"
+            })
+    elif this_week_total > 0 or last_week_total > 0:
+        pred_id += 1
         predictions.append({
             "id": str(pred_id),
-            "title": {"ar": "توقع تحسن الحضور", "en": "Attendance Improvement Predicted"},
-            "description": {"ar": f"ارتفعت نسبة الحضور من {last_rate}% إلى {this_rate}%. من المتوقع استمرار التحسن الأسبوع القادم", "en": f"Attendance rose from {last_rate}% to {this_rate}%. Improvement expected to continue"},
-            "confidence": min(90, 70 + int(att_trend)),
-            "impact": "positive",
-            "category": "attendance"
-        })
-    elif att_trend < -2:
-        predictions.append({
-            "id": str(pred_id),
-            "title": {"ar": "تحذير: انخفاض الحضور", "en": "Warning: Attendance Decline"},
-            "description": {"ar": f"انخفضت نسبة الحضور من {last_rate}% إلى {this_rate}%. يُنصح بالتدخل المبكر", "en": f"Attendance dropped from {last_rate}% to {this_rate}%. Early intervention advised"},
-            "confidence": min(90, 70 + int(abs(att_trend))),
-            "impact": "high",
-            "category": "attendance"
-        })
-    else:
-        predictions.append({
-            "id": str(pred_id),
-            "title": {"ar": "استقرار نسبة الحضور", "en": "Attendance Stable"},
-            "description": {"ar": f"نسبة الحضور الحالية {this_rate}% مستقرة مقارنة بالأسبوع الماضي ({last_rate}%)", "en": f"Current attendance {this_rate}% is stable compared to last week ({last_rate}%)"},
-            "confidence": 85,
-            "impact": "medium",
+            "title": {"ar": "بيانات حضور غير كافية", "en": "Insufficient Attendance Data"},
+            "description": {"ar": "لا توجد سجلات حضور كافية لتوقع اتجاه موثوق هذا الأسبوع.", "en": "Not enough attendance records to predict a reliable trend this week."},
+            "confidence": 0,
+            "impact": "low",
             "category": "attendance"
         })
 
@@ -1909,8 +1972,13 @@ async def get_ai_predictions(
         recent_avg = sum(g.get("percentage", 0) for g in recent_grades) / len(recent_grades)
         older_avg = sum(g.get("percentage", 0) for g in older_grades) / len(older_grades) if older_grades else recent_avg
         grade_trend = recent_avg - older_avg
+        # A1: only call an up/down academic trend when BOTH windows have enough
+        # graded items to compare; a single stray grade must not read as a
+        # high-confidence swing. Otherwise report a neutral/stable card.
+        MIN_GRADE_RECORDS = 3
+        have_grade_signal = len(recent_grades) >= MIN_GRADE_RECORDS and len(older_grades) >= MIN_GRADE_RECORDS
         pred_id += 1
-        if grade_trend > 3:
+        if have_grade_signal and grade_trend > 3:
             predictions.append({
                 "id": str(pred_id),
                 "title": {"ar": "تحسن أداء الطلاب الأكاديمي", "en": "Student Academic Improvement"},
@@ -1919,7 +1987,7 @@ async def get_ai_predictions(
                 "impact": "positive",
                 "category": "academic"
             })
-        elif grade_trend < -3:
+        elif have_grade_signal and grade_trend < -3:
             predictions.append({
                 "id": str(pred_id),
                 "title": {"ar": "تحذير: تراجع الأداء الأكاديمي", "en": "Warning: Academic Performance Decline"},
@@ -2345,7 +2413,11 @@ async def get_ai_recommendations(
 
 @router.get("/ai/insights/alerts")
 async def get_ai_alerts(
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles([
+        UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_ADMIN,
+        UserRole.SCHOOL_SUB_ADMIN, UserRole.SCHOOL_PRINCIPAL,
+        UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER,
+    ]))
 ):
     """Get AI-generated alerts based on real school data (or the current
     teacher's classes when the caller is a teacher)."""
@@ -2762,10 +2834,15 @@ def _fallback_recommendation(overview: dict) -> list[dict]:
 @router.get("/ai/insights/recommendations-ai")
 async def get_recommendations_ai(
     current_user: dict = Depends(require_roles([
-        UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.SCHOOL_PRINCIPAL
+        UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_ADMIN,
+        UserRole.SCHOOL_SUB_ADMIN, UserRole.SCHOOL_PRINCIPAL
     ])),
 ):
-    school_id = current_user["tenant_id"]
+    school_id = current_user.get("tenant_id")
+    if not school_id:
+        # L4: platform admins are not bound to a single tenant. Give a clear
+        # "select a school" message instead of a generic permission error.
+        raise HTTPException(400, "يرجى اختيار مدرسة لعرض هذه البيانات")
     now = datetime.now(timezone.utc).timestamp()
     cached = _REC_CACHE.get(school_id)
     if cached and now - cached[0] < _REC_TTL_SEC:
@@ -2803,12 +2880,17 @@ async def get_recommendations_ai(
 @router.get("/ai/insights/at-risk-students")
 async def get_at_risk_students(
     current_user: dict = Depends(require_roles([
-        UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN,
-        UserRole.SCHOOL_PRINCIPAL, UserRole.TEACHER,
-        UserRole.INDEPENDENT_TEACHER,
+        UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_ADMIN,
+        UserRole.SCHOOL_SUB_ADMIN, UserRole.SCHOOL_PRINCIPAL,
+        UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER,
     ])),
 ):
     role = current_user.get("role", "")
+
+    # L4: platform admins are not bound to a single tenant. Give a clear
+    # "select a school" message instead of a generic permission error.
+    if role == UserRole.PLATFORM_ADMIN.value and not current_user.get("tenant_id"):
+        raise HTTPException(400, "يرجى اختيار مدرسة لعرض هذه البيانات")
 
     # Tri-state authorization sentinel must be resolved before ANY business
     # data query for teacher-class callers (Task #154 / H1).
@@ -2935,6 +3017,8 @@ async def hakim_student_risk(
     student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
+    if not await can_view_student(db.session, current_user, student_id):
+        raise HTTPException(403, "لا يمكنك الوصول لبيانات هذا الطالب")
     return await hakim_engine.analyze_student_risk(student_id, school_id, days)
 
 @router.get("/hakim/class/{class_id}/participation")
@@ -2949,6 +3033,8 @@ async def hakim_class_participation(
     cls = await gd_find_one(db.session, "classes", {"id": class_id, "school_id": school_id})
     if not cls:
         raise HTTPException(404, "الفصل غير موجود في هذه المدرسة")
+    if not await can_view_class(db.session, current_user, class_id):
+        raise HTTPException(403, "لا يمكنك الوصول لبيانات هذا الفصل")
     return await hakim_engine.analyze_class_participation(class_id, school_id, days)
 
 @router.get("/hakim/student/{student_id}/behaviour")
@@ -2963,6 +3049,8 @@ async def hakim_student_behaviour(
     student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
+    if not await can_view_student(db.session, current_user, student_id):
+        raise HTTPException(403, "لا يمكنك الوصول لبيانات هذا الطالب")
     return await hakim_engine.analyze_student_behaviour_patterns(student_id, school_id, days)
 
 @router.get("/hakim/teacher/{teacher_id}/analytics")
@@ -2996,6 +3084,8 @@ async def hakim_class_health(
     cls = await gd_find_one(db.session, "classes", {"id": class_id, "school_id": school_id})
     if not cls:
         raise HTTPException(404, "الفصل غير موجود في هذه المدرسة")
+    if not await can_view_class(db.session, current_user, class_id):
+        raise HTTPException(403, "لا يمكنك الوصول لبيانات هذا الفصل")
     return await hakim_engine.analyze_class_health(class_id, school_id, days)
 
 @router.post("/hakim/school/analyze")
@@ -3032,7 +3122,10 @@ async def hakim_full_analysis_by_id(
 async def hakim_get_insights(
     limit: int = Query(20, ge=1, le=100),
     school_id: str = Query(None),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles([
+        UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_ADMIN,
+        UserRole.SCHOOL_SUB_ADMIN, UserRole.SCHOOL_PRINCIPAL
+    ])),
 ):
     role = current_user.get("role", "")
     if school_id and role in ("platform_admin", "platform_operations_manager"):
@@ -3075,7 +3168,10 @@ async def hakim_auto_interventions_by_school(
 async def hakim_get_interventions(
     status: str = Query(None),
     limit: int = Query(50, ge=1, le=200),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles([
+        UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_ADMIN,
+        UserRole.SCHOOL_SUB_ADMIN, UserRole.SCHOOL_PRINCIPAL
+    ])),
 ):
     school_id = current_user.get("tenant_id")
     if not school_id:
@@ -3128,6 +3224,8 @@ async def hakim_student_improvement_plan(
     student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
+    if not await can_view_student(db.session, current_user, student_id):
+        raise HTTPException(403, "لا يمكنك الوصول لبيانات هذا الطالب")
     return await hakim_engine.generate_improvement_plan(student_id, school_id, days)
 
 
@@ -3142,6 +3240,8 @@ async def hakim_student_ai_plans(
     student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
+    if not await can_view_student(db.session, current_user, student_id):
+        raise HTTPException(403, "لا يمكنك الوصول لبيانات هذا الطالب")
 
     plan_data = await hakim_engine.generate_improvement_plan(student_id, school_id, 30)
 
@@ -3263,6 +3363,11 @@ async def get_student_plan_history(
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
+    if not student:
+        raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
+    if not await can_view_student(db.session, current_user, student_id):
+        raise HTTPException(403, "لا يمكنك الوصول لبيانات هذا الطالب")
     records = await gd_find(db.session, "plan_history", {"student_id": student_id, "school_id": school_id}, order_by="generated_at", desc_order=True, limit=50)
     for r in records:
         r.pop("_id", None)
@@ -3801,6 +3906,11 @@ async def hakim_student_grade_trend(
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
+    if not student:
+        raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
+    if not await can_view_student(db.session, current_user, student_id):
+        raise HTTPException(403, "لا يمكنك الوصول لبيانات هذا الطالب")
     return await hakim_engine.detect_student_grade_trend(student_id, school_id)
 
 
@@ -3867,6 +3977,8 @@ async def get_student_longitudinal(
     student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود")
+    if not await can_view_student(db.session, current_user, student_id):
+        raise HTTPException(403, "لا يمكنك الوصول لبيانات هذا الطالب")
 
     attendance_records = await gd_find(db.session, "attendance", {"student_id": student_id, "school_id": school_id}, limit=10000)
 
