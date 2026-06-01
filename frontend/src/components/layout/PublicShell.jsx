@@ -319,7 +319,7 @@ export const PublicShell = () => {
               data-active={isActive ? 'true' : 'false'}
               aria-hidden={!isActive}
               inert={!isActive}
-              className={isActive ? 'relative' : 'absolute inset-0 pointer-events-none'}
+              className={isActive ? 'relative' : 'absolute inset-0 overflow-hidden pointer-events-none'}
               style={{
                 opacity: isActive ? 1 : 0,
                 transition: `opacity ${crossfadeDuration}s ease-out`,
