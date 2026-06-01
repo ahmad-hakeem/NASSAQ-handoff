@@ -258,7 +258,15 @@ export default function TeacherClassesPage() {
   const { nassaqError, nassaqWarning, nassaqConfirm, nassaqInfo } = useNassaqAlert();
   const [editClassDialog, setEditClassDialog] = useState(null); // { id, name, capacity }
   const [editClassSaving, setEditClassSaving] = useState(false);
-  const teacherId = user?.teacher_id || user?.id;
+  // Verified against _resolve_teacher_record (role_dashboards_mod.py):
+  // the backend accepts (1) teachers.id via user.teacher_id — populated at
+  // login and after the auto-backfill — and (2) users.id via user.id, which
+  // the resolver handles through the teachers.user_id / email fallback path.
+  // Prefer teacher_id (direct teachers-table PK) to avoid the email-fallback
+  // overhead; fall through to user.id for accounts not yet linked to a row.
+  // Use || null so the guard `if (!teacherId) return` fires on falsy values
+  // rather than passing the string "undefined" to the API.
+  const teacherId = user?.teacher_id || user?.id || null;
   const isIndependentTeacher = user?.role === 'independent_teacher';
 
   // Non-IT teachers fall through to the existing "managed by school admin"
@@ -338,9 +346,20 @@ export default function TeacherClassesPage() {
           ? api.get('/independent-teacher/workspace-collaborators/shared-with-me').catch(() => ({ data: { items: [] } }))
           : Promise.resolve({ data: { items: [] } }),
       ]);
-      const classesData = Array.isArray(classesRes.data)
-        ? classesRes.data
-        : (classesRes.data?.classes || classesRes.data?.items || []);
+      const _raw = classesRes.data;
+      let classesData;
+      if (Array.isArray(_raw)) {
+        classesData = _raw;
+      } else if (Array.isArray(_raw?.data)) {
+        classesData = _raw.data;
+      } else if (Array.isArray(_raw?.classes)) {
+        classesData = _raw.classes;
+      } else if (Array.isArray(_raw?.items)) {
+        classesData = _raw.items;
+      } else {
+        console.warn('TeacherClassesPage: unrecognised /teacher/classes response shape', _raw);
+        classesData = [];
+      }
       const metricsData = metricsRes.data || {};
       const sharedItems = (sharedRes.data?.items) || [];
 
@@ -375,7 +394,7 @@ export default function TeacherClassesPage() {
     } finally {
       setLoading(false);
     }
-  }, [api, teacherId, nassaqError, t]);
+  }, [api, teacherId, isIndependentTeacher, nassaqError, t]);
 
   useEffect(() => {
     fetchClasses();
