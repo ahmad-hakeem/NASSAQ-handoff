@@ -131,30 +131,34 @@ export const TeacherExperiencePage = () => {
         <div className="absolute top-0 left-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/8 blur-[120px]" aria-hidden="true" />
         <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-brand-purple/8 blur-[100px]" aria-hidden="true" />
 
-        <div className="relative max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-          {/* Copy */}
-          <div className={`space-y-6 ${isRTL ? '' : 'order-2'}`}>
-            {/* eyebrow */}
-            <div className="inline-flex items-center gap-2.5 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full px-5 py-2.5 backdrop-blur-sm">
-              <Zap className="h-4 w-4 text-brand-turquoise animate-pulse" strokeWidth={1.5} aria-hidden="true" />
-              <span className="font-tajawal text-sm text-brand-turquoise font-medium">
-                {ar('للمعلم المستقل · Teacher Experience', 'Independent Teacher · Teacher Experience')}
-              </span>
+        <div className="relative max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-12 lg:gap-16 lg:items-stretch">
+          {/* Copy — distributed top → bottom so the column shares the same
+              top/bottom boundary as the visual column (balanced 50/50). */}
+          <div className={`flex flex-col justify-between gap-8 ${isRTL ? '' : 'order-2'}`}>
+            {/* TOP GROUP: eyebrow + headline + subheading */}
+            <div className="space-y-6">
+              {/* eyebrow */}
+              <div className="inline-flex items-center gap-2.5 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full px-5 py-2.5 backdrop-blur-sm">
+                <Zap className="h-4 w-4 text-brand-turquoise animate-pulse" strokeWidth={1.5} aria-hidden="true" />
+                <span className="font-tajawal text-sm text-brand-turquoise font-medium">
+                  {ar('للمعلم المستقل · Teacher Experience', 'Independent Teacher · Teacher Experience')}
+                </span>
+              </div>
+
+              <h1 className="font-cairo font-bold text-white text-5xl md:text-6xl lg:text-7xl leading-none tracking-tight">
+                {isRTL ? 'نَسَّق' : 'NASSAQ'}
+              </h1>
+
+              <p className="font-tajawal text-lg text-white/75 leading-relaxed max-w-xl">
+                {ar(
+                  'نسّق يتولى المتابعة والتنظيم — حتى تركّز على ما يهم فعلاً: علاقتك بطلابك.',
+                  'NASSAQ handles the tracking and organisation — so you focus on what truly matters: your relationship with your students.'
+                )}
+              </p>
             </div>
 
-            <h1 className="font-cairo font-bold text-white text-5xl md:text-6xl lg:text-7xl leading-none tracking-tight">
-              {isRTL ? 'نَسَّق' : 'NASSAQ'}
-            </h1>
-
-            <p className="font-tajawal text-lg text-white/75 leading-relaxed max-w-xl">
-              {ar(
-                'نسّق يتولى المتابعة والتنظيم — حتى تركّز على ما يهم فعلاً: علاقتك بطلابك.',
-                'NASSAQ handles the tracking and organisation — so you focus on what truly matters: your relationship with your students.'
-              )}
-            </p>
-
-            {/* CTAs */}
-            <div className="flex flex-wrap items-center gap-3 pt-2">
+            {/* MIDDLE GROUP: CTAs */}
+            <div className="flex flex-wrap items-center gap-3">
               <Link
                 to="/teacher-register"
                 className="inline-flex items-center gap-2 font-cairo font-bold text-base px-8 py-3 rounded-lg bg-brand-turquoise hover:bg-brand-turquoise-light text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:scale-95 transition-all"
@@ -170,8 +174,8 @@ export const TeacherExperiencePage = () => {
               </a>
             </div>
 
-            {/* Trust badges */}
-            <div className="flex flex-wrap items-center gap-4 pt-2">
+            {/* BOTTOM GROUP: trust badges */}
+            <div className="flex flex-wrap items-center gap-4">
               {[
                 { icon: CheckCircle2, ar: 'بدون إعداد معقد', en: 'Zero setup' },
                 { icon: CheckCircle2, ar: 'يعمل من اليوم الأول', en: 'Works day one' },
@@ -185,12 +189,35 @@ export const TeacherExperiencePage = () => {
             </div>
           </div>
 
-          {/* Real teacher dashboard preview */}
-          <div className={`${isRTL ? '' : 'order-1'}`}>
+          {/* Visual: Hakim avatar flush on top of the teacher dashboard mockup
+              — mirrors the principal hero layout (LandingPage left panel). */}
+          <div className={`flex flex-col ${isRTL ? '' : 'order-1'}`}>
+            {/* Hakim avatar: anchored to the end (left in RTL); feet meet the
+                top edge of the mockup below, no vertical gap. */}
+            <div
+              className="pointer-events-none select-none self-end relative z-20
+                         w-28 h-28
+                         sm:w-32 sm:h-32
+                         lg:w-36 lg:h-36
+                         xl:w-40 xl:h-40"
+              aria-hidden="true"
+            >
+              <div className="absolute inset-x-0 bottom-0 mx-auto w-[130%] h-[55%] rounded-full bg-brand-turquoise/20 blur-3xl" />
+              <img
+                src="/hakim-welcome.png"
+                alt=""
+                width="320"
+                height="320"
+                loading="lazy"
+                className="relative w-full h-full object-contain object-bottom drop-shadow-2xl animate-float motion-reduce:animate-none"
+              />
+            </div>
+
+            {/* Real teacher dashboard preview */}
             <img
               src="/teacher-dashboard-preview.png"
               alt={ar('معاينة لوحة المعلم في نَسَّق', 'Preview of the NASSAQ teacher dashboard')}
-              className="w-full h-auto rounded-2xl border border-white/10 shadow-2xl bg-white/5 backdrop-blur-sm"
+              className="relative z-10 w-full h-auto rounded-2xl border border-white/10 shadow-2xl bg-white/5 backdrop-blur-sm"
               loading="lazy"
             />
           </div>
