@@ -14,7 +14,7 @@ import {
   isPerimeterGateHandlerRegistered,
 } from '../services/perimeterGateBridge';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 const getWsUrl = () => {
   if (API_URL) {
     const wsUrl = API_URL.replace('https://', 'wss://').replace('http://', 'ws://');

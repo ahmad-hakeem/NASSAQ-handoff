@@ -5,7 +5,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { ShieldCheck, Mail, KeyRound, Smartphone, LifeBuoy, Loader2, AlertCircle } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 const FACTOR_META = {
   webauthn: {

@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 const LOGO_WHITE = '/nassaq-logo-white.png';
 const BG_PATTERN = '/nassaq-pattern.png';

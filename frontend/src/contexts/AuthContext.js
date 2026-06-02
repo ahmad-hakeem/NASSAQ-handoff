@@ -48,7 +48,7 @@ const translateToast = (key, params) => {
 
 const AuthContext = createContext(null);
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 const RETRY_STATUS_CODES = new Set([502, 503]);
 const MAX_RETRIES = 2;
