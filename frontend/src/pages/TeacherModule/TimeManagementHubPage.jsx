@@ -115,6 +115,7 @@ export default function TimeManagementHubPage() {
   const [itWorkingDays, setItWorkingDays] = useState([]);
   const [itPeriodsPerDay, setItPeriodsPerDay] = useState(7);
   const [itPeriodMinutes, setItPeriodMinutes] = useState(45);
+  const [itDayStart, setItDayStart] = useState('07:00');
   const [itTimezone, setItTimezone] = useState('Asia/Riyadh');
   const [itYearLabel, setItYearLabel] = useState('');
   const [itTermLabel, setItTermLabel] = useState('');
@@ -128,6 +129,7 @@ export default function TimeManagementHubPage() {
       setItWorkingDays(Array.isArray(data.working_days) ? data.working_days : []);
       setItPeriodsPerDay(Number(data.periods_per_day) || 7);
       setItPeriodMinutes(Number(data.period_minutes) || 45);
+      setItDayStart(data.school_day_start || '07:00');
       setItTimezone(data.timezone || 'Asia/Riyadh');
       setItYearLabel(data.academic_year_label || '');
       setItTermLabel(data.academic_term_label || '');
@@ -151,12 +153,17 @@ export default function TimeManagementHubPage() {
     if (!itWorkingDays.length) { nassaqError(t('workingDaysRequired')); return; }
     if (itPeriodsPerDay < 1 || itPeriodsPerDay > 12) { nassaqError(t('periodsPerDayRange')); return; }
     if (itPeriodMinutes < 10 || itPeriodMinutes > 120) { nassaqError(t('periodMinutesRange')); return; }
+    if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(String(itDayStart || ''))) {
+      nassaqError(t('dayStartInvalid'));
+      return;
+    }
     setItSettingsSaving(true);
     try {
       const payload = {
         working_days: itWorkingDays,
         periods_per_day: Number(itPeriodsPerDay),
         period_minutes: Number(itPeriodMinutes),
+        school_day_start: itDayStart,
         timezone: itTimezone,
       };
       if (itYearLabel?.trim()) payload.academic_year_label = itYearLabel.trim();
@@ -308,7 +315,7 @@ export default function TimeManagementHubPage() {
                       })}
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <Label className="mb-2 block font-cairo text-sm">{t('periodsPerDayLabel')}</Label>
                       <Input
@@ -334,6 +341,20 @@ export default function TimeManagementHubPage() {
                         data-testid="it-workspace-period-minutes-input"
                         disabled={!itSettingsLoaded}
                       />
+                    </div>
+                    <div>
+                      <Label className="mb-2 block font-cairo text-sm">{t('schoolDayStartLabel')}</Label>
+                      <Input
+                        type="time"
+                        value={itDayStart}
+                        onChange={e => setItDayStart(e.target.value)}
+                        className="h-11 rounded-xl"
+                        data-testid="it-workspace-day-start-input"
+                        disabled={!itSettingsLoaded}
+                      />
+                      <p className="text-xs text-muted-foreground font-tajawal mt-1">
+                        {t('schoolDayStartHelp')}
+                      </p>
                     </div>
                     <div>
                       <Label className="mb-2 block font-cairo text-sm">{t('timezone')}</Label>

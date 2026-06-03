@@ -24,7 +24,10 @@ _MSG_NAME_REQUIRED = "اسم المساحة باللغة العربية مطلو
 _MSG_PERIODS_INVALID = "عدد الحصص اليومي يجب أن يكون بين ١ و١٢."
 _MSG_PERIOD_MINUTES_INVALID = "مدة الحصة يجب أن تكون بين ١٠ و١٢٠ دقيقة."
 _MSG_WORKING_DAYS_INVALID = "اختر يومًا واحدًا على الأقل ضمن أيام العمل."
+_MSG_DAY_START_INVALID = "وقت بداية اليوم الدراسي يجب أن يكون بصيغة صحيحة (HH:MM)."
 _MSG_INTERNAL = "تعذّر حفظ إعدادات مساحتك. حاول مرة أخرى لاحقًا."
+
+_DEFAULT_DAY_START = "07:00"
 
 _ALLOWED_FIELDS = frozenset({
     "name_ar",
@@ -34,6 +37,7 @@ _ALLOWED_FIELDS = frozenset({
     "periods_per_day",
     "period_minutes",
     "period_duration",
+    "school_day_start",
     "timezone",
     "academic_year_label",
     "academic_term_label",
@@ -44,6 +48,26 @@ _VALID_WEEKDAYS = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"}
 
 def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _normalise_day_start(value: Any) -> str:
+    """Validate/normalise an ``HH:MM`` day-start string → zero-padded form.
+
+    Raises ``HTTPException(400)`` when the value is not a parseable 24h time.
+    """
+    if not isinstance(value, str) or ":" not in value:
+        raise HTTPException(status_code=400, detail=_MSG_DAY_START_INVALID)
+    parts = value.strip().split(":")
+    if len(parts) < 2:
+        raise HTTPException(status_code=400, detail=_MSG_DAY_START_INVALID)
+    try:
+        hh = int(parts[0])
+        mm = int(parts[1])
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail=_MSG_DAY_START_INVALID)
+    if not (0 <= hh <= 23 and 0 <= mm <= 59):
+        raise HTTPException(status_code=400, detail=_MSG_DAY_START_INVALID)
+    return f"{hh:02d}:{mm:02d}"
 
 
 async def _require_independent_teacher(
@@ -104,6 +128,8 @@ def _validate_field_values(payload: Dict[str, Any]) -> None:
         if m < 10 or m > 120:
             raise HTTPException(status_code=400, detail=_MSG_PERIOD_MINUTES_INVALID)
         payload["period_minutes"] = m
+    if "school_day_start" in payload:
+        payload["school_day_start"] = _normalise_day_start(payload["school_day_start"])
     if "timezone" in payload and payload["timezone"] is not None:
         if not isinstance(payload["timezone"], str) or len(payload["timezone"]) > 64:
             raise HTTPException(status_code=400, detail=_MSG_DISALLOWED_FIELD)
@@ -151,6 +177,8 @@ async def get_workspace_settings(
         "working_days": _normalise_working_days(settings.get("working_days")),
         "periods_per_day": settings.get("periods_per_day") or 7,
         "period_minutes": settings.get("period_duration") or 45,
+        "school_day_start": (custom.get("school_day_start") if isinstance(custom, dict) else None)
+                            or _DEFAULT_DAY_START,
         "timezone": (custom.get("timezone") if isinstance(custom, dict) else None)
                     or "Asia/Riyadh",
         "academic_year_label": (year or {}).get("name") or "",
@@ -194,12 +222,15 @@ async def update_workspace_settings(
         settings_update["periods_per_day"] = payload["periods_per_day"]
     if "period_minutes" in payload:
         settings_update["period_duration"] = payload["period_minutes"]
-    if "timezone" in payload:
+    if "timezone" in payload or "school_day_start" in payload:
         existing = await gd_find_one(
             db.session, "school_settings", {"school_id": school_id}
         ) or {}
         cs = dict(existing.get("custom_settings") or {})
-        cs["timezone"] = payload["timezone"]
+        if "timezone" in payload:
+            cs["timezone"] = payload["timezone"]
+        if "school_day_start" in payload:
+            cs["school_day_start"] = payload["school_day_start"]
         settings_update["custom_settings"] = cs
     if settings_update:
         settings_update["updated_at"] = now_iso

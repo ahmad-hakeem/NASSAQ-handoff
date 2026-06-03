@@ -86,6 +86,7 @@ async def test_get_workspace_settings_returns_it_fields(client):
     assert body["name_en"] == "IT-EN"
     assert body["periods_per_day"] == 7
     assert body["period_minutes"] == 45
+    assert body["school_day_start"] == "07:00"
     assert body["academic_year_label"] == "1446"
     assert body["academic_term_label"] == "الفصل الأول"
     assert "sun" in body["working_days"]
@@ -102,6 +103,7 @@ async def test_put_allow_listed_fields_persists(client):
         "working_days": ["sun", "mon", "wed"],
         "periods_per_day": 5,
         "period_minutes": 50,
+        "school_day_start": "8:5",
         "timezone": "Asia/Dubai",
         "academic_year_label": "1447 - 1448 هـ",
         "academic_term_label": "الفصل الثاني",
@@ -112,6 +114,7 @@ async def test_put_allow_listed_fields_persists(client):
     assert body["name_ar"] == "مساحة سعد المُحدَّثة"
     assert body["periods_per_day"] == 5
     assert body["period_minutes"] == 50
+    assert body["school_day_start"] == "08:05"
     assert body["timezone"] == "Asia/Dubai"
     assert body["academic_year_label"] == "1447 - 1448 هـ"
     assert body["academic_term_label"] == "الفصل الثاني"
@@ -128,6 +131,7 @@ async def test_put_allow_listed_fields_persists(client):
     assert settings["periods_per_day"] == 5
     assert settings["period_duration"] == 50
     assert (settings.get("custom_settings") or {}).get("timezone") == "Asia/Dubai"
+    assert (settings.get("custom_settings") or {}).get("school_day_start") == "08:05"
     year = await gd_find_one(
         db.session, "academic_years",
         {"school_id": ctx["wsid"], "is_current": True},
@@ -182,6 +186,15 @@ async def test_put_accepts_period_duration_alias(client):
         db.session, "school_settings", {"school_id": ctx["wsid"]}
     )
     assert settings["period_duration"] == 55
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_value", ["25:00", "07:99", "noon", "7", "", 700])
+async def test_put_invalid_day_start_rejected(client, bad_value):
+    ctx = await _mk_independent_teacher_with_workspace()
+    h = _headers(ctx["user"]["id"], ctx["user"]["role"], ctx["wsid"])
+    resp = await client.put(PATH, headers=h, json={"school_day_start": bad_value})
+    assert resp.status_code == 400, (bad_value, resp.text)
 
 
 @pytest.mark.asyncio
