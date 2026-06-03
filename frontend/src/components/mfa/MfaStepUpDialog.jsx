@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { ShieldCheck, Mail, KeyRound, Smartphone, LifeBuoy, Loader2, AlertCircle } from 'lucide-react';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -116,7 +117,7 @@ export default function MfaStepUpDialog({ open, errorContext, onSuccess, onCance
       } catch (err) {
         const detail =
           err?.response?.data?.error?.message ||
-          err?.response?.data?.detail ||
+          getApiErrorMessage(err) ||
           (lang === 'en'
             ? 'Could not start step-up verification.'
             : 'تعذر بدء التحقق الإضافي.');
@@ -144,7 +145,7 @@ export default function MfaStepUpDialog({ open, errorContext, onSuccess, onCance
       } catch (err) {
         const detail =
           err?.response?.data?.error?.message ||
-          err?.response?.data?.detail ||
+          getApiErrorMessage(err) ||
           (lang === 'en' ? 'Could not send the email code.' : 'تعذر إرسال رمز البريد.');
         setErrorMsg(typeof detail === 'string' ? detail : JSON.stringify(detail));
       }
@@ -202,7 +203,7 @@ export default function MfaStepUpDialog({ open, errorContext, onSuccess, onCance
     } catch (err) {
       const detail =
         err?.response?.data?.error?.message ||
-        err?.response?.data?.detail ||
+        getApiErrorMessage(err) ||
         (lang === 'en' ? 'Verification failed.' : 'فشل التحقق.');
       setErrorMsg(typeof detail === 'string' ? detail : JSON.stringify(detail));
       setPhase('verify');
@@ -222,7 +223,7 @@ export default function MfaStepUpDialog({ open, errorContext, onSuccess, onCance
     } catch (err) {
       const detail =
         err?.response?.data?.error?.message ||
-        err?.response?.data?.detail ||
+        getApiErrorMessage(err) ||
         (lang === 'en' ? 'Could not resend the code.' : 'تعذر إعادة إرسال الرمز.');
       setErrorMsg(typeof detail === 'string' ? detail : JSON.stringify(detail));
     }

@@ -8,6 +8,7 @@ import {
   STATUS_CONFIG, PRIORITY_CONFIG, EmptyState,
 } from './index';
 import IssuePanel from './IssuePanel';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   CheckCircle2, Bug, ChevronLeft, ChevronRight,
   Minimize2, Loader2, Trash2, Pencil, Hash, XCircle,
@@ -218,7 +219,7 @@ export default function IssuesTableView({ issues, loading, total, page, totalPag
       toast.success(`تم التراجع — استعادة ${res.data.restored_count} تحدي`);
       if (onRefresh) onRefresh();
     } catch (err) {
-      const detail = err.response?.data?.detail;
+      const detail = err.response?.data?.detail ?? getApiErrorMessage(err);
       toast.error(typeof detail === 'object' ? detail.message : (detail || 'فشل في التراجع'));
     }
   }, [api, onRefresh]);
@@ -237,7 +238,7 @@ export default function IssuesTableView({ issues, loading, total, page, totalPag
       setSelectedIds([]);
       if (onRefresh) onRefresh();
     } catch (err) {
-      const detail = err.response?.data?.detail;
+      const detail = err.response?.data?.detail ?? getApiErrorMessage(err);
       toast.error(typeof detail === 'object' ? detail.message : (detail || 'فشل في التعديل الجماعي'));
       throw err;
     }
@@ -256,7 +257,7 @@ export default function IssuesTableView({ issues, loading, total, page, totalPag
       setSelectedIds([]);
       if (onRefresh) onRefresh();
     } catch (err) {
-      const detail = err.response?.data?.detail;
+      const detail = err.response?.data?.detail ?? getApiErrorMessage(err);
       toast.error(typeof detail === 'object' ? detail.message : (detail || 'فشل في الحذف الجماعي'));
       throw err;
     }

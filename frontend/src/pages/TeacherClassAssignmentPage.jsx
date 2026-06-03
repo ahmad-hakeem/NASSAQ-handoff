@@ -18,6 +18,7 @@ import { Input } from '../components/ui/input';
 import { Skeleton } from '../components/ui/skeleton';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
+import { getApiErrorMessage } from '../utils/apiError';
 import {
   Users, GraduationCap, Search, X, CheckCircle2, AlertCircle,
   ArrowLeft, Trash2, RefreshCw, UserPlus, BookOpen
@@ -239,7 +240,7 @@ const TeacherClassAssignmentPage = () => {
       toast.success('تم إسناد المعلم للفصل بنجاح');
     } catch (error) {
       console.error('Error creating assignment:', error);
-      nassaqError(error.response?.data?.detail || 'فشل في إنشاء الإسناد');
+      nassaqError(getApiErrorMessage(error) || 'فشل في إنشاء الإسناد');
     } finally {
       setSaving(false);
     }

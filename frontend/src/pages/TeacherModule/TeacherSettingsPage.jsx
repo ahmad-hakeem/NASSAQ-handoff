@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import HakimPresence from '../../components/hakim/HakimPresence';
 import MfaSecuritySection from '../../components/mfa/MfaSecuritySection';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   User, Lock, Bell, Globe, Save, Loader2, Camera, Mail, Phone, Key,
   Eye, EyeOff, Award, BookOpen, Users, CheckCircle2, Activity, Flame,
@@ -229,7 +230,7 @@ export default function TeacherSettingsPage() {
       await refreshUser?.();
       toast.success(t('profileSavedSuccessfully'));
     } catch (error) {
-      const detail = error?.response?.data?.detail;
+      const detail = getApiErrorMessage(error);
       const msg = typeof detail === 'string' ? detail : (t('errorSavingProfile'));
       nassaqError(msg);
     } finally {
@@ -284,7 +285,7 @@ export default function TeacherSettingsPage() {
         const envMsg = (data.error && typeof data.error === 'object')
           ? (data.error.message || data.error.detail)
           : null;
-        const detail = data.detail;
+        const detail = data.detail ?? getApiErrorMessage(data);
         message = envMsg
           || (typeof detail === 'string' ? detail : detail?.message)
           || fallback;
@@ -304,7 +305,7 @@ export default function TeacherSettingsPage() {
       toast.success(t('profilePictureUpdated'));
     } catch (err) {
       console.error('Error uploading avatar:', err);
-      nassaqError(err?.response?.data?.detail || t('errorUploadingImage'));
+      nassaqError(getApiErrorMessage(err) || t('errorUploadingImage'));
       throw err;
     }
   };

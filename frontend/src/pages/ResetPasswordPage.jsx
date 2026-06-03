@@ -21,6 +21,7 @@ import {
   Check,
 } from 'lucide-react';
 import axios from 'axios';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -67,7 +68,7 @@ export default function ResetPasswordPage() {
       toast.success(res.data.message || (isRTL ? 'تم تغيير كلمة المرور بنجاح' : 'Password changed successfully'));
       setTimeout(() => navigate('/login'), 3000);
     } catch (err) {
-      const msg = err.response?.data?.detail || (isRTL ? 'حدث خطأ. يرجى المحاولة مرة أخرى' : 'An error occurred. Please try again');
+      const msg = getApiErrorMessage(err) || (isRTL ? 'حدث خطأ. يرجى المحاولة مرة أخرى' : 'An error occurred. Please try again');
       setError(msg);
     } finally {
       setLoading(false);

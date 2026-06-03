@@ -60,6 +60,7 @@ import {
   TableRow,
 } from '../components/ui/table';
 import { Link } from 'react-router-dom';
+import { getApiErrorMessage } from '../utils/apiError';
 
 export const SubjectsPage = () => {
   const { user, api } = useAuth();
@@ -155,7 +156,7 @@ export const SubjectsPage = () => {
       resetForm();
       fetchData();
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (t('failedToAddSubject')));
+      nassaqError(getApiErrorMessage(error) || (t('failedToAddSubject')));
     } finally {
       setSubmitting(false);
     }
@@ -175,7 +176,7 @@ export const SubjectsPage = () => {
       setEditingSubject(null);
       fetchData();
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (t('failedToUpdateSubject')));
+      nassaqError(getApiErrorMessage(error) || (t('failedToUpdateSubject')));
     } finally {
       setSubmitting(false);
     }
@@ -209,7 +210,7 @@ export const SubjectsPage = () => {
       }
       fetchData();
     } catch (err) {
-      const detail = err?.response?.data?.detail;
+      const detail = getApiErrorMessage(err);
       nassaqError(typeof detail === 'string' ? detail : t('failedToDeleteSubject'));
     } finally {
       setDeletingId((current) => (current === subjectId ? null : current));
@@ -270,7 +271,7 @@ export const SubjectsPage = () => {
           await fetchData();
         } catch (error) {
           nassaqError(
-            error.response?.data?.detail
+            getApiErrorMessage(error)
               || (isRTL ? 'فشل استعادة المادة' : 'Failed to restore subject')
           );
         } finally {

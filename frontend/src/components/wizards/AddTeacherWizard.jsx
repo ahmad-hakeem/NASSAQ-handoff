@@ -22,6 +22,7 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   User,
   Phone,
@@ -224,7 +225,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
         nassaqError(response.data.error || (t('errorOccurred')));
       }
     } catch (error) {
-      const detail = error.response?.data?.detail;
+      const detail = error.response?.data?.detail ?? getApiErrorMessage(error);
       let errorMessage = t('error');
       if (typeof detail === 'string') errorMessage = detail;
       else if (Array.isArray(detail)) errorMessage = detail.map(e => e.msg || e.message || JSON.stringify(e)).join(', ');

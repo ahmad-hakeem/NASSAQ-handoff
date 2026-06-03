@@ -10,6 +10,7 @@ import { Input } from '../../components/ui/input';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   FileText, Send, Calendar, Clock, CheckCircle, XCircle,
   Loader2, Upload, User, History, Paperclip, X
@@ -112,7 +113,7 @@ const ParentAbsenceExcusePage = ({ embedded = false }) => {
           attachment_url = up.data?.attachment_url || null;
           attachment_name = up.data?.attachment_name || attachmentFile.name;
         } catch (uerr) {
-          const msg = uerr.response?.data?.detail || t('attachmentUploadFailed');
+          const msg = getApiErrorMessage(uerr) || t('attachmentUploadFailed');
           nassaqError(msg);
           setSubmitting(false);
           return;
@@ -133,7 +134,7 @@ const ParentAbsenceExcusePage = ({ embedded = false }) => {
       clearAttachment();
       setShowForm(false);
     } catch (err) {
-      const msg = err.response?.data?.detail || (isRTL ? 'حدث خطأ' : 'An error occurred');
+      const msg = getApiErrorMessage(err) || (isRTL ? 'حدث خطأ' : 'An error occurred');
       nassaqError(msg);
     } finally {
       setSubmitting(false);

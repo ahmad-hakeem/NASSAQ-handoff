@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const EMPTY_FORM = { name: '', name_en: '', code: '', weekly_periods: 4 };
 
@@ -63,7 +64,7 @@ export function TeacherSubjectsPanel({ embedded = false }) {
       // client-side filter so a stale cache never surfaces a tombstone.
       setSubjects(list.filter(s => s?.is_active !== false));
     } catch (err) {
-      const detail = err?.response?.data?.detail;
+      const detail = getApiErrorMessage(err);
       nassaqError(typeof detail === 'string' ? detail : (t('errorLoadingData') || 'تعذّر تحميل المواد.'));
     } finally {
       setLoading(false);
@@ -116,7 +117,7 @@ export function TeacherSubjectsPanel({ embedded = false }) {
       setEditingId(null);
       fetchSubjects();
     } catch (err) {
-      const detail = err?.response?.data?.detail;
+      const detail = getApiErrorMessage(err);
       nassaqError(typeof detail === 'string' ? detail : (t('errorSaving') || 'تعذّر حفظ المادة.'));
     } finally {
       setSaving(false);
@@ -153,7 +154,7 @@ export function TeacherSubjectsPanel({ embedded = false }) {
       }
       fetchSubjects();
     } catch (err) {
-      const detail = err?.response?.data?.detail;
+      const detail = getApiErrorMessage(err);
       nassaqError(typeof detail === 'string' ? detail : (t('errorDeleting') || 'تعذّر حذف المادة.'));
     } finally {
       setDeletingId((current) => (current === subjectId ? null : current));

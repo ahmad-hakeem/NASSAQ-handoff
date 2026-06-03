@@ -10,6 +10,7 @@ import { Skeleton } from '../../components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   CalendarCheck, Send, Calendar, Clock, CheckCircle, XCircle,
   AlertCircle, Loader2, Phone, Mail, MapPin, History,
@@ -95,7 +96,7 @@ const ParentMeetingRequestPage = () => {
       setContactPreference('in_person');
       setShowForm(false);
     } catch (err) {
-      const msg = err.response?.data?.detail || (isRTL ? 'حدث خطأ' : 'An error occurred');
+      const msg = getApiErrorMessage(err) || (isRTL ? 'حدث خطأ' : 'An error occurred');
       toast.error(msg);
     } finally {
       setSubmitting(false);

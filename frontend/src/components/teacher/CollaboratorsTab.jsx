@@ -28,6 +28,7 @@ import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../ui/select';
@@ -65,7 +66,7 @@ export default function CollaboratorsTab({ classId }) {
       });
       setItems(res?.data?.items || []);
     } catch (err) {
-      const msg = err?.response?.data?.detail || t('collabFetchFailed');
+      const msg = getApiErrorMessage(err) || t('collabFetchFailed');
       warn({ title: t('collabError'), description: msg });
     } finally {
       setLoading(false);
@@ -97,7 +98,7 @@ export default function CollaboratorsTab({ classId }) {
       }
       await fetchList();
     } catch (err) {
-      const detail = err?.response?.data?.detail;
+      const detail = getApiErrorMessage(err);
       warn({ title: t('collabError'), description: detail || t('collabInviteFailed') });
     } finally {
       setSubmitting(false);
@@ -115,7 +116,7 @@ export default function CollaboratorsTab({ classId }) {
       await api.post(`/independent-teacher/workspace-collaborators/${row.id}/cancel`);
       await fetchList();
     } catch (err) {
-      const detail = err?.response?.data?.detail;
+      const detail = getApiErrorMessage(err);
       warn({ title: t('collabError'), description: detail || t('collabActionFailed') });
     }
   }, [api, confirm, fetchList, t, warn]);
@@ -132,7 +133,7 @@ export default function CollaboratorsTab({ classId }) {
       await api.delete(`/independent-teacher/workspace-collaborators/${row.id}`);
       await fetchList();
     } catch (err) {
-      const detail = err?.response?.data?.detail;
+      const detail = getApiErrorMessage(err);
       warn({ title: t('collabError'), description: detail || t('collabActionFailed') });
     }
   }, [api, confirm, fetchList, t, warn]);

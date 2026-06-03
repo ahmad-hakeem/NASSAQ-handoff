@@ -19,6 +19,7 @@ import {
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from '../../contexts/ThemeContext';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const dateOnly = (d) => (d ? String(d).slice(0, 10) : '');
 
@@ -84,7 +85,7 @@ export default function InlineAttendanceTable({
     } catch (err) {
       console.error('Failed to toggle attendance', err);
       const detail =
-        err?.response?.data?.detail || err?.message || t('saveFailed') || 'فشل الحفظ';
+        getApiErrorMessage(err) || err?.message || t('saveFailed') || 'فشل الحفظ';
       toast.error(detail);
     } finally {
       setTogglingStudentId(null);

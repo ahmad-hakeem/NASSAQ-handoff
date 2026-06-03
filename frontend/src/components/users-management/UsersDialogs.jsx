@@ -22,6 +22,7 @@ import {
 import { getRoleInfo, formatDate, formatTimeAgo } from './constants';
 import { USER_ROLES } from './constants';
 import { APPROVAL_TYPE_CONFIG } from './approvalConfig';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 export function UserDetailsDialog({ user, onClose, onEdit, onSuspend, onNotify }) {
   if (!user) return null;
@@ -529,7 +530,7 @@ export function EditUserSheet({ user, onClose, onSave, api, fetchUsers }) {
                   onClose();
                 } catch (error) {
                   console.error('Error updating user:', error);
-                  onSave(null, error?.response?.data?.detail || 'فشل في تحديث بيانات المستخدم');
+                  onSave(null, getApiErrorMessage(error) || 'فشل في تحديث بيانات المستخدم');
                 }
               }}
             >

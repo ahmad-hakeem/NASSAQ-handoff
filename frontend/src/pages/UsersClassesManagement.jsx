@@ -40,6 +40,7 @@ import TeacherProfileDialog from '../components/management/TeacherProfileDialog'
 import ParentProfileDialog from '../components/management/ParentProfileDialog';
 import StudentClassGrid from '../components/management/StudentClassGrid';
 import NoorImportPanel from '../components/management/NoorImportPanel';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const THEME_COLORS = {
   student: {
@@ -1102,7 +1103,7 @@ export default function UsersClassesManagement() {
       toast.success(t('classReactivated'));
       setClasses(prev => prev.map(c => c.id === classItem.id ? { ...c, is_active: true } : c));
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (t('operationFailed')));
+      nassaqError(getApiErrorMessage(error) || (t('operationFailed')));
     }
   };
 
@@ -1161,8 +1162,8 @@ export default function UsersClassesManagement() {
         }
       } catch (error) {
         let errMsg = t('deleteFailed');
-        if (error.response?.data?.detail) {
-          errMsg = typeof error.response.data.detail === 'string' ? error.response.data.detail : errMsg;
+        if (getApiErrorMessage(error)) {
+          errMsg = typeof getApiErrorMessage(error) === 'string' ? getApiErrorMessage(error) : errMsg;
         }
         nassaqError(errMsg);
       }
@@ -1213,7 +1214,7 @@ export default function UsersClassesManagement() {
         default: break;
       }
     } catch (error) {
-      const msg = error.response?.data?.detail;
+      const msg = getApiErrorMessage(error);
       nassaqError(typeof msg === 'string' ? msg : (t('operationFailed')));
     }
   };
@@ -1327,8 +1328,8 @@ export default function UsersClassesManagement() {
       fetchAllData();
     } catch (error) {
       let errMsg = t('saveFailed');
-      if (error.response?.data?.detail) {
-        errMsg = typeof error.response.data.detail === 'string' ? error.response.data.detail : errMsg;
+      if (getApiErrorMessage(error)) {
+        errMsg = typeof getApiErrorMessage(error) === 'string' ? getApiErrorMessage(error) : errMsg;
       }
       nassaqError(errMsg);
     } finally { setEditLoading(false); }
@@ -1415,7 +1416,7 @@ export default function UsersClassesManagement() {
       setImportResult(response.data);
       if (response.data.success) { toast.success(t('importedNRecords', { n: response.data.imported })); fetchAllData(); }
       else nassaqWarning(t('importedOfTotal', { imported: response.data.imported, total: response.data.total_rows }));
-    } catch (error) { nassaqError(error.response?.data?.detail || (t('importFailed'))); }
+    } catch (error) { nassaqError(getApiErrorMessage(error) || (t('importFailed'))); }
     finally { setImporting(false); }
   };
 
@@ -2076,7 +2077,7 @@ export default function UsersClassesManagement() {
                           fetchAllData();
                           setViewDialogOpen(false);
                         } catch (e) {
-                          nassaqError(e.response?.data?.detail || (t('saveFailed')));
+                          nassaqError(getApiErrorMessage(e) || (t('saveFailed')));
                         } finally { setViewClassSaving(false); }
                       }}>
                         {viewClassSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin me-1" /> : <Save className="h-3.5 w-3.5 me-1" />}
@@ -2111,7 +2112,7 @@ export default function UsersClassesManagement() {
                             setViewDialogOpen(false);
                             fetchAllData();
                           } catch (e) {
-                            nassaqError(e.response?.data?.detail || (t('failedToDeleteClass')));
+                            nassaqError(getApiErrorMessage(e) || (t('failedToDeleteClass')));
                           } finally { setViewClassSaving(false); }
                         },
                         { title: t('confirmPermanentDelete'), confirmText: t('yesDeletePermanently'), cancelText: t('cancel') }

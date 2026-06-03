@@ -11,6 +11,7 @@ import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { Loader2, Sparkles, BookOpen, Save, Pencil, Trash2, X, Check } from 'lucide-react';
 import { formatHijriDate } from '../../utils/hijriDate';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 // Phase 2 §6.4 (Task #209) — IT-only light AI lesson-planning assistant.
 // Backend pins workspace_school_id == itw_{user_id} + created_by ==
@@ -206,7 +207,7 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
       setCurrent(res?.data?.lesson_plan || null);
       if (res?.data?.quota) setQuota(res.data.quota);
     } catch (err) {
-      const msg = err?.response?.data?.detail
+      const msg = getApiErrorMessage(err)
         || err?.response?.data?.message_ar
         || 'تعذّر توليد خطة الدرس. حاول مرة أخرى.';
       nassaqError(String(msg), { title: 'فشل التوليد' });
@@ -231,7 +232,7 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
       nassaqInfo('تم حفظ خطة الدرس في الفصل.', { title: 'تم الحفظ' });
       refresh();
     } catch (err) {
-      const msg = err?.response?.data?.detail
+      const msg = getApiErrorMessage(err)
         || 'تعذّر حفظ خطة الدرس. حاول مرة أخرى.';
       nassaqError(String(msg), { title: 'فشل الحفظ' });
     } finally {
@@ -307,7 +308,7 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
       cancelEdit();
       refresh();
     } catch (err) {
-      const msg = err?.response?.data?.detail
+      const msg = getApiErrorMessage(err)
         || 'تعذّر حفظ التعديلات. حاول مرة أخرى.';
       nassaqError(String(msg), { title: 'فشل التعديل' });
     } finally {
@@ -325,7 +326,7 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
           if (editingId === p.id) cancelEdit();
           refresh();
         } catch (err) {
-          const msg = err?.response?.data?.detail
+          const msg = getApiErrorMessage(err)
             || 'تعذّر حذف الخطة. حاول مرة أخرى.';
           nassaqError(String(msg), { title: 'فشل الحذف' });
         } finally {

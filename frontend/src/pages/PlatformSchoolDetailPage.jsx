@@ -16,6 +16,7 @@ import {
 import { Textarea } from '../components/ui/textarea';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
+import { getApiErrorMessage } from '../utils/apiError';
 import {
   Building2, ArrowRight, ArrowLeft, Users, GraduationCap, BookOpen,
   CreditCard, Activity, MapPin, Mail, Phone, Calendar, Hash,
@@ -159,7 +160,7 @@ export default function PlatformSchoolDetailPage() {
       setCredFormOpen(false);
       fetchDetail();
     } catch (err) {
-      nassaqError(err.response?.data?.detail || (t('failedToSaveCredentials')));
+      nassaqError(getApiErrorMessage(err) || (t('failedToSaveCredentials')));
     } finally {
       setCredLoading(false);
     }
@@ -189,7 +190,7 @@ export default function PlatformSchoolDetailPage() {
       setActionReason('');
       fetchDetail();
     } catch (err) {
-      nassaqError(err.response?.data?.detail || (t('failedToSuspend')));
+      nassaqError(getApiErrorMessage(err) || (t('failedToSuspend')));
     } finally {
       setActionLoading(false);
     }
@@ -208,7 +209,7 @@ export default function PlatformSchoolDetailPage() {
       setActionReason('');
       fetchDetail();
     } catch (err) {
-      nassaqError(err.response?.data?.detail || (t('failedToActivate')));
+      nassaqError(getApiErrorMessage(err) || (t('failedToActivate')));
     } finally {
       setActionLoading(false);
     }

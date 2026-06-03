@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 
 import { useTranslation } from '../../contexts/ThemeContext';
+import { getApiErrorMessage } from '../../utils/apiError';
 // Countries list
 const COUNTRIES = [
   { code: 'SA', name: 'المملكة العربية السعودية', name_en: 'Saudi Arabia' },
@@ -272,7 +273,7 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
       
     } catch (error) {
       console.error('Error saving draft:', error);
-      const rawDetail = error.response?.data?.detail || '';
+      const rawDetail = getApiErrorMessage(error) || '';
       nassaqError(rawDetail || (t('failedToSaveDraftPleaseTryAgain')));
     } finally {
       setIsSubmitting(false);
@@ -344,7 +345,7 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
     } catch (error) {
       console.error('Error creating school:', error);
       
-      const rawDetail = error.response?.data?.detail || '';
+      const rawDetail = getApiErrorMessage(error) || '';
 
       const codeConflictEntry = {
         step: 1,

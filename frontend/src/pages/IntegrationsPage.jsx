@@ -17,6 +17,7 @@ import { ScrollArea } from '../components/ui/scroll-area';
 import { Separator } from '../components/ui/separator';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
+import { getApiErrorMessage } from '../utils/apiError';
 import {
   Select,
   SelectContent,
@@ -308,7 +309,7 @@ ${baseUrl}/webhooks
       await api.post(`/integrations/${integration.id}/test`);
       toast.success(t('connectionSuccessful'));
     } catch (error) {
-      const detail = error?.response?.data?.detail || t('connectionFailed');
+      const detail = getApiErrorMessage(error) || t('connectionFailed');
       nassaqError(detail);
     } finally {
       setTestingConnection(null);
@@ -327,7 +328,7 @@ ${baseUrl}/webhooks
           : i
       ));
     } catch (error) {
-      const detail = error?.response?.data?.detail || t('syncFailed');
+      const detail = getApiErrorMessage(error) || t('syncFailed');
       nassaqError(detail);
     } finally {
       setSyncing(null);
@@ -346,7 +347,7 @@ ${baseUrl}/webhooks
       ));
       toast.success(newActive ? t('integrationEnabled') : t('integrationDisabled'));
     } catch (error) {
-      nassaqError(error?.response?.data?.detail || t('actionFailed'));
+      nassaqError(getApiErrorMessage(error) || t('actionFailed'));
     }
   };
   
@@ -367,7 +368,7 @@ ${baseUrl}/webhooks
       setNewKeyForm({ name: '', permissions: 'read_only' });
       toast.success(t('keyGeneratedSuccessfully'));
     } catch (error) {
-      nassaqError(error?.response?.data?.detail || t('actionFailed'));
+      nassaqError(getApiErrorMessage(error) || t('actionFailed'));
     }
   };
   
@@ -380,7 +381,7 @@ ${baseUrl}/webhooks
       ));
       toast.success(t('keyRevoked'));
     } catch (error) {
-      nassaqError(error?.response?.data?.detail || t('actionFailed'));
+      nassaqError(getApiErrorMessage(error) || t('actionFailed'));
     }
   };
 
@@ -406,7 +407,7 @@ ${baseUrl}/webhooks
       setFormData({ name: '', name_en: '', type: 'other', description: '', api_base_url: '', api_key: '', secret_key: '' });
       toast.success(t('integrationCreated') || t('saved') || 'تم الحفظ');
     } catch (error) {
-      nassaqError(error?.response?.data?.detail || t('actionFailed'));
+      nassaqError(getApiErrorMessage(error) || t('actionFailed'));
     }
   };
   

@@ -10,6 +10,7 @@ import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { Loader2, Bell, CheckCheck, ExternalLink, Inbox, Users, GraduationCap, Building2, Gauge, Sparkles, Info } from 'lucide-react';
 import { formatHijriDate } from '../../utils/hijriDate';
 import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 // Task #249 — IT Notifications Inbox.
 // Backend pins user_id + tenant_id == itw_{user_id}; this page is
@@ -86,7 +87,7 @@ export function TeacherNotificationsPanel({ embedded = false } = {}) {
       setNextCursor(res?.data?.next_cursor || null);
       setHasMore(Boolean(res?.data?.has_more));
     } catch (err) {
-      const msg = err?.response?.data?.detail || (isAr ? 'تعذّر تحميل الإشعارات.' : 'Failed to load notifications.');
+      const msg = getApiErrorMessage(err) || (isAr ? 'تعذّر تحميل الإشعارات.' : 'Failed to load notifications.');
       nassaqError(msg);
       if (!append) setItems([]);
     } finally {
@@ -142,7 +143,7 @@ export function TeacherNotificationsPanel({ embedded = false } = {}) {
       window.dispatchEvent(new CustomEvent('notifications:refresh'));
       nassaqInfo(isAr ? `تم تحديد ${updated} إشعارًا كمقروء.` : `Marked ${updated} notifications as read.`);
     } catch (err) {
-      nassaqError(err?.response?.data?.detail || (isAr ? 'تعذّر تحديد الإشعارات.' : 'Failed to mark notifications.'));
+      nassaqError(getApiErrorMessage(err) || (isAr ? 'تعذّر تحديد الإشعارات.' : 'Failed to mark notifications.'));
     } finally {
       setMarking(false);
     }

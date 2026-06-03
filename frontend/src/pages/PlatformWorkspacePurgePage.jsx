@@ -18,6 +18,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { RefreshCw, Trash2, AlertTriangle, ShieldAlert, X, History, ChevronLeft, ChevronRight, Search, Download } from 'lucide-react';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const ARABIC = {
   pageTitle: 'مساحات العمل الجاهزة للحذف النهائي',
@@ -113,7 +114,7 @@ const formatDate = (iso) => {
 };
 
 const safeArabicError = (err, fallback) => {
-  const detail = err?.response?.data?.detail;
+  const detail = getApiErrorMessage(err);
   if (typeof detail === 'string' && detail.trim()) return detail;
   return fallback;
 };

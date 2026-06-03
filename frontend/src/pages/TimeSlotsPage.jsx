@@ -50,6 +50,7 @@ import {
   TableRow,
 } from '../components/ui/table';
 import { Link } from 'react-router-dom';
+import { getApiErrorMessage } from '../utils/apiError';
 
 export const TimeSlotsPage = () => {
   const { t } = useTranslation();
@@ -195,7 +196,7 @@ export const TimeSlotsPage = () => {
       });
       fetchTimeSlots();
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (t('failedToAddTimeSlot')));
+      nassaqError(getApiErrorMessage(error) || (t('failedToAddTimeSlot')));
     } finally {
       setSubmitting(false);
     }

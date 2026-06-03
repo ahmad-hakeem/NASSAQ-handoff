@@ -33,6 +33,7 @@ import {
 
 import { useTranslation } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { getApiErrorMessage } from '../../utils/apiError';
 // =============================================================
 // مناطق ومدن المملكة العربية السعودية
 // =============================================================
@@ -720,7 +721,7 @@ export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, i
       }
     } catch (error) {
       console.error('Error creating user:', error);
-      const errorMessage = error.response?.data?.detail || error.message || (t('errorCreatingAccount'));
+      const errorMessage = getApiErrorMessage(error) || error.message || (t('errorCreatingAccount'));
       nassaqError(errorMessage);
     } finally {
       setIsSubmitting(false);

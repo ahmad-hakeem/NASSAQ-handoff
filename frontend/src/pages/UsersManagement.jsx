@@ -45,6 +45,7 @@ import {
 } from '../components/users-management';
 
 import { useTranslation } from '../contexts/ThemeContext';
+import { getApiErrorMessage } from '../utils/apiError';
 // Operational toggles — schools & independent teachers self-register today,
 // so the manual-vetting tabs are temporarily hidden. Re-enable by flipping
 // either flag to true; underlying queries, schemas, and tab components are
@@ -265,7 +266,7 @@ export default function UsersManagement() {
       fetchManagementStats();
     } catch (error) {
       console.error('Error suspending user:', error);
-      toast.error(error?.response?.data?.detail || 'فشل في تغيير حالة الحساب');
+      toast.error(getApiErrorMessage(error) || 'فشل في تغيير حالة الحساب');
     }
     setShowSuspendConfirm(null);
   };
@@ -278,7 +279,7 @@ export default function UsersManagement() {
       fetchManagementStats();
     } catch (error) {
       console.error('Error deleting user:', error);
-      toast.error(error?.response?.data?.detail || 'فشل في أرشفة الحساب');
+      toast.error(getApiErrorMessage(error) || 'فشل في أرشفة الحساب');
     }
     setShowDeleteConfirm(null);
   };
@@ -300,7 +301,7 @@ export default function UsersManagement() {
       }
     } catch (error) {
       console.error(`Error approving ${requestType} request:`, error);
-      nassaqError(error.response?.data?.detail || 'حدث خطأ أثناء الموافقة على الطلب');
+      nassaqError(getApiErrorMessage(error) || 'حدث خطأ أثناء الموافقة على الطلب');
     }
   };
 
@@ -317,7 +318,7 @@ export default function UsersManagement() {
       }
     } catch (error) {
       console.error(`Error rejecting ${requestType} request:`, error);
-      nassaqError(error.response?.data?.detail || 'حدث خطأ أثناء رفض الطلب');
+      nassaqError(getApiErrorMessage(error) || 'حدث خطأ أثناء رفض الطلب');
     }
     setRejectDialog(null);
     setRejectionReason('');
@@ -336,7 +337,7 @@ export default function UsersManagement() {
       }
     } catch (error) {
       console.error('Error requesting more info:', error);
-      nassaqError(error.response?.data?.detail || 'حدث خطأ أثناء إرسال الطلب');
+      nassaqError(getApiErrorMessage(error) || 'حدث خطأ أثناء إرسال الطلب');
     }
     setShowMoreInfoRequest(null);
     setMoreInfoMessage('');
@@ -351,7 +352,7 @@ export default function UsersManagement() {
       }
     } catch (error) {
       console.error(`Error marking ${requestType} request under review:`, error);
-      nassaqError(error.response?.data?.detail || 'حدث خطأ أثناء تحديث حالة الطلب');
+      nassaqError(getApiErrorMessage(error) || 'حدث خطأ أثناء تحديث حالة الطلب');
     }
   };
 
@@ -364,7 +365,7 @@ export default function UsersManagement() {
       }
     } catch (error) {
       console.error(`Error archiving ${requestType} request:`, error);
-      nassaqError(error.response?.data?.detail || 'حدث خطأ أثناء أرشفة الطلب');
+      nassaqError(getApiErrorMessage(error) || 'حدث خطأ أثناء أرشفة الطلب');
     }
   };
 

@@ -10,6 +10,7 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { Checkbox } from '../../components/ui/checkbox';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 // 2026-05-18 — Student accounts are globally disabled platform-wide,
 // so sending direct messages to "طلابي" is a dead end. We keep the
@@ -61,7 +62,7 @@ export function IndependentTeacherCommunicationPanel({ embedded = false } = {}) 
         setItems(Array.isArray(data?.items) ? data.items : []);
       } catch (err) {
         if (cancelled) return;
-        const msg = err?.response?.data?.detail
+        const msg = getApiErrorMessage(err)
           || err?.response?.data?.error?.message
           || t('itLoadRecipientsFailed');
         nassaqError(msg);
@@ -115,7 +116,7 @@ export function IndependentTeacherCommunicationPanel({ embedded = false } = {}) 
       setBody('');
       setSelected(new Set());
     } catch (err) {
-      const msg = err?.response?.data?.detail
+      const msg = getApiErrorMessage(err)
         || err?.response?.data?.error?.message
         || t('itSendFailure');
       nassaqError(msg);

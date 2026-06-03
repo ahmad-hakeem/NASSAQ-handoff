@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   STATUS_CONFIG, PRIORITY_CONFIG,
 } from './index';
@@ -52,7 +53,7 @@ export default function ActionHistoryPanel({ open, onClose, onRefresh, api }) {
       fetchHistory();
       if (onRefresh) onRefresh();
     } catch (err) {
-      const detail = err.response?.data?.detail;
+      const detail = err.response?.data?.detail ?? getApiErrorMessage(err);
       toast.error(typeof detail === 'object' ? detail.message : (detail || 'فشل في التراجع'));
     } finally {
       setUndoing(null);

@@ -17,6 +17,7 @@ import {
 // the old `[&_aside]:hidden` CSS hack. ImportStudentsPage still exports
 // a default for back-compat, but we want the clean panel surface here.
 import { ImportStudentsPanel } from './ImportStudentsPage';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 // Task #278 — IT bulk-import hub with four tabs (students / classes /
 // subjects / duplicate-week). Re-uses the existing students importer
@@ -72,7 +73,7 @@ function CsvImportPanel({
       });
       setParseResult(res.data);
     } catch (err) {
-      const msg = err?.response?.data?.detail || err?.response?.data?.error?.message ||
+      const msg = getApiErrorMessage(err) || err?.response?.data?.error?.message ||
         'تعذّر قراءة الملف. تحقّق من الصيغة والأعمدة المطلوبة.';
       nassaqError(String(msg), { title: 'فشل التحقق من الملف' });
     } finally {
@@ -98,7 +99,7 @@ function CsvImportPanel({
       setParseResult(null);
       setFileName('');
     } catch (err) {
-      const msg = err?.response?.data?.detail || err?.response?.data?.error?.message ||
+      const msg = getApiErrorMessage(err) || err?.response?.data?.error?.message ||
         'تعذّر إكمال الاستيراد. حاول مرة أخرى لاحقًا.';
       nassaqError(String(msg), { title: 'فشل الاستيراد' });
     } finally {
@@ -365,7 +366,7 @@ function DuplicateWeekTab() {
       setPreview(res.data || null);
     } catch (err) {
       setPreview(null);
-      const msg = err?.response?.data?.detail || err?.response?.data?.error?.message ||
+      const msg = getApiErrorMessage(err) || err?.response?.data?.error?.message ||
         'تعذّر تحضير المعاينة. تأكد من التواريخ ثم أعد المحاولة.';
       nassaqError(String(msg), { title: 'فشل المعاينة' });
     } finally {
@@ -387,7 +388,7 @@ function DuplicateWeekTab() {
         { title: 'اكتمل النسخ' },
       );
     } catch (err) {
-      const msg = err?.response?.data?.detail || err?.response?.data?.error?.message ||
+      const msg = getApiErrorMessage(err) || err?.response?.data?.error?.message ||
         'تعذّر نسخ الجدول. تأكد من التواريخ ثم أعد المحاولة.';
       nassaqError(String(msg), { title: 'فشل النسخ' });
     } finally {

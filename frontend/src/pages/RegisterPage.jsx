@@ -11,6 +11,7 @@ import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
 import { Badge } from '../components/ui/badge';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
+import { getApiErrorMessage } from '../utils/apiError';
 import { 
   User, 
   Phone, 
@@ -341,7 +342,7 @@ export const RegisterPage = () => {
       });
     } catch (err) {
       console.error('Registration error:', err);
-      const detail = err.response?.data?.detail;
+      const detail = getApiErrorMessage(err);
       if (detail) {
         nassaqError(detail);
       } else {

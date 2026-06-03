@@ -34,6 +34,7 @@ import {
   PlayCircle, Wand2, Upload
 } from 'lucide-react';
 import { useTranslation } from '../../contexts/ThemeContext';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const SECTION_CONFIG = [
   { key: 'teaching_plans', icon: BookOpen, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/30', types: ['lesson_plan', 'weekly_plan', 'unit_plan'] },
@@ -261,7 +262,7 @@ export default function TeacherAchievementsPage() {
       }
     } catch (err) {
       if (token !== editUploadTokenRef.current) return;
-      nassaqError(err?.response?.data?.detail || 'فشل رفع الملف');
+      nassaqError(getApiErrorMessage(err) || 'فشل رفع الملف');
     } finally {
       if (token === editUploadTokenRef.current) setEditFileUploading(false);
     }
@@ -401,7 +402,7 @@ export default function TeacherAchievementsPage() {
         toast.error(reason === 'AI_DISABLED' ? 'الذكاء الاصطناعي غير متاح' : 'تعذّر توليد النص');
       }
     } catch (err) {
-      const detail = err?.response?.data?.detail;
+      const detail = getApiErrorMessage(err);
       const map = {
         AI_DISABLED: 'الذكاء الاصطناعي غير متاح',
         TEXT_TOO_SHORT: 'النص قصير جداً للتحسين',
@@ -466,7 +467,7 @@ export default function TeacherAchievementsPage() {
       }
     } catch (err) {
       if (token !== manualEvUploadTokenRef.current) return;
-      nassaqError(err?.response?.data?.detail || 'فشل رفع الملف');
+      nassaqError(getApiErrorMessage(err) || 'فشل رفع الملف');
     } finally {
       if (token === manualEvUploadTokenRef.current) setManualEvUploading(false);
     }
@@ -496,7 +497,7 @@ export default function TeacherAchievementsPage() {
       setExpandedSubsec(p => ({ ...p, [manualEvForm.section_key]: true }));
       fetchPortfolio();
     } catch (err) {
-      nassaqError(err?.response?.data?.detail || 'فشل إضافة الشاهد');
+      nassaqError(getApiErrorMessage(err) || 'فشل إضافة الشاهد');
     } finally { setManualEvSaving(false); }
   };
 
@@ -563,7 +564,7 @@ export default function TeacherAchievementsPage() {
         toast.success(mode === 'improve' ? 'تم تحسين المقدمة بحكيم' : 'تم توليد المقدمة بحكيم');
       }
     } catch (e) {
-      const code = e?.response?.data?.detail;
+      const code = getApiErrorMessage(e);
       const msg = code === 'AI_DISABLED' ? 'الذكاء الاصطناعي غير مفعّل'
         : code === 'TEXT_TOO_SHORT' ? 'النص قصير جداً للتحسين'
         : (mode === 'improve' ? 'فشل التحسين' : 'فشل التوليد');
@@ -611,7 +612,7 @@ export default function TeacherAchievementsPage() {
         toast.success(mode === 'improve' ? 'تم تحسين المحتوى بحكيم' : 'تم توليد المحتوى بحكيم');
       }
     } catch (e) {
-      const code = e?.response?.data?.detail;
+      const code = getApiErrorMessage(e);
       const msg = code === 'AI_DISABLED' ? 'الذكاء الاصطناعي غير مفعّل'
         : code === 'TEXT_TOO_SHORT' ? 'النص قصير جداً للتحسين'
         : (mode === 'improve' ? 'فشل التحسين' : 'فشل التوليد');
@@ -646,7 +647,7 @@ export default function TeacherAchievementsPage() {
       }
     } catch (err) {
       if (token !== cvUploadTokenRef.current) return;
-      nassaqError(err?.response?.data?.detail || 'فشل رفع الملف');
+      nassaqError(getApiErrorMessage(err) || 'فشل رفع الملف');
     } finally {
       if (token === cvUploadTokenRef.current) setCvFileUploading(false);
     }
@@ -670,7 +671,7 @@ export default function TeacherAchievementsPage() {
       await fetchPortfolio();
       toast.success('تمت الإضافة');
     } catch (e) {
-      nassaqError(e?.response?.data?.detail || 'فشل الحفظ');
+      nassaqError(getApiErrorMessage(e) || 'فشل الحفظ');
     }
     finally { setCvSaving(false); }
   };
@@ -689,7 +690,7 @@ export default function TeacherAchievementsPage() {
           await api.delete(`/teacher/portfolio/cv-item/${item.id}`);
           await fetchPortfolio();
           toast.success('تم الحذف');
-        } catch (e) { nassaqError(e?.response?.data?.detail || 'فشل الحذف'); }
+        } catch (e) { nassaqError(getApiErrorMessage(e) || 'فشل الحذف'); }
       },
     });
   };
@@ -805,7 +806,7 @@ export default function TeacherAchievementsPage() {
     } catch (err) {
       if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
       console.error('Hakim evidence text error:', err);
-      const detail = err?.response?.data?.detail;
+      const detail = getApiErrorMessage(err);
       if (detail === 'TEXT_TOO_SHORT') toast.error(t('hakimNeedFiveChars'));
       else toast.error(t('hakimUnavailable'));
     } finally {
@@ -845,7 +846,7 @@ export default function TeacherAchievementsPage() {
       fetchPortfolio();
     } catch (err) {
       console.error('Save evidence error:', err);
-      nassaqError(err?.response?.data?.detail || t('portfolioSaveError') || 'فشل حفظ الشاهد. يرجى المحاولة مرة أخرى.');
+      nassaqError(getApiErrorMessage(err) || t('portfolioSaveError') || 'فشل حفظ الشاهد. يرجى المحاولة مرة أخرى.');
     } finally {
       setSaving(false);
     }
@@ -866,7 +867,7 @@ export default function TeacherAchievementsPage() {
           fetchPortfolio();
         } catch (err) {
           console.error('Delete error:', err);
-          nassaqError(err?.response?.data?.detail || 'فشل الحذف');
+          nassaqError(getApiErrorMessage(err) || 'فشل الحذف');
         }
       },
     });

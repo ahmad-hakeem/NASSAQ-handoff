@@ -17,6 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/ThemeContext';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { Button } from '../components/ui/button';
+import { getApiErrorMessage } from '../utils/apiError';
 
 export default function CollabInvitationAcceptPage() {
   const [params] = useSearchParams();
@@ -49,7 +50,7 @@ export default function CollabInvitationAcceptPage() {
         setPhase('done');
       } catch (err) {
         const status = err?.response?.status;
-        const detail = err?.response?.data?.detail;
+        const detail = err?.response?.data?.detail ?? getApiErrorMessage(err);
         setPhase('failed');
         if (status === 403) {
           // Either MFA step-up envelope (axios interceptor will replay) or

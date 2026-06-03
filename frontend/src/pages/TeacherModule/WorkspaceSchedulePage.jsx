@@ -7,6 +7,7 @@ import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const DAY_LABELS = {
   sun: 'الأحد', mon: 'الاثنين', tue: 'الثلاثاء', wed: 'الأربعاء',
@@ -72,7 +73,7 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
         subjects: Array.isArray(data?.subjects) ? data.subjects : [],
       });
     } catch (err) {
-      const msg = err?.response?.data?.detail
+      const msg = getApiErrorMessage(err)
         || err?.response?.data?.error?.message
         || 'تعذّر تحميل جدولك.';
       nassaqError(typeof msg === 'string' ? msg : (msg?.message || 'تعذّر تحميل جدولك.'));
@@ -166,7 +167,7 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
           await reload();
           closeEditor();
         } else {
-          const msg = err?.response?.data?.detail
+          const msg = getApiErrorMessage(err)
             || err?.response?.data?.error?.message
             || 'تعذّر حفظ تعديلاتك على الجدول.';
           nassaqError(typeof msg === 'string' ? msg : (msg?.message || 'تعذّر حفظ تعديلاتك على الجدول.'));
@@ -208,7 +209,7 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
       a.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      const msg = err?.response?.data?.detail
+      const msg = getApiErrorMessage(err)
         || err?.response?.data?.error?.message
         || 'تعذّر تنزيل ملف PDF لجدولك.';
       nassaqError(typeof msg === 'string' ? msg : (msg?.message || 'تعذّر تنزيل ملف PDF لجدولك.'));

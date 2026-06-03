@@ -82,6 +82,7 @@ import {
 
 
 import { useTranslation } from '../contexts/ThemeContext';
+import { getApiErrorMessage } from '../utils/apiError';
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 // Role configurations
@@ -356,7 +357,7 @@ export default function UserDetailsPage() {
       toast.success(user.is_active ? 'تم تعليق الحساب بنجاح' : 'تم تفعيل الحساب بنجاح');
     } catch (error) {
       console.error('Error toggling user status:', error);
-      toast.error(error?.response?.data?.detail || 'فشل في تغيير حالة الحساب. الرجاء المحاولة مرة أخرى.');
+      toast.error(getApiErrorMessage(error) || 'فشل في تغيير حالة الحساب. الرجاء المحاولة مرة أخرى.');
     }
     setShowSuspendDialog(false);
   };
@@ -369,7 +370,7 @@ export default function UserDetailsPage() {
       navigate('/admin/users');
     } catch (error) {
       console.error('Error deleting user:', error);
-      toast.error(error?.response?.data?.detail || 'فشل في أرشفة الحساب. الرجاء المحاولة مرة أخرى.');
+      toast.error(getApiErrorMessage(error) || 'فشل في أرشفة الحساب. الرجاء المحاولة مرة أخرى.');
     }
   };
   
@@ -428,7 +429,7 @@ ${API_URL}/login
       setShowEditSheet(false);
     } catch (error) {
       console.error('Error updating user:', error);
-      toast.error(error?.response?.data?.detail || 'فشل في تحديث البيانات. الرجاء المحاولة مرة أخرى.');
+      toast.error(getApiErrorMessage(error) || 'فشل في تحديث البيانات. الرجاء المحاولة مرة أخرى.');
     }
   };
   
@@ -441,7 +442,7 @@ ${API_URL}/login
       setShowPermissionsSheet(false);
     } catch (error) {
       console.error('Error updating permissions:', error);
-      toast.error(error?.response?.data?.detail || 'فشل في تحديث الصلاحيات. الرجاء المحاولة مرة أخرى.');
+      toast.error(getApiErrorMessage(error) || 'فشل في تحديث الصلاحيات. الرجاء المحاولة مرة أخرى.');
     }
   };
   

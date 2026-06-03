@@ -5,6 +5,7 @@ import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { Badge } from '../../components/ui/badge';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   Users, CheckCircle2, Loader2, Play,
   ArrowRight, UserCheck, UserX, Sun, Moon,
@@ -143,7 +144,7 @@ export default function SessionStartPage() {
       if (await handleSessionResult(res)) return;
     } catch (err) {
       const status = err.response?.status;
-      const msg = err.response?.data?.detail || '';
+      const msg = getApiErrorMessage(err) || '';
       const isSessionConflict = status === 400 || status === 409 || msg.includes('إنهاء') || msg.includes('مسبق') || msg.includes('جارية');
       if (isSessionConflict) {
         toast.info(t('creatingNewSession'));
@@ -151,7 +152,7 @@ export default function SessionStartPage() {
           const retryRes = await api.post('/session/start', { ...payload, force_new: true });
           if (await handleSessionResult(retryRes, true)) return;
         } catch (retryErr) {
-          const retryMsg = retryErr.response?.data?.detail || msg;
+          const retryMsg = getApiErrorMessage(retryErr) || msg;
           nassaqError(retryMsg || (t('errorStartingSession')));
         }
       } else if (status === 403) {

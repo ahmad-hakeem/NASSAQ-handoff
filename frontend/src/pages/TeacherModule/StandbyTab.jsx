@@ -12,6 +12,7 @@ import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   Hourglass, RefreshCw, CheckCircle2, Calendar,
 } from 'lucide-react';
@@ -57,7 +58,7 @@ export default function StandbyTab() {
       const res = await api.get('/standby/roster/me');
       setData(res.data || null);
     } catch (e) {
-      const msg = e?.response?.data?.detail || 'تعذّر تحميل جدول الانتظار';
+      const msg = getApiErrorMessage(e) || 'تعذّر تحميل جدول الانتظار';
       nassaqError(typeof msg === 'string' ? msg : 'تعذّر تحميل جدول الانتظار');
     } finally {
       setLoading(false);

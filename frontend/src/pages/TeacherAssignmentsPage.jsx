@@ -59,6 +59,7 @@ import {
   TooltipTrigger,
 } from '../components/ui/tooltip';
 import { Link } from 'react-router-dom';
+import { getApiErrorMessage } from '../utils/apiError';
 
 // Teacher rank configuration
 const RANK_CONFIG = {
@@ -213,7 +214,7 @@ export const TeacherAssignmentsPage = () => {
       });
       fetchData();
     } catch (error) {
-      const detail = error.response?.data?.detail;
+      const detail = error.response?.data?.detail ?? getApiErrorMessage(error);
       const msg = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map(d => d.msg || JSON.stringify(d)).join(', ') : (t('failedToAddAssignment'));
       nassaqError(msg);
     } finally {

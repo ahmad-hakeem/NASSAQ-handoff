@@ -6,6 +6,7 @@ import { Input } from './ui/input';
 import { AlertTriangle, User, X, Check, Loader2, ArrowLeft } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const GENERIC_NAMES_AR = new Set([
   'مدير المنصة', 'مدير المنصة الرئيسي', 'مدير مدرسة', 'مدير النظام', 'مدير',
@@ -82,7 +83,7 @@ function NameUpdateModal({ currentName, onClose, onSuccess }) {
       toast.success('تم تحديث اسمك بنجاح');
       onSuccess(name.trim());
     } catch (e) {
-      const detail = e.response?.data?.detail;
+      const detail = getApiErrorMessage(e);
       setError(typeof detail === 'string' ? detail : 'فشل في حفظ الاسم — حاول مرة أخرى');
     } finally {
       setSaving(false);

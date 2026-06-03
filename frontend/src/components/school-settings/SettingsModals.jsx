@@ -7,6 +7,7 @@ import { Coffee, UserX, DoorClosed, Upload, FileSpreadsheet, CheckCircle2, Alert
 import { toast } from 'sonner';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 function BreakModal({ hook }) {
   const { t } = useTranslation();
@@ -208,7 +209,7 @@ function NoorImportModal({ show, onClose, importType, api, onSuccess }) {
         if (onSuccess) onSuccess();
       }
     } catch (err) {
-      const detail = err.response?.data?.detail || t('errorDuringImport');
+      const detail = getApiErrorMessage(err) || t('errorDuringImport');
       toast.error(detail);
       setResult({ success: false, total_rows: 0, imported: 0, failed: 0, errors: [{ message: detail }], warnings: [] });
     } finally {

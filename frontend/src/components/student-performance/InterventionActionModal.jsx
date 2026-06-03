@@ -9,6 +9,7 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const DEFAULT_MESSAGE = (name, issue) =>
   `ولي أمر ${name} الكريم، نود إبلاغكم بأن ابنكم/ابنتكم بحاجة لمتابعة بخصوص ${issue}. نرجو التواصل مع المدرسة.`;
@@ -80,7 +81,7 @@ export default function InterventionActionModal({ student, actionType, onClose, 
       toast.success(t(SUCCESS_KEY[actionType]));
       onSuccess();
     } catch (e) {
-      toast.error(e?.response?.data?.detail || 'Error');
+      toast.error(getApiErrorMessage(e) || 'Error');
     } finally {
       setSubmitting(false);
     }

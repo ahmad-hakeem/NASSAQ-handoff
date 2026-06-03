@@ -20,6 +20,7 @@ import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 
 import { WorkspaceSchedulePanel } from './WorkspaceSchedulePage';
 import { TeacherPersonalCalendarPanel } from './TeacherPersonalCalendarPage';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const IT_SETTINGS_WEEKDAYS = [
   { key: 'sun', i18n: 'sunday' },
@@ -132,7 +133,7 @@ export default function TimeManagementHubPage() {
       setItTermLabel(data.academic_term_label || '');
       setItSettingsLoaded(true);
     } catch (err) {
-      const msg = err?.response?.data?.detail || t('failedToLoadWorkspaceSettings');
+      const msg = getApiErrorMessage(err) || t('failedToLoadWorkspaceSettings');
       nassaqError(msg);
       setItSettingsLoadError(true);
     }
@@ -163,7 +164,7 @@ export default function TimeManagementHubPage() {
       await api.put('/independent-teacher/workspace/settings', payload);
       toast.success(t('workspaceSettingsSaved'));
     } catch (err) {
-      const msg = err?.response?.data?.detail || t('failedToSaveWorkspaceSettings');
+      const msg = getApiErrorMessage(err) || t('failedToSaveWorkspaceSettings');
       nassaqError(msg);
     } finally {
       setItSettingsSaving(false);

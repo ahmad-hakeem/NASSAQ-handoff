@@ -7,6 +7,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   Dialog,
   DialogContent,
@@ -152,7 +153,7 @@ export default function MfaSecuritySection({ onChange } = {}) {
       setTotpEnroll(r.data);
       setTotpDialogOpen(true);
     } catch (err) {
-      const msg = err?.response?.data?.error?.message || err?.response?.data?.detail || (lang === 'ar' ? 'تعذر بدء التسجيل' : 'Could not start enrolment');
+      const msg = err?.response?.data?.error?.message || getApiErrorMessage(err) || (lang === 'ar' ? 'تعذر بدء التسجيل' : 'Could not start enrolment');
       nassaqError(typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
       setTotpBusy(false);
@@ -185,7 +186,7 @@ export default function MfaSecuritySection({ onChange } = {}) {
       }
       refresh();
     } catch (err) {
-      const msg = err?.response?.data?.error?.message || err?.response?.data?.detail || (lang === 'ar' ? 'الرمز غير صحيح.' : 'Invalid code.');
+      const msg = err?.response?.data?.error?.message || getApiErrorMessage(err) || (lang === 'ar' ? 'الرمز غير صحيح.' : 'Invalid code.');
       setTotpError(typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
       setTotpBusy(false);
@@ -206,7 +207,7 @@ export default function MfaSecuritySection({ onChange } = {}) {
       setRecoveryPwd('');
       refresh();
     } catch (err) {
-      const msg = err?.response?.data?.error?.message || err?.response?.data?.detail || (lang === 'ar' ? 'تعذر إنشاء الرموز.' : 'Could not generate codes.');
+      const msg = err?.response?.data?.error?.message || getApiErrorMessage(err) || (lang === 'ar' ? 'تعذر إنشاء الرموز.' : 'Could not generate codes.');
       setRecoveryError(typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
       setRecoveryBusy(false);
@@ -258,7 +259,7 @@ export default function MfaSecuritySection({ onChange } = {}) {
       setResetEnroll(r.data);
       setResetDialogOpen(true);
     } catch (err) {
-      const msg = err?.response?.data?.error?.message || err?.response?.data?.detail || (lang === 'ar' ? 'تعذر بدء إعادة الضبط' : 'Could not start reset');
+      const msg = err?.response?.data?.error?.message || getApiErrorMessage(err) || (lang === 'ar' ? 'تعذر بدء إعادة الضبط' : 'Could not start reset');
       nassaqError(typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
       setResetBusy(false);
@@ -285,7 +286,7 @@ export default function MfaSecuritySection({ onChange } = {}) {
       nassaqSuccess(lang === 'ar' ? 'تم استبدال تطبيق المصادقة بنجاح.' : 'Authenticator app replaced.');
       refresh();
     } catch (err) {
-      const msg = err?.response?.data?.error?.message || err?.response?.data?.detail || (lang === 'ar' ? 'الرمز غير صحيح.' : 'Invalid code.');
+      const msg = err?.response?.data?.error?.message || getApiErrorMessage(err) || (lang === 'ar' ? 'الرمز غير صحيح.' : 'Invalid code.');
       setResetError(typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
       setResetBusy(false);
@@ -343,7 +344,7 @@ export default function MfaSecuritySection({ onChange } = {}) {
       refresh();
     } catch (err) {
       const status = err?.response?.status;
-      const msg = err?.response?.data?.error?.message || err?.response?.data?.detail;
+      const msg = err?.response?.data?.error?.message || getApiErrorMessage(err);
       // 409 means the role mandates MFA → guide the user to Reset.
       if (status === 409) {
         setDisableError(typeof msg === 'string'

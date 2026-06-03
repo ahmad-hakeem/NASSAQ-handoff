@@ -79,6 +79,7 @@ import {
   SelectValue,
 } from '../components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { getApiErrorMessage } from '../utils/apiError';
 
 export const PlatformSchoolsPage = () => {
   const { t } = useTranslation();
@@ -146,7 +147,7 @@ export const PlatformSchoolsPage = () => {
       });
       fetchSchools();
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (t('failedToCreateSchool')));
+      nassaqError(getApiErrorMessage(error) || (t('failedToCreateSchool')));
     }
   };
 

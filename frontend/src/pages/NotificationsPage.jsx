@@ -22,6 +22,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../components/ui/select';
 import { ScrollArea } from '../components/ui/scroll-area';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const notificationTypeConfig = {
   system: { icon: Info, label: { ar: 'النظام', en: 'System' }, color: 'bg-gray-500', iconColor: 'text-gray-500' },
@@ -198,7 +199,7 @@ export const NotificationsPage = ({ embedded = false }) => {
       setNotifications(prev => prev.map(n => n.id === notification.id
         ? { ...n, read_status: notification.read_status, is_acknowledged: notification.is_acknowledged }
         : n));
-      const detail = error?.response?.data?.detail;
+      const detail = getApiErrorMessage(error);
       nassaqError(detail || (isRTL ? 'تعذر تسجيل اطلاعك على نقل الفصل' : 'Failed to acknowledge relocation'));
     }
   };

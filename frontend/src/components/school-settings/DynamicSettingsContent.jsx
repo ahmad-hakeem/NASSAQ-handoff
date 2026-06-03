@@ -25,6 +25,7 @@ import {
   DroppableTeacherSubjectBox,
 } from './DndComponents';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 export function DynamicSettingsContent({ hook, dynamicTabs }) {
   const { t } = useTranslation();
@@ -557,7 +558,7 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                       .then(res => { const realId = res.data?.id || res.data?.assignment_id || tempId; setAssignments(prev => prev.map(a => a.id === tempId ? { ...a, id: realId, _optimistic: false } : a)); })
                       .catch(err => {
                         setAssignments(prev => prev.filter(a => a.id !== tempId));
-                        const msg = err?.response?.data?.detail || err?.response?.data?.error?.message || err?.message || 'تعذّر إسناد المادة للمعلم';
+                        const msg = getApiErrorMessage(err) || err?.response?.data?.error?.message || err?.message || 'تعذّر إسناد المادة للمعلم';
                         nassaqError(msg);
                       });
                   }

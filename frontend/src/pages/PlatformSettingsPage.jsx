@@ -111,6 +111,7 @@ import {
 // callers working.
 export { SETTINGS_TABS } from './platformSettingsTabs';
 import { SETTINGS_TABS } from './platformSettingsTabs';
+import { getApiErrorMessage } from '../utils/apiError';
 
 // Active sessions - fetched from API (empty by default)
 const INITIAL_ACTIVE_SESSIONS = [];
@@ -419,7 +420,7 @@ export const PlatformSettingsPage = () => {
       await fetchSettings();
     } catch (error) {
       console.error('Error saving general settings:', error);
-      nassaqError(error.response?.data?.detail || (t('saveFailed2')));
+      nassaqError(getApiErrorMessage(error) || (t('saveFailed2')));
     } finally {
       setLoading(false);
     }
@@ -454,7 +455,7 @@ export const PlatformSettingsPage = () => {
       await fetchSettings();
     } catch (error) {
       console.error('Error saving contact settings:', error);
-      nassaqError(error.response?.data?.detail || (t('saveFailed2')));
+      nassaqError(getApiErrorMessage(error) || (t('saveFailed2')));
     } finally {
       setLoading(false);
     }
@@ -477,7 +478,7 @@ export const PlatformSettingsPage = () => {
       await fetchSettings();
     } catch (error) {
       console.error('Error saving security settings:', error);
-      nassaqError(error.response?.data?.detail || (t('saveFailed2')));
+      nassaqError(getApiErrorMessage(error) || (t('saveFailed2')));
     } finally {
       setLoading(false);
     }

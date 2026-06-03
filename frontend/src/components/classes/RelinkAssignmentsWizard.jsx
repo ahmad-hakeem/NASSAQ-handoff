@@ -20,6 +20,7 @@ import {
 } from '../ui/accordion';
 import { useTranslation } from '../../contexts/ThemeContext';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const GROUP_ORDER = [
   'teacher_assignments',
@@ -97,7 +98,7 @@ export const RelinkAssignmentsWizard = ({ open, onOpenChange, classId, api, onDo
       })
       .catch((err) => {
         if (cancelled) return;
-        nassaqError(err.response?.data?.detail || t('relinkFailedToLoad'));
+        nassaqError(getApiErrorMessage(err) || t('relinkFailedToLoad'));
         onOpenChange(false);
       })
       .finally(() => {
@@ -160,7 +161,7 @@ export const RelinkAssignmentsWizard = ({ open, onOpenChange, classId, api, onDo
           );
           totalReactivated += res.data?.reactivated || 0;
         } catch (err) {
-          failures.push({ table, detail: err.response?.data?.detail });
+          failures.push({ table, detail: getApiErrorMessage(err) });
         }
       }
       if (failures.length === 0) {

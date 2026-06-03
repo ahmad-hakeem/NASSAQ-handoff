@@ -26,6 +26,7 @@ import { Loader2, Save, Trash2, AlertTriangle, Plus, Pencil } from 'lucide-react
 import { toast } from 'sonner';
 import { useTranslation, useTheme } from '../../contexts/ThemeContext';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'];
 
@@ -201,7 +202,7 @@ export default function SessionEditDrawer({
           onSaved?.('deleted');
           onClose?.();
         } catch (e) {
-          const detail = e?.response?.data?.detail;
+          const detail = getApiErrorMessage(e);
           const msg = (typeof detail === 'string' && detail) || detail?.message_ar
             || e?.response?.data?.message_ar || t('sessionDeleteFailed');
           nassaqError(msg, { title: t('sessionDeleteFailedTitle') });

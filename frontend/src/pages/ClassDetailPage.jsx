@@ -21,6 +21,7 @@ import {
 } from '../components/ui/dropdown-menu';
 import { NotificationBell } from '../components/notifications/NotificationBell';
 import AddStudentWizard from '../components/wizards/AddStudentWizard';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const CartoonMaleAvatar = ({ name, size = 'md' }) => {
   const { t } = useTranslation();
@@ -346,7 +347,7 @@ export default function ClassDetailPage() {
       toast.success(t('studentDeleted'));
       fetchData();
     } catch (error) {
-      const msg = error.response?.data?.detail;
+      const msg = getApiErrorMessage(error);
       nassaqError(typeof msg === 'string' ? msg : (t('deleteFailed2')));
     }
   };
@@ -374,7 +375,7 @@ export default function ClassDetailPage() {
         default: break;
       }
     } catch (error) {
-      const msg = error.response?.data?.detail;
+      const msg = getApiErrorMessage(error);
       nassaqError(typeof msg === 'string' ? msg : (t('operationFailed')));
     }
   };

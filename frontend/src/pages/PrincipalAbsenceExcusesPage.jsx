@@ -8,6 +8,7 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '../utils/apiError';
 import {
   FileText,
   Calendar,
@@ -54,7 +55,7 @@ export const AbsenceExcusesPanel = ({ embedded = false } = {}) => {
       setExcuses(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       setExcuses([]);
-      const msg = err.response?.data?.detail || (isRTL ? 'تعذّر تحميل الأعذار' : 'Failed to load excuses');
+      const msg = getApiErrorMessage(err) || (isRTL ? 'تعذّر تحميل الأعذار' : 'Failed to load excuses');
       nassaqError(msg);
     } finally {
       setLoading(false);
@@ -105,7 +106,7 @@ export const AbsenceExcusesPanel = ({ embedded = false } = {}) => {
             window.dispatchEvent(new CustomEvent('excuses:refresh'));
             fetchExcuses(filter);
           } catch (err) {
-            const msg = err.response?.data?.detail || (isRTL ? 'تعذّر إكمال العملية' : 'Action failed');
+            const msg = getApiErrorMessage(err) || (isRTL ? 'تعذّر إكمال العملية' : 'Action failed');
             nassaqError(msg);
           } finally {
             setActionId(null);
@@ -127,7 +128,7 @@ export const AbsenceExcusesPanel = ({ embedded = false } = {}) => {
       window.dispatchEvent(new CustomEvent('excuses:refresh'));
       fetchExcuses(filter);
     } catch (err) {
-      const msg = err.response?.data?.detail || (isRTL ? 'تعذّر إكمال العملية' : 'Action failed');
+      const msg = getApiErrorMessage(err) || (isRTL ? 'تعذّر إكمال العملية' : 'Action failed');
       nassaqError(msg);
     } finally {
       setActionId(null);

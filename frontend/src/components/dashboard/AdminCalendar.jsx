@@ -33,6 +33,7 @@ import {
   Download,
 } from 'lucide-react';
 import { formatFullDate } from '../../utils/hijriDate';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const EVENT_TYPES = {
   trip:        { label_ar: 'رحلة',           label_en: 'Trip',         dot: 'bg-violet-500',  ring: 'ring-violet-500/20'  },
@@ -213,7 +214,7 @@ export const AdminCalendar = ({
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[AdminCalendar] save error:', err);
-      const detail = err?.response?.data?.error?.message || err?.response?.data?.detail;
+      const detail = err?.response?.data?.error?.message || getApiErrorMessage(err);
       toast.error(detail || (isRTL ? 'تعذر حفظ الحدث' : 'Failed to save event'));
     } finally {
       setBusy(false);
@@ -283,7 +284,7 @@ export const AdminCalendar = ({
       // eslint-disable-next-line no-console
       console.error('[AdminCalendar] delete error:', err);
       setEvents(snapshot);
-      const detail = err?.response?.data?.error?.message || err?.response?.data?.detail;
+      const detail = err?.response?.data?.error?.message || getApiErrorMessage(err);
       nassaqError(detail || (isRTL ? 'تعذر حذف الحدث' : 'Failed to delete event'));
     }
   };

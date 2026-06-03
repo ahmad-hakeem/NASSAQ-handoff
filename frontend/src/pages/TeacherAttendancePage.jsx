@@ -40,6 +40,7 @@ import {
 } from '../components/ui/popover';
 import { Textarea } from '../components/ui/textarea';
 import { History, UserCircle2, Undo2 } from 'lucide-react';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const statusConfig = {
   present: {
@@ -274,7 +275,7 @@ export const TeacherAttendancePage = () => {
       await refreshRecordsForIds(savedIds);
     } catch (error) {
       console.error('Failed to save attendance:', error);
-      const detail = error.response?.data?.detail;
+      const detail = getApiErrorMessage(error);
       nassaqError(detail || (t('failedToSaveAttendance')));
     } finally {
       setSaving(false);

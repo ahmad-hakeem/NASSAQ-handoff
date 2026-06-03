@@ -24,6 +24,7 @@ import {
 import { toast } from 'sonner';
 import { useBulkStandbyCandidates } from '../../hooks/useScheduleCandidates';
 import { useTranslation, useTheme } from '../../contexts/ThemeContext';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const RESULT_ERROR_KEY = {
   teacher_busy: 'subErrorTeacherBusy',
@@ -170,7 +171,7 @@ export default function BulkSubstitutionPanel({
         toast.error(t('batchAllFailedDesc'));
       }
     } catch (err) {
-      const detail = err.response?.data?.detail;
+      const detail = err.response?.data?.detail ?? getApiErrorMessage(err);
       if (detail && typeof detail === 'object' && Array.isArray(detail.results)) {
         const rowMap = {};
         detail.results.forEach((r) => {

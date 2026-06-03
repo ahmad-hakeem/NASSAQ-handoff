@@ -10,6 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../../components/ui/dialog';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   BookOpen, Plus, Pencil, Trash2, Loader2, RefreshCw,
 } from 'lucide-react';
@@ -35,7 +36,7 @@ export default function SubjectsPage() {
       const list = Array.isArray(res.data) ? res.data : (res.data?.subjects || []);
       setSubjects(list);
     } catch (err) {
-      const detail = err?.response?.data?.detail;
+      const detail = getApiErrorMessage(err);
       nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر جلب المواد' : 'Could not load subjects'));
     } finally {
       setLoading(false);
@@ -76,7 +77,7 @@ export default function SubjectsPage() {
       setEditing(null);
       await fetchSubjects();
     } catch (err) {
-      const detail = err?.response?.data?.detail;
+      const detail = getApiErrorMessage(err);
       nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر حفظ المادة' : 'Could not save subject'));
     } finally {
       setSaving(false);
@@ -92,7 +93,7 @@ export default function SubjectsPage() {
           nassaqInfo(isRTL ? 'تم حذف المادة' : 'Subject deleted');
           await fetchSubjects();
         } catch (err) {
-          const detail = err?.response?.data?.detail;
+          const detail = getApiErrorMessage(err);
           nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر حذف المادة' : 'Could not delete subject'));
         }
       }

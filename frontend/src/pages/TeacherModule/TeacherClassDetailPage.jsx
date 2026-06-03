@@ -36,6 +36,7 @@ import InlineAttendanceTable from '../../components/teacher/InlineAttendanceTabl
 import CollaboratorsTab from '../../components/teacher/CollaboratorsTab';
 
 import { useTranslation } from '../../contexts/ThemeContext';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const GRADE_COLORS = {
   '1': 'bg-sky-500 dark:bg-sky-600',
@@ -302,7 +303,7 @@ export default function TeacherClassDetailPage() {
       setShowAddLesson(false);
       fetchCurriculum();
     } catch (err) {
-      const detail = err?.response?.data?.detail;
+      const detail = getApiErrorMessage(err);
       nassaqError(typeof detail === 'string' ? detail : t('errorAddingLesson'));
     }
   };
@@ -340,7 +341,7 @@ export default function TeacherClassDetailPage() {
       fetchGradeColumns();
     } catch (err) {
       console.error(err);
-      const detail = err?.response?.data?.detail || err?.message || t('saveFailed');
+      const detail = getApiErrorMessage(err) || err?.message || t('saveFailed');
       toast.error(detail);
     }
   };

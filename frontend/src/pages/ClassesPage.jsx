@@ -62,6 +62,7 @@ import {
 } from '../components/ui/table';
 import { Link } from 'react-router-dom';
 import { RelinkAssignmentsWizard } from '../components/classes/RelinkAssignmentsWizard';
+import { getApiErrorMessage } from '../utils/apiError';
 
 export const ClassesPage = () => {
   const { t } = useTranslation();
@@ -191,7 +192,7 @@ export const ClassesPage = () => {
       });
       await fetchData({ includeInactive: showInactive });
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (t('failedToAddClass')));
+      nassaqError(getApiErrorMessage(error) || (t('failedToAddClass')));
     } finally {
       setSubmitting(false);
     }
@@ -226,7 +227,7 @@ export const ClassesPage = () => {
         setRelinkOpen(true);
       }
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (t('operationFailed')));
+      nassaqError(getApiErrorMessage(error) || (t('operationFailed')));
     }
   };
 
@@ -267,7 +268,7 @@ export const ClassesPage = () => {
       await fetchData({ includeInactive: showInactive });
     } catch (error) {
       const status = error?.response?.status;
-      const detail = error?.response?.data?.detail;
+      const detail = getApiErrorMessage(error);
       if (status === 409) {
         nassaqError(
           typeof detail === 'string'
@@ -344,7 +345,7 @@ export const ClassesPage = () => {
           await fetchData({ includeInactive: showInactive });
         } catch (error) {
           nassaqError(
-            error.response?.data?.detail
+            getApiErrorMessage(error)
               || (isRTL ? 'فشل استعادة الفصل' : 'Failed to restore class')
           );
         } finally {
@@ -398,7 +399,7 @@ export const ClassesPage = () => {
       await fetchData({ includeInactive: showInactive });
     } catch (error) {
       nassaqError(
-        error.response?.data?.detail
+        getApiErrorMessage(error)
           || (isRTL ? 'فشل إعادة تفعيل العناصر المرتبطة' : 'Failed to reactivate linked items')
       );
     } finally {

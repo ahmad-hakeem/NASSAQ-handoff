@@ -14,6 +14,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'];
 
@@ -103,7 +104,7 @@ export const TeacherSchedulePrefsDialog = ({
       onSaved?.({ ...teacher, ...payload });
       onClose?.();
     } catch (err) {
-      toast.error(err.response?.data?.detail || (isRTL ? 'تعذر حفظ التفضيلات' : 'Failed to save preferences'));
+      toast.error(getApiErrorMessage(err) || (isRTL ? 'تعذر حفظ التفضيلات' : 'Failed to save preferences'));
     } finally {
       setSaving(false);
     }

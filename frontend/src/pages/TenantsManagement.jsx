@@ -29,6 +29,7 @@ import {
 import { Textarea } from '../components/ui/textarea';
 import CreateSchoolWizard from '../components/wizards/CreateSchoolWizard';
 import { Sidebar } from '../components/layout/Sidebar';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const SCHOOL_STATUS = {
   active: { label: 'نشطة', label_en: 'Active', color: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
@@ -191,7 +192,7 @@ export default function TenantsManagement() {
       setShowSuspendDialog(null);
       setActionReason('');
     } catch (err) {
-      nassaqError(err.response?.data?.detail || (isRTL ? 'فشل تعليق المدرسة' : 'Failed to suspend school'));
+      nassaqError(getApiErrorMessage(err) || (isRTL ? 'فشل تعليق المدرسة' : 'Failed to suspend school'));
     } finally {
       setActionLoading(false);
     }
@@ -212,7 +213,7 @@ export default function TenantsManagement() {
       setShowActivateDialog(null);
       setActionReason('');
     } catch (err) {
-      nassaqError(err.response?.data?.detail || (isRTL ? 'فشل تفعيل المدرسة' : 'Failed to activate school'));
+      nassaqError(getApiErrorMessage(err) || (isRTL ? 'فشل تفعيل المدرسة' : 'Failed to activate school'));
     } finally {
       setActionLoading(false);
     }
@@ -232,7 +233,7 @@ export default function TenantsManagement() {
       setSchools(prev => prev.filter(s => s.id !== draft.id));
       toast.success(isRTL ? `تم حذف مسودة "${draft.name}"` : `Draft "${draft.name}" deleted`);
     } catch (err) {
-      nassaqError(err.response?.data?.detail || (t('failedToDeleteDraft')));
+      nassaqError(getApiErrorMessage(err) || (t('failedToDeleteDraft')));
     } finally {
       setDeletingDraftId(null);
     }

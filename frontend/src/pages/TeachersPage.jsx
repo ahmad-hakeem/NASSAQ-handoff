@@ -67,6 +67,7 @@ import { AddTeacherWizard } from '../components/wizards/AddTeacherWizard';
 import { BulkTeacherImport } from '../components/wizards/BulkTeacherImport';
 import AddStudentWizard from '../components/wizards/AddStudentWizard';
 import { TeacherSchedulePrefsDialog } from '../components/teacher/TeacherSchedulePrefsDialog';
+import { getApiErrorMessage } from '../utils/apiError';
 
 export const TeachersPage = () => {
   const { t } = useTranslation();
@@ -193,7 +194,7 @@ export const TeachersPage = () => {
       });
       setTeachers(prev => [...prev, response.data]);
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (t('failedToAddTeacher')));
+      nassaqError(getApiErrorMessage(error) || (t('failedToAddTeacher')));
     } finally {
       setSubmitting(false);
     }
@@ -214,7 +215,7 @@ export const TeachersPage = () => {
           toast.success(msg);
           await fetchData();
         } catch (error) {
-          nassaqError(error.response?.data?.detail || (t('failedToDeleteTeacher')));
+          nassaqError(getApiErrorMessage(error) || (t('failedToDeleteTeacher')));
         }
       },
       { title: t('confirmDelete'), confirmText: t('yesDelete') || (isRTL ? 'نعم، حذف' : 'Yes, delete'), cancelText: t('cancel') }
@@ -266,7 +267,7 @@ export const TeachersPage = () => {
           await fetchData();
         } catch (error) {
           nassaqError(
-            error.response?.data?.detail
+            getApiErrorMessage(error)
               || (isRTL ? 'فشل استعادة المعلم' : 'Failed to restore teacher')
           );
         } finally {

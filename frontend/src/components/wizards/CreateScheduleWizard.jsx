@@ -22,6 +22,7 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   Loader2,
   CheckCircle2,
@@ -172,7 +173,7 @@ export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
         toast.success(t('scheduleCreated'));
       }
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (t('errorCreatingSchedule')));
+      nassaqError(getApiErrorMessage(error) || (t('errorCreatingSchedule')));
     } finally {
       setSubmitting(false);
     }

@@ -4,6 +4,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { Loader2, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Database, Download, Undo2, History, RefreshCw, Trash2, RotateCcw } from 'lucide-react';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const ROLE_LABELS = {
   insert: { ar: 'إضافة', cls: 'bg-green-50 text-green-700 dark:bg-green-950/40' },
@@ -101,7 +102,7 @@ function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
       setNextCursorId(res.data.next_cursor_id || null);
       setHasMore(!!res.data.has_more);
     } catch (err) {
-      nassaqError(err?.response?.data?.detail || 'تعذّر تحميل سجل الاستيرادات');
+      nassaqError(getApiErrorMessage(err) || 'تعذّر تحميل سجل الاستيرادات');
     } finally {
       setLoading(false);
     }
@@ -119,7 +120,7 @@ function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
       setNextCursorId(res.data.next_cursor_id || null);
       setHasMore(!!res.data.has_more);
     } catch (err) {
-      nassaqError(err?.response?.data?.detail || 'تعذّر تحميل المزيد');
+      nassaqError(getApiErrorMessage(err) || 'تعذّر تحميل المزيد');
     } finally {
       setLoadingMore(false);
     }
@@ -173,7 +174,7 @@ function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
           }
           if (nassaqInfo) nassaqInfo('تم إخفاء سجل الاستيراد.');
         } catch (err) {
-          nassaqError(err?.response?.data?.detail || 'تعذّر حذف سجل الاستيراد');
+          nassaqError(getApiErrorMessage(err) || 'تعذّر حذف سجل الاستيراد');
         } finally {
           setDeletingId(null);
         }
@@ -195,7 +196,7 @@ function HistoryTab({ api, nassaqError, nassaqConfirm, nassaqInfo }) {
       }
       if (nassaqInfo) nassaqInfo('تمت استعادة سجل الاستيراد.');
     } catch (err) {
-      nassaqError(err?.response?.data?.detail || 'تعذّر استعادة سجل الاستيراد');
+      nassaqError(getApiErrorMessage(err) || 'تعذّر استعادة سجل الاستيراد');
     } finally {
       setRestoringId(null);
     }
@@ -634,7 +635,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
       setUndoableTeacherIds([]);
       setUndoToken(null);
     } catch (err) {
-      nassaqError(err?.response?.data?.detail || 'تعذّر تحليل الملف');
+      nassaqError(getApiErrorMessage(err) || 'تعذّر تحليل الملف');
     } finally {
       setParsing(false);
     }
@@ -674,7 +675,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         if (onComplete) onComplete();
         refreshHistoryCount();
       } catch (err) {
-        nassaqError(err?.response?.data?.detail || 'تعذّر إتمام عملية الاستيراد');
+        nassaqError(getApiErrorMessage(err) || 'تعذّر إتمام عملية الاستيراد');
       } finally {
         setCommitting(false);
       }
@@ -759,7 +760,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
           if (rejectedN > 0) msg += ` تعذّر إنشاء ${rejectedN} لتعذر تحديد الصف/الفصل بشكل قاطع.`;
           if (nassaqInfo) nassaqInfo(msg);
         } catch (err) {
-          nassaqError(err?.response?.data?.detail || 'تعذّر إنشاء الفصول الناقصة');
+          nassaqError(getApiErrorMessage(err) || 'تعذّر إنشاء الفصول الناقصة');
         } finally {
           setCreatingClasses(false);
         }
@@ -798,7 +799,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
           setUndoableClasses([]);
           if (nassaqInfo) nassaqInfo(msg);
         } catch (err) {
-          nassaqError(err?.response?.data?.detail || 'تعذّر التراجع عن إنشاء الفصول');
+          nassaqError(getApiErrorMessage(err) || 'تعذّر التراجع عن إنشاء الفصول');
         } finally {
           setUndoingClasses(false);
         }
@@ -838,7 +839,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
           if (refusedT.length > 0) msg += `تعذّر حذف ${refusedT.length} معلماً (لديهم بيانات مرتبطة). `;
           if (nassaqInfo) nassaqInfo(msg.trim() || 'تم التراجع عن الاستيراد.');
         } catch (err) {
-          nassaqError(err?.response?.data?.detail || 'تعذّر التراجع عن الاستيراد');
+          nassaqError(getApiErrorMessage(err) || 'تعذّر التراجع عن الاستيراد');
         } finally {
           setUndoingCommitted(false);
         }

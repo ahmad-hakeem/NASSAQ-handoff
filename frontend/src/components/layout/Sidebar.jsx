@@ -34,6 +34,7 @@ import SidebarContent from './sidebar/SidebarContent';
 import RoleSwitcherDialog from './sidebar/RoleSwitcherDialog';
 import PreviewReasonDialog from './sidebar/PreviewReasonDialog';
 import PreviewModeBanner from './PreviewModeBanner';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 export const Sidebar = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
@@ -175,7 +176,7 @@ export const Sidebar = ({ children }) => {
   }, [availableRoles, user?.role, isImpersonating]);
 
   const _detailString = (error) => {
-    const d = error?.response?.data?.detail;
+    const d = getApiErrorMessage(error);
     if (typeof d === 'string' && d.trim()) return d;
     return null;
   };

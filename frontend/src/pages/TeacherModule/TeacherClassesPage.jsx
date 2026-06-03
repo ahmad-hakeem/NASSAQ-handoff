@@ -67,6 +67,7 @@ import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialo
 import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 
 import { useTranslation } from '../../contexts/ThemeContext';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'];
 
@@ -277,7 +278,7 @@ export default function TeacherClassesPage() {
   const isPermissionError = (err) => {
     const status = err?.response?.status;
     if (status === 401 || status === 403) return true;
-    const detail = err?.response?.data?.detail;
+    const detail = err?.response?.data?.detail ?? getApiErrorMessage(err);
     if (typeof detail === 'string') {
       const d = detail.toLowerCase();
       return d.includes('insufficient permission')
@@ -881,7 +882,7 @@ export default function TeacherClassesPage() {
           toast.success(isRTL ? `تم حذف الفصل "${cls.name}"` : `Class "${cls.name}" deleted`);
           fetchWorkspaceClassCount();
         } catch (err) {
-          const detail = err?.response?.data?.detail;
+          const detail = err?.response?.data?.detail ?? getApiErrorMessage(err);
           nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر حذف الفصل' : 'Could not delete class'));
         }
       }
@@ -904,7 +905,7 @@ export default function TeacherClassesPage() {
       setEditClassDialog(null);
       await fetchClasses();
     } catch (err) {
-      const detail = err?.response?.data?.detail;
+      const detail = err?.response?.data?.detail ?? getApiErrorMessage(err);
       nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر التحديث' : 'Could not update'));
     } finally {
       setEditClassSaving(false);

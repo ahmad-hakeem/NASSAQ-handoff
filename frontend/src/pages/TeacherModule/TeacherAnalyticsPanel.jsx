@@ -37,6 +37,7 @@ import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from '../../contexts/ThemeContext';
 import { formatHijriDate, getHijriDate } from '../../utils/hijriDate';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const DEFAULT_RANGE_DAYS = 30;
 
@@ -110,7 +111,7 @@ export default function TeacherAnalyticsPanel() {
       setData(resp?.data || null);
     } catch (err) {
       const msg = err?.response?.data?.error?.message
-        || err?.response?.data?.detail
+        || getApiErrorMessage(err)
         || t('teacherAnalyticsLoadFailed');
       nassaqError(msg);
       setData(null);

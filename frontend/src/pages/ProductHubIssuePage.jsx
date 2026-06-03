@@ -14,6 +14,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/ThemeContext';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '../utils/apiError';
 import {
   StatusChip, PriorityBadge, SLAIndicator, HakimInsightCard, EmptyState,
   CommentInput, CommentBubble,
@@ -85,7 +86,7 @@ export function ProductHubIssuePage() {
       setStatusNote('');
       fetchIssue();
     } catch (err) {
-      const detail = err.response?.data?.detail;
+      const detail = err.response?.data?.detail ?? getApiErrorMessage(err);
       toast.error(typeof detail === 'object' ? detail.message : (detail || 'فشل في تحديث الحالة'));
     } finally {
       setUpdatingStatus(false);
@@ -100,7 +101,7 @@ export function ProductHubIssuePage() {
       setAssignTeam('');
       fetchIssue();
     } catch (err) {
-      const detail = err.response?.data?.detail;
+      const detail = err.response?.data?.detail ?? getApiErrorMessage(err);
       toast.error(typeof detail === 'object' ? detail.message : (detail || 'فشل في التعيين'));
     }
   };
@@ -116,7 +117,7 @@ export function ProductHubIssuePage() {
       setCommentType('general');
       fetchIssue();
     } catch (err) {
-      const detail = err.response?.data?.detail;
+      const detail = err.response?.data?.detail ?? getApiErrorMessage(err);
       const msg = typeof detail === 'object' ? detail.message : (detail || 'فشل في إضافة التعليق');
       toast.error(msg);
     } finally {
@@ -130,7 +131,7 @@ export function ProductHubIssuePage() {
       toast.success('تم تعديل التعليق');
       fetchIssue();
     } catch (err) {
-      const detail = err.response?.data?.detail;
+      const detail = err.response?.data?.detail ?? getApiErrorMessage(err);
       const msg = typeof detail === 'object' ? detail.message : (detail || 'فشل في تعديل التعليق');
       toast.error(msg);
     }
@@ -153,7 +154,7 @@ export function ProductHubIssuePage() {
       toast.success(resolved ? 'شكراً — تم تأكيد الحل' : 'تم إعادة فتح التحدي');
       fetchIssue();
     } catch (err) {
-      toast.error(err.response?.data?.detail?.message || 'فشل');
+      toast.error(getApiErrorMessage(err) || 'فشل');
     }
   };
 

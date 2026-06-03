@@ -32,6 +32,7 @@ import { Input } from '../components/ui/input';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import ScheduleTabNav from '../components/schedule/ScheduleTabNav';
 import StandbyDayCentricTable from '../components/schedule/StandbyDayCentricTable';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const DAYS = [
   { key: 'sunday',    ar: 'الأحد' },
@@ -184,7 +185,7 @@ export function StandbyRosterContent() {
       setData(response.data);
       setError('');
     } catch (e) {
-      const msg = e?.response?.data?.detail || e?.message || 'تعذّر تحميل جدول الانتظار';
+      const msg = getApiErrorMessage(e) || e?.message || 'تعذّر تحميل جدول الانتظار';
       setError(typeof msg === 'string' ? msg : 'تعذّر تحميل جدول الانتظار');
     } finally {
       setLoading(false);
@@ -211,7 +212,7 @@ export function StandbyRosterContent() {
       );
       await loadRoster();
     } catch (e) {
-      const detail = e?.response?.data?.detail;
+      const detail = getApiErrorMessage(e);
       const msg = typeof detail === 'string' ? detail : 'تعذّر حفظ التعديل';
       nassaqError(msg);
     } finally {
@@ -296,7 +297,7 @@ export function StandbyRosterContent() {
         );
       }
     } catch (e) {
-      const detail = e?.response?.data?.detail;
+      const detail = getApiErrorMessage(e);
       const msg = typeof detail === 'string' ? detail : 'تعذّر إعادة توليد جدول الانتظار';
       nassaqError(msg);
     } finally {

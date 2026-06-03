@@ -29,6 +29,7 @@ import {
 import confetti from 'canvas-confetti';
 
 import { useTranslation } from '../../contexts/ThemeContext';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 // Health condition badges (mirrors SessionStartPage)
 const HEALTH_BADGES = {
@@ -782,7 +783,7 @@ export default function SessionTeachPage() {
       return true;
     } catch (err) {
       console.error(err);
-      const detail = err?.response?.data?.detail || err?.message || (t('saveFailed') || 'فشل الحفظ');
+      const detail = getApiErrorMessage(err) || err?.message || (t('saveFailed') || 'فشل الحفظ');
       toast.error(detail);
       return false;
     }
@@ -801,7 +802,7 @@ export default function SessionTeachPage() {
       return true;
     } catch (err) {
       console.error(err);
-      const detail = err?.response?.data?.detail || err?.message || (t('saveFailed') || 'فشل الحفظ');
+      const detail = getApiErrorMessage(err) || err?.message || (t('saveFailed') || 'فشل الحفظ');
       toast.error(detail);
       return false;
     }
@@ -816,7 +817,7 @@ export default function SessionTeachPage() {
       return true;
     } catch (err) {
       console.error(err);
-      const detail = err?.response?.data?.detail || err?.message || (t('saveFailed') || 'فشل الحفظ');
+      const detail = getApiErrorMessage(err) || err?.message || (t('saveFailed') || 'فشل الحفظ');
       toast.error(detail);
       return false;
     }
@@ -990,7 +991,7 @@ export default function SessionTeachPage() {
     } catch (err) {
       clearInterval(flashRef.current);
       setFlashId(null);
-      nassaqError(err.response?.data?.detail || t('errorPickingStudent'));
+      nassaqError(getApiErrorMessage(err) || t('errorPickingStudent'));
     } finally {
       setLoading(false);
       setTimeout(() => setShowHakim(false), 1500);
@@ -1169,7 +1170,7 @@ export default function SessionTeachPage() {
       } : null);
     } catch (e) {
       console.error('Error recording skill:', e?.response?.status, e?.response?.data, e);
-      const detail = e?.response?.data?.detail || e?.response?.data?.message || e?.message;
+      const detail = getApiErrorMessage(e) || e?.response?.data?.message || e?.message;
       nassaqError(detail ? `${t('errorRecordingSkill')}: ${detail}` : t('errorRecordingSkill'));
     }
   };
@@ -1228,7 +1229,7 @@ export default function SessionTeachPage() {
       setReviewData(res.data);
       setShowEndDialog(false);
     } catch (err) {
-      nassaqError(err.response?.data?.detail || t('errorLoadingSessionSummary'));
+      nassaqError(getApiErrorMessage(err) || t('errorLoadingSessionSummary'));
     } finally {
       setReviewLoading(false);
     }
@@ -1243,7 +1244,7 @@ export default function SessionTeachPage() {
       setReviewData(null);
       toast.success(t('sessionEndedSuccessfully'));
     } catch (err) {
-      const detail = err.response?.data?.detail || '';
+      const detail = getApiErrorMessage(err) || '';
       if (detail.includes('إنهاء') && detail.includes('مسبق')) {
         toast.info(t('sessionAlreadyEnded'));
         navigate('/teacher', { replace: true });
@@ -3145,7 +3146,7 @@ export default function SessionTeachPage() {
                 }
               } catch (e) {
                 console.error('Quick note error:', e);
-                nassaqError(e.response?.data?.detail || t('errorAddingNote') || 'تعذر إرسال الملاحظة');
+                nassaqError(getApiErrorMessage(e) || t('errorAddingNote') || 'تعذر إرسال الملاحظة');
               } finally {
                 setQuickNoteSending(false);
               }
@@ -3289,7 +3290,7 @@ export default function SessionTeachPage() {
                       addLog('homework', `${studentName} — ${t('didNotSubmitHomework') || 'لم يسلم الواجب'}`, 'text-amber-600');
                     } catch (e) {
                       console.error('Homework not-submitted error:', e);
-                      nassaqError(e.response?.data?.detail || t('errorSavingHomework') || 'تعذر تسجيل الواجب');
+                      nassaqError(getApiErrorMessage(e) || t('errorSavingHomework') || 'تعذر تسجيل الواجب');
                     }
                     setShowRandomPopup(false);
                   }}

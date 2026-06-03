@@ -53,6 +53,7 @@ function getStudentParentDisplay(student) {
 
 import { useTranslation } from '../../contexts/ThemeContext';
 import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 // 2026-05-19 — Headless `TeacherStudentsPanel` wrapper. Mirrors the
 // `TeacherSubjectsPanel` / `BulkImportPanel` / `WorkspaceSchedulePanel`
@@ -337,7 +338,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
           await refreshInvitationsForStudents([student]);
         } catch (err) {
           const status = err?.response?.status;
-          const detail = err?.response?.data?.detail;
+          const detail = err?.response?.data?.detail ?? getApiErrorMessage(err);
           // §5.7 step-up envelope is replayed by the global axios
           // interceptor — only surface other errors.
           const stepUpCodes = new Set([
@@ -567,7 +568,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
           }
           nassaqInfo(isRTL ? 'تم حذف الطالب' : 'Student deleted');
         } catch (err) {
-          const detail = err?.response?.data?.detail;
+          const detail = err?.response?.data?.detail ?? getApiErrorMessage(err);
           nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر حذف الطالب' : 'Could not delete student'));
         }
       },
@@ -623,7 +624,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
       setEditStudentDialog(null);
       await fetchStudents();
     } catch (err) {
-      const detail = err?.response?.data?.detail;
+      const detail = err?.response?.data?.detail ?? getApiErrorMessage(err);
       nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر التحديث' : 'Could not update'));
     } finally {
       setEditStudentSaving(false);

@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { toast } from 'sonner';
 import { useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
+import { getApiErrorMessage } from '../utils/apiError';
 
 export function useSchoolSettings() {
   const navigate = useNavigate();
@@ -448,8 +449,8 @@ export function useSchoolSettings() {
     } catch (error) {
       setAssignments(prev => prev.filter(a => a.id !== tempId));
       let errorMessage = 'حدث خطأ في إسناد المادة';
-      if (error.response?.data?.detail && typeof error.response.data.detail === 'string') {
-        errorMessage = error.response.data.detail;
+      if (getApiErrorMessage(error) && typeof getApiErrorMessage(error) === 'string') {
+        errorMessage = getApiErrorMessage(error);
       }
       nassaqError(errorMessage);
     }
@@ -502,9 +503,9 @@ export function useSchoolSettings() {
       } catch (error) {
         console.error('Delete class error:', error);
         let errorMessage = 'حدث خطأ في حذف الفصل';
-        if (error.response?.data?.detail) {
-          if (typeof error.response.data.detail === 'string') {
-            errorMessage = error.response.data.detail;
+        if (getApiErrorMessage(error)) {
+          if (typeof getApiErrorMessage(error) === 'string') {
+            errorMessage = getApiErrorMessage(error);
           }
         }
         nassaqError(errorMessage);
@@ -744,7 +745,7 @@ export function useSchoolSettings() {
       setClassAssignments(prev => [...prev, response.data.assignment]);
       toast.success('تم إسناد الفصل للمعلم بنجاح');
     } catch (error) {
-      nassaqError(error.response?.data?.detail || 'فشل في إنشاء الإسناد');
+      nassaqError(getApiErrorMessage(error) || 'فشل في إنشاء الإسناد');
     }
   };
 
@@ -792,7 +793,7 @@ export function useSchoolSettings() {
       }
       setShowAddConstraintModal(false);
     } catch (e) {
-      nassaqError(e.response?.data?.detail || 'حدث خطأ في إضافة القيد');
+      nassaqError(getApiErrorMessage(e) || 'حدث خطأ في إضافة القيد');
     }
   };
 
@@ -807,7 +808,7 @@ export function useSchoolSettings() {
       }
       toast.success('تم تحديث القيد بنجاح');
     } catch (e) {
-      nassaqError(e.response?.data?.detail || 'حدث خطأ في تحديث القيد');
+      nassaqError(getApiErrorMessage(e) || 'حدث خطأ في تحديث القيد');
     }
   };
 
@@ -895,7 +896,7 @@ export function useSchoolSettings() {
       setShowAddDutyModal(false);
       fetchWorkloadSummary();
     } catch (e) {
-      nassaqError(e.response?.data?.detail || 'حدث خطأ في إضافة التكليف');
+      nassaqError(getApiErrorMessage(e) || 'حدث خطأ في إضافة التكليف');
     }
   };
 
@@ -911,7 +912,7 @@ export function useSchoolSettings() {
       toast.success('تم تحديث التكليف بنجاح');
       fetchWorkloadSummary();
     } catch (e) {
-      nassaqError(e.response?.data?.detail || 'حدث خطأ في تحديث التكليف');
+      nassaqError(getApiErrorMessage(e) || 'حدث خطأ في تحديث التكليف');
     }
   };
 

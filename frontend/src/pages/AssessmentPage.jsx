@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Checkbox } from '../components/ui/checkbox';
+import { getApiErrorMessage } from '../utils/apiError';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '../components/ui/dialog';
@@ -439,7 +440,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
         cancelledSeats: committee.cancelledSeats,
       });
     } catch (e) {
-      nassaqError(e.response?.data?.detail || (t('saveFailed')));
+      nassaqError(getApiErrorMessage(e) || (t('saveFailed')));
     }
   };
 
@@ -504,7 +505,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
       }
       setAddOpen(false);
     } catch (e) {
-      nassaqError(e.response?.data?.detail || (t('failedToCreateCommittee')));
+      nassaqError(getApiErrorMessage(e) || (t('failedToCreateCommittee')));
     } finally {
       setSaving(false);
     }
@@ -517,7 +518,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
       if (selectedId === cid) setSelectedId(committees.find(c => c.id !== cid)?.id || null);
       toast.success(t('committeeDeleted'));
     } catch (e) {
-      nassaqError(e.response?.data?.detail || (t('deleteFailed')));
+      nassaqError(getApiErrorMessage(e) || (t('deleteFailed')));
     }
   };
 
@@ -546,7 +547,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
       setCopyOpen(false);
       toast.success(t('committeeCopied'));
     } catch (e) {
-      nassaqError(e.response?.data?.detail || (t('copyFailed')));
+      nassaqError(getApiErrorMessage(e) || (t('copyFailed')));
     }
   };
 

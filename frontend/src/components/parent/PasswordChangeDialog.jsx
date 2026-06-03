@@ -8,6 +8,7 @@ import { Label } from '../ui/label';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { toast } from 'sonner';
 import { Loader2, Lock, Eye, EyeOff, Check, X } from 'lucide-react';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const PasswordStrength = ({ password, isRTL, t }) => {
   const checks = [
@@ -104,7 +105,7 @@ const PasswordChangeDialog = ({ open, onOpenChange }) => {
         const envMsg = (data.error && typeof data.error === 'object')
           ? (data.error.message || data.error.detail)
           : null;
-        const detail = data.detail;
+        const detail = data.detail ?? getApiErrorMessage(data);
         message = envMsg
           || (typeof detail === 'string' ? detail : detail?.message)
           || fallback;

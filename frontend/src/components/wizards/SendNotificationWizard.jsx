@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   Loader2,
   CheckCircle2,
@@ -212,7 +213,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
         nassaqError(response.data.error);
       }
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (t('errorSendingNotification')));
+      nassaqError(getApiErrorMessage(error) || (t('errorSendingNotification')));
     } finally {
       setSubmitting(false);
     }

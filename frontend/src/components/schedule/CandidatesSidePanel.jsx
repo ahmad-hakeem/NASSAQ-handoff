@@ -20,6 +20,7 @@ import {
 import { toast } from 'sonner';
 import { useStandbyCandidates } from '../../hooks/useScheduleCandidates';
 import { useTranslation, useTheme } from '../../contexts/ThemeContext';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const DAY_KEY_MAP = {
   sunday: 'sunday', monday: 'monday', tuesday: 'tuesday',
@@ -64,7 +65,7 @@ export default function CandidatesSidePanel({
       if (doc && onAssigned) onAssigned(doc, cand);
       onOpenChange(false);
     } catch (err) {
-      const msg = err.response?.data?.detail || err.message || t('subAssignFailedDefault');
+      const msg = getApiErrorMessage(err) || err.message || t('subAssignFailedDefault');
       toast.error(msg);
     } finally {
       setAssigning(null);

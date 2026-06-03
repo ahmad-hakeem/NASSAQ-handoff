@@ -8,6 +8,7 @@ import { Skeleton } from '../ui/skeleton';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { toast } from 'sonner';
 import { History, Monitor, Loader2, LogOut } from 'lucide-react';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const formatDate = (ts, isRTL) => {
   if (!ts) return '—';
@@ -62,7 +63,7 @@ const ActiveSessionsCard = () => {
           toast.success(t('sessionEnded') || (isRTL ? 'تم إنهاء الجلسة' : 'Session ended'));
         } catch (err) {
           nassaqError(
-            err?.response?.data?.detail ||
+            getApiErrorMessage(err) ||
               t('errorEndingSession') ||
               (isRTL ? 'تعذر إنهاء الجلسة' : 'Could not end session'),
           );
@@ -90,7 +91,7 @@ const ActiveSessionsCard = () => {
           await load();
           toast.success(t('otherSessionsEnded') || (isRTL ? 'تم إنهاء الجلسات الأخرى' : 'Other sessions ended'));
         } catch (err) {
-          nassaqError(err?.response?.data?.detail || (t('errorEndingSession') || 'Could not end sessions'));
+          nassaqError(getApiErrorMessage(err) || (t('errorEndingSession') || 'Could not end sessions'));
         } finally {
           setEndingAll(false);
         }

@@ -11,6 +11,7 @@ import { Separator } from '../components/ui/separator';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '../utils/apiError';
 import {
   Send, ArrowRight, Monitor, Loader2, CheckCircle2,
   User, FileText, Sparkles, Wand2, MessageCircle, Zap,
@@ -307,7 +308,7 @@ export function ProductHubSubmitPage() {
         toast.error('لم يتمكن حكيم من إنشاء الوصف — حاول مرة أخرى');
       }
     } catch (err) {
-      const detail = err.response?.data?.detail;
+      const detail = err.response?.data?.detail ?? getApiErrorMessage(err);
       if (typeof detail === 'object' && detail.message) {
         toast.error(detail.message);
       } else {
@@ -343,7 +344,7 @@ export function ProductHubSubmitPage() {
         toast.error('لم يتمكن حكيم من إنشاء عنوان — حاول مرة أخرى');
       }
     } catch (err) {
-      const detail = err.response?.data?.detail;
+      const detail = err.response?.data?.detail ?? getApiErrorMessage(err);
       if (typeof detail === 'object' && detail.message) {
         toast.error(detail.message);
       } else {
@@ -387,7 +388,7 @@ export function ProductHubSubmitPage() {
           });
           if (res.data?.file_url) uploaded.push(res.data.file_url);
         } catch (err) {
-          const detail = err.response?.data?.detail;
+          const detail = err.response?.data?.detail ?? getApiErrorMessage(err);
           const msg = (typeof detail === 'object' && detail?.message)
             ? detail.message
             : (typeof detail === 'string' ? detail : `فشل رفع ${file.name}`);
@@ -456,7 +457,7 @@ export function ProductHubSubmitPage() {
       navigate(`/admin/product-hub?tab=issues${newId ? `&highlight=${newId}` : ''}`);
     } catch (err) {
       console.error('[ProductHub] Submit failed:', err?.response?.status, err?.response?.data || err.message);
-      const detail = err.response?.data?.detail;
+      const detail = err.response?.data?.detail ?? getApiErrorMessage(err);
       if (err?.response?.status === 401) {
         toast.error('انتهت صلاحية الجلسة — يرجى تسجيل الدخول مرة أخرى');
       } else if (typeof detail === 'object' && detail.message) {

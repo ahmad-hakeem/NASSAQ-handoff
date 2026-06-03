@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '../utils/apiError';
 
 export function useStudentProfile() {
   const { studentId } = useParams();
@@ -294,7 +295,7 @@ export function useStudentProfile() {
     } catch (err) {
       let detail = err?.message || '';
       if (err?.response?.data instanceof Blob) { try { const text = await err.response.data.text(); const parsed = JSON.parse(text); detail = parsed.detail || detail; } catch (_) {} }
-      else if (err?.response?.data?.detail) { detail = err.response.data.detail; }
+      else if (getApiErrorMessage(err)) { detail = getApiErrorMessage(err); }
       nassaqError(isRTL ? `فشل تصدير الخطة: ${detail || 'خطأ غير معروف'}` : `Failed to export plan: ${detail || 'Unknown error'}`);
     } finally { setExportingPlan(false); }
   };
@@ -416,7 +417,7 @@ export function useStudentProfile() {
       toast.success(t('studentDataSavedSuccessfully'));
       setEditProfileOpen(false); fetchStudent();
     } catch (error) {
-      const msg = error.response?.data?.detail;
+      const msg = getApiErrorMessage(error);
       nassaqError(typeof msg === 'string' ? msg : (t('saveFailed')));
     } finally { setSaving(false); }
   };
@@ -445,7 +446,7 @@ export function useStudentProfile() {
       }
       fetchStudent();
     } catch (error) {
-      const msg = error.response?.data?.detail;
+      const msg = getApiErrorMessage(error);
       nassaqError(typeof msg === 'string' ? msg : (isRTL ? 'فشلت العملية' : 'Operation failed'));
     } finally { setActionLoading(''); }
   };
@@ -475,7 +476,7 @@ export function useStudentProfile() {
       }
       setBehaviourModalOpen(false); fetchBehaviourRecords();
     } catch (err) {
-      const msg = err.response?.data?.detail;
+      const msg = getApiErrorMessage(err);
       nassaqError(typeof msg === 'string' ? msg : (isRTL ? 'فشلت العملية' : 'Operation failed'));
     } finally { setSavingBehaviour(false); }
   };
@@ -495,7 +496,7 @@ export function useStudentProfile() {
     if (currentTalents.includes(talentValue)) return;
     setSavingTalent(true);
     try { const newTalents = [...currentTalents, talentValue]; await api.put(`/students/${student.id}`, { talents: newTalents }, { headers }); toast.success(t('talentAdded')); fetchStudent(); }
-    catch (err) { const msg = err.response?.data?.detail; nassaqError(typeof msg === 'string' ? msg : (t('failedToAddTalent'))); }
+    catch (err) { const msg = getApiErrorMessage(err); nassaqError(typeof msg === 'string' ? msg : (t('failedToAddTalent'))); }
     finally { setSavingTalent(false); }
   };
 
@@ -516,7 +517,7 @@ export function useStudentProfile() {
       const newTalent = res.data;
       setCustomTalentName(''); fetchGlobalTalents();
       await handleAddTalent(newTalent.value || newTalent.name_ar);
-    } catch (err) { const msg = err.response?.data?.detail; nassaqError(typeof msg === 'string' ? msg : (t('failedToAddCustomTalent'))); }
+    } catch (err) { const msg = getApiErrorMessage(err); nassaqError(typeof msg === 'string' ? msg : (t('failedToAddCustomTalent'))); }
     finally { setAddingCustomTalent(false); }
   };
 

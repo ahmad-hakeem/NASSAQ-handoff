@@ -30,6 +30,7 @@ import IndependentTeacherCommunicationPage from './IndependentTeacherCommunicati
 // (IndependentTeacherCommunicationPanel) inside its "إرسال رسالة"
 // tab so the IT composer code path is unchanged.
 import UnifiedCommunicationsHub from './UnifiedCommunicationsHub';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 // Each template explicitly declares which recipient cohorts it can
 // target. The "Choose Recipients" step (Step 2) renders only these
@@ -255,7 +256,7 @@ function TeacherCommunicationPageInner() {
       // Surface the backend's safe Arabic detail when present (e.g.
       // "لا يوجد ولي أمر مرتبط بهذا الطالب" or the cohort-mismatch
       // message). Falls back to the generic toast otherwise.
-      const detail = error?.response?.data?.detail;
+      const detail = getApiErrorMessage(error);
       if (typeof detail === 'string' && detail.trim()) {
         nassaqError(detail);
       } else {

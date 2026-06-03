@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
+import { getApiErrorMessage } from '../utils/apiError';
 import {
   Table,
   TableBody,
@@ -172,7 +173,7 @@ export const TeacherRequestsPage = () => {
       fetchRequests();
     } catch (error) {
       console.error('Failed to approve request:', error);
-      const detail = error.response?.data?.detail;
+      const detail = getApiErrorMessage(error);
       nassaqError(detail || (t('failedToApproveRequest')));
     } finally {
       setApproving(false);

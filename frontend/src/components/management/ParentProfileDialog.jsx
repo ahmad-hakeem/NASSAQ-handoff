@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   User, Edit, Save, X, Phone, Mail, Hash, Calendar, MapPin,
   Key, UserX, UserCheck, Loader2, Copy, Eye, EyeOff, History,
@@ -42,7 +43,7 @@ export default function ParentProfileDialog({ open, onClose, parent, onRefresh }
       setProfile(res.data?.profile);
     } catch (e) {
       setProfile(null);
-      nassaqError(e.response?.data?.detail || (t('failedToLoadProfile')));
+      nassaqError(getApiErrorMessage(e) || (t('failedToLoadProfile')));
     } finally {
       setLoading(false);
     }
@@ -65,7 +66,7 @@ export default function ParentProfileDialog({ open, onClose, parent, onRefresh }
       fetchProfile();
       onRefresh?.();
     } catch (e) {
-      nassaqError(e.response?.data?.detail || (t('updateFailed')));
+      nassaqError(getApiErrorMessage(e) || (t('updateFailed')));
     } finally {
       setSaving(false);
     }
@@ -83,7 +84,7 @@ export default function ParentProfileDialog({ open, onClose, parent, onRefresh }
       setCredForm({ new_email: '', new_password: '' });
       fetchProfile();
     } catch (e) {
-      nassaqError(e.response?.data?.detail || (t('updateFailed')));
+      nassaqError(getApiErrorMessage(e) || (t('updateFailed')));
     } finally {
       setSaving(false);
     }
@@ -113,7 +114,7 @@ export default function ParentProfileDialog({ open, onClose, parent, onRefresh }
         onRefresh?.();
       }
     } catch (e) {
-      nassaqError(e.response?.data?.detail || (t('actionFailed')));
+      nassaqError(getApiErrorMessage(e) || (t('actionFailed')));
     } finally {
       setActionLoading('');
     }
@@ -130,7 +131,7 @@ export default function ParentProfileDialog({ open, onClose, parent, onRefresh }
           onClose?.();
           onRefresh?.();
         } catch (e) {
-          nassaqError(e.response?.data?.detail || (t('failedToDeleteParent')));
+          nassaqError(getApiErrorMessage(e) || (t('failedToDeleteParent')));
         } finally {
           setActionLoading('');
         }
@@ -147,7 +148,7 @@ export default function ParentProfileDialog({ open, onClose, parent, onRefresh }
       toast.success(t('messageSent'));
       setMessageForm({ subject: '', body: '', message_type: 'general' });
     } catch (e) {
-      nassaqError(e.response?.data?.detail || (t('sendFailed')));
+      nassaqError(getApiErrorMessage(e) || (t('sendFailed')));
     } finally {
       setSendingMessage(false);
     }

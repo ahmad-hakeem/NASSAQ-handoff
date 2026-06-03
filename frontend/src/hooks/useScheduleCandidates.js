@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
 
 /**
  * بناء معرف خانة مركّب يطابق عقد الـ API:
@@ -41,7 +42,7 @@ export function useScheduleCandidates(api, slot, filters) {
       setCandidates(res.data?.candidates || []);
     } catch (err) {
       if (reqIdRef.current !== reqId) return;
-      const msg = err.response?.data?.detail || err.message || 'فشل جلب المرشحين';
+      const msg = getApiErrorMessage(err) || err.message || 'فشل جلب المرشحين';
       setError(msg);
       setCandidates([]);
     } finally {
@@ -104,7 +105,7 @@ export function useStandbyCandidates(api, slot, opts = {}) {
       });
     } catch (err) {
       if (reqIdRef.current !== reqId) return;
-      const msg = err.response?.data?.detail || err.message || 'فشل جلب مرشحي الانتظار';
+      const msg = getApiErrorMessage(err) || err.message || 'فشل جلب مرشحي الانتظار';
       setError(msg);
       setData({ candidates: [], formula: '', formula_legend_ar: '' });
     } finally {
@@ -180,7 +181,7 @@ export function useBulkStandbyCandidates(api, target, opts = {}) {
       });
     } catch (err) {
       if (reqIdRef.current !== reqId) return;
-      const msg = err.response?.data?.detail || err.message || 'فشل جلب الحصص الشاغرة';
+      const msg = getApiErrorMessage(err) || err.message || 'فشل جلب الحصص الشاغرة';
       setError(msg);
       setData({
         slots: [],

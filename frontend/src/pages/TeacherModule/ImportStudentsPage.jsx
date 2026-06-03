@@ -6,6 +6,7 @@ import { Badge } from '../../components/ui/badge';
 import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { Loader2, Upload, FileSpreadsheet, CheckCircle, AlertTriangle } from 'lucide-react';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 // Phase 2 §6.1 (#207) — workspace-aware bulk student import for IT.
 // CSV headers (Arabic-only per spec): الاسم الكامل, رقم الهوية, الجنس, تاريخ الميلاد, الصف.
@@ -64,7 +65,7 @@ export function ImportStudentsPanel() {
       );
       setParseResult(res.data);
     } catch (err) {
-      const msg = err?.response?.data?.detail || err?.response?.data?.error?.message ||
+      const msg = getApiErrorMessage(err) || err?.response?.data?.error?.message ||
         'تعذّر قراءة الملف. تحقّق من الصيغة والأعمدة المطلوبة (CSV أو ملف نور .xls/.xlsx).';
       nassaqError(String(msg), { title: 'فشل التحقق من الملف' });
     } finally {
@@ -93,7 +94,7 @@ export function ImportStudentsPanel() {
       setParseResult(null);
       setFileName('');
     } catch (err) {
-      const msg = err?.response?.data?.detail || err?.response?.data?.error?.message ||
+      const msg = getApiErrorMessage(err) || err?.response?.data?.error?.message ||
         'تعذّر إكمال الاستيراد. حاول مرة أخرى لاحقًا.';
       nassaqError(String(msg), { title: 'فشل الاستيراد' });
     } finally {

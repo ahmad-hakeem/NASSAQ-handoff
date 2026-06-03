@@ -57,6 +57,7 @@ import {
 } from '../components/ui/table';
 import { Link } from 'react-router-dom';
 import AddStudentWizard from '../components/wizards/AddStudentWizard';
+import { getApiErrorMessage } from '../utils/apiError';
 
 export const StudentsPage = () => {
   const { t } = useTranslation();
@@ -175,7 +176,7 @@ export const StudentsPage = () => {
       });
       setStudents(prev => [...prev, response.data]);
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (t('failedToAddStudent')));
+      nassaqError(getApiErrorMessage(error) || (t('failedToAddStudent')));
     } finally {
       setSubmitting(false);
     }
@@ -265,7 +266,7 @@ export const StudentsPage = () => {
             return safePrev.filter(s => String(s.id ?? s._id) !== String(studentId));
           });
         } catch (error) {
-          nassaqError(error.response?.data?.detail || t('failedToDeleteStudent'));
+          nassaqError(getApiErrorMessage(error) || t('failedToDeleteStudent'));
         }
       },
       { title: t('confirmPermanentDelete'), confirmText: t('yesDeletePermanently'), cancelText: t('cancel') }

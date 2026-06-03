@@ -16,6 +16,7 @@ import {
   ListChecks,
 } from 'lucide-react';
 import { formatFullDate } from '../../utils/hijriDate';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const PRIORITY_META = {
   urgent: { label_ar: 'عاجل',   label_en: 'Urgent', badge: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300', dot: 'bg-rose-500',  weight: 0 },
@@ -81,7 +82,7 @@ export const HakeemPlan = () => {
   const completedTasks = useMemo(() => tasks.filter((tk) => tk.status === 'completed'), [tasks]);
 
   const extractError = (err, fallback) => {
-    const detail = err?.response?.data?.error?.message || err?.response?.data?.detail;
+    const detail = err?.response?.data?.error?.message || getApiErrorMessage(err);
     return detail || fallback;
   };
 

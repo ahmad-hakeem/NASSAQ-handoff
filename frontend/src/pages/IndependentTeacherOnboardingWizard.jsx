@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader } from '../components/ui/card';
 import { Checkbox } from '../components/ui/checkbox';
 import { ImageCropModal } from '../components/ui/ImageCropModal';
 import { formatHijriDate, getHijriDate } from '../utils/hijriDate';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const WEEKDAYS = [
   { key: 'sun', ar: 'الأحد', en: 'Sun' },
@@ -209,7 +210,7 @@ export default function IndependentTeacherOnboardingWizard() {
       // (AuthContext.js): it pops the step-up dialog and replays this
       // very POST with a freshly-stamped token. We deliberately do NOT
       // route the user away here.
-      const errBody = err?.response?.data?.error || err?.response?.data?.detail;
+      const errBody = err?.response?.data?.error || getApiErrorMessage(err);
       const code = typeof errBody === 'object' ? errBody?.code : null;
       const message =
         (typeof errBody === 'object' ? errBody?.message : errBody) ||

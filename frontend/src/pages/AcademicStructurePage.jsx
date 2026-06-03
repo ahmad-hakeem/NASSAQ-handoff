@@ -20,6 +20,7 @@ import {
   Clock, School, FileText, Settings2, TrendingUp, Users, Upload
 } from 'lucide-react';
 import { useTheme, useTranslation } from '../contexts/ThemeContext';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const STATUS_CONFIG = {
   upcoming: { tKey: 'statusUpcoming', color: 'bg-blue-100 text-blue-800', dot: 'bg-blue-500' },
@@ -169,7 +170,7 @@ export function AcademicStructureContent() {
         await fetchYears();
         await fetchOverview();
       } else {
-        nassaqError(e.response?.data?.detail || t('errSavingYear'));
+        nassaqError(getApiErrorMessage(e) || t('errSavingYear'));
       }
     }
     setSaving(false);
@@ -189,7 +190,7 @@ export function AcademicStructureContent() {
       setTermForm({ name: '', name_en: '', start_date: '', end_date: '', is_current: false });
       await fetchYearData(selectedYear.id);
     } catch (e) {
-      nassaqError(e.response?.data?.detail || t('errSavingTerm'));
+      nassaqError(getApiErrorMessage(e) || t('errSavingTerm'));
     }
     setSaving(false);
   };
@@ -208,7 +209,7 @@ export function AcademicStructureContent() {
       setHolidayForm({ name: '', name_en: '', start_date: '', end_date: '', type: 'public', custom_type: '', term_id: '' });
       await fetchYearData(selectedYear.id);
     } catch (e) {
-      nassaqError(e.response?.data?.detail || t('errSavingHoliday'));
+      nassaqError(getApiErrorMessage(e) || t('errSavingHoliday'));
     }
     setSaving(false);
   };
@@ -241,7 +242,7 @@ export function AcademicStructureContent() {
       setExamForm({ name: '', name_en: '', start_date: '', end_date: '', exam_type: 'final', term_id: '', start_time: '', end_time: '', period_number: '' });
       await fetchYearData(selectedYear.id);
     } catch (e) {
-      nassaqError(e.response?.data?.detail || t('errSavingExam'));
+      nassaqError(getApiErrorMessage(e) || t('errSavingExam'));
     }
     setSaving(false);
   };
@@ -252,7 +253,7 @@ export function AcademicStructureContent() {
       await api.post(`/academic-years/${selectedYear.id}/auto-terms?num_terms=${numTerms}`);
       await fetchYearData(selectedYear.id);
     } catch (e) {
-      nassaqError(e.response?.data?.detail || t('errAutoTerms'));
+      nassaqError(getApiErrorMessage(e) || t('errAutoTerms'));
     }
     setSaving(false);
   };
@@ -266,7 +267,7 @@ export function AcademicStructureContent() {
         const updated = await api.get(`/academic-years/${selectedYear.id}`);
         setSelectedYear(updated.data);
       } catch (e) {
-        nassaqError(e.response?.data?.detail || t('errPublishYear'));
+        nassaqError(getApiErrorMessage(e) || t('errPublishYear'));
       }
       setSaving(false);
     }, { title: t('confirmPublishTitle'), confirmText: t('yesPublish'), cancelText: t('cancel') });
@@ -281,7 +282,7 @@ export function AcademicStructureContent() {
         const updated = await api.get(`/academic-years/${selectedYear.id}`);
         setSelectedYear(updated.data);
       } catch (e) {
-        nassaqError(e.response?.data?.detail || t('errCloseYear'));
+        nassaqError(getApiErrorMessage(e) || t('errCloseYear'));
       }
       setSaving(false);
     }, { title: t('confirmCloseTitle'), confirmText: t('yesClose'), cancelText: t('cancel') });
@@ -294,7 +295,7 @@ export function AcademicStructureContent() {
         await api.post(`/academic-years/${selectedYear.id}/archive`);
         await Promise.all([fetchYears(), fetchOverview()]);
       } catch (e) {
-        nassaqError(e.response?.data?.detail || t('errArchive'));
+        nassaqError(getApiErrorMessage(e) || t('errArchive'));
       }
       setSaving(false);
     }, { title: t('confirmArchiveTitle'), confirmText: t('yesArchive'), cancelText: t('cancel') });
@@ -313,7 +314,7 @@ export function AcademicStructureContent() {
           setYearForm({ name: '', name_en: '', start_date: '', end_date: '', is_current: false });
         }
       } catch (e) {
-        nassaqError(e.response?.data?.detail || t('errDelete'));
+        nassaqError(getApiErrorMessage(e) || t('errDelete'));
       }
     }, { title: t('confirmDeleteTitle'), confirmText: t('yesDelete'), cancelText: t('cancel') });
   };
@@ -329,7 +330,7 @@ export function AcademicStructureContent() {
           setTermForm({ name: '', name_en: '', start_date: '', end_date: '', is_current: false });
         }
       } catch (e) {
-        nassaqError(e.response?.data?.detail || t('errDeletingTerm'));
+        nassaqError(getApiErrorMessage(e) || t('errDeletingTerm'));
       }
     }, { title: t('confirmDeleteTitle'), confirmText: t('yesDelete'), cancelText: t('cancel') });
   };
@@ -339,7 +340,7 @@ export function AcademicStructureContent() {
       try {
         await api.delete(`/holidays/${id}`);
         await fetchYearData(selectedYear.id);
-      } catch (e) { nassaqError(e.response?.data?.detail || t('errDelete')); }
+      } catch (e) { nassaqError(getApiErrorMessage(e) || t('errDelete')); }
     }, { title: t('confirmDeleteTitle'), confirmText: t('yesDelete'), cancelText: t('cancel') });
   };
 
@@ -348,7 +349,7 @@ export function AcademicStructureContent() {
       try {
         await api.delete(`/exam-periods/${id}`);
         await fetchYearData(selectedYear.id);
-      } catch (e) { nassaqError(e.response?.data?.detail || t('errDelete')); }
+      } catch (e) { nassaqError(getApiErrorMessage(e) || t('errDelete')); }
     }, { title: t('confirmDeleteTitle'), confirmText: t('yesDelete'), cancelText: t('cancel') });
   };
 
@@ -364,7 +365,7 @@ export function AcademicStructureContent() {
       });
       setImportResult(res.data);
     } catch (e) {
-      nassaqError(e.response?.data?.detail || t('errImportingCalendar'));
+      nassaqError(getApiErrorMessage(e) || t('errImportingCalendar'));
     }
     setImportProcessing(false);
   };
@@ -380,7 +381,7 @@ export function AcademicStructureContent() {
       setHakimImportChat('');
       await fetchYearData(selectedYear.id);
     } catch (e) {
-      nassaqError(e.response?.data?.detail || t('errApplyingCalendar'));
+      nassaqError(getApiErrorMessage(e) || t('errApplyingCalendar'));
     }
     setSaving(false);
   };

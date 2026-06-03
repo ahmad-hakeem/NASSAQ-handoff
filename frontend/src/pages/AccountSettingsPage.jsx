@@ -97,6 +97,7 @@ import MfaSecuritySection from '../components/mfa/MfaSecuritySection';
 // (headless variant) so the content stays in one place and the page
 // inherits the settings shell instead of double-rendering Sidebar.
 import { TeacherAuditLogPanel } from './TeacherModule';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const PasswordStrength = ({ password, isRTL }) => {
   const { t } = useTranslation();
@@ -612,7 +613,7 @@ const AccountSettingsPageInner = () => {
       toast.success(t('profileSavedSuccessfully'));
       setTimeout(() => setSaveSuccess(null), 3000);
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (t('failedToSaveProfile')));
+      nassaqError(getApiErrorMessage(error) || (t('failedToSaveProfile')));
     } finally {
       setSaving(false);
     }
@@ -629,7 +630,7 @@ const AccountSettingsPageInner = () => {
         toast.success(t('avatarUpdated'));
       }
     } catch (err) {
-      nassaqError(err.response?.data?.detail || (t('failedToUploadAvatar')));
+      nassaqError(getApiErrorMessage(err) || (t('failedToUploadAvatar')));
       throw err;
     } finally {
       setSaving(false);
@@ -681,7 +682,7 @@ const AccountSettingsPageInner = () => {
       //      for any router that bypasses the global wrapper).
       const data = error.response?.data || {};
       const errEnv = (data.error && typeof data.error === 'object') ? data.error : null;
-      const detail = data.detail;
+      const detail = data.detail ?? getApiErrorMessage(data);
       const code = errEnv?.code
         || (detail && typeof detail === 'object' ? detail.code : null);
       const envelopeMessage = errEnv?.message
@@ -791,7 +792,7 @@ const AccountSettingsPageInner = () => {
       setTimeout(() => setSaveSuccess(null), 3000);
     } catch (error) {
       const status = error?.response?.status;
-      const detail = error?.response?.data?.detail;
+      const detail = error?.response?.data?.detail ?? getApiErrorMessage(error);
       // 403/409: workspace state drifted (forbidden / conflict). Reload the
       // workspace row from the canonical endpoint so the form recovers to
       // server truth, then surface a NassaqAlertDialog instead of a toast.
@@ -949,7 +950,7 @@ const AccountSettingsPageInner = () => {
       }
       nassaqSuccess(t('itExportReadyMessage'), { title: t('itExportReadyTitle') });
     } catch (error) {
-      nassaqError(error?.response?.data?.detail || t('itExportFailed'));
+      nassaqError(getApiErrorMessage(error) || t('itExportFailed'));
     } finally {
       setSaving(false);
     }
@@ -985,7 +986,7 @@ const AccountSettingsPageInner = () => {
         onConfirm: () => { try { logout(); } catch (_e) {} },
       });
     } catch (error) {
-      const detail = error?.response?.data?.detail;
+      const detail = error?.response?.data?.detail ?? getApiErrorMessage(error);
       const status = error?.response?.status;
       if (status === 412) {
         nassaqWarning(detail || t('itSoftDeleteRequiresExport'));
@@ -1056,7 +1057,7 @@ const AccountSettingsPageInner = () => {
         },
       });
     } catch (error) {
-      const detail = error?.response?.data?.detail;
+      const detail = error?.response?.data?.detail ?? getApiErrorMessage(error);
       const status = error?.response?.status;
       if (status === 409) {
         nassaqWarning(detail || t('itErasureAlreadyRequested'));
@@ -1099,7 +1100,7 @@ const AccountSettingsPageInner = () => {
       toast.success(t('roleSwitchedSuccessfully'));
       setTimeout(() => window.location.reload(), 1000);
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (t('failedToSwitchRole')));
+      nassaqError(getApiErrorMessage(error) || (t('failedToSwitchRole')));
     } finally {
       setSwitchingRole(false);
       setShowRoleSwitchDialog(false);
@@ -1205,7 +1206,7 @@ const AccountSettingsPageInner = () => {
       if (data) setAutoExport(data);
     } catch (error) {
       setAutoExport(prev);
-      nassaqError(error?.response?.data?.detail || t('itHubAutoExportSaveFailed'));
+      nassaqError(getApiErrorMessage(error) || t('itHubAutoExportSaveFailed'));
     } finally {
       setAutoExportSaving(false);
     }
@@ -1238,7 +1239,7 @@ const AccountSettingsPageInner = () => {
       }
       nassaqSuccess(t('itExportReadyMessage'), { title: t('itExportReadyTitle') });
     } catch (error) {
-      nassaqError(error?.response?.data?.detail || t('itExportFailed'));
+      nassaqError(getApiErrorMessage(error) || t('itExportFailed'));
     } finally {
       setSaving(false);
     }
@@ -1258,7 +1259,7 @@ const AccountSettingsPageInner = () => {
             nassaqWarning(t('itHubLifecycleReactivateExpired'));
           } else {
             nassaqError(
-              err?.response?.data?.detail || t('itHubLifecycleReactivateFailed'),
+              getApiErrorMessage(err) || t('itHubLifecycleReactivateFailed'),
             );
           }
         }
@@ -1287,7 +1288,7 @@ const AccountSettingsPageInner = () => {
         await hub.refresh();
       } catch (err) {
         nassaqError(
-          err?.response?.data?.detail || t('itHubCollabActionFailed'),
+          getApiErrorMessage(err) || t('itHubCollabActionFailed'),
         );
       }
     });

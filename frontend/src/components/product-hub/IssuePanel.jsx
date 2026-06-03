@@ -3,6 +3,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   StatusChip, PriorityBadge, SLAIndicator, EmptyState,
   HakimInsightCard, CommentInput, CommentBubble,
@@ -209,7 +210,7 @@ export default function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin
       setCommentType('general');
       await refetchDetail();
     } catch (err) {
-      const detail = err.response?.data?.detail;
+      const detail = err.response?.data?.detail ?? getApiErrorMessage(err);
       toast.error(typeof detail === 'object' ? detail.message : (detail || 'فشل في إضافة التعليق'));
     } finally {
       setSubmittingComment(false);
@@ -222,7 +223,7 @@ export default function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin
       toast.success('تم تعديل التعليق');
       await refetchDetail();
     } catch (err) {
-      const detail = err.response?.data?.detail;
+      const detail = err.response?.data?.detail ?? getApiErrorMessage(err);
       toast.error(typeof detail === 'object' ? detail.message : (detail || 'فشل في تعديل التعليق'));
     }
   };

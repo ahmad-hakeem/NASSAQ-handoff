@@ -60,6 +60,7 @@ import {
 } from '../components/ui/select';
 import { Checkbox } from '../components/ui/checkbox';
 import { UserMultiSelect } from '../components/ui/UserMultiSelect';
+import { getApiErrorMessage } from '../utils/apiError';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -403,7 +404,7 @@ export const CommunicationCenterPage = () => {
       await fetchData();
     } catch (error) {
       console.error('Failed to send message:', error);
-      nassaqError(error.response?.data?.detail || t('failedToSendMessage'));
+      nassaqError(getApiErrorMessage(error) || t('failedToSendMessage'));
     } finally {
       setSending(false);
     }

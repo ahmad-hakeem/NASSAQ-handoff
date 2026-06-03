@@ -14,6 +14,7 @@ import ProfileEditDialog from '../../components/parent/ProfileEditDialog';
 import PasswordChangeDialog from '../../components/parent/PasswordChangeDialog';
 import ActiveSessionsCard from '../../components/parent/ActiveSessionsCard';
 import MfaSecuritySection from '../../components/mfa/MfaSecuritySection';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   Settings as SettingsIcon, FileText, Shield, Globe, MessageCircle,
   GraduationCap, LogOut, ChevronLeft, ChevronRight, User, Camera,
@@ -88,7 +89,7 @@ const ParentSettingsPage = () => {
       await refreshUser?.();
       toast.success(t('profilePictureUpdated') || 'Profile picture updated');
     } catch (err) {
-      nassaqError(err?.response?.data?.detail || (t('errorUploadingImage') || 'Error uploading image'));
+      nassaqError(getApiErrorMessage(err) || (t('errorUploadingImage') || 'Error uploading image'));
       throw err;
     } finally {
       setAvatarBusy(false);
@@ -106,7 +107,7 @@ const ParentSettingsPage = () => {
           await refreshUser?.();
           toast.success(t('profilePictureRemoved') || 'Profile picture removed');
         } catch (err) {
-          nassaqError(err?.response?.data?.detail || (t('errorRemovingImage') || 'Error removing image'));
+          nassaqError(getApiErrorMessage(err) || (t('errorRemovingImage') || 'Error removing image'));
         } finally {
           setAvatarBusy(false);
         }
