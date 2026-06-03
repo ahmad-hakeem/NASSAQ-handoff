@@ -53,6 +53,7 @@ def register_routes(app, api_router: APIRouter):
     from routes.role_dashboards_mod import router as role_dashboards_mod_router
     from routes.admin_routes_mod import router as admin_mod_router
     from routes.school_settings_mod import router as school_settings_mod_router
+    from routes.school_settings_mod import time_slots_router as school_time_slots_router
     from routes.participation_routes_mod import router as participation_mod_router
     from routes.search_directory_routes_mod import router as search_directory_mod_router
     from routes.event_workflow_routes_mod import router as event_workflow_mod_router
@@ -277,6 +278,13 @@ def register_routes(app, api_router: APIRouter):
     api_router.include_router(role_dashboards_mod_router)
     api_router.include_router(admin_mod_router)
     api_router.include_router(school_settings_mod_router, dependencies=_full_tenant_dep)
+    # IT visibility fix — read-only ``GET /time-slots`` is mounted WITHOUT
+    # _full_tenant_dep so Independent-Teacher callers can read their
+    # synthesized slots and have the weekly schedule grid render. The handler
+    # scopes by school_id and is read-only; full-tenant callers are unaffected
+    # (same handler, same response). All principal/admin settings WRITE paths
+    # remain on school_settings_mod_router behind the IT-deny gate above.
+    api_router.include_router(school_time_slots_router)
     api_router.include_router(search_directory_mod_router)
     api_router.include_router(event_workflow_mod_router)
     api_router.include_router(relationship_mod_router)

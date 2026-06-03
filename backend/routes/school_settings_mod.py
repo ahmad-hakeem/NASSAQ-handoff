@@ -31,6 +31,15 @@ from utils.it_schedule import synthesize_it_time_slots
 
 router = APIRouter()
 
+# IT visibility fix: the read-only ``GET /time-slots`` endpoint lives on its
+# own router so it can be mounted in app/routes.py WITHOUT the
+# ``require_full_school_tenant`` gate that the rest of this module's
+# principal/admin settings surface keeps. Independent-Teacher accounts must be
+# able to read their (synthesized) time slots so the weekly schedule grid
+# renders; the handler itself stays read-only, scopes by school_id, and
+# synthesizes IT slots in-place. Full-tenant behaviour is unchanged.
+time_slots_router = APIRouter()
+
 
 async def regenerate_time_slots_from_settings(school_id: str):
     """
@@ -1871,22 +1880,30 @@ async def update_breaks(
     return {"message": "تم تحديث فترات الاستراحة", "breaks": breaks_data, "time_slots_regenerated": regen_result}
 
 
-@router.get("/time-slots")
+@time_slots_router.get("/time-slots")
 async def list_time_slots(
     school_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
     x_school_context: str = Header(default=None, alias="X-School-Context")
 ):
     """List time slots for a school. Used by SchedulePageNew and other schedule UIs.
-    Accepts ?school_id=... and falls back to the user's school context."""
-    resolved_school_id = school_id or await get_school_id_from_context(current_user, x_school_context)
+    Accepts ?school_id=... and falls back to the user's school context.
+
+    This route is mounted WITHOUT the ``require_full_school_tenant`` gate (so
+    Independent-Teacher callers can read their synthesized slots), therefore the
+    tenant binding MUST be enforced here. A caller-supplied ``school_id`` is
+    treated as a tenant override and validated by the canonical resolver:
+    non-platform callers may only address their OWN tenant (mismatch → 403),
+    which closes the cross-tenant disclosure that the previous
+    ``current_user["school_id"]`` check missed (most accounts carry
+    ``tenant_id``, not ``school_id``). Platform-admin direct addressing via the
+    query param is preserved unchanged."""
+    if current_user.get("role") == UserRole.PLATFORM_ADMIN.value and school_id:
+        resolved_school_id = school_id
+    else:
+        resolved_school_id = await get_school_id_from_context(current_user, school_id or x_school_context)
     if not resolved_school_id:
         raise HTTPException(status_code=400, detail="School context required")
-
-    user_school = current_user.get("school_id")
-    if (current_user.get("role") != UserRole.PLATFORM_ADMIN.value
-            and user_school and user_school != resolved_school_id):
-        raise HTTPException(status_code=403, detail="Cross-school access denied")
 
     slots = await gd_find(db.session, "time_slots", {"school_id": resolved_school_id}, limit=500)
     # Independent-Teacher synthetic workspaces (spec §5.4) never persist a
