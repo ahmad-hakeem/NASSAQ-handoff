@@ -147,6 +147,37 @@ def create_app() -> FastAPI:
             },
         )
 
+    @application.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception):
+        # Catch-all for any exception that escapes a route without being
+        # handled by the more specific handlers above. Starlette dispatches
+        # to the most-specific registered handler by exception type, so
+        # StarletteHTTPException / IntegrityError / RequestValidationError
+        # still win for their own types; this only fires for genuinely
+        # unexpected errors (e.g. a DB error outside a route's try/except).
+        #
+        # Without this, Starlette renders such errors as an unparseable
+        # plain-text HTTP 500, which the frontend write-error classifier
+        # (frontend/src/utils/apiError.js) cannot read — collapsing into a
+        # cause-hiding generic popup. Returning the canonical envelope with a
+        # safe Arabic message keeps the UI informative without ever exposing
+        # raw str(exc) to the client.
+        from middleware.error_handler import SAFE_ERROR_CODE, SAFE_ERROR_MESSAGE_AR
+        logger.exception(
+            "Unhandled exception on %s %s",
+            request.method, request.url.path,
+        )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": {
+                    "code": SAFE_ERROR_CODE,
+                    "message": SAFE_ERROR_MESSAGE_AR,
+                },
+            },
+        )
+
     from app.middleware import register_middleware
     register_middleware(application)
 

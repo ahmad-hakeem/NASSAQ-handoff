@@ -13,6 +13,15 @@ import logging
 
 logger = logging.getLogger("nassaq.errors")
 
+# Canonical safe envelope for any unexpected server error. Shared with the
+# app-level catch-all handler in backend/server.py so a 500 looks identical
+# whether it is caught here (route exceptions) or by the outermost handler
+# (exceptions raised in the surrounding middleware). The Arabic text lives in
+# `error.message` because that is the field the frontend reads
+# (frontend/src/utils/apiError.js) — never expose raw str(exc) to the client.
+SAFE_ERROR_CODE = "INTERNAL_ERROR"
+SAFE_ERROR_MESSAGE_AR = "حدث خطأ غير متوقع في الخادم، يرجى المحاولة مرة أخرى."
+
 
 class ErrorHandlerMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -42,9 +51,9 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
                 content={
                     "success": False,
                     "error": {
-                        "code": "INTERNAL_ERROR",
-                        "message": "An unexpected error occurred",
-                        "message_ar": "حدث خطأ داخلي في الخادم",
+                        "code": SAFE_ERROR_CODE,
+                        "message": SAFE_ERROR_MESSAGE_AR,
+                        "message_ar": SAFE_ERROR_MESSAGE_AR,
                     },
                     "meta": {
                         "error_id": request_id,
