@@ -26,6 +26,12 @@ Locks in:
     helper; the helper is exercised directly because the endpoint's
     "already-in-intended" guard fail-closes before a non-deleted intended record
     can reach step 2 — see ``test_resolve_*already_in_intended*`` below.)
+  * Archived-record restore — when the intended school already holds a
+    SOFT-DELETED (``deleted_at`` set) record for the teacher, resolving RESTORES
+    that old record in place (reactivated, ``deleted_at`` cleared, re-linked)
+    instead of minting a fresh, disconnected id. The response carries
+    ``restored_existing_record=True`` and the listing carries
+    ``will_restore_existing_record=True`` so the admin is warned beforehand.
   * Every fail-closed branch: non-teacher (400), no intended school (400), no
     live record (400), already-in-intended (400), missing user (404). On each
     rejection nothing is mutated and no audit row is written.
@@ -235,6 +241,110 @@ async def test_ensure_record_reactivates_deactivated_record_in_place(monkeypatch
         db.session, "teachers", {"user_id": user["id"], "school_id": intended}
     )
     assert same_school == 1
+
+
+# ----------------------------------------------------------------------
+# (2b) Archived-record restore in the intended school
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_resolve_restores_archived_record_in_intended_school(
+    client, platform_admin_headers, monkeypatch
+):
+    """The intended school already holds a SOFT-DELETED record for the teacher.
+    Resolving must restore THAT old record in place (same id) rather than mint a
+    brand-new one, and the response must flag ``restored_existing_record``."""
+    monkeypatch.setenv("MFA_ENFORCEMENT_DISABLED", "1")
+    intended = await _mk_school("intended")
+    other = await _mk_school("other")
+    user = await _mk_teacher_user(intended)
+    stuck_id = await _mk_teacher_record(other, user_id=user["id"])
+    archived_id = await _mk_teacher_record(
+        intended,
+        user_id=user["id"],
+        is_active=False,
+        deleted_at="2026-01-01T00:00:00+00:00",
+    )
+
+    resp = await client.post(_resolve_url(user["id"]), headers=platform_admin_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # The OLD archived record was restored — not a fresh id.
+    assert body["resolved_teacher_id"] == archived_id
+    assert body["restored_existing_record"] is True
+    assert body["retired_records"] == [
+        {"teacher_record_id": stuck_id, "school_id": other}
+    ]
+
+    # Archived record reactivated in place in the intended school.
+    restored = await gd_find_one(db.session, "teachers", {"id": archived_id})
+    assert restored["school_id"] == intended
+    assert restored["is_active"] is True
+    assert restored.get("deleted_at") is None
+    assert restored["user_id"] == user["id"]
+
+    # No duplicate minted in the intended school.
+    in_intended = await gd_count(
+        db.session, "teachers", {"school_id": intended, "deleted_at": None}
+    )
+    assert in_intended == 1
+
+    # Foreign record retired in place.
+    stuck = await gd_find_one(db.session, "teachers", {"id": stuck_id})
+    assert stuck["is_active"] is False
+    assert stuck["deleted_at"] is not None
+
+    # users.teacher_id relinked to the restored record.
+    refreshed_user = await gd_find_one(db.session, "users", {"id": user["id"]})
+    assert refreshed_user["teacher_id"] == archived_id
+
+
+@pytest.mark.asyncio
+async def test_resolve_mints_new_record_when_no_archive_and_flags_false(
+    client, platform_admin_headers, monkeypatch
+):
+    """No archived record in the intended school → a fresh record is minted and
+    ``restored_existing_record`` is False (the admin-facing distinction)."""
+    monkeypatch.setenv("MFA_ENFORCEMENT_DISABLED", "1")
+    intended = await _mk_school("intended")
+    other = await _mk_school("other")
+    user = await _mk_teacher_user(intended)
+    stuck_id = await _mk_teacher_record(other, user_id=user["id"])
+
+    resp = await client.post(_resolve_url(user["id"]), headers=platform_admin_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["restored_existing_record"] is False
+    assert body["resolved_teacher_id"] != stuck_id
+
+
+@pytest.mark.asyncio
+async def test_mismatch_listing_flags_archived_record_in_intended(
+    client, platform_admin_headers, monkeypatch
+):
+    """The listing warns the admin (``will_restore_existing_record``) when an
+    archived record already sits in the intended school for a stuck teacher."""
+    monkeypatch.setenv("MFA_ENFORCEMENT_DISABLED", "1")
+    intended = await _mk_school("intended")
+    other = await _mk_school("other")
+    user = await _mk_teacher_user(intended)
+    await _mk_teacher_record(other, user_id=user["id"])
+    archived_id = await _mk_teacher_record(
+        intended,
+        user_id=user["id"],
+        is_active=False,
+        deleted_at="2026-01-01T00:00:00+00:00",
+    )
+
+    resp = await client.get(
+        "/users/teacher-school-mismatches", headers=platform_admin_headers
+    )
+    assert resp.status_code == 200, resp.text
+    mine = next(
+        (m for m in resp.json()["mismatches"] if m["user_id"] == user["id"]), None
+    )
+    assert mine is not None
+    assert mine["will_restore_existing_record"] is True
+    assert archived_id in mine["archived_record_ids_in_intended"]
 
 
 # ----------------------------------------------------------------------

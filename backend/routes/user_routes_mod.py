@@ -523,9 +523,14 @@ async def _list_teacher_school_mismatches() -> dict:
     if emails:
         teacher_rows += await gd_find(db.session, "teachers", {"email": {"$in": emails}}, limit=5000) or []
 
-    # Index live (non-deleted) records by user_id and by email.
+    # Index live (non-deleted) records by user_id and by email. Soft-deleted
+    # (archived) records are indexed separately so we can warn the admin when a
+    # resolution would RESTORE an old record in the intended school rather than
+    # mint a brand-new one.
     rows_by_uid: Dict[str, List[dict]] = {}
     rows_by_email: Dict[str, List[dict]] = {}
+    deleted_by_uid: Dict[str, List[dict]] = {}
+    deleted_by_email: Dict[str, List[dict]] = {}
     seen_row_ids = set()
     for r in teacher_rows:
         rid = r.get("id")
@@ -533,6 +538,10 @@ async def _list_teacher_school_mismatches() -> dict:
             continue
         seen_row_ids.add(rid)
         if r.get("deleted_at"):
+            if r.get("user_id"):
+                deleted_by_uid.setdefault(r["user_id"], []).append(r)
+            if r.get("email"):
+                deleted_by_email.setdefault(r["email"], []).append(r)
             continue
         if r.get("user_id"):
             rows_by_uid.setdefault(r["user_id"], []).append(r)
@@ -555,6 +564,11 @@ async def _list_teacher_school_mismatches() -> dict:
         other_school_ids = sorted({r.get("school_id") for r in live if r.get("school_id")})
         if not other_school_ids:
             continue
+        # Does an archived (soft-deleted) record already sit in the intended
+        # school? If so, resolving will RESTORE that old record in place rather
+        # than mint a fresh, disconnected one — surface it so the admin knows.
+        archived = (deleted_by_uid.get(u.get("id")) or []) + (deleted_by_email.get(u.get("email")) or [])
+        archived_in_intended = [r for r in archived if r.get("school_id") == intended]
         needed_school_ids.add(intended)
         needed_school_ids.update(other_school_ids)
         mismatches.append({
@@ -562,6 +576,7 @@ async def _list_teacher_school_mismatches() -> dict:
             "intended_school_id": intended,
             "record_school_ids": other_school_ids,
             "teacher_records": live,
+            "archived_record_ids_in_intended": [r.get("id") for r in archived_in_intended],
         })
 
     # Resolve school names in a single query.
@@ -594,6 +609,10 @@ async def _list_teacher_school_mismatches() -> dict:
             },
             "record_schools": record_schools,
             "teacher_record_ids": [r.get("id") for r in m["teacher_records"]],
+            # True → an archived record already exists in the intended school;
+            # resolving will restore it in place instead of minting a new id.
+            "will_restore_existing_record": bool(m.get("archived_record_ids_in_intended")),
+            "archived_record_ids_in_intended": m.get("archived_record_ids_in_intended", []),
         })
 
     results.sort(key=lambda r: (r.get("full_name") or "").lower())
@@ -661,6 +680,16 @@ async def _do_resolve_teacher_mismatch(user_id: str, current_user: dict) -> dict
     if not other_records:
         raise HTTPException(status_code=400, detail="لا يوجد تعارض لحلّه")
 
+    # A soft-deleted (archived) academic record may already exist in the
+    # intended school — e.g. the teacher was previously removed from it. We
+    # detect it BEFORE retiring anything so step 2 can restore that old record
+    # in place instead of minting a brand-new, disconnected duplicate (which
+    # would orphan the record's prior schedules/history).
+    archived_intended = [
+        r for r in rows
+        if r.get("deleted_at") and r.get("school_id") == intended
+    ]
+
     now = datetime.now(timezone.utc).isoformat()
 
     # Step 1 — retire the stuck record(s) in the other school(s) in place.
@@ -677,9 +706,33 @@ async def _do_resolve_teacher_mismatch(user_id: str, current_user: dict) -> dict
             "school_id": r.get("school_id"),
         })
 
-    # Step 2 — provision/reactivate in the intended school. The foreign records
-    # now carry deleted_at, so the helper no longer blocks the move.
-    resolved_teacher_id = await _ensure_school_teacher_record(user, intended, current_user["id"])
+    # Step 2 — re-establish the record in the intended school.
+    #   * If an archived record already exists there, RESTORE it in place
+    #     (clear deleted_at, reactivate, re-link the user) so the teacher's old
+    #     academic record — and everything attached to it — comes back rather
+    #     than a fresh, disconnected id.
+    #   * Otherwise provision a new one via the shared helper. The foreign
+    #     records now carry deleted_at, so the helper no longer blocks the move.
+    restored_existing_record = False
+    if archived_intended:
+        restore = sorted(
+            archived_intended,
+            key=lambda r: r.get("deleted_at") or "",
+            reverse=True,
+        )[0]
+        restore_patch = {
+            "is_active": True,
+            "deleted_at": None,
+            "deleted_by": None,
+            "updated_at": now,
+        }
+        if uid and not restore.get("user_id"):
+            restore_patch["user_id"] = uid
+        await gd_update_one(db.session, "teachers", {"id": restore["id"]}, restore_patch)
+        resolved_teacher_id = restore["id"]
+        restored_existing_record = True
+    else:
+        resolved_teacher_id = await _ensure_school_teacher_record(user, intended, current_user["id"])
 
     user_patch = {"updated_at": now}
     if resolved_teacher_id and user.get("teacher_id") != resolved_teacher_id:
@@ -701,14 +754,22 @@ async def _do_resolve_teacher_mismatch(user_id: str, current_user: dict) -> dict
             "intended_school_id": intended,
             "resolved_teacher_id": resolved_teacher_id,
             "retired_records": retired,
+            "restored_existing_record": restored_existing_record,
         },
     )
 
     return {
-        "message": "تم حل تعارض المعلم وإعادة ربط سجله بالمدرسة المطلوبة",
+        "message": (
+            "تم حل تعارض المعلم واستعادة سجله السابق في المدرسة المطلوبة"
+            if restored_existing_record
+            else "تم حل تعارض المعلم وإنشاء سجل جديد له في المدرسة المطلوبة"
+        ),
         "user_id": user_id,
         "resolved_teacher_id": resolved_teacher_id,
         "retired_records": retired,
+        # True  → an archived record already in the intended school was restored
+        #         in place. False → a brand-new record was minted there.
+        "restored_existing_record": restored_existing_record,
     }
 
 
@@ -725,6 +786,14 @@ async def resolve_teacher_school_mismatch(
     ``teachers`` record is stuck in a DIFFERENT school. Platform-admin only,
     requires fresh MFA, and is audit-logged. See ``_do_resolve_teacher_mismatch``
     for the resolution steps.
+
+    Product behavior when the intended school already holds an ARCHIVED
+    (soft-deleted) record for this teacher: that old record is RESTORED in place
+    (reactivated, ``deleted_at`` cleared, re-linked) rather than a brand-new,
+    disconnected record being minted — so the teacher's prior academic record
+    and everything attached to it comes back. The response (and listing) carry
+    ``restored_existing_record`` / ``will_restore_existing_record`` so the admin
+    knows which happened.
     """
     return await _do_resolve_teacher_mismatch(user_id, current_user)
 
