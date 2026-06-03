@@ -498,22 +498,11 @@ async def update_user_status(
 
 # ============== USER DETAILS & MANAGEMENT ROUTES ==============
 
-@router.get("/users/teacher-school-mismatches")
-async def get_teacher_school_mismatches(
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
-):
-    """List teacher users whose intended school differs from their academic record.
+async def _list_teacher_school_mismatches() -> dict:
+    """Core read of every stuck teacher transfer. Performs no writes.
 
-    Surfaces the teachers that ``_ensure_school_teacher_record`` intentionally
-    BLOCKS from being moved: a teacher user whose ``users.tenant_id`` points to
-    one school while their live (non-deleted) ``teachers`` record lives in a
-    DIFFERENT school. These users never appear under their intended school's
-    Teachers page, with no prior visibility for admins. Each entry exposes both
-    the intended school (from ``users.tenant_id``) and the school(s) where the
-    live academic record actually exists so an admin can resolve the conflict
-    (e.g. deactivate the old record, then reassign).
-
-    Platform-admin only. Read-only — performs no writes.
+    Shared by the listing endpoint and the bulk-resolution endpoint's
+    resolve-all fallback. See ``get_teacher_school_mismatches`` for semantics.
     """
     teacher_users = await gd_find(db.session, "users", {"role": UserRole.TEACHER.value}, limit=5000)
     teacher_users = [
@@ -611,28 +600,33 @@ async def get_teacher_school_mismatches(
     return {"mismatches": results, "total": len(results)}
 
 
-@router.post("/users/{user_id}/resolve-teacher-mismatch")
-async def resolve_teacher_school_mismatch(
-    user_id: str,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
-    _mfa: dict = Depends(require_recent_mfa()),
+@router.get("/users/teacher-school-mismatches")
+async def get_teacher_school_mismatches(
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
-    """One-click resolution of a stuck teacher transfer.
+    """List teacher users whose intended school differs from their academic record.
 
-    Surfaced by ``GET /users/teacher-school-mismatches``: a teacher user whose
-    ``users.tenant_id`` points to one school while their live academic
-    ``teachers`` record is stuck in a DIFFERENT school. Resolving a case:
+    Surfaces the teachers that ``_ensure_school_teacher_record`` intentionally
+    BLOCKS from being moved: a teacher user whose ``users.tenant_id`` points to
+    one school while their live (non-deleted) ``teachers`` record lives in a
+    DIFFERENT school. These users never appear under their intended school's
+    Teachers page, with no prior visibility for admins. Each entry exposes both
+    the intended school (from ``users.tenant_id``) and the school(s) where the
+    live academic record actually exists so an admin can resolve the conflict
+    (e.g. deactivate the old record, then reassign).
 
-    1. Soft-deletes (``deleted_at`` + ``is_active=False``) every live academic
-       record that lives in a school OTHER than the intended one. Academic data
-       is never migrated — the old record is retired in place.
-    2. Reactivates-or-provisions the record in the intended (``users.tenant_id``)
-       school via ``_ensure_school_teacher_record``, then folds the resolved
-       ``teachers.id`` back into ``users.teacher_id``.
+    Platform-admin only. Read-only — performs no writes.
+    """
+    return await _list_teacher_school_mismatches()
 
-    Soft-deleting the foreign record FIRST is what unblocks the helper (which
-    otherwise raises 400 on a live cross-school record). Platform-admin only,
-    requires fresh MFA, and is audit-logged.
+
+async def _do_resolve_teacher_mismatch(user_id: str, current_user: dict) -> dict:
+    """Core one-click resolution of a single stuck teacher transfer.
+
+    Shared by the per-teacher endpoint and the bulk endpoint. Raises
+    ``HTTPException`` on business/validation problems (so the single-teacher
+    route surfaces them unchanged); the bulk route catches these to classify a
+    case as skipped vs. failed. Audit-logs each successful resolution.
     """
     user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
@@ -715,6 +709,92 @@ async def resolve_teacher_school_mismatch(
         "user_id": user_id,
         "resolved_teacher_id": resolved_teacher_id,
         "retired_records": retired,
+    }
+
+
+@router.post("/users/{user_id}/resolve-teacher-mismatch")
+async def resolve_teacher_school_mismatch(
+    user_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+    _mfa: dict = Depends(require_recent_mfa()),
+):
+    """One-click resolution of a stuck teacher transfer.
+
+    Surfaced by ``GET /users/teacher-school-mismatches``: a teacher user whose
+    ``users.tenant_id`` points to one school while their live academic
+    ``teachers`` record is stuck in a DIFFERENT school. Platform-admin only,
+    requires fresh MFA, and is audit-logged. See ``_do_resolve_teacher_mismatch``
+    for the resolution steps.
+    """
+    return await _do_resolve_teacher_mismatch(user_id, current_user)
+
+
+class BulkResolveTeacherMismatchRequest(BaseModel):
+    user_ids: Optional[List[str]] = None
+
+
+@router.post("/users/resolve-teacher-mismatches-bulk")
+async def resolve_teacher_school_mismatches_bulk(
+    payload: BulkResolveTeacherMismatchRequest = Body(default=BulkResolveTeacherMismatchRequest()),
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+    _mfa: dict = Depends(require_recent_mfa()),
+):
+    """Bulk one-click resolution of every stuck teacher transfer.
+
+    Resolves the teacher-school mismatches listed in ``user_ids`` (the cases the
+    admin currently sees). When ``user_ids`` is omitted, every currently-stuck
+    teacher is resolved. Reuses the per-teacher core, so each successful
+    resolution is audit-logged individually. Platform-admin only, requires fresh
+    MFA (a single step-up covers the whole batch).
+
+    Partial failures never abort the batch: each case is classified as resolved,
+    skipped (no conflict left to fix — e.g. already resolved), or failed, and the
+    per-case outcome is returned so the UI can report succeeded vs. skipped vs.
+    failed before refreshing the list.
+    """
+    user_ids = payload.user_ids
+    if user_ids is None:
+        # Resolve everything currently stuck.
+        listing = await _list_teacher_school_mismatches()
+        user_ids = [m["user_id"] for m in listing.get("mismatches", [])]
+
+    # De-dupe while preserving order.
+    seen = set()
+    ordered_ids = []
+    for uid in user_ids or []:
+        if uid and uid not in seen:
+            seen.add(uid)
+            ordered_ids.append(uid)
+
+    resolved, skipped, failed = [], [], []
+    for uid in ordered_ids:
+        try:
+            result = await _do_resolve_teacher_mismatch(uid, current_user)
+            resolved.append({"user_id": uid, "resolved_teacher_id": result.get("resolved_teacher_id")})
+        except HTTPException as e:
+            # 400 "no conflict left" cases are already-resolved → skip, not fail.
+            detail = e.detail if isinstance(e.detail, str) else "تعذّر حل التعارض"
+            if e.status_code == 400 and "لا يوجد تعارض" in detail:
+                skipped.append({"user_id": uid, "reason": detail})
+            else:
+                failed.append({"user_id": uid, "reason": detail})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Bulk teacher-mismatch resolution failed for %s: %s", uid, exc)
+            failed.append({"user_id": uid, "reason": "خطأ غير متوقع أثناء حل التعارض"})
+
+    return {
+        "message": (
+            f"تم حل {len(resolved)} تعارض"
+            + (f"، تم تخطي {len(skipped)}" if skipped else "")
+            + (f"، فشل {len(failed)}" if failed else "")
+        ),
+        "total": len(ordered_ids),
+        "resolved_count": len(resolved),
+        "skipped_count": len(skipped),
+        "failed_count": len(failed),
+        "resolved": resolved,
+        "skipped": skipped,
+        "failed": failed,
     }
 
 

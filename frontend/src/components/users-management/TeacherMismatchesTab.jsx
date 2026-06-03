@@ -13,7 +13,9 @@ export default function TeacherMismatchesTab({
   loading = false,
   onRefresh,
   onResolve,
+  onResolveAll,
   resolvingId = null,
+  resolvingAll = false,
 }) {
   const navigate = useNavigate();
 
@@ -29,9 +31,24 @@ export default function TeacherMismatchesTab({
             <Badge variant="outline" className="text-sm bg-amber-50 text-amber-700 border-amber-200">
               {mismatches.length} حالة
             </Badge>
+            {mismatches.length > 0 && (
+              <Button
+                size="sm" className="text-xs bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
+                onClick={onResolveAll}
+                disabled={resolvingAll || loading || resolvingId != null}
+                data-testid="resolve-all-mismatches"
+              >
+                {resolvingAll ? (
+                  <RefreshCw className="h-3.5 w-3.5 ms-1 animate-spin" strokeWidth={1.5} aria-hidden="true" />
+                ) : (
+                  <Wand2 className="h-3.5 w-3.5 ms-1" strokeWidth={1.5} aria-hidden="true" />
+                )}
+                حل كل التعارضات
+              </Button>
+            )}
             <Button
               variant="ghost" size="icon" className="rounded-xl"
-              onClick={onRefresh} disabled={loading}
+              onClick={onRefresh} disabled={loading || resolvingAll}
               data-testid="refresh-mismatches"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} strokeWidth={1.5} aria-hidden="true" />

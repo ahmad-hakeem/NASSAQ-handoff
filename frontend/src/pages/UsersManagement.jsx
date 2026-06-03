@@ -85,6 +85,7 @@ export default function UsersManagement() {
   const [mismatches, setMismatches] = useState([]);
   const [mismatchesLoading, setMismatchesLoading] = useState(false);
   const [resolvingMismatchId, setResolvingMismatchId] = useState(null);
+  const [resolvingAllMismatches, setResolvingAllMismatches] = useState(false);
   const [requestsByType, setRequestsByType] = useState({});
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -323,6 +324,41 @@ export default function UsersManagement() {
         }
       },
       { title: 'حل تعارض المعلم', confirmText: 'متابعة', cancelText: 'إلغاء' },
+    );
+  };
+
+  const handleResolveAllMismatches = () => {
+    const ids = mismatches.map((m) => m.user_id).filter(Boolean);
+    if (ids.length === 0) return;
+    nassaqConfirm(
+      `سيتم حل تعارضات ${ids.length} معلم دفعة واحدة: إلغاء تفعيل السجل الأكاديمي القديم لكل معلم ثم إعادة ربطه بمدرسته المطلوبة. لا يتم نقل البيانات الأكاديمية القديمة. هل تريد المتابعة؟`,
+      async () => {
+        setResolvingAllMismatches(true);
+        try {
+          const response = await api.post('/users/resolve-teacher-mismatches-bulk', { user_ids: ids });
+          const data = response.data || {};
+          const resolved = data.resolved_count ?? 0;
+          const skipped = data.skipped_count ?? 0;
+          const failed = data.failed_count ?? 0;
+          const summary = `تم حل ${resolved} تعارض`
+            + (skipped ? `، تم تخطي ${skipped}` : '')
+            + (failed ? `، فشل ${failed}` : '');
+          if (failed > 0) {
+            nassaqError(summary);
+          } else {
+            nassaqSuccess(summary);
+          }
+          await fetchMismatches();
+          fetchUsers();
+          fetchManagementStats();
+        } catch (error) {
+          console.error('Error resolving teacher mismatches in bulk:', error);
+          nassaqError(getApiErrorMessage(error) || 'فشل في حل التعارضات');
+        } finally {
+          setResolvingAllMismatches(false);
+        }
+      },
+      { title: 'حل كل التعارضات', confirmText: 'متابعة', cancelText: 'إلغاء' },
     );
   };
 
@@ -651,7 +687,9 @@ export default function UsersManagement() {
                 loading={mismatchesLoading}
                 onRefresh={fetchMismatches}
                 onResolve={handleResolveMismatch}
+                onResolveAll={handleResolveAllMismatches}
                 resolvingId={resolvingMismatchId}
+                resolvingAll={resolvingAllMismatches}
               />
             </TabsContent>
 
