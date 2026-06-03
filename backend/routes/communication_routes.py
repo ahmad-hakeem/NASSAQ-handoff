@@ -135,9 +135,21 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         # Count templates
         total_templates = await gd_count(db.session, "message_templates", query)
         
-        # Received = notifications delivered to the current user
+        # Received = notifications delivered to the current user. While a
+        # platform admin previews/impersonates a school, strictly scope to
+        # that school so the admin's own native-context notifications aren't
+        # counted into the previewed school. Genuine school logins keep
+        # user-only counting because legacy rows may have a NULL tenant_id
+        # (mirrors notification_routes_mod._preview_tenant_scope).
         user_id = current_user.get("id")
-        total_received = await gd_count(db.session, "notifications", {"user_id": user_id}) if user_id else 0
+        if user_id:
+            received_query = {"user_id": user_id}
+            is_preview = current_user.get("is_impersonating") or current_user.get("is_switched")
+            if school_id and is_preview:
+                received_query["tenant_id"] = school_id
+            total_received = await gd_count(db.session, "notifications", received_query)
+        else:
+            total_received = 0
 
         return {
             "sent": total_sent,

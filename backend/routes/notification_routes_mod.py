@@ -31,6 +31,28 @@ from dependencies import (
 router = APIRouter()
 
 
+def _preview_tenant_scope(current_user: dict) -> Optional[str]:
+    """Return the school tenant id to STRICTLY scope notification reads by,
+    or ``None`` to leave the query user-only.
+
+    The cross-tenant leak this guards against happens only when a platform
+    admin previews/impersonates a school: the bearer's ``user_id`` stays the
+    admin's own while ``tenant_id`` is overridden to the previewed school, so
+    the admin's native-context notifications would otherwise bleed into the
+    previewed school (a brand-new school must show an empty inbox).
+
+    We deliberately do NOT apply strict tenant scoping for genuine school
+    logins: legacy notifications for real principals/admins were written with
+    a NULL ``tenant_id``, so an unconditional ``tenant_id`` filter would hide
+    their own historical rows (a regression). Genuine school users only ever
+    receive notifications addressed to their own ``user_id``, so user-only
+    scoping is already tenant-safe for them.
+    """
+    tenant_id = current_user.get("tenant_id")
+    if tenant_id and (current_user.get("is_impersonating") or current_user.get("is_switched")):
+        return tenant_id
+    return None
+
 
 # ============== NOTIFICATION ENGINE ==============
 # Data Models
@@ -599,6 +621,13 @@ async def get_my_notifications(
     """Get notifications for current user"""
     query = {"user_id": current_user['id']}
 
+    # During school preview/impersonation, strictly scope to the previewed
+    # school so a platform admin's own notifications don't leak in. Genuine
+    # logins keep user-only scoping (see _preview_tenant_scope).
+    scope_tenant = _preview_tenant_scope(current_user)
+    if scope_tenant:
+        query['tenant_id'] = scope_tenant
+
     if notification_type:
         query['type'] = notification_type
     if read_status is not None:
@@ -634,10 +663,14 @@ async def get_my_notifications(
 @router.get("/notifications/unread-count")
 async def get_unread_count(current_user: dict = Depends(get_current_user)):
     """Get count of unread notifications"""
-    count = await gd_count(db.session, "notifications", {
+    query = {
         "user_id": current_user['id'],
         "is_read": False
-    })
+    }
+    scope_tenant = _preview_tenant_scope(current_user)
+    if scope_tenant:
+        query['tenant_id'] = scope_tenant
+    count = await gd_count(db.session, "notifications", query)
     return {"unread_count": count}
 
 @router.put("/notifications/{notification_id}/read")
@@ -664,10 +697,17 @@ async def mark_notification_as_read(
 @router.put("/notifications/mark-all-read")
 async def mark_all_notifications_as_read(current_user: dict = Depends(get_current_user)):
     """Mark all notifications as read for current user"""
-    result = await gd_update_many(db.session, "notifications", {
-            "user_id": current_user['id'],
-            "is_read": False
-        }, {
+    match_query = {
+        "user_id": current_user['id'],
+        "is_read": False
+    }
+    # Keep this write consistent with the read endpoints: while previewing a
+    # school, only mark that school's notifications read so an admin doesn't
+    # silently clear their own native-context notifications.
+    scope_tenant = _preview_tenant_scope(current_user)
+    if scope_tenant:
+        match_query['tenant_id'] = scope_tenant
+    result = await gd_update_many(db.session, "notifications", match_query, {
             "is_read": True,
             "read_at": datetime.now(timezone.utc)
         })
