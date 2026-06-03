@@ -653,24 +653,56 @@ async def transfer_student_class(
         return {"success": True, "message": "الطالب موجود بالفعل في هذا الفصل"}
 
     now = datetime.now(timezone.utc).isoformat()
-    await gd_update_one(db.session, "students", {"id": student_id, "school_id": school_id}, {
-            "class_id": target_class_id,
-            "class_name": target_class.get("name_ar") or target_class.get("name", ""),
-            "updated_at": now
-        })
-
-    if old_class_id:
-        await _gd_pull(db.session, "classes", {"id": old_class_id, "school_id": school_id}, {"student_ids": student_id})
-        await _gd_inc(db.session, "classes", {"id": old_class_id, "school_id": school_id}, {"student_count": -1})
-
-    await _gd_addtoset(db.session, "classes", {"id": target_class_id, "school_id": school_id}, {"student_ids": student_id})
-    await _gd_inc(db.session, "classes", {"id": target_class_id, "school_id": school_id}, {"student_count": 1})
-
     student_name = student.get("full_name", "")
     target_name = target_class.get("name_ar") or target_class.get("name", "")
+
+    # NOTE: `class_name`/`student_ids`/`student_count` are NOT real columns
+    # (Student/Class are plain ORM models with no `data` column), so the old
+    # bookkeeping silently dropped those writes and class counters never moved.
+    # Move the student via the real `class_id` column and re-derive the
+    # canonical `current_students` counter for both classes via gd_count so
+    # any pre-existing drift self-heals.
+    try:
+        await gd_update_one(db.session, "students", {"id": student_id, "school_id": school_id}, {
+            "class_id": target_class_id,
+            "updated_at": now,
+        })
+
+        old_class_current_students = None
+        if old_class_id:
+            old_class_current_students = await gd_count(
+                db.session, "students",
+                {"class_id": old_class_id, "school_id": school_id, "is_active": True},
+            )
+            await gd_update_one(
+                db.session, "classes",
+                {"id": old_class_id, "school_id": school_id},
+                {"current_students": old_class_current_students},
+            )
+
+        target_class_current_students = await gd_count(
+            db.session, "students",
+            {"class_id": target_class_id, "school_id": school_id, "is_active": True},
+        )
+        await gd_update_one(
+            db.session, "classes",
+            {"id": target_class_id, "school_id": school_id},
+            {"current_students": target_class_current_students},
+        )
+    except Exception:
+        logger.exception(
+            "Failed to transfer student %s to class %s", student_id, target_class_id
+        )
+        raise HTTPException(status_code=500, detail="تعذر نقل الطالب، يرجى المحاولة مرة أخرى")
+
     return {
         "success": True,
-        "message": f"تم نقل الطالب {student_name} إلى الفصل {target_name} بنجاح"
+        "message": f"تم نقل الطالب {student_name} إلى الفصل {target_name} بنجاح",
+        "student_id": student_id,
+        "old_class_id": old_class_id,
+        "target_class_id": target_class_id,
+        "old_class_current_students": old_class_current_students,
+        "target_class_current_students": target_class_current_students,
     }
 
 @router.delete("/students/{student_id}")

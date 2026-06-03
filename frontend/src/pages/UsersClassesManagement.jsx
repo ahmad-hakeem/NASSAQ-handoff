@@ -1228,22 +1228,26 @@ export default function UsersClassesManagement() {
       if (res.data?.success) {
         toast.success(t('transferredTo', { student: studentName, className }));
         setStudents(prev => prev.map(s => s.id === studentId ? { ...s, class_id: targetClassId, class_name: className } : s));
+        const targetCount = res.data?.target_class_current_students;
+        const oldCount = res.data?.old_class_current_students;
         setClasses(prev => prev.map(c => {
-          if (c.id === targetClassId) {
-            const ids = new Set(c.student_ids || []);
-            ids.add(studentId);
-            return { ...c, student_count: ids.size, student_ids: [...ids] };
+          if (c.id === targetClassId && typeof targetCount === 'number') {
+            return { ...c, student_count: targetCount, current_students: targetCount };
           }
-          if (oldClassId && c.id === oldClassId) {
-            const ids = (c.student_ids || []).filter(id => id !== studentId);
-            return { ...c, student_count: ids.length, student_ids: ids };
+          if (oldClassId && c.id === oldClassId && typeof oldCount === 'number') {
+            return { ...c, student_count: oldCount, current_students: oldCount };
           }
           return c;
         }));
+        refetchClasses();
+      } else {
+        const msg = res.data?.message;
+        nassaqError(typeof msg === 'string' ? msg : (t('failedToTransferStudent')));
       }
     } catch (error) {
-      const msg = error.response?.data?.detail;
-      nassaqError(typeof msg === 'string' ? msg : (t('failedToTransferStudent')));
+      const data = error.response?.data;
+      const msg = data?.error?.message || data?.detail;
+      nassaqError(typeof msg === 'string' && msg ? msg : (t('failedToTransferStudent')));
     }
   };
 
