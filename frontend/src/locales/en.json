@@ -2494,6 +2494,7 @@
   "previewModeBannerTitle": "You are in Preview Mode",
   "previewModeBannerSchool": "Currently previewing: {school}",
   "previewModeBannerHelper": "You are previewing this account as a school principal.",
+  "previewSessionExpired": "School preview session ended. Returned to the platform dashboard.",
   "exitPreview": "Exit Preview",
   "exitPreviewHelper": "Return to your original Platform Admin session and leave preview mode.",
   "previousSessionEnded": "Previous session ended",

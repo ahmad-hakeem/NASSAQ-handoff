@@ -2496,6 +2496,7 @@
   "previewModeBannerTitle": "أنت في وضع المعاينة",
   "previewModeBannerSchool": "تعاين حالياً: {school}",
   "previewModeBannerHelper": "تعاين هذا الحساب كأحد مدراء المدارس.",
+  "previewSessionExpired": "انتهت جلسة معاينة المدرسة، تم الرجوع إلى لوحة تحكم المنصة.",
   "exitPreview": "إنهاء المعاينة",
   "exitPreviewHelper": "العودة إلى جلسة مدير المنصة الأصلية وإنهاء وضع المعاينة.",
   "previousSessionEnded": "تم إنهاء الحصة السابقة",

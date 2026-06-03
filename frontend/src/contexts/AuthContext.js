@@ -57,6 +57,27 @@ const BASE_DELAY_MS = 500;
 
 let refreshPromise = null;
 
+// Task #790 — single-flight guard so the many parallel 403s a school
+// preview page fires (notifications, analytics, stats, ...) only trigger
+// ONE clean preview teardown instead of N stacked toasts / state churn.
+let previewSessionLostInFlight = false;
+
+// Task #790 — does the live access token still carry an active
+// impersonation session? The 15-min token minted by /role-switch/switch
+// is NOT part of the refresh-token family, so a background refresh can
+// quietly swap it for a plain platform-admin token (no `is_impersonating`,
+// no `tenant_id`) while the preview UI flags are still set. We decode the
+// stored token (no signature check — the backend re-validates) to tell
+// "still previewing" apart from "preview session was lost".
+function _tokenStillImpersonating() {
+  const stored = typeof window !== 'undefined' ? localStorage.getItem('nassaq_token') : null;
+  if (!stored) return false;
+  const claims = _decodeJwtPayload(stored);
+  if (!claims) return false;
+  const tenant = claims.tenant_id || claims.school_id;
+  return !!(claims.is_impersonating && tenant);
+}
+
 async function attemptTokenRefresh() {
   if (refreshPromise) return refreshPromise;
 
@@ -315,6 +336,60 @@ export const AuthProvider = ({ children }) => {
       // form-level message. This keeps any future route that emits the
       // canonical envelope safe even if it does so as a 401.
       if (mfaCanonicalCodes.has(mfaCode)) {
+        return Promise.reject(error);
+      }
+
+      // Task #790 — gracefully tear down a school preview whose
+      // impersonation session was silently lost. The short-lived (15-min)
+      // impersonation token minted by /role-switch/switch is NOT part of
+      // the refresh-token family, so a background token refresh can replace
+      // it with a plain platform-admin token while the preview flags
+      // (nassaq_school_context / nassaq_impersonating) are still active.
+      // Task #788 made the backend fail closed (403) in that state. Rather
+      // than letting the preview UI render those 403s as empty/error data,
+      // we detect the exact condition — a 403 on a request that carried the
+      // X-School-Context header, while the impersonation flag is still set
+      // but the LIVE token no longer carries the impersonated tenant — and
+      // cleanly drop back to the platform-admin context. The route guards
+      // then redirect the (now non-impersonating) platform admin off any
+      // school-only route to /admin. We deliberately scope this to the
+      // "session lost" signal so a 403 on a still-valid preview token
+      // (e.g. a genuine permission/MFA failure) keeps its own handling.
+      const sentSchoolContext = !!(config.headers &&
+        (config.headers['X-School-Context'] || config.headers['x-school-context']));
+      let impersonationFlag = false;
+      try {
+        impersonationFlag =
+          typeof sessionStorage !== 'undefined' &&
+          sessionStorage.getItem('nassaq_impersonating') === 'true';
+      } catch {
+        impersonationFlag = false;
+      }
+      if (
+        status === 403 &&
+        sentSchoolContext &&
+        impersonationFlag &&
+        !_tokenStillImpersonating()
+      ) {
+        if (!previewSessionLostInFlight) {
+          previewSessionLostInFlight = true;
+          try {
+            sessionStorage.removeItem('nassaq_school_context');
+            sessionStorage.removeItem('nassaq_impersonating');
+            sessionStorage.removeItem('nassaq_original_token');
+          } catch {
+            // best-effort cleanup; React state reset below is authoritative
+          }
+          setSchoolContext(null);
+          setIsImpersonating(false);
+          toast.error(translateToast('previewSessionExpired'), {
+            id: 'preview-session-expired',
+          });
+          // Release the single-flight guard once the React state has
+          // settled so a genuinely new preview session later can re-trigger
+          // this path.
+          setTimeout(() => { previewSessionLostInFlight = false; }, 1500);
+        }
         return Promise.reject(error);
       }
 
