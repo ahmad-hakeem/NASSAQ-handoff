@@ -40,6 +40,11 @@ KNOWN_DB_ONLY_TABLES: frozenset[str] = frozenset({
     "_deployment_markers",      # deploy-time marker rows, raw-SQL managed
     "impersonation_sessions",   # legacy table, accessed only via raw SQL
     "revoked_token_families",   # legacy table, accessed only via raw SQL
+    # Task #779 reversibility bookkeeping: records which legacy notifications
+    # had their tenant_id backfilled (and to which school) so the data
+    # migration can be reversed precisely. Raw-SQL managed; dropped on
+    # downgrade of migration b8c4d2e6f1a9.
+    "notifications_tenant_backfill_779",
 })
 
 # Columns present in the live DB but intentionally absent from the ORM model
