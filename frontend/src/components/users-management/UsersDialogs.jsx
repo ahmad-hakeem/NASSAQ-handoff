@@ -465,11 +465,15 @@ function RequestDetailsContent({ request }) {
   );
 }
 
-export function EditUserSheet({ user, onClose, onSave, api, fetchUsers }) {
+export function EditUserSheet({ user, onClose, onSave, api, fetchUsers, schools = [] }) {
   const [editRole, setEditRole] = React.useState(user?.role || '');
+  const [editTenant, setEditTenant] = React.useState(user?.tenant_id || '');
 
   React.useEffect(() => {
-    if (user) setEditRole(user.role || '');
+    if (user) {
+      setEditRole(user.role || '');
+      setEditTenant(user.tenant_id || '');
+    }
   }, [user]);
 
   if (!user) return null;
@@ -509,6 +513,21 @@ export function EditUserSheet({ user, onClose, onSave, api, fetchUsers }) {
                 </SelectContent>
               </Select>
             </div>
+            {schools.length > 0 && (
+              <div className="space-y-2">
+                <Label>المدرسة</Label>
+                <Select value={editTenant} onValueChange={setEditTenant}>
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue placeholder="اختر المدرسة" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {schools.map((school) => (
+                      <SelectItem key={school.id} value={school.id}>{school.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <Button
@@ -524,6 +543,7 @@ export function EditUserSheet({ user, onClose, onSave, api, fetchUsers }) {
                     email: email,
                     phone: phone,
                     role: editRole || undefined,
+                    tenant_id: (editTenant && editTenant !== user.tenant_id) ? editTenant : undefined,
                   });
                   onSave('تم تحديث بيانات المستخدم بنجاح');
                   fetchUsers();

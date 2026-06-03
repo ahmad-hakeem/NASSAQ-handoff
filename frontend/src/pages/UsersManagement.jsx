@@ -761,6 +761,7 @@ export default function UsersManagement() {
           }}
           api={api}
           fetchUsers={fetchUsers}
+          schools={schools}
         />
       </div>
     </Sidebar>

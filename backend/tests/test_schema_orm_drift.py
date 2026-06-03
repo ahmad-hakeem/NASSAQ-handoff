@@ -45,6 +45,11 @@ KNOWN_DB_ONLY_TABLES: frozenset[str] = frozenset({
     # migration can be reversed precisely. Raw-SQL managed; dropped on
     # downgrade of migration b8c4d2e6f1a9.
     "notifications_tenant_backfill_779",
+    # Task #794 reversibility bookkeeping: records which reassigned teachers had
+    # an authoritative teachers row created/reactivated (and their prior
+    # users.teacher_id) so the data migration can be reversed precisely. Raw-SQL
+    # managed; dropped on downgrade of migration c9d5e3f7a2b1.
+    "teacher_record_backfill_794",
 })
 
 # Columns present in the live DB but intentionally absent from the ORM model
