@@ -611,6 +611,113 @@ async def get_teacher_school_mismatches(
     return {"mismatches": results, "total": len(results)}
 
 
+@router.post("/users/{user_id}/resolve-teacher-mismatch")
+async def resolve_teacher_school_mismatch(
+    user_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+    _mfa: dict = Depends(require_recent_mfa()),
+):
+    """One-click resolution of a stuck teacher transfer.
+
+    Surfaced by ``GET /users/teacher-school-mismatches``: a teacher user whose
+    ``users.tenant_id`` points to one school while their live academic
+    ``teachers`` record is stuck in a DIFFERENT school. Resolving a case:
+
+    1. Soft-deletes (``deleted_at`` + ``is_active=False``) every live academic
+       record that lives in a school OTHER than the intended one. Academic data
+       is never migrated — the old record is retired in place.
+    2. Reactivates-or-provisions the record in the intended (``users.tenant_id``)
+       school via ``_ensure_school_teacher_record``, then folds the resolved
+       ``teachers.id`` back into ``users.teacher_id``.
+
+    Soft-deleting the foreign record FIRST is what unblocks the helper (which
+    otherwise raises 400 on a live cross-school record). Platform-admin only,
+    requires fresh MFA, and is audit-logged.
+    """
+    user = await gd_find_one(db.session, "users", {"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+
+    if user.get("role") != UserRole.TEACHER.value:
+        raise HTTPException(status_code=400, detail="هذا الإجراء مخصص لحسابات المعلمين فقط")
+
+    intended = (user.get("tenant_id") or "").strip()
+    if not intended:
+        raise HTTPException(status_code=400, detail="المعلم غير مرتبط بمدرسة مطلوبة")
+
+    # Gather every academic record linked to this teacher — by explicit user_id
+    # link first, else by canonical email (mirrors _ensure_school_teacher_record).
+    uid = user.get("id")
+    email = user.get("email")
+    rows = []
+    if uid:
+        rows = await gd_find(db.session, "teachers", {"user_id": uid}) or []
+    if not rows and email:
+        rows = await gd_find(db.session, "teachers", {"email": email}) or []
+    live = [r for r in rows if not r.get("deleted_at")]
+
+    if not live:
+        raise HTTPException(status_code=400, detail="لا يوجد سجل أكاديمي نشط لهذا المعلم")
+
+    # No conflict if a live record already lives in the intended school.
+    if any(r.get("school_id") == intended for r in live):
+        raise HTTPException(status_code=400, detail="لا يوجد تعارض — سجل المعلم موجود بالفعل في المدرسة المطلوبة")
+
+    other_records = [r for r in live if r.get("school_id") and r.get("school_id") != intended]
+    if not other_records:
+        raise HTTPException(status_code=400, detail="لا يوجد تعارض لحلّه")
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Step 1 — retire the stuck record(s) in the other school(s) in place.
+    retired = []
+    for r in other_records:
+        await gd_update_one(db.session, "teachers", {"id": r["id"]}, {
+            "is_active": False,
+            "deleted_at": now,
+            "deleted_by": current_user["id"],
+            "updated_at": now,
+        })
+        retired.append({
+            "teacher_record_id": r.get("id"),
+            "school_id": r.get("school_id"),
+        })
+
+    # Step 2 — provision/reactivate in the intended school. The foreign records
+    # now carry deleted_at, so the helper no longer blocks the move.
+    resolved_teacher_id = await _ensure_school_teacher_record(user, intended, current_user["id"])
+
+    user_patch = {"updated_at": now}
+    if resolved_teacher_id and user.get("teacher_id") != resolved_teacher_id:
+        user_patch["teacher_id"] = resolved_teacher_id
+    await gd_update_one(db.session, "users", {"id": user_id}, user_patch)
+
+    await audit_engine.log(
+        action="teacher_school_mismatch_resolved",
+        performed_by=current_user["id"],
+        actor_name=current_user.get("full_name"),
+        actor_role=current_user.get("role"),
+        actor_email=current_user.get("email"),
+        tenant_id=intended,
+        entity_type="teacher",
+        entity_id=resolved_teacher_id,
+        details={
+            "user_id": user_id,
+            "user_full_name": user.get("full_name") or user.get("full_name_ar") or email,
+            "intended_school_id": intended,
+            "resolved_teacher_id": resolved_teacher_id,
+            "retired_records": retired,
+        },
+    )
+
+    return {
+        "message": "تم حل تعارض المعلم وإعادة ربط سجله بالمدرسة المطلوبة",
+        "user_id": user_id,
+        "resolved_teacher_id": resolved_teacher_id,
+        "retired_records": retired,
+    }
+
+
 @router.get("/users/{user_id}")
 async def get_user_by_id(
     user_id: str,

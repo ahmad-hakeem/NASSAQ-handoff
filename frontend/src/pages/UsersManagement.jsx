@@ -64,7 +64,7 @@ export default function UsersManagement() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { nassaqError } = useNassaqAlert();
+  const { nassaqError, nassaqConfirm, nassaqSuccess } = useNassaqAlert();
   const isRTL = true;
 
   const visibleApprovalEntries = useMemo(
@@ -84,6 +84,7 @@ export default function UsersManagement() {
   const [schools, setSchools] = useState([]);
   const [mismatches, setMismatches] = useState([]);
   const [mismatchesLoading, setMismatchesLoading] = useState(false);
+  const [resolvingMismatchId, setResolvingMismatchId] = useState(null);
   const [requestsByType, setRequestsByType] = useState({});
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -299,6 +300,30 @@ export default function UsersManagement() {
       toast.error(getApiErrorMessage(error) || 'فشل في أرشفة الحساب');
     }
     setShowDeleteConfirm(null);
+  };
+
+  const handleResolveMismatch = (mismatch) => {
+    const intendedName = mismatch.intended_school?.name || 'المدرسة المطلوبة';
+    const oldNames = (mismatch.record_schools || []).map((s) => s.name).join('، ') || 'المدرسة الأخرى';
+    nassaqConfirm(
+      `سيتم إلغاء تفعيل السجل الأكاديمي للمعلم "${mismatch.full_name}" في (${oldNames}) ثم إعادة ربطه بـ "${intendedName}". لا يتم نقل البيانات الأكاديمية القديمة. هل تريد المتابعة؟`,
+      async () => {
+        setResolvingMismatchId(mismatch.user_id);
+        try {
+          await api.post(`/users/${mismatch.user_id}/resolve-teacher-mismatch`);
+          nassaqSuccess('تم حل التعارض وإعادة ربط سجل المعلم بالمدرسة المطلوبة');
+          await fetchMismatches();
+          fetchUsers();
+          fetchManagementStats();
+        } catch (error) {
+          console.error('Error resolving teacher mismatch:', error);
+          nassaqError(getApiErrorMessage(error) || 'فشل في حل التعارض');
+        } finally {
+          setResolvingMismatchId(null);
+        }
+      },
+      { title: 'حل تعارض المعلم', confirmText: 'متابعة', cancelText: 'إلغاء' },
+    );
   };
 
   const handleSendNotification = async (user) => {
@@ -625,6 +650,8 @@ export default function UsersManagement() {
                 mismatches={mismatches}
                 loading={mismatchesLoading}
                 onRefresh={fetchMismatches}
+                onResolve={handleResolveMismatch}
+                resolvingId={resolvingMismatchId}
               />
             </TabsContent>
 

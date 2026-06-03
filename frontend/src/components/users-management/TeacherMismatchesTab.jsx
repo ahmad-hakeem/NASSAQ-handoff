@@ -5,13 +5,15 @@ import { Badge } from '../ui/badge';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import { Button } from '../ui/button';
 import {
-  AlertTriangle, ArrowLeft, Building2, Eye, RefreshCw, UserCheck,
+  AlertTriangle, ArrowLeft, Building2, Eye, RefreshCw, UserCheck, Wand2,
 } from 'lucide-react';
 
 export default function TeacherMismatchesTab({
   mismatches = [],
   loading = false,
   onRefresh,
+  onResolve,
+  resolvingId = null,
 }) {
   const navigate = useNavigate();
 
@@ -78,14 +80,29 @@ export default function TeacherMismatchesTab({
                       )}
                     </div>
                   </div>
-                  <Button
-                    variant="outline" size="sm" className="text-xs"
-                    onClick={() => navigate(`/admin/users/${m.user_id}`)}
-                    data-testid={`view-mismatch-${m.user_id}`}
-                  >
-                    <Eye className="h-3.5 w-3.5 ms-1" strokeWidth={1.5} aria-hidden="true" />
-                    عرض المستخدم
-                  </Button>
+                  <div className="flex items-center gap-2 flex-row-reverse">
+                    <Button
+                      size="sm" className="text-xs bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
+                      onClick={() => onResolve?.(m)}
+                      disabled={resolvingId === m.user_id}
+                      data-testid={`resolve-mismatch-${m.user_id}`}
+                    >
+                      {resolvingId === m.user_id ? (
+                        <RefreshCw className="h-3.5 w-3.5 ms-1 animate-spin" strokeWidth={1.5} aria-hidden="true" />
+                      ) : (
+                        <Wand2 className="h-3.5 w-3.5 ms-1" strokeWidth={1.5} aria-hidden="true" />
+                      )}
+                      حل التعارض
+                    </Button>
+                    <Button
+                      variant="outline" size="sm" className="text-xs"
+                      onClick={() => navigate(`/admin/users/${m.user_id}`)}
+                      data-testid={`view-mismatch-${m.user_id}`}
+                    >
+                      <Eye className="h-3.5 w-3.5 ms-1" strokeWidth={1.5} aria-hidden="true" />
+                      عرض المستخدم
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="mt-4 flex items-center gap-3 flex-wrap text-sm">
