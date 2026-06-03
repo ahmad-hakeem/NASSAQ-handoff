@@ -866,6 +866,7 @@ async def acknowledge_circular(
 @router.get("/notifications/sent-circulars")
 async def list_sent_circulars(
     limit: int = 50,
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user),
 ):
     """Admin view of circulars (تعميمات) the current user has sent.
@@ -877,10 +878,17 @@ async def list_sent_circulars(
     if current_user['role'] not in ['platform_admin', 'school_principal', 'school_sub_admin', 'school_admin']:
         raise HTTPException(status_code=403, detail="غير مصرح")
 
-    tenant_id = current_user.get('tenant_id')
+    # Fail-closed preview scoping (mirrors get_notification_analytics): during
+    # a valid preview the resolver returns the previewed school, so a brand-new
+    # school shows no sent circulars; a plain admin token + stale
+    # X-School-Context header raises 403 instead of leaking circulars the admin
+    # sent in other tenants; a genuine school admin falls back to their tenant.
+    scope_tenant = _notification_read_scope(current_user, x_school_context)
+    if scope_tenant is None:
+        scope_tenant = current_user.get('tenant_id')
     query = {"type": "circular", "sender_id": current_user['id']}
-    if tenant_id:
-        query["tenant_id"] = tenant_id
+    if scope_tenant:
+        query["tenant_id"] = scope_tenant
 
     rows = await gd_find(
         db.session, "notifications", query,
@@ -926,6 +934,7 @@ async def list_sent_circulars(
 @router.get("/notifications/circular/{broadcast_id}/acknowledgements")
 async def get_circular_acknowledgements(
     broadcast_id: str,
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user),
 ):
     """Per-recipient acknowledgment list for a given circular broadcast.
@@ -936,10 +945,15 @@ async def get_circular_acknowledgements(
     if current_user['role'] not in ['platform_admin', 'school_principal', 'school_sub_admin', 'school_admin']:
         raise HTTPException(status_code=403, detail="غير مصرح")
 
-    tenant_id = current_user.get('tenant_id')
+    # Fail-closed preview scoping: a previewed school can only read its own
+    # circulars' acknowledgements; a plain admin token + stale X-School-Context
+    # header raises 403 instead of disclosing a foreign tenant's broadcast.
+    scope_tenant = _notification_read_scope(current_user, x_school_context)
+    if scope_tenant is None:
+        scope_tenant = current_user.get('tenant_id')
     query = {"$or": [{"broadcast_id": broadcast_id}, {"id": broadcast_id}]}
-    if tenant_id:
-        query["tenant_id"] = tenant_id
+    if scope_tenant:
+        query["tenant_id"] = scope_tenant
 
     rows = await gd_find(db.session, "notifications", query, order_by="created_at", desc_order=False, limit=2000)
 

@@ -2,7 +2,7 @@
 NASSAQ - Communication Routes
 Communication and messaging endpoints
 """
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Header
 from typing import Optional, List
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -10,8 +10,40 @@ import uuid
 import logging
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 from auth_scope import independent_workspace_id, AI_INSIGHTS_SCOPE_DENIED_AR
+from utils.tenant_scope import resolve_school_id
 
 logger = logging.getLogger("nassaq.communication_routes")
+
+
+def _comm_read_scope(current_user: dict, x_school_context: Optional[str]) -> Optional[str]:
+    """Resolve the strict school_id to scope a Communication Center *read* by.
+
+    Mirrors ``notification_routes_mod._notification_read_scope`` so the
+    Communication Center tabs (صندوق الوارد / المرسلة / المجدولة) close the
+    same cross-tenant preview leak that Task #788 fixed on the notifications
+    surface:
+
+    * Platform admins and active preview/impersonation sessions are routed
+      through :func:`resolve_school_id`. During a valid preview (token minted
+      by ``/role-switch/switch`` — carries ``is_impersonating`` and a pinned
+      ``tenant_id``) this returns the previewed school id, so reads are scoped
+      strictly to that tenant and a brand-new school shows empty tabs. A plain
+      platform-admin token carrying a stale ``X-School-Context`` header (e.g.
+      after a refresh replaced the short-lived impersonation token) FAILS
+      CLOSED with 403 instead of silently returning cross-tenant rows. A
+      native admin with no school context gets ``None`` (their existing
+      platform-wide view).
+    * Genuine school users (principals/admins) and Independent Teachers fall
+      through to :func:`_resolve_caller_workspace`, so they resolve to their
+      own workspace exactly as before — no behavioural change.
+    """
+    if (
+        current_user.get("is_impersonating")
+        or current_user.get("is_switched")
+        or current_user.get("role") == "platform_admin"
+    ):
+        return resolve_school_id(current_user, x_school_context)
+    return _resolve_caller_workspace(current_user)
 
 
 def _resolve_caller_workspace(current_user: dict) -> Optional[str]:
@@ -118,10 +150,14 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
     
     @router.get("/stats")
     async def get_communication_stats(
+        x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
         current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
     ):
         """Get communication statistics"""
-        school_id = current_user.get("tenant_id")
+        # Strict, fail-closed school scope. A plain platform-admin token with a
+        # stale X-School-Context header raises 403 here instead of counting
+        # every tenant's messages into a previewed school.
+        school_id = _comm_read_scope(current_user, x_school_context)
         
         query = {}
         if school_id:
@@ -280,10 +316,14 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         status: Optional[str] = None,
         skip: int = 0,
         limit: int = 20,
+        x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
         current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
     ):
         """Get list of messages"""
-        school_id = current_user.get("tenant_id")
+        # Strict, fail-closed school scope (see _comm_read_scope): a previewed
+        # brand-new school returns no sent/scheduled/draft rows, and a plain
+        # admin token + stale X-School-Context header raises 403.
+        school_id = _comm_read_scope(current_user, x_school_context)
         
         query = {}
         if school_id:
@@ -304,10 +344,13 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
     
     @router.get("/templates")
     async def get_message_templates(
+        x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
         current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
     ):
         """Get message templates"""
-        school_id = current_user.get("tenant_id")
+        # Fail-closed school scope so a previewed school never inherits another
+        # tenant's saved templates (and a plain admin + stale header → 403).
+        school_id = _comm_read_scope(current_user, x_school_context)
         
         # Default templates if none exist
         default_templates = [
@@ -354,10 +397,14 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
     
     @router.get("/audience")
     async def get_audience_stats(
+        x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
         current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
     ):
         """Get audience statistics for messaging"""
-        school_id = current_user.get("tenant_id")
+        # Fail-closed school scope so a preview reflects the previewed school's
+        # audience counts (and a plain admin + stale header → 403) rather than
+        # leaking a platform-wide total.
+        school_id = _comm_read_scope(current_user, x_school_context)
         
         if school_id:
             teachers = await gd_count(db.session, "teachers", {"school_id": school_id, "is_active": True})
@@ -516,16 +563,20 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
     
     @router.get("/received")
     async def get_received_messages(
+        x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
         current_user: dict = Depends(get_current_user)
     ):
         """Get received messages for current user"""
         user_id = current_user.get("id")
         user_role = current_user.get("role")
 
-        # Resolve the caller's workspace using the canonical helper so that
-        # independent-teacher accounts (tenant_id=None) get their synthetic
-        # workspace id instead of falling through to an unscoped query.
-        school_id = _resolve_caller_workspace(current_user)
+        # Resolve the caller's workspace. School users and Independent Teachers
+        # resolve to their own workspace (unchanged); platform-admin/preview
+        # sessions route through the fail-closed scope so a previewed brand-new
+        # school shows an empty inbox and a plain admin token + stale
+        # X-School-Context header raises 403 instead of leaking every tenant's
+        # sent messages.
+        school_id = _comm_read_scope(current_user, x_school_context)
 
         # Non-platform-admin callers must always resolve to a workspace.
         # Fail closed if we cannot determine one to prevent cross-tenant leaks.
