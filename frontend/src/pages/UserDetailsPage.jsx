@@ -609,10 +609,10 @@ ${API_URL}/login
                       <span className="text-sm">{user.city}، {user.region}</span>
                     </div>
                   )}
-                  {user.school_name && (
+                  {(user.school_name || user.school_name_ar || user.school_name_en) && (
                     <div className="flex items-center gap-3">
                       <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      <span className="text-sm">{user.school_name}</span>
+                      <span className="text-sm">{user.school_name || user.school_name_ar || user.school_name_en}</span>
                     </div>
                   )}
                   {user.educational_department && (

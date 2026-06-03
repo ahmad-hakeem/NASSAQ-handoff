@@ -35,6 +35,94 @@ router = APIRouter()
 _REQUIRE_RECENT_MFA_403_IT = require_recent_mfa_403_if_independent_teacher()
 
 
+# ---- School-teacher academic-record provisioning -----------------------
+# A school teacher exists in BOTH `users` (login / role / tenant_id) and the
+# authoritative `teachers` table (keyed by school_id) — the latter drives the
+# Teachers page and every academic flow. Platform-Admin user edits only ever
+# wrote the `users` row, so a teacher linked here never appeared under the
+# school. These helpers reconcile the `teachers` record when a teacher is
+# linked to a school: create-if-missing in the target school, and BLOCK moving
+# a teacher who already has an academic record in a DIFFERENT school (academic
+# data is never silently migrated).
+async def _generate_school_teacher_id(school_id: str) -> str:
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
+    name = (school or {}).get("name") or "SCH"
+    code = "".join(ch for ch in name[:3] if ch.isalnum()).upper() or "SCH"
+    year = datetime.now().strftime("%y")
+    count = await gd_count(db.session, "teachers", {"school_id": school_id})
+    candidate = f"TCH-{code}-{year}-{str(count + 1).zfill(4)}"
+    if await gd_find_one(db.session, "teachers", {"id": candidate}):
+        candidate = f"TCH-{code}-{year}-{uuid.uuid4().hex[:6].upper()}"
+    return candidate
+
+
+async def _ensure_school_teacher_record(user: dict, target_school_id: str, created_by: str) -> str:
+    """Reconcile the authoritative `teachers` record for a school teacher.
+
+    create-if-missing in ``target_school_id``; block (HTTP 400) when a
+    non-deleted academic record already exists in a *different* school.
+    Idempotent (and reactivating) when the record already lives in the target
+    school.
+
+    Returns the resolved ``teachers.id`` so the CALLER can write
+    ``users.teacher_id`` as part of its own single user-row write. This helper
+    touches ONLY the ``teachers`` table and never the ``users`` row — that keeps
+    the write ordering in the caller's hands so a blocked move (which raises
+    before the caller persists anything) cannot leave a partial commit.
+    """
+    uid = user.get("id")
+    email = user.get("email")
+
+    # Gather every academic record linked to this teacher (by explicit user_id
+    # link first, else by canonical email). Soft-deleted history (deleted_at
+    # set) is ignored — a genuinely removed record must not block re-linking.
+    rows = []
+    if uid:
+        rows = await gd_find(db.session, "teachers", {"user_id": uid}) or []
+    if not rows and email:
+        rows = await gd_find(db.session, "teachers", {"email": email}) or []
+    live = [r for r in rows if not r.get("deleted_at")]
+
+    # Block: any live record in a different school — do not migrate it.
+    other = next((r for r in live if r.get("school_id") and r.get("school_id") != target_school_id), None)
+    if other:
+        raise HTTPException(
+            status_code=400,
+            detail="لا يمكن نقل معلم لديه سجل أكاديمي في مدرسة أخرى. الرجاء إنشاء حساب المعلم في المدرسة المطلوبة.",
+        )
+
+    # Already in the target school — reactivate if needed and ensure the link.
+    same = next((r for r in live if r.get("school_id") == target_school_id), None)
+    if same:
+        patch = {}
+        if uid and not same.get("user_id"):
+            patch["user_id"] = uid
+        if same.get("is_active") is False:
+            patch["is_active"] = True
+        if patch:
+            await gd_update_one(db.session, "teachers", {"id": same["id"]}, patch)
+        return same["id"]
+
+    # No academic record yet — provision a minimal one in the target school.
+    teacher_id = await _generate_school_teacher_id(target_school_id)
+    now = datetime.now(timezone.utc).isoformat()
+    await gd_insert(db.session, "teachers", {
+        "id": teacher_id,
+        "teacher_id": teacher_id,
+        "user_id": uid,
+        "full_name": user.get("full_name") or user.get("full_name_ar") or email,
+        "full_name_en": user.get("full_name_en"),
+        "email": email,
+        "phone": user.get("phone"),
+        "national_id": user.get("national_id"),
+        "school_id": target_school_id,
+        "is_active": True,
+        "created_by": created_by,
+        "created_at": now,
+        "updated_at": now,
+    })
+    return teacher_id
+
 
 # ============== USER MANAGEMENT ROUTES ==============
 class PlatformUserCreate(BaseModel):
@@ -158,8 +246,15 @@ async def create_platform_user(
         "created_by": current_user["id"],
     }
     
+    # Provision the authoritative academic record for school teachers so they
+    # appear under the school immediately (mirrors the update path). Run BEFORE
+    # the users insert: if this blocks (HTTP 400), the request fails closed with
+    # no orphaned user row committed.
+    if tenant_id and user_data.role == UserRole.TEACHER.value:
+        new_user["teacher_id"] = await _ensure_school_teacher_record(new_user, tenant_id, current_user["id"])
+
     await gd_insert(db.session, "users", new_user)
-    
+
     # Log this action using the new Audit Engine
     await audit_engine.log_data_change(
         action=AuditAction.USER_CREATED.value,
@@ -513,12 +608,24 @@ async def update_user(
                 )
             updates["tenant_id"] = new_tenant_id
             # Derive the school name from the canonical record so it can
-            # never drift from (or leak) another tenant's name.
-            updates["school_name"] = school.get("name") or school.get("name_en")
+            # never drift from (or leak) another tenant's name. (`users` has
+            # school_name_ar/en — there is NO `school_name` column, so writing
+            # it was a silent no-op.)
+            updates["school_name_ar"] = school.get("name")
+            updates["school_name_en"] = school.get("name_en")
+            # Reconcile the authoritative academic record so a school teacher
+            # actually appears under the school. Runs BEFORE the users write so
+            # a blocked cross-school move fails closed (no false success); the
+            # resolved teacher_id is folded into the single users update below.
+            if effective_role == UserRole.TEACHER.value:
+                _resolved_teacher_id = await _ensure_school_teacher_record(user, new_tenant_id, current_user["id"])
+                if _resolved_teacher_id and user.get("teacher_id") != _resolved_teacher_id:
+                    updates["teacher_id"] = _resolved_teacher_id
         else:
             # Clearing the link — drop any stale school name with it.
             updates["tenant_id"] = None
-            updates["school_name"] = None
+            updates["school_name_ar"] = None
+            updates["school_name_en"] = None
 
     # When role or tenant_id changes, bump last_password_change to invalidate
     # all outstanding tokens — including switched/impersonation ones.
