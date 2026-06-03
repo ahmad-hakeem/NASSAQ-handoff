@@ -15,6 +15,7 @@ already tenant-scoped so the messaging power can be granted later
 without leaking data.
 """
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -208,3 +209,42 @@ async def test_principal_broadcast_only_reaches_own_tenant(client, tenant_a, ten
     assert b_rows == [], b_rows
     # And every fanned-out row carries A's tenant id.
     assert a_rows[0].get("tenant_id") == tenant_a
+
+
+@pytest.mark.asyncio
+async def test_new_school_inbox_does_not_include_older_platform_wide_messages(client):
+    """A newly created school/workspace must not inherit old platform-wide
+    Communication Centre rows as personal inbox items.
+
+    Regression for production report: `/communication/received` previously
+    queried `school_id IN (current_school, NULL)`, which made every new
+    principal see historical `school_id=NULL` messages as inbox messages.
+    """
+    old_sent_at = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    old_msg_id = str(uuid.uuid4())
+    await gd_insert(db.session, "messages", {
+        "id": old_msg_id,
+        "school_id": None,
+        "title": "old platform message",
+        "content": "must not appear in a newly-created school inbox",
+        "audience": "all",
+        "status": "sent",
+        "sent_at": old_sent_at,
+        "created_at": old_sent_at,
+    })
+
+    new_school_id = str(uuid.uuid4())
+    await _mk_school(new_school_id)
+    principal_uid = await _mk_user(
+        UserRole.SCHOOL_PRINCIPAL, new_school_id, email_prefix="new-prin"
+    )
+
+    res = await client.get(
+        "/communication/received",
+        headers=_headers(principal_uid, UserRole.SCHOOL_PRINCIPAL.value, new_school_id),
+    )
+    assert res.status_code == 200, res.text
+
+    returned_ids = {m["id"] for m in res.json().get("messages", [])}
+    assert old_msg_id not in returned_ids
+    assert res.json().get("messages") == []

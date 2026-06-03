@@ -520,14 +520,19 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         if not school_id and user_role != "platform_admin":
             raise HTTPException(status_code=403, detail="تعذّر تحديد مساحة العمل")
 
-        # Build query based on user's role and school
+        # Build query based on user's role and school.
+        #
+        # IMPORTANT tenant-isolation invariant:
+        # A school/workspace inbox must only show messages that are explicitly
+        # stored for that workspace. Historical platform-wide rows
+        # (`school_id is None`) are announcements/broadcast history, not
+        # personal inbox items for every future workspace. Including
+        # `school_id=None` here caused newly-created schools to inherit old
+        # Communication Centre messages immediately after signup.
         query = {"status": "sent"}
         
         if school_id:
-            query["$or"] = [
-                {"school_id": school_id},
-                {"school_id": None}  # Platform-wide messages
-            ]
+            query["school_id"] = school_id
         
         # Filter by audience
         audience_filter = ["all"]
@@ -598,11 +603,13 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
 
         # --- Object-level authorization ---
         # The caller must be a valid recipient of this message.
-        # 1. Tenant check: message must belong to the caller's workspace or be
-        #    a platform-wide message (school_id is None).
+        # 1. Tenant check: message must belong to the caller's workspace.
+        #    Platform-wide `school_id=None` rows are not personal inbox items;
+        #    allowing them here makes every new workspace inherit historical
+        #    messages and bypasses tenant segmentation.
         msg_school_id = msg.get("school_id")
         if user_role != "platform_admin":
-            if msg_school_id is not None and msg_school_id != caller_workspace:
+            if msg_school_id != caller_workspace:
                 raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول إلى هذه الرسالة")
 
         # 2. Audience check: the caller's role or user id must be in the intended audience.
