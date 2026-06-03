@@ -383,6 +383,71 @@ async def test_5_9_3_capability_gate_does_not_block_school_principal(  # §5.9 #
     )
 
 
+# ---------------------------------------------------------------------------
+# §5.9 #3 (Task #773) — class-scoped teaching endpoints are NOT behind the
+# full-school-tenant gate. The curriculum-lesson + grade-column endpoints
+# live on a separate (ungated) router so an IT caller can manage their own
+# classes' curriculum/grades, while the smart-scheduling endpoints on the
+# gated router stay denied. This locks in the split so the broad gate can't
+# silently re-block the class endpoints again.
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_5_9_3_it_can_add_lesson_to_own_class_not_capability_blocked(client):
+    """An IT account with a materialized workspace and an owned class can
+    POST a curriculum lesson — it is NOT blocked by the capability gate."""
+    ctx = await mk_it_workspace(with_passkey=False)
+    h = it_headers(ctx)
+    resp = await client.post(
+        f"/class/{ctx['class_id']}/curriculum-plan/lesson",
+        headers=h,
+        json={"title": "الدرس الأول", "week": 1, "order": 1},
+    )
+    assert resp.status_code == 200, (resp.status_code, resp.text)
+    body = resp.json()
+    assert body["title"] == "الدرس الأول"
+    assert body["class_id"] == ctx["class_id"]
+    # Belt-and-suspenders: the response must NOT be the IT-deny envelope.
+    assert not _is_it_deny_envelope(resp), resp.text
+
+    # The lesson is readable back through the (also ungated) curriculum plan.
+    plan = await client.get(
+        f"/class/{ctx['class_id']}/curriculum-plan", headers=h,
+    )
+    assert plan.status_code == 200, plan.text
+    assert any(l["id"] == body["id"] for l in plan.json()["lessons"])
+
+
+@pytest.mark.asyncio
+async def test_5_9_3_it_still_denied_on_smart_scheduling(client):
+    """The same IT caller that can add lessons MUST still be denied on a
+    representative smart-scheduling endpoint with the canonical envelope."""
+    ctx = await mk_it_workspace(with_passkey=False)
+    h = it_headers(ctx)
+    resp = await client.post(
+        "/smart-scheduling/session/add",
+        headers=h,
+        json={
+            "day_of_week": "sun", "slot_number": 1,
+            "class_id": ctx["class_id"], "subject_id": "s", "teacher_id": "t",
+        },
+    )
+    assert _is_it_deny_envelope(resp), (resp.status_code, resp.text)
+
+
+@pytest.mark.asyncio
+async def test_5_9_3_it_cannot_add_lesson_cross_workspace(client):
+    """Cross-workspace isolation is preserved: an IT caller cannot add a
+    lesson to a class outside their own workspace (§8 inv. 3 → 404)."""
+    a = await mk_it_workspace(with_passkey=False)
+    b = await mk_it_workspace(with_passkey=False)
+    resp = await client.post(
+        f"/class/{a['class_id']}/curriculum-plan/lesson",
+        headers=it_headers(b),
+        json={"title": "leak", "week": 1, "order": 1},
+    )
+    assert resp.status_code == 404, (resp.status_code, resp.text)
+
+
 # ===========================================================================
 # §5.9 #4 — Bootstrap idempotency
 # ===========================================================================

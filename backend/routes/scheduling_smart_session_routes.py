@@ -31,6 +31,17 @@ from shared_models import (
 
 router = APIRouter()
 
+# Class-scoped teaching endpoints (curriculum lessons + grade columns).
+# These live on a SEPARATE router so they can be mounted WITHOUT the
+# full-school-tenant capability gate that the smart-scheduling router
+# carries (Task #773). They rely on `_verify_class_access` for per-class
+# authorization, which already enforces IT workspace ownership, the
+# §6.7 co-teaching collaborator path, and the §8 inv. 3 cross-workspace
+# 404 invariant. Independent-Teacher callers manage their own classes'
+# curriculum/grades here; genuinely school-wide smart-scheduling
+# endpoints stay on `router` and remain denied for IT.
+class_teaching_router = APIRouter()
+
 # ============== SMART TIMETABLE SESSION MANAGEMENT APIs ==============
 
 async def _assert_entities_in_school(
@@ -887,7 +898,7 @@ async def _verify_class_access(class_id: str, current_user: dict, *, write: bool
     raise HTTPException(status_code=403, detail="غير مصرح بالوصول إلى هذا الفصل")
 
 
-@router.get("/class/{class_id}/curriculum-plan")
+@class_teaching_router.get("/class/{class_id}/curriculum-plan")
 async def get_curriculum_plan(
     class_id: str,
     subject_id: Optional[str] = None,
@@ -908,7 +919,7 @@ async def get_curriculum_plan(
     }
 
 
-@router.post("/class/{class_id}/curriculum-plan/lesson")
+@class_teaching_router.post("/class/{class_id}/curriculum-plan/lesson")
 async def add_lesson(
     class_id: str,
     lesson: LessonCreate,
@@ -933,7 +944,7 @@ async def add_lesson(
     return doc
 
 
-@router.put("/curriculum-lesson/{lesson_id}")
+@class_teaching_router.put("/curriculum-lesson/{lesson_id}")
 async def update_lesson(
     lesson_id: str,
     update: LessonUpdate,
@@ -949,7 +960,7 @@ async def update_lesson(
     return {**existing, **data}
 
 
-@router.delete("/curriculum-lesson/{lesson_id}")
+@class_teaching_router.delete("/curriculum-lesson/{lesson_id}")
 async def delete_lesson(
     lesson_id: str,
     current_user: dict = Depends(get_current_user),
@@ -984,7 +995,7 @@ class GradeColumnUpdate(BaseModel):
     visible: Optional[bool] = None
 
 
-@router.get("/class/{class_id}/grade-columns")
+@class_teaching_router.get("/class/{class_id}/grade-columns")
 async def get_grade_columns(
     class_id: str,
     current_user: dict = Depends(get_current_user),
@@ -1009,7 +1020,7 @@ async def get_grade_columns(
     return columns
 
 
-@router.post("/class/{class_id}/grade-columns")
+@class_teaching_router.post("/class/{class_id}/grade-columns")
 async def add_grade_column(
     class_id: str,
     col: GradeColumnCreate,
@@ -1031,7 +1042,7 @@ async def add_grade_column(
     return doc
 
 
-@router.put("/grade-column/{column_id}")
+@class_teaching_router.put("/grade-column/{column_id}")
 async def update_grade_column(
     column_id: str,
     update: GradeColumnUpdate,
@@ -1047,7 +1058,7 @@ async def update_grade_column(
     return {**existing, **data}
 
 
-@router.delete("/grade-column/{column_id}")
+@class_teaching_router.delete("/grade-column/{column_id}")
 async def delete_grade_column(
     column_id: str,
     current_user: dict = Depends(get_current_user),

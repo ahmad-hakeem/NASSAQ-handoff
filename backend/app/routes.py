@@ -37,7 +37,10 @@ def register_routes(app, api_router: APIRouter):
     from routes.academics_structure_engine_routes import router as academics_structure_router
     from routes.academics_teacher_routes import router as academics_teacher_router
     from routes.scheduling_smart_engine_routes import router as scheduling_smart_router
-    from routes.scheduling_smart_session_routes import router as scheduling_smart_sess_router
+    from routes.scheduling_smart_session_routes import (
+        router as scheduling_smart_sess_router,
+        class_teaching_router as scheduling_class_teaching_router,
+    )
     from routes.schedule_candidates_routes import router as schedule_candidates_router
     from routes.schedule_master_grid_routes import router as schedule_master_grid_router
     from routes.standby_routes import router as standby_router
@@ -255,6 +258,12 @@ def register_routes(app, api_router: APIRouter):
     api_router.include_router(it_search_router)
     api_router.include_router(scheduling_smart_router, dependencies=_full_tenant_dep)
     api_router.include_router(scheduling_smart_sess_router, dependencies=_full_tenant_dep)
+    # Task #773 — class-scoped curriculum-lesson + grade-column endpoints
+    # are mounted WITHOUT the full-school-tenant gate so Independent
+    # Teachers can manage their own classes' curriculum/grades. Per-class
+    # authorization (`_verify_class_access`) still enforces IT workspace
+    # ownership, §6.7 co-teaching, and the §8 inv. 3 cross-workspace 404.
+    api_router.include_router(scheduling_class_teaching_router)
     api_router.include_router(schedule_candidates_router, dependencies=_full_tenant_dep)
     api_router.include_router(schedule_master_grid_router, dependencies=_full_tenant_dep)
     api_router.include_router(standby_router, dependencies=_full_tenant_dep)
