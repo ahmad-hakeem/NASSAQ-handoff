@@ -343,6 +343,18 @@ const AVAILABLE_ROLES = [
     icon: GraduationCap,
     color: 'bg-violet-500',
   },
+  {
+    // School Teacher created from the global modal. Distinct account type
+    // from Independent Teacher: this teacher is bound to ONE real school
+    // via tenant_id (chosen in step 2). Maps to the backend `teacher` role.
+    id: 'teacher',
+    name: 'معلم مدرسة',
+    name_en: 'School Teacher',
+    description: 'معلم تابع لمدرسة محددة، يتم ربطه بها عند الإنشاء',
+    description_en: 'Teacher belonging to a specific school, linked at creation',
+    icon: School,
+    color: 'bg-cyan-600',
+  },
 ];
 
 // School-scoped roles — shown ONLY when creating a user for a specific
@@ -638,7 +650,13 @@ export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, i
     educational_department: '',
     school_name_ar: '',
     school_name_en: '',
+    tenant_id: '',
   });
+
+  // Schools list for the School Teacher link selector (global modal only).
+  const [schools, setSchools] = useState([]);
+  const [schoolsLoading, setSchoolsLoading] = useState(false);
+  const [schoolsError, setSchoolsError] = useState(false);
   
   // الصلاحيات
   const [selectedPermissions, setSelectedPermissions] = useState([]);
@@ -749,12 +767,55 @@ export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, i
         educational_department: '',
         school_name_ar: '',
         school_name_en: '',
+        tenant_id: '',
       });
       setSelectedPermissions([]);
       setTempPassword('');
       setCreatedUser(null);
     }
   }, [open]);
+
+  // Load the schools list for the School Teacher selector. Only in the
+  // global modal (no preselectedSchool) and only for the `teacher` account
+  // type. Independent-Teacher workspaces are filtered out so a School
+  // Teacher can never be linked to one (backend also rejects this).
+  useEffect(() => {
+    if (!open || preselectedSchool || formData.role !== 'teacher' || !api) return;
+    let cancelled = false;
+    (async () => {
+      setSchoolsLoading(true);
+      setSchoolsError(false);
+      try {
+        const resp = await api.get('/schools');
+        if (cancelled) return;
+        const list = Array.isArray(resp?.data) ? resp.data : [];
+        setSchools(
+          list.filter(
+            (s) =>
+              s?.entity_kind !== 'independent_teacher_workspace' &&
+              s?.school_type !== 'independent_teacher' &&
+              s?.tenant_type !== 'independent_teacher',
+          ),
+        );
+      } catch (e) {
+        if (!cancelled) {
+          setSchools([]);
+          setSchoolsError(true);
+        }
+      } finally {
+        if (!cancelled) setSchoolsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, preselectedSchool, formData.role, api]);
+
+  // Clear any selected school link whenever the role is not School Teacher,
+  // so Independent Teacher / platform accounts never carry a tenant_id.
+  useEffect(() => {
+    if (formData.role !== 'teacher') {
+      setFormData((prev) => (prev.tenant_id ? { ...prev, tenant_id: '' } : prev));
+    }
+  }, [formData.role]);
   
   // تبديل صلاحية
   const togglePermission = (permId) => {
@@ -802,6 +863,10 @@ export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, i
         if (formData.role === 'independent_teacher') {
           return formData.region !== '' && formData.city !== '';
         }
+        // معلم مدرسة في النموذج العام: يجب ربطه بمدرسة محددة
+        if (formData.role === 'teacher' && !preselectedSchool) {
+          return !!formData.tenant_id;
+        }
         return true;
       case 3:
         return selectedPermissions.length > 0;
@@ -827,7 +892,7 @@ export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, i
         educational_department: formData.educational_department || null,
         school_name_ar: formData.school_name_ar || null,
         school_name_en: formData.school_name_en || null,
-        tenant_id: preselectedSchool?.id || null,
+        tenant_id: preselectedSchool?.id || formData.tenant_id || null,
         permissions: selectedPermissions,
       };
       
@@ -892,7 +957,9 @@ ${loginUrl}
   // user for a specific school, platform roles otherwise. The lookup
   // searches both lists so already-selected roles always resolve.
   const rolesForContext = preselectedSchool ? SCHOOL_ROLES : AVAILABLE_ROLES;
-  const selectedRole = [...AVAILABLE_ROLES, ...SCHOOL_ROLES].find(r => r.id === formData.role);
+  // Prefer the active context's list first so the `teacher` id (present in
+  // both lists) resolves to the correct card label/description.
+  const selectedRole = [...rolesForContext, ...AVAILABLE_ROLES, ...SCHOOL_ROLES].find(r => r.id === formData.role);
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1016,6 +1083,51 @@ ${loginUrl}
                       <p className="text-sm font-medium">{isRTL ? selectedRole.name : selectedRole.name_en}</p>
                       <p className="text-xs text-muted-foreground">{t('selectedRole')}</p>
                     </div>
+                  </div>
+                )}
+
+                {/* ربط معلم المدرسة بمدرسة محددة (النموذج العام فقط) */}
+                {formData.role === 'teacher' && !preselectedSchool && (
+                  <div className="space-y-2 p-4 bg-cyan-50 border border-cyan-200 rounded-xl">
+                    <Label className="flex items-center gap-2">
+                      <School className="h-4 w-4" />
+                      {isRTL ? 'المدرسة' : 'School'}
+                      <span className="text-red-500" aria-hidden="true">*</span>
+                    </Label>
+                    <Select
+                      value={formData.tenant_id || ''}
+                      onValueChange={(v) => setFormData({ ...formData, tenant_id: v })}
+                    >
+                      <SelectTrigger className="rounded-xl" data-testid="school-teacher-school-select">
+                        <SelectValue
+                          placeholder={
+                            schoolsLoading
+                              ? (isRTL ? 'جاري تحميل المدارس...' : 'Loading schools...')
+                              : (isRTL ? 'اختر المدرسة' : 'Select school')
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {schools.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {isRTL ? (s.name || s.name_en || s.id) : (s.name_en || s.name || s.id)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {schoolsError ? (
+                      <p className="text-xs text-red-600">
+                        {isRTL
+                          ? 'تعذّر تحميل قائمة المدارس. يرجى إغلاق النافذة والمحاولة مرة أخرى.'
+                          : 'Failed to load the schools list. Please close and try again.'}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {isRTL
+                          ? 'سيتم ربط المعلم بهذه المدرسة. هذا النوع يختلف عن المعلم المستقل.'
+                          : 'The teacher will be linked to this school. This type differs from an Independent Teacher.'}
+                      </p>
+                    )}
                   </div>
                 )}
                 
@@ -1395,6 +1507,12 @@ ${loginUrl}
                   <p className="text-muted-foreground mt-2">
                     {t('youCanNowSendLoginCredentialsToTheUser')}
                   </p>
+                  {selectedRole && (
+                    <div className="inline-flex items-center gap-2 mt-3 px-3 py-1 rounded-full bg-muted text-sm">
+                      <selectedRole.icon className="h-4 w-4" aria-hidden="true" />
+                      <span>{isRTL ? selectedRole.name : selectedRole.name_en}</span>
+                    </div>
+                  )}
                 </div>
                 
                 {/* بيانات الدخول */}
