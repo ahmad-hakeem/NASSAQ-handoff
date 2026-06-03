@@ -22,6 +22,8 @@ from dependencies import (
     session_engine,
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, _gd_aggregate
+from auth_scope import is_independent_workspace_id
+from utils.it_schedule import compute_it_slot_times, normalize_it_day
 
 
 from shared_models import (
@@ -40,6 +42,90 @@ router = APIRouter()
 # on which schedule is "current". Drafts and archived rows are intentionally
 # excluded — only ``status == "published"`` is considered.
 _DAY_ORDER = {"sunday": 0, "monday": 1, "tuesday": 2, "wednesday": 3, "thursday": 4, "friday": 5, "saturday": 6}
+
+
+async def _resolve_it_teacher_sessions(school_id: str, resolved_teacher_id: str, day_of_week: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Independent-Teacher synthetic-workspace read path (spec §5.4).
+
+    IT slots live directly in ``schedule_sessions`` (``status="scheduled"``)
+    with denormalised ``class_name`` / ``subject_name`` and no published
+    parent or ``time_slots`` collection. We read them directly, normalise the
+    short weekday codes the editor stores (``sun`` → ``sunday``) to the full
+    names the generic teacher-schedule frontend expects, and derive slot times
+    from the workspace period config so the read page and dashboard "today"
+    match the editor grid. This never writes — the IT save flow is untouched.
+    """
+    ss_filter = {
+        "school_id": school_id,
+        "teacher_id": resolved_teacher_id,
+        "status": "scheduled",
+    }
+    sessions = await gd_find(db.session, "schedule_sessions", ss_filter, limit=500)
+
+    # Deduplicate by (day, slot) so a stale duplicate row can't double up.
+    seen = set()
+    unique = []
+    for s in sessions:
+        key = (s.get("day_of_week"), s.get("slot_number"))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(s)
+    sessions = unique
+
+    # Bulk-fetch class/subject rows for fallback names (no N+1); the row's own
+    # denormalised name is preferred when present.
+    class_ids = list({s.get("class_id") for s in sessions if s.get("class_id")})
+    subj_ids = list({s.get("subject_id") for s in sessions if s.get("subject_id")})
+    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=500) if class_ids else []
+    subjects = await gd_find(db.session, "subjects", {"id": {"$in": subj_ids}}, limit=500) if subj_ids else []
+    cls_map = {c.get("id"): c for c in classes}
+    subj_map = {s.get("id"): s for s in subjects}
+
+    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id}) or {}
+    slot_times = compute_it_slot_times(settings)
+
+    enriched: List[Dict[str, Any]] = []
+    for s in sessions:
+        full_day = normalize_it_day(s.get("day_of_week"))
+        slot = s.get("slot_number")
+        try:
+            slot_int = int(slot) if slot is not None else None
+        except (ValueError, TypeError):
+            slot_int = None
+        start_time, end_time = slot_times.get(slot_int, (None, None))
+        cls = cls_map.get(s.get("class_id")) or {}
+        subj = subj_map.get(s.get("subject_id")) or {}
+        cls_name = s.get("class_name") or cls.get("name") or "فصل"
+        subj_name = (s.get("subject_name") or subj.get("name_ar")
+                     or subj.get("name_en") or subj.get("name") or "مادة")
+        enriched.append({
+            "id": s.get("id"),
+            "schedule_session_id": s.get("id"),
+            "day_of_week": full_day,
+            "period_number": slot_int,
+            "slot_number": slot_int,
+            "start_time": start_time,
+            "end_time": end_time,
+            "time": start_time,
+            "period": slot_int,
+            "class_id": s.get("class_id"),
+            "class_name": cls_name,
+            "subject_id": s.get("subject_id"),
+            "subject_name": subj_name,
+            "subject": subj_name,
+            "session_type": "class",
+            "room_name": "",
+        })
+
+    # Restrict to a single day if asked (compare on the normalised full name so
+    # a full-name caller and the short stored code still match).
+    if day_of_week:
+        target = normalize_it_day(day_of_week)
+        enriched = [e for e in enriched if e.get("day_of_week") == target]
+
+    enriched.sort(key=lambda x: (_DAY_ORDER.get(x.get("day_of_week", ""), 9), x.get("period_number") or 0))
+    return enriched
 
 
 async def _latest_published_timetable(school_id: str) -> Optional[dict]:
@@ -82,6 +168,15 @@ async def _resolve_teacher_sessions(school_id: str, resolved_teacher_id: str, da
     "today" path)."""
     if not school_id or not resolved_teacher_id:
         return []
+
+    # Independent-Teacher synthetic workspaces (spec §5.4) store schedule rows
+    # directly in schedule_sessions (status="scheduled") under
+    # schedule_id="itw_schedule_{school_id}" with NO published timetable/schedule
+    # parent and NO time_slots collection. The published-parent logic below would
+    # therefore return [] for them. Branch into the IT-aware reader so the
+    # editor's saved grid surfaces on the read page and dashboard "today".
+    if is_independent_workspace_id(school_id):
+        return await _resolve_it_teacher_sessions(school_id, resolved_teacher_id, day_of_week)
 
     timetable = await _latest_published_timetable(school_id)
     legacy_schedule = await _latest_published_schedule(school_id)

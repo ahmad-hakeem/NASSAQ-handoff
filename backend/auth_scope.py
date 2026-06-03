@@ -81,6 +81,19 @@ def independent_workspace_id(current_user: dict) -> Optional[str]:
     return f"itw_{user_id}"
 
 
+def is_independent_workspace_id(school_id: Optional[str]) -> bool:
+    """True when ``school_id`` is an Independent-Teacher synthetic workspace
+    id (the ``itw_{user_id}`` convention).
+
+    This is the school_id-side counterpart to ``independent_workspace_id``
+    (which derives the id from a user dict). Use it when only the resolved
+    school/workspace id is available — e.g. the generic teacher-schedule
+    read path — to branch into the IT direct-``schedule_sessions`` model
+    without hard-coding the prefix at each call site.
+    """
+    return isinstance(school_id, str) and school_id.startswith("itw_")
+
+
 def require_request_school_id(current_user: dict) -> str:
     """Resolve the caller's school/workspace id, fail-closed on failure.
 

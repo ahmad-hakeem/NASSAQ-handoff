@@ -26,6 +26,9 @@ from dependencies import (
     REPORT_TYPES, generate_student_qr_code
 )
 
+from auth_scope import is_independent_workspace_id
+from utils.it_schedule import synthesize_it_time_slots
+
 router = APIRouter()
 
 
@@ -1886,6 +1889,15 @@ async def list_time_slots(
         raise HTTPException(status_code=403, detail="Cross-school access denied")
 
     slots = await gd_find(db.session, "time_slots", {"school_id": resolved_school_id}, limit=500)
+    # Independent-Teacher synthetic workspaces (spec §5.4) never persist a
+    # time_slots collection, but the generic teacher weekly-grid renders its
+    # rows by iterating time_slots — so without this it shows "لا يوجد جدول
+    # حالياً". Synthesize virtual rows from the workspace period config so the
+    # grid renders. Read-only: nothing is written, and the IT save flow keeps
+    # storing slot numbers (not times).
+    if not slots and is_independent_workspace_id(resolved_school_id):
+        it_settings = await gd_find_one(db.session, "school_settings", {"school_id": resolved_school_id})
+        slots = synthesize_it_time_slots(resolved_school_id, it_settings)
     slots.sort(key=lambda s: (s.get("period_number") if s.get("period_number") is not None
                               else (s.get("slot_number") if s.get("slot_number") is not None else 99)))
     return slots
