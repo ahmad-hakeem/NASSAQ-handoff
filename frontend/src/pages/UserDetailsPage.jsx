@@ -424,12 +424,13 @@ ${API_URL}/login
   const handleEditSubmit = async () => {
     try {
       await api.put(`/users/${userId}`, editForm);
-      setUser(prev => ({ ...prev, ...editForm }));
+      // Re-fetch so the canonical, server-derived values (school_name,
+      // cleared links) are shown instead of the raw typed input.
+      await fetchUser();
       toast.success('تم تحديث البيانات بنجاح');
       setShowEditSheet(false);
     } catch (error) {
-      console.error('Error updating user:', error);
-      toast.error(getApiErrorMessage(error) || 'فشل في تحديث البيانات. الرجاء المحاولة مرة أخرى.');
+      nassaqError(getApiErrorMessage(error) || 'فشل في تحديث البيانات. الرجاء المحاولة مرة أخرى.');
     }
   };
   

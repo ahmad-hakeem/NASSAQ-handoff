@@ -107,6 +107,18 @@ async def create_platform_user(
         school = await gd_find_one(db.session, "schools", {"id": tenant_id})
         if not school:
             raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
+        if (
+            school.get("tenant_type") == "independent_teacher"
+            or school.get("school_type") == "independent_teacher"
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="لا يمكن ربط المستخدم بمساحة عمل معلم مستقل",
+            )
+        # Derive school naming from the canonical record so it can never
+        # drift from (or leak) another tenant's name.
+        user_data.school_name_ar = school.get("name")
+        user_data.school_name_en = school.get("name_en")
     
     # Check if email exists
     existing_email = await gd_find_one(db.session, "users", {"email": user_data.email})
@@ -460,16 +472,53 @@ async def update_user(
         updates["educational_department"] = user_data.educational_department
     if user_data.avatar_url:
         updates["avatar_url"] = user_data.avatar_url
-    if user_data.tenant_id is not None:
-        updates["tenant_id"] = user_data.tenant_id if user_data.tenant_id else None
-    if user_data.school_name is not None:
-        updates["school_name"] = user_data.school_name if user_data.school_name else None
     if user_data.role:
         valid_roles = [r.value for r in UserRole]
         if user_data.role not in valid_roles:
             raise HTTPException(status_code=400, detail=f"الدور غير صالح. الأدوار المسموحة: {', '.join(valid_roles)}")
-        old_role = user.get("role", "")
         updates["role"] = user_data.role
+
+    # --- Tenant (school) linking with server-side validation ----------
+    # A tenant_id must reference a real production school — never an
+    # Independent-Teacher workspace — and the effective role must be
+    # school-scoped. school_name is always derived from the canonical
+    # school record (never trusted from the client). Clearing tenant_id
+    # also clears school_name so no stale cross-tenant name remains.
+    SCHOOL_LINKABLE_ROLES = {
+        UserRole.SCHOOL_PRINCIPAL.value,
+        UserRole.SCHOOL_ADMIN.value,
+        UserRole.SCHOOL_SUB_ADMIN.value,
+        UserRole.TEACHER.value,
+        UserRole.PARENT.value,
+    }
+    if user_data.tenant_id is not None:
+        new_tenant_id = (user_data.tenant_id or "").strip() or None
+        if new_tenant_id:
+            effective_role = updates.get("role") or user.get("role")
+            if effective_role not in SCHOOL_LINKABLE_ROLES:
+                raise HTTPException(
+                    status_code=400,
+                    detail="هذا الدور لا يمكن ربطه بمدرسة",
+                )
+            school = await gd_find_one(db.session, "schools", {"id": new_tenant_id})
+            if not school:
+                raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
+            if (
+                school.get("tenant_type") == "independent_teacher"
+                or school.get("school_type") == "independent_teacher"
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="لا يمكن ربط المستخدم بمساحة عمل معلم مستقل",
+                )
+            updates["tenant_id"] = new_tenant_id
+            # Derive the school name from the canonical record so it can
+            # never drift from (or leak) another tenant's name.
+            updates["school_name"] = school.get("name") or school.get("name_en")
+        else:
+            # Clearing the link — drop any stale school name with it.
+            updates["tenant_id"] = None
+            updates["school_name"] = None
 
     # When role or tenant_id changes, bump last_password_change to invalidate
     # all outstanding tokens — including switched/impersonation ones.
