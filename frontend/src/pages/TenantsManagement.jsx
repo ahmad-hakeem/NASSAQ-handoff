@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { usePlatformAdminSchoolPreview } from '../hooks/usePlatformAdminSchoolPreview';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -48,7 +49,8 @@ const LOGO_GRADIENTS = [
 ];
 
 export default function TenantsManagement() {
-  const { api, isRTL: contextIsRTL, enterSchoolContext } = useAuth();
+  const { api, isRTL: contextIsRTL } = useAuth();
+  const { openPrincipalDashboard, canOpenPrincipalDashboard } = usePlatformAdminSchoolPreview();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
@@ -172,26 +174,7 @@ export default function TenantsManagement() {
     setActiveStatusFilter(prev => prev === status ? null : status);
   };
 
-  const handleEnterSchoolDashboard = async (school) => {
-    if (!school?.id) {
-      nassaqError(t('errorInvalidSchoolData'));
-      return;
-    }
-    // Task #511: enterSchoolContext now mints an impersonation token
-    // via /role-switch/switch (MFA step-up handled by the axios
-    // interceptor). Only post-step-up failures surface here.
-    try {
-      await enterSchoolContext(school);
-    } catch (err) {
-      const dt = err?.response?.data?.detail;
-      nassaqError(typeof dt === 'string' ? dt : t('errorSwitchingRole'));
-      return;
-    }
-    toast.success(
-      isRTL ? `تم الدخول إلى ${school.name} كمدير مدرسة` : `Entered ${school.name_en || school.name} as School Manager`
-    );
-    navigate('/principal');
-  };
+  const handleEnterSchoolDashboard = (school) => openPrincipalDashboard(school);
 
   const handleSuspendConfirm = async () => {
     if (!actionReason.trim()) {
@@ -562,7 +545,7 @@ export default function TenantsManagement() {
                               <ExternalLink className="h-3 w-3 me-1" />
                               {t('details2')}
                             </Button>
-                            <Button size="sm" className="bg-brand-navy hover:bg-brand-navy/90 text-white rounded-lg text-xs" onClick={() => handleEnterSchoolDashboard(school)}>
+                            <Button size="sm" className="bg-brand-navy hover:bg-brand-navy/90 text-white rounded-lg text-xs disabled:opacity-50" onClick={() => handleEnterSchoolDashboard(school)} disabled={!canOpenPrincipalDashboard(school)}>
                               <Eye className="h-3.5 w-3.5 me-1" />
                               {t('openDashboard')}
                             </Button>
@@ -663,8 +646,9 @@ export default function TenantsManagement() {
                         </Button>
                         <Button
                           size="sm"
-                          className="flex-1 bg-brand-navy hover:bg-brand-navy/90 text-white rounded-xl text-xs"
+                          className="flex-1 bg-brand-navy hover:bg-brand-navy/90 text-white rounded-xl text-xs disabled:opacity-50"
                           onClick={() => handleEnterSchoolDashboard(school)}
+                          disabled={!canOpenPrincipalDashboard(school)}
                         >
                           <Eye className="h-3.5 w-3.5 me-1" />
                           {t('openDashboard')}

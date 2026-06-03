@@ -121,12 +121,12 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
                 })
 
             if user.get("role") == "platform_admin":
+                from utils.platform_admin_preview import should_exclude_from_preview_list
+
                 schools = await gd_find(db.session, "schools", {}, limit=100)
-                _it_excluded_statuses = {"archived", "pending_hard_delete"}
                 for school in schools:
                     s_id = school.get("id") or ""
-                    s_status = school.get("status") or ""
-                    if s_id.startswith("itw_") or s_status in _it_excluded_statuses:
+                    if should_exclude_from_preview_list(school):
                         continue
                     s_name = school.get("name") or school.get("name_en")
                     active_principal_count = await gd_count(
@@ -209,12 +209,12 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
                 })
 
             if user.get("role") == "platform_admin":
+                from utils.platform_admin_preview import should_exclude_from_preview_list
+
                 schools = await gd_find(db.session, "schools", {}, limit=100)
-                _it_excluded_statuses = {"archived", "pending_hard_delete"}
                 for school in schools:
                     s_id = school.get("id") or ""
-                    s_status = school.get("status") or ""
-                    if s_id.startswith("itw_") or s_status in _it_excluded_statuses:
+                    if should_exclude_from_preview_list(school):
                         continue
                     s_name = school.get("name") or school.get("name_en")
                     active_principal_count = await gd_count(

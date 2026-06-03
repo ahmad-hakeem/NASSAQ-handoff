@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { usePlatformAdminSchoolPreview } from '../hooks/usePlatformAdminSchoolPreview';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Button } from '../components/ui/button';
@@ -53,7 +54,8 @@ export default function PlatformSchoolDetailPage() {
   const { schoolId } = useParams();
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { api, enterSchoolContext } = useAuth();
+  const { api } = useAuth();
+  const { openPrincipalDashboard, canOpenPrincipalDashboard } = usePlatformAdminSchoolPreview();
   const { isRTL } = useTheme();
   const { nassaqError } = useNassaqAlert();
 
@@ -212,20 +214,9 @@ export default function PlatformSchoolDetailPage() {
     }
   };
 
-  const handleEnterDashboard = async () => {
+  const handleEnterDashboard = () => {
     if (!detail?.school) return;
-    // Task #511: enterSchoolContext now mints an impersonation token
-    // via /role-switch/switch (MFA step-up handled by the axios
-    // interceptor). Only post-step-up failures surface here.
-    try {
-      await enterSchoolContext(detail.school);
-    } catch (err) {
-      const dt = err?.response?.data?.detail;
-      nassaqError(typeof dt === 'string' ? dt : t('errorSwitchingRole'));
-      return;
-    }
-    toast.success(isRTL ? `تم الدخول إلى ${detail.school.name}` : `Entered ${detail.school.name_en || detail.school.name}`);
-    navigate('/principal');
+    openPrincipalDashboard(detail.school);
   };
 
   if (loading) {
@@ -317,7 +308,13 @@ export default function PlatformSchoolDetailPage() {
                   <RefreshCw className="h-4 w-4 me-1.5" />
                   {t('refresh')}
                 </Button>
-                <Button size="sm" className="bg-white/20 hover:bg-white/30 text-white border border-white/20" onClick={handleEnterDashboard}>
+                <Button
+                  size="sm"
+                  className="bg-white/20 hover:bg-white/30 text-white border border-white/20 disabled:opacity-50"
+                  onClick={handleEnterDashboard}
+                  disabled={!canOpenPrincipalDashboard(school)}
+                  title={!canOpenPrincipalDashboard(school) ? t('openDashboardBlockedHint') : undefined}
+                >
                   <LayoutDashboard className="h-4 w-4 me-1.5" />
                   {t('openDashboard')}
                 </Button>

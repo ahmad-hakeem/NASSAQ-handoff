@@ -68,6 +68,7 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 from shared_models import (
     SchoolCreate, SchoolResponse
 )
+from utils.platform_admin_preview import assess_principal_preview_eligibility
 
 router = APIRouter()
 
@@ -421,8 +422,18 @@ async def delete_school_draft(
     return {"success": True, "message": "تم حذف المسودة بنجاح"}
 
 
-def _normalize_school(s: dict) -> dict:
+def _normalize_school(s: dict, *, principal_counts: Optional[Dict[str, int]] = None) -> dict:
     """Normalize school document to match SchoolResponse fields."""
+    school_id = s.get("id") or ""
+    principal_count = None
+    if principal_counts is not None:
+        principal_count = principal_counts.get(school_id, 0)
+
+    preview = assess_principal_preview_eligibility(
+        s,
+        active_principal_count=principal_count,
+    )
+
     return {
         **s,
         "name": s.get("name") or s.get("name_ar") or s.get("name_en") or "",
@@ -434,7 +445,31 @@ def _normalize_school(s: dict) -> dict:
         "current_students": s.get("current_students") or s.get("student_count") or 0,
         "current_teachers": s.get("current_teachers") or s.get("teacher_count") or 0,
         "created_at": s.get("created_at") or "",
+        "entity_kind": preview["entity_kind"],
+        "can_preview_as_principal": preview["can_preview_as_principal"],
+        "preview_block_reason": preview["preview_block_reason"],
     }
+
+
+async def _active_principal_counts_by_tenant() -> Dict[str, int]:
+    """Batch count active school principals per tenant for preview metadata."""
+    from sqlalchemy import text as _sa_text
+
+    result = await db.session.execute(
+        _sa_text(
+            """
+            SELECT tenant_id, COUNT(*)::int AS cnt
+            FROM users
+            WHERE role = 'school_principal'
+              AND is_active = TRUE
+              AND tenant_id IS NOT NULL
+            GROUP BY tenant_id
+            """
+        )
+    )
+    rows = result.mappings().all()
+    return {row["tenant_id"]: row["cnt"] for row in rows if row.get("tenant_id")}
+
 
 @router.get("/schools", response_model=List[SchoolResponse])
 async def get_schools(
@@ -446,7 +481,11 @@ async def get_schools(
         query["status"] = status
     
     schools = await gd_find(db.session, "schools", query, limit=1000)
-    return [SchoolResponse(**_normalize_school(s)) for s in schools]
+    principal_counts = await _active_principal_counts_by_tenant()
+    return [
+        SchoolResponse(**_normalize_school(s, principal_counts=principal_counts))
+        for s in schools
+    ]
 
 @router.get("/schools/{school_id}", response_model=SchoolResponse)
 async def get_school(school_id: str, current_user: dict = Depends(get_current_user)):
@@ -461,7 +500,8 @@ async def get_school(school_id: str, current_user: dict = Depends(get_current_us
     school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
-    return SchoolResponse(**_normalize_school(school))
+    principal_counts = await _active_principal_counts_by_tenant()
+    return SchoolResponse(**_normalize_school(school, principal_counts=principal_counts))
 
 @router.put("/schools/{school_id}/status")
 async def update_school_status(
@@ -651,8 +691,11 @@ async def get_school_detail(
         new_values={"action": "VIEW_SCHOOL", "school_name": school.get("name", "")}
     )
 
+    principal_counts = await _active_principal_counts_by_tenant()
+    school_payload = _normalize_school(school, principal_counts=principal_counts)
+
     return {
-        "school": school,
+        "school": school_payload,
         "stats": {
             "total_users": len(users),
             "total_students": len(students),

@@ -236,6 +236,10 @@ class SchoolResponse(BaseModel):
     current_students: int
     current_teachers: int
     created_at: str
+    # Platform-admin preview metadata (GET /schools)
+    entity_kind: str = "standard_school"
+    can_preview_as_principal: bool = True
+    preview_block_reason: Optional[str] = None
 
 class HakimMessage(BaseModel):
     message: str

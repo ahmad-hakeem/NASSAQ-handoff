@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { usePlatformAdminSchoolPreview } from '../hooks/usePlatformAdminSchoolPreview';
+import { isIndependentTeacherWorkspaceRow } from '../utils/platformAdminPreview';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
@@ -81,7 +83,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 export const PlatformSchoolsPage = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { user, api, enterSchoolContext } = useAuth();
+  const { user, api } = useAuth();
+  const { openPrincipalDashboard, canOpenPrincipalDashboard } = usePlatformAdminSchoolPreview();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const [schools, setSchools] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -164,32 +167,7 @@ export const PlatformSchoolsPage = () => {
     setViewDialogOpen(true);
   };
   
-  // Enter School Dashboard - Full context switch
-  const handleEnterSchoolDashboard = async (school) => {
-    if (!school || !school.id) {
-      nassaqError(t('errorInvalidSchoolData'));
-      return;
-    }
-
-    // Task #511: enterSchoolContext now mints an impersonation token
-    // via /role-switch/switch. The axios interceptor handles any MFA
-    // step-up transparently; only post-step-up failures surface here.
-    try {
-      await enterSchoolContext(school);
-    } catch (err) {
-      const detail = err?.response?.data?.detail;
-      nassaqError(typeof detail === 'string' ? detail : t('errorSwitchingRole'));
-      return;
-    }
-
-    toast.success(
-      isRTL
-        ? `تم الدخول إلى ${school.name} كمدير مدرسة`
-        : `Entered ${school.name_en || school.name} as School Manager`
-    );
-
-    navigate('/principal');
-  };
+  const handleEnterSchoolDashboard = (school) => openPrincipalDashboard(school);
 
   const filteredSchools = schools.filter(school => {
     const matchesSearch = 
@@ -253,6 +231,10 @@ export const PlatformSchoolsPage = () => {
         return <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">{t('pending2')}</Badge>;
       case 'suspended':
         return <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">{t('suspended')}</Badge>;
+      case 'archived':
+        return <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{t('schoolStatusArchived')}</Badge>;
+      case 'pending_hard_delete':
+        return <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">{t('schoolStatusPendingDelete')}</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -675,10 +657,17 @@ export const PlatformSchoolsPage = () => {
                             </Button>
                           </div>
                           
+                          {isIndependentTeacherWorkspaceRow(school) && (
+                            <p className="text-xs text-muted-foreground mb-2 text-center">
+                              {t('schoolRowIndependentTeacherWorkspace')}
+                            </p>
+                          )}
                           {/* Primary Action - Open Dashboard */}
                           <Button 
-                            className="w-full bg-brand-turquoise hover:bg-brand-turquoise-light rounded-xl h-11 font-bold"
+                            className="w-full bg-brand-turquoise hover:bg-brand-turquoise-light rounded-xl h-11 font-bold disabled:opacity-50"
                             onClick={() => handleEnterSchoolDashboard(school)}
+                            disabled={!canOpenPrincipalDashboard(school)}
+                            title={!canOpenPrincipalDashboard(school) ? t('openDashboardBlockedHint') : undefined}
                             data-testid={`open-dashboard-${school.id}`}
                           >
                             <LogIn className="h-5 w-5 me-2" />
@@ -758,8 +747,9 @@ export const PlatformSchoolsPage = () => {
                               {/* Enter Dashboard Button - Primary Action */}
                               <Button 
                                 size="sm" 
-                                className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-lg"
+                                className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-lg disabled:opacity-50"
                                 onClick={() => handleEnterSchoolDashboard(school)}
+                                disabled={!canOpenPrincipalDashboard(school)}
                                 data-testid={`enter-dashboard-${school.id}`}
                               >
                                 <LogIn className="h-4 w-4 me-1" />
@@ -774,7 +764,10 @@ export const PlatformSchoolsPage = () => {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => handleEnterSchoolDashboard(school)}>
+                                  <DropdownMenuItem
+                                    onClick={() => handleEnterSchoolDashboard(school)}
+                                    disabled={!canOpenPrincipalDashboard(school)}
+                                  >
                                     <ExternalLink className="h-4 w-4 me-2" />
                                     {t('enterDashboard')}
                                   </DropdownMenuItem>

@@ -34,6 +34,8 @@ class SchoolStatus(str, Enum):
     SUSPENDED = "suspended"
     PENDING = "pending"
     SETUP = "setup"
+    ARCHIVED = "archived"
+    PENDING_HARD_DELETE = "pending_hard_delete"
 
 
 class RegistrationStatus(str, Enum):

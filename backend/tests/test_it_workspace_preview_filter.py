@@ -34,6 +34,7 @@ import pytest
 
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_insert
+from utils.platform_admin_preview import MSG_ARCHIVED, MSG_INDEPENDENT_TEACHER_WORKSPACE
 
 
 # ───────────────────────── helpers ──────────────────────────────────────────
@@ -252,6 +253,7 @@ async def test_role_switch_returns_403_for_itw_school_id(client, monkeypatch):
     assert res.status_code == 403, (
         f"Expected 403 when switching to itw_* school, got {res.status_code}: {res.text}"
     )
+    assert MSG_INDEPENDENT_TEACHER_WORKSPACE in res.json().get("detail", "")
 
 
 @pytest.mark.asyncio
@@ -285,6 +287,7 @@ async def test_role_switch_returns_403_for_archived_status_school(client, monkey
     assert res.status_code == 403, (
         f"Expected 403 when switching to archived school, got {res.status_code}: {res.text}"
     )
+    assert MSG_ARCHIVED in res.json().get("detail", "")
 
 
 @pytest.mark.asyncio
