@@ -63,6 +63,9 @@ const DraggableStudentChip = ({ student, isRTL, onView, onEdit, onDelete, onActi
       draggable={canDrag}
       onDragStart={handleDragStart}
       onDragEnd={() => setIsDragging(false)}
+      data-testid={`student-chip-${student.id}`}
+      data-student-id={student.id}
+      data-class-id={student.class_id || ''}
       className={`group flex items-center gap-2 p-2 rounded-xl border transition-all duration-200
         ${isDragging ? 'opacity-30 scale-95 border-dashed border-brand-turquoise/50 bg-brand-turquoise/5' : 'border-border/50 bg-white dark:bg-gray-900 hover:shadow-md hover:border-brand-navy/20'}
         ${canDrag ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
@@ -183,6 +186,9 @@ const ClassColumn = ({
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      data-testid={`class-column-${classItem.id}`}
+      data-class-id={classItem.id}
+      data-student-count={students.length}
       className={`flex flex-col rounded-2xl border-2 transition-all duration-300 overflow-hidden h-fit
         ${isDropTarget
           ? 'border-brand-turquoise bg-brand-turquoise/5 shadow-lg shadow-brand-turquoise/10 scale-[1.01]'

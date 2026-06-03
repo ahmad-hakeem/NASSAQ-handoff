@@ -119,6 +119,37 @@ real browser contexts as the same parent and asserts that:
 It complements — and does not duplicate — the API assertions in
 `backend/tests/test_session_revocation_routes.py`.
 
+`e2e/management/student-transfer-drag.spec.ts` (Task #804) — drives the
+**real** Chromium HTML5 drag gesture for the student class-transfer grid
+(`StudentClassGrid.jsx`) on the Users & Classes management page
+(`/principal/users-management`). It complements — and does not replace —
+the jest component test
+(`frontend/src/components/management/__tests__/StudentClassGrid.transfer.test.jsx`),
+which can only fake the gesture with synthetic events because jsdom has
+no native drag or `DataTransfer`. Two scenarios:
+
+1. Real drag of a student chip from one class column onto another →
+   asserts the chip moved into the target column, is gone from the
+   source, and both per-column counters changed by one. It then drags
+   the student BACK so the shared test account is left exactly as it was
+   found (same restore discipline as the parent password spec).
+2. A transfer the backend rejects (the spec forces the
+   `/students/transfer-class` endpoint to `409` via `page.route`, so the
+   failure is deterministic and mutates nothing) → asserts the branded
+   `NassaqAlertDialog` surfaces the backend message with no stray sonner
+   toast, and the student stays put with intact counters.
+
+The native gesture is fired by `e2e/lib/dragAndDrop.ts`, which dispatches
+real bubbling `DragEvent`s with a shared `DataTransfer` inside the live
+page — Playwright's mouse-based `dragTo()` cannot trigger HTML5 drag
+events or carry a `DataTransfer` payload. Selectors use the
+`student-chip-*` / `class-column-*` test hooks on `StudentClassGrid.jsx`.
+
+> NOTE: scenario 1 performs a live backend transfer, so run it against a
+> dev/staging database with the seeded test school — never a production
+> database. It needs `E2E_PRINCIPAL_EMAIL` / `E2E_PRINCIPAL_PASSWORD` and
+> at least two seeded classes where one has a student.
+
 The six scenarios in `e2e/auth/post-login-redirect.spec.ts`:
 
 1. Bootstrapped IT login → `/teacher` dashboard, no error surface.
