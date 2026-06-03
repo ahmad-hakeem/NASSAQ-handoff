@@ -81,6 +81,32 @@ async def create_platform_user(
     allowed_roles = [r.value for r in UserRole]
     if user_data.role not in allowed_roles:
         raise HTTPException(status_code=400, detail="نوع الحساب غير مسموح به")
+
+    # ---- Role scoping for school-context creation --------------------
+    # A school context is signalled by a tenant_id (the selected school).
+    # When a school is selected, only school-scoped roles may be created:
+    # platform-level and Independent-Teacher roles must be rejected here
+    # server-side so a tampered payload cannot cross the scope boundary
+    # even if the frontend role filter is bypassed.
+    SCHOOL_CREATABLE_ROLES = {
+        UserRole.SCHOOL_PRINCIPAL.value,
+        UserRole.SCHOOL_ADMIN.value,
+        UserRole.SCHOOL_SUB_ADMIN.value,
+        UserRole.TEACHER.value,
+        UserRole.PARENT.value,
+    }
+
+    tenant_id = (user_data.tenant_id or "").strip() or None
+    if tenant_id:
+        # School context: only school roles, and the tenant must exist.
+        if user_data.role not in SCHOOL_CREATABLE_ROLES:
+            raise HTTPException(
+                status_code=400,
+                detail="هذا الدور غير مسموح به عند إنشاء حساب لمدرسة محددة",
+            )
+        school = await gd_find_one(db.session, "schools", {"id": tenant_id})
+        if not school:
+            raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
     
     # Check if email exists
     existing_email = await gd_find_one(db.session, "users", {"email": user_data.email})
@@ -109,7 +135,7 @@ async def create_platform_user(
         "educational_department": user_data.educational_department,
         "school_name_ar": user_data.school_name_ar,
         "school_name_en": user_data.school_name_en,
-        "tenant_id": user_data.tenant_id,
+        "tenant_id": tenant_id,
         "permissions": user_data.permissions,
         "is_active": True,
         "must_change_password": True,  # Force password change on first login

@@ -312,6 +312,9 @@ const SAUDI_REGIONS = [
 // نظام الأدوار والصلاحيات - Roles & Permissions System (RBAC)
 // =============================================================
 
+// Platform-scoped roles — shown only when creating a user WITHOUT a
+// school context (the generic platform "Add User" flow). These must
+// never appear when adding a user for a specific school.
 const AVAILABLE_ROLES = [
   {
     id: 'platform_admin',
@@ -339,6 +342,60 @@ const AVAILABLE_ROLES = [
     description_en: 'Teacher not affiliated with a specific school',
     icon: GraduationCap,
     color: 'bg-violet-500',
+  },
+];
+
+// School-scoped roles — shown ONLY when creating a user for a specific
+// school (preselectedSchool is set). Mirrors the backend create-user
+// scoping in `user_routes_mod.py` (SCHOOL_CREATABLE_ROLES). Platform
+// roles and `independent_teacher` are intentionally excluded; `student`
+// is excluded because student login is disabled and students are
+// onboarded through the academic enrollment flows, not this wizard.
+const SCHOOL_ROLES = [
+  {
+    id: 'school_principal',
+    name: 'مدير مدرسة',
+    name_en: 'School Principal',
+    description: 'صلاحيات كاملة لإدارة المدرسة',
+    description_en: 'Full management of the school',
+    icon: School,
+    color: 'bg-teal-600',
+  },
+  {
+    id: 'school_admin',
+    name: 'مشرف المدرسة',
+    name_en: 'School Admin',
+    description: 'صلاحيات إدارية داخل المدرسة',
+    description_en: 'Administrative permissions within the school',
+    icon: School,
+    color: 'bg-teal-500',
+  },
+  {
+    id: 'school_sub_admin',
+    name: 'نائب مشرف المدرسة',
+    name_en: 'School Sub-Admin',
+    description: 'صلاحيات إدارية مع بعض القيود داخل المدرسة',
+    description_en: 'Administrative permissions with some limitations',
+    icon: School,
+    color: 'bg-teal-400',
+  },
+  {
+    id: 'teacher',
+    name: 'معلم',
+    name_en: 'Teacher',
+    description: 'معلم تابع للمدرسة، يدرّس فصوله ويسجل الحضور والدرجات',
+    description_en: 'Teacher affiliated with the school',
+    icon: GraduationCap,
+    color: 'bg-cyan-600',
+  },
+  {
+    id: 'parent',
+    name: 'ولي أمر',
+    name_en: 'Parent',
+    description: 'ولي أمر طالب في المدرسة، يتابع أبناءه',
+    description_en: 'Parent of a student at the school',
+    icon: Users,
+    color: 'bg-amber-500',
   },
 ];
 
@@ -401,6 +458,70 @@ const IT_PERMISSION_LABELS = {
   'behaviour.view':      { name: 'عرض السلوك', name_en: 'View Behaviour', icon: Activity },
   'behaviour.record':    { name: 'تسجيل السلوك', name_en: 'Record Behaviour', icon: Activity },
   'notifications.view':  { name: 'عرض الإشعارات', name_en: 'View Notifications', icon: Bell },
+};
+
+// Pretty labels/icons for school-role permission ids. School-role
+// permissions (like IT) are sourced from the backend
+// `GET /auth/permissions/role/:role`; these labels only decorate the
+// returned ids for display. Unknown ids fall back to the raw id.
+const SCHOOL_PERMISSION_LABELS = {
+  'users.view':                 { name: 'عرض المستخدمين', name_en: 'View Users', icon: Users },
+  'users.create':               { name: 'إنشاء المستخدمين', name_en: 'Create Users', icon: UserPlus },
+  'users.edit':                 { name: 'تعديل المستخدمين', name_en: 'Edit Users', icon: Settings },
+  'users.suspend':              { name: 'إيقاف المستخدمين', name_en: 'Suspend Users', icon: Lock },
+  'academic.view':              { name: 'عرض الشؤون الأكاديمية', name_en: 'View Academics', icon: Building2 },
+  'academic.manage_stages':     { name: 'إدارة المراحل', name_en: 'Manage Stages', icon: Building2 },
+  'academic.manage_grades':     { name: 'إدارة الصفوف', name_en: 'Manage Grades', icon: Building2 },
+  'academic.manage_sections':   { name: 'إدارة الفصول', name_en: 'Manage Sections', icon: Building2 },
+  'academic.manage_subjects':   { name: 'إدارة المواد', name_en: 'Manage Subjects', icon: FileText },
+  'schedule.view':              { name: 'عرض الجدول', name_en: 'View Schedule', icon: CalendarCheck },
+  'schedule.create':            { name: 'إنشاء الجدول', name_en: 'Create Schedule', icon: CalendarCheck },
+  'schedule.edit':              { name: 'تعديل الجدول', name_en: 'Edit Schedule', icon: CalendarCheck },
+  'schedule.publish':           { name: 'نشر الجدول', name_en: 'Publish Schedule', icon: CalendarCheck },
+  'attendance.view':            { name: 'عرض الحضور', name_en: 'View Attendance', icon: CalendarCheck },
+  'attendance.record':          { name: 'تسجيل الحضور', name_en: 'Record Attendance', icon: CalendarCheck },
+  'attendance.reports':         { name: 'تقارير الحضور', name_en: 'Attendance Reports', icon: FileText },
+  'attendance.approve_excuse':  { name: 'اعتماد الأعذار', name_en: 'Approve Excuses', icon: CheckCircle2 },
+  'assessments.view':           { name: 'عرض التقييمات', name_en: 'View Assessments', icon: FileText },
+  'assessments.create':         { name: 'إنشاء التقييمات', name_en: 'Create Assessments', icon: FileText },
+  'assessments.edit':           { name: 'تعديل التقييمات', name_en: 'Edit Assessments', icon: FileText },
+  'assessments.grade':          { name: 'تصحيح التقييمات', name_en: 'Grade Assessments', icon: CheckCircle2 },
+  'behaviour.view':             { name: 'عرض السلوك', name_en: 'View Behaviour', icon: Activity },
+  'behaviour.record':           { name: 'تسجيل السلوك', name_en: 'Record Behaviour', icon: Activity },
+  'behaviour.review':           { name: 'مراجعة السلوك', name_en: 'Review Behaviour', icon: Activity },
+  'behaviour.disciplinary':     { name: 'الإجراءات التأديبية', name_en: 'Disciplinary Actions', icon: AlertTriangle },
+  'notifications.view':         { name: 'عرض الإشعارات', name_en: 'View Notifications', icon: Bell },
+  'notifications.send':         { name: 'إرسال الإشعارات', name_en: 'Send Notifications', icon: Bell },
+  'notifications.bulk':         { name: 'إشعارات جماعية', name_en: 'Bulk Notifications', icon: Bell },
+  'analytics.view':             { name: 'عرض التحليلات', name_en: 'View Analytics', icon: BarChart3 },
+  'analytics.export':           { name: 'تصدير التحليلات', name_en: 'Export Analytics', icon: Archive },
+};
+
+// Merged label lookup used to decorate backend-sourced permission ids
+// for any role (IT + school roles). Falls back to the raw id at render.
+const PERMISSION_LABELS = { ...IT_PERMISSION_LABELS, ...SCHOOL_PERMISSION_LABELS };
+
+// Backend roles whose assignable permissions are sourced from the
+// server (`/auth/permissions/role/:role`) instead of the local
+// hardcoded arrays, so the wizard cannot drift from RBAC enforcement.
+const BACKEND_SOURCED_ROLES = new Set([
+  'independent_teacher',
+  'school_principal',
+  'school_admin',
+  'school_sub_admin',
+  'teacher',
+  'parent',
+]);
+
+// Some roles have no dedicated backend ROLE_PERMISSIONS entry and instead
+// inherit the assignable permission set of a sibling role. school_sub_admin
+// (deputy) mirrors school_admin — the app already treats them at the same
+// admin tier (session priority, dashboard role sets). We still source the
+// list from the server (no hardcoded client mapping) by fetching the
+// sibling role's permissions; the selection is stored as the new account's
+// permissions without altering the sibling's RBAC definition.
+const ROLE_PERMISSION_SOURCE = {
+  school_sub_admin: 'school_admin',
 };
 
 // صلاحيات مدير العمليات
@@ -529,16 +650,16 @@ export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, i
   const [permissionsFetchError, setPermissionsFetchError] = useState(null);
 
   // Build the displayed permission objects for `formData.role`.
-  // For IT, we render strictly the backend-returned ids (decorated with
-  // labels/icons from IT_PERMISSION_LABELS). For all other roles we fall
-  // back to the local hardcoded arrays. If the backend call fails for IT,
-  // we render an empty list (fail-closed) so the UI cannot advertise
-  // permissions the backend would reject.
+  // For backend-sourced roles (IT + school roles) we render strictly the
+  // server-returned ids decorated with labels/icons from PERMISSION_LABELS.
+  // If the backend call fails for those roles, we render an empty list
+  // (fail-closed) so the UI cannot advertise permissions the backend
+  // would reject. All other roles fall back to the local arrays.
   const displayedPermissions = React.useMemo(() => {
-    if (formData.role === 'independent_teacher') {
+    if (BACKEND_SOURCED_ROLES.has(formData.role)) {
       const ids = backendRolePermissions[formData.role] || [];
       return ids.map((id) => {
-        const meta = IT_PERMISSION_LABELS[id] || {};
+        const meta = PERMISSION_LABELS[id] || {};
         return {
           id,
           name: meta.name || id,
@@ -575,7 +696,8 @@ export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, i
     (async () => {
       try {
         if (!backendRolePermissions[formData.role] && authApi) {
-          const resp = await authApi.get(`/auth/permissions/role/${formData.role}`);
+          const sourceRole = ROLE_PERMISSION_SOURCE[formData.role] || formData.role;
+          const resp = await authApi.get(`/auth/permissions/role/${sourceRole}`);
           if (cancelled) return;
           const ids = Array.isArray(resp?.data?.permissions) ? resp.data.permissions : [];
           setBackendRolePermissions((prev) => ({ ...prev, [formData.role]: ids }));
@@ -588,16 +710,15 @@ export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, i
         if (cached !== undefined) {
           setSelectedPermissions(cached);
         } else {
-          // Non-IT roles still seed from the local arrays (those roles
-          // are not in scope for Phase 0 §4.B-6 backend sourcing).
+          // Roles not sourced from the backend seed from the local arrays.
           setSelectedPermissions(getPermissionsByRole(formData.role).map(p => p.id));
         }
       } catch (e) {
         if (cancelled) return;
-        // Phase 0 §4.B-6 — fail CLOSED for IT: never fall back to a
-        // hardcoded list, since that risks advertising a permission
-        // the backend would reject.
-        if (formData.role === 'independent_teacher') {
+        // Fail CLOSED for backend-sourced roles (IT + school roles): never
+        // fall back to a hardcoded list, since that risks advertising a
+        // permission the backend would reject.
+        if (BACKEND_SOURCED_ROLES.has(formData.role)) {
           setBackendRolePermissions((prev) => ({ ...prev, [formData.role]: [] }));
           setSelectedPermissions([]);
           setPermissionsFetchError(e?.message || 'fetch_failed');
@@ -767,7 +888,11 @@ ${loginUrl}
     toast.success(t('welcomeMessageCopied'));
   };
   
-  const selectedRole = AVAILABLE_ROLES.find(r => r.id === formData.role);
+  // Role options depend on context: school-scoped roles when adding a
+  // user for a specific school, platform roles otherwise. The lookup
+  // searches both lists so already-selected roles always resolve.
+  const rolesForContext = preselectedSchool ? SCHOOL_ROLES : AVAILABLE_ROLES;
+  const selectedRole = [...AVAILABLE_ROLES, ...SCHOOL_ROLES].find(r => r.id === formData.role);
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -836,7 +961,7 @@ ${loginUrl}
                 </h3>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {AVAILABLE_ROLES.map((role) => (
+                  {rolesForContext.map((role) => (
                     <Card
                       key={role.id}
                       className={`cursor-pointer transition-all hover:shadow-md ${
@@ -1120,11 +1245,11 @@ ${loginUrl}
                         </Button>
                       </div>
                       
-                      {formData.role === 'independent_teacher' && permissionsFetchError && (
+                      {BACKEND_SOURCED_ROLES.has(formData.role) && permissionsFetchError && (
                         <div className="p-2 mb-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
                           {isRTL
-                            ? 'تعذر تحميل صلاحيات المعلم المستقل من الخادم. لا يمكن المتابعة دون الصلاحيات المعتمدة من الخادم.'
-                            : 'Could not load Independent Teacher permissions from the server. Cannot proceed without server-approved permissions.'}
+                            ? 'تعذر تحميل صلاحيات هذا الدور من الخادم. لا يمكن المتابعة دون الصلاحيات المعتمدة من الخادم.'
+                            : 'Could not load this role\'s permissions from the server. Cannot proceed without server-approved permissions.'}
                         </div>
                       )}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
