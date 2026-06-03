@@ -64,59 +64,28 @@ from dependencies import (
     require_recent_mfa,
 )
 
+from sqlalchemy.exc import IntegrityError
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 from shared_models import (
     SchoolCreate, SchoolResponse
 )
 from utils.platform_admin_preview import assess_principal_preview_eligibility
+from utils.school_code import (
+    insert_school_with_unique_code,
+    insert_school_with_custom_code,
+    is_school_code_conflict,
+)
 
 router = APIRouter()
 
 
 
 # ============== SCHOOLS (TENANTS) ROUTES ==============
-async def _generate_unique_school_code(country: str = "SA", custom_code: str = None) -> str:
-    """Generate a unique school code with retry logic."""
-    if custom_code:
-        existing = await gd_find_one(db.session, "schools", {"code": custom_code})
-        if existing:
-            raise HTTPException(status_code=400, detail="رمز المدرسة مستخدم مسبقاً — يُرجى اختيار رمز آخر")
-        return custom_code
-
-    year_suffix = datetime.now().strftime("%y")
-    country_code = country[:2].upper() if country else "SA"
-    prefix = f"NSS-{country_code}-{year_suffix}-"
-
-    last_school = await gd_find_one(db.session, "schools", {"code": {"$regex": f"^{prefix}"}})
-    if last_school and last_school.get("code"):
-        try:
-            last_num = int(last_school["code"].split("-")[-1])
-            next_num = last_num + 1
-        except (ValueError, IndexError):
-            next_num = 1
-    else:
-        next_num = 1
-
-    for attempt in range(10):
-        candidate = f"{prefix}{str(next_num + attempt).zfill(4)}"
-        existing = await gd_find_one(db.session, "schools", {"code": candidate})
-        if not existing:
-            return candidate
-
-    fallback = f"{prefix}{uuid.uuid4().hex[:6].upper()}"
-    return fallback
-
-
 @router.post("/schools", response_model=SchoolResponse)
 async def create_school(
     school_data: SchoolCreate,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
-    school_code = await _generate_unique_school_code(
-        country=school_data.country,
-        custom_code=school_data.code
-    )
-    
     # Validate principal email uniqueness (except if teacher creating parent account)
     if school_data.principal_email:
         existing_email = await gd_find_one(db.session, "users", {"email": school_data.principal_email})
@@ -129,52 +98,59 @@ async def create_school(
         if existing_phone:
             raise HTTPException(status_code=400, detail="رقم الهاتف مستخدم مسبقاً")
     
-    # Use principal_email as school email if not provided
-    school_email = school_data.email or school_data.principal_email or f"school-{school_code.lower()}@nassaq.com"
-    school_phone = school_data.phone or school_data.principal_phone
-    
     school_id = str(uuid.uuid4())
-    school_doc = {
-        "id": school_id,
-        "name": school_data.name,
-        "name_en": school_data.name_en,
-        "code": school_code,
-        "email": school_email,
-        "phone": school_phone,
-        "address": school_data.address,
-        "city": school_data.city,
-        "region": school_data.region,
-        "country": school_data.country or "SA",
-        "logo_url": None,
-        "status": SchoolStatus.ACTIVE.value,  # Set to active immediately
-        "student_capacity": school_data.student_capacity,
-        "current_students": 0,
-        "current_teachers": 0,
-        # New fields
-        "language": school_data.language or "ar",
-        "calendar_system": school_data.calendar_system or "hijri_gregorian",
-        "school_type": school_data.school_type or "public",
-        "stage": school_data.stage or "primary",
-        "principal_name": school_data.principal_name,
-        "principal_email": school_data.principal_email,
-        "principal_phone": school_data.principal_phone,
-        "principal_mobile": school_data.principal_mobile,
-        "educational_pathway": school_data.educational_pathway,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "created_by": current_user.get("user_id")
-    }
-    
-    try:
-        await gd_insert(db.session, "schools", school_doc)
-    except Exception as e:
-        if "duplicate" in str(e).lower() or "unique" in str(e).lower():
-            school_code = await _generate_unique_school_code(country=school_data.country)
-            school_doc["code"] = school_code
-            school_doc["email"] = school_data.email or school_data.principal_email or f"school-{school_code.lower()}@nassaq.com"
-            await gd_insert(db.session, "schools", school_doc)
-        else:
+    created_at = datetime.now(timezone.utc).isoformat()
+    school_phone = school_data.phone or school_data.principal_phone
+
+    def _build_school_doc(code: str) -> dict:
+        return {
+            "id": school_id,
+            "name": school_data.name,
+            "name_en": school_data.name_en,
+            "code": code,
+            # Use principal_email as school email if not provided
+            "email": school_data.email or school_data.principal_email or f"school-{code.lower()}@nassaq.com",
+            "phone": school_phone,
+            "address": school_data.address,
+            "city": school_data.city,
+            "region": school_data.region,
+            "country": school_data.country or "SA",
+            "logo_url": None,
+            "status": SchoolStatus.ACTIVE.value,  # Set to active immediately
+            "student_capacity": school_data.student_capacity,
+            "current_students": 0,
+            "current_teachers": 0,
+            # New fields
+            "language": school_data.language or "ar",
+            "calendar_system": school_data.calendar_system or "hijri_gregorian",
+            "school_type": school_data.school_type or "public",
+            "stage": school_data.stage or "primary",
+            "principal_name": school_data.principal_name,
+            "principal_email": school_data.principal_email,
+            "principal_phone": school_data.principal_phone,
+            "principal_mobile": school_data.principal_mobile,
+            "educational_pathway": school_data.educational_pathway,
+            "created_at": created_at,
+            "updated_at": created_at,
+            "created_by": current_user.get("user_id"),
+        }
+
+    if school_data.code:
+        # Operator-supplied custom code: a genuine duplicate is a real error.
+        try:
+            await insert_school_with_custom_code(db.session, _build_school_doc, school_data.code)
+        except IntegrityError as ie:
+            if is_school_code_conflict(ie):
+                raise HTTPException(status_code=400, detail="رمز المدرسة مستخدم مسبقاً — يُرجى اختيار رمز آخر")
             raise
+        school_code = school_data.code
+    else:
+        # Auto-generated code: silently regenerate on collision.
+        school_code, _ = await insert_school_with_unique_code(
+            db.session, _build_school_doc, country=school_data.country or "SA"
+        )
+
+    school_email = school_data.email or school_data.principal_email or f"school-{school_code.lower()}@nassaq.com"
     
     # Create principal account if email provided
     if school_data.principal_email and school_data.principal_name:
@@ -275,7 +251,7 @@ async def create_school(
         student_capacity=school_data.student_capacity,
         current_students=0,
         current_teachers=0,
-        created_at=school_doc["created_at"]
+        created_at=created_at
     )
 
 @router.post("/schools/draft", response_model=SchoolResponse)
@@ -284,53 +260,56 @@ async def create_school_draft(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Create a school as draft (setup status) - does not create principal account"""
-    school_code = await _generate_unique_school_code(
-        country=school_data.country,
-        custom_code=school_data.code
-    )
-    
     school_id = str(uuid.uuid4())
-    school_doc = {
-        "id": school_id,
-        "name": school_data.name or "مسودة مدرسة",
-        "name_en": school_data.name_en,
-        "code": school_code,
-        "email": school_data.email or f"school-{school_code.lower()}@nassaq.com",
-        "phone": school_data.phone or school_data.principal_phone,
-        "address": school_data.address or "",
-        "city": school_data.city or "",
-        "region": school_data.region,
-        "country": school_data.country or "SA",
-        "logo_url": None,
-        "status": "setup",  # Set as draft/setup
-        "student_capacity": school_data.student_capacity,
-        "current_students": 0,
-        "current_teachers": 0,
-        "language": school_data.language or "ar",
-        "calendar_system": school_data.calendar_system or "hijri_gregorian",
-        "school_type": school_data.school_type or "public",
-        "stage": school_data.stage or "primary",
-        "principal_name": school_data.principal_name or "",
-        "principal_email": school_data.principal_email or "",
-        "principal_phone": school_data.principal_phone or "",
-        "principal_mobile": school_data.principal_mobile or "",
-        "educational_pathway": school_data.educational_pathway or "",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "created_by": current_user.get("user_id")
-    }
-    
-    try:
-        await gd_insert(db.session, "schools", school_doc)
-    except Exception as e:
-        if "duplicate" in str(e).lower() or "unique" in str(e).lower():
-            school_code = await _generate_unique_school_code(country=school_data.country)
-            school_doc["code"] = school_code
-            school_doc["email"] = school_data.email or f"school-{school_code.lower()}@nassaq.com"
-            await gd_insert(db.session, "schools", school_doc)
-        else:
+    created_at = datetime.now(timezone.utc).isoformat()
+    school_phone = school_data.phone or school_data.principal_phone
+
+    def _build_school_doc(code: str) -> dict:
+        return {
+            "id": school_id,
+            "name": school_data.name or "مسودة مدرسة",
+            "name_en": school_data.name_en,
+            "code": code,
+            "email": school_data.email or f"school-{code.lower()}@nassaq.com",
+            "phone": school_phone,
+            "address": school_data.address or "",
+            "city": school_data.city or "",
+            "region": school_data.region,
+            "country": school_data.country or "SA",
+            "logo_url": None,
+            "status": "setup",  # Set as draft/setup
+            "student_capacity": school_data.student_capacity,
+            "current_students": 0,
+            "current_teachers": 0,
+            "language": school_data.language or "ar",
+            "calendar_system": school_data.calendar_system or "hijri_gregorian",
+            "school_type": school_data.school_type or "public",
+            "stage": school_data.stage or "primary",
+            "principal_name": school_data.principal_name or "",
+            "principal_email": school_data.principal_email or "",
+            "principal_phone": school_data.principal_phone or "",
+            "principal_mobile": school_data.principal_mobile or "",
+            "educational_pathway": school_data.educational_pathway or "",
+            "created_at": created_at,
+            "updated_at": created_at,
+            "created_by": current_user.get("user_id"),
+        }
+
+    if school_data.code:
+        try:
+            await insert_school_with_custom_code(db.session, _build_school_doc, school_data.code)
+        except IntegrityError as ie:
+            if is_school_code_conflict(ie):
+                raise HTTPException(status_code=400, detail="رمز المدرسة مستخدم مسبقاً — يُرجى اختيار رمز آخر")
             raise
-    
+        school_code = school_data.code
+    else:
+        school_code, _ = await insert_school_with_unique_code(
+            db.session, _build_school_doc, country=school_data.country or "SA"
+        )
+
+    school_email = school_data.email or f"school-{school_code.lower()}@nassaq.com"
+
     # Log draft creation
     await audit_engine.log_data_change(
         action=AuditAction.TENANT_CREATED.value,
@@ -375,10 +354,10 @@ async def create_school_draft(
         name=school_data.name or "مسودة مدرسة",
         name_en=school_data.name_en,
         code=school_code,
-        email=school_doc["email"],
-        phone=school_doc["phone"],
-        address=school_doc["address"],
-        city=school_doc["city"],
+        email=school_email,
+        phone=school_phone,
+        address=school_data.address or "",
+        city=school_data.city or "",
         region=school_data.region,
         country=school_data.country or "SA",
         logo_url=None,
@@ -386,7 +365,7 @@ async def create_school_draft(
         student_capacity=school_data.student_capacity,
         current_students=0,
         current_teachers=0,
-        created_at=school_doc["created_at"]
+        created_at=created_at
     )
 
 @router.delete("/schools/{school_id}/draft")

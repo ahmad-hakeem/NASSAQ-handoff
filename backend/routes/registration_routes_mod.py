@@ -30,6 +30,7 @@ from shared_models import (
     UserResponse,
 )
 from pg_models import School, User as UserModel, SchoolSettings
+from utils.school_code import generate_school_code, insert_school_with_unique_code
 
 router = APIRouter()
 
@@ -90,34 +91,15 @@ async def check_school_name(request: Request, name: str = Query(..., min_length=
 
 
 async def _generate_school_code_instant() -> str:
-    """Generate a unique school code (mirrors SchoolApprovalHandler logic)."""
-    from sqlalchemy import select, desc as sa_desc
-    session = db.session
-    year_suffix = datetime.now().strftime("%y")
-    prefix = f"NSS-SA-{year_suffix}-"
+    """Generate the next sequential school code for public SA signups.
 
-    stmt = (
-        select(School)
-        .where(School.code.like(f"{prefix}%"))
-        .order_by(sa_desc(School.code))
-        .limit(1)
-    )
-    result = await session.execute(stmt)
-    last_school = result.scalars().first()
-
-    next_num = 1
-    if last_school and last_school.code:
-        try:
-            next_num = int(last_school.code.split("-")[-1]) + 1
-        except (ValueError, IndexError):
-            pass
-
-    school_code = f"{prefix}{str(next_num).zfill(4)}"
-    stmt2 = select(School).where(School.code == school_code).limit(1)
-    result2 = await session.execute(stmt2)
-    if result2.scalars().first():
-        school_code = f"{prefix}{str(next_num + 1).zfill(4)}"
-    return school_code
+    Thin wrapper over the shared, hardened generator so the public instant
+    signup and the platform-admin create-school path mint codes from a single
+    consolidated implementation. The collision-safe INSERT (with regeneration)
+    lives in ``insert_school_with_unique_code`` — this only produces a first
+    candidate.
+    """
+    return await generate_school_code(db.session, country="SA")
 
 
 async def _create_school_instant(
@@ -161,39 +143,45 @@ async def _create_school_instant(
     except (ValueError, TypeError):
         student_capacity = 500
 
-    school_code = await _generate_school_code_instant()
     school_id = str(uuid.uuid4())
     principal_id = str(uuid.uuid4())
     request_id = str(uuid.uuid4())
 
     password_hash_value = hash_password(user_password)
 
-    school_obj = dict_to_model(School, {
-        "id": school_id,
-        "name": school_name,
-        "name_ar": school_name,
-        "name_en": "",
-        "code": school_code,
-        "email": school_email,
-        "phone": school_phone,
-        "address": (request_data.school_address or "").strip(),
-        "city": school_city,
-        "region": "",
-        "country": "SA",
-        "status": "active",
-        "student_capacity": student_capacity,
-        "current_students": 0,
-        "current_teachers": 0,
-        "school_type": "public",
-        "principal_name": full_name,
-        "principal_email": school_email,
-        "principal_phone": school_phone,
-        "created_at": now_iso,
-        "updated_at": now_iso,
-        "created_by": None,
-    })
-    session.add(school_obj)
-    await session.flush()
+    def _build_school_doc(code: str) -> dict:
+        return {
+            "id": school_id,
+            "name": school_name,
+            "name_ar": school_name,
+            "name_en": "",
+            "code": code,
+            "email": school_email,
+            "phone": school_phone,
+            "address": (request_data.school_address or "").strip(),
+            "city": school_city,
+            "region": "",
+            "country": "SA",
+            "status": "active",
+            "student_capacity": student_capacity,
+            "current_students": 0,
+            "current_teachers": 0,
+            "school_type": "public",
+            "principal_name": full_name,
+            "principal_email": school_email,
+            "principal_phone": school_phone,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+            "created_by": None,
+        }
+
+    # Insert the school with a bounded, savepoint-based retry that silently
+    # regenerates the auto-generated code on a schools_code_key collision
+    # (double-submit, concurrent signup, or cross-path collision with the
+    # admin create-school flow). Only genuine non-code errors propagate.
+    school_code, school_obj = await insert_school_with_unique_code(
+        session, _build_school_doc, country="SA"
+    )
 
     principal_obj = dict_to_model(UserModel, {
         "id": principal_id,
