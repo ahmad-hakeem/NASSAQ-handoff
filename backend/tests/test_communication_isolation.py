@@ -40,7 +40,7 @@ def _headers(user_id: str, role: str, tenant_id):
 
 async def _mk_user(role: UserRole, tenant_id, *, email_prefix: str = "u") -> str:
     uid = str(uuid.uuid4())
-    await gd_insert(db.session, "users", {
+    row = {
         "id": uid,
         "role": role.value,
         "tenant_id": tenant_id,
@@ -48,7 +48,10 @@ async def _mk_user(role: UserRole, tenant_id, *, email_prefix: str = "u") -> str
         "full_name": f"{role.value}-{uid[:6]}",
         "is_active": True,
         "password_hash": "x",
-    })
+    }
+    if role in (UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN):
+        row["mfa_enrolled_at"] = datetime.now(timezone.utc).isoformat()
+    await gd_insert(db.session, "users", row)
     return uid
 
 
