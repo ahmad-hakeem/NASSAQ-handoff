@@ -97,6 +97,49 @@ async def test_transfer_same_class_is_noop(
 
 
 @pytest.mark.asyncio
+async def test_transfer_unexpected_db_error_returns_safe_arabic_envelope(
+    client, school_principal_headers, tenant_a, _db_session, monkeypatch
+):
+    """Defense-in-depth (Task #795): an unexpected DB error during the
+    student / target-class pre-lookups must surface through the standard
+    safe-Arabic error envelope (HTTP 500 with a populated error.message the
+    frontend classifier can read) — never an unparseable plain-text 500 that
+    collapses into the generic cause-hiding popup. The raw exception text
+    must not leak."""
+    from engines.sql_utils import gd_insert
+    import routes.academics_student_routes as mod
+
+    cls = str(uuid.uuid4())
+    await gd_insert(_db_session, "classes", {"id": cls, "school_id": tenant_a, "name": "4A"})
+    sid = str(uuid.uuid4())
+    await gd_insert(_db_session, "students", {
+        "id": sid, "school_id": tenant_a, "full_name": "Boom",
+        "class_id": cls, "is_active": True,
+    })
+    await _db_session.flush()
+
+    async def _boom(*args, **kwargs):
+        raise RuntimeError("simulated DB failure — must never leak")
+
+    # Force the pre-lookup to blow up with an unexpected (non-HTTP) error.
+    monkeypatch.setattr(mod, "gd_find_one", _boom)
+
+    r = await client.post(
+        "/students/transfer-class",
+        json={"student_id": sid, "target_class_id": cls},
+        headers=school_principal_headers,
+    )
+    assert r.status_code == 500, r.text
+    body = r.json()
+    assert body.get("success") is False
+    msg = (body.get("error") or {}).get("message")
+    assert isinstance(msg, str) and msg
+    # The raw exception string must never reach the client.
+    assert "simulated DB failure" not in msg
+    assert "RuntimeError" not in msg
+
+
+@pytest.mark.asyncio
 async def test_transfer_cross_tenant_target_rejected_no_mutation(
     client, school_principal_headers, tenant_a, tenant_b, _db_session
 ):

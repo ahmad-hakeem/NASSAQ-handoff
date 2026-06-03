@@ -640,13 +640,30 @@ async def transfer_student_class(
     if not school_id:
         raise HTTPException(status_code=400, detail="سياق المدرسة مطلوب")
 
-    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
-    if not student:
-        raise HTTPException(status_code=404, detail="الطالب غير موجود")
+    # Defense-in-depth (Task #795): these two pre-lookups previously ran
+    # OUTSIDE any try/except, and there is no global generic-Exception
+    # handler, so an unexpected DB error here returned an unparseable
+    # plain-text 500 that the frontend could only render as the generic
+    # cause-hiding popup. Guard them so any unexpected failure is logged
+    # and surfaced through the standard safe-Arabic envelope instead —
+    # while still letting the deliberate 404 (HTTPException) propagate
+    # untouched so tenant scoping / not-found semantics are preserved.
+    try:
+        student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
+        if not student:
+            raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
-    target_class = await gd_find_one(db.session, "classes", {"id": target_class_id, "school_id": school_id})
-    if not target_class:
-        raise HTTPException(status_code=404, detail="الفصل المستهدف غير موجود")
+        target_class = await gd_find_one(db.session, "classes", {"id": target_class_id, "school_id": school_id})
+        if not target_class:
+            raise HTTPException(status_code=404, detail="الفصل المستهدف غير موجود")
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            "Failed to look up student %s / target class %s for transfer",
+            student_id, target_class_id,
+        )
+        raise HTTPException(status_code=500, detail="تعذر نقل الطالب، يرجى المحاولة مرة أخرى")
 
     old_class_id = student.get("class_id")
     if old_class_id == target_class_id:
