@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 import pytest
 
 from dependencies import db, UserRole, create_access_token
-from engines.sql_utils import gd_insert, gd_find_one, gd_find, gd_count
+from engines.sql_utils import gd_insert, gd_find_one, gd_find, gd_count, gd_update_one
 
 pytestmark = pytest.mark.asyncio
 
@@ -202,6 +202,75 @@ async def test_relink_reactivates_deactivated_same_school_record(client, tenant_
     assert count == 1
     reactivated = await gd_find_one(db.session, "teachers", {"id": tid})
     assert reactivated["is_active"] is True
+
+
+async def test_link_teacher_adopts_existing_national_id_record(client, tenant_a, tenant_b):
+    """Linking a teacher to a school that already holds a row for their
+    national_id (under a different email/user_id) ADOPTS that row instead of
+    crashing on uq_teachers_national_id_school. Mirrors the Task #794 backfill."""
+    headers = await _platform_admin_headers(tenant_a)
+    nid = uuid.uuid4().hex[:10]
+    teacher = await _mk_teacher_user(tenant_a)
+    await gd_update_one(db.session, "users", {"id": teacher["id"]}, {"national_id": nid})
+
+    existing_id = str(uuid.uuid4())
+    await gd_insert(db.session, "teachers", {
+        "id": existing_id,
+        "teacher_id": existing_id,
+        "full_name": "سجل قائم",
+        "email": f"other-{uuid.uuid4().hex}@t.test",
+        "national_id": nid,
+        "school_id": tenant_b,
+        "is_active": True,
+    })
+
+    resp = await client.patch(
+        f"/users/{teacher['id']}", json={"tenant_id": tenant_b}, headers=headers
+    )
+    assert resp.status_code == 200, resp.text
+
+    rows = await gd_find(db.session, "teachers", {"school_id": tenant_b, "national_id": nid})
+    assert len(rows) == 1, "must adopt the existing national_id row, not duplicate"
+    assert rows[0]["id"] == existing_id
+    assert rows[0]["user_id"] == teacher["id"]
+
+    updated = await gd_find_one(db.session, "users", {"id": teacher["id"]})
+    assert updated["tenant_id"] == tenant_b
+    assert updated.get("teacher_id") == existing_id
+
+
+async def test_link_teacher_blocked_on_soft_deleted_national_id_record(client, tenant_a, tenant_b):
+    """Linking to a school whose (national_id, school_id) slot is held by a
+    SOFT-DELETED row must be blocked (not silently un-deleted, not crash on the
+    full unique constraint) and surfaced for manual review."""
+    headers = await _platform_admin_headers(tenant_a)
+    nid = uuid.uuid4().hex[:10]
+    teacher = await _mk_teacher_user(tenant_a)
+    await gd_update_one(db.session, "users", {"id": teacher["id"]}, {"national_id": nid})
+
+    existing_id = str(uuid.uuid4())
+    await gd_insert(db.session, "teachers", {
+        "id": existing_id,
+        "teacher_id": existing_id,
+        "full_name": "سجل محذوف",
+        "email": f"other-{uuid.uuid4().hex}@t.test",
+        "national_id": nid,
+        "school_id": tenant_b,
+        "is_active": False,
+        "deleted_at": datetime.now(timezone.utc),
+    })
+
+    resp = await client.patch(
+        f"/users/{teacher['id']}", json={"tenant_id": tenant_b}, headers=headers
+    )
+    assert resp.status_code == 400, resp.text
+
+    # user NOT moved (fail closed), soft-deleted row untouched, no duplicate
+    unchanged = await gd_find_one(db.session, "users", {"id": teacher["id"]})
+    assert unchanged["tenant_id"] == tenant_a
+    rows = await gd_find(db.session, "teachers", {"school_id": tenant_b, "national_id": nid})
+    assert len(rows) == 1
+    assert rows[0]["deleted_at"] is not None
 
 
 async def test_create_teacher_in_school_provisions_record(client, tenant_b):

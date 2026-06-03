@@ -76,11 +76,25 @@ def upgrade() -> None:
                 user_id               VARCHAR PRIMARY KEY,
                 teacher_id            VARCHAR NOT NULL,
                 action                VARCHAR NOT NULL,
-                prior_user_teacher_id VARCHAR
+                prior_user_teacher_id VARCHAR,
+                adopted_set_active    BOOLEAN NOT NULL DEFAULT false,
+                adopted_filled_user_id BOOLEAN NOT NULL DEFAULT false
             )
             """
         )
     )
+
+    # Resilience: an environment may already hold an OLDER shape of this
+    # bookkeeping table (e.g. a prior manual `alembic upgrade head` that ran the
+    # pre-adoption revision). CREATE TABLE IF NOT EXISTS would then skip the new
+    # columns, so add them idempotently before they are referenced below.
+    for _col in ("adopted_set_active", "adopted_filled_user_id"):
+        conn.execute(
+            sa.text(
+                f"ALTER TABLE {_BACKFILL_TABLE} "
+                f"ADD COLUMN IF NOT EXISTS {_col} BOOLEAN NOT NULL DEFAULT false"
+            )
+        )
 
     # Teacher-role users bound to a REAL school (never an Independent-Teacher
     # workspace) that have NO active, non-soft-deleted teachers row in that
@@ -171,45 +185,112 @@ def upgrade() -> None:
                 {"uid": uid, "tid": resolved_id, "prior": u["teacher_id"]},
             )
         else:
-            # No academic record yet — provision a minimal active one.
-            resolved_id = _generate_school_teacher_id(conn, target)
-            conn.execute(
-                sa.text(
-                    """
-                    INSERT INTO teachers
-                        (id, teacher_id, user_id, full_name, full_name_en, email,
-                         phone, national_id, school_id, is_active, created_by,
-                         created_at, updated_at)
-                    VALUES
-                        (:id, :id, :uid, :full_name, :full_name_en, :email,
-                         :phone, :national_id, :school_id, true, 'backfill_794',
-                         :created_at, :updated_at)
-                    """
-                ),
-                {
-                    "id": resolved_id,
-                    "uid": uid,
-                    "full_name": u["full_name"] or email or "معلم",
-                    "full_name_en": u["full_name_en"],
-                    "email": email,
-                    "phone": u["phone"],
-                    "national_id": u["national_id"],
-                    "school_id": target,
-                    "created_at": now,
-                    "updated_at": now,
-                },
-            )
-            conn.execute(
-                sa.text(
-                    f"""
-                    INSERT INTO {_BACKFILL_TABLE}
-                        (user_id, teacher_id, action, prior_user_teacher_id)
-                    VALUES (:uid, :tid, 'created', :prior)
-                    ON CONFLICT (user_id) DO NOTHING
-                    """
-                ),
-                {"uid": uid, "tid": resolved_id, "prior": u["teacher_id"]},
-            )
+            # A teacher's identity WITHIN a school is (national_id, school_id) — a
+            # UNIQUE constraint (uq_teachers_national_id_school). A row for this
+            # national_id may already exist in the target school under a different
+            # email/user_id, so it escaped the user_id/email match above. A blind
+            # INSERT would violate that constraint, so ADOPT the canonical row
+            # (link the user, fill a missing user_id, reactivate a deactivated
+            # row) instead of minting a duplicate. Soft-deleted rows are left
+            # archived — silent resurrection is an explicit admin action, not a
+            # backfill side effect.
+            adopt = None
+            if u["national_id"] is not None:
+                adopt = conn.execute(
+                    sa.text(
+                        "SELECT id, user_id, is_active, deleted_at FROM teachers "
+                        "WHERE national_id = :nid AND school_id = :sid"
+                    ),
+                    {"nid": u["national_id"], "sid": target},
+                ).mappings().first()
+
+            if adopt:
+                # The constraint is a FULL unique constraint (it covers
+                # soft-deleted rows too), so we must NOT fall through to INSERT
+                # whenever ANY row for this (national_id, school_id) exists.
+                # Adopt ONLY a clean candidate: live (deleted_at IS NULL) and not
+                # already bound to a DIFFERENT user. A soft-deleted row (silent
+                # resurrection) or a row owned by another user (dual-link
+                # corruption) is left for explicit manual review — skip the user.
+                owned_by_other = adopt["user_id"] is not None and adopt["user_id"] != uid
+                if adopt["deleted_at"] is not None or owned_by_other:
+                    continue
+
+                resolved_id = adopt["id"]
+                filled_user_id = not adopt["user_id"]
+                set_active = adopt["is_active"] is False
+                patch_set = []
+                params = {"id": resolved_id}
+                if filled_user_id:
+                    patch_set.append("user_id = :uid")
+                    params["uid"] = uid
+                if set_active:
+                    patch_set.append("is_active = true")
+                if patch_set:
+                    conn.execute(
+                        sa.text(
+                            f"UPDATE teachers SET {', '.join(patch_set)} WHERE id = :id"
+                        ),
+                        params,
+                    )
+                conn.execute(
+                    sa.text(
+                        f"""
+                        INSERT INTO {_BACKFILL_TABLE}
+                            (user_id, teacher_id, action, prior_user_teacher_id,
+                             adopted_set_active, adopted_filled_user_id)
+                        VALUES (:uid, :tid, 'adopted', :prior, :set_active, :filled)
+                        ON CONFLICT (user_id) DO NOTHING
+                        """
+                    ),
+                    {
+                        "uid": uid,
+                        "tid": resolved_id,
+                        "prior": u["teacher_id"],
+                        "set_active": set_active,
+                        "filled": filled_user_id,
+                    },
+                )
+            else:
+                # No academic record yet — provision a minimal active one.
+                resolved_id = _generate_school_teacher_id(conn, target)
+                conn.execute(
+                    sa.text(
+                        """
+                        INSERT INTO teachers
+                            (id, teacher_id, user_id, full_name, full_name_en, email,
+                             phone, national_id, school_id, is_active, created_by,
+                             created_at, updated_at)
+                        VALUES
+                            (:id, :id, :uid, :full_name, :full_name_en, :email,
+                             :phone, :national_id, :school_id, true, 'backfill_794',
+                             :created_at, :updated_at)
+                        """
+                    ),
+                    {
+                        "id": resolved_id,
+                        "uid": uid,
+                        "full_name": u["full_name"] or email or "معلم",
+                        "full_name_en": u["full_name_en"],
+                        "email": email,
+                        "phone": u["phone"],
+                        "national_id": u["national_id"],
+                        "school_id": target,
+                        "created_at": now,
+                        "updated_at": now,
+                    },
+                )
+                conn.execute(
+                    sa.text(
+                        f"""
+                        INSERT INTO {_BACKFILL_TABLE}
+                            (user_id, teacher_id, action, prior_user_teacher_id)
+                        VALUES (:uid, :tid, 'created', :prior)
+                        ON CONFLICT (user_id) DO NOTHING
+                        """
+                    ),
+                    {"uid": uid, "tid": resolved_id, "prior": u["teacher_id"]},
+                )
 
         # Link the authoritative record back onto the user row.
         if u["teacher_id"] != resolved_id:
@@ -224,7 +305,8 @@ def downgrade() -> None:
 
     rows = conn.execute(
         sa.text(
-            f"SELECT user_id, teacher_id, action, prior_user_teacher_id "
+            f"SELECT user_id, teacher_id, action, prior_user_teacher_id, "
+            f"adopted_set_active, adopted_filled_user_id "
             f"FROM {_BACKFILL_TABLE}"
         )
     ).mappings().all()
@@ -254,5 +336,25 @@ def downgrade() -> None:
                 sa.text("UPDATE teachers SET is_active = false WHERE id = :tid"),
                 {"tid": r["teacher_id"]},
             )
+        elif r["action"] == "adopted":
+            # Revert only the mutations we actually made to the pre-existing row
+            # (guard by the link we wrote so we never touch a row reassigned
+            # after this migration). The row itself is never deleted — we did not
+            # create it.
+            if r["adopted_filled_user_id"]:
+                conn.execute(
+                    sa.text(
+                        "UPDATE teachers SET user_id = NULL "
+                        "WHERE id = :tid AND user_id = :uid"
+                    ),
+                    {"tid": r["teacher_id"], "uid": r["user_id"]},
+                )
+            if r["adopted_set_active"]:
+                conn.execute(
+                    sa.text(
+                        "UPDATE teachers SET is_active = false WHERE id = :tid"
+                    ),
+                    {"tid": r["teacher_id"]},
+                )
 
     conn.execute(sa.text(f"DROP TABLE IF EXISTS {_BACKFILL_TABLE}"))

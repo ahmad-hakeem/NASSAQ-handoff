@@ -103,6 +103,39 @@ async def _ensure_school_teacher_record(user: dict, target_school_id: str, creat
             await gd_update_one(db.session, "teachers", {"id": same["id"]}, patch)
         return same["id"]
 
+    # A teacher's identity WITHIN a school is (national_id, school_id) — a UNIQUE
+    # constraint (uq_teachers_national_id_school). A row for this national_id may
+    # already exist in the target school under a different email/user_id, so it
+    # escaped the user_id/email match above. A blind insert would violate that
+    # constraint, so adopt the canonical row (link the user, fill a missing
+    # user_id, reactivate a deactivated row) instead of minting a duplicate.
+    # Soft-deleted rows are left archived — silent resurrection is an explicit
+    # admin action, not an automatic side effect.
+    national_id = user.get("national_id")
+    if national_id:
+        by_nid = await gd_find_one(db.session, "teachers", {"national_id": national_id, "school_id": target_school_id})
+        if by_nid:
+            # The constraint is a FULL unique constraint (it covers soft-deleted
+            # rows too), so we must never fall through to INSERT once a row for
+            # this (national_id, school_id) exists. Adopt ONLY a clean candidate:
+            # live (not soft-deleted) and not already owned by a DIFFERENT user.
+            # A soft-deleted row (silent resurrection) or one bound to another
+            # user (dual-link corruption) is surfaced for manual review instead.
+            owned_by_other = by_nid.get("user_id") and by_nid.get("user_id") != uid
+            if by_nid.get("deleted_at") or owned_by_other:
+                raise HTTPException(
+                    status_code=400,
+                    detail="يوجد سجل معلم بنفس رقم الهوية في هذه المدرسة يحتاج إلى مراجعة يدوية قبل الربط.",
+                )
+            patch = {}
+            if uid and not by_nid.get("user_id"):
+                patch["user_id"] = uid
+            if by_nid.get("is_active") is False:
+                patch["is_active"] = True
+            if patch:
+                await gd_update_one(db.session, "teachers", {"id": by_nid["id"]}, patch)
+            return by_nid["id"]
+
     # No academic record yet — provision a minimal one in the target school.
     teacher_id = await _generate_school_teacher_id(target_school_id)
     now = datetime.now(timezone.utc).isoformat()
