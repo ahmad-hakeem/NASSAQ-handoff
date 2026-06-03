@@ -498,6 +498,119 @@ async def update_user_status(
 
 # ============== USER DETAILS & MANAGEMENT ROUTES ==============
 
+@router.get("/users/teacher-school-mismatches")
+async def get_teacher_school_mismatches(
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+):
+    """List teacher users whose intended school differs from their academic record.
+
+    Surfaces the teachers that ``_ensure_school_teacher_record`` intentionally
+    BLOCKS from being moved: a teacher user whose ``users.tenant_id`` points to
+    one school while their live (non-deleted) ``teachers`` record lives in a
+    DIFFERENT school. These users never appear under their intended school's
+    Teachers page, with no prior visibility for admins. Each entry exposes both
+    the intended school (from ``users.tenant_id``) and the school(s) where the
+    live academic record actually exists so an admin can resolve the conflict
+    (e.g. deactivate the old record, then reassign).
+
+    Platform-admin only. Read-only — performs no writes.
+    """
+    teacher_users = await gd_find(db.session, "users", {"role": UserRole.TEACHER.value}, limit=5000)
+    teacher_users = [
+        u for u in teacher_users
+        if (u.get("tenant_id") or "").strip()
+    ]
+    if not teacher_users:
+        return {"mismatches": [], "total": 0}
+
+    user_ids = [u["id"] for u in teacher_users if u.get("id")]
+    emails = [u["email"] for u in teacher_users if u.get("email")]
+
+    # Bulk-fetch every academic record linked to these teachers — by explicit
+    # user_id link and by canonical email — to avoid per-user N+1 queries.
+    teacher_rows: List[dict] = []
+    if user_ids:
+        teacher_rows += await gd_find(db.session, "teachers", {"user_id": {"$in": user_ids}}, limit=5000) or []
+    if emails:
+        teacher_rows += await gd_find(db.session, "teachers", {"email": {"$in": emails}}, limit=5000) or []
+
+    # Index live (non-deleted) records by user_id and by email.
+    rows_by_uid: Dict[str, List[dict]] = {}
+    rows_by_email: Dict[str, List[dict]] = {}
+    seen_row_ids = set()
+    for r in teacher_rows:
+        rid = r.get("id")
+        if rid in seen_row_ids:
+            continue
+        seen_row_ids.add(rid)
+        if r.get("deleted_at"):
+            continue
+        if r.get("user_id"):
+            rows_by_uid.setdefault(r["user_id"], []).append(r)
+        if r.get("email"):
+            rows_by_email.setdefault(r["email"], []).append(r)
+
+    mismatches = []
+    needed_school_ids = set()
+    for u in teacher_users:
+        intended = (u.get("tenant_id") or "").strip()
+        live = rows_by_uid.get(u.get("id")) or rows_by_email.get(u.get("email")) or []
+        if not live:
+            continue
+        # A mismatch = the teacher has live academic record(s), but NONE of them
+        # live in the intended school. (If a record already exists in the
+        # intended school the teacher appears there normally and is not stuck.)
+        in_intended = any(r.get("school_id") == intended for r in live)
+        if in_intended:
+            continue
+        other_school_ids = sorted({r.get("school_id") for r in live if r.get("school_id")})
+        if not other_school_ids:
+            continue
+        needed_school_ids.add(intended)
+        needed_school_ids.update(other_school_ids)
+        mismatches.append({
+            "user": u,
+            "intended_school_id": intended,
+            "record_school_ids": other_school_ids,
+            "teacher_records": live,
+        })
+
+    # Resolve school names in a single query.
+    school_name_map: Dict[str, str] = {}
+    school_id_list = [sid for sid in needed_school_ids if sid]
+    if school_id_list:
+        school_rows = await gd_find(db.session, "schools", {"id": {"$in": school_id_list}}, limit=5000) or []
+        school_name_map = {
+            s.get("id"): (s.get("name") or s.get("name_en") or s.get("id"))
+            for s in school_rows
+        }
+
+    results = []
+    for m in mismatches:
+        u = m["user"]
+        intended_id = m["intended_school_id"]
+        record_schools = [
+            {"id": sid, "name": school_name_map.get(sid) or sid}
+            for sid in m["record_school_ids"]
+        ]
+        results.append({
+            "user_id": u.get("id"),
+            "full_name": u.get("full_name") or u.get("full_name_ar") or u.get("email"),
+            "email": u.get("email"),
+            "phone": u.get("phone"),
+            "is_active": u.get("is_active", True),
+            "intended_school": {
+                "id": intended_id,
+                "name": school_name_map.get(intended_id) or intended_id,
+            },
+            "record_schools": record_schools,
+            "teacher_record_ids": [r.get("id") for r in m["teacher_records"]],
+        })
+
+    results.sort(key=lambda r: (r.get("full_name") or "").lower())
+    return {"mismatches": results, "total": len(results)}
+
+
 @router.get("/users/{user_id}")
 async def get_user_by_id(
     user_id: str,

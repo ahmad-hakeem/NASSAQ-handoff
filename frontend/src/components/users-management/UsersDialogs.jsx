@@ -23,6 +23,7 @@ import { getRoleInfo, formatDate, formatTimeAgo } from './constants';
 import { USER_ROLES } from './constants';
 import { APPROVAL_TYPE_CONFIG } from './approvalConfig';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 
 export function UserDetailsDialog({ user, onClose, onEdit, onSuspend, onNotify }) {
   if (!user) return null;
@@ -466,6 +467,7 @@ function RequestDetailsContent({ request }) {
 }
 
 export function EditUserSheet({ user, onClose, onSave, api, fetchUsers, schools = [] }) {
+  const { nassaqError } = useNassaqAlert();
   const [editRole, setEditRole] = React.useState(user?.role || '');
   const [editTenant, setEditTenant] = React.useState(user?.tenant_id || '');
 
@@ -550,7 +552,19 @@ export function EditUserSheet({ user, onClose, onSave, api, fetchUsers, schools 
                   onClose();
                 } catch (error) {
                   console.error('Error updating user:', error);
-                  onSave(null, getApiErrorMessage(error) || 'فشل في تحديث بيانات المستخدم');
+                  const apiMsg = getApiErrorMessage(error);
+                  // A blocked cross-school teacher move returns HTTP 400 with a
+                  // clear Arabic explanation — surface it prominently via
+                  // NassaqAlertDialog (not a transient toast) so the admin can
+                  // read why the move was refused and how to resolve it.
+                  if (error?.response?.status === 400) {
+                    nassaqError(
+                      apiMsg || 'تعذّر نقل المعلم إلى المدرسة المطلوبة',
+                      { title: 'تعذّر نقل المعلم' }
+                    );
+                  } else {
+                    onSave(null, apiMsg || 'فشل في تحديث بيانات المستخدم');
+                  }
                 }
               }}
             >

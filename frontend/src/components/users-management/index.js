@@ -2,6 +2,7 @@ export { default as UsersStatsCards } from './UsersStatsCards';
 export { default as UserCard } from './UserCard';
 export { default as UsersFilters } from './UsersFilters';
 export { default as SchoolUsersTab } from './SchoolUsersTab';
+export { default as TeacherMismatchesTab } from './TeacherMismatchesTab';
 export { default as ApprovalRequestsTab } from './ApprovalRequestsTab';
 export {
   UserDetailsDialog,

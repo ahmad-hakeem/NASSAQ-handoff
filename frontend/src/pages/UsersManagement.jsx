@@ -15,7 +15,7 @@ import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import {
   Users, Filter, RefreshCw, UserPlus, Building2, ChevronLeft,
-  ChevronRight, ChevronsLeft, ChevronsRight,
+  ChevronRight, ChevronsLeft, ChevronsRight, AlertTriangle,
 } from 'lucide-react';
 import CreateUserWizard from '../components/wizards/CreateUserWizard';
 import { useAuth } from '../contexts/AuthContext';
@@ -25,6 +25,7 @@ import {
   UserCard,
   UsersFilters,
   SchoolUsersTab,
+  TeacherMismatchesTab,
   ApprovalRequestsTab,
   UserDetailsDialog,
   SuspendDialog,
@@ -74,13 +75,15 @@ export default function UsersManagement() {
   const initialTab = useMemo(() => {
     const tabParam = searchParams.get('tab');
     if (!tabParam) return 'users';
-    const validTabs = ['users', 'school-users', ...visibleApprovalEntries.map(([, c]) => c.tabValue)];
+    const validTabs = ['users', 'school-users', 'mismatches', ...visibleApprovalEntries.map(([, c]) => c.tabValue)];
     return validTabs.includes(tabParam) ? tabParam : 'users';
   }, [searchParams, visibleApprovalEntries]);
 
   const [users, setUsers] = useState([]);
   const [schoolUsers, setSchoolUsers] = useState({});
   const [schools, setSchools] = useState([]);
+  const [mismatches, setMismatches] = useState([]);
+  const [mismatchesLoading, setMismatchesLoading] = useState(false);
   const [requestsByType, setRequestsByType] = useState({});
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -217,6 +220,19 @@ export default function UsersManagement() {
     }
   }, [api]);
 
+  const fetchMismatches = useCallback(async () => {
+    setMismatchesLoading(true);
+    try {
+      const response = await api.get('/users/teacher-school-mismatches');
+      setMismatches(response.data?.mismatches || []);
+    } catch (error) {
+      console.error('Error fetching teacher mismatches:', error);
+      setMismatches([]);
+    } finally {
+      setMismatchesLoading(false);
+    }
+  }, [api]);
+
   const fetchManagementStats = useCallback(async () => {
     try {
       const response = await api.get('/users/management-stats');
@@ -242,6 +258,7 @@ export default function UsersManagement() {
     fetchAllRequests();
     fetchSchoolUsers();
     fetchManagementStats();
+    fetchMismatches();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -451,7 +468,7 @@ export default function UsersManagement() {
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList
               className={`grid w-full max-w-3xl mb-4 ${
-                ['grid-cols-2', 'grid-cols-3', 'grid-cols-4'][visibleApprovalEntries.length] || 'grid-cols-4'
+                ['grid-cols-3', 'grid-cols-4', 'grid-cols-5'][visibleApprovalEntries.length] || 'grid-cols-5'
               }`}
             >
               <TabsTrigger value="users" className="font-cairo text-xs sm:text-sm">
@@ -459,6 +476,12 @@ export default function UsersManagement() {
               </TabsTrigger>
               <TabsTrigger value="school-users" className="font-cairo text-xs sm:text-sm">
                 <Building2 className="h-4 w-4 ms-2" />مستخدمو المدارس
+              </TabsTrigger>
+              <TabsTrigger value="mismatches" className="font-cairo relative text-xs sm:text-sm">
+                <AlertTriangle className="h-4 w-4 ms-2" />تعارضات المعلمين
+                {mismatches.length > 0 && (
+                  <span className="absolute -top-1 -start-1 w-5 h-5 bg-amber-500 text-white text-[10px] rounded-full flex items-center justify-center">{mismatches.length}</span>
+                )}
               </TabsTrigger>
               {visibleApprovalEntries.map(([type, config]) => {
                 const TabIcon = config.tabIcon;
@@ -594,6 +617,14 @@ export default function UsersManagement() {
               <SchoolUsersTab
                 schoolUsers={schoolUsers}
                 onAddUser={(school) => { setPreselectedSchool(school); setShowCreateWizard(true); }}
+              />
+            </TabsContent>
+
+            <TabsContent value="mismatches" className="space-y-4">
+              <TeacherMismatchesTab
+                mismatches={mismatches}
+                loading={mismatchesLoading}
+                onRefresh={fetchMismatches}
               />
             </TabsContent>
 
