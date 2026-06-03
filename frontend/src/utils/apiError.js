@@ -14,18 +14,25 @@
  *   apply their own `|| fallback` keep working unchanged.
  * @returns {string|undefined} The backend message, or `fallback`.
  */
-export function getApiErrorMessage(error, fallback = undefined) {
-  // Accept an axios error (`error.response.data`), an axios response /
-  // resolved body (`error.data`), or a raw envelope body (`{success,error}`).
-  // A bare Error exposes none of these keys, so its generic `.message`
-  // (e.g. "Network Error") is intentionally not surfaced.
+function getEnvelopeBody(error) {
+  // Pulls the canonical envelope body out of whatever shape the caller passes —
+  // an axios error (`error.response.data`), an axios response / resolved body
+  // (`error.data`), or a raw envelope body (`{success,error,meta}`). A bare
+  // Error exposes none of these keys, so it resolves to `undefined`.
   const isEnvelope =
     error &&
     typeof error === 'object' &&
     (error.error !== undefined ||
       error.detail !== undefined ||
-      error.success !== undefined);
-  const data = error?.response?.data ?? error?.data ?? (isEnvelope ? error : undefined);
+      error.success !== undefined ||
+      error.meta !== undefined);
+  return error?.response?.data ?? error?.data ?? (isEnvelope ? error : undefined);
+}
+
+export function getApiErrorMessage(error, fallback = undefined) {
+  // A bare Error's generic `.message` (e.g. "Network Error") is intentionally
+  // not surfaced — only the structured backend envelope is read.
+  const data = getEnvelopeBody(error);
   if (data) {
     const envMsg = data?.error?.message;
     if (typeof envMsg === 'string' && envMsg.trim()) return envMsg;
@@ -48,6 +55,128 @@ export function getApiErrorMessage(error, fallback = undefined) {
     if (typeof topMsg === 'string' && topMsg.trim()) return topMsg;
   }
   return fallback;
+}
+
+/**
+ * Extracts the per-field validation breakdown the backend attaches to a 422
+ * under `meta.validation_errors` (see the RequestValidationError handler in
+ * backend/server.py). Returns a normalized array of `{ field, message }`, or an
+ * empty array when there is no per-field detail.
+ *
+ * @param {*} error
+ * @returns {Array<{field: string, message: string}>}
+ */
+export function getValidationErrors(error) {
+  const data = getEnvelopeBody(error);
+  const list = data?.meta?.validation_errors;
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((e) => ({
+      field: typeof e?.field === 'string' ? e.field : '',
+      message: typeof e?.message === 'string' ? e.message : '',
+    }))
+    .filter((e) => e.field || e.message);
+}
+
+// Maps a backend field path (e.g. "body.basic_info.email") to an existing
+// locale key for a human label. The last non-index path segment is matched.
+const FIELD_LABEL_KEYS = {
+  name: 'name',
+  full_name: 'fullName',
+  fullname: 'fullName',
+  email: 'email',
+  phone: 'phone',
+  mobile: 'phone',
+  phone_number: 'phone',
+  national_id: 'nationalId',
+  nationality: 'nationality',
+  address: 'address',
+  city: 'city',
+  country: 'country',
+  password: 'password',
+  gender: 'gender',
+  grade: 'grade',
+  subject: 'subject',
+  class_name: 'className',
+  school_name: 'schoolName',
+};
+
+// Maps a backend/Pydantic message to an existing locale key. Each entry tests
+// (case-insensitively) whether the raw message contains the substring.
+const MESSAGE_PATTERN_KEYS = [
+  { test: 'field required', key: 'validationRequired' },
+  { test: 'value_error.missing', key: 'validationRequired' },
+  { test: 'none is not an allowed', key: 'validationRequired' },
+  { test: 'valid email', key: 'validationInvalidEmail' },
+  { test: 'at least', key: 'validationTooShort' },
+  { test: 'too_short', key: 'validationTooShort' },
+  { test: 'at most', key: 'validationTooLong' },
+  { test: 'too_long', key: 'validationTooLong' },
+  { test: 'valid integer', key: 'validationInvalidNumber' },
+  { test: 'valid number', key: 'validationInvalidNumber' },
+  { test: 'valid digits', key: 'validationInvalidNumber' },
+];
+
+function lastFieldSegment(field) {
+  if (!field) return '';
+  const segments = String(field)
+    .split('.')
+    .filter((s) => s && s !== 'body' && s !== 'query' && s !== 'path' && !/^\d+$/.test(s));
+  return segments.length ? segments[segments.length - 1] : '';
+}
+
+function humanizeField(segment) {
+  if (!segment) return '';
+  return segment
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Formats `meta.validation_errors` into a readable, localized list of strings,
+ * e.g. `["البريد: مطلوب", "الاسم: مطلوب"]`. Field paths and Pydantic messages
+ * are mapped to locale keys when a translator is supplied; unmapped values fall
+ * back to a humanized field label and the raw backend message.
+ *
+ * @param {*} error
+ * @param {(key: string, params?: object) => string} [t] Translation function
+ *   from `useTranslation()`. When omitted, raw English text is used.
+ * @returns {string[]} Localized per-field lines (empty when no detail exists).
+ */
+export function formatValidationErrors(error, t) {
+  const translate = typeof t === 'function' ? t : (k) => k;
+  return getValidationErrors(error).map(({ field, message }) => {
+    const segment = lastFieldSegment(field);
+    const labelKey = FIELD_LABEL_KEYS[segment];
+    const label = labelKey ? translate(labelKey) : humanizeField(segment);
+
+    const lower = message.toLowerCase();
+    const matched = MESSAGE_PATTERN_KEYS.find((p) => lower.includes(p.test));
+    const reason = matched ? translate(matched.key) : message;
+
+    if (label && reason) return `${label}: ${reason}`;
+    return reason || label || message;
+  });
+}
+
+/**
+ * Builds the single message string to show in a NassaqAlertDialog when a request
+ * fails. If the backend returned per-field validation detail, the specific
+ * field reasons are surfaced as a bulleted list; otherwise it degrades to the
+ * generic top-level message via `getApiErrorMessage`.
+ *
+ * @param {*} error
+ * @param {object} [options]
+ * @param {(key: string, params?: object) => string} [options.t] Translator.
+ * @param {string} [options.fallback] Message when nothing usable is found.
+ * @returns {string|undefined}
+ */
+export function getFormErrorMessage(error, { t, fallback } = {}) {
+  const lines = formatValidationErrors(error, t);
+  if (lines.length) {
+    return lines.map((line) => `• ${line}`).join('\n');
+  }
+  return getApiErrorMessage(error, fallback);
 }
 
 export default getApiErrorMessage;

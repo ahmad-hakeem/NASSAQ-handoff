@@ -15,7 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle
 } from '../ui/dialog';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
-import { getApiErrorMessage } from '../../utils/apiError';
+import { getFormErrorMessage } from '../../utils/apiError';
 import {
   User, BookOpen, Shield, TrendingUp, Brain, FileText, Edit, Save, X,
   Phone, Mail, Hash, Calendar, MapPin, AlertTriangle, CheckCircle, Loader2,
@@ -351,8 +351,8 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
           const parsed = JSON.parse(text);
           detail = parsed.detail || detail;
         } catch (_) {}
-      } else if (getApiErrorMessage(err)) {
-        detail = getApiErrorMessage(err);
+      } else if (getFormErrorMessage(err, { t })) {
+        detail = getFormErrorMessage(err, { t });
       }
       nassaqError(isRTL
         ? `فشل تصدير الخطة: ${detail || 'خطأ غير معروف'}`
@@ -384,7 +384,7 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
       setEditing(false);
       onRefresh?.();
     } catch (error) {
-      const msg = getApiErrorMessage(error);
+      const msg = getFormErrorMessage(error, { t });
       nassaqError(typeof msg === 'string' ? msg : (t('saveFailed')));
     } finally {
       setSaving(false);
@@ -432,7 +432,7 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
       }
       onRefresh?.();
     } catch (error) {
-      const msg = getApiErrorMessage(error);
+      const msg = getFormErrorMessage(error, { t });
       nassaqError(typeof msg === 'string' ? msg : (isRTL ? 'فشلت العملية' : 'Operation failed'));
     } finally {
       setActionLoading('');

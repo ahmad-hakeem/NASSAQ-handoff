@@ -8,7 +8,7 @@ import { Label } from '../ui/label';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { toast } from 'sonner';
 import { Loader2, Save, User, Mail, Phone } from 'lucide-react';
-import { getApiErrorMessage } from '../../utils/apiError';
+import { getFormErrorMessage } from '../../utils/apiError';
 
 const ProfileEditDialog = ({ open, onOpenChange, onSaved }) => {
   const { user, api, refreshUser } = useAuth();
@@ -48,7 +48,7 @@ const ProfileEditDialog = ({ open, onOpenChange, onSaved }) => {
       onSaved?.(res?.data?.user);
       onOpenChange?.(false);
     } catch (err) {
-      const detail = getApiErrorMessage(err);
+      const detail = getFormErrorMessage(err, { t });
       nassaqError(typeof detail === 'string' ? detail : (t('errorSavingProfile') || 'Error saving profile'));
     } finally {
       setSaving(false);

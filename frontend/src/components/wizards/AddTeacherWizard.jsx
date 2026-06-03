@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog';
 import { toast } from 'sonner';
-import { getApiErrorMessage } from '../../utils/apiError';
+import { getFormErrorMessage } from '../../utils/apiError';
 import {
   User,
   Phone,
@@ -225,11 +225,14 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
         nassaqError(response.data.error || (t('errorOccurred')));
       }
     } catch (error) {
-      const detail = error.response?.data?.detail ?? getApiErrorMessage(error);
-      let errorMessage = t('error');
-      if (typeof detail === 'string') errorMessage = detail;
-      else if (Array.isArray(detail)) errorMessage = detail.map(e => e.msg || e.message || JSON.stringify(e)).join(', ');
-      else if (detail && typeof detail === 'object') errorMessage = detail.msg || detail.message || JSON.stringify(detail);
+      let errorMessage = getFormErrorMessage(error, { t });
+      if (!errorMessage) {
+        const detail = error.response?.data?.detail;
+        if (typeof detail === 'string') errorMessage = detail;
+        else if (Array.isArray(detail)) errorMessage = detail.map(e => e.msg || e.message || JSON.stringify(e)).join(', ');
+        else if (detail && typeof detail === 'object') errorMessage = detail.msg || detail.message || JSON.stringify(detail);
+        else errorMessage = t('error');
+      }
       nassaqError(errorMessage);
     } finally {
       setSubmitting(false);

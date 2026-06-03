@@ -24,7 +24,7 @@ import {
 } from '../../components/ui/dialog';
 import { toast } from 'sonner';
 import { EDUCATION_STAGES, filterGradesByStage, gradeBelongsToStage, normalizeStage, availableStagesFromGrades } from '../../utils/stageGrade';
-import { getApiErrorMessage } from '../../utils/apiError';
+import { getFormErrorMessage } from '../../utils/apiError';
 import {
   ArrowLeft,
   ArrowRight,
@@ -201,11 +201,14 @@ export const CreateClassWizard = ({ open, onOpenChange, onSuccess }) => {
         nassaqError(response.data.error || (t('errorOccurred')));
       }
     } catch (error) {
-      const detail = error.response?.data?.detail ?? getApiErrorMessage(error);
-      let errorMessage = t('errorOccurred');
-      if (typeof detail === 'string') errorMessage = detail;
-      else if (Array.isArray(detail) && detail.length > 0) errorMessage = detail.map(d => d.msg || d.message || JSON.stringify(d)).join(', ');
-      else if (detail && typeof detail === 'object') errorMessage = detail.msg || detail.message || JSON.stringify(detail);
+      let errorMessage = getFormErrorMessage(error, { t });
+      if (!errorMessage) {
+        const detail = error.response?.data?.detail;
+        if (typeof detail === 'string') errorMessage = detail;
+        else if (Array.isArray(detail) && detail.length > 0) errorMessage = detail.map(d => d.msg || d.message || JSON.stringify(d)).join(', ');
+        else if (detail && typeof detail === 'object') errorMessage = detail.msg || detail.message || JSON.stringify(detail);
+        else errorMessage = t('errorOccurred');
+      }
       nassaqError(errorMessage);
       console.error('Create class error:', error.response?.data);
     } finally {

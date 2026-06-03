@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
-import { getApiErrorMessage } from '../../utils/apiError';
+import { getFormErrorMessage } from '../../utils/apiError';
 import {
   User, BookOpen, Shield, Edit, Save, X, Phone, Mail, Hash, Calendar,
   MapPin, Key, UserX, UserCheck, Loader2, Award, Clock, Briefcase,
@@ -43,7 +43,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
       setProfile(res.data?.profile);
     } catch (e) {
       setProfile(null);
-      nassaqError(getApiErrorMessage(e) || (t('failedToLoadProfile')));
+      nassaqError(getFormErrorMessage(e, { t }) || (t('failedToLoadProfile')));
     } finally {
       setLoading(false);
     }
@@ -68,7 +68,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
       fetchProfile();
       onRefresh?.();
     } catch (e) {
-      nassaqError(getApiErrorMessage(e) || (t('updateFailed')));
+      nassaqError(getFormErrorMessage(e, { t }) || (t('updateFailed')));
     } finally {
       setSaving(false);
     }
@@ -84,7 +84,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
       fetchProfile();
       onRefresh?.();
     } catch (e) {
-      nassaqError(getApiErrorMessage(e) || (t('updateFailed')));
+      nassaqError(getFormErrorMessage(e, { t }) || (t('updateFailed')));
     } finally {
       setSaving(false);
     }
@@ -102,7 +102,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
       setCredForm({ new_email: '', new_password: '' });
       fetchProfile();
     } catch (e) {
-      nassaqError(getApiErrorMessage(e) || (t('updateFailed')));
+      nassaqError(getFormErrorMessage(e, { t }) || (t('updateFailed')));
     } finally {
       setSaving(false);
     }
@@ -133,7 +133,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
         onRefresh?.();
       }
     } catch (e) {
-      nassaqError(getApiErrorMessage(e) || (t('actionFailed')));
+      nassaqError(getFormErrorMessage(e, { t }) || (t('actionFailed')));
     } finally {
       setActionLoading('');
     }
@@ -150,7 +150,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
           onClose?.();
           onRefresh?.();
         } catch (e) {
-          nassaqError(getApiErrorMessage(e) || (t('failedToDeleteTeacher')));
+          nassaqError(getFormErrorMessage(e, { t }) || (t('failedToDeleteTeacher')));
         } finally {
           setActionLoading('');
         }

@@ -50,6 +50,7 @@ import {
 
 import { useTranslation } from '../../contexts/ThemeContext';
 import { filterGradesByStage, gradeBelongsToStage } from '../../utils/stageGrade';
+import { getFormErrorMessage } from '../../utils/apiError';
 const STEPS = [
   { id: 1, title_ar: 'بيانات الطالب', title_en: 'Student Info', icon: GraduationCap, color: 'blue' },
   { id: 2, title_ar: 'ولي الأمر', title_en: 'Parent', icon: Users, color: 'green' },
@@ -443,10 +444,9 @@ export default function AddStudentWizard({
       // know exactly which field needs correction.
       const data = error.response?.data;
       const errorMessage =
+        getFormErrorMessage(error, { t }) ||
         data?.detail ||
-        data?.error?.message ||
         data?.error?.detail ||
-        data?.message ||
         t('errorCreatingAccount');
       nassaqError(errorMessage);
     } finally {
