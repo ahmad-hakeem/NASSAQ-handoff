@@ -11,6 +11,7 @@ import {
   resetBootstrapDialogGuard,
 } from '../services/perimeterGateBridge';
 import { WORKSPACE_NOT_MATERIALISED_AR_FE } from '../constants/auth';
+import { isIdempotentWriteRetry } from '../utils/retryableWrite';
 import arLocale from '../locales/ar.json';
 import enLocale from '../locales/en.json';
 
@@ -189,7 +190,13 @@ export const AuthProvider = ({ children }) => {
       const isGet = (config.method || '').toUpperCase() === 'GET';
       const isTransient = !error.response || RETRY_STATUS_CODES.has(status);
 
-      if (isGet && isTransient && retryCount < MAX_RETRIES) {
+      // Task #785 — GETs already auto-retry a transient blip (no response /
+      // 502 / 503). Writes did not, so a brief network drop on a "save"
+      // silently became a generic error the user had to retry by hand (the
+      // same asymmetry behind the #784 transfer bug). We extend the SAME retry
+      // to a small, explicit allow-list of idempotent write endpoints only —
+      // re-sending them is a safe no-op, so we never double-submit a create.
+      if ((isGet || isIdempotentWriteRetry(config)) && isTransient && retryCount < MAX_RETRIES) {
         return retryRequest(api, config, retryCount);
       }
 

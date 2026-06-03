@@ -11,7 +11,7 @@
  * error (surface the backend's own Arabic message), and a no-response/network
  * failure (surface an accurate connection message) — and are unit-tested.
  */
-import { getApiErrorMessage } from './apiError';
+import { getApiErrorMessage, classifyWriteError } from './apiError';
 
 /**
  * Interpret a (resolved) axios response from the transfer endpoint.
@@ -52,16 +52,7 @@ export function interpretTransferSuccess(res) {
  * @returns {{kind:'canceled'} | {kind:'backend', message:(string|null)} | {kind:'network'}}
  */
 export function classifyTransferError(error) {
-  if (
-    error &&
-    (error.code === 'ERR_CANCELED' ||
-      error.name === 'CanceledError' ||
-      error.message === 'canceled')
-  ) {
-    return { kind: 'canceled' };
-  }
-  if (error && error.response) {
-    return { kind: 'backend', message: getApiErrorMessage(error) || null };
-  }
-  return { kind: 'network' };
+  // Thin wrapper over the now-shared, app-wide classifier (Task #785). Kept as a
+  // named export so the transfer flow and its tests have a stable entry point.
+  return classifyWriteError(error);
 }

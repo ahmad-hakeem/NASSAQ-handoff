@@ -58,6 +58,41 @@ export function getApiErrorMessage(error, fallback = undefined) {
 }
 
 /**
+ * Classifies a caught axios error from ANY write request into one of three
+ * mutually-exclusive outcomes, so a write handler never collapses a transient
+ * no-response blip into the same generic message as a real backend rejection.
+ *
+ * - `canceled`: StrictMode double-mount / route change / AbortController abort —
+ *   not a real failure, the caller should stay silent.
+ * - `backend`: the server answered (`error.response` is present); surface its
+ *   real Arabic message via the canonical envelope reader (or `null` when the
+ *   response carried nothing usable, so the caller can pick a specific
+ *   server-error message instead of the cause-hiding generic fallback).
+ * - `network`: no response at all (network drop / timeout / proxy failure); the
+ *   caller should show an accurate connection message.
+ *
+ * This is the generalized form of the transfer-specific classifier (Task #784)
+ * and is the single source of truth for write-error triage app-wide (Task #785).
+ *
+ * @param {*} error The caught axios error (or any thrown value).
+ * @returns {{kind:'canceled'} | {kind:'backend', message:(string|null)} | {kind:'network'}}
+ */
+export function classifyWriteError(error) {
+  if (
+    error &&
+    (error.code === 'ERR_CANCELED' ||
+      error.name === 'CanceledError' ||
+      error.message === 'canceled')
+  ) {
+    return { kind: 'canceled' };
+  }
+  if (error && error.response) {
+    return { kind: 'backend', message: getApiErrorMessage(error) || null };
+  }
+  return { kind: 'network' };
+}
+
+/**
  * Extracts the per-field validation breakdown the backend attaches to a 422
  * under `meta.validation_errors` (see the RequestValidationError handler in
  * backend/server.py). Returns a normalized array of `{ field, message }`, or an

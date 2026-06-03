@@ -3,6 +3,7 @@ import {
   getValidationErrors,
   formatValidationErrors,
   getFormErrorMessage,
+  classifyWriteError,
 } from '../apiError';
 
 describe('getApiErrorMessage', () => {
@@ -187,6 +188,31 @@ describe('apiError validation helpers', () => {
   describe('getApiErrorMessage is unchanged for non-validation envelopes', () => {
     it('still reads data.error.message', () => {
       expect(getApiErrorMessage({ response: { data: { error: { message: 'boom' } } } })).toBe('boom');
+    });
+  });
+
+  describe('classifyWriteError', () => {
+    it('classifies a canceled request as canceled (UI stays silent)', () => {
+      expect(classifyWriteError({ code: 'ERR_CANCELED', message: 'canceled' })).toEqual({ kind: 'canceled' });
+      expect(classifyWriteError({ name: 'CanceledError' })).toEqual({ kind: 'canceled' });
+      expect(classifyWriteError({ message: 'canceled' })).toEqual({ kind: 'canceled' });
+    });
+
+    it('classifies a backend response and surfaces its canonical message', () => {
+      const error = { response: { status: 409, data: { success: false, error: { message: 'الفصل ممتلئ' } } } };
+      expect(classifyWriteError(error)).toEqual({ kind: 'backend', message: 'الفصل ممتلئ' });
+    });
+
+    it('classifies a backend response with no usable message as backend + null', () => {
+      expect(classifyWriteError({ response: { status: 500, data: {} } })).toEqual({ kind: 'backend', message: null });
+    });
+
+    it('classifies a no-response/network failure as network', () => {
+      expect(classifyWriteError({ request: {}, message: 'Network Error' })).toEqual({ kind: 'network' });
+    });
+
+    it('classifies a timeout with no response as network', () => {
+      expect(classifyWriteError({ code: 'ECONNABORTED', message: 'timeout of 0ms exceeded' })).toEqual({ kind: 'network' });
     });
   });
 });
