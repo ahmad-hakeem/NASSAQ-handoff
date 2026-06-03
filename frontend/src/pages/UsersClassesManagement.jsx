@@ -41,6 +41,7 @@ import ParentProfileDialog from '../components/management/ParentProfileDialog';
 import StudentClassGrid from '../components/management/StudentClassGrid';
 import NoorImportPanel from '../components/management/NoorImportPanel';
 import { getApiErrorMessage } from '../utils/apiError';
+import { executeStudentTransfer } from '../utils/studentTransfer';
 
 const THEME_COLORS = {
   student: {
@@ -1219,37 +1220,44 @@ export default function UsersClassesManagement() {
     }
   };
 
-  const handleTransferStudent = async (studentId, targetClassId, studentName, className) => {
+  const applyTransferSuccess = (studentId, targetClassId, studentName, className, outcome) => {
     const movingStudent = students.find(s => s.id === studentId);
-    const oldClassId = movingStudent?.class_id;
-    try {
-      const headers = {};
-      if (isImpersonating && schoolContext?.school_id) headers['X-School-Context'] = schoolContext.school_id;
-      const res = await api.post('/students/transfer-class', { student_id: studentId, target_class_id: targetClassId }, { headers });
-      if (res.data?.success) {
-        toast.success(t('transferredTo', { student: studentName, className }));
-        setStudents(prev => prev.map(s => s.id === studentId ? { ...s, class_id: targetClassId, class_name: className } : s));
-        const targetCount = res.data?.target_class_current_students;
-        const oldCount = res.data?.old_class_current_students;
-        setClasses(prev => prev.map(c => {
-          if (c.id === targetClassId && typeof targetCount === 'number') {
-            return { ...c, student_count: targetCount, current_students: targetCount };
-          }
-          if (oldClassId && c.id === oldClassId && typeof oldCount === 'number') {
-            return { ...c, student_count: oldCount, current_students: oldCount };
-          }
-          return c;
-        }));
-        refetchClasses();
-      } else {
-        const msg = res.data?.message;
-        nassaqError(typeof msg === 'string' ? msg : (t('failedToTransferStudent')));
+    const oldClassId = outcome.oldClassId || movingStudent?.class_id;
+    setStudents(prev => prev.map(s => s.id === studentId ? { ...s, class_id: targetClassId, class_name: className } : s));
+    setClasses(prev => prev.map(c => {
+      if (c.id === targetClassId && outcome.targetCount != null) {
+        return { ...c, student_count: outcome.targetCount, current_students: outcome.targetCount };
       }
-    } catch (error) {
-      const data = error.response?.data;
-      const msg = data?.error?.message || data?.detail;
-      nassaqError(typeof msg === 'string' && msg ? msg : (t('failedToTransferStudent')));
-    }
+      if (oldClassId && c.id === oldClassId && outcome.oldCount != null) {
+        return { ...c, student_count: outcome.oldCount, current_students: outcome.oldCount };
+      }
+      return c;
+    }));
+    // Re-derive both classes' counts from the server so counters cannot drift
+    // even if the response omitted them (e.g. a same-class no-op on retry).
+    refetchClasses();
+  };
+
+  const handleTransferStudent = async (studentId, targetClassId, studentName, className) => {
+    const headers = {};
+    if (isImpersonating && schoolContext?.school_id) headers['X-School-Context'] = schoolContext.school_id;
+    await executeStudentTransfer({
+      api,
+      studentId,
+      targetClassId,
+      headers,
+      messages: {
+        transferred: t('transferredTo', { student: studentName, className }),
+        // A failed transfer NEVER shows the generic cause-hiding fallback:
+        // either the backend's own message, a transfer-specific server error,
+        // or a dedicated network/connection message.
+        serverError: t('transferServerError'),
+        network: t('networkErrorRetry'),
+      },
+      onToast: (msg) => toast.success(msg),
+      onSuccess: (outcome) => applyTransferSuccess(studentId, targetClassId, studentName, className, outcome),
+      onError: (msg) => nassaqError(msg),
+    });
   };
 
   const clearFilter = () => setActiveFilter(null);

@@ -4183,6 +4183,7 @@
   "noPermissionAutoGenerate": "You do not have permission to run auto-generation",
   "schoolDataNotFound": "The requested school data was not found",
   "networkErrorRetry": "Could not reach the server, check your network and try again",
+  "transferServerError": "The transfer could not be completed due to a server error, please try again",
   "failedToGenerateScheduleTitle": "Could not generate the schedule",
   "pleaseSelectTeacher": "Please select a teacher",
   "absenceLogged": "Absence logged",

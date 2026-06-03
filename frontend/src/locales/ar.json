@@ -4187,6 +4187,7 @@
   "noPermissionAutoGenerate": "لا تملك صلاحية تشغيل التوليد التلقائي",
   "schoolDataNotFound": "لم يتم العثور على بيانات المدرسة المطلوبة",
   "networkErrorRetry": "تعذّر الاتصال بالخادم، تحقق من الشبكة وحاول مجدداً",
+  "transferServerError": "تعذّر إكمال نقل الطالب بسبب خطأ في الخادم، يرجى المحاولة مرة أخرى",
   "failedToGenerateScheduleTitle": "تعذّر توليد الجدول",
   "pleaseSelectTeacher": "يرجى اختيار معلم",
   "absenceLogged": "تم تسجيل الغياب",
