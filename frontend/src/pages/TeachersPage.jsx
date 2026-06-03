@@ -767,10 +767,10 @@ export const TeachersPage = () => {
         {/* Add Teacher Wizard */}
         <AddTeacherWizard 
           open={wizardOpen} 
-          onClose={() => {
-            setWizardOpen(false);
+          onOpenChange={(val) => setWizardOpen(val)}
+          onSuccess={() => {
             fetchData();
-          }} 
+          }}
         />
         
         {/* Bulk Import Wizard */}

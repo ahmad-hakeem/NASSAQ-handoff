@@ -125,6 +125,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
 
   const handleCloseDialog = (val) => {
     if (val === true) return;
+    if (submitting) return;
     handleReset();
     if (onOpenChange) onOpenChange(false);
   };
@@ -242,6 +243,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
     setScheduleData({ contract_type: 'permanent', available_days: ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'] });
     setErrors({});
     setResult(null);
+    setSubmitting(false);
   };
 
   const steps = [

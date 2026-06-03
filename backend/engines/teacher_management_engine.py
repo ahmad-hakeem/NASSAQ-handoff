@@ -260,10 +260,10 @@ class TeacherManagementEngine:
             }
 
         except Exception as e:
-            logger.error(f"Error creating teacher: {e}")
+            logger.error(f"Error creating teacher: {e}", exc_info=True)
             return {
                 "success": False,
-                "error": str(e),
+                "error": "حدث خطأ أثناء إضافة المعلم",
                 "message": "حدث خطأ أثناء إضافة المعلم",
                 "message_en": "Error occurred while adding teacher"
             }
