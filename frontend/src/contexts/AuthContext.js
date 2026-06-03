@@ -861,11 +861,12 @@ export const AuthProvider = ({ children }) => {
       throw new Error('school.id is required');
     }
     const reason = (opts.reason || 'معاينة المدرسة من مركز تحكم المنصة').trim();
+    const targetRole = opts.targetRole || 'school_principal';
 
     const originalToken = localStorage.getItem('nassaq_token');
 
     const response = await api.post('/role-switch/switch', {
-      target_role: 'school_principal',
+      target_role: targetRole,
       school_id: school.id,
       reason,
     });
@@ -885,6 +886,7 @@ export const AuthProvider = ({ children }) => {
       school_name_en: school.name_en,
       school_code: school.code,
       original_role: user?.role,
+      preview_role: targetRole,
       entered_at: new Date().toISOString(),
     };
     sessionStorage.setItem('nassaq_school_context', JSON.stringify(ctx));
@@ -953,7 +955,7 @@ export const AuthProvider = ({ children }) => {
   // Get effective role (simulated or actual)
   const getEffectiveRole = () => {
     if (isImpersonating && schoolContext) {
-      return 'school_principal'; // Simulate School Manager role
+      return schoolContext.preview_role || 'school_principal'; // Simulate school preview role
     }
     return user?.role;
   };

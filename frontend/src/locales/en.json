@@ -2750,6 +2750,8 @@
   "rolePosition": "Role / Position",
   "roleSchoolPrincipal": "Role: School Principal",
   "roleSwitchedSuccessfully": "Role switched successfully",
+  "rolePreviewSwitchedSuccessfully": "Role switched successfully. You are now in school preview mode.",
+  "roleSwitchBlockedFriendly": "Sorry, the role cannot be switched right now because of the permission type or preview settings.",
   "room": "Room",
   "room2": "Room",
   "roomNumber": "Room Number",

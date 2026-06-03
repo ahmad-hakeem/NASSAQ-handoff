@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { isGenericName } from '../components/GenericNameGuard';
@@ -321,7 +322,8 @@ const PreviewModeAccountSettingsGuard = ({ schoolContext, onExit }) => {
 
 const AccountSettingsPageInner = () => {
   const { t } = useTranslation();
-  const { user, api, logout, refreshUser, updateToken } = useAuth();
+  const { user, api, logout, refreshUser, updateToken, enterSchoolContext } = useAuth();
+  const navigate = useNavigate();
   const { isRTL, toggleTheme, toggleLanguage, isDark, language, setLanguage, theme, setTheme } = useTheme();
   const { nassaqError, nassaqInfo, nassaqSuccess, nassaqConfirm, showAlert } = useNassaqAlert();
   const { nassaqWarning } = useNassaqAlert();
@@ -1088,22 +1090,70 @@ const AccountSettingsPageInner = () => {
     }
   };
 
-  const handleSwitchRole = async (roleId) => {
+  const isCurrentRole = (role) => role?.is_current === true || role?.is_active === true;
+
+  const roleValue = (role) => role?.role || role?.role_type;
+
+  const roleKey = (role, index) =>
+    role?.id || `${roleValue(role) || 'role'}-${role?.tenant_id || 'platform'}-${index}`;
+
+  const roleName = (role) => (
+    (isRTL
+      ? (role?.descriptive_ar || role?.role_name_ar)
+      : (role?.descriptive_en || role?.role_name_en))
+    || role?.role_name
+    || getRoleLabel(roleValue(role))
+  );
+
+  const isSchoolScopedPreviewRole = (role) => (
+    role?.is_preview === true
+    && !!role?.tenant_id
+    && ['school_principal', 'school_admin', 'school_sub_admin'].includes(roleValue(role))
+  );
+
+  const handleSwitchRole = async (role) => {
+    if (!role || isCurrentRole(role)) return;
     setSwitchingRole(true);
     try {
-      const response = await api.post(`/user-roles/switch/${roleId}`);
+      if (isSchoolScopedPreviewRole(role)) {
+        await enterSchoolContext(
+          {
+            id: role.tenant_id,
+            name: role.tenant_name,
+            name_en: role.tenant_name_en,
+            code: role.tenant_code,
+          },
+          {
+            reason: 'معاينة المدرسة من صفحة الملف الشخصي والإعدادات',
+            targetRole: roleValue(role) || 'school_principal',
+          },
+        );
+        toast.success(t('rolePreviewSwitchedSuccessfully'));
+        setShowRoleSwitchDialog(false);
+        navigate('/principal');
+        return;
+      }
+
+      const response = await api.post('/user-roles/switch', {
+        target_role: roleValue(role),
+        target_tenant_id: role.tenant_id || null,
+      });
       // SECURITY (audit Phase 2): all auth-token writes must route through
       // AuthContext so the upcoming HttpOnly-cookie cutover has a single
       // chokepoint. Direct localStorage writes are blocked by
       // scripts/check_token_storage.sh.
       if (response.data?.access_token) await updateToken(response.data.access_token);
-      toast.success(t('roleSwitchedSuccessfully'));
-      setTimeout(() => window.location.reload(), 1000);
+      toast.success(response.data?.message || t('roleSwitchedSuccessfully'));
+      setShowRoleSwitchDialog(false);
+      navigate(response.data?.redirect_to || '/');
     } catch (error) {
-      nassaqError(getApiErrorMessage(error) || (t('failedToSwitchRole')));
+      nassaqError(
+        getApiErrorMessage(error)
+        || t('roleSwitchBlockedFriendly')
+        || t('failedToSwitchRole')
+      );
     } finally {
       setSwitchingRole(false);
-      setShowRoleSwitchDialog(false);
     }
   };
 
@@ -2803,34 +2853,42 @@ const AccountSettingsPageInner = () => {
                   <p className="text-sm text-muted-foreground">{t('noOtherRolesAvailable')}</p>
                 </div>
               ) : (
-                userRoles.map((role) => (
-                  <Card
-                    key={role.id}
-                    className={`cursor-pointer transition-all hover:ring-2 hover:ring-brand-turquoise/50 ${role.is_active ? 'ring-2 ring-brand-turquoise bg-brand-turquoise/5' : ''}`}
-                    onClick={() => !role.is_active && handleSwitchRole(role.id)}
-                  >
-                    <CardContent className="p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                          role.role_type === 'school_principal' ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30' :
-                          role.role_type === 'teacher' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' :
-                          'bg-gray-100 text-gray-600 dark:bg-gray-800'
-                        }`}>
-                          {role.role_type === 'school_principal' ? <Building2 className="h-4 w-4" /> :
-                           role.role_type === 'teacher' ? <Users className="h-4 w-4" /> :
-                           <User className="h-4 w-4" />}
+                userRoles.map((role, index) => {
+                  const active = isCurrentRole(role);
+                  const value = roleValue(role);
+                  const isSchoolRole = ['school_principal', 'school_admin', 'school_sub_admin'].includes(value);
+                  const isTeacherRole = ['teacher', 'independent_teacher'].includes(value);
+                  return (
+                    <Card
+                      key={roleKey(role, index)}
+                      className={`cursor-pointer transition-all hover:ring-2 hover:ring-brand-turquoise/50 ${active ? 'ring-2 ring-brand-turquoise bg-brand-turquoise/5' : ''}`}
+                      onClick={() => !active && handleSwitchRole(role)}
+                    >
+                      <CardContent className="p-4 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                            isSchoolRole ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30' :
+                            isTeacherRole ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' :
+                            'bg-gray-100 text-gray-600 dark:bg-gray-800'
+                          }`}>
+                            {isSchoolRole ? <Building2 className="h-4 w-4" /> :
+                             isTeacherRole ? <Users className="h-4 w-4" /> :
+                             <User className="h-4 w-4" />}
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm">{roleName(role)}</p>
+                            {(role.tenant_name || role.school_name) && !role.descriptive_ar && (
+                              <p className="text-xs text-muted-foreground">{role.tenant_name || role.school_name}</p>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium text-sm">{role.role_name_ar || role.role_name}</p>
-                          {role.school_name && <p className="text-xs text-muted-foreground">{role.school_name}</p>}
-                        </div>
-                      </div>
-                      {role.is_active ? (
-                        <Badge className="bg-brand-turquoise text-white text-xs"><CheckCircle className="h-3 w-3 me-1" />{t('active')}</Badge>
-                      ) : switchingRole ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
-                    </CardContent>
-                  </Card>
-                ))
+                        {active ? (
+                          <Badge className="bg-brand-turquoise text-white text-xs"><CheckCircle className="h-3 w-3 me-1" />{t('active')}</Badge>
+                        ) : switchingRole ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
+                      </CardContent>
+                    </Card>
+                  );
+                })
               )}
             </div>
           </DialogContent>

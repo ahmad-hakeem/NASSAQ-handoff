@@ -2752,6 +2752,8 @@
   "rolePosition": "الدور / المركز",
   "roleSchoolPrincipal": "الدور: مدير المدرسة",
   "roleSwitchedSuccessfully": "تم تبديل الدور بنجاح",
+  "rolePreviewSwitchedSuccessfully": "تم تبديل الدور بنجاح، أنت الآن في وضع المعاينة كمدير مدرسة.",
+  "roleSwitchBlockedFriendly": "عذرًا، لا يمكن تبديل الدور في الوقت الحالي بسبب نوع الصلاحية أو إعدادات المعاينة.",
   "room": "الغرفة",
   "room2": "القاعة",
   "roomNumber": "رقم الغرفة",

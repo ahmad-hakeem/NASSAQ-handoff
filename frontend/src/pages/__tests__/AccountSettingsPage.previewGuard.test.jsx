@@ -31,6 +31,7 @@ const mockRefreshUser = jest.fn();
 const mockLogout = jest.fn();
 const mockUpdateToken = jest.fn();
 const mockExitSchoolContext = jest.fn();
+const mockEnterSchoolContext = jest.fn();
 
 const platformAdminUser = Object.freeze({
   id: 'u-pa-1',
@@ -61,6 +62,7 @@ jest.mock('../../contexts/AuthContext', () => {
       get isImpersonating() { return mockAuthState.isImpersonating; },
       get schoolContext() { return mockAuthState.schoolContext; },
       exitSchoolContext: (...a) => mockExitSchoolContext(...a),
+      enterSchoolContext: (...a) => mockEnterSchoolContext(...a),
       api,
       logout: mockLogout,
       refreshUser: mockRefreshUser,
@@ -194,6 +196,7 @@ beforeEach(() => {
   mockRefreshUser.mockReset();
   mockLogout.mockReset();
   mockExitSchoolContext.mockReset();
+  mockEnterSchoolContext.mockReset();
   mockAuthState.user = platformAdminUser;
   mockAuthState.isImpersonating = false;
   mockAuthState.schoolContext = null;
@@ -269,5 +272,65 @@ describe('AccountSettingsPage — Task #496 preview-mode guard', () => {
       expect(screen.getByTestId('account-settings-page')).toBeInTheDocument();
     });
     expect(screen.queryByTestId('account-settings-preview-guard')).toBeNull();
+  });
+
+  test('switch role preview row uses hardened school-context flow', async () => {
+    mockApiGet.mockImplementation((path) => {
+      if (path === '/user-roles/available') {
+        return Promise.resolve({
+          data: {
+            roles: [
+              {
+                role: 'platform_admin',
+                role_name_ar: 'مدير المنصة',
+                tenant_id: null,
+                is_current: true,
+                is_primary: true,
+              },
+              {
+                role: 'school_principal',
+                role_name_ar: 'معاينة كمدير مدرسة',
+                descriptive_ar: 'معاينة كمدير — مدرسة الاختبار',
+                tenant_id: 'school-1',
+                tenant_name: 'مدرسة الاختبار',
+                tenant_code: 'TST',
+                is_preview: true,
+              },
+            ],
+          },
+        });
+      }
+      return Promise.resolve({ data: null });
+    });
+    mockEnterSchoolContext.mockResolvedValue({
+      school_id: 'school-1',
+      school_name: 'مدرسة الاختبار',
+    });
+
+    render(<AccountSettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('معاينة كمدير — مدرسة الاختبار')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('معاينة كمدير — مدرسة الاختبار'));
+
+    await waitFor(() => {
+      expect(mockEnterSchoolContext).toHaveBeenCalledWith(
+        {
+          id: 'school-1',
+          name: 'مدرسة الاختبار',
+          name_en: undefined,
+          code: 'TST',
+        },
+        {
+          reason: 'معاينة المدرسة من صفحة الملف الشخصي والإعدادات',
+          targetRole: 'school_principal',
+        },
+      );
+    });
+
+    expect(mockApiPost).not.toHaveBeenCalledWith('/user-roles/switch/undefined');
+    expect(mockNavigate).toHaveBeenCalledWith('/principal');
   });
 });
