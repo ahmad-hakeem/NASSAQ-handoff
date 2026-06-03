@@ -256,3 +256,128 @@ async def test_switching_preview_between_schools_never_carries_rows(
 
     # Cross-check: no overlap between the two previews.
     assert ids_a.isdisjoint(ids_b)
+
+
+# --- (4) fail-closed: plain admin token + stale X-School-Context header -----
+
+
+@pytest.mark.asyncio
+async def test_plain_admin_with_school_context_header_fails_closed(
+    client, tenant_a,
+):
+    """The leak's real-world trigger: the preview UI still sends an
+    ``X-School-Context`` header but the active bearer is a PLAIN platform
+    admin token (e.g. a refresh replaced the short-lived impersonation
+    token). The read endpoints must fail CLOSED (403 via resolve_school_id)
+    instead of silently returning the admin's own data."""
+    admin = await _seed_platform_admin_user()
+    # The admin's own NULL-tenant rows that previously leaked into previews.
+    await _seed_notification(admin, None, is_read=False)
+    await _seed_notification(admin, None, is_read=False)
+
+    headers = {**_bearer(_plain_token(admin)), "X-School-Context": tenant_a}
+
+    res = await client.get("/notifications", headers=headers)
+    assert res.status_code == 403, res.text
+
+    res = await client.get("/notifications/unread-count", headers=headers)
+    assert res.status_code == 403, res.text
+
+    res = await client.get("/notifications/analytics", headers=headers)
+    assert res.status_code == 403, res.text
+
+
+# --- (5) native admin (no school context) never gets an all-tenant count ----
+
+
+@pytest.mark.asyncio
+async def test_native_admin_analytics_never_counts_all_tenants(
+    client, tenant_a, tenant_b,
+):
+    """A platform admin in native context (no valid school context) must get
+    a ZEROED analytics payload, never a platform-wide count across tenants."""
+    admin = await _seed_platform_admin_user()
+    # Notifications spread across two real schools (other tenants' data).
+    principal_a = await _seed_principal_user(tenant_a)
+    principal_b = await _seed_principal_user(tenant_b)
+    await _seed_notification(principal_a, tenant_a, is_read=False)
+    await _seed_notification(principal_a, tenant_a, is_read=True)
+    await _seed_notification(principal_b, tenant_b, is_read=False)
+
+    headers = _bearer(_plain_token(admin))
+
+    res = await client.get("/notifications/analytics", headers=headers)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["total_notifications"] == 0, (
+        f"native admin analytics leaked an all-tenant count: {body}"
+    )
+    assert body["read_count"] == 0
+    assert body["unread_count"] == 0
+    assert all(v == 0 for v in body["by_type"].values())
+    assert all(v == 0 for v in body["by_priority"].values())
+
+    # The native admin's own notifications list stays user-scoped (own rows).
+    res = await client.get("/notifications", headers=headers)
+    assert res.status_code == 200, res.text
+
+
+# --- (6) populated preview returns ONLY that school on every surface --------
+
+
+@pytest.mark.asyncio
+async def test_impersonation_populated_preview_scopes_list_and_analytics(
+    client, tenant_a, tenant_b,
+):
+    """Previewing a populated school must return ONLY that school's
+    notifications and analytics counts — never the admin's NULL-tenant rows
+    nor another school's rows."""
+    admin = await _seed_platform_admin_user()
+    await _seed_notification(admin, None, is_read=False)          # native, must hide
+    a1 = await _seed_notification(admin, tenant_a, is_read=False)
+    a2 = await _seed_notification(admin, tenant_a, is_read=True)
+    await _seed_notification(admin, tenant_b, is_read=False)       # other school
+
+    headers = {
+        **_bearer(_impersonation_token(admin, tenant_a)),
+        "X-School-Context": tenant_a,
+    }
+
+    res = await client.get("/notifications", headers=headers)
+    assert res.status_code == 200, res.text
+    assert _ids(res.json()) == {a1, a2}, res.json()
+
+    res = await client.get("/notifications/unread-count", headers=headers)
+    assert res.json()["unread_count"] == 1
+
+    res = await client.get("/notifications/analytics", headers=headers)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["total_notifications"] == 2, body
+    assert body["read_count"] == 1
+    assert body["unread_count"] == 1
+
+
+# --- (7) genuine principal analytics counts only their own tenant -----------
+
+
+@pytest.mark.asyncio
+async def test_genuine_principal_analytics_counts_own_tenant(
+    client, tenant_a, tenant_b,
+):
+    """A real principal sees analytics for THEIR school only — not another
+    tenant's rows and not a platform-wide total."""
+    principal = await _seed_principal_user(tenant_a)
+    await _seed_notification(principal, tenant_a, is_read=False)
+    await _seed_notification(principal, tenant_a, is_read=True)
+    # Another tenant's rows that must never be counted.
+    other = await _seed_principal_user(tenant_b)
+    await _seed_notification(other, tenant_b, is_read=False)
+
+    headers = _bearer(_principal_token(principal, tenant_a))
+    res = await client.get("/notifications/analytics", headers=headers)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["total_notifications"] == 2, body
+    assert body["read_count"] == 1
+    assert body["unread_count"] == 1

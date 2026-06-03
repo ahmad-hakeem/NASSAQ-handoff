@@ -17,6 +17,7 @@ from utils.parent_resolution import (
     PARENT_NOT_FOUND_AR,
     resolve_student_parent_user_id,
 )
+from utils.tenant_scope import resolve_school_id, _is_platform_admin
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
     hash_password, verify_password, create_access_token,
@@ -51,6 +52,43 @@ def _preview_tenant_scope(current_user: dict) -> Optional[str]:
     tenant_id = current_user.get("tenant_id")
     if tenant_id and (current_user.get("is_impersonating") or current_user.get("is_switched")):
         return tenant_id
+    return None
+
+
+def _notification_read_scope(current_user: dict, x_school_context: Optional[str]) -> Optional[str]:
+    """Resolve the strict tenant id to scope notification *reads* by, or
+    ``None`` to leave the query user-only.
+
+    This is the hardened, fail-CLOSED replacement used by the notification
+    read endpoints. It improves on :func:`_preview_tenant_scope` in two
+    ways that the new-school preview leak required:
+
+    1. **Platform admins and preview/impersonation sessions are routed
+       through the canonical :func:`resolve_school_id`.** During a valid
+       preview (token minted by ``/role-switch/switch`` — carries
+       ``is_impersonating`` and a ``tenant_id``) this returns the previewed
+       school id, so reads are scoped strictly by ``tenant_id`` with NO
+       ``user_id`` fallback. A brand-new school therefore shows an empty
+       inbox and the admin's own (often NULL-tenant) rows can never bleed in.
+    2. **It fails closed.** If a plain platform-admin token (no valid
+       impersonation) arrives while the preview UI still sends an
+       ``X-School-Context`` header (e.g. after a token refresh replaced the
+       short-lived impersonation token), ``resolve_school_id`` raises 403
+       instead of silently returning the admin's own data. A native admin
+       with no school context gets ``None`` (their own notifications) rather
+       than a cross-tenant result.
+
+    Genuine school logins (principals/teachers/parents) return ``None`` so
+    they keep user-only scoping — preserving their legacy NULL-``tenant_id``
+    rows. They only ever receive notifications addressed to their own
+    ``user_id``, so user-only scoping is already tenant-safe for them.
+    """
+    if (
+        current_user.get("is_impersonating")
+        or current_user.get("is_switched")
+        or _is_platform_admin(current_user)
+    ):
+        return resolve_school_id(current_user, x_school_context)
     return None
 
 
@@ -616,17 +654,20 @@ async def get_my_notifications(
     read_status: Optional[bool] = None,
     limit: int = 50,
     skip: int = 0,
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user)
 ):
     """Get notifications for current user"""
-    query = {"user_id": current_user['id']}
-
-    # During school preview/impersonation, strictly scope to the previewed
-    # school so a platform admin's own notifications don't leak in. Genuine
-    # logins keep user-only scoping (see _preview_tenant_scope).
-    scope_tenant = _preview_tenant_scope(current_user)
-    if scope_tenant:
-        query['tenant_id'] = scope_tenant
+    # Platform admins and preview/impersonation sessions are scoped STRICTLY
+    # by the resolved school tenant (no user_id fallback), and fail closed via
+    # resolve_school_id when a school context is requested without a valid
+    # impersonation session. Genuine school logins keep user-only scoping so
+    # their legacy NULL-tenant rows survive (see _notification_read_scope).
+    scope_tenant = _notification_read_scope(current_user, x_school_context)
+    if scope_tenant is not None:
+        query = {"tenant_id": scope_tenant}
+    else:
+        query = {"user_id": current_user['id']}
 
     if notification_type:
         query['type'] = notification_type
@@ -661,15 +702,16 @@ async def get_my_notifications(
     return result
 
 @router.get("/notifications/unread-count")
-async def get_unread_count(current_user: dict = Depends(get_current_user)):
+async def get_unread_count(
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
+    current_user: dict = Depends(get_current_user),
+):
     """Get count of unread notifications"""
-    query = {
-        "user_id": current_user['id'],
-        "is_read": False
-    }
-    scope_tenant = _preview_tenant_scope(current_user)
-    if scope_tenant:
-        query['tenant_id'] = scope_tenant
+    scope_tenant = _notification_read_scope(current_user, x_school_context)
+    if scope_tenant is not None:
+        query = {"tenant_id": scope_tenant, "is_read": False}
+    else:
+        query = {"user_id": current_user['id'], "is_read": False}
     count = await gd_count(db.session, "notifications", query)
     return {"unread_count": count}
 
@@ -951,16 +993,44 @@ async def get_circular_acknowledgements(
 
 @router.get("/notifications/analytics")
 async def get_notification_analytics(
-    current_user: dict = Depends(get_current_user)
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
+    current_user: dict = Depends(get_current_user),
 ):
     """Get notification analytics (admin only)"""
     if current_user['role'] not in ['platform_admin', 'school_principal']:
         raise HTTPException(status_code=403, detail="Not authorized to view analytics")
-    
-    query = {}
-    if current_user.get('tenant_id'):
-        query['tenant_id'] = current_user['tenant_id']
-    
+
+    # Bind the analytics aggregate to a single resolved school tenant. This
+    # MUST never run with an empty query (which would count every tenant's
+    # notifications). During a valid preview the resolver returns the
+    # previewed school; a genuine principal falls back to their own tenant;
+    # a platform admin with no valid school context gets a zeroed payload
+    # instead of a platform-wide count. Fail-closed (403) when a school
+    # context is requested without a valid impersonation session.
+    scope_tenant = _notification_read_scope(current_user, x_school_context)
+    if scope_tenant is None:
+        scope_tenant = current_user.get('tenant_id')
+    if not scope_tenant:
+        return {
+            "total_notifications": 0,
+            "read_count": 0,
+            "unread_count": 0,
+            "read_rate": 0,
+            "by_type": {
+                ntype: 0
+                for ntype in [
+                    "system", "attendance", "schedule", "assessment",
+                    "behaviour", "communication", "announcement",
+                ]
+            },
+            "by_priority": {
+                priority: 0
+                for priority in ["low", "medium", "high", "critical"]
+            },
+        }
+
+    query = {"tenant_id": scope_tenant}
+
     total = await gd_count(db.session, "notifications", query)
     
     read_query = {**query, "is_read": True}
