@@ -498,19 +498,34 @@ async def update_user_status(
 
 # ============== USER DETAILS & MANAGEMENT ROUTES ==============
 
-async def _list_teacher_school_mismatches() -> dict:
+async def _list_teacher_school_mismatches(
+    *,
+    school_id: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+) -> dict:
     """Core read of every stuck teacher transfer. Performs no writes.
 
     Shared by the listing endpoint and the bulk-resolution endpoint's
     resolve-all fallback. See ``get_teacher_school_mismatches`` for semantics.
+
+    ``school_id`` scopes the scan to a single intended school
+    (``users.tenant_id``) at the database level, so the report stays responsive
+    as the teacher population grows. ``limit``/``offset`` paginate the resulting
+    list (``total`` always reflects the full count within scope). When ``limit``
+    is ``None`` the entire list is returned — the resolve-all fallback relies on
+    this to act on every stuck teacher in one batch.
     """
-    teacher_users = await gd_find(db.session, "users", {"role": UserRole.TEACHER.value}, limit=5000)
+    user_filter: Dict[str, Any] = {"role": UserRole.TEACHER.value}
+    if school_id:
+        user_filter["tenant_id"] = school_id
+    teacher_users = await gd_find(db.session, "users", user_filter, limit=5000)
     teacher_users = [
         u for u in teacher_users
         if (u.get("tenant_id") or "").strip()
     ]
     if not teacher_users:
-        return {"mismatches": [], "total": 0}
+        return {"mismatches": [], "total": 0, "offset": offset, "limit": limit, "returned": 0}
 
     user_ids = [u["id"] for u in teacher_users if u.get("id")]
     emails = [u["email"] for u in teacher_users if u.get("email")]
@@ -616,11 +631,32 @@ async def _list_teacher_school_mismatches() -> dict:
         })
 
     results.sort(key=lambda r: (r.get("full_name") or "").lower())
-    return {"mismatches": results, "total": len(results)}
+
+    total = len(results)
+    if limit is None:
+        page = results[offset:] if offset else results
+    else:
+        page = results[offset:offset + limit]
+    return {
+        "mismatches": page,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "returned": len(page),
+    }
 
 
 @router.get("/users/teacher-school-mismatches")
 async def get_teacher_school_mismatches(
+    school_id: Optional[str] = Query(
+        None,
+        description="Scope the scan to a single intended school (users.tenant_id).",
+    ),
+    limit: int = Query(
+        100, ge=1, le=500,
+        description="Max mismatches to return in this page.",
+    ),
+    offset: int = Query(0, ge=0, description="Page offset into the result list."),
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """List teacher users whose intended school differs from their academic record.
@@ -634,9 +670,16 @@ async def get_teacher_school_mismatches(
     live academic record actually exists so an admin can resolve the conflict
     (e.g. deactivate the old record, then reassign).
 
+    Pass ``school_id`` to scope the scan to a single intended school
+    (``users.tenant_id``) at the database level, and ``limit``/``offset`` to page
+    through the results — both keep the report responsive as the teacher
+    population grows. ``total`` always reflects the full count within scope.
+
     Platform-admin only. Read-only — performs no writes.
     """
-    return await _list_teacher_school_mismatches()
+    return await _list_teacher_school_mismatches(
+        school_id=school_id, limit=limit, offset=offset
+    )
 
 
 async def _do_resolve_teacher_mismatch(user_id: str, current_user: dict) -> dict:

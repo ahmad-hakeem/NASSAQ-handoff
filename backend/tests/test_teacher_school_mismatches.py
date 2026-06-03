@@ -17,9 +17,9 @@ Locks in:
   * Matching is by ``user_id`` and falls back to ``email``.
   * Non-platform-admin callers are rejected with 403.
 
-These tests filter the response down to the specific seeded ``user_id``s rather
-than asserting on the global ``total`` — the endpoint scans every teacher user
-in the shared test database, so the absolute count is not deterministic.
+These tests scope each read to the seeded intended school via ``school_id`` so
+the response is deterministic on the shared test database (an unscoped scan sees
+every teacher user, so the absolute count and paging are not deterministic).
 """
 import uuid
 
@@ -102,7 +102,9 @@ async def test_teacher_stuck_in_other_school_is_flagged_with_both_schools(
     rec_id = await _mk_teacher_record(other, user_id=user["id"])
 
     resp = await client.get(
-        "/users/teacher-school-mismatches", headers=platform_admin_headers
+        "/users/teacher-school-mismatches",
+        params={"school_id": intended},
+        headers=platform_admin_headers,
     )
     assert resp.status_code == 200, resp.text
     entry = _entry_for(resp.json(), user["id"])
@@ -130,7 +132,9 @@ async def test_teacher_with_record_in_intended_school_is_not_flagged(
     await _mk_teacher_record(intended, user_id=user["id"])
 
     resp = await client.get(
-        "/users/teacher-school-mismatches", headers=platform_admin_headers
+        "/users/teacher-school-mismatches",
+        params={"school_id": intended},
+        headers=platform_admin_headers,
     )
     assert resp.status_code == 200, resp.text
     assert _entry_for(resp.json(), user["id"]) is None
@@ -149,7 +153,9 @@ async def test_teacher_with_records_in_both_schools_is_not_flagged(
     await _mk_teacher_record(other, user_id=user["id"])
 
     resp = await client.get(
-        "/users/teacher-school-mismatches", headers=platform_admin_headers
+        "/users/teacher-school-mismatches",
+        params={"school_id": intended},
+        headers=platform_admin_headers,
     )
     assert resp.status_code == 200, resp.text
     assert _entry_for(resp.json(), user["id"]) is None
@@ -172,7 +178,9 @@ async def test_soft_deleted_record_in_other_school_is_ignored(
     )
 
     resp = await client.get(
-        "/users/teacher-school-mismatches", headers=platform_admin_headers
+        "/users/teacher-school-mismatches",
+        params={"school_id": intended},
+        headers=platform_admin_headers,
     )
     assert resp.status_code == 200, resp.text
     assert _entry_for(resp.json(), user["id"]) is None
@@ -193,7 +201,9 @@ async def test_soft_deleted_record_does_not_count_as_intended_match(
     live_id = await _mk_teacher_record(other, user_id=user["id"])
 
     resp = await client.get(
-        "/users/teacher-school-mismatches", headers=platform_admin_headers
+        "/users/teacher-school-mismatches",
+        params={"school_id": intended},
+        headers=platform_admin_headers,
     )
     assert resp.status_code == 200, resp.text
     entry = _entry_for(resp.json(), user["id"])
@@ -214,7 +224,9 @@ async def test_match_by_user_id(client, platform_admin_headers):
     rec_id = await _mk_teacher_record(other, user_id=user["id"], email=None)
 
     resp = await client.get(
-        "/users/teacher-school-mismatches", headers=platform_admin_headers
+        "/users/teacher-school-mismatches",
+        params={"school_id": intended},
+        headers=platform_admin_headers,
     )
     assert resp.status_code == 200, resp.text
     entry = _entry_for(resp.json(), user["id"])
@@ -231,7 +243,9 @@ async def test_match_falls_back_to_email(client, platform_admin_headers):
     rec_id = await _mk_teacher_record(other, user_id=None, email=user["email"])
 
     resp = await client.get(
-        "/users/teacher-school-mismatches", headers=platform_admin_headers
+        "/users/teacher-school-mismatches",
+        params={"school_id": intended},
+        headers=platform_admin_headers,
     )
     assert resp.status_code == 200, resp.text
     entry = _entry_for(resp.json(), user["id"])
@@ -262,3 +276,81 @@ async def test_school_admin_caller_is_rejected_403(client, school_admin_headers)
 async def test_unauthenticated_caller_is_rejected(client):
     resp = await client.get("/users/teacher-school-mismatches")
     assert resp.status_code in (401, 403), resp.text
+
+
+# ----------------------------------------------------------------------
+# (6) Scoping + pagination keep the report responsive at scale
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_school_id_scope_excludes_other_schools_teachers(
+    client, platform_admin_headers
+):
+    """``school_id`` scopes the scan to one intended school: a stuck teacher in a
+    DIFFERENT intended school must not appear when scoping to ours."""
+    intended = await _mk_school("intended")
+    other_intended = await _mk_school("other-intended")
+    record_school = await _mk_school("record")
+
+    ours = await _mk_teacher_user(intended)
+    await _mk_teacher_record(record_school, user_id=ours["id"])
+    theirs = await _mk_teacher_user(other_intended)
+    await _mk_teacher_record(record_school, user_id=theirs["id"])
+
+    resp = await client.get(
+        "/users/teacher-school-mismatches",
+        params={"school_id": intended},
+        headers=platform_admin_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert _entry_for(body, ours["id"]) is not None
+    assert _entry_for(body, theirs["id"]) is None
+
+
+@pytest.mark.asyncio
+async def test_pagination_limit_and_offset(client, platform_admin_headers):
+    """Within a scoped school, ``limit``/``offset`` page the result list while
+    ``total`` keeps reporting the full count."""
+    intended = await _mk_school("intended")
+    other = await _mk_school("other")
+
+    created = []
+    for _ in range(3):
+        u = await _mk_teacher_user(intended)
+        await _mk_teacher_record(other, user_id=u["id"])
+        created.append(u)
+
+    resp_full = await client.get(
+        "/users/teacher-school-mismatches",
+        params={"school_id": intended, "limit": 100, "offset": 0},
+        headers=platform_admin_headers,
+    )
+    assert resp_full.status_code == 200, resp_full.text
+    full = resp_full.json()
+    assert full["total"] == 3
+    assert full["returned"] == 3
+    all_ids = [m["user_id"] for m in full["mismatches"]]
+
+    resp_page = await client.get(
+        "/users/teacher-school-mismatches",
+        params={"school_id": intended, "limit": 2, "offset": 0},
+        headers=platform_admin_headers,
+    )
+    assert resp_page.status_code == 200, resp_page.text
+    page = resp_page.json()
+    assert page["total"] == 3
+    assert page["returned"] == 2
+    assert page["limit"] == 2
+    assert [m["user_id"] for m in page["mismatches"]] == all_ids[:2]
+
+    resp_page2 = await client.get(
+        "/users/teacher-school-mismatches",
+        params={"school_id": intended, "limit": 2, "offset": 2},
+        headers=platform_admin_headers,
+    )
+    assert resp_page2.status_code == 200, resp_page2.text
+    page2 = resp_page2.json()
+    assert page2["total"] == 3
+    assert page2["returned"] == 1
+    assert page2["offset"] == 2
+    assert [m["user_id"] for m in page2["mismatches"]] == all_ids[2:]

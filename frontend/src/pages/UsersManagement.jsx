@@ -83,6 +83,7 @@ export default function UsersManagement() {
   const [schoolUsers, setSchoolUsers] = useState({});
   const [schools, setSchools] = useState([]);
   const [mismatches, setMismatches] = useState([]);
+  const [mismatchesTotal, setMismatchesTotal] = useState(0);
   const [mismatchesLoading, setMismatchesLoading] = useState(false);
   const [resolvingMismatchId, setResolvingMismatchId] = useState(null);
   const [resolvingAllMismatches, setResolvingAllMismatches] = useState(false);
@@ -226,10 +227,13 @@ export default function UsersManagement() {
     setMismatchesLoading(true);
     try {
       const response = await api.get('/users/teacher-school-mismatches');
-      setMismatches(response.data?.mismatches || []);
+      const list = response.data?.mismatches || [];
+      setMismatches(list);
+      setMismatchesTotal(response.data?.total ?? list.length);
     } catch (error) {
       console.error('Error fetching teacher mismatches:', error);
       setMismatches([]);
+      setMismatchesTotal(0);
     } finally {
       setMismatchesLoading(false);
     }
@@ -328,14 +332,16 @@ export default function UsersManagement() {
   };
 
   const handleResolveAllMismatches = () => {
-    const ids = mismatches.map((m) => m.user_id).filter(Boolean);
-    if (ids.length === 0) return;
+    const count = mismatchesTotal || mismatches.length;
+    if (count === 0) return;
     nassaqConfirm(
-      `سيتم حل تعارضات ${ids.length} معلم دفعة واحدة: إلغاء تفعيل السجل الأكاديمي القديم لكل معلم ثم إعادة ربطه بمدرسته المطلوبة. لا يتم نقل البيانات الأكاديمية القديمة. هل تريد المتابعة؟`,
+      `سيتم حل تعارضات ${count} معلم دفعة واحدة: إلغاء تفعيل السجل الأكاديمي القديم لكل معلم ثم إعادة ربطه بمدرسته المطلوبة. لا يتم نقل البيانات الأكاديمية القديمة. هل تريد المتابعة؟`,
       async () => {
         setResolvingAllMismatches(true);
         try {
-          const response = await api.post('/users/resolve-teacher-mismatches-bulk', { user_ids: ids });
+          // Omit user_ids so the server resolves every currently-stuck teacher,
+          // not just the page currently displayed in the UI.
+          const response = await api.post('/users/resolve-teacher-mismatches-bulk', {});
           const data = response.data || {};
           const resolved = data.resolved_count ?? 0;
           const skipped = data.skipped_count ?? 0;
@@ -540,8 +546,8 @@ export default function UsersManagement() {
               </TabsTrigger>
               <TabsTrigger value="mismatches" className="font-cairo relative text-xs sm:text-sm">
                 <AlertTriangle className="h-4 w-4 ms-2" />تعارضات المعلمين
-                {mismatches.length > 0 && (
-                  <span className="absolute -top-1 -start-1 w-5 h-5 bg-amber-500 text-white text-[10px] rounded-full flex items-center justify-center">{mismatches.length}</span>
+                {mismatchesTotal > 0 && (
+                  <span className="absolute -top-1 -start-1 w-5 h-5 bg-amber-500 text-white text-[10px] rounded-full flex items-center justify-center">{mismatchesTotal > 99 ? '99+' : mismatchesTotal}</span>
                 )}
               </TabsTrigger>
               {visibleApprovalEntries.map(([type, config]) => {
@@ -684,6 +690,7 @@ export default function UsersManagement() {
             <TabsContent value="mismatches" className="space-y-4">
               <TeacherMismatchesTab
                 mismatches={mismatches}
+                total={mismatchesTotal}
                 loading={mismatchesLoading}
                 onRefresh={fetchMismatches}
                 onResolve={handleResolveMismatch}

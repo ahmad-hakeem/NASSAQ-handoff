@@ -10,6 +10,7 @@ import {
 
 export default function TeacherMismatchesTab({
   mismatches = [],
+  total = null,
   loading = false,
   onRefresh,
   onResolve,
@@ -18,6 +19,7 @@ export default function TeacherMismatchesTab({
   resolvingAll = false,
 }) {
   const navigate = useNavigate();
+  const totalCount = total ?? mismatches.length;
 
   return (
     <Card>
@@ -29,9 +31,9 @@ export default function TeacherMismatchesTab({
           </CardTitle>
           <div className="flex items-center gap-2 flex-row-reverse">
             <Badge variant="outline" className="text-sm bg-amber-50 text-amber-700 border-amber-200">
-              {mismatches.length} حالة
+              {totalCount} حالة
             </Badge>
-            {mismatches.length > 0 && (
+            {totalCount > 0 && (
               <Button
                 size="sm" className="text-xs bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
                 onClick={onResolveAll}
