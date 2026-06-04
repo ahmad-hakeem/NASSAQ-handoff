@@ -410,7 +410,8 @@ export default function TeacherHomePage() {
                     </p>
                   </div>
 
-                  {/* Stats Grid */}
+                  {/* Stats Grid — HIDDEN per request (logic kept intact) */}
+                  {false && (
                   <div className="grid grid-cols-5 gap-1.5 mt-3">
                     {[
                       { icon: BookOpen,     value: loading ? '-' : stats.classesCount,             label: t('myClasses') },
@@ -426,6 +427,7 @@ export default function TeacherHomePage() {
                       </div>
                     ))}
                   </div>
+                  )}
                 </div>
               </CardContent>
             </div>

@@ -776,7 +776,8 @@ export default function TeacherMainDashboard() {
             {/* C) School Day Timeline moved into the Welcome Card above */}
           </section>
 
-          {/* Metric Cards */}
+          {/* Metric Cards — HIDDEN per request (logic kept intact) */}
+          {false && (
           <section>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3 md:gap-4">
               {[
@@ -844,6 +845,7 @@ export default function TeacherMainDashboard() {
               ))}
             </div>
           </section>
+          )}
 
           {/* Teaching Performance — HIDDEN per request (logic kept intact) */}
           {false && teachingMetrics && (
