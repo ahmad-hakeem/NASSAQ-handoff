@@ -1714,6 +1714,8 @@
   "lightModeEnabled2": "Light mode enabled",
   "link": "Link",
   "linkedChildren": "Linked Children",
+  "parentLinkedToChildren": "Guardian linked to several students — tap to view",
+  "guardianLabel": "Guardian",
   "linkedDevices": "Linked Devices",
   "linkedEmail": "Linked Email",
   "linkExisting": "Link Existing",

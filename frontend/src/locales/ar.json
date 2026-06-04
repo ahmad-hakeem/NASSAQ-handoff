@@ -1718,6 +1718,8 @@
   "lightModeEnabled2": "الوضع الفاتح مُفعّل",
   "link": "رابط مشاركة",
   "linkedChildren": "الأبناء المرتبطون",
+  "parentLinkedToChildren": "ولي الأمر مرتبط بعدة طلاب — اضغط لعرضهم",
+  "guardianLabel": "ولي الأمر",
   "linkedDevices": "الأجهزة المرتبطة",
   "linkedEmail": "البريد الإلكتروني المرتبط",
   "linkExisting": "ربط ولي أمر حالي",

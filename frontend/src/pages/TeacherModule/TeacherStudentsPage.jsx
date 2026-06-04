@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Sidebar } from '../../components/layout/Sidebar';
@@ -72,6 +72,13 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
   const isIndependentTeacher = user?.role === 'independent_teacher';
   const [showAddStudent, setShowAddStudent] = useState(false);
   const [workspaceStudentCount, setWorkspaceStudentCount] = useState(null);
+  // Task #818 — full IT workspace student pool, used to compute how many
+  // students share a single guardian (siblings). Kept independent of the
+  // currently-filtered `students` list so the count is workspace-wide even
+  // when the teacher is viewing a single class.
+  const [workspaceStudents, setWorkspaceStudents] = useState([]);
+  // { parentName, children: [{ id, full_name, class_name, grade }] } | null
+  const [linkedChildrenDialog, setLinkedChildrenDialog] = useState(null);
   const [workspaceGrades, setWorkspaceGrades] = useState([]);
   const [workspaceClasses, setWorkspaceClasses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -139,10 +146,36 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
       const res = await api.get('/students');
       const list = Array.isArray(res.data) ? res.data : (res.data?.students || []);
       setWorkspaceStudentCount(list.length);
+      setWorkspaceStudents(list);
     } catch (_e) {
       // Soft-fail — chip falls back to the locally-known students.length.
     }
   }, [api, isIndependentTeacher]);
+
+  // Task #818 — group the workspace pool by canonical `parent_id` so each
+  // linked student knows how many siblings share its guardian. Built from
+  // the full pool (not the filtered view) so the count stays accurate even
+  // inside a single-class filter. Pending students (no `parent_id`) are
+  // excluded since they aren't linked yet.
+  const parentChildrenMap = useMemo(() => {
+    const map = {};
+    for (const s of workspaceStudents) {
+      const pid = s?.parent_id;
+      if (!pid) continue;
+      if (!map[pid]) map[pid] = [];
+      map[pid].push(s);
+    }
+    return map;
+  }, [workspaceStudents]);
+
+  const openLinkedChildren = useCallback((e, student) => {
+    e.stopPropagation();
+    const children = parentChildrenMap[student.parent_id] || [];
+    setLinkedChildrenDialog({
+      parentName: student.parent_name || (isRTL ? 'ولي الأمر' : 'Guardian'),
+      children,
+    });
+  }, [parentChildrenMap, isRTL]);
 
   const fetchWorkspaceWizardOptions = useCallback(async () => {
     if (!isIndependentTeacher) return;
@@ -502,7 +535,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
         : 'تم الربط بحساب موجود';
       setInviteOpen(false);
       setInviteTarget(null);
-      await fetchStudents();
+      await Promise.all([fetchStudents(), fetchWorkspaceStudentCount()]);
       nassaqInfo(isRTL
         ? `تم ربط ولي الأمر بنجاح — ${matchedAr}`
         : 'Parent linked successfully');
@@ -977,9 +1010,42 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                         );
                       }
                       if (pd.isLinked) {
+                        // Task #818 — siblings sharing this guardian. Built
+                        // from the workspace-wide pool so the count is
+                        // correct even in a single-class view. Only shown
+                        // for IT and only when >1 student is linked.
+                        const siblings = (isIndependentTeacher && student.parent_id)
+                          ? (parentChildrenMap[student.parent_id] || [])
+                          : [];
+                        const siblingCount = siblings.length;
+                        const multiChild = siblingCount > 1;
+                        const childrenLabel = isRTL
+                          ? `${siblingCount} أبناء`
+                          : `${siblingCount} children`;
                         return (
                           <>
                             {chipNode}
+                            {multiChild && (
+                              <Badge
+                                variant="outline"
+                                role="button"
+                                tabIndex={0}
+                                className="w-full justify-center gap-1.5 text-[10px] mt-3 cursor-pointer text-brand-navy border-brand-turquoise/40 bg-brand-turquoise/5 hover:bg-brand-turquoise/10"
+                                data-testid={`parent-children-count-${student.id}`}
+                                title={(t('parentLinkedToChildren') || (isRTL
+                                  ? 'ولي الأمر مرتبط بعدة طلاب — اضغط لعرضهم'
+                                  : 'Guardian linked to several students — tap to view'))}
+                                onClick={(e) => openLinkedChildren(e, student)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    openLinkedChildren(e, student);
+                                  }
+                                }}
+                              >
+                                <Users className="h-3 w-3" aria-hidden="true" strokeWidth={1.5} />
+                                {childrenLabel}
+                              </Badge>
+                            )}
                             <Button
                               variant="outline"
                               size="sm"
@@ -1128,6 +1194,77 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
             );
           })()}
         </div>
+
+        {/* Task #818 — Linked children dialog. Lists every workspace
+            student that shares the selected guardian (siblings). */}
+        <Dialog
+          open={!!linkedChildrenDialog}
+          onOpenChange={(open) => { if (!open) setLinkedChildrenDialog(null); }}
+        >
+          <DialogContent className="w-[95vw] max-w-md">
+            <DialogHeader>
+              <DialogTitle className="font-cairo flex items-center gap-2">
+                <Users className="h-5 w-5 text-brand-turquoise" aria-hidden="true" strokeWidth={1.5} />
+                {t('linkedChildren') || (isRTL ? 'الطلاب المرتبطون' : 'Linked students')}
+              </DialogTitle>
+            </DialogHeader>
+            {linkedChildrenDialog && (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {(t('guardianLabel') || (isRTL ? 'ولي الأمر' : 'Guardian'))}
+                  {': '}
+                  <span className="font-medium text-foreground">{linkedChildrenDialog.parentName}</span>
+                  {' · '}
+                  {isRTL
+                    ? `${linkedChildrenDialog.children.length} أبناء`
+                    : `${linkedChildrenDialog.children.length} children`}
+                </p>
+                <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+                  {linkedChildrenDialog.children.map((child) => (
+                    <button
+                      key={child.id}
+                      type="button"
+                      className="w-full flex items-center gap-3 p-2.5 rounded-lg border border-border/60 hover:border-brand-turquoise hover:bg-brand-turquoise/5 text-start transition-colors"
+                      data-testid={`linked-child-${child.id}`}
+                      onClick={() => {
+                        setLinkedChildrenDialog(null);
+                        viewStudentDetails(child);
+                      }}
+                    >
+                      <Avatar className="h-9 w-9">
+                        <AvatarImage src={child.avatar_url} />
+                        <AvatarFallback className="bg-gradient-to-br from-brand-navy to-brand-turquoise text-white text-sm">
+                          {child.full_name?.charAt(0) || '؟'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{child.full_name}</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {child.class_name ? (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                              {child.class_name}
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] px-1.5 py-0 h-4 border-amber-400 text-amber-700 bg-amber-50 dark:bg-amber-900/20"
+                            >
+                              {isRTL ? 'غير معين' : 'Unassigned'}
+                            </Badge>
+                          )}
+                          {child.grade && (
+                            <span className="text-[10px] text-muted-foreground">{child.grade}</span>
+                          )}
+                        </div>
+                      </div>
+                      <ChevronLeft className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Message Parent Dialog */}
         <Dialog open={showMessageDialog} onOpenChange={setShowMessageDialog}>
