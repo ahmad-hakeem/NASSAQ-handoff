@@ -1028,8 +1028,12 @@ async def approve_student_enrollment(
 
     # Recompute the school's stored counts from live rows (Task #826) so the
     # denormalized columns stay accurate instead of drifting.
-    from engines.entity_counts import reconcile_school_counts
+    from engines.entity_counts import reconcile_school_counts, reconcile_class_counts
     await reconcile_school_counts(db.session, school_id)
+    # Recompute the class counter too (Task #829) so classes.current_students
+    # never drifts via the enrollment-approval path.
+    if student_doc.get("class_id"):
+        await reconcile_class_counts(db.session, student_doc["class_id"], school_id)
 
     await gd_update_one(db.session, "registration_requests", {"id": request_id}, {
             "status": "approved",

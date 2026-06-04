@@ -23,6 +23,18 @@ school's own pages never disagree:
 The one-time backfill in the Alembic migration
 ``c8d7e6f5a4b3_backfill_school_entity_counts`` uses raw SQL that mirrors these
 exact predicates — keep the three in lockstep if you ever change them.
+
+Task #829: the class-level ``classes.current_students`` column had the exact
+same drift problem (scattered ``_gd_inc(..., ±1)`` nudges in the student
+create/delete/transfer routes, never recomputed). ``reconcile_class_counts``
+is the self-healing equivalent for classes. Its predicate MUST match what the
+class list / detail readers in ``academics_class_routes.py`` apply when they
+aggregate the live roster — those use ``is_active == TRUE`` (active students
+assigned to the class), which is a stricter predicate than the school-level
+one above (it excludes ``NULL`` rows too). The backfill migration
+``d9e8f7a6b5c4_backfill_class_student_counts`` mirrors this class predicate.
+Note: ``student_count`` is NOT a real column on ``classes`` — it is computed
+live in the response by the readers — so only ``current_students`` is stored.
 """
 from __future__ import annotations
 
@@ -134,9 +146,68 @@ async def reconcile_school_counts(session, school_id: str) -> Tuple[int, int]:
     return (student_count, teacher_count)
 
 
+def _class_student_active_predicate():
+    from pg_models import Student
+
+    # Match the class list / detail readers in academics_class_routes.py, which
+    # aggregate ``is_active == TRUE`` students per class. This is intentionally
+    # stricter than the school-level student predicate (it excludes NULL rows).
+    return Student.is_active == True  # noqa: E712
+
+
+async def live_class_student_count(session, class_id: str, school_id: str | None = None) -> int:
+    """Live (canonical) active-student count for one class.
+
+    When ``school_id`` is provided the count is scoped by it too, so a stray
+    cross-tenant class id can never inflate the result.
+    """
+    from sqlalchemy import select, func
+    from pg_models import Student
+
+    stmt = (
+        select(func.count())
+        .select_from(Student)
+        .where(Student.class_id == class_id)
+        .where(_class_student_active_predicate())
+    )
+    if school_id:
+        stmt = stmt.where(Student.school_id == school_id)
+    return int((await session.execute(stmt)).scalar() or 0)
+
+
+async def reconcile_class_counts(session, class_id: str, school_id: str | None = None) -> int:
+    """Recompute and persist a class's ``current_students`` from live rows.
+
+    Self-healing replacement for the scattered ``±1`` nudges on the class
+    counter: calling it after any student create/delete/transfer overwrites the
+    stored column with the real count, so drift is corrected on every write.
+    Returns the count that was written. No-ops safely when ``class_id`` is
+    falsy or the class row is missing.
+    """
+    if not class_id:
+        return 0
+
+    from sqlalchemy import select
+    from pg_models import Class
+
+    count = await live_class_student_count(session, class_id, school_id)
+
+    stmt = select(Class).where(Class.id == class_id)
+    if school_id:
+        stmt = stmt.where(Class.school_id == school_id)
+    obj = (await session.execute(stmt.limit(1))).scalars().first()
+    if obj is not None:
+        obj.current_students = count
+        await session.flush()
+
+    return count
+
+
 __all__ = [
     "live_student_count",
     "live_teacher_count",
     "live_counts_by_tenant",
     "reconcile_school_counts",
+    "live_class_student_count",
+    "reconcile_class_counts",
 ]

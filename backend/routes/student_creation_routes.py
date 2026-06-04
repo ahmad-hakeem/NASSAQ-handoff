@@ -651,14 +651,12 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             for sib_id in sibling_ids:
                 await _gd_addtoset(db.session, "students", {"id": sib_id}, {"sibling_ids": student_id})
         
-        # Update class student count. Scope by school_id so a stray
-        # cross-tenant class id can never be incremented.
+        # Recompute the class counter from live rows (Task #829) instead of
+        # nudging by +1, so classes.current_students never drifts. Scoped by
+        # school_id so a stray cross-tenant class id is never touched.
         if request.class_id:
-            await _gd_inc(
-                db.session, "classes",
-                {"id": request.class_id, "school_id": school_id},
-                {"current_students": 1},
-            )
+            from engines.entity_counts import reconcile_class_counts
+            await reconcile_class_counts(db.session, request.class_id, school_id)
         
         # Get class and grade info for response
         class_info = None
@@ -798,6 +796,7 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         
         created_students = []
         parent_cache = {}  # Cache parents to detect siblings within batch
+        touched_class_ids: set = set()  # Reconcile each affected class once (Task #829)
         
         for idx, student_data in enumerate(request.students):
             try:
@@ -959,6 +958,9 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                             "created_by": current_user.get("id"),
                         })
                 
+                if student_doc.get("class_id"):
+                    touched_class_ids.add(student_doc["class_id"])
+
                 results["success"] += 1
                 results["new_students"] += 1
                 created_students.append({
@@ -978,8 +980,12 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
 
         # Recompute the school's stored counts from live rows (Task #826) once
         # after the bulk loop so the denormalized columns stay accurate.
-        from engines.entity_counts import reconcile_school_counts
+        from engines.entity_counts import reconcile_school_counts, reconcile_class_counts
         await reconcile_school_counts(db.session, school_id)
+        # Recompute each affected class counter once (Task #829) so
+        # classes.current_students never drifts via the bulk-create path.
+        for _cid in touched_class_ids:
+            await reconcile_class_counts(db.session, _cid, school_id)
 
         return {
             "success": results["failed"] == 0,

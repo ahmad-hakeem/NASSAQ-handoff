@@ -748,8 +748,12 @@ async def update_student_account_status(
 
     # Status change flips is_active, so recompute the school's stored counts
     # from live rows (Task #826) to keep the denormalized columns accurate.
-    from engines.entity_counts import reconcile_school_counts
+    from engines.entity_counts import reconcile_school_counts, reconcile_class_counts
     await reconcile_school_counts(db.session, student.get("school_id"))
+    # The same is_active flip also moves the class roster, so recompute the
+    # class counter from live rows (Task #829) to prevent drift.
+    if student.get("class_id"):
+        await reconcile_class_counts(db.session, student.get("class_id"), student.get("school_id"))
 
     await _write_audit(tenant_id, f"student_status_{data.status}", "student", student_id,
                        {"old_status": old_status, "new_status": data.status, "reason": data.reason},
@@ -795,6 +799,14 @@ async def transfer_student_class(
             update_fields["grade_level"] = grade.get("grade_level")
 
     await gd_update_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)}, update_fields)
+
+    # Recompute both classes' counters from live rows (Task #829) so the moved
+    # student is reflected on the old and new class without drift.
+    school_id = student.get("school_id")
+    from engines.entity_counts import reconcile_class_counts
+    if old_class_id and old_class_id != data.new_class_id:
+        await reconcile_class_counts(db.session, old_class_id, school_id)
+    await reconcile_class_counts(db.session, data.new_class_id, school_id)
 
     await _write_audit(tenant_id, "transfer_student_class", "student", student_id,
                        {"old_class": old_class_name, "old_class_id": old_class_id,

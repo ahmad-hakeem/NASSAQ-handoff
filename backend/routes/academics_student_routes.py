@@ -24,7 +24,7 @@ from dependencies import (
     require_recent_mfa_403_if_independent_teacher,
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc, _gd_pull, _gd_push, _gd_addtoset
-from engines.entity_counts import reconcile_school_counts
+from engines.entity_counts import reconcile_school_counts, reconcile_class_counts
 from auth_scope import require_request_school_id
 from utils.it_parent_link import link_workspace_parent_to_student
 
@@ -107,8 +107,10 @@ async def create_student(
     # blindly nudging by +1, so the denormalized columns never drift (Task #826).
     await reconcile_school_counts(db.session, student_doc["school_id"])
     
+    # Recompute the class counter from live rows (Task #829) instead of nudging
+    # by +1, so classes.current_students never drifts.
     if student_data.class_id:
-        await _gd_inc(db.session, "classes", {"id": student_data.class_id, "school_id": school_id}, {"current_students": 1})
+        await reconcile_class_counts(db.session, student_data.class_id, school_id)
     
     await audit_engine.log(
         action=AuditAction.USER_CREATED.value,
@@ -691,24 +693,12 @@ async def transfer_student_class(
 
         old_class_current_students = None
         if old_class_id:
-            old_class_current_students = await gd_count(
-                db.session, "students",
-                {"class_id": old_class_id, "school_id": school_id, "is_active": True},
-            )
-            await gd_update_one(
-                db.session, "classes",
-                {"id": old_class_id, "school_id": school_id},
-                {"current_students": old_class_current_students},
+            old_class_current_students = await reconcile_class_counts(
+                db.session, old_class_id, school_id
             )
 
-        target_class_current_students = await gd_count(
-            db.session, "students",
-            {"class_id": target_class_id, "school_id": school_id, "is_active": True},
-        )
-        await gd_update_one(
-            db.session, "classes",
-            {"id": target_class_id, "school_id": school_id},
-            {"current_students": target_class_current_students},
+        target_class_current_students = await reconcile_class_counts(
+            db.session, target_class_id, school_id
         )
     except Exception:
         logger.exception(
@@ -759,8 +749,10 @@ async def delete_student(
     )
 
     await reconcile_school_counts(db.session, school_id)
+    # Recompute the class counter from live rows (Task #829) instead of nudging
+    # by -1, so classes.current_students never drifts.
     if class_id:
-        await _gd_inc(db.session, "classes", {"id": class_id, "school_id": school_id}, {"current_students": -1})
+        await reconcile_class_counts(db.session, class_id, school_id)
 
     await audit_engine.log(
         action=AuditAction.USER_DELETED.value,
@@ -1260,9 +1252,11 @@ async def create_student_with_wizard(
                 "parent_phone": parent_doc.get("phone"),
             })
     
-    # Update class student count
+    # Recompute the class counter from live rows (Task #829). The previous
+    # `_gd_inc(..., {"student_count": 1})` was a silent no-op anyway —
+    # `student_count` is not a real `classes` column; `current_students` is.
     if data.class_id:
-        await _gd_inc(db.session, "classes", {"id": data.class_id}, {"student_count": 1})
+        await reconcile_class_counts(db.session, data.class_id, school_id)
     
     # Update school student count (reconcile from live rows — Task #826)
     await reconcile_school_counts(db.session, school_id)
