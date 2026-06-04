@@ -101,6 +101,11 @@ async def _ensure_school_teacher_record(user: dict, target_school_id: str, creat
             patch["is_active"] = True
         if patch:
             await gd_update_one(db.session, "teachers", {"id": same["id"]}, patch)
+        if "is_active" in patch:
+            # Reactivating an archived row changes the live teacher count, so
+            # recompute the school's stored columns (Task #826).
+            from engines.entity_counts import reconcile_school_counts
+            await reconcile_school_counts(db.session, target_school_id)
         return same["id"]
 
     # A teacher's identity WITHIN a school is (national_id, school_id) — a UNIQUE
@@ -134,6 +139,11 @@ async def _ensure_school_teacher_record(user: dict, target_school_id: str, creat
                 patch["is_active"] = True
             if patch:
                 await gd_update_one(db.session, "teachers", {"id": by_nid["id"]}, patch)
+            if "is_active" in patch:
+                # Reactivating an archived row changes the live teacher count,
+                # so recompute the school's stored columns (Task #826).
+                from engines.entity_counts import reconcile_school_counts
+                await reconcile_school_counts(db.session, target_school_id)
             return by_nid["id"]
 
     # No academic record yet — provision a minimal one in the target school.
@@ -154,6 +164,10 @@ async def _ensure_school_teacher_record(user: dict, target_school_id: str, creat
         "created_at": now,
         "updated_at": now,
     })
+    # Recompute the school's stored counts from live rows (Task #826) so the
+    # denormalized columns stay accurate instead of drifting.
+    from engines.entity_counts import reconcile_school_counts
+    await reconcile_school_counts(db.session, target_school_id)
     return teacher_id
 
 
@@ -852,6 +866,14 @@ async def _do_resolve_teacher_mismatch(user_id: str, current_user: dict) -> dict
     if resolved_teacher_id and user.get("teacher_id") != resolved_teacher_id:
         user_patch["teacher_id"] = resolved_teacher_id
     await gd_update_one(db.session, "users", {"id": user_id}, user_patch)
+
+    # Recompute stored counts for every school whose live teacher set changed:
+    # the school(s) we retired the record from, plus the intended school where
+    # it was restored/created (Task #826).
+    from engines.entity_counts import reconcile_school_counts
+    _affected = {intended} | {r.get("school_id") for r in retired if r.get("school_id")}
+    for _sid in _affected:
+        await reconcile_school_counts(db.session, _sid)
 
     await audit_engine.log(
         action="teacher_school_mismatch_resolved",

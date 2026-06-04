@@ -437,6 +437,11 @@ async def update_teacher_account_status(
     else:
         logger.warning(f"teacher_status_change: no users row for teacher_id={teacher_id} (tenant={tenant_id}); auth row not updated")
 
+    # Status change flips is_active, so recompute the school's stored counts
+    # from live rows (Task #826) to keep the denormalized columns accurate.
+    from engines.entity_counts import reconcile_school_counts
+    await reconcile_school_counts(db.session, teacher.get("school_id"))
+
     await _write_audit(tenant_id, f"teacher_status_{data.status}", "teacher", teacher_id,
                        {"old_status": old_status, "new_status": data.status, "reason": data.reason},
                        current_user["id"])
@@ -740,6 +745,11 @@ async def update_student_account_status(
         await gd_update_one(db.session, "users", {"id": user_row["id"]}, {"status": data.status, "is_active": data.status == "active", "updated_at": now})
     else:
         logger.warning(f"student_status_change: no users row for student_id={student_id} (tenant={tenant_id}); auth row not updated")
+
+    # Status change flips is_active, so recompute the school's stored counts
+    # from live rows (Task #826) to keep the denormalized columns accurate.
+    from engines.entity_counts import reconcile_school_counts
+    await reconcile_school_counts(db.session, student.get("school_id"))
 
     await _write_audit(tenant_id, f"student_status_{data.status}", "student", student_id,
                        {"old_status": old_status, "new_status": data.status, "reason": data.reason},

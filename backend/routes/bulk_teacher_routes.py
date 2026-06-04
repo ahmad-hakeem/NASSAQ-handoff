@@ -197,7 +197,12 @@ def create_bulk_teacher_routes(db, get_current_user, require_roles, UserRole, ha
         }
         
         await gd_insert(db.session, "users", user_doc)
-        
+
+        # Recompute the school's stored counts from live rows (Task #826) so the
+        # denormalized columns stay accurate instead of drifting.
+        from engines.entity_counts import reconcile_school_counts
+        await reconcile_school_counts(db.session, school_id)
+
         return {
             "success": True,
             "teacher_id": teacher_id,
@@ -276,7 +281,12 @@ def create_bulk_teacher_routes(db, get_current_user, require_roles, UserRole, ha
             except Exception as e:
                 results.append({"email": teacher_data.email, "success": False, "error": str(e)})
                 failed += 1
-        
+
+        # Recompute the school's stored counts from live rows (Task #826) once
+        # after the bulk loop so the denormalized columns stay accurate.
+        from engines.entity_counts import reconcile_school_counts
+        await reconcile_school_counts(db.session, school_id)
+
         return {
             "success": True,
             "total": len(teachers),

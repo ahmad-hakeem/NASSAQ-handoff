@@ -388,16 +388,17 @@ class TenantEngine:
         if not tenant:
             raise ValueError("المدرسة غير موجودة")
 
-        sc = select(func.count(Student.id)).where(Student.school_id == tenant_id)
-        student_count = (await self.session.execute(sc)).scalar() or 0
+        # Task #826: use the canonical live counts (same predicates as the
+        # platform list / in-school pages) and reconcile the stored columns so
+        # this never writes back numbers that disagree with other surfaces.
+        from engines.entity_counts import reconcile_school_counts
 
-        tc = select(func.count(Teacher.id)).where(Teacher.school_id == tenant_id)
-        teacher_count = (await self.session.execute(tc)).scalar() or 0
+        student_count, teacher_count = await reconcile_school_counts(
+            self.session, tenant_id
+        )
 
         cc = select(func.count(Class.id)).where(Class.school_id == tenant_id)
         class_count = (await self.session.execute(cc)).scalar() or 0
-
-        await self.update_counts(tenant_id, student_count, teacher_count)
 
         capacity = tenant.get("student_capacity")
         return {

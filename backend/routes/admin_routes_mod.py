@@ -522,10 +522,9 @@ async def seed_test_accounts(current_user: dict = Depends(require_roles([UserRol
         await gd_insert(db.session, "users", teacher_user_doc)
         await gd_insert(db.session, "teachers", teacher_profile_doc)
         
-        # Update school teacher count
-        school = await gd_find_one(db.session, "schools", {"id": school_id})
-        if school:
-            await gd_update_one(db.session, "schools", {"id": school_id}, {"current_teachers": (school.get("current_teachers") or 0) + 1})
+        # Reconcile school counts from live rows (Task #826) instead of nudging +1.
+        from engines.entity_counts import reconcile_school_counts
+        await reconcile_school_counts(db.session, school_id)
         
         results["teacher"] = {"status": "created", "email": "teacher@nassaq.com"}
     

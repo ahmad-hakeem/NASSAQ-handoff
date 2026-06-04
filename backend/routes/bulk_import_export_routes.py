@@ -452,7 +452,12 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
         except Exception as e:
             errors.append({"row": row_num, "message": str(e)})
             failed += 1
-    
+
+    # Recompute the school's stored counts from live rows (Task #826) once
+    # after the import loop so the denormalized columns stay accurate.
+    from engines.entity_counts import reconcile_school_counts
+    await reconcile_school_counts(db.session, school_id)
+
     return {"imported": imported, "failed": failed}
 
 
@@ -555,7 +560,12 @@ async def _import_teachers(db, df: pd.DataFrame, school_id: str, user: dict, err
         except Exception as e:
             errors.append({"row": row_num, "message": str(e)})
             failed += 1
-    
+
+    # Recompute the school's stored counts from live rows (Task #826) once
+    # after the import loop so the denormalized columns stay accurate.
+    from engines.entity_counts import reconcile_school_counts
+    await reconcile_school_counts(db.session, school_id)
+
     return {"imported": imported, "failed": failed}
 
 

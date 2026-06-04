@@ -477,58 +477,16 @@ async def _active_principal_counts_by_tenant() -> Dict[str, int]:
 async def _live_entity_counts_by_tenant() -> Tuple[Dict[str, int], Dict[str, int]]:
     """Batch live student/teacher counts per tenant for the platform list.
 
-    Task #825: the platform schools list previously reported the stale
-    denormalized ``current_students`` / ``current_teachers`` columns, which
-    drift away from the real row count over time. Instead, count the live rows
-    here using one grouped query per entity (no N+1).
-
-    To guarantee the numbers match what each school sees on its own pages, the
-    predicates are byte-for-byte the same ones the in-school list endpoints
-    apply (so NULL / soft-delete edge cases stay in lockstep):
-
-    * Students — ``GET /students`` filters ``{"is_active": {"$ne": False}}``,
-      which gd_find renders as ``is_active != FALSE``. In Postgres that
-      excludes both ``FALSE`` and ``NULL`` rows, so we use the identical ORM
-      predicate ``Student.is_active != False`` here.
-    * Teachers — ``GET /teachers`` (default active view) returns every teacher
-      EXCEPT the soft-deleted ones, i.e. it drops rows where
-      ``is_active is False AND deleted_at`` is set and keeps everything else
-      (including ``is_active`` NULL). We mirror that exactly with
-      ``NOT (is_active = False AND deleted_at IS NOT NULL)``.
+    Task #825 / #826: the platform schools list reports live, tenant-scoped
+    counts instead of the stale denormalized ``current_students`` /
+    ``current_teachers`` columns. The canonical predicates and grouped queries
+    now live in :mod:`engines.entity_counts` so the platform list, the stored
+    columns (reconciled on every write), and each school's own pages all share
+    one definition and never disagree.
     """
-    from sqlalchemy import select, func, not_, and_
-    from pg_models import Student, Teacher
+    from engines.entity_counts import live_counts_by_tenant
 
-    student_stmt = (
-        select(Student.school_id, func.count().label("cnt"))
-        .where(Student.school_id.isnot(None))
-        .where(Student.is_active != False)  # noqa: E712 — match gd_find $ne semantics
-        .group_by(Student.school_id)
-    )
-    student_result = await db.session.execute(student_stmt)
-    student_counts = {
-        sid: cnt for sid, cnt in student_result.all() if sid
-    }
-
-    teacher_stmt = (
-        select(Teacher.school_id, func.count().label("cnt"))
-        .where(Teacher.school_id.isnot(None))
-        .where(
-            not_(
-                and_(
-                    Teacher.is_active == False,  # noqa: E712
-                    Teacher.deleted_at.isnot(None),
-                )
-            )
-        )
-        .group_by(Teacher.school_id)
-    )
-    teacher_result = await db.session.execute(teacher_stmt)
-    teacher_counts = {
-        sid: cnt for sid, cnt in teacher_result.all() if sid
-    }
-
-    return student_counts, teacher_counts
+    return await live_counts_by_tenant(db.session)
 
 
 @router.get("/schools", response_model=List[SchoolResponse])

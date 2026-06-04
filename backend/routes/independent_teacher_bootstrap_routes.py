@@ -443,6 +443,11 @@ async def bootstrap_independent_teacher_workspace(
             "updated_at": now.isoformat(),
         })
 
+        # Recompute the workspace's stored counts from live rows (Task #826)
+        # so the denormalized columns stay accurate instead of drifting.
+        from engines.entity_counts import reconcile_school_counts
+        await reconcile_school_counts(session, school_id)
+
         # 6.f — set users.tenant_id (the SOLE place the IT lifecycle
         #        writes this column).
         await gd_update_one(session, "users", {"id": current_user["id"]}, {

@@ -1040,7 +1040,12 @@ async def create_test_student_account(db):
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await gd_insert(db.session, "students", student_doc)
-    
+
+    # Recompute the school's stored counts from live rows (Task #826) so the
+    # denormalized columns stay accurate instead of drifting.
+    from engines.entity_counts import reconcile_school_counts
+    await reconcile_school_counts(db.session, school.get("id"))
+
     # Add some test grades
     subjects = ["الرياضيات", "اللغة العربية", "العلوم", "اللغة الإنجليزية"]
     for subject in subjects:

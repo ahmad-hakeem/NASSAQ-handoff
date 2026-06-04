@@ -23,7 +23,8 @@ from dependencies import (
     REPORT_TYPES, generate_student_qr_code,
     require_recent_mfa_403_if_independent_teacher,
 )
-from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc, _gd_pull
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_pull
+from engines.entity_counts import reconcile_school_counts
 from auth_scope import require_request_school_id
 
 
@@ -638,8 +639,8 @@ async def create_teacher_wizard(
     await gd_insert(db.session, "teachers", teacher_doc)
     await gd_insert(db.session, "users", user_doc)
     
-    # Update school teacher count
-    await _gd_inc(db.session, "schools", {"id": school_id}, {"current_teachers": 1})
+    # Reconcile school counts from live rows (Task #826) instead of nudging ±1.
+    await reconcile_school_counts(db.session, school_id)
     
     return {
         "success": True,
@@ -720,8 +721,8 @@ async def create_teacher(
     await gd_insert(db.session, "users", user_doc)
     await gd_insert(db.session, "teachers", teacher_doc)
     
-    # Update school teacher count
-    await _gd_inc(db.session, "schools", {"id": teacher_data.school_id}, {"current_teachers": 1})
+    # Reconcile school counts from live rows (Task #826) instead of nudging ±1.
+    await reconcile_school_counts(db.session, teacher_data.school_id)
 
     try:
         from routes.school_settings_mod import _ensure_teacher_linked_to_all_classes
@@ -968,7 +969,7 @@ async def delete_teacher(
         {"is_active": False, "deleted_at": now_iso, "deleted_by": current_user["id"]},
     )
 
-    await _gd_inc(db.session, "schools", {"id": school_id}, {"current_teachers": -1})
+    await reconcile_school_counts(db.session, school_id)
 
     cleanup["teacher_assignments"] = await gd_update_many(
         db.session, "teacher_assignments", {"teacher_id": teacher_id, "is_active": {"$ne": False}}, {"is_active": False}
@@ -1059,7 +1060,7 @@ async def restore_teacher(
         await gd_update_one(db.session, "users", {"id": user_id}, {"is_active": True})
 
     school_id = teacher.get("school_id")
-    await _gd_inc(db.session, "schools", {"id": school_id}, {"current_teachers": 1})
+    await reconcile_school_counts(db.session, school_id)
 
     inactive_dependents = {
         "teacher_assignments": await gd_count(db.session, "teacher_assignments", {"teacher_id": teacher_id, "is_active": False}),

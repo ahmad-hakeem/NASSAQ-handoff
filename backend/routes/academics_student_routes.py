@@ -24,6 +24,7 @@ from dependencies import (
     require_recent_mfa_403_if_independent_teacher,
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc, _gd_pull, _gd_push, _gd_addtoset
+from engines.entity_counts import reconcile_school_counts
 from auth_scope import require_request_school_id
 from utils.it_parent_link import link_workspace_parent_to_student
 
@@ -102,7 +103,9 @@ async def create_student(
 
     await gd_insert(db.session, "students", student_doc)
     
-    await _gd_inc(db.session, "schools", {"id": student_doc["school_id"]}, {"current_students": 1})
+    # Reconcile (recompute) the school's stored counts from live rows instead of
+    # blindly nudging by +1, so the denormalized columns never drift (Task #826).
+    await reconcile_school_counts(db.session, student_doc["school_id"])
     
     if student_data.class_id:
         await _gd_inc(db.session, "classes", {"id": student_data.class_id, "school_id": school_id}, {"current_students": 1})
@@ -755,7 +758,7 @@ async def delete_student(
         {"$set": {"is_active": False, "updated_at": now_iso}},
     )
 
-    await _gd_inc(db.session, "schools", {"id": school_id}, {"current_students": -1})
+    await reconcile_school_counts(db.session, school_id)
     if class_id:
         await _gd_inc(db.session, "classes", {"id": class_id, "school_id": school_id}, {"current_students": -1})
 
@@ -1261,8 +1264,8 @@ async def create_student_with_wizard(
     if data.class_id:
         await _gd_inc(db.session, "classes", {"id": data.class_id}, {"student_count": 1})
     
-    # Update school student count
-    await _gd_inc(db.session, "schools", {"id": school_id}, {"current_students": 1})
+    # Update school student count (reconcile from live rows — Task #826)
+    await reconcile_school_counts(db.session, school_id)
     
     # Create student user account
     student_password = f"S{random.randint(100000, 999999)}"

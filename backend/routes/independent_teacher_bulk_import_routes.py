@@ -650,6 +650,11 @@ async def commit_csv(
             except Exception as audit_exc:  # noqa: BLE001
                 logger.warning("bulk-import audit failed: %s", audit_exc)
 
+            # Recompute the workspace's stored counts from live rows (Task #826)
+            # so the denormalized columns stay accurate instead of drifting.
+            from engines.entity_counts import reconcile_school_counts
+            await reconcile_school_counts(session, workspace_id)
+
         await session.commit()
     except HTTPException:
         await session.rollback()

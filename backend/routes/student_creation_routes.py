@@ -605,7 +605,12 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                 # Map the constraint name → actionable Arabic message.
                 _, user_msg = describe_integrity_error(msg)
                 raise HTTPException(status_code=409, detail=user_msg)
-        
+
+        # Recompute the school's stored counts from live rows (Task #826) so the
+        # denormalized columns stay accurate instead of drifting.
+        from engines.entity_counts import reconcile_school_counts
+        await reconcile_school_counts(db.session, school_id)
+
         # Workspace-mode (#192): no parents row was materialised, so we
         # skip both the parent.student_ids backfill and the guardian_link
         # write. The student row carries the partial contact in the
@@ -970,7 +975,12 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                     "error": str(e)
                 })
                 results["failed"] += 1
-        
+
+        # Recompute the school's stored counts from live rows (Task #826) once
+        # after the bulk loop so the denormalized columns stay accurate.
+        from engines.entity_counts import reconcile_school_counts
+        await reconcile_school_counts(db.session, school_id)
+
         return {
             "success": results["failed"] == 0,
             "results": results,
