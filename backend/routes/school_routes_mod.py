@@ -7,7 +7,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import Response
 from starlette.responses import StreamingResponse
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any, Dict, Tuple
 from datetime import datetime, timezone, timedelta
 import uuid, os, logging, json, random, re, io, base64
 import time as _time
@@ -401,8 +401,23 @@ async def delete_school_draft(
     return {"success": True, "message": "تم حذف المسودة بنجاح"}
 
 
-def _normalize_school(s: dict, *, principal_counts: Optional[Dict[str, int]] = None) -> dict:
-    """Normalize school document to match SchoolResponse fields."""
+def _normalize_school(
+    s: dict,
+    *,
+    principal_counts: Optional[Dict[str, int]] = None,
+    student_counts: Optional[Dict[str, int]] = None,
+    teacher_counts: Optional[Dict[str, int]] = None,
+) -> dict:
+    """Normalize school document to match SchoolResponse fields.
+
+    Task #825: ``current_students`` / ``current_teachers`` are reported from
+    live, tenant-scoped counts (``student_counts`` / ``teacher_counts``,
+    computed by :func:`_live_entity_counts_by_tenant`) when supplied, instead
+    of the stale denormalized columns on the ``schools`` row. The denormalized
+    columns are only nudged by scattered increments and drift below the real
+    row count over time. When no live maps are passed we fall back to the
+    stored values for backward compatibility.
+    """
     school_id = s.get("id") or ""
     principal_count = None
     if principal_counts is not None:
@@ -413,6 +428,15 @@ def _normalize_school(s: dict, *, principal_counts: Optional[Dict[str, int]] = N
         active_principal_count=principal_count,
     )
 
+    if student_counts is not None:
+        current_students = student_counts.get(school_id, 0)
+    else:
+        current_students = s.get("current_students") or s.get("student_count") or 0
+    if teacher_counts is not None:
+        current_teachers = teacher_counts.get(school_id, 0)
+    else:
+        current_teachers = s.get("current_teachers") or s.get("teacher_count") or 0
+
     return {
         **s,
         "name": s.get("name") or s.get("name_ar") or s.get("name_en") or "",
@@ -421,8 +445,8 @@ def _normalize_school(s: dict, *, principal_counts: Optional[Dict[str, int]] = N
         "country": s.get("country") or "SA",
         "status": s.get("status") or "active",
         "student_capacity": s.get("student_capacity") or s.get("student_count") or 500,
-        "current_students": s.get("current_students") or s.get("student_count") or 0,
-        "current_teachers": s.get("current_teachers") or s.get("teacher_count") or 0,
+        "current_students": current_students,
+        "current_teachers": current_teachers,
         "created_at": s.get("created_at") or "",
         "entity_kind": preview["entity_kind"],
         "can_preview_as_principal": preview["can_preview_as_principal"],
@@ -450,6 +474,63 @@ async def _active_principal_counts_by_tenant() -> Dict[str, int]:
     return {row["tenant_id"]: row["cnt"] for row in rows if row.get("tenant_id")}
 
 
+async def _live_entity_counts_by_tenant() -> Tuple[Dict[str, int], Dict[str, int]]:
+    """Batch live student/teacher counts per tenant for the platform list.
+
+    Task #825: the platform schools list previously reported the stale
+    denormalized ``current_students`` / ``current_teachers`` columns, which
+    drift away from the real row count over time. Instead, count the live rows
+    here using one grouped query per entity (no N+1).
+
+    To guarantee the numbers match what each school sees on its own pages, the
+    predicates are byte-for-byte the same ones the in-school list endpoints
+    apply (so NULL / soft-delete edge cases stay in lockstep):
+
+    * Students — ``GET /students`` filters ``{"is_active": {"$ne": False}}``,
+      which gd_find renders as ``is_active != FALSE``. In Postgres that
+      excludes both ``FALSE`` and ``NULL`` rows, so we use the identical ORM
+      predicate ``Student.is_active != False`` here.
+    * Teachers — ``GET /teachers`` (default active view) returns every teacher
+      EXCEPT the soft-deleted ones, i.e. it drops rows where
+      ``is_active is False AND deleted_at`` is set and keeps everything else
+      (including ``is_active`` NULL). We mirror that exactly with
+      ``NOT (is_active = False AND deleted_at IS NOT NULL)``.
+    """
+    from sqlalchemy import select, func, not_, and_
+    from pg_models import Student, Teacher
+
+    student_stmt = (
+        select(Student.school_id, func.count().label("cnt"))
+        .where(Student.school_id.isnot(None))
+        .where(Student.is_active != False)  # noqa: E712 — match gd_find $ne semantics
+        .group_by(Student.school_id)
+    )
+    student_result = await db.session.execute(student_stmt)
+    student_counts = {
+        sid: cnt for sid, cnt in student_result.all() if sid
+    }
+
+    teacher_stmt = (
+        select(Teacher.school_id, func.count().label("cnt"))
+        .where(Teacher.school_id.isnot(None))
+        .where(
+            not_(
+                and_(
+                    Teacher.is_active == False,  # noqa: E712
+                    Teacher.deleted_at.isnot(None),
+                )
+            )
+        )
+        .group_by(Teacher.school_id)
+    )
+    teacher_result = await db.session.execute(teacher_stmt)
+    teacher_counts = {
+        sid: cnt for sid, cnt in teacher_result.all() if sid
+    }
+
+    return student_counts, teacher_counts
+
+
 @router.get("/schools", response_model=List[SchoolResponse])
 async def get_schools(
     status: Optional[str] = None,
@@ -461,8 +542,14 @@ async def get_schools(
     
     schools = await gd_find(db.session, "schools", query, limit=1000)
     principal_counts = await _active_principal_counts_by_tenant()
+    student_counts, teacher_counts = await _live_entity_counts_by_tenant()
     return [
-        SchoolResponse(**_normalize_school(s, principal_counts=principal_counts))
+        SchoolResponse(**_normalize_school(
+            s,
+            principal_counts=principal_counts,
+            student_counts=student_counts,
+            teacher_counts=teacher_counts,
+        ))
         for s in schools
     ]
 
@@ -480,7 +567,14 @@ async def get_school(school_id: str, current_user: dict = Depends(get_current_us
     if not school:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
     principal_counts = await _active_principal_counts_by_tenant()
-    return SchoolResponse(**_normalize_school(school, principal_counts=principal_counts))
+    # Task #825: report the same live counts as the list / in-school pages.
+    student_counts, teacher_counts = await _live_entity_counts_by_tenant()
+    return SchoolResponse(**_normalize_school(
+        school,
+        principal_counts=principal_counts,
+        student_counts=student_counts,
+        teacher_counts=teacher_counts,
+    ))
 
 @router.put("/schools/{school_id}/status")
 async def update_school_status(
@@ -671,7 +765,15 @@ async def get_school_detail(
     )
 
     principal_counts = await _active_principal_counts_by_tenant()
-    school_payload = _normalize_school(school, principal_counts=principal_counts)
+    # Task #825: keep the normalized school card's counts consistent with the
+    # platform list (live, is_active-filtered) rather than the stale columns.
+    student_counts, teacher_counts = await _live_entity_counts_by_tenant()
+    school_payload = _normalize_school(
+        school,
+        principal_counts=principal_counts,
+        student_counts=student_counts,
+        teacher_counts=teacher_counts,
+    )
 
     return {
         "school": school_payload,
