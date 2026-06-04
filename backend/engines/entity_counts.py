@@ -38,7 +38,10 @@ live in the response by the readers — so only ``current_students`` is stored.
 """
 from __future__ import annotations
 
-from typing import Dict, Tuple
+import logging
+from typing import Dict, List, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 def _student_active_predicate():
@@ -203,11 +206,108 @@ async def reconcile_class_counts(session, class_id: str, school_id: str | None =
     return count
 
 
+async def live_class_counts(session) -> Dict[str, int]:
+    """Batch live active-student counts grouped per class (no N+1).
+
+    Uses the same stricter class predicate as ``live_class_student_count``
+    (``is_active == TRUE``) so the result matches what the class readers and
+    ``reconcile_class_counts`` compute. Returns a map keyed by ``class_id``.
+    """
+    from sqlalchemy import select, func
+    from pg_models import Student
+
+    stmt = (
+        select(Student.class_id, func.count().label("cnt"))
+        .where(Student.class_id.isnot(None))
+        .where(_class_student_active_predicate())
+        .group_by(Student.class_id)
+    )
+    result = await session.execute(stmt)
+    return {cid: cnt for cid, cnt in result.all() if cid}
+
+
+async def sweep_count_divergences(session, *, fix: bool = False) -> Dict[str, List[dict]]:
+    """Recompute every stored school/class counter from live rows and report
+    any divergence between the stored column and the canonical live count.
+
+    This is the "routine check" companion to the per-write ``reconcile_*``
+    helpers: it scans the whole tenant inventory in a handful of grouped
+    queries (no N+1) and surfaces any counter that drifted — e.g. because a
+    future code path nudged a column without reconciling. Each divergence is
+    logged at WARNING level so a periodic admin/cron invocation leaves an
+    audit trail.
+
+    Returns a dict with two lists, ``"schools"`` and ``"classes"``. Each entry
+    records the row id, the ``stored`` value(s), and the ``live`` truth. When
+    ``fix=True`` the stored columns are overwritten with the live counts
+    (self-heal) and flushed; with the default ``fix=False`` the function is a
+    pure read-only audit and mutates nothing.
+    """
+    from sqlalchemy import select
+    from pg_models import School, Class
+
+    student_counts, teacher_counts = await live_counts_by_tenant(session)
+    class_counts = await live_class_counts(session)
+
+    school_divergences: List[dict] = []
+    class_divergences: List[dict] = []
+
+    schools = (await session.execute(select(School))).scalars().all()
+    for school in schools:
+        live_students = int(student_counts.get(school.id, 0))
+        live_teachers = int(teacher_counts.get(school.id, 0))
+        stored_students = int(school.current_students or 0)
+        stored_teachers = int(school.current_teachers or 0)
+        if stored_students != live_students or stored_teachers != live_teachers:
+            school_divergences.append({
+                "school_id": school.id,
+                "stored_students": stored_students,
+                "live_students": live_students,
+                "stored_teachers": stored_teachers,
+                "live_teachers": live_teachers,
+            })
+            logger.warning(
+                "Count drift for school %s: students stored=%s live=%s, "
+                "teachers stored=%s live=%s",
+                school.id, stored_students, live_students,
+                stored_teachers, live_teachers,
+            )
+            if fix:
+                school.current_students = live_students
+                school.current_teachers = live_teachers
+
+    classes = (await session.execute(select(Class))).scalars().all()
+    for cls in classes:
+        live_students = int(class_counts.get(cls.id, 0))
+        stored_students = int(cls.current_students or 0)
+        if stored_students != live_students:
+            class_divergences.append({
+                "class_id": cls.id,
+                "school_id": getattr(cls, "school_id", None),
+                "stored_students": stored_students,
+                "live_students": live_students,
+            })
+            logger.warning(
+                "Count drift for class %s (school %s): students stored=%s live=%s",
+                cls.id, getattr(cls, "school_id", None),
+                stored_students, live_students,
+            )
+            if fix:
+                cls.current_students = live_students
+
+    if fix and (school_divergences or class_divergences):
+        await session.flush()
+
+    return {"schools": school_divergences, "classes": class_divergences}
+
+
 __all__ = [
     "live_student_count",
     "live_teacher_count",
     "live_counts_by_tenant",
     "reconcile_school_counts",
     "live_class_student_count",
+    "live_class_counts",
     "reconcile_class_counts",
+    "sweep_count_divergences",
 ]
