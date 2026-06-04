@@ -292,6 +292,134 @@ async def _resolve_teacher_sessions(school_id: str, resolved_teacher_id: str, da
     return enriched
 
 
+async def _reconcile_teacher_assignments_from_schedule(
+    school_id: str, resolved_teacher_id: str, teacher_name: Optional[str] = None
+) -> int:
+    """Additively materialize active ``teacher_assignments`` from a teacher's
+    REAL published-schedule lessons.
+
+    Product rule (confirmed): the published timetable/schedule is the source of
+    truth for "which classes a teacher owns". A teacher with scheduled lessons
+    but no explicit assignment row would otherwise see an empty "My Classes"
+    page and be denied class-level access, because both surfaces read
+    ``teacher_assignments`` (see ``utils.tenant_scope.get_teacher_allowed_class_ids``).
+    Materializing the assignment keeps "My Classes", permissions, and the
+    timetable grid in agreement.
+
+    Safety:
+      - ADDITIVE + idempotent: creates a missing ``(class_id, subject_id)``
+        assignment or reactivates a soft-deactivated one; it NEVER deletes or
+        deactivates rows (so a principal's manual assignment is preserved, and a
+        class dropped from the schedule is not auto-unassigned) and never
+        duplicates an already-active pair.
+      - Cannot widen access beyond reality: only classes the teacher is actually
+        scheduled to teach (from the published schedule) are granted.
+      - Independent-Teacher workspaces manage their own assignment model and are
+        skipped.
+      - Runs from GET handlers, where ``pg_session_middleware`` rolls back the
+        request transaction, so it uses a dedicated session with an explicit
+        commit (same pattern as ``_auto_populate_teacher_class_assignments``).
+    """
+    if not school_id or not resolved_teacher_id:
+        return 0
+    if is_independent_workspace_id(school_id):
+        return 0
+
+    sessions = await _resolve_teacher_sessions(school_id, resolved_teacher_id)
+    # subject_id is NOT NULL on teacher_assignments, so only (class, subject)
+    # pairs with both present can be materialized.
+    pairs = {
+        (s.get("class_id"), s.get("subject_id"))
+        for s in sessions
+        if s.get("class_id") and s.get("subject_id")
+    }
+    if not pairs:
+        return 0
+
+    # Defense-in-depth: teacher_assignments is the class-access permission source
+    # (utils.tenant_scope.get_teacher_allowed_class_ids). Never materialize a row
+    # for a class/subject that does not belong to THIS school, so corrupted or
+    # cross-tenant schedule data can never widen a teacher's access. Keep only
+    # pairs whose class_id AND subject_id are confirmed in-tenant.
+    class_ids = {cid for cid, _ in pairs}
+    subject_ids = {sid for _, sid in pairs}
+    valid_classes = {
+        c.get("id") for c in await gd_find(
+            db.session, "classes",
+            {"id": {"$in": list(class_ids)}, "school_id": school_id}, limit=2000,
+        )
+    }
+    valid_subjects = {
+        s.get("id") for s in await gd_find(
+            db.session, "subjects",
+            {"id": {"$in": list(subject_ids)}, "school_id": school_id}, limit=2000,
+        )
+    }
+    pairs = {
+        (cid, sid) for (cid, sid) in pairs
+        if cid in valid_classes and sid in valid_subjects
+    }
+    if not pairs:
+        return 0
+
+    from db import async_session_factory
+
+    created = 0
+    async with async_session_factory() as ses:
+        existing = await gd_find(
+            ses, "teacher_assignments",
+            {"teacher_id": resolved_teacher_id, "school_id": school_id}, limit=2000,
+        )
+        active_pairs = {
+            (a.get("class_id"), a.get("subject_id"))
+            for a in existing if a.get("is_active") is not False
+        }
+        inactive_by_pair = {
+            (a.get("class_id"), a.get("subject_id")): a
+            for a in existing if a.get("is_active") is False
+        }
+        now = datetime.now(timezone.utc).isoformat()
+        for cid, sid in pairs:
+            if (cid, sid) in active_pairs:
+                continue
+            try:
+                async with ses.begin_nested():
+                    revived = inactive_by_pair.get((cid, sid))
+                    if revived:
+                        await gd_update_one(
+                            ses, "teacher_assignments", {"id": revived.get("id")},
+                            {"is_active": True, "updated_at": now},
+                        )
+                    else:
+                        await gd_insert(ses, "teacher_assignments", {
+                            "id": str(uuid.uuid4()),
+                            "school_id": school_id,
+                            "teacher_id": resolved_teacher_id,
+                            "class_id": cid,
+                            "subject_id": sid,
+                            "teacher_name": teacher_name,
+                            "is_active": True,
+                            "created_at": now,
+                        })
+                created += 1
+            except Exception as e:
+                logger.warning(
+                    "teacher assignment reconcile failed teacher=%s class=%s subject=%s: %s",
+                    resolved_teacher_id, cid, sid, e,
+                )
+        if created:
+            try:
+                await ses.commit()
+            except Exception as e:
+                logger.warning(
+                    "teacher assignment reconcile commit failed for teacher %s: %s",
+                    resolved_teacher_id, e,
+                )
+                await ses.rollback()
+                return 0
+    return created
+
+
 # ============== TEACHER DASHBOARD APIs ==============
 TEACHER_ADMIN_ROLES = {"admin", "super_admin", "platform_admin", "school_admin", "school_principal"}
 
@@ -1239,6 +1367,19 @@ async def get_teacher_classes(
             await _auto_populate_teacher_class_assignments(school_id)
         except Exception as e:
             logger.warning(f"teacher classes initial populate failed for school {school_id}: {e}")
+
+    # Source-of-truth reconciliation: a teacher with REAL scheduled lessons in
+    # the published timetable but no explicit assignment row would otherwise see
+    # an empty page (and be denied class access). Materialize the missing
+    # assignments additively so "My Classes", permissions, and the grid agree.
+    if school_id:
+        try:
+            await _reconcile_teacher_assignments_from_schedule(
+                school_id, resolved_teacher_id,
+                teacher.get("full_name") if teacher else None,
+            )
+        except Exception as e:
+            logger.warning(f"teacher assignment reconcile failed for school {school_id}: {e}")
 
     assignments = await gd_find(db.session, "teacher_assignments", {
         "teacher_id": resolved_teacher_id,
