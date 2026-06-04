@@ -17,6 +17,48 @@ export const EDUCATION_STAGES = [
   { id: 'high',    name_ar: 'المرحلة الثانوية',  name_en: 'High',     gradeMin: 10, gradeMax: 12 },
 ];
 
+/**
+ * The twelve product-approved canonical grade levels — the single source of
+ * truth for the "المرحلة الدراسية" dropdown. `label_ar` is the canonical
+ * value that gets persisted; the backend (`utils/canonical_grades.py`)
+ * mirrors this list and revalidates on write, so a tampered payload cannot
+ * persist an off-list grade. Keep the two files in sync.
+ */
+export const CANONICAL_GRADES = [
+  { grade: 1,  stage: 'primary', label_ar: 'الصف الأول الابتدائي',  label_en: 'Grade 1'  },
+  { grade: 2,  stage: 'primary', label_ar: 'الصف الثاني الابتدائي', label_en: 'Grade 2'  },
+  { grade: 3,  stage: 'primary', label_ar: 'الصف الثالث الابتدائي', label_en: 'Grade 3'  },
+  { grade: 4,  stage: 'primary', label_ar: 'الصف الرابع الابتدائي', label_en: 'Grade 4'  },
+  { grade: 5,  stage: 'primary', label_ar: 'الصف الخامس الابتدائي', label_en: 'Grade 5'  },
+  { grade: 6,  stage: 'primary', label_ar: 'الصف السادس الابتدائي', label_en: 'Grade 6'  },
+  { grade: 7,  stage: 'middle',  label_ar: 'الصف الأول المتوسط',    label_en: 'Grade 7'  },
+  { grade: 8,  stage: 'middle',  label_ar: 'الصف الثاني المتوسط',   label_en: 'Grade 8'  },
+  { grade: 9,  stage: 'middle',  label_ar: 'الصف الثالث المتوسط',   label_en: 'Grade 9'  },
+  { grade: 10, stage: 'high',    label_ar: 'الصف الأول الثانوي',    label_en: 'Grade 10' },
+  { grade: 11, stage: 'high',    label_ar: 'الصف الثاني الثانوي',   label_en: 'Grade 11' },
+  { grade: 12, stage: 'high',    label_ar: 'الصف الثالث الثانوي',   label_en: 'Grade 12' },
+];
+
+const _collapseWs = (v) => String(v).trim().replace(/\s+/g, ' ');
+
+const CANONICAL_LABEL_INDEX = new Map(
+  CANONICAL_GRADES.map((g) => [_collapseWs(g.label_ar), g]),
+);
+
+/**
+ * Resolve a canonical-grade label (whitespace-insensitive) to its catalogue
+ * entry, or `null`. Strict: arbitrary free text returns `null`.
+ */
+export function canonicalGradeByLabel(label) {
+  if (label == null) return null;
+  return CANONICAL_LABEL_INDEX.get(_collapseWs(label)) || null;
+}
+
+/** True iff `label` is exactly one of the twelve approved canonical labels. */
+export function isCanonicalGradeLabel(label) {
+  return canonicalGradeByLabel(label) != null;
+}
+
 const STAGE_TOKEN_MAP = {
   primary: 'primary', elementary: 'primary', 'pri': 'primary',
   middle: 'middle', intermediate: 'middle', mid: 'middle',

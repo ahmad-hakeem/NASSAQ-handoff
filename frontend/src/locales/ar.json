@@ -1156,6 +1156,7 @@
   "workspaceClassSubjectPlaceholder": "اختر المادة",
   "workspaceClassGradeLabel": "المرحلة الدراسية",
   "workspaceClassGradeLabelPlaceholder": "مثال: الصف الأول الابتدائي",
+  "workspaceClassGradeSelectPlaceholder": "اختر المرحلة الدراسية",
   "workspaceClassNoSubjects": "لا توجد مواد بعد. يرجى إضافة مادة أولاً.",
   "workspaceClassSubjectsLoadError": "تعذّر تحميل المواد — حاول مجدداً",
   "teacherImportNotAvailable": "استيراد البيانات غير متاح من حساب المعلم حالياً. يتم مزامنة بياناتك تلقائياً من إدارة المدرسة.",

@@ -27,6 +27,7 @@ import {
   ArrowUpDown, Settings, Plus, FileSpreadsheet,
   FileImage, FileText, Upload, Info, X, Pencil, Trash2, Save
 } from 'lucide-react';
+import { CANONICAL_GRADES } from '../../utils/stageGrade';
 import SessionsManageTab from './SessionsManageTab';
 import StandbyTab from './StandbyTab';
 // 2026-05-18 — Lesson planner was relocated from the main sidebar
@@ -506,6 +507,35 @@ export default function TeacherClassesPage() {
     }
   }, [api]);
 
+  // Resolve a canonical grade label (one of CANONICAL_GRADES.label_ar) to a
+  // tenant grade-row id: reuse an existing workspace row with the same label
+  // (case/whitespace-insensitive) or create one via POST /grade-levels. The
+  // backend canonical-validates + dedupes that surface, so the returned id
+  // always points at a normalized canonical row. Shared by create + edit so
+  // both flows persist the same standardized stage value.
+  const resolveWorkspaceGradeId = useCallback(async (label) => {
+    const canonical = (label || '').trim();
+    if (!canonical) return null;
+    const labelLc = canonical.toLowerCase();
+    const matched = gradeOptions.find(g =>
+      (g.name_ar || '').trim().toLowerCase() === labelLc
+      || (g.name_en || '').trim().toLowerCase() === labelLc
+      || (g.name || '').trim().toLowerCase() === labelLc
+    );
+    if (matched) return matched.id;
+    // school_id is required by the schema but the server overrides it with
+    // the IT workspace id, so any placeholder is fine.
+    const createGradeRes = await api.post('/grade-levels', {
+      name: canonical,
+      name_en: canonical,
+      order: (gradeOptions?.length || 0) + 1,
+      is_active: true,
+      school_id: 'workspace',
+    });
+    fetchGradeOptions();
+    return createGradeRes.data?.id;
+  }, [api, gradeOptions, fetchGradeOptions]);
+
   // Workspace-mode subject loader. Independent-Teacher accounts have no
   // school directory to pick from, so we list the subjects already
   // provisioned in their workspace (typically the optional first-class
@@ -619,36 +649,12 @@ export default function TeacherClassesPage() {
       }
       setAddingClass(true);
       try {
-        // Free-text grade label handling (spec §5.3 step 3): try to reuse
-        // an existing grade row in this workspace whose label matches the
-        // user's input; if none exists, auto-create one via the existing
-        // grade-create surface (`POST /grade-levels`, now permitted for
-        // IT and tenant-pinned server-side) and use the returned id.
-        const label = f.grade_label.trim();
-        const labelLc = label.toLowerCase();
-        const matched = gradeOptions.find(g =>
-          (g.name_ar || '').trim().toLowerCase() === labelLc
-          || (g.name_en || '').trim().toLowerCase() === labelLc
-          || (g.name || '').trim().toLowerCase() === labelLc
-        );
-        let gradeId;
-        if (matched) {
-          gradeId = matched.id;
-        } else {
-          // Auto-create. school_id is required by the schema but the
-          // server overrides it with the IT workspace id, so any
-          // placeholder is fine — we send the label as a sentinel.
-          const createGradeRes = await api.post('/grade-levels', {
-            name: label,
-            name_en: label,
-            order: (gradeOptions?.length || 0) + 1,
-            is_active: true,
-            school_id: 'workspace',
-          });
-          gradeId = createGradeRes.data?.id;
-          // Refresh local cache so the next submit reuses this row.
-          fetchGradeOptions();
-        }
+        // Canonical stage handling (spec §5.3 step 3): `grade_label` now
+        // comes from the controlled CANONICAL_GRADES dropdown, so it is
+        // always one of the twelve approved labels. Resolve it to a
+        // tenant grade-row id (reuse-or-create); the backend canonical-
+        // validates + dedupes that surface server-side.
+        const gradeId = await resolveWorkspaceGradeId(f.grade_label);
 
         // NOTE: school_id / tenant_id are intentionally never sent —
         // server resolves them from the JWT via require_request_school_id
@@ -862,10 +868,15 @@ export default function TeacherClassesPage() {
 
   const handleEditClass = (e, cls) => {
     e.stopPropagation();
+    // Pre-select the current stage from the class's grade row so the
+    // controlled dropdown opens on the existing canonical value.
+    const gradeRow = gradeOptions.find(g => g.id === cls.grade_id || g.id === cls.grade_level);
+    const currentGradeLabel = (gradeRow?.name_ar || gradeRow?.name || '').trim();
     setEditClassDialog({
       id: cls.id,
       name: cls.name || '',
       capacity: cls.capacity || 30,
+      grade_label: currentGradeLabel,
     });
   };
 
@@ -898,10 +909,23 @@ export default function TeacherClassesPage() {
     }
     setEditClassSaving(true);
     try {
-      await api.put(`/classes/${editClassDialog.id}`, {
+      const payload = {
         name,
         capacity: Number(editClassDialog.capacity) || 30,
-      });
+      };
+      // Stage edit uses the same controlled canonical dropdown as create.
+      // Resolve the selected label to a normalized grade-row id and send
+      // both grade_id + grade_level so the class keeps a consistent
+      // canonical reference for class/student/subject linking.
+      const gradeLabel = (editClassDialog.grade_label || '').trim();
+      if (gradeLabel) {
+        const gradeId = await resolveWorkspaceGradeId(gradeLabel);
+        if (gradeId) {
+          payload.grade_id = gradeId;
+          payload.grade_level = gradeId;
+        }
+      }
+      await api.put(`/classes/${editClassDialog.id}`, payload);
       setEditClassDialog(null);
       await fetchClasses();
     } catch (err) {
@@ -1282,11 +1306,21 @@ export default function TeacherClassesPage() {
             </div>
             <div className="space-y-2">
               <Label className="font-cairo text-sm">{t('workspaceClassGradeLabel')}</Label>
-              <Input
+              <Select
                 value={workspaceClassForm.grade_label}
-                onChange={(e) => setWorkspaceClassForm(p => ({ ...p, grade_label: e.target.value }))}
-                placeholder={t('workspaceClassGradeLabelPlaceholder')}
-              />
+                onValueChange={(v) => setWorkspaceClassForm(p => ({ ...p, grade_label: v }))}
+              >
+                <SelectTrigger data-testid="workspace-class-grade-select">
+                  <SelectValue placeholder={t('workspaceClassGradeSelectPlaceholder')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {CANONICAL_GRADES.map(g => (
+                    <SelectItem key={g.grade} value={g.label_ar}>
+                      {isRTL ? g.label_ar : g.label_en}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label className="font-cairo text-sm">{t('workspaceClassSubject')}</Label>
@@ -1938,6 +1972,24 @@ export default function TeacherClassesPage() {
                   onChange={(e) => setEditClassDialog((p) => ({ ...p, name: e.target.value }))}
                   placeholder={t('workspaceClassNamePlaceholder')}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label className="font-cairo text-sm">{t('workspaceClassGradeLabel')}</Label>
+                <Select
+                  value={editClassDialog.grade_label || ''}
+                  onValueChange={(v) => setEditClassDialog((p) => ({ ...p, grade_label: v }))}
+                >
+                  <SelectTrigger data-testid="edit-class-grade-select">
+                    <SelectValue placeholder={t('workspaceClassGradeSelectPlaceholder')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CANONICAL_GRADES.map(g => (
+                      <SelectItem key={g.grade} value={g.label_ar}>
+                        {isRTL ? g.label_ar : g.label_en}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label className="font-cairo text-sm">{isRTL ? 'السعة' : 'Capacity'}</Label>

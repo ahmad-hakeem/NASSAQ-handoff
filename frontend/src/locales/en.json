@@ -1152,6 +1152,7 @@
   "workspaceClassSubjectPlaceholder": "Select subject",
   "workspaceClassGradeLabel": "Grade level",
   "workspaceClassGradeLabelPlaceholder": "e.g. Grade 1",
+  "workspaceClassGradeSelectPlaceholder": "Select a grade level",
   "workspaceClassNoSubjects": "No subjects yet. Please add a subject first.",
   "workspaceClassSubjectsLoadError": "Couldn't load subjects — try again",
   "teacherImportNotAvailable": "Data import isn't available from the teacher account yet. Your data is synced automatically from your school administration.",

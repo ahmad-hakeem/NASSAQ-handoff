@@ -477,12 +477,53 @@ async def create_grade_level(
     # workspace regardless of any client-supplied `school_id`.
     from auth_scope import is_independent_teacher, independent_workspace_id
     from utils.tenant_scope import resolve_school_id
-    if is_independent_teacher(current_user):
+    is_it = is_independent_teacher(current_user)
+    if is_it:
         target_school_id = independent_workspace_id(current_user)
     else:
         target_school_id = resolve_school_id(current_user, data.school_id) or current_user.get("tenant_id")
     if not target_school_id:
         raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
+
+    # Data-integrity boundary (Independent-Teacher create/edit-class flow):
+    # the "المرحلة الدراسية" dropdown is controlled, so the only grade
+    # values an IT can persist must be one of the twelve product-approved
+    # canonical grades. Fail closed on anything off-list so a tampered
+    # payload cannot introduce free-text / duplicate stage variants.
+    if is_it:
+        from utils.canonical_grades import normalize_canonical_grade
+        canonical = normalize_canonical_grade(data.name)
+        if canonical is None:
+            raise HTTPException(
+                status_code=422,
+                detail="المرحلة الدراسية غير صالحة. يرجى اختيار مرحلة من القائمة المعتمدة.",
+            )
+        # Idempotent reuse: never create a second row for a stage that
+        # already exists in this workspace (dedupe by canonical label).
+        existing = await gd_find_one(
+            db.session,
+            "grade_levels",
+            {"school_id": target_school_id, "name_ar": canonical["label_ar"]},
+        )
+        if existing:
+            return _grade_to_response(existing)
+
+        grade_id = str(uuid.uuid4())
+        grade_doc = {
+            "id": grade_id,
+            "name": canonical["label_ar"],
+            "name_ar": canonical["label_ar"],
+            "name_en": canonical["label_en"],
+            # `grade_levels` has no `grade` column; `order` carries the
+            # canonical grade number and `stage` the canonical stage so
+            # downstream stage validation/derivation stays consistent.
+            "stage": canonical["stage"],
+            "order": canonical["grade"],
+            "is_active": data.is_active,
+            "school_id": target_school_id,
+        }
+        await gd_insert(db.session, "grade_levels", grade_doc)
+        return _grade_to_response(grade_doc)
 
     grade_id = str(uuid.uuid4())
 

@@ -591,6 +591,8 @@ async def update_class(
         update_fields["name_en"] = class_data.name_en
     if class_data.grade_level is not None:
         update_fields["grade_level"] = class_data.grade_level
+    if class_data.grade_id is not None:
+        update_fields["grade_id"] = class_data.grade_id
     if class_data.section is not None:
         update_fields["section"] = class_data.section
     if class_data.capacity is not None:

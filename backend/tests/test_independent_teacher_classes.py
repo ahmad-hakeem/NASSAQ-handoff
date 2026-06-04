@@ -298,7 +298,7 @@ async def test_independent_teacher_auto_create_grade_level_pins_workspace(client
     h = _headers(user["id"], user["role"], wsid)
 
     payload = {
-        "name": "الصف السادس",
+        "name": "الصف السادس الابتدائي",  # canonical approved label
         "name_en": "Grade 6",
         "order": 1,
         "is_active": True,
@@ -310,6 +310,59 @@ async def test_independent_teacher_auto_create_grade_level_pins_workspace(client
     assert body["school_id"] == wsid, "Grade-level row leaked across tenants"
     row = await gd_find_one(db.session, "grade_levels", {"id": body["id"]})
     assert row["school_id"] == wsid
+
+
+# ----------------------------------------------------------------------
+# Canonical stage enforcement (data-integrity boundary)
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_independent_teacher_grade_level_rejects_noncanonical(client):
+    """An IT may only persist one of the twelve product-approved grades.
+    A tampered / free-text label must be rejected with 422 so no
+    inconsistent stage variant can ever be stored."""
+    user = await _mk_independent_teacher()
+    wsid = independent_workspace_id(user)
+    h = _headers(user["id"], user["role"], wsid)
+
+    for bad in ("الصف السادس", "1-أ", "اول ابتدائي", "garbage", ""):
+        resp = await client.post(
+            "/grade-levels",
+            json={"name": bad, "order": 1, "is_active": True, "school_id": "x"},
+            headers=h,
+        )
+        assert resp.status_code == 422, f"{bad!r} should be rejected, got {resp.status_code}"
+
+
+@pytest.mark.asyncio
+async def test_independent_teacher_grade_level_canonical_is_idempotent(client):
+    """Submitting the same canonical stage twice must reuse the existing
+    row (no duplicate stage variants) and normalize the stored value."""
+    user = await _mk_independent_teacher()
+    wsid = independent_workspace_id(user)
+    h = _headers(user["id"], user["role"], wsid)
+
+    label = "الصف الأول الابتدائي"
+    r1 = await client.post(
+        "/grade-levels",
+        json={"name": label, "order": 9, "is_active": True, "school_id": "x"},
+        headers=h,
+    )
+    assert r1.status_code == 200, r1.text
+    r2 = await client.post(
+        "/grade-levels",
+        json={"name": label, "order": 1, "is_active": True, "school_id": "x"},
+        headers=h,
+    )
+    assert r2.status_code == 200, r2.text
+    assert r1.json()["id"] == r2.json()["id"], "Canonical stage was duplicated"
+
+    rows = await gd_count(db.session, "grade_levels", {"school_id": wsid, "name_ar": label})
+    assert rows == 1, "Duplicate canonical grade rows persisted"
+
+    stored = await gd_find_one(db.session, "grade_levels", {"id": r1.json()["id"]})
+    assert stored["name_ar"] == label
+    assert stored["stage"] == "primary"
+    assert stored["order"] == 1  # canonical grade number, not the submitted 9
 
 
 @pytest.mark.asyncio
