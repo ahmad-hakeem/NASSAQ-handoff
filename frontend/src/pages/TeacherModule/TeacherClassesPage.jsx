@@ -116,10 +116,13 @@ const getGradeColor = (grade) => GRADE_COLORS[String(grade)] || GRADE_COLORS['1'
 
 export default function TeacherClassesPage() {
   const { user, api, isRTL, token, fetchPermissions } = useAuth();
-  // 2026-05-18 — Mirror the Sidebar's Phase 0 §4.B-6 permission gate
-  // for the new "lesson-planner" tab. Items that require a backend
-  // RBAC slice (here: `ai.lesson_plans`) are hidden until the lazy
-  // /auth/me/permissions fetch resolves. Fail-closed while loading.
+  // 2026-06-04 — `perms` is the backend-sourced RBAC slice set, used
+  // ONLY to gate the sub-tabs inside the embedded BulkImportPanel. It
+  // is fetched lazily; on a slow / failed / raced fetch we keep it
+  // `null` (NOT an empty Set) so downstream gates fail-OPEN instead of
+  // silently hiding entitled surfaces. BulkImportPanel already treats a
+  // null `permissions` prop as "show all", and the backend re-enforces
+  // every bulk-import action server-side.
   const [perms, setPerms] = useState(null);
   useEffect(() => {
     let cancelled = false;
@@ -128,6 +131,10 @@ export default function TeacherClassesPage() {
       try {
         const data = await fetchPermissions();
         if (cancelled) return;
+        // A null/undefined response means "couldn't determine yet"
+        // (offline, error, or a concurrent in-flight fetch returned
+        // early). Keep perms null so we don't fail-closed.
+        if (!data) { setPerms(null); return; }
         const list = Array.isArray(data?.permissions)
           ? data.permissions
           : Array.isArray(data?.effective_permissions)
@@ -135,26 +142,27 @@ export default function TeacherClassesPage() {
             : Array.isArray(data) ? data : [];
         setPerms(new Set(list.map((p) => String(p))));
       } catch {
-        if (!cancelled) setPerms(new Set());
+        if (!cancelled) setPerms(null);
       }
     })();
     return () => { cancelled = true; };
   }, [token, fetchPermissions]);
-  const canUseLessonPlanner = !!(perms && perms.has('ai.lesson_plans'));
-  // 2026-05-19 — IA refactor: the "استيراد البيانات" and "تقويمي الشخصي"
-  // tabs replace standalone sidebar entries that were each permission-
-  // gated. Mirror those gates here so merging them into TeacherClasses
-  // doesn't widen the FE authorization surface for users who lack the
-  // underlying RBAC slices (the redirect routes still gate too).
-  //  - import tab: shown if the user has EITHER of the two bulk-import
-  //    permissions the retired sidebar entries required, matching
-  //    BulkImportPanel's four sub-tab surface.
-  //  - calendar tab: shown only when `events.author_own` is granted,
-  //    matching the retired /teacher/calendar sidebar entry.
-  const canBulkImport = !!(perms && (
-    perms.has('students.bulk_import_workspace') ||
-    perms.has('classes.bulk_import_workspace')
-  ));
+  // 2026-06-04 — Tab VISIBILITY for the two IT-only tabs below
+  // ("مساعد خطط الدروس" / "استيراد البيانات") is gated on the IT role
+  // alone, matching the sibling IT-only "المواد" / "الطلاب" tabs.
+  //
+  // Why this changed: these tabs were previously gated on a lazily-
+  // fetched RBAC slice (`ai.lesson_plans` / `*.bulk_import_workspace`).
+  // But `get_user_permissions()` always unions those slices into the
+  // `independent_teacher` BASE role (backend/middleware/rbac.py), so
+  // every real IT user is entitled to them and custom permissions can
+  // only ADD, never remove. The lazy gate could therefore only ever
+  // produce a false-NEGATIVE: if /auth/me/permissions was slow, failed,
+  // or the deployed backend lagged the role table, the tabs disappeared
+  // even though the user was entitled (observed in production). The
+  // underlying AI / bulk-import routes stay RBAC-enforced server-side.
+  const canUseLessonPlanner = user?.role === 'independent_teacher';
+  const canBulkImport = user?.role === 'independent_teacher';
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const _rawTab = searchParams.get('tab');
