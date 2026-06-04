@@ -1150,6 +1150,8 @@
   "teacherCreateClassNotAvailable": "إضافة الفصول غير متاحة لحساب المعلم حالياً. الفصول والجداول والطلاب يتم إدارتها تلقائياً من قِبَل إدارة المدرسة.",
   "workspaceClassesUsageChip": "{0} من {1} فصول",
   "workspaceStudentsUsageChip": "{0} من {1} طالبًا",
+  "workspaceClassName": "اسم الفصل",
+  "workspaceClassNamePlaceholder": "اسم الفصل",
   "workspaceClassSubject": "المادة",
   "workspaceClassSubjectPlaceholder": "اختر المادة",
   "workspaceClassGradeLabel": "المرحلة الدراسية",

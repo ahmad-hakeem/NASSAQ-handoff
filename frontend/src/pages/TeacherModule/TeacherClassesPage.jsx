@@ -1273,11 +1273,11 @@ export default function TeacherClassesPage() {
           // the IT v1 contract.
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label className="font-cairo text-sm">{t('courseName')}</Label>
+              <Label className="font-cairo text-sm">{t('workspaceClassName')}</Label>
               <Input
                 value={workspaceClassForm.name_ar}
                 onChange={(e) => setWorkspaceClassForm(p => ({ ...p, name_ar: e.target.value }))}
-                placeholder={t('courseName')}
+                placeholder={t('workspaceClassNamePlaceholder')}
               />
             </div>
             <div className="space-y-2">
@@ -1932,10 +1932,11 @@ export default function TeacherClassesPage() {
           {editClassDialog && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label className="font-cairo text-sm">{t('courseName')}</Label>
+                <Label className="font-cairo text-sm">{t('workspaceClassName')}</Label>
                 <Input
                   value={editClassDialog.name}
                   onChange={(e) => setEditClassDialog((p) => ({ ...p, name: e.target.value }))}
+                  placeholder={t('workspaceClassNamePlaceholder')}
                 />
               </div>
               <div className="space-y-2">
