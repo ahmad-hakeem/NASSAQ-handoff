@@ -538,7 +538,11 @@ async def test_invite_parent_requires_at_least_one_identifier(client):
 # (h) MFA step-up gate — token without mfa_recent_at → 401
 # ----------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_invite_parent_requires_recent_mfa(client):
+async def test_invite_parent_requires_recent_mfa(client, monkeypatch):
+    # This env runs with the demo kill switch (MFA_ENFORCEMENT_DISABLED=true);
+    # the step-up gate only fires when enforcement is on. is_enforcement_disabled()
+    # reads the env fresh per call, so forcing it off here takes effect immediately.
+    monkeypatch.setenv("MFA_ENFORCEMENT_DISABLED", "false")
     user = await _mk_it()
     wsid = independent_workspace_id(user)
     h = _it_headers(user, with_mfa=False)
@@ -650,9 +654,10 @@ async def test_invite_parent_rolls_back_on_audit_failure(client):
     links_before = await gd_count(db.session, "guardian_links",
                                   {"student_id": sid})
 
-    # Force the audit insert to blow up inside the SAVEPOINT.
+    # Force the audit insert to blow up inside the SAVEPOINT. The audit
+    # write now lives in the shared canonical writer (utils.it_parent_link).
     with mock_patch(
-        "routes.independent_teacher_invite_parent_routes.audit_engine.log",
+        "utils.it_parent_link.audit_engine.log",
         side_effect=RuntimeError("boom"),
     ):
         resp = await client.post(

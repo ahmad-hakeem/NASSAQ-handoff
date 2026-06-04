@@ -43,7 +43,6 @@ from __future__ import annotations
 
 import logging
 import os
-import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -59,8 +58,9 @@ from auth_scope import (
     is_independent_teacher,
     require_request_school_id,
 )
-from dependencies import audit_engine, db, get_current_user, require_recent_mfa
-from engines.sql_utils import gd_count, gd_find_one, gd_insert, gd_update_one
+from dependencies import db, get_current_user, require_recent_mfa
+from engines.sql_utils import gd_find_one, gd_update_one
+from utils.it_parent_link import link_workspace_parent_to_student
 
 
 logger = logging.getLogger("nassaq.it_invite_parent")
@@ -79,8 +79,6 @@ _MSG_ALREADY_LINKED_EDIT = (
 _MSG_ALREADY_LINKED_INVITE = (
     "هذا الطالب مرتبط بولي أمر بالفعل."
 )
-
-_AUDIT_ACTION = "INDEPENDENT_TEACHER_PARENT_LINK"
 
 
 # -- Request models -------------------------------------------------------
@@ -175,77 +173,6 @@ async def _load_workspace_student(student_id: str, school_id: str) -> Dict[str, 
     return student
 
 
-async def _dedupe_parent(
-    payload: InviteParentRequest,
-    workspace_id: str,
-) -> tuple[Optional[Dict[str, Any]], str]:
-    """Apply the frozen four-step dedupe, scoped to ``workspace_id``.
-
-    Returns ``(parent_or_None, matched_by)``.
-    ``matched_by`` ∈ {"national_id", "phone_email", "phone", "email", "new"}.
-    First match wins; no fuzzy matching.
-
-    All lookups are constrained by ``school_id == workspace_id`` so that a
-    phone/email/national_id shared by a parent in a different IT workspace
-    never causes a cross-tenant family merge.
-    """
-    scope = {"school_id": workspace_id}
-
-    # Step 1 — national_id.
-    if payload.national_id:
-        row = await gd_find_one(
-            db.session, "parents", {"national_id": payload.national_id, **scope},
-        )
-        if row:
-            return row, "national_id"
-
-    # Step 2 — (phone, email) exact pair.
-    if payload.phone and payload.email:
-        row = await gd_find_one(
-            db.session, "parents",
-            {"phone": payload.phone, "email": payload.email, **scope},
-        )
-        if row:
-            return row, "phone_email"
-
-    # Step 3 — phone alone (when email absent).
-    if payload.phone and not payload.email:
-        row = await gd_find_one(
-            db.session, "parents", {"phone": payload.phone, **scope},
-        )
-        if row:
-            return row, "phone"
-
-    # Step 4 — email alone (when phone absent).
-    if payload.email and not payload.phone:
-        row = await gd_find_one(
-            db.session, "parents", {"email": payload.email, **scope},
-        )
-        if row:
-            return row, "email"
-
-    return None, "new"
-
-
-def _conservative_fill(existing: Dict[str, Any], payload: InviteParentRequest) -> Dict[str, Any]:
-    """Build a partial update that ONLY fills NULL columns on the
-    matched parent row. Established values are NEVER overwritten.
-    Returns an empty dict when nothing needs to change.
-    """
-    updates: Dict[str, Any] = {}
-    if not existing.get("full_name") and payload.full_name:
-        updates["full_name"] = payload.full_name
-    if not existing.get("phone") and payload.phone:
-        updates["phone"] = payload.phone
-    if not existing.get("email") and payload.email:
-        updates["email"] = payload.email
-    if not existing.get("national_id") and payload.national_id:
-        updates["national_id"] = payload.national_id
-    if updates:
-        updates["updated_at"] = _utcnow_iso()
-    return updates
-
-
 # -- Endpoint: POST invite-parent -----------------------------------------
 
 def _parent_invitations_enabled() -> bool:
@@ -311,175 +238,23 @@ async def invite_parent(
     # Begin atomic block. Any inner failure rolls everything back.
     try:
         async with db.session.begin_nested():
-            existing_parent, matched_by = await _dedupe_parent(payload, workspace_id)
-
-            if existing_parent:
-                parent_id = existing_parent["id"]
-                conservative = _conservative_fill(existing_parent, payload)
-                if conservative:
-                    await gd_update_one(
-                        db.session, "parents",
-                        {"id": parent_id},
-                        conservative,
-                    )
-            else:
-                parent_id = str(uuid.uuid4())
-                now = _utcnow_iso()
-                await gd_insert(db.session, "parents", {
-                    "id": parent_id,
-                    "full_name": payload.full_name or (
-                        student.get("pending_parent_name")
-                        or "ولي الأمر"
-                    ),
-                    "phone": payload.phone,
-                    "email": payload.email,
-                    "national_id": payload.national_id,
-                    # First-creation only — never rewritten on cross-tenant link.
-                    "school_id": workspace_id,
-                    "is_active": True,
-                    "student_ids": [student_id],
-                    "created_at": now,
-                    "updated_at": now,
-                })
-
-            # guardian_links — tenant_id MUST be the workspace id
-            # (spec §8 inv. 8). is_primary defaults true when no other
-            # primary link for this student exists.
-            existing_primary = await gd_count(
-                db.session, "guardian_links",
-                {
-                    "tenant_id": workspace_id,
-                    "student_id": student_id,
-                    "is_primary": True,
-                    "is_active": True,
-                },
-            )
-            # Task #203 (§5.9 #7): on EVERY new-parent path, materialise
-            # a workspace-scoped `users` row so the cohort resolver in
-            # `/notifications/bulk` can find the recipient. Dedupe paths
-            # (existing parent reused) keep the legacy parent_ref=parent_id
-            # behaviour and will gain portal accounts via Phase-2 onboarding.
-            #
-            # `users.email` is NOT NULL + globally UNIQUE. To honour both:
-            #   - When the payload has no email, OR a global users row
-            #     already owns that email (cross-workspace collision),
-            #     synthesise a deterministic non-deliverable placeholder
-            #     keyed off the freshly minted parent_id (uuid4 → unique).
-            #     The `.invalid` TLD is reserved (RFC 6761) so this can
-            #     never collide with a real address. The sentinel
-            #     password_hash also blocks any login attempt.
-            parent_user_id_for_ref = parent_id  # legacy fallback (dedupe paths)
-            parent_user_materialised = False
-            user_email_for_insert: Optional[str] = None
-            if not existing_parent:
-                if payload.email:
-                    email_collision = await gd_find_one(
-                        db.session, "users", {"email": payload.email}
-                    )
-                    if not email_collision:
-                        user_email_for_insert = payload.email
-                if user_email_for_insert is None:
-                    user_email_for_insert = (
-                        f"invite+{parent_id}@invite.nassaq.invalid"
-                    )
-                parent_user_id_for_ref = str(uuid.uuid4())
-                now_iso = _utcnow_iso()
-                # `users.password_hash` is NOT NULL. The parent has no
-                # portal credentials at invite time — Phase-2 will issue
-                # them via a proper onboarding flow. Use a non-bcrypt
-                # sentinel that can never verify so the row exists for
-                # cohort resolution but cannot authenticate.
-                await gd_insert(db.session, "users", {
-                    "id": parent_user_id_for_ref,
-                    "role": "parent",
-                    "tenant_id": workspace_id,
-                    "email": user_email_for_insert,
-                    "phone": payload.phone,
-                    "full_name": payload.full_name
-                        or student.get("pending_parent_name")
-                        or "ولي الأمر",
-                    "password_hash": "!invite-pending",
-                    "must_change_password": True,
-                    "is_active": True,
-                    "preferred_language": "ar",
-                    "preferred_theme": "light",
-                    "created_at": now_iso,
-                    "updated_at": now_iso,
-                })
-                parent_user_materialised = True
-
-            link_id = str(uuid.uuid4())
-            now = _utcnow_iso()
-            await gd_insert(db.session, "guardian_links", {
-                "id": link_id,
-                "tenant_id": workspace_id,
-                "student_id": student_id,
-                "student_name": student.get("full_name"),
-                "parent_id": parent_id,
-                "parent_ref": parent_user_id_for_ref,
-                "parent_name": (
-                    payload.full_name
-                    or (existing_parent or {}).get("full_name")
-                ),
-                "relationship": payload.relationship or "guardian",
-                "is_primary": existing_primary == 0,
-                "is_active": True,
-                "permissions": {
-                    "can_pickup": True,
-                    "can_view_grades": True,
-                    "can_view_attendance": True,
-                    "can_communicate": True,
-                },
-                "linked_by": current_user["id"],
-                "linked_at": now,
-                "updated_at": now,
-            })
-
-            # Flip parent_id NULL → non-NULL. The
-            # students_clear_pending_parent_on_link_trg trigger from
-            # migration z1a2b3c4d5e6 wipes pending_parent_* atomically.
-            updated = await gd_update_one(
-                db.session, "students",
-                {"id": student_id, "school_id": school_id},
-                {
-                    "parent_id": parent_id,
-                    "updated_at": _utcnow_iso(),
-                },
-            )
-            if not updated:
-                # The student vanished mid-transaction — bail out so
-                # the SAVEPOINT rolls back the parent / link writes.
-                raise HTTPException(status_code=404, detail=_MSG_STUDENT_NOT_FOUND)
-
-            # Audit row — same transaction.
-            await audit_engine.log(
-                action=_AUDIT_ACTION,
-                performed_by=current_user["id"],
-                tenant_id=workspace_id,
-                entity_type="student",
-                entity_id=student_id,
-                details={
-                    "school_id": school_id,
-                    "tenant_id": workspace_id,
-                    "user_id": current_user["id"],
-                    "student_id": student_id,
-                    "parent_id": parent_id,
-                    "matched_by": matched_by,
-                    "parent_user_materialised": parent_user_materialised,
-                    "parent_user_id": parent_user_id_for_ref,
-                },
-                actor_name=current_user.get("full_name"),
-                actor_role=current_user.get("role"),
-                actor_email=current_user.get("email"),
+            result = await link_workspace_parent_to_student(
+                db.session,
+                student=student,
+                workspace_id=workspace_id,
+                school_id=school_id,
+                full_name=payload.full_name,
+                phone=payload.phone,
+                email=payload.email,
+                national_id=payload.national_id,
+                relationship=payload.relationship,
+                actor=current_user,
             )
 
-        # Re-read the freshly linked parent for the response payload.
-        parent_row = await gd_find_one(db.session, "parents", {"id": parent_id})
-        link_row = await gd_find_one(db.session, "guardian_links", {"id": link_id})
         return {
-            "parent": parent_row,
-            "link": link_row,
-            "matched_by": matched_by,
+            "parent": result["parent"],
+            "link": result["link"],
+            "matched_by": result["matched_by"],
         }
     except HTTPException:
         raise

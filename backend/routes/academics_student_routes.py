@@ -25,6 +25,7 @@ from dependencies import (
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc, _gd_pull, _gd_push, _gd_addtoset
 from auth_scope import require_request_school_id
+from utils.it_parent_link import link_workspace_parent_to_student
 
 
 from shared_models import (
@@ -990,7 +991,8 @@ async def search_parents(
 @router.post("/student-wizard/create")
 async def create_student_with_wizard(
     data: StudentWizardCreate,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER])),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
     """Create student with parent and health info via wizard.
 
@@ -1053,13 +1055,40 @@ async def create_student_with_wizard(
             raise HTTPException(status_code=404, detail="ولي الأمر غير موجود في هذه المدرسة")
 
     # Workspace-mode parent gate (#192 spec §5.6): in IT workspace mode
-    # the parent payload is FULLY OPTIONAL — any parent fragments
-    # supplied through the inline-create flow (including phone-only,
-    # name-only, or no parent at all) land in `pending_parent_*` and
-    # never materialise a `parents` row. Only an explicit
-    # `link_to_parent_id` opts into linking.
+    # the parent payload is optional. Behaviour splits on whether a
+    # *usable* parent identifier (national_id / phone / email) is present:
+    #
+    #   * Task #817 — when at least one usable identifier is supplied, the
+    #     IT create flow auto-links a parent at create-time via the
+    #     canonical workspace writer (utils.it_parent_link), so the student
+    #     is born Linked exactly like the principal/school create flow.
+    #   * No usable identifier — preserve the §5.6 Pending behaviour: any
+    #     parent fragments land in `pending_parent_*` and never materialise
+    #     a `parents` row. Only an explicit `link_to_parent_id` (handled
+    #     separately) otherwise opts into linking.
     p = data.parent or {}
-    skip_parent_materialise = is_it and not data.link_to_parent_id
+    _it_parent_national_id = (p.get("national_id") or "").strip() or None
+    _it_parent_phone = (p.get("phone") or "").strip() or None
+    _it_parent_email = (p.get("email") or "").strip() or None
+    it_auto_link = (
+        is_it
+        and not data.link_to_parent_id
+        and bool(_it_parent_national_id or _it_parent_phone or _it_parent_email)
+    )
+    skip_parent_materialise = (
+        is_it and not data.link_to_parent_id and not it_auto_link
+    )
+
+    # §5.7 step-up: auto-linking a parent is the same Pending → Linked
+    # write that the invite-parent writer gates behind fresh MFA. Enforce
+    # it here BEFORE any DB write (memory: middleware-commits-on-4xx — the
+    # session middleware commits non-GET writes even on a raised
+    # HTTPException, so the guard must precede every write). Non-auto-link
+    # IT creates and principal/admin creates keep their existing posture.
+    if it_auto_link:
+        await _REQUIRE_RECENT_MFA_403_IT(
+            credentials=credentials, current_user=current_user,
+        )
 
     # Generate student number: NSS-CODE-GRADE-XXXX using actual grade number
     school_code = school.get("code", "NSS")
@@ -1124,13 +1153,53 @@ async def create_student_with_wizard(
         student_doc["pending_parent_phone"] = (p.get("phone") or None)
         student_doc["pending_parent_email"] = (p.get("email") or None)
 
-    await gd_insert(db.session, "students", student_doc)
-
     # Handle parent
     parent_doc = None
     parent_password = None
 
-    if skip_parent_materialise:
+    if it_auto_link:
+        # Task #817 — IT create-time auto-link. Insert the student and run
+        # the canonical workspace parent-link writer inside ONE savepoint
+        # so a link failure rolls back the freshly created student too (no
+        # half-created student / orphaned parent). The writer flips
+        # students.parent_id (the DB trigger clears pending_parent_*),
+        # tags guardian_links.tenant_id == workspace_id, and writes the
+        # INDEPENDENT_TEACHER_PARENT_LINK audit — identical to invite.
+        async with db.session.begin_nested():
+            await gd_insert(db.session, "students", student_doc)
+            link_result = await link_workspace_parent_to_student(
+                db.session,
+                student=student_doc,
+                workspace_id=school_id,
+                school_id=school_id,
+                full_name=(p.get("full_name") or None),
+                phone=_it_parent_phone,
+                email=_it_parent_email,
+                national_id=_it_parent_national_id,
+                relationship=(p.get("relationship") or p.get("relation")),
+                actor=current_user,
+            )
+        parent_doc = link_result.get("parent")
+        # Mirror the principal flow: populate the denormalised parent_*
+        # columns on the student row so the roster serializers (which read
+        # parent_name/phone/email directly off the student) display the
+        # linked parent. parent_id was already set by the writer.
+        if parent_doc:
+            await gd_update_one(db.session, "students", {"id": student_id}, {
+                "parent_name": parent_doc.get("full_name"),
+                "parent_phone": parent_doc.get("phone"),
+                "parent_email": parent_doc.get("email"),
+            })
+        # The canonical writer owns parent_id; skip the legacy back-fill.
+        skip_legacy_parent_update = True
+    else:
+        await gd_insert(db.session, "students", student_doc)
+        skip_legacy_parent_update = False
+
+    if it_auto_link:
+        # Already linked above.
+        pass
+    elif skip_parent_materialise:
         # No parents row, no parent user, no guardian_link. Done.
         pass
     elif data.link_to_parent_id:
@@ -1178,8 +1247,10 @@ async def create_student_with_wizard(
         }
         await gd_insert(db.session, "users", parent_user)
     
-    # Update student with parent info
-    if parent_doc:
+    # Update student with parent info (legacy denormalised back-fill). The
+    # IT auto-link path already set parent_id via the canonical writer and
+    # mirrored the denormalised columns, so skip it here.
+    if parent_doc and not skip_legacy_parent_update:
         await gd_update_one(db.session, "students", {"id": student_id}, {
                 "parent_id": parent_doc.get("id"),
                 "parent_name": parent_doc.get("full_name"),
@@ -1257,7 +1328,11 @@ async def create_student_with_wizard(
             "email": parent_doc.get("email") if parent_doc else None,
             "phone": parent_doc.get("phone") if parent_doc else None,
             "temp_password": parent_password,
-            "is_new": parent_password is not None,
+            "is_new": (
+                link_result.get("matched_by") == "new"
+                if it_auto_link else parent_password is not None
+            ),
+            "matched_by": link_result.get("matched_by") if it_auto_link else None,
         } if parent_doc else None,
         "welcome_message": welcome_message,
         "siblings": {
