@@ -195,25 +195,20 @@ export default function UsersManagement() {
 
   const fetchSchoolUsers = useCallback(async () => {
     try {
-      const schoolsResponse = await api.get('/schools');
+      const [schoolsResponse, usersBySchoolResponse] = await Promise.all([
+        api.get('/schools'),
+        api.get('/users/by-school'),
+      ]);
       const schoolsList = schoolsResponse.data || [];
       setSchools(schoolsList);
 
+      const usersBySchool = usersBySchoolResponse.data || {};
       const schoolUsersMap = {};
       for (const school of schoolsList) {
-        try {
-          const usersResponse = await api.get('/users', { params: { tenant_id: school.id } });
-          const schoolUsersList = usersResponse.data || [];
-          schoolUsersMap[school.id] = {
-            school,
-            users: schoolUsersList.filter(u =>
-              u.role === 'school_principal' || u.role === 'school_sub_admin' ||
-              u.role === 'teacher' || u.role === 'school_manager'
-            )
-          };
-        } catch (e) {
-          schoolUsersMap[school.id] = { school, users: [] };
-        }
+        schoolUsersMap[school.id] = {
+          school,
+          users: usersBySchool[school.id] || [],
+        };
       }
       setSchoolUsers(schoolUsersMap);
     } catch (error) {

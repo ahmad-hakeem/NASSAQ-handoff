@@ -487,6 +487,44 @@ async def get_users(
     users = await gd_find(db.session, "users", query, limit=1000)
     return [UserResponse(**u) for u in users]
 
+
+_SCHOOL_USER_ROLES = [
+    "school_principal",
+    "school_sub_admin",
+    "teacher",
+    "school_manager",
+]
+
+
+@router.get("/users/by-school")
+async def get_users_by_school(
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+):
+    """Return school-level users grouped by tenant in a single query.
+
+    Replaces the per-school N+1 fetch the User Management "School Users" tab
+    used to perform. Filters server-side to the school-level roles so the
+    client does not over-fetch and discard.
+    """
+    users = await gd_find(
+        db.session,
+        "users",
+        {"role": {"$in": _SCHOOL_USER_ROLES}},
+        limit=None,
+    )
+
+    grouped: Dict[str, List[dict]] = {}
+    for u in users:
+        tenant_id = u.get("tenant_id")
+        if not tenant_id:
+            continue
+        grouped.setdefault(tenant_id, []).append(
+            UserResponse(**u).model_dump(mode="json")
+        )
+
+    return grouped
+
+
 class UserStatusRequest(BaseModel):
     is_active: bool
 
