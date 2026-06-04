@@ -37,6 +37,8 @@ import {
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   LogIn,
   ExternalLink,
   Sparkles,
@@ -803,34 +805,69 @@ export const PlatformSchoolsPage = () => {
               
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="flex flex-col items-center gap-3 mt-4">
-                  <p className="text-sm text-muted-foreground text-center">
-                    {isRTL 
-                      ? `عرض ${(currentPage - 1) * itemsPerPage + 1} إلى ${Math.min(currentPage * itemsPerPage, filteredSchools.length)} من ${filteredSchools.length}`
-                      : `Showing ${(currentPage - 1) * itemsPerPage + 1} to ${Math.min(currentPage * itemsPerPage, filteredSchools.length)} of ${filteredSchools.length}`
-                    }
-                  </p>
-                  <div className="flex items-center justify-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                      disabled={currentPage === 1}
-                      className="rounded-xl"
-                    >
-                      {isRTL ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-                    </Button>
-                    <span className="text-sm">{currentPage} / {totalPages}</span>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                      disabled={currentPage === totalPages}
-                      className="rounded-xl"
-                    >
-                      {isRTL ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                    </Button>
+                <div className="flex items-center justify-center gap-2 pt-6">
+                  <Button
+                    variant="outline" size="icon"
+                    className="h-9 w-9 rounded-lg"
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(1)}
+                  >
+                    {isRTL ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+                  </Button>
+                  <Button
+                    variant="outline" size="icon"
+                    className="h-9 w-9 rounded-lg"
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(p => p - 1)}
+                  >
+                    {isRTL ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+                  </Button>
+
+                  <div className="flex items-center gap-1 mx-2">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                      .reduce((acc, p, idx, arr) => {
+                        if (idx > 0 && p - arr[idx - 1] > 1) acc.push('...');
+                        acc.push(p);
+                        return acc;
+                      }, [])
+                      .map((item, idx) =>
+                        item === '...' ? (
+                          <span key={`dots-${idx}`} className="px-1 text-muted-foreground">...</span>
+                        ) : (
+                          <Button
+                            key={item}
+                            variant={currentPage === item ? "default" : "outline"}
+                            size="icon"
+                            className={`h-9 w-9 rounded-lg text-sm ${currentPage === item ? 'bg-brand-navy' : ''}`}
+                            onClick={() => setCurrentPage(item)}
+                          >
+                            {item}
+                          </Button>
+                        )
+                      )}
                   </div>
+
+                  <Button
+                    variant="outline" size="icon"
+                    className="h-9 w-9 rounded-lg"
+                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage(p => p + 1)}
+                  >
+                    {isRTL ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  </Button>
+                  <Button
+                    variant="outline" size="icon"
+                    className="h-9 w-9 rounded-lg"
+                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage(totalPages)}
+                  >
+                    {isRTL ? <ChevronsLeft className="h-4 w-4" /> : <ChevronsRight className="h-4 w-4" />}
+                  </Button>
+
+                  <span className="text-sm text-muted-foreground ms-3">
+                    {(currentPage - 1) * itemsPerPage + 1}-{Math.min(currentPage * itemsPerPage, filteredSchools.length)} {isRTL ? 'من' : 'of'} {filteredSchools.length}
+                  </span>
                 </div>
               )}
             </CardContent>
