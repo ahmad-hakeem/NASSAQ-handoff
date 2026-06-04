@@ -3155,6 +3155,7 @@
   "smartPerformanceIndexInsufficientData": "Not enough data for evaluation. Add students and record attendance to begin analysis.",
   "smartPerformanceIndex": "Smart Performance Index",
   "smartRecommendations": "Smart Recommendations",
+  "recommendationExpectedImpact": "Estimated improvement if you act on this recommendation: {{value}}%",
   "smartTransformationJourney": "Smart Transformation Journey",
   "sms": "SMS",
   "smsNotifications": "SMS Notifications",

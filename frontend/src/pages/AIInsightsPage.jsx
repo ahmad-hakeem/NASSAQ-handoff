@@ -447,12 +447,26 @@ const RecommendationsPanel = ({ recommendations, isRTL, isTeacher = false }) => 
                     <p className="text-xs text-muted-foreground font-tajawal mt-1 line-clamp-2">
                       {isRTL ? rec.description?.ar : rec.description?.en}
                     </p>
-                    <div className="flex items-center gap-2 mt-2.5">
-                      <div className="flex-1 h-2 bg-muted/20 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-brand-turquoise to-brand-purple rounded-full transition-all duration-700" style={{ width: `${Math.min(100, rec.expected_impact * 4)}%` }} />
-                      </div>
-                      <span className="text-[10px] font-bold text-brand-turquoise font-cairo">+{rec.expected_impact}%</span>
-                    </div>
+                    {(() => {
+                      const impact = Math.max(0, Math.min(100, Number(rec.expected_impact) || 0));
+                      const impactLabel = t('recommendationExpectedImpact', { value: impact });
+                      return (
+                        <div className="flex items-center gap-2 mt-2.5">
+                          <div
+                            className="flex-1 h-2 bg-muted/20 rounded-full overflow-hidden"
+                            role="progressbar"
+                            aria-valuenow={impact}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-label={impactLabel}
+                            title={impactLabel}
+                          >
+                            <div className="h-full bg-gradient-to-r from-brand-turquoise to-brand-purple rounded-full transition-all duration-700" style={{ width: `${impact}%` }} />
+                          </div>
+                          <span className="text-[10px] font-bold text-brand-turquoise font-cairo">+{impact}%</span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               );

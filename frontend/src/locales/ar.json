@@ -3157,6 +3157,7 @@
   "smartPerformanceIndexInsufficientData": "لا توجد بيانات كافية للتقييم. قم بإضافة طلاب وتسجيل الحضور لبدء التحليل.",
   "smartPerformanceIndex": "مؤشر الأداء الذكي",
   "smartRecommendations": "توصيات ذكية",
+  "recommendationExpectedImpact": "التحسّن المتوقع عند تنفيذ هذه التوصية: {{value}}%",
   "smartTransformationJourney": "رحلة التحول الذكي",
   "sms": "رسالة SMS",
   "smsNotifications": "الرسائل النصية SMS",
