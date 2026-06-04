@@ -1399,16 +1399,15 @@ async def get_teacher_classes(
 
     classes = await gd_find(db.session, "classes", {"id": {"$in": all_class_ids}, "is_active": {"$ne": False}}, limit=100)
 
-    schedule = await gd_find_one(db.session, "schedules", {"school_id": school_id, "status": {"$in": ["draft", "published"]}}) if school_id else None
-    schedule_sessions = []
-    time_slots_map = {}
-    if schedule:
-        schedule_sessions = await gd_find(db.session, "schedule_sessions", {"schedule_id": schedule["id"], "teacher_id": resolved_teacher_id, "status": "scheduled"}, limit=500)
-        ts_docs = await gd_find(db.session, "time_slots", {"school_id": school_id, "is_break": {"$ne": True}}, limit=50)
-        for ts in ts_docs:
-            ts_id = ts.get("id") or ts.get("slot_number")
-            if ts_id is not None:
-                time_slots_map[str(ts_id)] = ts
+    # Schedule/status source-of-truth: use the SAME resolver the teacher's
+    # timetable view uses (_resolve_teacher_sessions) so a class's lesson
+    # status ("بدون حصة") can never contradict the timetable. The previous
+    # inline read hit ONLY the legacy `schedule_sessions` table and returned
+    # nothing for schools on the modern `timetable_sessions` engine, which
+    # mislabelled every card as "no_upcoming" even with a full timetable.
+    # The resolver already enriches each row with start_time/subject_name, so
+    # no separate time_slots lookup is needed here.
+    teacher_sessions = await _resolve_teacher_sessions(school_id, resolved_teacher_id) if school_id else []
 
     now = datetime.now()
     js_day_map = {6: "sunday", 0: "monday", 1: "tuesday", 2: "wednesday", 3: "thursday"}
@@ -1423,9 +1422,9 @@ async def get_teacher_classes(
         student_count = await gd_count(db.session, "students", {"class_id": cls_id, "is_active": True})
 
         subject_ids = list(set(a.get("subject_id") for a in class_assignments if a.get("subject_id")))
-        if not subject_ids and schedule_sessions:
+        if not subject_ids and teacher_sessions:
             subject_ids = list(set(
-                s.get("subject_id") for s in schedule_sessions
+                s.get("subject_id") for s in teacher_sessions
                 if s.get("class_id") == cls_id and s.get("subject_id")
             ))
         if not subject_ids:
@@ -1443,7 +1442,7 @@ async def get_teacher_classes(
             for s in subjects if s.get("id")
         ]
 
-        class_schedule = [s for s in schedule_sessions if s.get("class_id") == cls_id]
+        class_schedule = [s for s in teacher_sessions if s.get("class_id") == cls_id]
         weekly_periods = len(class_schedule) or sum(a.get("weekly_sessions", 0) for a in class_assignments)
 
         next_session_info = None
@@ -1452,13 +1451,11 @@ async def get_teacher_classes(
             now_minutes = now.hour * 60 + now.minute
             best = None
             for s in class_schedule:
-                s_day = s.get("day_of_week", "").lower()
+                s_day = (s.get("day_of_week") or "").lower()
                 if s_day not in day_order:
                     continue
                 s_idx = day_order.index(s_day)
-                ts_id = s.get("time_slot_id") or s.get("slot_number")
-                ts = time_slots_map.get(str(ts_id), {})
-                start_str = ts.get("start_time", s.get("start_time", ""))
+                start_str = s.get("start_time", "") or ""
                 try:
                     parts = start_str.replace(":", " ").split()
                     s_min = int(parts[0]) * 60 + int(parts[1])
@@ -1469,13 +1466,12 @@ async def get_teacher_classes(
                 else:
                     dist = (s_idx - today_idx + 5) * 1440 + (s_min - now_minutes)
                 if best is None or dist < best[0]:
-                    subj = next((sb for sb in subjects if sb.get("id") == s.get("subject_id")), {})
                     best = (dist, {
                         "day": s_day,
-                        "start_time": ts.get("start_time", s.get("start_time", "")),
-                        "end_time": ts.get("end_time", s.get("end_time", "")),
-                        "subject_name": subj.get("name_ar") or subj.get("name_en") or "",
-                        "slot_number": ts.get("slot_number", s.get("slot_number")),
+                        "start_time": s.get("start_time", ""),
+                        "end_time": s.get("end_time", ""),
+                        "subject_name": s.get("subject_name", ""),
+                        "slot_number": s.get("slot_number") or s.get("period_number"),
                         "room_name": s.get("room_name", ""),
                     })
             if best:
