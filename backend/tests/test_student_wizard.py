@@ -1,159 +1,126 @@
 """
 Test Student Wizard - إنشاء طالب جديد
+
 Tests for the student creation wizard functionality including:
-- Creating student from Dashboard Quick Action
-- Creating student from UsersClassesManagement page
-- Verifying grades dropdown
-- Verifying classes dropdown
-- Creating parent account with student
-- QR code generation
+- Reference grades / academic structure lookups
+- Creating a student (with/without class, with health info)
+- Linking a sibling to an existing parent
+- Validation and unauthorized handling
+- Class roster + count regression (Task #361)
+
+Runs fully in-process against the ASGI app using the shared async ``client``
+fixture (see ``conftest.py``) — no external server / live base URL required.
+Tokens are minted via the conftest header fixtures and data is seeded with
+``gd_insert``. The autouse ``_db_session`` fixture rolls everything back between
+tests, so the suite is hermetic.
 """
 
-import pytest
-import requests
-import os
 import uuid
-from datetime import datetime
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+from dependencies import db, UserRole, hash_password
+from engines.sql_utils import gd_insert
 
-# Test credentials
-PRINCIPAL_EMAIL = "principal1@nassaq.com"
-PRINCIPAL_PASSWORD = "Principal@123"
-ADMIN_EMAIL = "admin@nassaq.com"
-ADMIN_PASSWORD = "Admin@123"
+
+async def _mk_login_user(role: UserRole, tenant_id: str, email: str, password: str) -> dict:
+    """Seed a user row whose password is verifiable by /auth/login."""
+    uid = str(uuid.uuid4())
+    user = {
+        "id": uid,
+        "role": role.value,
+        "tenant_id": tenant_id,
+        "school_id": tenant_id,
+        "email": email,
+        "full_name": f"{role.value} user",
+        "is_active": True,
+        "password_hash": hash_password(password),
+    }
+    await gd_insert(db.session, "users", user)
+    await db.session.flush()
+    return user
 
 
 class TestAuthentication:
-    """Authentication tests"""
-    
-    def test_principal_login(self):
-        """Test principal login"""
-        response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": PRINCIPAL_EMAIL,
-            "password": PRINCIPAL_PASSWORD
-        })
+    """Authentication tests — seeded accounts, in-process /auth/login."""
+
+    async def test_principal_login(self, client, tenant_a):
+        email = f"principal_{uuid.uuid4().hex[:8]}@nassaq.com"
+        password = "Principal@123"
+        await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a, email, password)
+
+        response = await client.post("/auth/login", json={"email": email, "password": password})
         assert response.status_code == 200, f"Login failed: {response.text}"
         data = response.json()
         assert "access_token" in data
         assert data["user"]["role"] == "school_principal"
-        print(f"✓ Principal login successful - tenant_id: {data['user'].get('tenant_id')}")
-        return data["access_token"]
-    
-    def test_admin_login(self):
-        """Test admin login"""
-        response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": ADMIN_EMAIL,
-            "password": ADMIN_PASSWORD
-        })
+
+    async def test_admin_login(self, client, tenant_a):
+        email = f"admin_{uuid.uuid4().hex[:8]}@nassaq.com"
+        password = "Admin@123"
+        await _mk_login_user(UserRole.PLATFORM_ADMIN, tenant_a, email, password)
+
+        response = await client.post("/auth/login", json={"email": email, "password": password})
         assert response.status_code == 200, f"Login failed: {response.text}"
         data = response.json()
         assert "access_token" in data
         assert data["user"]["role"] == "platform_admin"
-        print("✓ Admin login successful")
-        return data["access_token"]
 
 
 class TestGradesAndClasses:
     """Test grades and classes APIs - required for student wizard"""
-    
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        """Get auth token"""
-        response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": PRINCIPAL_EMAIL,
-            "password": PRINCIPAL_PASSWORD
-        })
-        self.token = response.json()["access_token"]
-        self.headers = {"Authorization": f"Bearer {self.token}"}
-    
-    def test_get_reference_grades(self):
+
+    async def test_get_reference_grades(self, client, school_principal_headers):
         """Test GET /api/reference/grades - grades dropdown data"""
-        response = requests.get(f"{BASE_URL}/api/reference/grades", headers=self.headers)
+        response = await client.get("/reference/grades", headers=school_principal_headers)
         assert response.status_code == 200, f"Failed to get grades: {response.text}"
         grades = response.json()
         assert isinstance(grades, list), "Grades should be a list"
-        print(f"✓ Got {len(grades)} grades from /api/reference/grades")
-        
-        # Verify grade structure
         if grades:
             grade = grades[0]
-            print(f"  Sample grade: {grade}")
-            # Check for name_ar or name_en fields
-            has_name = 'name_ar' in grade or 'name_en' in grade or 'name' in grade
+            has_name = "name_ar" in grade or "name_en" in grade or "name" in grade
             assert has_name, "Grade should have name_ar, name_en, or name field"
-        return grades
-    
-    def test_get_classes(self):
+
+    async def test_get_classes(self, client, school_principal_headers):
         """Test GET /api/classes - classes dropdown data"""
-        response = requests.get(f"{BASE_URL}/api/classes", headers=self.headers)
+        response = await client.get("/classes", headers=school_principal_headers)
         assert response.status_code == 200, f"Failed to get classes: {response.text}"
         classes = response.json()
         assert isinstance(classes, list), "Classes should be a list"
-        print(f"✓ Got {len(classes)} classes from /api/classes")
-        
-        # Verify class structure
-        if classes:
-            cls = classes[0]
-            print(f"  Sample class: id={cls.get('id')}, name={cls.get('name')}")
-        return classes
-    
-    def test_get_academic_structure(self):
+
+    async def test_get_academic_structure(self, client, school_principal_headers):
         """Test GET /api/reference/academic-structure - full academic structure"""
-        response = requests.get(f"{BASE_URL}/api/reference/academic-structure", headers=self.headers)
+        response = await client.get(
+            "/reference/academic-structure", headers=school_principal_headers
+        )
         assert response.status_code == 200, f"Failed to get academic structure: {response.text}"
         data = response.json()
-        
-        # Check for grades in response
-        grades = data.get('grades', [])
-        print(f"✓ Academic structure has {len(grades)} grades")
-        
-        if grades:
-            grade = grades[0]
-            print(f"  Sample grade from academic structure: {grade}")
-        return data
+        assert isinstance(data.get("grades", []), list)
 
 
 class TestStudentWizardAPI:
     """Test student wizard API endpoints"""
-    
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        """Get auth token and school context"""
-        response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": PRINCIPAL_EMAIL,
-            "password": PRINCIPAL_PASSWORD
-        })
-        data = response.json()
-        self.token = data["access_token"]
-        self.tenant_id = data["user"].get("tenant_id")
-        self.headers = {"Authorization": f"Bearer {self.token}"}
-    
-    def test_check_parent_no_params(self):
+
+    async def test_check_parent_no_params(self, client, school_principal_headers):
         """Test check-parent with no parameters"""
-        response = requests.post(
-            f"{BASE_URL}/api/student-wizard/check-parent",
-            headers=self.headers
+        response = await client.post(
+            "/student-wizard/check-parent", headers=school_principal_headers
         )
         assert response.status_code == 200, f"Failed: {response.text}"
         data = response.json()
-        assert data.get("found") == False
-        print("✓ Check parent with no params returns found=false")
-    
-    def test_check_parent_with_phone(self):
+        assert data.get("found") is False
+
+    async def test_check_parent_with_phone(self, client, school_principal_headers):
         """Test check-parent with phone number"""
-        response = requests.post(
-            f"{BASE_URL}/api/student-wizard/check-parent?phone=0500000000",
-            headers=self.headers
+        response = await client.post(
+            "/student-wizard/check-parent?phone=0500000000",
+            headers=school_principal_headers,
         )
         assert response.status_code == 200, f"Failed: {response.text}"
         data = response.json()
-        # Should return found=false for non-existent phone
-        print(f"✓ Check parent with phone: found={data.get('found')}")
-    
-    def test_create_student_minimal(self):
+        assert data.get("found") is False
+
+    async def test_create_student_minimal(self, client, school_principal_headers):
         """Test creating student with minimal data"""
-        unique_id = str(uuid.uuid4())[:8]
+        unique_id = uuid.uuid4().hex[:8]
         student_data = {
             "full_name": f"TEST_طالب اختبار {unique_id}",
             "gender": "male",
@@ -162,57 +129,47 @@ class TestStudentWizardAPI:
             "grade_id": "grade-1",
             "parent": {
                 "full_name": f"TEST_ولي أمر {unique_id}",
-                "phone": f"05{unique_id[:8].replace('-', '0')}",
-                "relationship": "father"
-            }
+                "phone": f"05{unique_id}",
+                "relationship": "father",
+            },
         }
-        
-        response = requests.post(
-            f"{BASE_URL}/api/student-wizard/create",
-            json=student_data,
-            headers=self.headers
+
+        response = await client.post(
+            "/student-wizard/create", json=student_data, headers=school_principal_headers
         )
-        
+
         assert response.status_code == 200, f"Failed to create student: {response.text}"
         data = response.json()
-        
-        # Verify response structure
-        assert data.get("success") == True, "Response should have success=true"
+
+        assert data.get("success") is True, "Response should have success=true"
         assert "student" in data, "Response should have student object"
         assert "parent" in data, "Response should have parent object"
-        
+
         student = data["student"]
         assert student.get("id"), "Student should have id"
         assert student.get("student_id") or student.get("student_number"), "Student should have student_id/number"
         assert student.get("full_name") == student_data["full_name"], "Student name should match"
         assert student.get("temp_password"), "Student should have temp_password"
         assert student.get("qr_code"), "Student should have QR code"
-        
+
         parent = data["parent"]
         assert parent.get("id"), "Parent should have id"
         assert parent.get("full_name") == student_data["parent"]["full_name"], "Parent name should match"
-        assert parent.get("is_new") == True, "Parent should be marked as new"
+        assert parent.get("is_new") is True, "Parent should be marked as new"
         assert parent.get("temp_password"), "Parent should have temp_password"
-        
-        print(f"✓ Created student: {student.get('student_id')}")
-        print(f"  Student email: {student.get('email')}")
-        print(f"  Parent email: {parent.get('email')}")
-        print(f"  QR code generated: {len(student.get('qr_code', '')) > 100}")
-        
-        return data
-    
-    def test_create_student_with_class(self):
+
+    async def test_create_student_with_class(self, client, school_principal_headers, tenant_a):
         """Test creating student with class assignment"""
-        # First get available classes
-        classes_response = requests.get(f"{BASE_URL}/api/classes", headers=self.headers)
-        classes = classes_response.json()
-        
-        class_id = None
-        if classes:
-            class_id = classes[0].get("id")
-            print(f"  Using class: {classes[0].get('name')} (id: {class_id})")
-        
-        unique_id = str(uuid.uuid4())[:8]
+        class_id = str(uuid.uuid4())
+        await gd_insert(db.session, "classes", {
+            "id": class_id,
+            "school_id": tenant_a,
+            "name": f"WizardClass-{class_id[:6]}",
+            "is_active": True,
+        })
+        await db.session.flush()
+
+        unique_id = uuid.uuid4().hex[:8]
         student_data = {
             "full_name": f"TEST_طالب مع فصل {unique_id}",
             "gender": "female",
@@ -222,34 +179,24 @@ class TestStudentWizardAPI:
             "class_id": class_id,
             "parent": {
                 "full_name": f"TEST_أم الطالب {unique_id}",
-                "phone": f"05{unique_id[:8].replace('-', '1')}",
+                "phone": f"05{unique_id}",
                 "email": f"test_parent_{unique_id}@test.com",
-                "relationship": "mother"
-            }
+                "relationship": "mother",
+            },
         }
-        
-        response = requests.post(
-            f"{BASE_URL}/api/student-wizard/create",
-            json=student_data,
-            headers=self.headers
+
+        response = await client.post(
+            "/student-wizard/create", json=student_data, headers=school_principal_headers
         )
-        
+
         assert response.status_code == 200, f"Failed to create student: {response.text}"
         data = response.json()
-        assert data.get("success") == True
-        
-        student = data["student"]
-        if class_id:
-            # If class was assigned, verify class info in response
-            print(f"✓ Created student with class: {student.get('class_name')}")
-        else:
-            print("✓ Created student (no classes available)")
-        
-        return data
-    
-    def test_create_student_with_health_info(self):
+        assert data.get("success") is True
+        assert data["student"]["id"]
+
+    async def test_create_student_with_health_info(self, client, school_principal_headers):
         """Test creating student with health information"""
-        unique_id = str(uuid.uuid4())[:8]
+        unique_id = uuid.uuid4().hex[:8]
         student_data = {
             "full_name": f"TEST_طالب صحي {unique_id}",
             "gender": "male",
@@ -258,37 +205,31 @@ class TestStudentWizardAPI:
             "grade_id": "grade-3",
             "parent": {
                 "full_name": f"TEST_ولي أمر صحي {unique_id}",
-                "phone": f"05{unique_id[:8].replace('-', '2')}",
-                "relationship": "guardian"
+                "phone": f"05{unique_id}",
+                "relationship": "guardian",
             },
             "health": {
                 "health_status": "جيدة",
                 "allergies": "حساسية الفول السوداني, حساسية الغبار",
                 "medications": "فيتامين د",
                 "special_needs": None,
-                "notes": "يحتاج متابعة دورية"
-            }
+                "notes": "يحتاج متابعة دورية",
+            },
         }
-        
-        response = requests.post(
-            f"{BASE_URL}/api/student-wizard/create",
-            json=student_data,
-            headers=self.headers
+
+        response = await client.post(
+            "/student-wizard/create", json=student_data, headers=school_principal_headers
         )
-        
+
         assert response.status_code == 200, f"Failed to create student: {response.text}"
         data = response.json()
-        assert data.get("success") == True
-        
-        print(f"✓ Created student with health info: {data['student'].get('student_id')}")
-        return data
-    
-    def test_create_student_link_existing_parent(self):
+        assert data.get("success") is True
+
+    async def test_create_student_link_existing_parent(self, client, school_principal_headers):
         """Test creating student linked to existing parent (sibling)"""
-        # First create a student with parent
-        unique_id = str(uuid.uuid4())[:8]
-        parent_phone = f"05{unique_id[:8].replace('-', '3')}"
-        
+        unique_id = uuid.uuid4().hex[:8]
+        parent_phone = f"05{unique_id}"
+
         first_student_data = {
             "full_name": f"TEST_الطالب الأول {unique_id}",
             "gender": "male",
@@ -298,73 +239,51 @@ class TestStudentWizardAPI:
             "parent": {
                 "full_name": f"TEST_ولي أمر مشترك {unique_id}",
                 "phone": parent_phone,
-                "relationship": "father"
-            }
+                "relationship": "father",
+            },
         }
-        
-        response1 = requests.post(
-            f"{BASE_URL}/api/student-wizard/create",
-            json=first_student_data,
-            headers=self.headers
+
+        response1 = await client.post(
+            "/student-wizard/create", json=first_student_data, headers=school_principal_headers
         )
-        assert response1.status_code == 200
+        assert response1.status_code == 200, response1.text
         first_data = response1.json()
         parent_id = first_data["parent"]["id"]
-        print(f"✓ Created first student with parent_id: {parent_id}")
-        
-        # Check if parent exists
-        check_response = requests.post(
-            f"{BASE_URL}/api/student-wizard/check-parent?phone={parent_phone}",
-            headers=self.headers
+
+        check_response = await client.post(
+            f"/student-wizard/check-parent?phone={parent_phone}",
+            headers=school_principal_headers,
         )
         assert check_response.status_code == 200
         check_data = check_response.json()
-        assert check_data.get("found") == True, "Parent should be found"
-        print(f"✓ Parent found with {len(check_data.get('students', []))} existing student(s)")
-        
-        # Create sibling linked to existing parent
+        assert check_data.get("found") is True, "Parent should be found"
+
         sibling_data = {
             "full_name": f"TEST_الطالب الثاني (شقيق) {unique_id}",
             "gender": "female",
             "date_of_birth": "2014-05-15",
             "education_level": "primary",
             "grade_id": "grade-2",
-            "link_to_parent_id": parent_id
+            "link_to_parent_id": parent_id,
         }
-        
-        response2 = requests.post(
-            f"{BASE_URL}/api/student-wizard/create",
-            json=sibling_data,
-            headers=self.headers
+
+        response2 = await client.post(
+            "/student-wizard/create", json=sibling_data, headers=school_principal_headers
         )
         assert response2.status_code == 200, f"Failed to create sibling: {response2.text}"
         sibling_data_response = response2.json()
-        assert sibling_data_response.get("success") == True
-        
-        # Parent should not be new (linked to existing)
+        assert sibling_data_response.get("success") is True
+
         parent = sibling_data_response.get("parent")
         if parent:
-            assert parent.get("is_new") == False or parent.get("temp_password") is None, \
+            assert parent.get("is_new") is False or parent.get("temp_password") is None, \
                 "Linked parent should not be marked as new"
-        
-        print(f"✓ Created sibling linked to existing parent")
-        return sibling_data_response
 
 
 class TestStudentWizardValidation:
     """Test validation and error handling"""
-    
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        """Get auth token"""
-        response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": PRINCIPAL_EMAIL,
-            "password": PRINCIPAL_PASSWORD
-        })
-        self.token = response.json()["access_token"]
-        self.headers = {"Authorization": f"Bearer {self.token}"}
-    
-    def test_create_student_missing_name(self):
+
+    async def test_create_student_missing_name(self, client, school_principal_headers):
         """Test creating student without name - should fail"""
         student_data = {
             "gender": "male",
@@ -372,21 +291,16 @@ class TestStudentWizardValidation:
             "parent": {
                 "full_name": "ولي أمر",
                 "phone": "0500000001",
-                "relationship": "father"
-            }
+                "relationship": "father",
+            },
         }
-        
-        response = requests.post(
-            f"{BASE_URL}/api/student-wizard/create",
-            json=student_data,
-            headers=self.headers
+
+        response = await client.post(
+            "/student-wizard/create", json=student_data, headers=school_principal_headers
         )
-        
-        # Should fail with 422 (validation error)
         assert response.status_code == 422, f"Expected 422, got {response.status_code}"
-        print("✓ Validation correctly rejects student without name")
-    
-    def test_create_student_without_auth(self):
+
+    async def test_create_student_without_auth(self, client):
         """Test creating student without authentication - should fail"""
         student_data = {
             "full_name": "طالب بدون توثيق",
@@ -394,18 +308,12 @@ class TestStudentWizardValidation:
             "parent": {
                 "full_name": "ولي أمر",
                 "phone": "0500000002",
-                "relationship": "father"
-            }
+                "relationship": "father",
+            },
         }
-        
-        response = requests.post(
-            f"{BASE_URL}/api/student-wizard/create",
-            json=student_data
-        )
-        
-        # Should fail with 401 or 403
+
+        response = await client.post("/student-wizard/create", json=student_data)
         assert response.status_code in [401, 403], f"Expected 401/403, got {response.status_code}"
-        print("✓ API correctly rejects unauthenticated request")
 
 
 class TestClassRosterAndCount:
@@ -414,47 +322,44 @@ class TestClassRosterAndCount:
     new student must immediately show in `/classes/{id}/students`.
     Delete must reverse both. Cross-tenant ids must 404."""
 
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": PRINCIPAL_EMAIL,
-            "password": PRINCIPAL_PASSWORD,
+    async def _seed_class(self, tenant_a):
+        class_id = str(uuid.uuid4())
+        await gd_insert(db.session, "classes", {
+            "id": class_id,
+            "school_id": tenant_a,
+            "name": f"RosterClass-{class_id[:6]}",
+            "is_active": True,
+            "current_students": 0,
         })
-        self.token = response.json()["access_token"]
-        self.headers = {"Authorization": f"Bearer {self.token}"}
+        await db.session.flush()
+        return class_id
 
-    def _pick_class(self):
-        r = requests.get(f"{BASE_URL}/api/classes", headers=self.headers)
-        assert r.status_code == 200, r.text
-        classes = r.json()
-        if not classes:
-            pytest.skip("No classes available in test tenant")
-        return classes[0]
-
-    def _class_count(self, class_id):
-        r = requests.get(f"{BASE_URL}/api/classes/{class_id}", headers=self.headers)
+    async def _class_count(self, client, headers, class_id):
+        r = await client.get(f"/classes/{class_id}", headers=headers)
         assert r.status_code == 200, r.text
         body = r.json()
         return int(body.get("student_count") or body.get("current_students") or 0)
 
-    def _roster_ids(self, class_id):
-        r = requests.get(f"{BASE_URL}/api/classes/{class_id}/students", headers=self.headers)
+    async def _roster_ids(self, client, headers, class_id):
+        r = await client.get(f"/classes/{class_id}/students", headers=headers)
         assert r.status_code == 200, r.text
         return {s.get("id") for s in r.json()}
 
-    def test_add_then_delete_updates_roster_and_count(self):
-        cls = self._pick_class()
-        class_id = cls["id"]
-        before_count = self._class_count(class_id)
-        before_ids = self._roster_ids(class_id)
+    async def test_add_then_delete_updates_roster_and_count(
+        self, client, school_principal_headers, tenant_a
+    ):
+        headers = school_principal_headers
+        class_id = await self._seed_class(tenant_a)
+        before_count = await self._class_count(client, headers, class_id)
+        before_ids = await self._roster_ids(client, headers, class_id)
 
-        unique = str(uuid.uuid4())[:8]
+        unique = uuid.uuid4().hex[:8]
         payload = {
             "full_name": f"TEST_T361_{unique}",
             "gender": "male",
             "date_of_birth": "2014-01-01",
             "education_level": "primary",
-            "grade_id": cls.get("grade_id") or cls.get("grade_level") or "grade-1",
+            "grade_id": "grade-1",
             "class_id": class_id,
             "parent": {
                 "full_name": f"TEST_T361_parent_{unique}",
@@ -462,35 +367,36 @@ class TestClassRosterAndCount:
                 "relationship": "father",
             },
         }
-        r = requests.post(f"{BASE_URL}/api/student-wizard/create", json=payload, headers=self.headers)
+        r = await client.post(
+            "/student-wizard/create", json=payload, headers=headers
+        )
         assert r.status_code == 200, r.text
         new_id = r.json()["student"]["id"]
 
-        # Stronger signal: read the persisted student row directly and
-        # confirm the exact class_id was stored (not just roster visibility).
-        sr = requests.get(f"{BASE_URL}/api/students/{new_id}", headers=self.headers)
+        sr = await client.get(f"/students/{new_id}", headers=headers)
         assert sr.status_code == 200, sr.text
         assert sr.json().get("class_id") == class_id, (
             f"Persisted class_id mismatch: got {sr.json().get('class_id')!r}, expected {class_id!r}"
         )
 
-        after_ids = self._roster_ids(class_id)
+        after_ids = await self._roster_ids(client, headers, class_id)
         assert new_id in after_ids, "New student must appear in class roster"
-        assert self._class_count(class_id) == before_count + 1, "Count must increment by 1"
+        assert new_id not in before_ids
+        assert await self._class_count(client, headers, class_id) == before_count + 1, "Count must increment by 1"
 
-        d = requests.delete(f"{BASE_URL}/api/students/{new_id}", headers=self.headers)
+        d = await client.delete(f"/students/{new_id}", headers=headers)
         assert d.status_code == 200, d.text
-        assert new_id not in self._roster_ids(class_id), "Student must be gone from roster"
-        assert self._class_count(class_id) == before_count, "Count must drop back"
+        assert new_id not in await self._roster_ids(client, headers, class_id), "Student must be gone from roster"
+        assert await self._class_count(client, headers, class_id) == before_count, "Count must drop back"
 
-    def test_delete_foreign_student_id_fails_closed(self):
+    async def test_delete_foreign_student_id_fails_closed(self, client, school_principal_headers):
         # An unknown / foreign-tenant student id must 404 from delete,
         # never 200/403 (preserves §8 invariant 3 for student-by-id).
         unknown = str(uuid.uuid4())
-        r = requests.delete(f"{BASE_URL}/api/students/{unknown}", headers=self.headers)
+        r = await client.delete(f"/students/{unknown}", headers=school_principal_headers)
         assert r.status_code == 404, f"Expected 404 for foreign student_id, got {r.status_code}: {r.text}"
 
-    def test_foreign_class_id_fails_closed(self):
+    async def test_foreign_class_id_fails_closed(self, client, school_principal_headers):
         # A random unknown class id from another tenant must 404, not silently
         # create an orphan student.
         unique = str(uuid.uuid4())
@@ -507,34 +413,7 @@ class TestClassRosterAndCount:
                 "relationship": "father",
             },
         }
-        r = requests.post(f"{BASE_URL}/api/student-wizard/create", json=payload, headers=self.headers)
+        r = await client.post(
+            "/student-wizard/create", json=payload, headers=school_principal_headers
+        )
         assert r.status_code == 404, f"Expected 404 for foreign class_id, got {r.status_code}: {r.text}"
-
-
-class TestCleanup:
-    """Cleanup test data"""
-    
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        """Get auth token"""
-        response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": PRINCIPAL_EMAIL,
-            "password": PRINCIPAL_PASSWORD
-        })
-        self.token = response.json()["access_token"]
-        self.headers = {"Authorization": f"Bearer {self.token}"}
-    
-    def test_cleanup_test_students(self):
-        """Cleanup TEST_ prefixed students (informational only)"""
-        # Get students
-        response = requests.get(f"{BASE_URL}/api/students", headers=self.headers)
-        if response.status_code == 200:
-            students = response.json()
-            test_students = [s for s in students if s.get("full_name", "").startswith("TEST_")]
-            print(f"ℹ Found {len(test_students)} TEST_ prefixed students")
-            # Note: Actual cleanup would require DELETE endpoint
-        print("✓ Cleanup check completed")
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--tb=short"])
