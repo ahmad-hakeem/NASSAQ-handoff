@@ -49,7 +49,7 @@ import {
 } from 'lucide-react';
 
 import { useTranslation } from '../../contexts/ThemeContext';
-import { filterGradesByStage, gradeBelongsToStage } from '../../utils/stageGrade';
+import { filterGradesByStage, gradeBelongsToStage, EDUCATION_STAGES } from '../../utils/stageGrade';
 import { getFormErrorMessage } from '../../utils/apiError';
 const STEPS = [
   { id: 1, title_ar: 'بيانات الطالب', title_en: 'Student Info', icon: GraduationCap, color: 'blue' },
@@ -57,12 +57,6 @@ const STEPS = [
   { id: 3, title_ar: 'الصحة', title_en: 'Health', icon: Heart, color: 'rose' },
   { id: 4, title_ar: 'المراجعة', title_en: 'Review', icon: FileText, color: 'amber' },
   { id: 5, title_ar: 'تم', title_en: 'Done', icon: Sparkles, color: 'emerald' },
-];
-
-const EDUCATION_LEVELS = [
-  { id: 'primary', name_ar: 'المرحلة الابتدائية', name_en: 'Primary' },
-  { id: 'middle', name_ar: 'المرحلة المتوسطة', name_en: 'Middle School' },
-  { id: 'high', name_ar: 'المرحلة الثانوية', name_en: 'High School' },
 ];
 
 const RELATIONSHIPS = [
@@ -252,8 +246,13 @@ export default function AddStudentWizard({
     setIsLoadingGrades(true);
     setGradesLoadError(false);
     try {
-      const res = await api.get('/grade-levels');
-      const fetched = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+      // Real-school flows render the single source of truth: the 12 canonical
+      // grades (stage-bound), not the per-school grade_levels rows which may be
+      // incomplete/legacy. IT workspace mode keeps its own custom grade_levels.
+      const endpoint = isWorkspaceMode ? '/grade-levels' : '/classes/options/grades';
+      const res = await api.get(endpoint);
+      const fetched = res.data?.grades
+        || (Array.isArray(res.data) ? res.data : (res.data?.items || []));
       setInternalGrades(fetched);
       gradesFetchedRef.current = true;
     } catch (_err) {
@@ -261,14 +260,17 @@ export default function AddStudentWizard({
     } finally {
       setIsLoadingGrades(false);
     }
-  }, [api]);
+  }, [api, isWorkspaceMode]);
 
   useEffect(() => {
     if (!open) return;
-    if (grades.length > 0) return;
     if (gradesFetchedRef.current) return;
+    // IT workspace keeps its custom grade_levels (passed in via `grades`); only
+    // fetch when none were provided. Real-school flows always pull canonical so
+    // the grade dropdown is consistent regardless of any legacy `grades` prop.
+    if (isWorkspaceMode && grades.length > 0) return;
     fetchGrades();
-  }, [open, grades.length, fetchGrades]);
+  }, [open, isWorkspaceMode, grades.length, fetchGrades]);
 
   const checkParentExists = useCallback(async () => {
     // Workspace mode (#192) intentionally skips the parent-directory probe:
@@ -615,7 +617,7 @@ export default function AddStudentWizard({
                     })} disabled={lockEducation}>
                       <SelectTrigger className="h-10 rounded-lg"><SelectValue placeholder={t('selectLevel')} /></SelectTrigger>
                       <SelectContent>
-                        {EDUCATION_LEVELS.map(level => (<SelectItem key={level.id} value={level.id}>{isRTL ? level.name_ar : level.name_en}</SelectItem>))}
+                        {EDUCATION_STAGES.map(level => (<SelectItem key={level.id} value={level.id}>{isRTL ? level.name_ar : level.name_en}</SelectItem>))}
                       </SelectContent>
                     </Select>
                   </FormField>
@@ -905,7 +907,7 @@ export default function AddStudentWizard({
                   <div><span className="text-muted-foreground text-xs">{t('name')}</span><p className="font-medium">{studentData.full_name}</p></div>
                   <div><span className="text-muted-foreground text-xs">{t('gender')}</span><p className="font-medium">{studentData.gender === 'male' ? (t('male')) : (t('female'))}</p></div>
                   <div><span className="text-muted-foreground text-xs">{isRTL ? 'تاريخ الميلاد' : 'DOB'}</span><p className="font-medium">{studentData.date_of_birth}</p></div>
-                  {studentData.education_level && <div><span className="text-muted-foreground text-xs">{t('level')}</span><p className="font-medium">{EDUCATION_LEVELS.find(l => l.id === studentData.education_level)?.[isRTL ? 'name_ar' : 'name_en']}</p></div>}
+                  {studentData.education_level && <div><span className="text-muted-foreground text-xs">{t('level')}</span><p className="font-medium">{EDUCATION_STAGES.find(l => l.id === studentData.education_level)?.[isRTL ? 'name_ar' : 'name_en']}</p></div>}
                 </div>
               </div>
 

@@ -27,6 +27,8 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 from engines.entity_counts import reconcile_school_counts, reconcile_class_counts
 from auth_scope import require_request_school_id
 from utils.it_parent_link import link_workspace_parent_to_student
+from utils.canonical_grades import CANONICAL_GRADES, normalize_canonical_grade
+from utils.stage_grade import normalize_stage
 
 
 from shared_models import (
@@ -225,39 +227,46 @@ async def get_class_grades_options(current_user: dict = Depends(require_roles([
     UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN,
     UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER
 ]))):
-    """Get available grade levels for class creation"""
+    """Get the canonical grade levels for student/class flows.
+
+    Always returns exactly the twelve product-approved canonical grades
+    (``utils/canonical_grades.py``) with the correct ``name_ar`` label and a
+    ``stage`` of ``primary|middle|high`` so the frontend stage→grade cascade is
+    reliable everywhere. Where the resolved school already has a matching
+    ``grade_levels`` row (matched by grade number / normalized label), that
+    row's existing ``id`` is returned so persistence and existing student/class
+    linkage are preserved; otherwise the canonical grade number (``"1".."12"``)
+    is used as the id, which backend write validation already accepts.
+    """
     # Task #155: fail-closed school-id resolution; see audit row #10.
     school_id = require_request_school_id(current_user)
 
-    grades = await gd_find(db.session, "grade_levels", {"school_id": school_id}, limit=100)
-    
-    result_grades = []
-    for g in grades:
-        result_grades.append({
-            "id": g.get("id", g.get("_id", "")),
-            "name_ar": g.get("name_ar") or g.get("name", ""),
-            "name_en": g.get("name_en", ""),
-            "grade": g.get("grade"),
-            "stage": g.get("stage"),
-            "stage_id": g.get("stage_id")
-        })
-    
-    if not result_grades:
-        grade_levels = await gd_distinct(db.session, "students", "grade_level", {"school_id": school_id, "is_active": {"$ne": False}})
-        grade_levels = sorted([g for g in grade_levels if g], key=lambda x: int(x) if x.isdigit() else 999)
-        grade_names = {
-            "1": ("الصف الأول", "Grade 1"), "2": ("الصف الثاني", "Grade 2"),
-            "3": ("الصف الثالث", "Grade 3"), "4": ("الصف الرابع", "Grade 4"),
-            "5": ("الصف الخامس", "Grade 5"), "6": ("الصف السادس", "Grade 6"),
-            "7": ("الصف السابع", "Grade 7"), "8": ("الصف الثامن", "Grade 8"),
-            "9": ("الصف التاسع", "Grade 9"), "10": ("الصف العاشر", "Grade 10"),
-            "11": ("الصف الحادي عشر", "Grade 11"), "12": ("الصف الثاني عشر", "Grade 12"),
+    rows = await gd_find(db.session, "grade_levels", {"school_id": school_id}, limit=200)
+
+    # Index existing tenant rows by canonical grade number so a selected
+    # canonical grade maps back to the school's real row id (preserving links).
+    existing_id_by_grade: Dict[int, str] = {}
+    for r in rows:
+        row_id = r.get("id") or r.get("_id")
+        if not row_id:
+            continue
+        entry = normalize_canonical_grade(r.get("grade")) or normalize_canonical_grade(
+            r.get("name_ar") or r.get("name")
+        )
+        if entry and entry["grade"] not in existing_id_by_grade:
+            existing_id_by_grade[entry["grade"]] = row_id
+
+    result_grades = [
+        {
+            "id": existing_id_by_grade.get(g["grade"], str(g["grade"])),
+            "name_ar": g["label_ar"],
+            "name_en": g["label_en"],
+            "grade": g["grade"],
+            "stage": g["stage"],
+            "stage_id": g["stage"],
         }
-        if not grade_levels:
-            grade_levels = [str(i) for i in range(1, 13)]
-        for gl in grade_levels:
-            names = grade_names.get(gl, (f"الصف {gl}", f"Grade {gl}"))
-            result_grades.append({"id": gl, "name_ar": names[0], "name_en": names[1], "grade": int(gl) if gl.isdigit() else None, "stage": "ابتدائي" if gl.isdigit() and int(gl) <= 6 else "متوسط/ثانوي"})
+        for g in CANONICAL_GRADES
+    ]
 
     return {"grades": result_grades}
 

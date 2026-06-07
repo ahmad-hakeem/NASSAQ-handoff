@@ -32,6 +32,7 @@ import {
   DialogDescription, DialogFooter
 } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { CANONICAL_GRADES } from '../utils/stageGrade';
 import { NotificationBell } from '../components/notifications/NotificationBell';
 import AddStudentWizard from '../components/wizards/AddStudentWizard';
 import { AddTeacherWizard } from '../components/wizards/AddTeacherWizard';
@@ -2058,7 +2059,12 @@ export default function UsersClassesManagement() {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-2">
                         <Label>{t('grade')}</Label>
-                        <Input value={viewClassForm.grade_level} onChange={(e) => setViewClassForm({ ...viewClassForm, grade_level: e.target.value })} />
+                        <Select value={viewClassForm.grade_level} onValueChange={(value) => setViewClassForm({ ...viewClassForm, grade_level: value })}>
+                          <SelectTrigger><SelectValue placeholder={t('selectGrade')} /></SelectTrigger>
+                          <SelectContent>
+                            {CANONICAL_GRADES.map((g) => (<SelectItem key={g.grade} value={g.label_ar}>{g.label_ar}</SelectItem>))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="space-y-2">
                         <Label>{t('section')}</Label>
@@ -2188,7 +2194,14 @@ export default function UsersClassesManagement() {
                 {selectedItemType === 'class' && (
                   <>
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2"><Label>{t('grade')}</Label><Input value={editFormData.grade_level || editFormData.grade || ''} onChange={(e) => setEditFormData({ ...editFormData, grade_level: e.target.value })} /></div>
+                      <div className="space-y-2"><Label>{t('grade')}</Label>
+                        <Select value={editFormData.grade_level || editFormData.grade || ''} onValueChange={(value) => setEditFormData({ ...editFormData, grade_level: value })}>
+                          <SelectTrigger><SelectValue placeholder={t('selectGrade')} /></SelectTrigger>
+                          <SelectContent>
+                            {CANONICAL_GRADES.map((g) => (<SelectItem key={g.grade} value={g.label_ar}>{g.label_ar}</SelectItem>))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <div className="space-y-2"><Label>{t('section')}</Label><Input value={editFormData.section || ''} onChange={(e) => setEditFormData({ ...editFormData, section: e.target.value })} /></div>
                     </div>
                     <div className="space-y-2"><Label>{t('capacity2')}</Label><Input type="number" value={editFormData.capacity || ''} onChange={(e) => setEditFormData({ ...editFormData, capacity: parseInt(e.target.value) || 30 })} /></div>

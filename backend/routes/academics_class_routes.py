@@ -102,6 +102,7 @@ class ClassWizardCreate(BaseModel):
     name_en: Optional[str] = None
     grade_id: str
     grade: Optional[int] = None  # Can be derived from grade_id
+    stage: Optional[str] = None  # Canonical stage (primary|middle|high); enforced server-side when present
     section: Optional[str] = "أ"  # Default section
     class_type: Optional[str] = "regular"
     capacity: int = 30
@@ -132,6 +133,16 @@ async def create_class_wizard(
             raise HTTPException(status_code=403, detail="غير مصرح لك بإنشاء فصل خارج مساحة عملك")
     # Phase 0 §4.B-5 — IT v1 class quota.
     await enforce_class_quota(db.session, current_user)
+
+    # Stage/grade hierarchy enforcement (parity with student creation).
+    # Stage is optional for back-compat; when sent, a mismatched grade id is
+    # rejected with a safe Arabic message (fail-closed, tenant-scoped).
+    from utils.stage_grade import validate_stage_grade_pair
+    await validate_stage_grade_pair(
+        db.session, school_id,
+        getattr(data, "stage", None), data.grade_id,
+        require_stage=False,
+    )
 
     # Optional workspace subject (IT create-class dialog). Reject invalid ids
     # early so the client never mis-reads a downstream failure as a duplicate.
@@ -176,14 +187,59 @@ async def create_class_wizard(
             grade_number = int(data.grade_id)
         except (ValueError, TypeError):
             grade_number = 1
-    
+
+    # For REAL schools, resolve the canonical catalogue entry so the stored
+    # grade label is the single source of truth (the Arabic label), not a raw
+    # id/number. validate_stage_grade_pair above already guaranteed the grade is
+    # on-list; this picks the best available signal to recover the canonical
+    # entry. IT workspaces are intentionally excluded: they keep their own
+    # custom `grade_levels` rows (auto-created from the selected label), so we
+    # preserve their legacy storage untouched.
+    if is_independent_teacher(current_user):
+        grade_name = grade_level.get("name_ar") if grade_level else f"الصف {grade_number}"
+        stored_grade_level = data.grade_id
+    else:
+        from utils.canonical_grades import normalize_canonical_grade
+        _invalid_grade = HTTPException(
+            status_code=422,
+            detail="الصف المحدد غير صالح. الرجاء اختيار صف من القائمة المعتمدة / Invalid grade selection",
+        )
+        # grade_id is the authoritative linkage. Require it and resolve the
+        # canonical entry FROM it first (numeric id, or the tenant grade row's
+        # name) so a caller-supplied `grade` cannot override the linkage.
+        # Fail-closed: validate_stage_grade_pair only proves stage
+        # compatibility, not canonical membership when stage is omitted.
+        _gid = data.grade_id.strip() if isinstance(data.grade_id, str) else data.grade_id
+        if not _gid:
+            raise _invalid_grade
+        # Mirror /classes/options/grades row-matching EXACTLY so every id the
+        # dropdown can emit (numeric "1".."12" OR a tenant grade_levels row id
+        # matched by its `grade` number or normalized label) resolves here and
+        # legacy-label tenants are never falsely rejected.
+        _canon = (
+            normalize_canonical_grade(_gid)
+            or (normalize_canonical_grade(grade_level.get("grade")) if grade_level else None)
+            or (normalize_canonical_grade(grade_level.get("name_ar") or grade_level.get("name")) if grade_level else None)
+        )
+        if not _canon:
+            raise _invalid_grade
+        # Reject a caller-supplied grade number that disagrees with grade_id
+        # (parity with linkage integrity — the two must not contradict).
+        if data.grade is not None:
+            try:
+                _supplied = int(data.grade)
+            except (TypeError, ValueError):
+                raise _invalid_grade
+            if _supplied != _canon["grade"]:
+                raise _invalid_grade
+        grade_number = _canon["grade"]
+        grade_name = _canon["label_ar"]
+        stored_grade_level = grade_name
+
     # Use name_ar if name is not provided
     class_name = data.name or data.name_ar
     if not class_name:
-        grade_name = grade_level.get("name_ar") if grade_level else f"الصف {grade_number}"
         class_name = f"{grade_name} - {data.section or 'أ'}"
-    
-    grade_name = grade_level.get("name_ar") if grade_level else f"الصف {grade_number}"
 
     class_name_en = data.name_en or f"Grade {grade_number} - {data.section or 'A'}"
     # Duplicate check must NOT include auto-generated English labels: many
@@ -216,7 +272,7 @@ async def create_class_wizard(
         "name": class_name,
         "name_en": class_name_en,
         "grade_id": grade_level.get("id") if grade_level else data.grade_id,
-        "grade_level": data.grade_id,
+        "grade_level": stored_grade_level,
         "capacity": data.capacity,
         "homeroom_teacher_id": data.homeroom_teacher_id or homeroom_for_dedupe,
         "is_active": True,
@@ -273,6 +329,18 @@ async def create_class(
     if user_tenant and school_id != user_tenant:
         raise HTTPException(status_code=403, detail="لا يمكنك إنشاء فصل في مدرسة أخرى / Cannot create class in another school")
 
+    # Enforce the canonical grade catalogue on this (non-wizard) create path too,
+    # so a tampered/legacy grade label cannot persist an off-list value. The form
+    # already renders only canonical labels; this is the fail-closed server check.
+    from utils.canonical_grades import normalize_canonical_grade
+    _raw_grade = getattr(class_data, "grade_level", None) or getattr(class_data, "grade", None)
+    _canonical_grade = normalize_canonical_grade(_raw_grade) if _raw_grade else None
+    if _raw_grade and not _canonical_grade:
+        raise HTTPException(
+            status_code=422,
+            detail="الصف المحدد غير صالح. الرجاء اختيار صف من القائمة المعتمدة / Invalid grade selection",
+        )
+
     _raw_en = getattr(class_data, "name_en", None)
     _name_en_chk = (_raw_en.strip() if isinstance(_raw_en, str) else None) or None
     _ht_create = getattr(class_data, "homeroom_teacher_id", None) or getattr(class_data, "class_teacher_id", None)
@@ -290,7 +358,7 @@ async def create_class(
         "name": class_data.name,
         "name_en": getattr(class_data, 'name_en', None),
         "school_id": school_id,
-        "grade_level": getattr(class_data, 'grade_level', None) or getattr(class_data, 'grade', None),
+        "grade_level": _canonical_grade["label_ar"] if _canonical_grade else None,
         "section": class_data.section,
         "capacity": class_data.capacity,
         "current_students": 0,
@@ -590,7 +658,15 @@ async def update_class(
     if class_data.name_en is not None:
         update_fields["name_en"] = class_data.name_en
     if class_data.grade_level is not None:
-        update_fields["grade_level"] = class_data.grade_level
+        # Fail-closed canonical enforcement on the edit path, mirroring create_class.
+        from utils.canonical_grades import normalize_canonical_grade
+        _canon_upd = normalize_canonical_grade(class_data.grade_level)
+        if not _canon_upd:
+            raise HTTPException(
+                status_code=422,
+                detail="الصف المحدد غير صالح. الرجاء اختيار صف من القائمة المعتمدة / Invalid grade selection",
+            )
+        update_fields["grade_level"] = _canon_upd["label_ar"]
     if class_data.grade_id is not None:
         update_fields["grade_id"] = class_data.grade_id
     if class_data.section is not None:

@@ -29,6 +29,7 @@ import {
   ChevronUp,
   Undo2,
 } from 'lucide-react';
+import { CANONICAL_GRADES } from '../utils/stageGrade';
 import { Switch } from '../components/ui/switch';
 import {
   DropdownMenu,
@@ -87,11 +88,8 @@ export const ClassesPage = () => {
   const isSchoolLevel = user?.role && !user.role.startsWith('platform_');
   const userSchoolId = user?.tenant_id;
   
-  const gradeLevels = [
-    'الأول الابتدائي', 'الثاني الابتدائي', 'الثالث الابتدائي', 'الرابع الابتدائي', 'الخامس الابتدائي', 'السادس الابتدائي',
-    'الأول المتوسط', 'الثاني المتوسط', 'الثالث المتوسط',
-    'الأول الثانوي', 'الثاني الثانوي', 'الثالث الثانوي',
-  ];
+  // Single source of truth for the 12 canonical grade labels (stage-ordered).
+  const gradeLevels = CANONICAL_GRADES.map((g) => g.label_ar);
   
   const sections = ['أ', 'ب', 'ج', 'د', 'هـ'];
   
