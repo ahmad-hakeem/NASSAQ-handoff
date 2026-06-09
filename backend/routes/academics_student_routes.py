@@ -1,7 +1,7 @@
 """
 NASSAQ Academics Sub-module
 """
-from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Body, Request
+from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Body, Request, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import Response
 from starlette.responses import StreamingResponse
@@ -37,6 +37,42 @@ from shared_models import (
 )
 
 router = APIRouter()
+
+
+def _dispatch_parent_invitation_email(
+    *,
+    to_email: str,
+    parent_name: str,
+    teacher_name: str,
+    student_name: str,
+    invite_link: str,
+    expires_at: str,
+    student_id: str,
+) -> None:
+    """Post-commit, best-effort IT parent-invitation email dispatch.
+
+    Runs as a FastAPI background task (Task #843): it fires only after the
+    response is sent — i.e. after pg_session_middleware has committed the
+    request transaction — and never runs when the endpoint raises (the
+    transaction is rolled back and no response carries this task). Delivery
+    failure is swallowed (logged); the teacher can still copy the invite
+    link from the success screen.
+    """
+    try:
+        send_parent_invitation_email(
+            to_email=to_email,
+            parent_name=parent_name,
+            teacher_name=teacher_name,
+            student_name=student_name,
+            invite_link=invite_link,
+            expires_at=expires_at,
+        )
+    except Exception as exc:  # noqa: BLE001 — delivery best-effort
+        logger.warning(
+            "parent invitation email dispatch failed for student=%s: %s",
+            student_id, exc,
+        )
+
 
 # Task #201 — IT §5.7 step-up backfill on student contact-field
 # mutations. Conditional on caller role so principal/admin/sub-admin
@@ -996,6 +1032,7 @@ async def search_parents(
 @router.post("/student-wizard/create")
 async def create_student_with_wizard(
     data: StudentWizardCreate,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER])),
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
@@ -1181,7 +1218,7 @@ async def create_student_with_wizard(
     parent_password = None
     invite_result = None
     invite_link = None
-    invite_email_sent = False
+    invite_email_queued = False
 
     if it_auto_link:
         # Task #817 — IT create-time auto-link. Insert the student and run
@@ -1314,20 +1351,23 @@ async def create_student_with_wizard(
                 f"{_get_app_url()}/parent-invitations/accept?token={_raw_token}"
             )
             if _it_parent_email:
-                try:
-                    invite_email_sent = send_parent_invitation_email(
-                        to_email=_it_parent_email,
-                        parent_name=(p.get("full_name") or ""),
-                        teacher_name=(current_user.get("full_name") or ""),
-                        student_name=(data.full_name or ""),
-                        invite_link=invite_link,
-                        expires_at=invite_result.get("expires_at") or "",
-                    )
-                except Exception as exc:  # noqa: BLE001 — delivery best-effort
-                    logger.warning(
-                        "parent invitation email dispatch failed for student=%s: %s",
-                        student_id, exc,
-                    )
+                # True post-commit delivery: FastAPI background tasks run only
+                # after the response is sent — i.e. AFTER pg_session_middleware
+                # has committed this request's transaction — and do NOT run if
+                # the endpoint raises (rollback). This guarantees we never
+                # email a parent an activation link for a student/invitation
+                # that was rolled back. Delivery itself is best-effort.
+                background_tasks.add_task(
+                    _dispatch_parent_invitation_email,
+                    to_email=_it_parent_email,
+                    parent_name=(p.get("full_name") or ""),
+                    teacher_name=(current_user.get("full_name") or ""),
+                    student_name=(data.full_name or ""),
+                    invite_link=invite_link,
+                    expires_at=invite_result.get("expires_at") or "",
+                    student_id=student_id,
+                )
+                invite_email_queued = True
 
     # Update student with parent info (legacy denormalised back-fill). The
     # IT auto-link path already set parent_id via the canonical writer and
@@ -1427,7 +1467,7 @@ async def create_student_with_wizard(
             "invite_channels": invite_result.get("channels"),
             "invite_expires_at": invite_result.get("expires_at"),
             "invite_reused": invite_result.get("reused"),
-            "email_sent": invite_email_sent,
+            "email_queued": invite_email_queued,
         })
     elif _onboarding_mode == "linked":
         # The auto-link writer materialises a parent portal user. When a

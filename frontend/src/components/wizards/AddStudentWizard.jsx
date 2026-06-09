@@ -967,7 +967,13 @@ export default function AddStudentWizard({
                   <CheckCircle2 className="h-8 w-8 text-white" />
                 </div>
                 <h2 className="text-xl font-bold text-emerald-600 font-cairo mb-1">{t('accountCreated')}</h2>
-                <p className="text-sm text-muted-foreground">{t('studentAndParentAccountsCreated')}</p>
+                <p className="text-sm text-muted-foreground">
+                  {parentOnboarding?.mode === 'invite'
+                    ? (isRTL ? 'تم إنشاء حساب الطالب وإرسال دعوة لولي الأمر' : 'Student account created and parent invited')
+                    : parentOnboarding?.mode === 'pending'
+                      ? (isRTL ? 'تم إنشاء حساب الطالب' : 'Student account created')
+                      : t('studentAndParentAccountsCreated')}
+                </p>
               </div>
 
               <div className="p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20">
@@ -1005,10 +1011,10 @@ export default function AddStudentWizard({
                     {isRTL ? 'دعوة ولي الأمر' : 'Parent Invitation'}
                   </p>
                   <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                    {parentOnboarding.email_sent
+                    {parentOnboarding.email_queued
                       ? (isRTL
-                          ? `تم إرسال دعوة تفعيل الحساب إلى ${parentOnboarding.parent_email}. يفعّل ولي الأمر حسابه عبر الرابط ويختار كلمة المرور بنفسه.`
-                          : `An activation invitation was emailed to ${parentOnboarding.parent_email}. The parent activates their own account via the link and sets their own password.`)
+                          ? `سيتم إرسال دعوة تفعيل الحساب إلى ${parentOnboarding.parent_email}. يفعّل ولي الأمر حسابه عبر الرابط ويختار كلمة المرور بنفسه. يمكنك أيضاً مشاركة الرابط أدناه.`
+                          : `An activation invitation will be emailed to ${parentOnboarding.parent_email}. The parent activates their own account via the link and sets their own password. You can also share the link below.`)
                       : (isRTL
                           ? 'تم إنشاء دعوة لولي الأمر. شارك الرابط أدناه ليفعّل حسابه ويختار كلمة المرور بنفسه.'
                           : 'A parent invitation was created. Share the link below so the parent can activate their account and set their own password.')}
