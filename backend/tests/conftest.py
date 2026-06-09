@@ -35,6 +35,18 @@ async def _db_session():
     await engine.dispose()
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """The in-memory rate-limit store is a process-global singleton. Clear it
+    around every test so create/auth-heavy suites don't bleed their request
+    counts into unrelated tests (and so rate-limit tests start from a clean
+    window)."""
+    from middleware.rate_limiter import rate_store
+    rate_store._store.clear()
+    yield
+    rate_store._store.clear()
+
+
 async def _mk_user(role: UserRole, tenant_id: str) -> dict:
     uid = str(uuid.uuid4())
     user = {

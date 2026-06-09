@@ -13,7 +13,8 @@ write routes and the create↔options parity that prevents false rejections:
     label persisted.
   * PUT /classes/{id} — off-list grade_level rejected; canonical label persisted.
   * /classes/options/grades emitted ids always succeed through /classes/create.
-  * Independent-Teacher create is intentionally NOT canonicalized (custom grades).
+  * Independent-Teacher create is now canonicalized too — same fail-closed
+    catalogue enforcement as real schools (IT stage/grade alignment).
 
 The autouse `_db_session` fixture in conftest rolls back after each test, so no
 rows persist and no cleanup is required.
@@ -327,21 +328,41 @@ async def test_update_class_persists_canonical_grade_level(client):
     assert row["grade_level"] == "الصف الثالث الثانوي"
 
 
-# ---------- Independent-Teacher exclusion ----------
+# ---------- Independent-Teacher canonicalization (now unified) ----------
 
 @pytest.mark.asyncio
-async def test_independent_teacher_create_not_canonicalized(client):
-    """IT workspaces keep their own custom grade labels — the canonical guard
-    must NOT reject a free-text grade and must NOT coerce it to a canonical
-    catalogue label."""
+async def test_independent_teacher_create_is_canonicalized(client):
+    """IT now uses the SAME canonical catalogue as real schools: a canonical
+    grade id is accepted and the canonical Arabic label is persisted (no more
+    custom/free-text grade storage)."""
     it = await _mk_independent_teacher()
     # Materialised workspace: the bearer carries the workspace id as tenant_id
     # (mirrors the post-bootstrap token; the gate reads it from the JWT).
     h = _headers(it["id"], UserRole.INDEPENDENT_TEACHER.value, it["wsid"])
 
-    # IT workspaces keep their own custom grade rows (auto-created from the
-    # selected label). Seed one so the tenant-scoped grade lookup resolves.
-    label = "المرحلة المخصصة"  # non-canonical, custom grade
+    resp = await client.post("/classes/create", json={
+        "name_ar": f"حلقة {uuid.uuid4().hex[:5]}",
+        "grade_id": "1",
+        "capacity": 10,
+    }, headers=h)
+    assert resp.status_code == 200, resp.text
+    cid = resp.json()["class"]["id"]
+    row = await gd_find_one(db.session, "classes", {"id": cid})
+    # The canonical catalogue label is persisted, exactly like a real school.
+    assert row["grade_level"] == "الصف الأول الابتدائي"
+    assert row["school_id"] == it["wsid"]
+
+
+@pytest.mark.asyncio
+async def test_independent_teacher_create_off_list_grade_rejected(client):
+    """A legacy / free-text grade row that does not resolve to the canonical
+    catalogue is now rejected for IT too (fail-closed, safe Arabic 422)."""
+    it = await _mk_independent_teacher()
+    h = _headers(it["id"], UserRole.INDEPENDENT_TEACHER.value, it["wsid"])
+
+    # Seed a non-canonical custom grade row so the tenant-scoped lookup
+    # resolves but the canonical guard still refuses to persist it.
+    label = "المرحلة المخصصة"
     await gd_insert(db.session, "grade_levels", {
         "id": label,
         "school_id": it["wsid"],
@@ -355,10 +376,37 @@ async def test_independent_teacher_create_not_canonicalized(client):
         "grade_id": label,
         "capacity": 10,
     }, headers=h)
-    assert resp.status_code == 200, resp.text
-    cid = resp.json()["class"]["id"]
-    row = await gd_find_one(db.session, "classes", {"id": cid})
-    # IT stores the supplied grade_id verbatim; never coerced to a canonical
-    # catalogue label like "الصف الأول الابتدائي".
-    assert row["grade_level"] == label
-    assert row["school_id"] == it["wsid"]
+    assert resp.status_code == 422, resp.text
+    assert _INVALID_MSG in resp.text
+
+
+@pytest.mark.asyncio
+async def test_create_class_rejects_foreign_tenant_grade_row_id(client):
+    """A caller must not be able to resolve another tenant's grade_levels row by
+    guessing its id. Every grade lookup on this route is tenant-scoped (the
+    stage validator AND the canonical resolver), so a foreign UUID is rejected
+    fail-closed (404 'grade not found in this school') and never reused."""
+    # Victim tenant owns a perfectly canonical grade row.
+    victim = await _mk_school()
+    victim_grade_id = str(uuid.uuid4())
+    await gd_insert(db.session, "grade_levels", {
+        "id": victim_grade_id,
+        "school_id": victim,
+        "name": "1",
+        "name_ar": "الصف الأول الابتدائي",
+        "code": "",
+    })
+
+    # Attacker principal in a different tenant supplies the victim's row id.
+    attacker = await _mk_school()
+    p = await _mk_principal(attacker)
+    h = _headers(p["id"], UserRole.SCHOOL_PRINCIPAL.value, attacker)
+
+    resp = await client.post("/classes/create", json={
+        "name_ar": "فصل مسروق",
+        "grade_id": victim_grade_id,
+        "capacity": 30,
+    }, headers=h)
+    assert resp.status_code == 404, resp.text
+    # The class was NOT created in the attacker's tenant.
+    assert await gd_find_one(db.session, "classes", {"school_id": attacker}) is None

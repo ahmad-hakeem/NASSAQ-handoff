@@ -328,6 +328,38 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             require_stage=True,
         )
 
+        # Canonical grade enforcement — single source of truth for EVERY flow
+        # (real-school AND Independent-Teacher). validate_stage_grade_pair above
+        # only proves stage↔grade-bucket compatibility; this resolves the
+        # submitted grade_id to the approved catalogue
+        # (utils/canonical_grades.py) and fails closed on off-list values so a
+        # tampered or legacy free-text payload cannot persist a non-canonical
+        # grade. We store the canonical grade NUMBER (as a string) to match the
+        # established `students.grade` convention; the display layer maps the
+        # number back to the canonical Arabic label.
+        from utils.canonical_grades import normalize_canonical_grade
+        _invalid_grade = HTTPException(
+            status_code=422,
+            detail="الصف المحدد غير صالح. الرجاء اختيار صف من القائمة المعتمدة / Invalid grade selection",
+        )
+        _gid = request.grade_id.strip() if isinstance(request.grade_id, str) else request.grade_id
+        if not _gid:
+            raise _invalid_grade
+        # Mirror /classes/options/grades row-matching EXACTLY so every id the
+        # dropdown can emit (numeric "1".."12" OR a tenant grade_levels row id
+        # matched by its `grade` number or normalized label) resolves here.
+        _grade_row = await gd_find_one(
+            db.session, "grade_levels", {"id": _gid, "school_id": school_id}
+        )
+        _canon_grade = (
+            normalize_canonical_grade(_gid)
+            or (normalize_canonical_grade(_grade_row.get("grade")) if _grade_row else None)
+            or (normalize_canonical_grade(_grade_row.get("name_ar") or _grade_row.get("name")) if _grade_row else None)
+        )
+        if not _canon_grade:
+            raise _invalid_grade
+        canonical_grade_value = str(_canon_grade["grade"])
+
         # Workspace-mode (IT) accepts a fully-optional parent payload
         # (spec §5.6). For school-admin callers the pre-existing contract
         # still requires a parent record (with at least a phone) so the
@@ -549,7 +581,7 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             "national_id": request.national_id,
             "gender": request.gender,
             "date_of_birth": request.date_of_birth,
-            "grade": request.grade_id,
+            "grade": canonical_grade_value,
             "class_id": request.class_id,
             "parent_id": parent.get("id"),
             "parent_user_id": parent.get("user_id"),

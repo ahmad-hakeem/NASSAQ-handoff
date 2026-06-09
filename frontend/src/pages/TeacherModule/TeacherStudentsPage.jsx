@@ -181,10 +181,14 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
     if (!isIndependentTeacher) return;
     try {
       const [gradesRes, classesRes] = await Promise.all([
-        api.get('/grade-levels').catch(() => ({ data: [] })),
+        // Canonical 12-grade catalogue (stage-bound) — the same source the
+        // real-school flows use. Never the raw per-workspace `grade_levels`
+        // rows, which could carry legacy free-text/test values.
+        api.get('/classes/options/grades').catch(() => ({ data: { grades: [] } })),
         api.get('/classes').catch(() => ({ data: [] })),
       ]);
-      const grades = Array.isArray(gradesRes.data) ? gradesRes.data : (gradesRes.data?.items || []);
+      const grades = gradesRes.data?.grades
+        || (Array.isArray(gradesRes.data) ? gradesRes.data : (gradesRes.data?.items || []));
       const cls = Array.isArray(classesRes.data) ? classesRes.data : (classesRes.data?.items || []);
       setWorkspaceGrades(grades);
       setWorkspaceClasses(cls);

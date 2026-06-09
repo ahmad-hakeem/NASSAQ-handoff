@@ -70,7 +70,7 @@ async def test_independent_teacher_two_classes_same_grade_distinct_names_ok(clie
     user = await _mk_independent_teacher()
     wsid = independent_workspace_id(user)
     h = _headers(user["id"], user["role"], wsid)
-    shared_grade = "المرحلة المشتركة"
+    shared_grade = "1"  # canonical grade id (IT now uses the shared catalogue)
     r1 = await client.post(
         "/classes/create",
         json={"name_ar": "حلقة تجويد أ", "grade_id": shared_grade, "capacity": 20},
@@ -90,7 +90,7 @@ async def test_independent_teacher_duplicate_arabic_name_returns_structured_409(
     user = await _mk_independent_teacher()
     wsid = independent_workspace_id(user)
     h = _headers(user["id"], user["role"], wsid)
-    shared_grade = "المرحلة الثانية"
+    shared_grade = "2"  # canonical grade id (IT now uses the shared catalogue)
     first = await client.post(
         "/classes/create",
         json={"name_ar": "فصل موحد", "grade_id": shared_grade, "capacity": 15},
@@ -120,7 +120,7 @@ async def test_independent_teacher_invalid_subject_id_returns_400(client):
         "/classes/create",
         json={
             "name_ar": "فصل تجريبي",
-            "grade_id": "المرحلة الثالثة",
+            "grade_id": "3",
             "capacity": 12,
             "subject_id": str(uuid.uuid4()),
         },
@@ -140,7 +140,7 @@ async def test_independent_teacher_create_class_pins_workspace(client):
 
     payload = {
         "name_ar": "حلقة القرآن - مستوى أول",
-        "grade_id": "الصف الأول",   # free-text grade label, no grade_levels row
+        "grade_id": "1",   # canonical grade id (IT now uses the shared catalogue)
         "capacity": 25,
     }
     resp = await client.post("/classes/create", json=payload, headers=h)
@@ -155,8 +155,9 @@ async def test_independent_teacher_create_class_pins_workspace(client):
     # client-supplied id.
     assert row["school_id"] == wsid
     assert row["school_id"].startswith("itw_")
-    # Free-text grade label is preserved verbatim in `grade_level`.
-    assert row.get("grade_level") == "الصف الأول"
+    # IT is now canonicalized: the stored grade label is the canonical
+    # catalogue label, not a free-text value.
+    assert row.get("grade_level") == "الصف الأول الابتدائي"
 
 
 # ----------------------------------------------------------------------
@@ -176,7 +177,7 @@ async def test_independent_teacher_create_class_ignores_spoofed_school_id(client
     foreign_tenant_id = "tenant_someone_else"
     payload = {
         "name_ar": "محاولة انتحال",
-        "grade_id": "الصف الثاني",
+        "grade_id": "2",
         "capacity": 20,
         # Hostile fields — must have no effect.
         "school_id": foreign_school_id,
@@ -208,7 +209,7 @@ async def test_independent_teacher_cannot_read_other_workspace_class(client):
     h_b = _headers(user_b["id"], user_b["role"], wsid_b)
 
     # IT-A creates a class.
-    payload = {"name_ar": "فصل خاص", "grade_id": "الصف الثالث", "capacity": 15}
+    payload = {"name_ar": "فصل خاص", "grade_id": "3", "capacity": 15}
     resp = await client.post("/classes/create", json=payload, headers=h_a)
     assert resp.status_code == 200, resp.text
     cid = resp.json()["class"]["id"]
@@ -236,7 +237,7 @@ async def test_independent_teacher_get_class_by_id_isolation(client):
     h_a = _headers(user_a["id"], user_a["role"], wsid_a)
     h_b = _headers(user_b["id"], user_b["role"], wsid_b)
 
-    payload = {"name_ar": "فصل سري", "grade_id": "الصف الرابع", "capacity": 12}
+    payload = {"name_ar": "فصل سري", "grade_id": "4", "capacity": 12}
     resp = await client.post("/classes/create", json=payload, headers=h_a)
     assert resp.status_code == 200, resp.text
     cid = resp.json()["class"]["id"]

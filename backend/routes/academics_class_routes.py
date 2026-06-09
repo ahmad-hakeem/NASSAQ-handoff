@@ -170,10 +170,12 @@ async def create_class_wizard(
         if not teacher_doc:
             raise HTTPException(status_code=404, detail="المعلم غير موجود في هذه المدرسة")
 
-    # Get grade level info - try by UUID first, then by code/number
+    # Get grade level info - try by UUID first, then by code/number. Both
+    # lookups are tenant-scoped so a caller can never resolve (and then
+    # canonicalize through) another workspace's grade_levels row by guessing
+    # its id; numeric "1".."12" ids are handled by normalize_canonical_grade
+    # below without needing a row at all.
     grade_level = await gd_find_one(db.session, "grade_levels", {"id": data.grade_id, "school_id": school_id})
-    if not grade_level:
-        grade_level = await gd_find_one(db.session, "grade_levels", {"id": data.grade_id})
     if not grade_level:
         grade_level = await gd_find_one(db.session, "grade_levels", {"code": data.grade_id, "school_id": school_id})
     
@@ -188,53 +190,46 @@ async def create_class_wizard(
         except (ValueError, TypeError):
             grade_number = 1
 
-    # For REAL schools, resolve the canonical catalogue entry so the stored
-    # grade label is the single source of truth (the Arabic label), not a raw
-    # id/number. validate_stage_grade_pair above already guaranteed the grade is
-    # on-list; this picks the best available signal to recover the canonical
-    # entry. IT workspaces are intentionally excluded: they keep their own
-    # custom `grade_levels` rows (auto-created from the selected label), so we
-    # preserve their legacy storage untouched.
-    if is_independent_teacher(current_user):
-        grade_name = grade_level.get("name_ar") if grade_level else f"الصف {grade_number}"
-        stored_grade_level = data.grade_id
-    else:
-        from utils.canonical_grades import normalize_canonical_grade
-        _invalid_grade = HTTPException(
-            status_code=422,
-            detail="الصف المحدد غير صالح. الرجاء اختيار صف من القائمة المعتمدة / Invalid grade selection",
-        )
-        # grade_id is the authoritative linkage. Require it and resolve the
-        # canonical entry FROM it first (numeric id, or the tenant grade row's
-        # name) so a caller-supplied `grade` cannot override the linkage.
-        # Fail-closed: validate_stage_grade_pair only proves stage
-        # compatibility, not canonical membership when stage is omitted.
-        _gid = data.grade_id.strip() if isinstance(data.grade_id, str) else data.grade_id
-        if not _gid:
+    # Canonical catalogue resolution applies to ALL flows — real-school AND
+    # Independent-Teacher. The stored grade label is the single source of truth
+    # (the canonical Arabic label), not a raw id/number. validate_stage_grade_pair
+    # above only proves stage↔grade-bucket compatibility; this recovers the
+    # canonical entry and fails closed on off-list values so neither a tampered
+    # payload nor a legacy free-text grade can persist a non-canonical grade.
+    from utils.canonical_grades import normalize_canonical_grade
+    _invalid_grade = HTTPException(
+        status_code=422,
+        detail="الصف المحدد غير صالح. الرجاء اختيار صف من القائمة المعتمدة / Invalid grade selection",
+    )
+    # grade_id is the authoritative linkage. Require it and resolve the
+    # canonical entry FROM it first (numeric id, or the tenant grade row's
+    # name) so a caller-supplied `grade` cannot override the linkage.
+    _gid = data.grade_id.strip() if isinstance(data.grade_id, str) else data.grade_id
+    if not _gid:
+        raise _invalid_grade
+    # Mirror /classes/options/grades row-matching EXACTLY so every id the
+    # dropdown can emit (numeric "1".."12" OR a tenant grade_levels row id
+    # matched by its `grade` number or normalized label) resolves here and
+    # legacy-label tenants are never falsely rejected.
+    _canon = (
+        normalize_canonical_grade(_gid)
+        or (normalize_canonical_grade(grade_level.get("grade")) if grade_level else None)
+        or (normalize_canonical_grade(grade_level.get("name_ar") or grade_level.get("name")) if grade_level else None)
+    )
+    if not _canon:
+        raise _invalid_grade
+    # Reject a caller-supplied grade number that disagrees with grade_id
+    # (parity with linkage integrity — the two must not contradict).
+    if data.grade is not None:
+        try:
+            _supplied = int(data.grade)
+        except (TypeError, ValueError):
             raise _invalid_grade
-        # Mirror /classes/options/grades row-matching EXACTLY so every id the
-        # dropdown can emit (numeric "1".."12" OR a tenant grade_levels row id
-        # matched by its `grade` number or normalized label) resolves here and
-        # legacy-label tenants are never falsely rejected.
-        _canon = (
-            normalize_canonical_grade(_gid)
-            or (normalize_canonical_grade(grade_level.get("grade")) if grade_level else None)
-            or (normalize_canonical_grade(grade_level.get("name_ar") or grade_level.get("name")) if grade_level else None)
-        )
-        if not _canon:
+        if _supplied != _canon["grade"]:
             raise _invalid_grade
-        # Reject a caller-supplied grade number that disagrees with grade_id
-        # (parity with linkage integrity — the two must not contradict).
-        if data.grade is not None:
-            try:
-                _supplied = int(data.grade)
-            except (TypeError, ValueError):
-                raise _invalid_grade
-            if _supplied != _canon["grade"]:
-                raise _invalid_grade
-        grade_number = _canon["grade"]
-        grade_name = _canon["label_ar"]
-        stored_grade_level = grade_name
+    grade_number = _canon["grade"]
+    grade_name = _canon["label_ar"]
+    stored_grade_level = grade_name
 
     # Use name_ar if name is not provided
     class_name = data.name or data.name_ar

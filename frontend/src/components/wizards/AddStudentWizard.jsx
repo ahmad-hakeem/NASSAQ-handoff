@@ -246,11 +246,13 @@ export default function AddStudentWizard({
     setIsLoadingGrades(true);
     setGradesLoadError(false);
     try {
-      // Real-school flows render the single source of truth: the 12 canonical
-      // grades (stage-bound), not the per-school grade_levels rows which may be
-      // incomplete/legacy. IT workspace mode keeps its own custom grade_levels.
-      const endpoint = isWorkspaceMode ? '/grade-levels' : '/classes/options/grades';
-      const res = await api.get(endpoint);
+      // Single source of truth for EVERY flow (real-school AND IT workspace):
+      // the 12 canonical, stage-bound grades served by
+      // `/classes/options/grades` (utils/canonical_grades.py). IT no longer
+      // reads the per-workspace `grade_levels` rows, which could carry legacy
+      // free-text/test values; the backend revalidates the same catalogue on
+      // write so a tampered payload cannot persist an off-list grade.
+      const res = await api.get('/classes/options/grades');
       const fetched = res.data?.grades
         || (Array.isArray(res.data) ? res.data : (res.data?.items || []));
       setInternalGrades(fetched);
@@ -260,17 +262,16 @@ export default function AddStudentWizard({
     } finally {
       setIsLoadingGrades(false);
     }
-  }, [api, isWorkspaceMode]);
+  }, [api]);
 
   useEffect(() => {
     if (!open) return;
     if (gradesFetchedRef.current) return;
-    // IT workspace keeps its custom grade_levels (passed in via `grades`); only
-    // fetch when none were provided. Real-school flows always pull canonical so
-    // the grade dropdown is consistent regardless of any legacy `grades` prop.
-    if (isWorkspaceMode && grades.length > 0) return;
+    // Always pull the canonical catalogue so the stage→grade cascade is
+    // consistent across real-school and IT flows, regardless of any legacy
+    // `grades` prop a caller may still pass in.
     fetchGrades();
-  }, [open, isWorkspaceMode, grades.length, fetchGrades]);
+  }, [open, fetchGrades]);
 
   const checkParentExists = useCallback(async () => {
     // Workspace mode (#192) intentionally skips the parent-directory probe:
