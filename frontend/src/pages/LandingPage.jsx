@@ -166,6 +166,13 @@ function FloatingIcon({ icon: Icon, className, delay = '0s' }) {
 // Set to true to re-enable the pricing/packages section and its navbar link.
 const SHOW_PRICING = false;
 
+// Set to true to re-enable the "رحلة التحول الذكي" journey section.
+const SHOW_JOURNEY = false;
+
+// Set to true to re-enable the "الذكاء خلف نَسَّق" AI intelligence section
+// (also restores its "الحلول/Solutions" navbar anchor).
+const SHOW_AI_SECTION = false;
+
 export const LandingPage = () => {
   const { isRTL } = useTheme();
   const { t } = useTranslation();
@@ -185,7 +192,7 @@ export const LandingPage = () => {
   // and IntersectionObserver can highlight the active section in sync.
   const navSections = useMemo(() => ([
     { id: 'how-it-works', ar: 'كيف يعمل', en: 'How it works' },
-    { id: 'solutions',    ar: 'الحلول',  en: 'Solutions' },
+    ...(SHOW_AI_SECTION ? [{ id: 'solutions', ar: 'الحلول', en: 'Solutions' }] : []),
     { id: 'ecosystem',    ar: 'الأدوار',  en: 'Roles' },
     { id: 'proof',        ar: 'النتائج', en: 'Results' },
     { id: 'faq',          ar: 'الأسئلة الشائعة', en: 'FAQ' },
@@ -802,7 +809,8 @@ export const LandingPage = () => {
         </div>
       </section>
 
-      {/* ========== JOURNEY SECTION ========== */}
+      {/* ========== JOURNEY SECTION — hidden via SHOW_JOURNEY flag ========== */}
+      {SHOW_JOURNEY && (
       <section
         ref={journeyRef}
         className="py-24 lg:py-32 bg-gradient-to-b from-background via-background to-background relative overflow-hidden"
@@ -961,8 +969,10 @@ export const LandingPage = () => {
           </div>
         </div>
       </section>
+      )}
 
-      {/* ========== AI INTELLIGENCE SECTION ========== */}
+      {/* ========== AI INTELLIGENCE SECTION — hidden via SHOW_AI_SECTION flag ========== */}
+      {SHOW_AI_SECTION && (
       <section
         ref={aiRef}
         className="py-24 lg:py-32 bg-brand-navy relative overflow-hidden scroll-mt-24"
@@ -1149,6 +1159,7 @@ export const LandingPage = () => {
           </div>
         </div>
       </section>
+      )}
 
       {/* ========== ECOSYSTEM SECTION ========== */}
       <section
