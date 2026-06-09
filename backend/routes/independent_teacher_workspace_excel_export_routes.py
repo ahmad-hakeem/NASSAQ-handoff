@@ -223,6 +223,23 @@ def _ar_bool(v: Any) -> str:
     return ""
 
 
+# Leading characters that spreadsheet apps (Excel / LibreOffice / Sheets)
+# interpret as the start of a formula. A roster value like
+# ``=HYPERLINK(...)`` or ``+cmd|...`` would otherwise execute when the
+# workbook is opened. We neutralize by prefixing a literal apostrophe so
+# the cell renders as text — parity with the analytics export's
+# ``_sanitize_csv_cell`` and the shared ``export_engine``.
+_FORMULA_INJECTION_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _sanitize_cell(value: Any) -> Any:
+    """Prefix a literal apostrophe to any string cell that begins with a
+    formula trigger char. Non-string values are returned unchanged."""
+    if isinstance(value, str) and value and value[0] in _FORMULA_INJECTION_CHARS:
+        return "'" + value
+    return value
+
+
 def _redact(row: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in row.items() if k not in _REDACTED_COLUMNS}
 
@@ -569,6 +586,13 @@ def _build_workbook(sheets: Dict[str, List[Dict[str, Any]]]) -> bytes:
             # defensively in case a future column drift sneaks one in.
             safe_name = sheet_name[:31]
             df = pd.DataFrame(rows)
+            # Neutralize spreadsheet formula injection on every body cell
+            # before it is written (attacker-controllable roster names /
+            # notes). ``strings_to_formulas=False`` above is belt; this is
+            # braces — it guarantees the literal apostrophe prefix even if
+            # a future writer reads these cells with formula coercion on.
+            if not df.empty:
+                df = df.map(_sanitize_cell)
             df.to_excel(writer, sheet_name=safe_name, index=False)
             ws = writer.sheets[safe_name]
             # Frozen header row + RTL sheet direction (Arabic-first).
@@ -583,7 +607,10 @@ def _build_workbook(sheets: Dict[str, List[Dict[str, Any]]]) -> bytes:
             for idx, col in enumerate(df.columns):
                 width = widths[idx] if idx < len(widths) else 18
                 ws.set_column(idx, idx, width)
-                ws.write(0, idx, col, header_fmt)
+                # Headers are static Arabic labels, but sanitize defensively
+                # so a future drift that surfaces a dynamic header can't
+                # reintroduce the injection.
+                ws.write(0, idx, _sanitize_cell(col), header_fmt)
     return buf.getvalue()
 
 
