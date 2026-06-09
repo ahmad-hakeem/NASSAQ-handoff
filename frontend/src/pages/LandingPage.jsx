@@ -353,7 +353,7 @@ export const LandingPage = () => {
   useEffect(() => {
     if (ecosystemPaused) return;
     const interval = setInterval(() => {
-      setActiveEcosystemRole((prev) => (prev + 1) % 4);
+      setActiveEcosystemRole((prev) => (prev + 1) % ecosystemRoles.length);
     }, 3500);
     return () => clearInterval(interval);
   }, [ecosystemPaused]);
@@ -448,14 +448,6 @@ export const LandingPage = () => {
       hakimSays: t('landingEcoRole2HakimSays'),
       icon: UserCheck,
       gradient: 'from-emerald-500 to-emerald-600',
-    },
-    {
-      role: t('landingEcoRole3Role'),
-      title: t('landingEcoRole3Title'),
-      content: t('landingEcoRole3Content'),
-      hakimSays: t('landingEcoRole3HakimSays'),
-      icon: BookOpen,
-      gradient: 'from-brand-purple to-violet-600',
     },
     {
       role: t('landingEcoRole4Role'),
@@ -1185,7 +1177,7 @@ export const LandingPage = () => {
 
           {/* Role Cards */}
           <div
-            className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-10"
+            className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 mb-10"
             onMouseEnter={() => setEcosystemPaused(true)}
             onMouseLeave={() => setEcosystemPaused(false)}
           >
@@ -1285,7 +1277,6 @@ export const LandingPage = () => {
                     src={[
                       '/hakim-poses/congratulating-student.png',
                       '/hakim-poses/listening.png',
-                      '/hakim-poses/inviting-to-begin.png',
                       '/hakim-poses/open-hands-welcoming.png',
                     ][activeEcosystemRole]}
                     alt={t('hakim')}
