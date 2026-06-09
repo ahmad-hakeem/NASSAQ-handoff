@@ -765,9 +765,11 @@ export const LandingPage = () => {
               </span>
             </div>
             <h2 className="font-cairo font-bold text-white text-3xl sm:text-4xl md:text-5xl leading-tight tracking-normal text-center max-w-5xl mx-auto mb-4 selection:bg-brand-turquoise/30 selection:text-white">
-              <span className="block mb-4 md:whitespace-nowrap selection:bg-brand-turquoise/30 selection:text-white">{t('landingLoopHeadingLead')}</span>
-              <span className="block text-brand-turquoise selection:bg-brand-turquoise/30 selection:text-white">{t('landingLoopHeadingAccent')}</span>
+              {t('landingLoopHeading')}
             </h2>
+            <p className="font-tajawal text-base text-white/80 leading-relaxed max-w-2xl mx-auto">
+              {t('landingLoopSubheading')}
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
