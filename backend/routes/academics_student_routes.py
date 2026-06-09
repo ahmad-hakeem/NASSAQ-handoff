@@ -27,6 +27,7 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 from engines.entity_counts import reconcile_school_counts, reconcile_class_counts
 from auth_scope import require_request_school_id
 from utils.it_parent_link import link_workspace_parent_to_student
+from engines.email_service import send_parent_invitation_email, _get_app_url
 from utils.canonical_grades import CANONICAL_GRADES, normalize_canonical_grade
 from utils.stage_grade import normalize_stage
 
@@ -1074,11 +1075,29 @@ async def create_student_with_wizard(
     _it_parent_national_id = (p.get("national_id") or "").strip() or None
     _it_parent_phone = (p.get("phone") or "").strip() or None
     _it_parent_email = (p.get("email") or "").strip() or None
-    it_auto_link = (
+    _it_has_identifier = (
         is_it
         and not data.link_to_parent_id
         and bool(_it_parent_national_id or _it_parent_phone or _it_parent_email)
     )
+    # Task #843 — canonical invite-token guardian onboarding. When the IT
+    # parent-invitation envelope is enabled AND a deliverable channel
+    # (email or phone) is present, the guardian is onboarded through the
+    # §6.2 invite-token contract: the student stays Pending and a real
+    # parent invitation is minted (and delivered when email is present),
+    # so the guardian gets a true portal-access path instead of a
+    # non-loginable sentinel account. The canonical parent/guardian
+    # linkage is then written by the public accept route. When the flag is
+    # off (default) or only a national_id is available (no deliverable
+    # channel), fall back to the create-time auto-link writer.
+    from routes.independent_teacher_invite_parent_routes import (
+        _parent_invitations_enabled,
+    )
+    _it_deliverable = bool(_it_parent_phone or _it_parent_email)
+    it_invite_path = (
+        _it_has_identifier and _parent_invitations_enabled() and _it_deliverable
+    )
+    it_auto_link = _it_has_identifier and not it_invite_path
     skip_parent_materialise = (
         is_it and not data.link_to_parent_id and not it_auto_link
     )
@@ -1089,7 +1108,7 @@ async def create_student_with_wizard(
     # session middleware commits non-GET writes even on a raised
     # HTTPException, so the guard must precede every write). Non-auto-link
     # IT creates and principal/admin creates keep their existing posture.
-    if it_auto_link:
+    if it_auto_link or it_invite_path:
         await _REQUIRE_RECENT_MFA_403_IT(
             credentials=credentials, current_user=current_user,
         )
@@ -1250,7 +1269,55 @@ async def create_student_with_wizard(
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         await gd_insert(db.session, "users", parent_user)
-    
+
+    # Task #843 — IT invite-token onboarding (flag ON + deliverable channel).
+    # The student was just inserted in Pending state (pending_parent_*
+    # fragments, no parents row). Mint the canonical §6.2 parent invitation
+    # so the guardian gets a real portal-access path; deliver it via the
+    # real outbound pipeline (Resend) when an email is present.
+    invite_result = None
+    invite_link = None
+    invite_email_sent = False
+    if it_invite_path:
+        from routes.independent_teacher_invitation_routes import (
+            CreateInvitationRequest, create_parent_invitation,
+        )
+        # Re-runs the workspace student lookup, mints/returns the pending
+        # invitation, writes the AUDIT_INVITATION_CREATED row, and returns
+        # the raw token ONCE. MFA was already cleared above, so pass the
+        # user dict through the _mfa slot (inlining, not re-dispatching).
+        invite_result = await create_parent_invitation(
+            student_id=student_id,
+            payload=CreateInvitationRequest(
+                parent_email=_it_parent_email,
+                parent_phone=_it_parent_phone,
+            ),
+            current_user=current_user,
+            _mfa=current_user,
+        )
+        # Pop the raw token so it never leaks into the API response or logs;
+        # embed it in the canonical accept deep-link instead.
+        _raw_token = invite_result.pop("token", None)
+        if _raw_token:
+            invite_link = (
+                f"{_get_app_url()}/parent-invitations/accept?token={_raw_token}"
+            )
+            if _it_parent_email:
+                try:
+                    invite_email_sent = send_parent_invitation_email(
+                        to_email=_it_parent_email,
+                        parent_name=(p.get("full_name") or ""),
+                        teacher_name=(current_user.get("full_name") or ""),
+                        student_name=(data.full_name or ""),
+                        invite_link=invite_link,
+                        expires_at=invite_result.get("expires_at") or "",
+                    )
+                except Exception as exc:  # noqa: BLE001 — delivery best-effort
+                    logger.warning(
+                        "parent invitation email dispatch failed for student=%s: %s",
+                        student_id, exc,
+                    )
+
     # Update student with parent info (legacy denormalised back-fill). The
     # IT auto-link path already set parent_id via the canonical writer and
     # mirrored the denormalised columns, so skip it here.
@@ -1313,7 +1380,51 @@ async def create_student_with_wizard(
     
     # Generate QR Code for student
     qr_code = generate_student_qr_code(student_id, data.full_name, student_number)
-    
+
+    # Task #843 — truthful guardian-onboarding outcome for the success UX.
+    # The frontend renders the real result (invite sent / linked / pending /
+    # one-time credentials) instead of a fake/empty parent password.
+    if it_invite_path:
+        _onboarding_mode = "invite"
+    elif it_auto_link:
+        _onboarding_mode = "linked"
+    elif is_it and skip_parent_materialise:
+        _onboarding_mode = "pending"
+    elif data.link_to_parent_id:
+        _onboarding_mode = "linked_existing"
+    elif parent_password:
+        _onboarding_mode = "credentials"
+    else:
+        _onboarding_mode = "none"
+
+    parent_onboarding = {
+        "mode": _onboarding_mode,
+        "linked": bool(parent_doc),
+        "parent_email": (
+            _it_parent_email if is_it
+            else (parent_doc.get("email") if parent_doc else None)
+        ),
+        "parent_phone": (
+            _it_parent_phone if is_it
+            else (parent_doc.get("phone") if parent_doc else None)
+        ),
+    }
+    if _onboarding_mode == "invite" and invite_result is not None:
+        parent_onboarding.update({
+            "invite_link": invite_link,
+            "invite_status": invite_result.get("status"),
+            "invite_channels": invite_result.get("channels"),
+            "invite_expires_at": invite_result.get("expires_at"),
+            "invite_reused": invite_result.get("reused"),
+            "email_sent": invite_email_sent,
+        })
+    elif _onboarding_mode == "linked":
+        # The auto-link writer materialises a parent portal user. When a
+        # real email was supplied the guardian can self-activate via the
+        # password-reset flow; otherwise access is provisioned out of band.
+        parent_onboarding["can_self_reset"] = bool(_it_parent_email)
+        parent_onboarding["matched_by"] = link_result.get("matched_by")
+
     return {
         "success": True,
         "student": {
@@ -1340,6 +1451,7 @@ async def create_student_with_wizard(
             ),
             "matched_by": link_result.get("matched_by") if it_auto_link else None,
         } if parent_doc else None,
+        "parent_onboarding": parent_onboarding,
         "welcome_message": welcome_message,
         "siblings": {
             "count": 0,

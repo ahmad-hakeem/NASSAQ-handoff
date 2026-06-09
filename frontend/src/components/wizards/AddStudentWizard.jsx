@@ -239,6 +239,8 @@ export default function AddStudentWizard({
 
   const [createdStudent, setCreatedStudent] = useState(null);
   const [createdParent, setCreatedParent] = useState(null);
+  const [parentOnboarding, setParentOnboarding] = useState(null);
+  const [copiedInvite, setCopiedInvite] = useState(false);
 
   const allGrades = internalGrades.length > 0 ? internalGrades : grades;
 
@@ -430,6 +432,7 @@ export default function AddStudentWizard({
       if (response.data?.success) {
         setCreatedStudent(response.data.student);
         setCreatedParent(response.data.parent);
+        setParentOnboarding(response.data.parent_onboarding || null);
         setSiblings(response.data.siblings?.list || []);
         setStep(5);
         toast.success(t('accountCreatedSuccessfully'));
@@ -483,11 +486,17 @@ export default function AddStudentWizard({
     if (createdParent.phone) {
       parentLines.push(`📱 رقم الهاتف: ${createdParent.phone}`);
     }
-    parentLines.push(
-      createdParent.is_new
-        ? `🔑 كلمة المرور المؤقتة: ${createdParent.temp_password}`
-        : '(حساب ولي الأمر موجود مسبقًا)'
-    );
+    if (parentOnboarding?.mode === 'linked') {
+      parentLines.push(
+        parentOnboarding.can_self_reset
+          ? '🔑 لتفعيل الدخول: استخدم خيار "نسيت كلمة المرور" عبر البريد المسجل'
+          : '(سيتم تزويد ولي الأمر ببيانات الدخول لاحقاً)'
+      );
+    } else if (createdParent.is_new && createdParent.temp_password) {
+      parentLines.push(`🔑 كلمة المرور المؤقتة: ${createdParent.temp_password}`);
+    } else {
+      parentLines.push('(حساب ولي الأمر موجود مسبقًا)');
+    }
 
     const message = `السلام عليكم ورحمة الله وبركاته\n\nولي الأمر الكريم / ${createdParent.full_name}\n\nيسعدنا إبلاغكم بأنه تم إتمام تسجيل الطالب ${createdStudent.full_name} بنجاح داخل المدرسة عبر منصة نَسَّق | NASSAQ.\n\nأولًا: بيانات الطالب\n━━━━━━━━━━━━━━━━━━━━\n${studentLines.join('\n')}\n\nثانيًا: بيانات ولي الأمر\n━━━━━━━━━━━━━━━━━━━━\n${parentLines.join('\n')}\n\n🔗 رابط الدخول للمنصة:\n${loginUrl}\n\n━━━━━━━━━━━━━━━━━━━━\nنرجو تغيير كلمة المرور عند أول تسجيل دخول.\n\nمع خالص التحية،\nإدارة المدرسة\nمنصة نَسَّق | NASSAQ`;
     navigator.clipboard.writeText(message);
@@ -503,6 +512,14 @@ export default function AddStudentWizard({
     link.download = `student_${createdStudent.student_id}_qr.png`;
     link.click();
     toast.success(t('qrCodeDownloaded'));
+  };
+
+  const copyInviteLink = () => {
+    if (!parentOnboarding?.invite_link) return;
+    navigator.clipboard.writeText(parentOnboarding.invite_link);
+    setCopiedInvite(true);
+    setTimeout(() => setCopiedInvite(false), 2000);
+    toast.success(t('inviteLinkCopied', 'تم نسخ رابط الدعوة'));
   };
 
   const resetForm = () => {
@@ -524,6 +541,8 @@ export default function AddStudentWizard({
     setLinkToExisting(false);
     setCreatedStudent(null);
     setCreatedParent(null);
+    setParentOnboarding(null);
+    setCopiedInvite(false);
     setSelectedExistingParent(null);
     setParentSearchResults([]);
     setParentSearchQuery('');
@@ -979,6 +998,54 @@ export default function AddStudentWizard({
                 </div>
               </div>
 
+              {parentOnboarding?.mode === 'invite' && (
+                <div className="p-4 rounded-xl border bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900">
+                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 mb-2 flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+                    {isRTL ? 'دعوة ولي الأمر' : 'Parent Invitation'}
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                    {parentOnboarding.email_sent
+                      ? (isRTL
+                          ? `تم إرسال دعوة تفعيل الحساب إلى ${parentOnboarding.parent_email}. يفعّل ولي الأمر حسابه عبر الرابط ويختار كلمة المرور بنفسه.`
+                          : `An activation invitation was emailed to ${parentOnboarding.parent_email}. The parent activates their own account via the link and sets their own password.`)
+                      : (isRTL
+                          ? 'تم إنشاء دعوة لولي الأمر. شارك الرابط أدناه ليفعّل حسابه ويختار كلمة المرور بنفسه.'
+                          : 'A parent invitation was created. Share the link below so the parent can activate their account and set their own password.')}
+                  </p>
+                  {parentOnboarding.invite_link && (
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 text-[10px] bg-background border rounded-md px-2 py-1.5 truncate font-mono" dir="ltr">
+                        {parentOnboarding.invite_link}
+                      </code>
+                      <Button variant="outline" size="sm" className="h-8 rounded-md flex-shrink-0" onClick={copyInviteLink}>
+                        {copiedInvite ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
+                  )}
+                  {parentOnboarding.invite_expires_at && (
+                    <p className="text-[10px] text-muted-foreground mt-2">
+                      {isRTL ? 'ينتهي الرابط في: ' : 'Link expires: '}
+                      <span dir="ltr">{new Date(parentOnboarding.invite_expires_at).toLocaleString()}</span>
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {parentOnboarding?.mode === 'pending' && (
+                <div className="p-4 rounded-xl border bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900">
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-1.5 flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+                    {isRTL ? 'ولي الأمر — بانتظار الربط' : 'Parent — Pending Link'}
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {isRTL
+                      ? 'تم حفظ بيانات ولي الأمر للطالب. أرسل دعوة لاحقاً لمنح ولي الأمر صلاحية الدخول.'
+                      : 'Guardian details were saved with the student. Send an invitation later to grant the parent portal access.'}
+                  </p>
+                </div>
+              )}
+
               {createdParent && (
                 <div className="p-4 rounded-xl border bg-blue-50/50 dark:bg-blue-950/20">
                   <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-2 flex items-center gap-1.5">
@@ -998,6 +1065,17 @@ export default function AddStudentWizard({
                       <div><span className="text-muted-foreground">{t('password2')}</span><p className="font-mono">{createdParent.temp_password}</p></div>
                     )}
                   </div>
+                  {parentOnboarding?.mode === 'linked' && (
+                    <p className="text-[11px] text-muted-foreground mt-3 leading-relaxed border-t pt-2">
+                      {parentOnboarding.can_self_reset
+                        ? (isRTL
+                            ? 'يفعّل ولي الأمر الدخول عبر خيار "نسيت كلمة المرور" باستخدام بريده المسجل.'
+                            : 'The parent activates access via "Forgot password" using their registered email.')
+                        : (isRTL
+                            ? 'سيتم تزويد ولي الأمر ببيانات الدخول لاحقاً.'
+                            : 'The parent will be provided with sign-in details later.')}
+                    </p>
+                  )}
                 </div>
               )}
 

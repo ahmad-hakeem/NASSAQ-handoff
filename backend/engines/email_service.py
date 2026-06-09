@@ -572,3 +572,91 @@ def send_admin_password_reset_notification(to_email: str, user_name: str, admin_
     except Exception as e:
         logger.error(f"Failed to send admin reset notification to {to_email}: {e}")
         return False
+
+
+def send_parent_invitation_email(
+    to_email: str,
+    parent_name: str,
+    teacher_name: str,
+    student_name: str,
+    invite_link: str,
+    expires_at: str = "",
+) -> bool:
+    """Deliver an Independent-Teacher parent-invitation activation link.
+
+    Task #843: when an IT creates a student with a deliverable guardian
+    email, the canonical §6.2 invite token is dispatched here so the
+    guardian gets a real portal-access path (accept link → set password →
+    auto-linked). The raw token is embedded in ``invite_link`` by the
+    caller and must NEVER be logged. Best-effort: returns False if Resend
+    is not configured or rejects the message; the caller MUST NOT roll
+    back the invitation on a False return (the teacher can still copy the
+    link from the success screen).
+    """
+    if not RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY not configured — skipping parent invitation email")
+        return False
+
+    resend.api_key = RESEND_API_KEY
+    safe_parent = _h(parent_name or "ولي الأمر", quote=True)
+    safe_teacher = _h(teacher_name or "", quote=True)
+    safe_student = _h(student_name or "", quote=True)
+
+    html = f"""<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:'Segoe UI',Tahoma,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:40px 0;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#1a1f36 0%,#2d3561 100%);padding:32px;text-align:center;">
+            <img src="{LOGO_URL}" alt="NASSAQ" width="160" style="margin-bottom:8px;" />
+            <p style="color:#64d9d6;font-size:14px;margin:0;">منصة إدارة المدارس الذكية</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;">
+            <h2 style="color:#1a1f36;font-size:20px;margin:0 0 8px;">دعوة لتفعيل حساب ولي الأمر</h2>
+            <p style="color:#888;font-size:13px;margin:0 0 24px;">Activate your parent portal account</p>
+            <p style="color:#555;font-size:15px;line-height:1.8;margin:0 0 16px;">
+              مرحباً {safe_parent}،<br/>
+              قام المعلّم <strong>{safe_teacher}</strong> بتسجيل الطالب
+              <strong>{safe_student}</strong> ودعوتك للوصول إلى حسابك في
+              منصة نَسَّق لمتابعة بيانات ابنك/ابنتك.
+            </p>
+            <div style="text-align:center;margin:32px 0;">
+              <a href="{invite_link}" style="display:inline-block;background:linear-gradient(135deg,#64d9d6,#36b5b0);color:#1a1f36;font-weight:bold;font-size:16px;padding:14px 40px;border-radius:12px;text-decoration:none;">
+                تفعيل الحساب والدخول
+              </a>
+            </div>
+            <div style="background:#f8f9fb;border-radius:12px;padding:16px;margin:24px 0;">
+              <p style="color:#888;font-size:13px;margin:0;line-height:1.8;">
+                ⏰ هذا الرابط صالح لمدة محدودة فقط.<br/>
+                🔒 إذا لم تكن تتوقع هذه الدعوة، يمكنك تجاهل هذا الإيميل.
+              </p>
+            </div>
+            <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
+            <p style="color:#aaa;font-size:12px;text-align:center;margin:0;">
+              نَسَّق &copy; {2026} — جميع الحقوق محفوظة
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+    try:
+        result = resend.Emails.send({
+            "from": f"نَسَّق NASSAQ <{FROM_EMAIL}>",
+            "to": [to_email],
+            "subject": "دعوة لتفعيل حساب ولي الأمر — نَسَّق",
+            "html": html,
+        })
+        logger.info(f"Parent invitation email sent to {to_email}, id={result.get('id', 'unknown')}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send parent invitation email to {to_email}: {e}")
+        return False
