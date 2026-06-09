@@ -1179,6 +1179,9 @@ async def create_student_with_wizard(
     # Handle parent
     parent_doc = None
     parent_password = None
+    invite_result = None
+    invite_link = None
+    invite_email_sent = False
 
     if it_auto_link:
         # Task #817 — IT create-time auto-link. Insert the student and run
@@ -1214,6 +1217,32 @@ async def create_student_with_wizard(
                 "parent_email": parent_doc.get("email"),
             })
         # The canonical writer owns parent_id; skip the legacy back-fill.
+        skip_legacy_parent_update = True
+    elif it_invite_path:
+        # Task #843 — IT invite-token onboarding. Insert the student and
+        # mint the canonical §6.2 parent invitation inside ONE savepoint so
+        # an invitation-mint failure rolls back the freshly created student
+        # too (no orphaned Pending student). create_parent_invitation opens
+        # its own nested savepoint for the invitation/audit writes — nesting
+        # is fine; the outer savepoint is the shared failure domain. Email
+        # delivery happens AFTER this commits and is best-effort.
+        from routes.independent_teacher_invitation_routes import (
+            CreateInvitationRequest, create_parent_invitation,
+        )
+        async with db.session.begin_nested():
+            await gd_insert(db.session, "students", student_doc)
+            # MFA was already cleared above; pass the user dict through the
+            # _mfa slot (inlining, not re-dispatching). Returns the raw token
+            # ONCE and writes the AUDIT_INVITATION_CREATED row.
+            invite_result = await create_parent_invitation(
+                student_id=student_id,
+                payload=CreateInvitationRequest(
+                    parent_email=_it_parent_email,
+                    parent_phone=_it_parent_phone,
+                ),
+                current_user=current_user,
+                _mfa=current_user,
+            )
         skip_legacy_parent_update = True
     else:
         await gd_insert(db.session, "students", student_doc)
@@ -1270,31 +1299,13 @@ async def create_student_with_wizard(
         }
         await gd_insert(db.session, "users", parent_user)
 
-    # Task #843 — IT invite-token onboarding (flag ON + deliverable channel).
-    # The student was just inserted in Pending state (pending_parent_*
-    # fragments, no parents row). Mint the canonical §6.2 parent invitation
-    # so the guardian gets a real portal-access path; deliver it via the
-    # real outbound pipeline (Resend) when an email is present.
-    invite_result = None
-    invite_link = None
-    invite_email_sent = False
-    if it_invite_path:
-        from routes.independent_teacher_invitation_routes import (
-            CreateInvitationRequest, create_parent_invitation,
-        )
-        # Re-runs the workspace student lookup, mints/returns the pending
-        # invitation, writes the AUDIT_INVITATION_CREATED row, and returns
-        # the raw token ONCE. MFA was already cleared above, so pass the
-        # user dict through the _mfa slot (inlining, not re-dispatching).
-        invite_result = await create_parent_invitation(
-            student_id=student_id,
-            payload=CreateInvitationRequest(
-                parent_email=_it_parent_email,
-                parent_phone=_it_parent_phone,
-            ),
-            current_user=current_user,
-            _mfa=current_user,
-        )
+    # Task #843 — IT invite-token onboarding DELIVERY (post-commit). The
+    # invitation was minted inside the student-insert savepoint above, so a
+    # mint failure already rolled the student back (shared failure domain).
+    # Here we only surface the one-time token (as an accept deep-link) and
+    # best-effort email it; a delivery failure NEVER rolls back the
+    # invitation or the student.
+    if it_invite_path and invite_result is not None:
         # Pop the raw token so it never leaks into the API response or logs;
         # embed it in the canonical accept deep-link instead.
         _raw_token = invite_result.pop("token", None)
