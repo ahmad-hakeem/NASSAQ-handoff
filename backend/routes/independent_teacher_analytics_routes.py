@@ -57,12 +57,19 @@ from auth_scope import (
     is_independent_teacher,
     require_request_school_id,
 )
-from dependencies import db, get_current_user
+from dependencies import db, get_current_user, require_recent_mfa_403
 from engines.sql_utils import gd_find_one
 from middleware.rbac import Permission, ROLE_PERMISSIONS
 
 
 logger = logging.getLogger("nassaq.it_analytics")
+
+# IT §5.7 — export surfaces are write-equivalent disclosure actions and
+# must carry a fresh MFA proof. The dashboard READ endpoint above stays
+# un-gated (read-only aggregation of data the IT already owns), but every
+# file export below requires recent step-up. The 403 variant is used so
+# the FE axios interceptor replays the request after passkey assertion.
+_recent_mfa_403 = require_recent_mfa_403()
 
 router = APIRouter(
     prefix="/independent-teacher/analytics",
@@ -972,6 +979,7 @@ async def export_workspace_analytics_csv(
     to: Optional[str] = Query(default=None),
     class_id: Optional[str] = Query(default=None),
     current_user: dict = Depends(_require_independent_teacher),
+    _mfa: dict = Depends(_recent_mfa_403),
 ):
     workspace_id = _workspace_id(current_user)
     start, end = _resolve_range(from_, to)
@@ -999,6 +1007,7 @@ async def export_workspace_analytics_xlsx(
     to: Optional[str] = Query(default=None),
     class_id: Optional[str] = Query(default=None),
     current_user: dict = Depends(_require_independent_teacher),
+    _mfa: dict = Depends(_recent_mfa_403),
 ):
     workspace_id = _workspace_id(current_user)
     start, end = _resolve_range(from_, to)
@@ -1037,6 +1046,7 @@ async def export_workspace_analytics_pdf(
     to: Optional[str] = Query(default=None),
     class_id: Optional[str] = Query(default=None),
     current_user: dict = Depends(_require_independent_teacher),
+    _mfa: dict = Depends(_recent_mfa_403),
 ):
     workspace_id = _workspace_id(current_user)
     start, end = _resolve_range(from_, to)

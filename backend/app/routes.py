@@ -232,6 +232,15 @@ def register_routes(app, api_router: APIRouter):
         router as it_analytics_router,
     )
     api_router.include_router(it_analytics_router)
+    # Task #840 — IT workspace student-report export (Performance /
+    # Attendance) as PDF/Excel. IT role + ANALYTICS_READ_OWN_WORKSPACE +
+    # require_recent_mfa_403 enforced at the route layer. school_id is
+    # derived server-side from itw_{user_id}; cross-workspace student_id /
+    # class_id returns 404 per spec §8 inv. 3.
+    from routes.independent_teacher_reports_routes import (
+        router as it_reports_router,
+    )
+    api_router.include_router(it_reports_router)
     # Task #249 — IT Notifications Inbox + per-category preferences.
     # Mounted WITHOUT _full_tenant_dep; the router enforces the IT role
     # gate per-endpoint and pins user_id + tenant_id == itw_{user_id}

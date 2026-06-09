@@ -87,6 +87,12 @@ export default function TeacherAnalyticsPanel() {
   const [data, setData] = useState(null);
   const [exporting, setExporting] = useState(null); // 'pdf' | 'xlsx' | null
 
+  // Task #840 — student-report export (Performance / Attendance).
+  const [reportKind, setReportKind] = useState('performance'); // 'performance' | 'attendance'
+  const [reportStudentId, setReportStudentId] = useState('all');
+  const [students, setStudents] = useState([]);
+  const [reportExporting, setReportExporting] = useState(null); // 'pdf' | 'xlsx' | null
+
   const loadClasses = useCallback(async () => {
     try {
       const resp = await api.get('/classes');
@@ -96,6 +102,16 @@ export default function TeacherAnalyticsPanel() {
       setClasses(list);
     } catch {
       setClasses([]);
+    }
+  }, [api]);
+
+  const loadStudents = useCallback(async () => {
+    try {
+      const resp = await api.get('/classes/options/students');
+      const list = Array.isArray(resp?.data?.students) ? resp.data.students : [];
+      setStudents(list);
+    } catch {
+      setStudents([]);
     }
   }, [api]);
 
@@ -121,7 +137,69 @@ export default function TeacherAnalyticsPanel() {
   }, [api, fromDate, toDate, classId, t, nassaqError]);
 
   useEffect(() => { loadClasses(); }, [loadClasses]);
+  useEffect(() => { loadStudents(); }, [loadStudents]);
   useEffect(() => { loadAnalytics(); }, [loadAnalytics]);
+
+  const handleReportExport = useCallback(async (fmt) => {
+    if (reportExporting) return;
+    setReportExporting(fmt);
+    try {
+      const params = {
+        kind: reportKind,
+        format: fmt,
+        from: dayBoundaryIso(fromDate),
+        to: dayBoundaryIso(toDate, { endOfDay: true }),
+      };
+      if (classId && classId !== 'all') params.class_id = classId;
+      if (reportStudentId && reportStudentId !== 'all') params.student_id = reportStudentId;
+      const res = await api.get('/independent-teacher/reports/export', {
+        params,
+        responseType: 'blob',
+      });
+      const mime = fmt === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const blob = res?.data instanceof Blob
+        ? res.data
+        : new Blob([res?.data ?? ''], { type: mime });
+      const h = getHijriDate(new Date());
+      const stamp = `${String(h.hijriYear).padStart(4, '0')}-${String(h.hijriMonth).padStart(2, '0')}-${String(h.hijriDay).padStart(2, '0')}H`;
+      const filename = `nassaq-${reportKind}-report-${stamp}.${fmt}`;
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(href), 0);
+    } catch (err) {
+      // responseType: 'blob' means a JSON error payload arrives as a Blob,
+      // so the usual err.response.data.error.message access is undefined.
+      // Read the blob as text and parse the standard envelope before
+      // falling back to the generic Arabic export-failed message.
+      let msg = '';
+      try {
+        const body = err?.response?.data;
+        if (body instanceof Blob) {
+          const txt = await body.text();
+          try {
+            const parsed = JSON.parse(txt);
+            msg = parsed?.error?.message || parsed?.detail || '';
+          } catch {
+            msg = '';
+          }
+        } else {
+          msg = body?.error?.message || body?.detail || '';
+        }
+      } catch {
+        msg = '';
+      }
+      nassaqError(msg || t('teacherAnalyticsExportFailed'));
+    } finally {
+      setReportExporting(null);
+    }
+  }, [api, fromDate, toDate, classId, reportKind, reportStudentId, reportExporting, t, nassaqError]);
 
   const handleExport = useCallback(async (fmt) => {
     if (exporting) return;
@@ -263,6 +341,63 @@ export default function TeacherAnalyticsPanel() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="reports-export-card">
+        <CardHeader>
+          <CardTitle className="text-base">{t('itReportsExportTitle')}</CardTitle>
+          <p className="text-sm text-gray-500 font-tajawal">{t('itReportsExportIntro')}</p>
+        </CardHeader>
+        <CardContent className="p-4 pt-0 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">{t('itReportsExportKind')}</label>
+            <Select value={reportKind} onValueChange={setReportKind}>
+              <SelectTrigger data-testid="reports-kind"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="performance">{t('itReportsExportKindPerformance')}</SelectItem>
+                <SelectItem value="attendance">{t('itReportsExportKindAttendance')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">{t('itReportsExportStudent')}</label>
+            <Select value={reportStudentId} onValueChange={setReportStudentId}>
+              <SelectTrigger data-testid="reports-student"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('itReportsExportAllStudents')}</SelectItem>
+                {students.map((s) => (
+                  <SelectItem key={s.student_id} value={s.student_id}>
+                    {s.full_name_ar || s.full_name_en || s.student_number || s.student_id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => handleReportExport('pdf')}
+              disabled={!!reportExporting}
+              data-testid="reports-export-pdf"
+            >
+              {reportExporting === 'pdf'
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <FileText className="h-4 w-4" />}
+              <span className="mx-1">{t('teacherAnalyticsExportPdf')}</span>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleReportExport('xlsx')}
+              disabled={!!reportExporting}
+              data-testid="reports-export-xlsx"
+            >
+              {reportExporting === 'xlsx'
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <FileSpreadsheet className="h-4 w-4" />}
+              <span className="mx-1">{t('teacherAnalyticsExportExcel')}</span>
+            </Button>
           </div>
         </CardContent>
       </Card>

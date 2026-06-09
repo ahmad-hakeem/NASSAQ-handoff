@@ -48,6 +48,28 @@ def _reshape_ar(text: str) -> str:
         logging.getLogger("nassaq.export").debug("Arabic reshape failed: %s", e)
         return str(text)
 
+# Spreadsheet formula-injection metacharacters. A cell that begins with one
+# of these is treated by Excel / Sheets as a live formula, so any
+# attacker-controllable string (student / class / parent names) emitted into
+# a CSV / XLSX export must be neutralized first.
+_FORMULA_INJECTION_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _sanitize_formula_cell(value):
+    """Return ``value`` with a leading formula metacharacter neutralized.
+
+    Strings starting with one of ``_FORMULA_INJECTION_CHARS`` get an
+    apostrophe prefix so spreadsheet apps render them as literal text.
+    Non-string cells (numbers, dates, NaN) are returned unchanged — they
+    cannot carry a formula payload.
+    """
+    if not isinstance(value, str):
+        return value
+    if value.startswith(_FORMULA_INJECTION_CHARS):
+        return "'" + value
+    return value
+
+
 FONTS_DIR = os.path.join(os.path.dirname(__file__), "..", "fonts")
 
 
@@ -549,6 +571,23 @@ class ExportEngine:
                     continue
                 story.append(_ar_para(f"{key}: {val}", styles["ArabicBody"]))
 
+    @staticmethod
+    def _neutralize_formulas(df):
+        """Prefix a leading formula metacharacter on any string cell (and
+        column header) with an apostrophe so a value like ``=cmd|calc`` or
+        ``+1+2`` is opened as literal text rather than an evaluated formula
+        in Excel / Sheets. Attacker-controllable roster fields (student /
+        class / parent names) flow into these exports, so every CSV/XLSX
+        writer must run cells through this guard (defence-in-depth alongside
+        the name-validation store-time block)."""
+        sanitized = df.copy()
+        sanitized.columns = [
+            _sanitize_formula_cell(c) for c in sanitized.columns
+        ]
+        for col in sanitized.columns:
+            sanitized[col] = sanitized[col].map(_sanitize_formula_cell)
+        return sanitized
+
     def _to_csv(self, report_type, data):
         frames = self._flatten_to_frames(report_type, data)
         buf = io.BytesIO()
@@ -558,7 +597,7 @@ class ExportEngine:
             if not first:
                 buf.write(b"\n")
             buf.write(f"# {name}\n".encode("utf-8"))
-            csv_str = df.to_csv(index=False)
+            csv_str = self._neutralize_formulas(df).to_csv(index=False)
             buf.write(csv_str.encode("utf-8"))
             first = False
         if not frames:
@@ -569,7 +608,18 @@ class ExportEngine:
     def _to_xlsx(self, report_type, data, period, generated):
         buf = io.BytesIO()
         frames = self._flatten_to_frames(report_type, data)
-        with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
+        # Disable xlsxwriter's automatic string-to-formula / string-to-url
+        # coercion so a leading "=" / "+" / "-" / "@" is never evaluated;
+        # combined with per-cell neutralization below this fully closes the
+        # spreadsheet formula-injection vector on attacker-controlled cells.
+        with pd.ExcelWriter(
+            buf,
+            engine="xlsxwriter",
+            engine_kwargs={"options": {
+                "strings_to_formulas": False,
+                "strings_to_urls": False,
+            }},
+        ) as writer:
             workbook = writer.book
             header_fmt = workbook.add_format({
                 "bold": True,
@@ -583,7 +633,7 @@ class ExportEngine:
 
             for name, df in frames:
                 safe_name = name[:31]
-                df = df.fillna("")
+                df = self._neutralize_formulas(df.fillna(""))
                 df.to_excel(writer, index=False, sheet_name=safe_name)
                 ws = writer.sheets[safe_name]
                 for col_num, col_name in enumerate(df.columns):
