@@ -6,7 +6,7 @@ import {
   Link2,
 } from 'lucide-react';
 
-import Sidebar from '../../components/layout/Sidebar';
+import { Sidebar } from '../../components/layout/Sidebar';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
