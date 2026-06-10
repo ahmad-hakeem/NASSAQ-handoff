@@ -121,6 +121,23 @@ describe('NoorImportPanel preview contracts (Task #387)', () => {
     expect(screen.getByTestId('btn-execute-import')).toBeInTheDocument();
   });
 
+  test('clicking إلغاء الاستيراد on a stale backend (405) still resets without surfacing English HTTP text', async () => {
+    const api = { post: jest.fn() };
+    renderWithProviders(api);
+
+    await seedPreview(api, _previewWithUnclassified());
+    api.post.mockRejectedValueOnce({ response: { status: 405, data: { detail: 'Method Not Allowed' } } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-cancel-import'));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('btn-execute-import')).toBeNull();
+    });
+    expect(screen.queryByText('Method Not Allowed')).toBeNull();
+  });
+
   test('clicking إلغاء الاستيراد on a pristine preview discards the draft and resets to import-ready state', async () => {
     const api = { post: jest.fn() };
     renderWithProviders(api);

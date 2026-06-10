@@ -897,10 +897,15 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
       resetImportState();
       if (nassaqInfo) nassaqInfo('تم إلغاء المعاينة. يمكنك رفع ملف جديد للبدء من جديد.');
     } catch (err) {
-      // The draft may already be gone/expired — that's still a successful
-      // cancel from the user's perspective, so reset the UI regardless and
-      // surface the reason only for genuine unexpected failures.
+      // The draft may already be gone/expired, or the discard route may be
+      // unavailable on a stale backend build (405) — either way the UI reset
+      // is the correct outcome and we must not surface raw English HTTP text.
       resetImportState();
+      const status = err?.response?.status;
+      if (status === 403 || status === 404 || status === 405) {
+        if (nassaqInfo) nassaqInfo('تم إلغاء المعاينة. يمكنك رفع ملف جديد للبدء من جديد.');
+        return;
+      }
       nassaqError(getApiErrorMessage(err) || 'تعذّر إلغاء المعاينة — تم تفريغ الشاشة على أي حال');
     } finally {
       setCancelling(false);
