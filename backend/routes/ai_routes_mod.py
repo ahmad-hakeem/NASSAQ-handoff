@@ -1369,7 +1369,8 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest, request: Request
             ).chat.completions.create(
                 model="gpt-5-mini",
                 messages=messages_list,
-                max_completion_tokens=1024,
+                max_completion_tokens=2048,
+                reasoning_effort="minimal",
                 stream=True,
             )
             for event in stream:
@@ -1489,7 +1490,8 @@ async def public_hakim_chat(req: PublicHakimChatRequest, request: Request):
         response = client.chat.completions.create(
             model="gpt-5-mini",
             messages=messages_list,
-            max_completion_tokens=1024,
+            max_completion_tokens=2048,
+            reasoning_effort="minimal",
         )
         reply = (response.choices[0].message.content or "").strip()
         if not reply:
