@@ -49,6 +49,10 @@ args = "cd frontend && PORT=5000 BROWSER=none npx craco start"
 waitForPort = 5000
 
 [[ports]]
+localPort = 3000
+externalPort = 3001
+
+[[ports]]
 localPort = 5000
 externalPort = 5000
 

@@ -517,9 +517,20 @@ export const LandingPage = () => {
                 >
                   <span className="text-white">{isRTL ? 'نَسَّق' : 'NASSAQ'}</span>
                 </h1>
-                <p className="font-tajawal text-lg text-white/80 leading-relaxed max-w-xl">
-                  {t('landingHeroSubheading')}
-                </p>
+                <div className="space-y-2.5 max-w-xl">
+                  <p
+                    className="font-tajawal text-xl sm:text-2xl text-white/90 font-medium leading-snug"
+                    data-testid="hero-subheading"
+                  >
+                    {t('landingHeroSubheading')}
+                  </p>
+                  <p
+                    className="font-tajawal text-sm sm:text-base text-white/65 leading-relaxed"
+                    data-testid="hero-supporting"
+                  >
+                    {t('landingHeroSupporting')}
+                  </p>
+                </div>
               </div>
 
               {/* MIDDLE GROUP: CTAs + trust microcopy */}
