@@ -320,7 +320,7 @@ const ParentPortalDashboard = () => {
 
   if (loading) {
     return (
-      <PortalLayout portalType="parent" hideHeaderNotifications>
+      <PortalLayout portalType="parent">
         <div className="p-4 md:p-6 space-y-5 max-w-[1400px] mx-auto">
           <Skeleton className="h-12 w-full max-w-md rounded-xl" />
           <Skeleton className="h-72 w-full rounded-3xl" />
@@ -333,7 +333,7 @@ const ParentPortalDashboard = () => {
   }
 
   return (
-    <PortalLayout portalType="parent" hideHeaderNotifications>
+    <PortalLayout portalType="parent">
       <div
         className="p-4 md:p-6 space-y-5 max-w-[1400px] mx-auto"
         dir={isRTL ? 'rtl' : 'ltr'}
