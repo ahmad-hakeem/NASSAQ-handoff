@@ -3,6 +3,7 @@ import React from 'react';
 import {
   Users, Loader2, KeyRound, Copy, Eye, EyeOff, UserPlus, RefreshCw,
   Search, ShieldCheck, Mail, Phone, CheckCircle2, Clock, CircleSlash,
+  Link2,
 } from 'lucide-react';
 
 import Sidebar from '../../components/layout/Sidebar';
@@ -25,6 +26,20 @@ const PORTAL_BADGE = {
   none: { icon: CircleSlash, key: 'itParentPortalNone', cls: 'border-slate-300 bg-slate-50 text-slate-600' },
 };
 
+// §5.7 step-up envelope is replayed by the global axios interceptor after
+// passkey assertion; we must NOT surface it as a hard error toast.
+const STEP_UP_CODES = new Set([
+  'MFA_STEPUP_REQUIRED', 'MFA_PASSKEY_REQUIRED', 'MFA_RESTORE_REQUIRED',
+]);
+
+function isStepUpError(err) {
+  const status = err?.response?.status;
+  const detail = err?.response?.data?.detail;
+  return (status === 401 || status === 403)
+    && typeof detail === 'object'
+    && STEP_UP_CODES.has(detail?.code);
+}
+
 function PortalStateBadge({ state }) {
   const { t } = useTranslation();
   const meta = PORTAL_BADGE[state] || PORTAL_BADGE.none;
@@ -41,7 +56,7 @@ export function ITParentsPanel({ embedded = false } = {}) {
   const { api } = useAuth();
   const { isRTL } = useTheme();
   const { t } = useTranslation();
-  const { nassaqError, nassaqSuccess } = useNassaqAlert();
+  const { nassaqError, nassaqSuccess, nassaqConfirm } = useNassaqAlert();
 
   const [loading, setLoading] = useState(true);
   const [parents, setParents] = useState([]);
@@ -56,6 +71,15 @@ export function ITParentsPanel({ embedded = false } = {}) {
   const [showPassword, setShowPassword] = useState(false);
   const [credSaving, setCredSaving] = useState(false);
   const [credResult, setCredResult] = useState(null);
+
+  // Materialize/link flow — reuses the canonical IT invite-parent writer
+  // (POST /independent-teacher/students/{id}/invite-parent), the same path
+  // the Students tab uses. No ad-hoc frontend insert.
+  const [linkTarget, setLinkTarget] = useState(null);
+  const [linkForm, setLinkForm] = useState({
+    full_name: '', phone: '', email: '', national_id: '', relationship: 'guardian',
+  });
+  const [linkSaving, setLinkSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -106,6 +130,17 @@ export function ITParentsPanel({ embedded = false } = {}) {
     setShowPassword(false);
   }, []);
 
+  const openLink = useCallback((student) => {
+    setLinkTarget(student);
+    setLinkForm({
+      full_name: student.pending_parent_name || '',
+      phone: student.pending_parent_phone || '',
+      email: student.pending_parent_email || '',
+      national_id: '',
+      relationship: 'guardian',
+    });
+  }, []);
+
   const copyToClipboard = useCallback((text, label) => {
     if (!text) return;
     navigator.clipboard.writeText(text)
@@ -113,29 +148,92 @@ export function ITParentsPanel({ embedded = false } = {}) {
       .catch(() => nassaqError(t('itCopyFailed')));
   }, [nassaqError, nassaqSuccess, t]);
 
-  const handleRotate = useCallback(async () => {
+  // Sensitive mutation — gate behind NassaqAlertDialog confirmation before
+  // calling the canonical link writer (spec step 7).
+  const handleLink = useCallback(() => {
+    if (!linkTarget) return;
+    const f = linkForm;
+    if (!f.phone?.trim() && !f.email?.trim() && !f.national_id?.trim()) {
+      nassaqError(t('itLinkContactRequired'));
+      return;
+    }
+    nassaqConfirm(
+      t('itLinkParentConfirmBody', { name: linkTarget.student_name || '' })
+        || t('itLinkParentConfirmBodyGeneric'),
+      async () => {
+        setLinkSaving(true);
+        try {
+          const body = {
+            full_name: f.full_name?.trim() || null,
+            phone: f.phone?.trim() || null,
+            email: f.email?.trim() || null,
+            national_id: f.national_id?.trim() || null,
+            relationship: f.relationship || 'guardian',
+          };
+          await api.post(
+            `/independent-teacher/students/${linkTarget.student_id}/invite-parent`,
+            body,
+          );
+          setLinkTarget(null);
+          await load();
+          nassaqSuccess(t('itLinkParentSuccess'));
+        } catch (err) {
+          if (!isStepUpError(err)) {
+            nassaqError(getApiErrorMessage(err) || t('itLinkParentFailed'));
+          }
+        } finally {
+          setLinkSaving(false);
+        }
+      },
+      {
+        title: t('itLinkParentConfirmTitle'),
+        confirmText: t('itLinkParentSubmit'),
+        cancelText: t('cancel'),
+        type: 'info',
+      },
+    );
+  }, [api, linkTarget, linkForm, load, nassaqConfirm, nassaqError, nassaqSuccess, t]);
+
+  // Sensitive mutation — confirm before invalidating the old login secret
+  // (spec step 7). The actual rotation runs inside the confirm callback.
+  const handleRotate = useCallback(() => {
     if (!credParent) return;
     if (credForm.new_password && credForm.new_password.length < 6) {
       nassaqError(t('itParentPasswordTooShort'));
       return;
     }
-    setCredSaving(true);
-    try {
-      const body = {};
-      if (credForm.new_email.trim()) body.new_email = credForm.new_email.trim();
-      if (credForm.new_password.trim()) body.new_password = credForm.new_password.trim();
-      const { data } = await api.put(
-        `/independent-teacher/parents/${credParent.id}/credentials`, body,
-      );
-      setCredResult(data);
-      nassaqSuccess(t('itParentCredentialsSaved'));
-      load();
-    } catch (err) {
-      nassaqError(getApiErrorMessage(err) || t('itParentCredentialsFailed'));
-    } finally {
-      setCredSaving(false);
-    }
-  }, [api, credParent, credForm, load, nassaqError, nassaqSuccess, t]);
+    nassaqConfirm(
+      credParent.full_name
+        ? t('itRotateConfirmBody', { name: credParent.full_name })
+        : t('itRotateConfirmBodyGeneric'),
+      async () => {
+        setCredSaving(true);
+        try {
+          const reqBody = {};
+          if (credForm.new_email.trim()) reqBody.new_email = credForm.new_email.trim();
+          if (credForm.new_password.trim()) reqBody.new_password = credForm.new_password.trim();
+          const { data } = await api.put(
+            `/independent-teacher/parents/${credParent.id}/credentials`, reqBody,
+          );
+          setCredResult(data);
+          nassaqSuccess(t('itParentCredentialsSaved'));
+          load();
+        } catch (err) {
+          if (!isStepUpError(err)) {
+            nassaqError(getApiErrorMessage(err) || t('itParentCredentialsFailed'));
+          }
+        } finally {
+          setCredSaving(false);
+        }
+      },
+      {
+        title: t('itRotateConfirmTitle'),
+        confirmText: t('itRotateConfirmBtn'),
+        cancelText: t('cancel'),
+        type: 'warning',
+      },
+    );
+  }, [api, credParent, credForm, load, nassaqConfirm, nassaqError, nassaqSuccess, t]);
 
   const dir = isRTL ? 'rtl' : 'ltr';
   const inputAlign = isRTL ? 'text-right' : 'text-left';
@@ -165,6 +263,26 @@ export function ITParentsPanel({ embedded = false } = {}) {
               <span className="hidden sm:inline">{t('refresh')}</span>
             </Button>
           </div>
+        </div>
+      )}
+
+      {embedded && (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <Badge variant="outline" className="h-9 px-3 flex items-center gap-1.5 border-emerald-200 text-emerald-700">
+            <Users className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+            {t('itParentsLinkedCount', { count: parents.length })}
+          </Badge>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-9 gap-1.5"
+            onClick={load}
+            disabled={loading}
+            data-testid="it-parents-refresh"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} strokeWidth={1.5} aria-hidden="true" />
+            <span className="hidden sm:inline">{t('refresh')}</span>
+          </Button>
         </div>
       )}
 
@@ -284,6 +402,15 @@ export function ITParentsPanel({ embedded = false } = {}) {
                       {s.pending_parent_phone ? ` · ${s.pending_parent_phone}` : ''}
                     </div>
                   </div>
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs gap-1.5 bg-amber-500 hover:bg-amber-600 text-white"
+                    onClick={() => openLink(s)}
+                    data-testid={`it-pending-link-${s.student_id}`}
+                  >
+                    <Link2 className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+                    {t('itLinkParentBtn')}
+                  </Button>
                 </div>
               ))}
             </div>
@@ -364,6 +491,83 @@ export function ITParentsPanel({ embedded = false } = {}) {
               </DialogFooter>
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Materialize / link parent dialog */}
+      <Dialog open={!!linkTarget} onOpenChange={(o) => { if (!o) setLinkTarget(null); }}>
+        <DialogContent dir={dir} className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-emerald-800 flex items-center gap-2">
+              <Link2 className="h-5 w-5" strokeWidth={1.5} aria-hidden="true" />
+              {t('itLinkParentTitle')}
+            </DialogTitle>
+            <DialogDescription>
+              {linkTarget?.student_name
+                ? t('itLinkParentFor', { name: linkTarget.student_name })
+                : t('itLinkParentDesc')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="mb-1.5 block text-sm">{t('itLinkNameLabel')}</Label>
+              <Input
+                dir={dir}
+                value={linkForm.full_name}
+                onChange={e => setLinkForm(p => ({ ...p, full_name: e.target.value }))}
+                className={`h-10 ${inputAlign}`}
+                data-testid="it-link-name"
+              />
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-sm">{t('itLinkPhoneLabel')}</Label>
+              <Input
+                dir="ltr"
+                value={linkForm.phone}
+                onChange={e => setLinkForm(p => ({ ...p, phone: e.target.value }))}
+                className="h-10"
+                data-testid="it-link-phone"
+              />
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-sm">{t('itLinkEmailLabel')}</Label>
+              <Input
+                dir="ltr"
+                type="email"
+                value={linkForm.email}
+                onChange={e => setLinkForm(p => ({ ...p, email: e.target.value }))}
+                className="h-10"
+                data-testid="it-link-email"
+              />
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-sm">{t('itLinkNationalIdLabel')}</Label>
+              <Input
+                dir="ltr"
+                value={linkForm.national_id}
+                onChange={e => setLinkForm(p => ({ ...p, national_id: e.target.value }))}
+                className="h-10"
+                data-testid="it-link-national-id"
+              />
+            </div>
+            <p className="text-xs text-slate-400">{t('itLinkContactRequired')}</p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setLinkTarget(null)} disabled={linkSaving}>
+                {t('cancel')}
+              </Button>
+              <Button
+                className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+                onClick={handleLink}
+                disabled={linkSaving}
+                data-testid="it-link-submit"
+              >
+                {linkSaving
+                  ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  : <Link2 className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />}
+                {t('itLinkParentSubmit')}
+              </Button>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 

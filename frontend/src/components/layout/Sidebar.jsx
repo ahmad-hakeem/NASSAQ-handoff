@@ -29,7 +29,6 @@ import {
   Award,
   Lightbulb,
   Trash2,
-  UserPlus,
 } from 'lucide-react';
 import SidebarContent from './sidebar/SidebarContent';
 import RoleSwitcherDialog from './sidebar/RoleSwitcherDialog';
@@ -359,8 +358,9 @@ export const Sidebar = ({ children }) => {
     const teacherItems = [
       { icon: Home, label: t('dashboard'), href: '/teacher', roles: ['teacher', 'independent_teacher'] },
       { icon: BookOpen, label: t('myClasses'), href: '/teacher/classes', roles: ['teacher', 'independent_teacher'], dataTour: 'sidebar-my-classes' },
-      // Task #849 — IT-only workspace Parents directory.
-      { icon: UserPlus, label: t('itParentsNav'), href: '/teacher/parents', roles: ['independent_teacher'], dataTour: 'sidebar-it-parents' },
+      // IT workspace Parents directory lives as a tab beside Students
+      // inside فصولي (TeacherClassesPage, ?tab=parents) — no sidebar entry,
+      // mirroring how the IT subjects/students/import surfaces were moved.
       // 2026-05-19 — IT-only "الجدول والتقويم" Time Management Hub.
       { icon: CalendarDays, label: t('timeManagementHub'), href: '/teacher/planning', roles: ['independent_teacher'], dataTour: 'sidebar-time-management' },
       { icon: Award, label: t('myAchievements'), href: '/teacher/achievements', roles: ['teacher', 'independent_teacher'] },

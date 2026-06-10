@@ -25,7 +25,7 @@ import {
   TrendingUp, LayoutGrid, List, Clock, Play,
   ChevronLeft, Star, AlertTriangle, CheckCircle2,
   ArrowUpDown, Settings, Plus, FileSpreadsheet,
-  FileImage, FileText, Upload, Info, X, Pencil, Trash2, Save
+  FileImage, FileText, Upload, Info, X, Pencil, Trash2, Save, UserPlus
 } from 'lucide-react';
 import { CANONICAL_GRADES } from '../../utils/stageGrade';
 import SessionsManageTab from './SessionsManageTab';
@@ -64,6 +64,7 @@ import { BulkImportPanel } from './BulkImportPage';
 // assignable to classes without leaving the page. Headless variant
 // skips the nested Sidebar shell; backend RBAC / quotas unchanged.
 import { TeacherStudentsPanel } from './TeacherStudentsPage';
+import { ITParentsPanel } from './ITParentsPage';
 import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialog';
 import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 
@@ -196,6 +197,10 @@ export default function TeacherClassesPage() {
     // student directory inline so imported students are immediately
     // visible / editable / assignable to classes.
     : (_rawTab === 'students' && _isITUser) ? 'students'
+    // IT-only "أولياء الأمور" tab — workspace-scoped parent directory,
+    // lives beside the Students tab. Backend reads/writes are pinned to
+    // school_id == itw_{user_id}; non-IT users have no workspace parents.
+    : (_rawTab === 'parents' && _isITUser) ? 'parents'
     : 'classes';
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
@@ -308,6 +313,7 @@ export default function TeacherClassesPage() {
       : (tab === 'subjects' && !_isITUser) ? 'classes'
       : (tab === 'import' && (!_isITUser || !canBulkImport)) ? 'classes'
       : (tab === 'students' && !_isITUser) ? 'classes'
+      : (tab === 'parents' && !_isITUser) ? 'classes'
       : tab;
     setSearchParams(
       safeTab === 'sessions' ? { tab: 'sessions' }
@@ -316,6 +322,7 @@ export default function TeacherClassesPage() {
       : safeTab === 'subjects' ? { tab: 'subjects' }
       : safeTab === 'import' ? { tab: 'import' }
       : safeTab === 'students' ? { tab: 'students' }
+      : safeTab === 'parents' ? { tab: 'parents' }
       : {}
     );
   };
@@ -1749,6 +1756,29 @@ export default function TeacherClassesPage() {
                 )}
               </button>
             )}
+            {/* IT-only "أولياء الأمور" tab — workspace-scoped parent
+                directory, placed beside the Students tab so the teacher
+                manages parents from the same area. Server-side scoping
+                (school_id == itw_{user_id}) is unchanged. */}
+            {_isITUser && (
+              <button
+                onClick={() => handleTabChange('parents')}
+                className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative whitespace-nowrap ${
+                  activeTab === 'parents'
+                    ? 'text-brand-navy dark:text-brand-turquoise'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                data-testid="teacher-classes-parents-tab"
+              >
+                <span className="flex items-center gap-1.5">
+                  <UserPlus className="h-4 w-4" />
+                  {t('itParentsTab') || 'أولياء الأمور'}
+                </span>
+                {activeTab === 'parents' && (
+                  <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
+                )}
+              </button>
+            )}
             {_isITUser && canBulkImport && (
               <button
                 onClick={() => handleTabChange('import')}
@@ -1795,6 +1825,13 @@ export default function TeacherClassesPage() {
           // nested Sidebar shell. Backend tenant scoping
           // (school_id == itw_{user_id}) is unchanged.
           <TeacherStudentsPanel />
+        ) : activeTab === 'parents' ? (
+          // IT-only embedded parent directory. Same workspace-scoped
+          // list / detail / materialize-link / credential-rotation as the
+          // standalone /teacher/parents route, minus the nested Sidebar
+          // shell. Backend tenant scoping (school_id == itw_{user_id}) and
+          // MFA step-up are enforced server-side.
+          <ITParentsPanel embedded />
         ) : activeTab === 'import' ? (
           // 2026-05-19 — Unified IT import surface. BulkImportPanel
           // already exposes its own sub-tabs (students / classes /
