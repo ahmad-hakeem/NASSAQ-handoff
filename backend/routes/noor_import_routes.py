@@ -536,6 +536,44 @@ def create_noor_import_routes(db, get_current_user):
         outcome["undo_token"] = undo_token
         return outcome
 
+    @router.post("/draft/{draft_id}/discard")
+    async def discard_draft_endpoint(
+        draft_id: str,
+        current_user: dict = Depends(get_current_user),
+    ):
+        """Cancel a live import preview by discarding its server-side draft.
+
+        This is the backend half of the preview "Cancel Import" action.
+        It invalidates the parsed/preview state so a subsequent /commit
+        for the same `import_draft_id` fail-closes (load_draft → 403) —
+        i.e. the abandoned preview can never be executed without a fresh
+        upload + parse.
+
+        Contract (identical authority model to every other draft surface):
+          • Caller must be school_principal / school_admin / platform_admin.
+          • The draft is looked up principal-bound AND tenant-bound AND
+            within its TTL; any miss returns 403 with zero side effects so
+            a stale/foreign/expired id cannot probe or delete other rows.
+          • NON-destructive toward committed data: this only deletes the
+            preview draft. Classes auto-created during the preview via
+            /create-missing-classes are NOT removed here — they have a
+            dedicated, student-safe undo surface. The client warns the
+            principal about them before calling this.
+        """
+        school_id = _require_school_role(current_user)
+        principal_id = str(current_user.get("id") or current_user.get("_id") or "")
+        draft = await load_draft(
+            db.session,
+            draft_id=draft_id,
+            principal_id=principal_id,
+            school_id=school_id,
+        )
+        if not draft:
+            raise HTTPException(status_code=403, detail=_SAFE_DRAFT_DENIED)
+        await delete_draft(db.session, draft_id=draft_id)
+        await db.session.commit()
+        return {"discarded": True, "import_draft_id": draft_id}
+
     @router.post("/draft/{draft_id}/create-missing-classes")
     async def create_missing_classes_endpoint(
         draft_id: str,

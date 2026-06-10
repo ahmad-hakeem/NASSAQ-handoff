@@ -498,6 +498,8 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
   const [file, setFile] = useState(null);
   const [parsing, setParsing] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const fileInputRef = useRef(null);
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
   const [ambiguousAccept, setAmbiguousAccept] = useState({}); // { row_index: true }
@@ -862,6 +864,71 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
     nassaqConfirm('سيتم الآن تنفيذ عملية الاستيراد. هل تريد المتابعة؟', doCommit);
   };
 
+  // Full reset back to the clean, import-ready state. Clears every piece
+  // of preview-stage state (selected file, parsed rows, counts, row-level
+  // edits, validation/undo banners) AND the native file input's value so
+  // no stale filename, counter, badge, or executable payload lingers.
+  const resetImportState = useCallback(() => {
+    setFile(null);
+    setPreview(null);
+    setResult(null);
+    setAmbiguousAccept({});
+    setClassOverrides({});
+    setUndoableClasses([]);
+    setUndoableStudentIds([]);
+    setUndoableTeacherIds([]);
+    setUndoToken(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
+  // Cancel the in-progress preview/import session. Discards the
+  // server-side draft FIRST (so the abandoned preview can never be
+  // committed — /commit will 403 on the now-deleted draft) and only then
+  // wipes the local state. Even if the discard call fails (e.g. the draft
+  // already expired), the UI is still reset because the in-memory
+  // import_draft_id is dropped, leaving nothing executable.
+  const doCancelImport = useCallback(async () => {
+    const draftId = preview?.import_draft_id;
+    setCancelling(true);
+    try {
+      if (draftId) {
+        await api.post(`/noor-import/draft/${draftId}/discard`);
+      }
+      resetImportState();
+      if (nassaqInfo) nassaqInfo('تم إلغاء المعاينة. يمكنك رفع ملف جديد للبدء من جديد.');
+    } catch (err) {
+      // The draft may already be gone/expired — that's still a successful
+      // cancel from the user's perspective, so reset the UI regardless and
+      // surface the reason only for genuine unexpected failures.
+      resetImportState();
+      nassaqError(getApiErrorMessage(err) || 'تعذّر إلغاء المعاينة — تم تفريغ الشاشة على أي حال');
+    } finally {
+      setCancelling(false);
+    }
+  }, [api, preview, resetImportState, nassaqError, nassaqInfo]);
+
+  const onCancelImport = () => {
+    if (!preview) return;
+    const hasAmbiguousEdits = Object.values(ambiguousAccept).some(Boolean);
+    const hasClassEdits = Object.keys(classOverrides).length > 0;
+    const hasCreatedClasses = undoableClasses.length > 0;
+    // Only interrupt with a confirmation when the principal would actually
+    // lose preview-stage work; a pristine preview cancels immediately.
+    if (!hasAmbiguousEdits && !hasClassEdits && !hasCreatedClasses) {
+      doCancelImport();
+      return;
+    }
+    let msg = 'سيتم إلغاء المعاينة الحالية دون تنفيذ الاستيراد، وستفقد التعديلات التي أجريتها على هذه المعاينة.';
+    if (hasCreatedClasses) {
+      msg += `\n\nملاحظة: الفصول التي أنشأتها أثناء المعاينة (${undoableClasses.length}) ستبقى في المدرسة — استخدم زر "تراجع عن إنشاء الفصول" أولاً إن أردت حذفها قبل الإلغاء.`;
+    }
+    nassaqConfirm(
+      msg,
+      doCancelImport,
+      { title: 'إلغاء الاستيراد', confirmText: 'إلغاء المعاينة', cancelText: 'متابعة المعاينة' },
+    );
+  };
+
   const detectedLabel = preview?.detected_type === 'teachers' ? 'تقرير المعلمين (نور)' : preview?.detected_type === 'students' ? 'إرشاد الطلاب (نور)' : '';
 
   const tabCls = (key) =>
@@ -901,7 +968,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         {activeTab === 'import' && (
           <>
             <div className="flex flex-wrap items-center gap-3">
-              <Input type="file" accept=".xlsx,.xls" onChange={onSelect} className="max-w-sm" />
+              <Input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={onSelect} className="max-w-sm" />
               {file && <Badge variant="outline">{file.name}</Badge>}
               <Button onClick={onParse} disabled={parsing || !file} type="button">
                 {parsing ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <FileSpreadsheet className="h-4 w-4 me-2" />}
@@ -1136,8 +1203,24 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                     </tbody>
                   </table>
                 </div>
-                <div className="flex justify-end">
-                  <Button onClick={onCommit} disabled={committing} type="button" className="bg-brand-turquoise hover:bg-brand-turquoise/90">
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onCancelImport}
+                    disabled={cancelling || committing}
+                    data-testid="btn-cancel-import"
+                  >
+                    {cancelling ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : null}
+                    إلغاء الاستيراد
+                  </Button>
+                  <Button
+                    onClick={onCommit}
+                    disabled={committing || cancelling}
+                    type="button"
+                    className="bg-brand-turquoise hover:bg-brand-turquoise/90"
+                    data-testid="btn-execute-import"
+                  >
                     {committing ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Upload className="h-4 w-4 me-2" />}
                     تنفيذ الاستيراد
                   </Button>

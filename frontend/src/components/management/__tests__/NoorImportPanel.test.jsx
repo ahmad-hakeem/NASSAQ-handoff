@@ -111,6 +111,86 @@ describe('NoorImportPanel preview contracts (Task #387)', () => {
     expect(screen.queryByTestId('unclassified-banner')).toBeNull();
   });
 
+  test('shows إلغاء الاستيراد next to تنفيذ الاستيراد during preview', async () => {
+    const api = { post: jest.fn() };
+    renderWithProviders(api);
+
+    await seedPreview(api, _previewWithUnclassified());
+
+    expect(screen.getByTestId('btn-cancel-import')).toBeInTheDocument();
+    expect(screen.getByTestId('btn-execute-import')).toBeInTheDocument();
+  });
+
+  test('clicking إلغاء الاستيراد on a pristine preview discards the draft and resets to import-ready state', async () => {
+    const api = { post: jest.fn() };
+    renderWithProviders(api);
+
+    await seedPreview(api, _previewWithUnclassified());
+    expect(api.post).toHaveBeenCalledTimes(1); // parse only
+
+    api.post.mockResolvedValueOnce({ data: { discarded: true, import_draft_id: 'draft-abc' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-cancel-import'));
+    });
+
+    await waitFor(() => {
+      const discardCalls = api.post.mock.calls.filter(c => String(c[0]).includes('/discard'));
+      expect(discardCalls).toHaveLength(1);
+      expect(discardCalls[0][0]).toMatch(/\/noor-import\/draft\/draft-abc\/discard$/);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('btn-execute-import')).toBeNull();
+      expect(screen.queryByTestId('bucket-insert')).toBeNull();
+    });
+
+    const commitCalls = api.post.mock.calls.filter(c => String(c[0]).includes('/noor-import/commit'));
+    expect(commitCalls).toHaveLength(0);
+  });
+
+  test('clicking إلغاء الاستيراد with preview edits opens NassaqAlertDialog before discarding', async () => {
+    const api = { post: jest.fn() };
+    renderWithProviders(api);
+
+    await seedPreview(api, {
+      ..._previewWithUnclassified(),
+      counts: { total: 2, insert: 1, update: 0, duplicate_in_file: 0, unclassified: 0, ambiguous: 1, skip: 1 },
+      rows: [
+        { row_index: 1, dedupe: 'ambiguous', data: { full_name: 'طالب', student_number: '1' }, issues: [] },
+      ],
+    });
+
+    const ambCheckbox = screen.getByRole('checkbox');
+    await act(async () => {
+      fireEvent.click(ambCheckbox);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('btn-cancel-import'));
+    });
+
+    const dialog = await screen.findByTestId('nassaq-alert-dialog');
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'إلغاء المعاينة' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'متابعة المعاينة' })).toBeInTheDocument();
+
+    const discardCallsBeforeConfirm = api.post.mock.calls.filter(c => String(c[0]).includes('/discard'));
+    expect(discardCallsBeforeConfirm).toHaveLength(0);
+
+    api.post.mockResolvedValueOnce({ data: { discarded: true, import_draft_id: 'draft-abc' } });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'إلغاء المعاينة' }));
+    });
+
+    await waitFor(() => {
+      const discardCalls = api.post.mock.calls.filter(c => String(c[0]).includes('/discard'));
+      expect(discardCalls).toHaveLength(1);
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('btn-execute-import')).toBeNull();
+    });
+  });
+
   test('clicking تنفيذ الاستيراد with unclassified > 0 opens the NassaqAlertDialog gate and does not POST /commit', async () => {
     const api = { post: jest.fn() };
     renderWithProviders(api);
