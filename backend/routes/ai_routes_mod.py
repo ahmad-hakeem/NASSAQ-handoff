@@ -374,10 +374,10 @@ async def hakim_contextual_message(req: HakimContextualRequest, current_user: di
 أنتج رسالة واحدة فقط بدون أي تنسيق أو رموز إضافية."""
 
         response = client.chat.completions.create(
-            model="openai/gpt-4o-mini",
+            model="gpt-5-mini",
             messages=[{"role": "system", "content": system_prompt}],
-            max_tokens=80,
-            temperature=0.8,
+            max_completion_tokens=400,
+            reasoning_effort="minimal",
         )
         message = response.choices[0].message.content.strip()
         message = message.strip('"').strip("'").strip()
@@ -2794,13 +2794,13 @@ async def _call_openai_for_recommendations(prompt: str) -> str:
     if client is None:
         raise RuntimeError("openai_unavailable")
     resp = client.chat.completions.create(
-        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),
         messages=[
             {"role": "system", "content": "أنت مستشار تعليمي. أجب حصراً بمصفوفة JSON دون نص إضافي."},
             {"role": "user", "content": prompt},
         ],
-        temperature=0.4,
         response_format={"type": "json_object"},
+        reasoning_effort="minimal",
     )
     return resp.choices[0].message.content or "[]"
 
@@ -3283,13 +3283,13 @@ async def hakim_student_ai_plans(
             plan_source = "fallback"
             raise ValueError("AI not configured")
         response = client.chat.completions.create(
-            model="openai/gpt-4o-mini",
+            model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": "أنت مساعد تعليمي ذكي متخصص في إنشاء خطط تعليمية. أجب بـ JSON فقط."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.7,
-            max_tokens=2000
+            max_completion_tokens=2000,
+            reasoning_effort="minimal",
         )
         import json as json_module
         raw = response.choices[0].message.content.strip()

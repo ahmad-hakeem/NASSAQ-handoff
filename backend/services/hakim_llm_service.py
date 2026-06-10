@@ -46,7 +46,7 @@ logger = logging.getLogger("nassaq.hakim")
 _client = None
 _client_failed = False
 
-DEFAULT_MODEL = "gpt-4o-mini"
+DEFAULT_MODEL = "gpt-5-mini"
 
 
 def _get_client():
@@ -792,7 +792,6 @@ async def hakim_generate(
         return _result(False, text_in, mode, field, model, language, gen_id, started, reason="AI_DISABLED")
 
     cfg = FIELD_REGISTRY[field]
-    temperature = cfg["temp_improve"] if mode in ("improve", "summarize", "convert") else cfg["temp_generate"]
     max_tokens = cfg["max_tokens"]
 
     retried = False
@@ -823,8 +822,8 @@ async def hakim_generate(
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
                 ],
-                max_tokens=max_tokens,
-                temperature=max(0.2, temperature - (0.15 if sharpen else 0.0)),
+                max_completion_tokens=max(256, max_tokens),
+                reasoning_effort="minimal",
             )
             raw = (response.choices[0].message.content or "")
         except Exception as e:

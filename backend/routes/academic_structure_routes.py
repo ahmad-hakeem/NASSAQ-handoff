@@ -762,13 +762,14 @@ async def import_calendar_ai(
             user_msg += f"\n\nAdditional instructions: {instructions}"
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_msg}
             ],
             response_format={"type": "json_object"},
-            max_tokens=2000
+            max_completion_tokens=2000,
+            reasoning_effort="minimal",
         )
         import json
         result = json.loads(response.choices[0].message.content)

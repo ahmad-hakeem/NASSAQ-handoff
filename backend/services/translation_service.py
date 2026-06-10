@@ -46,7 +46,7 @@ async def translate_text(text: str, source_lang: str, target_lang: str) -> Optio
         src = lang_names.get(source_lang, source_lang)
         tgt = lang_names.get(target_lang, target_lang)
         response = client.chat.completions.create(
-            model="openai/gpt-4o-mini",
+            model="gpt-5-mini",
             messages=[
                 {
                     "role": "system",
@@ -54,8 +54,8 @@ async def translate_text(text: str, source_lang: str, target_lang: str) -> Optio
                 },
                 {"role": "user", "content": text}
             ],
-            temperature=0.2,
-            max_tokens=2000,
+            max_completion_tokens=2000,
+            reasoning_effort="minimal",
         )
         translated = response.choices[0].message.content.strip()
         return translated

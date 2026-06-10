@@ -149,13 +149,13 @@ Respond in this exact JSON format (Arabic text preferred):
 }}"""
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": "You are a product intelligence AI. Respond ONLY with valid JSON."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3,
-            max_tokens=600,
+            max_completion_tokens=600,
+            reasoning_effort="minimal",
         )
 
         text = response.choices[0].message.content.strip()
@@ -1684,7 +1684,7 @@ async def hakim_generate_expected(
         context = "\n".join(context_parts)
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": """أنت حكيم، مساعد ذكاء المنتج في نظام نَسَّق التعليمي.
 مهمتك: بناءً على وصف الوضع الحالي والمشكلة، اكتب وصفاً واضحاً ودقيقاً للوضع المتوقع (النتيجة المرجوة).
@@ -1699,8 +1699,8 @@ async def hakim_generate_expected(
 - أرجع النص المولّد فقط بدون مقدمات أو شرح"""},
                 {"role": "user", "content": context}
             ],
-            max_tokens=400,
-            temperature=0.4,
+            max_completion_tokens=400,
+            reasoning_effort="minimal",
         )
 
         generated = response.choices[0].message.content.strip()
@@ -1750,7 +1750,7 @@ async def hakim_generate_title(
         context = "\n".join(context_parts)
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": """أنت حكيم، مساعد ذكاء المنتج في نظام نَسَّق التعليمي.
 مهمتك: بناءً على تفاصيل التحدي، أنشئ 3 عناوين احترافية مختلفة.
@@ -1769,8 +1769,8 @@ async def hakim_generate_title(
 ["عنوان 1", "عنوان 2", "عنوان 3"]"""},
                 {"role": "user", "content": context}
             ],
-            max_tokens=200,
-            temperature=0.7,
+            max_completion_tokens=400,
+            reasoning_effort="minimal",
         )
 
         raw = response.choices[0].message.content.strip()
@@ -1815,7 +1815,7 @@ async def hakim_improve_text(
         field_instruction = field_prompts.get(field_type, "تحسين النص ليكون أوضح وأكثر تحديداً")
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": f"""أنت حكيم، مساعد ذكاء المنتج في نظام نَسَّق. مهمتك: {field_instruction}.
 
@@ -1828,8 +1828,8 @@ async def hakim_improve_text(
 - أرجع النص المحسّن فقط بدون مقدمات"""},
                 {"role": "user", "content": text}
             ],
-            max_tokens=500,
-            temperature=0.3,
+            max_completion_tokens=500,
+            reasoning_effort="minimal",
         )
 
         improved = response.choices[0].message.content.strip()

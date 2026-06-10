@@ -75,7 +75,7 @@ _BURST_LONG_WINDOW = 60  # seconds
 _MSG_CLASS_NOT_FOUND = "الفصل غير موجود في مساحتك"
 _MSG_AI_PARSE = "تعذّر تحليل ردّ الذكاء الاصطناعي — حاول مرة أخرى"
 
-_MODEL = os.environ.get("AI_LESSON_PLAN_MODEL", "gpt-4o-mini")
+_MODEL = os.environ.get("AI_LESSON_PLAN_MODEL", "gpt-5-mini")
 
 # Foreign-id keys that must be stripped from the LLM payload before we
 # return / persist it. Spec §6.4: the assistant content lives in JSONB
@@ -368,8 +368,8 @@ async def generate_lesson_plan(
                 },
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.4,
-            max_tokens=900,
+            max_completion_tokens=900,
+            reasoning_effort="minimal",
         )
         raw_text = (
             (completion.choices[0].message.content if completion and completion.choices else "")
