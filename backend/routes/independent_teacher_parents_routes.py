@@ -247,11 +247,35 @@ async def list_workspace_parents(
     parent_ids = list(children_by_parent.keys())
     parents: List[Dict[str, Any]] = []
     if parent_ids:
-        parents = await gd_find(
+        parent_rows = await gd_find(
             db.session, "parents",
             {"id": {"$in": parent_ids}, "school_id": workspace_id},
             limit=5000,
         )
+        # The `parents` GenericDocument collection can legitimately hold
+        # more than one row sharing the same canonical `id` (one created per
+        # student-link operation). Collapse to one row per unique parent
+        # identity BEFORE serialisation so a parent linked to N students is
+        # emitted once — not once per backing row. Grouping is by the
+        # authoritative `id` ONLY (never full_name/phone) so two distinct
+        # parents are never merged. Keep the most-complete row per id so the
+        # surfaced contact fields and login resolution use the richest data.
+        def _completeness(row: Dict[str, Any]) -> int:
+            return sum(
+                1
+                for f in ("full_name", "phone", "email", "national_id")
+                if row.get(f)
+            )
+
+        deduped: Dict[str, Dict[str, Any]] = {}
+        for row in parent_rows:
+            rid = row.get("id")
+            if not rid:
+                continue
+            current = deduped.get(rid)
+            if current is None or _completeness(row) > _completeness(current):
+                deduped[rid] = row
+        parents = list(deduped.values())
 
     # Preload every workspace parent users row once (IT workspaces are
     # small) so per-parent resolution is in-memory.
