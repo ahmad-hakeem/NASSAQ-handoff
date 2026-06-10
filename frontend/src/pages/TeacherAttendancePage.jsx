@@ -72,7 +72,6 @@ const statusConfig = {
     hoverClass:
       'hover:bg-yellow-100 hover:text-yellow-600 hover:border-yellow-600 focus-visible:ring-yellow-500',
     selectedHoverClass: 'hover:bg-yellow-500',
-    hidden: true,
   },
   excused: {
     label: { ar: 'بعذر', en: 'Excused' },
@@ -179,7 +178,7 @@ export const TeacherAttendancePage = () => {
       [subjectId]: {
         ...prev[subjectId],
         status,
-        check_in_time: status === 'present' ? now : null,
+        check_in_time: status === 'present' || status === 'late' ? now : null,
       },
     }));
   };
