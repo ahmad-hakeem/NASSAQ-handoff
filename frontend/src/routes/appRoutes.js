@@ -84,6 +84,7 @@ const TeacherAttendanceManagePage = lazy(() => import("../pages/TeacherModule").
 const TeacherAssessmentsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAssessmentsPage })));
 const TeacherBehaviorPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherBehaviorPage })));
 const TeacherStudentsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherStudentsPage })));
+const ITParentsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.ITParentsPage })));
 // 2026-05-19 — IA refactor: ImportStudentsPage / BulkImportPage default
 // page exports are no longer rendered from any route. The standalone
 // /teacher/import-students and /teacher/bulk-import routes now redirect
@@ -382,6 +383,12 @@ export default function AppRoutes() {
         } />
         <Route path="/teacher/students" element={
           <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherStudentsPage /></ProtectedRoute>
+        } />
+        {/* Task #849 — IT-only workspace Parents directory. The backend
+            router enforces the IT role gate + workspace pinning and gates
+            credential rotation behind require_recent_mfa_403. */}
+        <Route path="/teacher/parents" element={
+          <ProtectedRoute allowedRoles={['independent_teacher']}><ITParentsPage /></ProtectedRoute>
         } />
         {/* Task #207 §6.1 — IT-only workspace-aware bulk student import.
             Backend gates /commit with require_recent_mfa_403; the global

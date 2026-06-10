@@ -81,3 +81,5 @@ export { default as TeacherAuditLogPage, TeacherAuditLogPanel } from './TeacherA
 export { default as TeacherAnalyticsPanel } from './TeacherAnalyticsPanel';
 // Independent-Teacher only: notifications inbox (Task #249).
 export { default as TeacherNotificationsPage, TeacherNotificationsPanel } from './TeacherNotificationsPage';
+// Independent-Teacher only: workspace Parents directory (Task #849).
+export { default as ITParentsPage, ITParentsPanel } from './ITParentsPage';

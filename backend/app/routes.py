@@ -132,6 +132,15 @@ def register_routes(app, api_router: APIRouter):
         router as it_invite_parent_router,
     )
     api_router.include_router(it_invite_parent_router)
+    # Task #849 — IT-only workspace Parents directory (list / detail /
+    # credential rotation). Mounted WITHOUT _full_tenant_dep; the router
+    # enforces the IT role gate per-endpoint, pins every read to
+    # school_id/tenant_id == itw_{user_id} (cross-workspace by-id → 404),
+    # and gates credential rotation behind require_recent_mfa_403.
+    from routes.independent_teacher_parents_routes import (
+        router as it_parents_router,
+    )
+    api_router.include_router(it_parents_router)
     # Phase 2 §6.2b (#205) — IT parent-invitation envelope (create /
     # cancel / public accept). Router has no global gate; the IT-only
     # endpoints enforce the role + Tier-A MFA via per-route deps and
