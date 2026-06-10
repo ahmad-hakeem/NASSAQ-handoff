@@ -335,6 +335,7 @@ class Subject(Base):
     description = Column(Text, nullable=True)
     school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
     category = Column(String, default="core")
+    credits = Column(Integer, nullable=False, default=1, server_default="1")
     default_periods_per_week = Column(Integer, default=4)
     applicable_stages = Column(JSONB, default=list)
     is_active = Column(Boolean, default=True)

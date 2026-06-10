@@ -594,6 +594,8 @@ class SubjectResponse(BaseModel):
     code: Optional[str] = None
     weekly_periods: int = 4
     description: Optional[str] = None
+    category: Optional[str] = None
+    credits: Optional[int] = None
     school_id: str
     is_active: bool = True
     created_at: Optional[str] = None

@@ -79,6 +79,8 @@ class SubjectMutate(BaseModel):
     weekly_hours: Optional[int] = None
     grade_levels: Optional[List[str]] = None
     school_id: Optional[str] = None  # ignored for IT callers
+    category: Optional[str] = None
+    credits: Optional[int] = None
 
 # Renamed from SubjectUpdate (Task #190) to avoid shadowing the shared
 # `SubjectCreate` (`name`-keyed) used by the generic /subjects routes;
@@ -378,6 +380,8 @@ async def create_subject(
         "school_id": target_school_id,
         "code": subject_data.code,
         "description": subject_data.description,
+        "category": subject_data.category or "core",
+        "credits": subject_data.credits or 1,
         # Persist onto the real columns (`weekly_hours`/`grade_levels` are
         # not columns and were silently dropped on insert).
         "default_periods_per_week": periods,
@@ -556,6 +560,12 @@ async def update_subject(
         update_doc["default_periods_per_week"] = subject_data.weekly_hours
     if subject_data.grade_levels is not None:
         update_doc["applicable_stages"] = subject_data.grade_levels
+    # Persist catalog metadata only when explicitly provided, so an edit that
+    # omits these fields never clobbers the stored value.
+    if subject_data.category is not None:
+        update_doc["category"] = subject_data.category
+    if subject_data.credits is not None:
+        update_doc["credits"] = subject_data.credits
     result = await gd_update_one(db.session, "subjects", subject_query, update_doc)
     if result == 0:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
