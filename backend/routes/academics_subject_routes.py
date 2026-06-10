@@ -76,7 +76,7 @@ class SubjectMutate(BaseModel):
     name_en: Optional[str] = None
     code: Optional[str] = None
     description: Optional[str] = None
-    weekly_hours: Optional[int] = 4
+    weekly_hours: Optional[int] = None
     grade_levels: Optional[List[str]] = None
     school_id: Optional[str] = None  # ignored for IT callers
 
@@ -110,11 +110,15 @@ async def create_school_subject(
     subject_doc = {
         "id": subject_id,
         "school_id": school_id,
+        "name": subject_data.name_ar,
         "name_ar": subject_data.name_ar,
         "name_en": subject_data.name_en or subject_data.name_ar,
         "code": subject_data.code or f"SUB-{subject_id[:8].upper()}",
         "category": subject_data.category or "general",
-        "weekly_periods": subject_data.weekly_periods,
+        # Map the API's `weekly_periods` onto the real column so the value
+        # is persisted (the table has no `weekly_periods`/`data` column, so
+        # the old key was silently dropped on insert).
+        "default_periods_per_week": subject_data.weekly_periods,
         "description": subject_data.description,
         "is_active": True,
         "created_at": now,
@@ -160,7 +164,7 @@ async def update_school_subject(
     if subject_data.category is not None:
         update_data["category"] = subject_data.category
     if subject_data.weekly_periods is not None:
-        update_data["weekly_periods"] = subject_data.weekly_periods
+        update_data["default_periods_per_week"] = subject_data.weekly_periods
     if subject_data.description is not None:
         update_data["description"] = subject_data.description
     if subject_data.is_active is not None:
@@ -366,6 +370,7 @@ async def create_subject(
 
     await _assert_subject_name_unique(target_school_id, subject_data.name)
 
+    periods = subject_data.weekly_hours or 4
     subject_doc = {
         "id": subject_id,
         "name": subject_data.name,
@@ -373,8 +378,10 @@ async def create_subject(
         "school_id": target_school_id,
         "code": subject_data.code,
         "description": subject_data.description,
-        "weekly_hours": subject_data.weekly_hours or 4,
-        "grade_levels": subject_data.grade_levels,
+        # Persist onto the real columns (`weekly_hours`/`grade_levels` are
+        # not columns and were silently dropped on insert).
+        "default_periods_per_week": periods,
+        "applicable_stages": subject_data.grade_levels or [],
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
@@ -388,7 +395,7 @@ async def create_subject(
         pass
 
     await gd_insert(db.session, "subjects", subject_doc)
-    return SubjectResponse(**subject_doc)
+    return SubjectResponse(**{**subject_doc, "weekly_periods": periods})
 
 @router.get("/subjects", response_model=List[SubjectResponse])
 async def get_subjects(
@@ -467,8 +474,10 @@ async def get_subjects(
     for s in subjects:
         if "name" not in s and "name_ar" in s:
             s["name"] = s["name_ar"]
-        if "weekly_periods" not in s and "weekly_hours" in s:
-            s["weekly_periods"] = s["weekly_hours"]
+        if "weekly_periods" not in s:
+            s["weekly_periods"] = (
+                s.get("default_periods_per_week") or s.get("weekly_hours") or 4
+            )
         if show_deleted and s.get("deleted_by"):
             s["deleted_by_name"] = deleted_by_map.get(s.get("deleted_by"))
         try:
@@ -498,8 +507,10 @@ async def get_subject(subject_id: str, current_user: dict = Depends(get_current_
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
     if "name" not in subject and "name_ar" in subject:
         subject["name"] = subject["name_ar"]
-    if "weekly_periods" not in subject and "weekly_hours" in subject:
-        subject["weekly_periods"] = subject["weekly_hours"]
+    if "weekly_periods" not in subject:
+        subject["weekly_periods"] = (
+            subject.get("default_periods_per_week") or subject.get("weekly_hours") or 4
+        )
     return SubjectResponse(**subject)
 
 @router.put("/subjects/{subject_id}")
@@ -535,10 +546,16 @@ async def update_subject(
         "name_en": subject_data.name_en,
         "code": subject_data.code,
         "description": subject_data.description,
-        "weekly_hours": subject_data.weekly_hours or 4,
-        "grade_levels": subject_data.grade_levels,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+    # Only touch the periods column when the caller explicitly provided a
+    # value; otherwise an edit that omits weekly_hours would reset the
+    # seeded `default_periods_per_week` (a scheduling-constraint input)
+    # back to a default. `weekly_hours` is mapped onto the real column.
+    if subject_data.weekly_hours is not None:
+        update_doc["default_periods_per_week"] = subject_data.weekly_hours
+    if subject_data.grade_levels is not None:
+        update_doc["applicable_stages"] = subject_data.grade_levels
     result = await gd_update_one(db.session, "subjects", subject_query, update_doc)
     if result == 0:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")

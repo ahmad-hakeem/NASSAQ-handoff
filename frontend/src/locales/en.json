@@ -4169,6 +4169,8 @@
   "settingsTabTeacherAssignments": "Teacher assignments",
   "settingsTabUnavailability": "Unavailability",
   "settingsTabConstraints": "Schedule constraints",
+  "settingsTabSubjects": "Subjects",
+  "goToSubjectsSettings": "Go to Subjects Management",
   "hakimInsightsDrawerTitle": "Hakim Insights — Unscheduled session details",
   "hakimInsightsDrawerDesc": "{count} items could not be scheduled. Review the detailed reason for each session, fix the issue, then regenerate.",
   "noUnscheduledItems": "No unscheduled items right now.",

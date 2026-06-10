@@ -234,7 +234,19 @@ async def create_school(
             "updated_at": datetime.now(timezone.utc).isoformat()
         })
         await gd_insert(db.session, "school_settings", school_settings)
-    
+
+    # Seed the canonical standard subject catalog so the newly created
+    # school can immediately assign teaching subjects in the add-teacher
+    # wizard and build schedules. create_school is a platform-admin
+    # tenant-creation surface and never mints Independent-Teacher
+    # workspaces, so every school created here is a real school. A failure
+    # rolls back the whole creation (atomic) rather than leaving a school
+    # with no subjects; the Alembic backfill migration is the safety net.
+    from constants.default_subjects import build_default_subject_docs
+    await gd_insert_many(
+        db.session, "subjects", build_default_subject_docs(school_id, created_at)
+    )
+
     return SchoolResponse(
         id=school_id,
         name=school_data.name,

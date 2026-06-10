@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
@@ -437,6 +438,12 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                     >
                       <BookOpen className="h-7 w-7 text-amber-500" strokeWidth={1.5} aria-hidden="true" />
                       <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{t('noSubjectsConfigured')}</p>
+                      <Button type="button" variant="outline" size="sm" className="gap-1.5 rounded-lg" asChild>
+                        <Link to="/school/subjects">
+                          <BookOpen className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+                          {t('goToSubjectsSettings')}
+                        </Link>
+                      </Button>
                     </div>
                   ) : (
                   <>

@@ -30,13 +30,13 @@
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Loader2, Clock, School, Link2, UserX, Shield, CheckCircle2, AlertTriangle, X, Check } from 'lucide-react';
+import { Loader2, Clock, School, Link2, UserX, Shield, CheckCircle2, AlertTriangle, X, Check, BookOpen } from 'lucide-react';
 import { useSchoolSettings } from '../../hooks/useSchoolSettings';
 import { DynamicSettingsContent } from '../school-settings/DynamicSettingsContent';
 import { SettingsModals } from '../school-settings/SettingsModals';
 import { useTranslation, useTheme } from '../../contexts/ThemeContext';
 
-const SCHEDULE_TAB_IDS = ['timings', 'classes', 'teacher-assignments', 'unavailability', 'constraints'];
+const SCHEDULE_TAB_IDS = ['timings', 'classes', 'subjects', 'teacher-assignments', 'unavailability', 'constraints'];
 const DEFAULT_SUB_TAB = 'timings';
 
 export default function ScheduleSettingsTabContent() {
@@ -45,6 +45,7 @@ export default function ScheduleSettingsTabContent() {
   const scheduleSubTabs = useMemo(() => ([
     { id: 'timings', label: t('settingsTabTimings'), icon: Clock },
     { id: 'classes', label: t('settingsTabClasses'), icon: School },
+    { id: 'subjects', label: t('settingsTabSubjects'), icon: BookOpen },
     { id: 'teacher-assignments', label: t('settingsTabTeacherAssignments'), icon: Link2 },
     { id: 'unavailability', label: t('settingsTabUnavailability'), icon: UserX },
     { id: 'constraints', label: t('settingsTabConstraints'), icon: Shield },

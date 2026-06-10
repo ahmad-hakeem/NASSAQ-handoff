@@ -4173,6 +4173,8 @@
   "settingsTabTeacherAssignments": "إسناد المعلمين",
   "settingsTabUnavailability": "أوقات عدم التوفر",
   "settingsTabConstraints": "قيود الجدول",
+  "settingsTabSubjects": "المواد الدراسية",
+  "goToSubjectsSettings": "الذهاب إلى إدارة المواد",
   "hakimInsightsDrawerTitle": "رؤى حكيم — تفاصيل الحصص غير المُجدولة",
   "hakimInsightsDrawerDesc": "تعذّرت جدولة {count} عنصر. اطّلع على السبب التفصيلي لكل حصة وعالج المشكلة ثم أعد التوليد.",
   "noUnscheduledItems": "لا توجد عناصر غير مُجدولة حالياً.",

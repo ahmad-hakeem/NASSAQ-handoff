@@ -26,6 +26,7 @@ import {
 } from './DndComponents';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { SubjectsManager } from '../subjects/SubjectsManager';
 
 export function DynamicSettingsContent({ hook, dynamicTabs }) {
   const { t } = useTranslation();
@@ -503,6 +504,10 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="subjects" className="space-y-6">
+          <SubjectsManager embedded />
         </TabsContent>
 
         <TabsContent value="teacher-assignments" className="space-y-6">

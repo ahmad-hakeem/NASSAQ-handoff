@@ -18,7 +18,7 @@ export function useSchoolSettings() {
   const initialSection = validSections.includes(rawSection) ? rawSection : 'dynamic';
   const [activeSection, setActiveSectionState] = useState(initialSection);
 
-  const validDynamicTabs = ['school-info', 'timings', 'classes', 'teacher-assignments', 'unavailability', 'constraints'];
+  const validDynamicTabs = ['school-info', 'timings', 'classes', 'subjects', 'teacher-assignments', 'unavailability', 'constraints'];
   const rawTab = searchParams.get('tab') || 'school-info';
   const initialTab = validDynamicTabs.includes(rawTab) ? rawTab : 'school-info';
   const [activeTab, setActiveTab] = useState(initialTab);

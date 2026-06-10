@@ -394,19 +394,12 @@ class TeacherManagementEngine:
         ).limit(100)
         result = await self.session.execute(stmt)
         subjects = models_to_dicts(result.scalars().all())
-
-        if not subjects:
-            subjects = [
-                {"id": "math", "name_ar": "الرياضيات", "name_en": "Mathematics"},
-                {"id": "arabic", "name_ar": "اللغة العربية", "name_en": "Arabic Language"},
-                {"id": "english", "name_ar": "اللغة الإنجليزية", "name_en": "English Language"},
-                {"id": "science", "name_ar": "العلوم", "name_en": "Science"},
-                {"id": "social", "name_ar": "الدراسات الاجتماعية", "name_en": "Social Studies"},
-                {"id": "islamic", "name_ar": "التربية الإسلامية", "name_en": "Islamic Studies"},
-                {"id": "pe", "name_ar": "التربية البدنية", "name_en": "Physical Education"},
-                {"id": "art", "name_ar": "التربية الفنية", "name_en": "Art"},
-                {"id": "computer", "name_ar": "الحاسب الآلي", "name_en": "Computer Science"},
-            ]
+        # No fake-id fallback: real schools are seeded with the canonical
+        # standard subject catalog at creation (and via the Alembic
+        # backfill migration), so an empty result means the school
+        # genuinely has no active subjects. The add-teacher wizard renders
+        # its own "no subjects configured" empty state in that case, and
+        # the Subjects tab under Timetable Settings lets admins add them.
         return subjects
 
     async def get_grades(self, tenant_id: str) -> List[Dict[str, Any]]:
