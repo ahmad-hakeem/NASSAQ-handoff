@@ -206,6 +206,85 @@ async def reconcile_class_counts(session, class_id: str, school_id: str | None =
     return count
 
 
+# ---------------------------------------------------------------------------
+# Class capacity — single source of truth + backend-authoritative gate
+# ---------------------------------------------------------------------------
+# A class's maximum size is the per-class ``classes.capacity`` value the school
+# manager set at create/edit time (30, 40, 44, 60, ...). It is NOT a global
+# constant. The ONLY shared fallback is for legacy rows that never persisted a
+# capacity (NULL / non-positive), which mirror the column default of 30.
+DEFAULT_CLASS_CAPACITY = 30
+
+# Safe bilingual message surfaced (HTTP 409) on every assignment path when a
+# class is full. The frontend renders the ``detail`` via NassaqAlertDialog.
+CLASS_FULL_DETAIL = (
+    "وصل هذا الفصل إلى الحد الأقصى لعدد الطلاب المسموح به. "
+    "الرجاء اختيار فصل آخر / "
+    "This class has reached its maximum capacity. Please choose another class."
+)
+
+
+def resolve_class_capacity(class_doc) -> int:
+    """Single source of truth for a class's effective maximum size.
+
+    Returns the class's stored ``capacity`` when it is a positive integer;
+    otherwise falls back to ``DEFAULT_CLASS_CAPACITY`` for legacy rows that
+    never persisted one. Accepts either a dict (``gd_find_one`` result) or an
+    ORM object.
+    """
+    cap = None
+    if isinstance(class_doc, dict):
+        cap = class_doc.get("capacity")
+    elif class_doc is not None:
+        cap = getattr(class_doc, "capacity", None)
+    try:
+        cap_int = int(cap)
+    except (TypeError, ValueError):
+        return DEFAULT_CLASS_CAPACITY
+    return cap_int if cap_int > 0 else DEFAULT_CLASS_CAPACITY
+
+
+async def class_has_room(
+    session, class_doc, school_id: str | None = None, *, additional: int = 1
+) -> bool:
+    """Return True when ``additional`` more student(s) fit in ``class_doc``.
+
+    Occupancy is the canonical LIVE active-student count (the same predicate as
+    ``reconcile_class_counts`` and the class readers), so the decision never
+    relies on a possibly-stale denormalized ``current_students`` column. No-ops
+    to True when there is no class to check (unassigned student).
+    """
+    if not class_doc:
+        return True
+    class_id = (
+        class_doc.get("id") if isinstance(class_doc, dict)
+        else getattr(class_doc, "id", None)
+    )
+    if not class_id:
+        return True
+    capacity = resolve_class_capacity(class_doc)
+    current = await live_class_student_count(session, class_id, school_id)
+    return (current + additional) <= capacity
+
+
+async def enforce_class_capacity(
+    session, class_doc, school_id: str | None = None, *, additional: int = 1
+) -> None:
+    """Backend-authoritative capacity gate.
+
+    Raises HTTP 409 with the safe bilingual ``CLASS_FULL_DETAIL`` message when
+    placing ``additional`` more student(s) into ``class_doc`` would exceed its
+    configured capacity. Callers MUST invoke this only for a NET addition to
+    the target class (a brand-new student, or a move/restore into a class the
+    student is not already an active member of), so an existing member is never
+    double-counted. No-ops when there is no class (unassigned).
+    """
+    if not await class_has_room(session, class_doc, school_id, additional=additional):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=409, detail=CLASS_FULL_DETAIL)
+
+
 async def live_class_counts(session) -> Dict[str, int]:
     """Batch live active-student counts grouped per class (no N+1).
 

@@ -778,13 +778,18 @@ async def transfer_student_class(
     if not new_class:
         raise HTTPException(status_code=404, detail="الفصل غير موجود")
 
-    current_count = await gd_count(db.session, "students", {"class_id": data.new_class_id, **_entity_tenant_filter(tenant_id), "status": {"$ne": "deleted"}})
-    capacity = new_class.get("capacity", 30)
-    if current_count >= capacity:
-        raise HTTPException(status_code=400, detail=f"الفصل ممتلئ ({current_count}/{capacity})")
-
     old_class_id = student.get("class_id")
     old_class_name = student.get("class_name")
+    # Backend-authoritative capacity gate (canonical: live ACTIVE-student count
+    # vs the class's real configured capacity — no hardcoded 30, no stale
+    # counter). A move into a DIFFERENT class is a net +1 to the target; re-
+    # confirming the student's current class is a no-op and never blocked.
+    if old_class_id != data.new_class_id:
+        from engines.entity_counts import enforce_class_capacity
+        await enforce_class_capacity(
+            db.session, new_class, student.get("school_id") or tenant_id
+        )
+
     now = datetime.now(timezone.utc).isoformat()
 
     update_fields = {

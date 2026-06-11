@@ -24,7 +24,7 @@ from dependencies import (
     require_recent_mfa_403_if_independent_teacher,
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc, _gd_pull, _gd_push, _gd_addtoset
-from engines.entity_counts import reconcile_school_counts, reconcile_class_counts
+from engines.entity_counts import reconcile_school_counts, reconcile_class_counts, enforce_class_capacity
 from auth_scope import require_request_school_id
 from utils.it_parent_link import link_workspace_parent_to_student
 from engines.email_service import send_parent_invitation_email, _get_app_url
@@ -139,6 +139,9 @@ async def create_student(
         if not class_doc:
             raise HTTPException(status_code=404, detail="الفصل غير موجود أو لا ينتمي إلى مدرستك")
         class_name = class_doc.get("name")
+        # Backend-authoritative capacity gate — a brand-new student is a net
+        # +1 to the class, so reject before any write when the class is full.
+        await enforce_class_capacity(db.session, class_doc, school_id)
 
     await gd_insert(db.session, "students", student_doc)
     
@@ -634,6 +637,10 @@ async def update_student(
             class_check = await gd_find_one(db.session, "classes", {"id": student_data.class_id, "school_id": class_owner_id})
             if not class_check:
                 raise HTTPException(status_code=404, detail="الفصل غير موجود أو لا ينتمي إلى مدرستك")
+            # Capacity gate — only a class CHANGE adds a net occupant to the
+            # target (re-sending the current class is a no-op, never blocked).
+            if student_data.class_id != existing.get("class_id"):
+                await enforce_class_capacity(db.session, class_check, class_owner_id)
         update_fields["class_id"] = student_data.class_id
     if student_data.date_of_birth is not None:
         update_fields["date_of_birth"] = student_data.date_of_birth
@@ -720,6 +727,9 @@ async def transfer_student_class(
     old_class_id = student.get("class_id")
     if old_class_id == target_class_id:
         return {"success": True, "message": "الطالب موجود بالفعل في هذا الفصل"}
+
+    # Capacity gate — moving into a different class is a net +1 to the target.
+    await enforce_class_capacity(db.session, target_class, school_id)
 
     now = datetime.now(timezone.utc).isoformat()
     student_name = student.get("full_name", "")
@@ -1173,6 +1183,8 @@ async def create_student_with_wizard(
         class_doc = await gd_find_one(db.session, "classes", {"id": data.class_id, "school_id": school_id})
         if not class_doc:
             raise HTTPException(status_code=404, detail="الفصل غير موجود في هذه المدرسة")
+        # Capacity gate — net +1 for a new student; reject before any write.
+        await enforce_class_capacity(db.session, class_doc, school_id)
     
     # Create student
     student_doc = {

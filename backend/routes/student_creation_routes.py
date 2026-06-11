@@ -399,6 +399,10 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             )
             if not cls_owner:
                 raise HTTPException(status_code=404, detail="الفصل غير موجود")
+            # Capacity gate — net +1 for a brand-new student; reject before any
+            # parent/student write when the class is full.
+            from engines.entity_counts import enforce_class_capacity
+            await enforce_class_capacity(db.session, cls_owner, school_id)
         if request.parent is not None:
             request.parent.full_name = _blank_to_none(request.parent.full_name)
             request.parent.national_id = _blank_to_none(request.parent.national_id)

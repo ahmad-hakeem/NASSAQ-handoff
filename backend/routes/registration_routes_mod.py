@@ -1024,6 +1024,15 @@ async def approve_student_enrollment(
         "created_at": now,
         "updated_at": now
     }
+    if student_doc.get("class_id"):
+        _enr_class = await gd_find_one(
+            db.session, "classes",
+            {"id": student_doc["class_id"], "school_id": school_id},
+        )
+        if _enr_class:
+            # Capacity gate — net +1 for the approved enrolment.
+            from engines.entity_counts import enforce_class_capacity
+            await enforce_class_capacity(db.session, _enr_class, school_id)
     await gd_insert(db.session, "students", student_doc)
 
     # Recompute the school's stored counts from live rows (Task #826) so the
