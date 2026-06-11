@@ -212,7 +212,11 @@ async def _annotate_student_rows(
 
     Dedupe verdicts:
       • update    — exact match on (school_id, student_number) against
-                    an existing active row.
+                    an existing ACTIVE row.
+      • restore   — exact match on (school_id, student_number) against a
+                    SOFT-DELETED row (is_active = FALSE). /commit reactivates
+                    the row and applies the corrected data (it never blind-
+                    inserts — that would collide with uq_students_number_school).
       • ambiguous — soft match on (normalized full_name + grade_code
                     + section_code) but a different/blank Noor number.
                     /commit only inserts when the row_index is in
@@ -248,9 +252,15 @@ async def _annotate_student_rows(
             class_index=classes,
         )
 
-    # Soft-match index: (norm_name, grade, section) -> {id, student_number}
+    # Soft-match index: (norm_name, grade, section) -> {id, student_number}.
+    # Built from ACTIVE students only — a soft-deleted student is revivable
+    # solely via its exact number (the RESTORE path), never via fuzzy name
+    # matching, so a deleted row can't block a genuinely-new student as an
+    # "ambiguous" match.
     soft_idx: Dict[str, Dict[str, Any]] = {}
     for s in students.values():
+        if s.get("is_active") is False:
+            continue
         nm = (s.get("full_name") or "").strip()
         gd = (s.get("grade") or "").strip()
         cid = s.get("class_id")
@@ -292,8 +302,12 @@ async def _annotate_student_rows(
             if num and num in in_batch_seen:
                 dedupe = "duplicate_in_file"
             elif num in students:
-                dedupe = "update"
-                existing_id = students[num]["id"]
+                matched = students[num]
+                # A match against a soft-deleted row is a RESTORE (reactivate
+                # + apply corrected data), not a silent UPDATE of a row that
+                # would stay invisible.
+                dedupe = "restore" if matched.get("is_active") is False else "update"
+                existing_id = matched["id"]
             elif full_name:
                 resolved_cid = _resolve_for(grade_code, section_code)
                 soft_key = f"{full_name}|{grade_code}|{resolved_cid or ''}"
@@ -327,6 +341,7 @@ def _summarise_counts(rows: List[Dict[str, Any]]) -> Dict[str, int]:
         "total": len(rows),
         "insert": 0,
         "update": 0,
+        "restore": 0,
         "skip": 0,
         "ambiguous": 0,
         "duplicate_in_file": 0,
@@ -2069,8 +2084,13 @@ async def _commit_students(
     # mapping and commit falls back to deterministic resolution (and so the
     # row is counted unclassified) instead of writing a dangling class_id.
     valid_class_ids = {c.get("id") for c in classes if c.get("id")}
+    # Soft-match index from ACTIVE students only — soft-deleted rows are
+    # revivable solely via their exact number (the RESTORE path), never via
+    # fuzzy name matching (mirrors _annotate_student_rows).
     soft_idx: Dict[str, Dict[str, Any]] = {}
     for s in students.values():
+        if s.get("is_active") is False:
+            continue
         nm = (s.get("full_name") or "").strip()
         gd = (s.get("grade") or "").strip()
         cid = s.get("class_id")
@@ -2079,6 +2099,7 @@ async def _commit_students(
 
     imported = 0
     updated = 0
+    restored = 0
     skipped = 0
     failed = 0
     duplicates = 0
@@ -2170,6 +2191,31 @@ async def _commit_students(
                     # duplicate, not allowed to re-update.
                     if num:
                         batch_inserted_nums.add(num)
+                    existing_class = existing.get("class_id")
+                    # RESTORE path — a match against a soft-deleted row
+                    # reactivates it (is_active=TRUE) and applies the
+                    # corrected data. We never blind-insert here: the
+                    # surviving uq_students_number_school constraint still
+                    # reserves this (student_number, school_id) slot. A
+                    # restore ALWAYS writes (even if cached fields look
+                    # unchanged) — reviving the row is the meaningful change.
+                    if existing.get("is_active") is False:
+                        await update_student_mutable_fields(
+                            session,
+                            student_id=existing["id"],
+                            school_id=school_id,
+                            full_name=full_name or None,
+                            grade_code=grade_code,
+                            class_id=class_id,
+                            mobile=mobile,
+                            reactivate=True,
+                        )
+                        updated_ids.append(str(existing["id"]))
+                        restored += 1
+                        effective_class = class_id if class_id is not None else existing_class
+                        if effective_class is None and (grade_code or section_code):
+                            unclassified += 1
+                        continue
                     # Change-detection guard — a no-op re-import (same
                     # name + grade + class) must not bump `updated_at`
                     # nor inflate the "updated" counter. Mobile is not
@@ -2179,7 +2225,6 @@ async def _commit_students(
                     incoming_grade = (grade_code or "").strip() if grade_code else ""
                     existing_name = (existing.get("full_name") or "").strip()
                     existing_grade = (existing.get("grade") or "").strip()
-                    existing_class = existing.get("class_id")
                     name_changed = bool(incoming_name) and incoming_name != existing_name
                     grade_changed = bool(incoming_grade) and incoming_grade != existing_grade
                     class_changed = class_id is not None and class_id != existing_class
@@ -2247,6 +2292,7 @@ async def _commit_students(
     return {
         "imported": imported,
         "updated": updated,
+        "restored": restored,
         "skipped": skipped,
         "failed": failed,
         "duplicates": duplicates,

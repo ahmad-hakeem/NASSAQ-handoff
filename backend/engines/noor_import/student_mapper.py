@@ -33,11 +33,19 @@ def _norm_name(value: Optional[str]) -> str:
 async def load_school_student_index(
     session, school_id: str
 ) -> Dict[str, Dict[str, Any]]:
-    """Pre-load all students for a school as a dict keyed by student_number."""
+    """Pre-load all students for a school as a dict keyed by student_number.
+
+    Includes soft-deleted (`is_active = FALSE`) rows ON PURPOSE: the dedupe
+    logic needs to SEE them so a corrected re-import of a previously-deleted
+    student is classified as a RESTORE (reactivate the existing row) rather
+    than a blind INSERT — which would otherwise collide with the surviving
+    `uq_students_number_school` unique constraint. `is_active` is selected so
+    callers can tell an active match (update) from a deleted one (restore).
+    """
     result = await session.execute(
         text(
             """
-            SELECT id, student_number, full_name, grade, class_id
+            SELECT id, student_number, full_name, grade, class_id, is_active
             FROM students
             WHERE school_id = :sid
             """
@@ -154,8 +162,15 @@ async def update_student_mutable_fields(
     grade_code: Optional[str],
     class_id: Optional[str],
     mobile: Optional[str],
+    reactivate: bool = False,
 ) -> None:
-    """Patch the small set of mutable Noor fields on an existing student."""
+    """Patch the small set of mutable Noor fields on an existing student.
+
+    When ``reactivate`` is set (the RESTORE path — re-importing a previously
+    soft-deleted student), `is_active` is forced back to TRUE so the corrected
+    record becomes visible again. A restore always writes even if no other
+    field changed, because reviving the row is itself the meaningful change.
+    """
     now = datetime.now(timezone.utc)
     sets: List[str] = []
     params: Dict[str, Any] = {"id": student_id, "sid": school_id, "now": now}
@@ -171,6 +186,8 @@ async def update_student_mutable_fields(
     if mobile is not None:
         sets.append("phone = :phone")
         params["phone"] = mobile
+    if reactivate:
+        sets.append("is_active = TRUE")
     if not sets:
         return
     sets.append("updated_at = :now")
