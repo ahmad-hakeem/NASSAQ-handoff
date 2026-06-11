@@ -106,6 +106,7 @@ const LOG_ICONS = {
   behaviour: ThumbsUp,
   skill: Star,
   participation: Hand,
+  action_reversed: RotateCcw,
 };
 
 /**
@@ -2626,13 +2627,18 @@ export default function SessionTeachPage() {
                   </div>
                 ) : (
                   activityLog.map(log => (
-                    <div key={log.id} className="bg-foreground/5 rounded-lg px-2.5 py-2">
-                      <p className={`text-xs font-medium ${log.color} flex items-center gap-1`}>
+                    <div key={log.id} className={`rounded-lg px-2.5 py-2 ${log.reversed ? 'bg-muted/40 opacity-60' : 'bg-foreground/5'}`}>
+                      <p className={`text-xs font-medium ${log.reversed ? 'text-muted-foreground' : log.color} flex items-center gap-1`}>
                         {(() => {
                           const IconComp = LOG_ICONS[log.emoji];
-                          return IconComp ? <IconComp className="h-3 w-3 inline-block flex-shrink-0" /> : <span>{log.emoji}</span>;
+                          return IconComp ? <IconComp className="h-3 w-3 inline-block flex-shrink-0" aria-hidden="true" /> : <span>{log.emoji}</span>;
                         })()}
-                        <span>{log.text}</span>
+                        <span className={log.reversed ? 'line-through' : ''}>{log.text}</span>
+                        {log.reversed && (
+                          <span className="ms-1 inline-flex items-center rounded-full bg-muted border border-border px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground leading-none flex-shrink-0">
+                            ↩ تم التراجع
+                          </span>
+                        )}
                       </p>
                       <p className="text-muted-foreground/70 text-[10px] mt-0.5">{log.time}</p>
                     </div>

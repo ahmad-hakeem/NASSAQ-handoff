@@ -2903,13 +2903,15 @@ class TeacherSessionEngine:
     # ---------- Activity Log ----------
 
     async def get_activity_log(self, session_id: str, limit: int = 50) -> list:
-        """Fetch session interactions formatted as activity log entries"""
+        """Fetch session interactions formatted as activity log entries.
+
+        Reversed interactions are included and marked with ``reversed: True`` so
+        the frontend can render them struck-through instead of hiding them.
+        """
         all_interactions = await gd_find(self.session, "session_interactions",
             {"session_id": session_id}, order_by="recorded_at", desc_order=True, limit=limit * 3)
 
-        # Exclude reversed interactions so that undone actions are invisible
-        # in the live activity log (avoids confusion about state post-undo).
-        interactions = [i for i in all_interactions if not (i.get("data") or {}).get("reversed")][:limit]
+        interactions = all_interactions[:limit]
 
         if not interactions:
             return []
@@ -2940,11 +2942,11 @@ class TeacherSessionEngine:
         log_entries = []
         for i in interactions:
             itype = i.get("interaction_type")
+            is_reversed = bool((i.get("data") or {}).get("reversed"))
             student_name = students.get(i.get("student_id"), "طالب")
             first_name = student_name.split(" ")[0] if student_name else "طالب"
             recorded_at = i.get("recorded_at", "")
 
-            evt_key_prefix = f"{i.get('student_id')}_"
             ts_prefix = recorded_at[:19] if recorded_at else ""
 
             if itype == "question":
@@ -3016,8 +3018,36 @@ class TeacherSessionEngine:
                 "text": text,
                 "color": color,
                 "time": time_str,
+                "reversed": is_reversed,
             })
 
+        # Append action_reversed events from the event log so the log shows an
+        # explicit "تم التراجع" entry for each undo action.
+        reversal_events = await gd_find(self.session, "session_event_log",
+            {"session_id": session_id, "event_type": "action_reversed"},
+            order_by="timestamp", desc_order=True, limit=limit)
+        for ev in reversal_events:
+            meta = ev.get("metadata") or {}
+            student_name = meta.get("student_name", "")
+            first_name = student_name.split(" ")[0] if student_name else ""
+            text = f"تم التراجع — {first_name}" if first_name else "تم التراجع عن إجراء"
+            ts = ev.get("timestamp", "")
+            try:
+                from datetime import datetime as dt
+                t = dt.fromisoformat(ts.replace("Z", "+00:00"))
+                time_str = t.strftime("%H:%M")
+            except Exception:
+                time_str = ""
+            log_entries.append({
+                "id": ev.get("id", ""),
+                "emoji": "action_reversed",
+                "text": text,
+                "color": "text-muted-foreground",
+                "time": time_str,
+                "reversed": False,
+            })
+
+        log_entries.sort(key=lambda e: e.get("time", ""), reverse=True)
         return log_entries
 
     # ---------- Class Metrics ----------
