@@ -3284,7 +3284,12 @@ async def get_followup_record(
     else:
         lookup = {"session_id": session_id}
     record = await gd_find_one(db.session, "followup_records", lookup)
-    manual_data = record.get("data", {}) if record else {}
+    # GenericDocument storage flattens all document fields into the record dict,
+    # but the "data" key returns the *full* JSONB blob (all document fields).
+    # The student-scores map is stored as a nested sub-key called "data" inside
+    # that blob, so we must navigate one level deeper to retrieve it.
+    data_blob = (record.get("data") or {}) if record else {}
+    manual_data = data_blob.get("data") or {} if isinstance(data_blob, dict) else {}
     # Hydrate the coursework columns from the live session interactions so the
     # Follow-up Report reflects the teacher's in-session scoring without manual
     # re-entry. Manual teacher entries are preserved (never clobbered); exam
