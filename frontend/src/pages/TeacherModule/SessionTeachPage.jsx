@@ -544,7 +544,9 @@ export default function SessionTeachPage() {
     if (!sessionId) return;
     try {
       const res = await api.get(`/session/${sessionId}/undo/peek`);
-      setCanUndo(res.data?.has_reversible === true);
+      const hasReversible = res.data?.has_reversible === true;
+      setCanUndo(hasReversible);
+      setUndoCount(hasReversible ? (res.data?.stack_depth ?? 1) : 0);
     } catch (e) {
       // Non-fatal — leave canUndo as-is if the peek fails
     }
@@ -896,6 +898,7 @@ export default function SessionTeachPage() {
   }, []);
 
   const [canUndo, setCanUndo] = useState(false);
+  const [undoCount, setUndoCount] = useState(0);
   const [undoLoading, setUndoLoading] = useState(false);
 
   const [remainingMinutes, setRemainingMinutes] = useState(null);
@@ -1291,9 +1294,11 @@ export default function SessionTeachPage() {
           if (status === 400) {
             nassaqError(t('undoNoAction') || 'لا توجد إجراءات يمكن التراجع عنها');
             setCanUndo(false);
+            setUndoCount(0);
           } else if (status === 409) {
             nassaqError(t('undoSessionEnded') || 'لا يمكن التراجع — الحصة منتهية');
             setCanUndo(false);
+            setUndoCount(0);
           } else {
             nassaqError(t('errorOccurred') || 'حدث خطأ');
           }
@@ -1481,6 +1486,11 @@ export default function SessionTeachPage() {
             ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
             : <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />}
           <span className="hidden sm:inline">{t('undoLastAction') || 'تراجع'}</span>
+          {canUndo && undoCount > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-400/40 leading-none tabular-nums">
+              {undoCount}
+            </span>
+          )}
         </button>
         <div className="flex items-center bg-foreground/[0.04] border border-border rounded-md p-0.5">
           <button

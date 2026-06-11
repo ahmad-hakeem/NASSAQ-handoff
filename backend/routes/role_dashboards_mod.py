@@ -3249,13 +3249,15 @@ async def peek_last_reversible_action(
         raise HTTPException(status_code=403, detail="ليس لديك صلاحية على هذه الجلسة")
     action = await session_engine.get_last_reversible_action(session_id=session_id, teacher_id=teacher_id)
     if action:
+        stack_depth = await session_engine.count_reversible_actions(session_id=session_id, teacher_id=teacher_id)
         return {
             "has_reversible": True,
+            "stack_depth": stack_depth,
             "event_type": action.get("event_type"),
             "student_id": action.get("student_id"),
             "student_name": action.get("metadata", {}).get("student_name"),
         }
-    return {"has_reversible": False, "event_type": None, "student_id": None, "student_name": None}
+    return {"has_reversible": False, "stack_depth": 0, "event_type": None, "student_id": None, "student_name": None}
 
 
 @router.post("/session/{session_id}/undo")

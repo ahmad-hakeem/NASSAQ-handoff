@@ -3414,6 +3414,41 @@ class TeacherSessionEngine:
             return event
         return None
 
+    async def count_reversible_actions(
+        self,
+        session_id: str,
+        teacher_id: str,
+        cap: int = 10,
+    ) -> int:
+        """Count how many unreversed reversible events exist for this teacher/session.
+
+        The count is capped at *cap* so the UI can show "10+" without fetching
+        an unbounded number of rows.  The same 200-row fetch used by
+        get_last_reversible_action is sufficient because a session rarely
+        exceeds that many interactions.
+        """
+        events = await gd_find(
+            self.session,
+            "session_event_log",
+            {
+                "session_id": session_id,
+                "actor_id": teacher_id,
+                "event_type": {"$in": list(self.REVERSIBLE_EVENT_TYPES)},
+            },
+            order_by="timestamp",
+            desc_order=True,
+            limit=200,
+        )
+        count = 0
+        for event in events:
+            meta = event.get("metadata") or {}
+            if meta.get("reversed"):
+                continue
+            count += 1
+            if count >= cap:
+                break
+        return count
+
     async def undo_last_action(
         self,
         session_id: str,
