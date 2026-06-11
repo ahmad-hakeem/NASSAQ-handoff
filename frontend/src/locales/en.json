@@ -5267,5 +5267,6 @@
   "undoEventSkill": "Skill / Recitation",
   "undoSuccess": "Action undone successfully",
   "undoNoAction": "No actions left to undo in this session",
-  "undoSessionEnded": "Cannot undo — the session has already ended"
+  "undoSessionEnded": "Cannot undo — the session has already ended",
+  "undoNotAllowed": "You are not allowed to undo this action"
 }

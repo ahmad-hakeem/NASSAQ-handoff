@@ -1320,6 +1320,14 @@ export default function SessionTeachPage() {
             nassaqError(t('undoNoAction') || 'لا توجد إجراءات يمكن التراجع عنها');
             setCanUndo(false);
             setUndoCount(0);
+          } else if (status === 404) {
+            nassaqError(t('undoNoAction') || 'لا توجد إجراءات يمكن التراجع عنها');
+            setCanUndo(false);
+            setUndoCount(0);
+          } else if (status === 403) {
+            nassaqError(t('undoNotAllowed') || 'ليس لديك صلاحية للتراجع عن هذا الإجراء');
+            setCanUndo(false);
+            setUndoCount(0);
           } else if (status === 409) {
             nassaqError(t('undoSessionEnded') || 'لا يمكن التراجع — الحصة منتهية');
             setCanUndo(false);

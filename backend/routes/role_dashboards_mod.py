@@ -3247,9 +3247,19 @@ async def peek_last_reversible_action(
     teacher_id = current_user.get("teacher_id") or current_user["id"]
     if session.get("teacher_id") and session["teacher_id"] != teacher_id:
         raise HTTPException(status_code=403, detail="ليس لديك صلاحية على هذه الجلسة")
-    action = await session_engine.get_last_reversible_action(session_id=session_id, teacher_id=teacher_id)
+    # An event's actor_id may be the Teachers.id or, for older actions, the
+    # caller's Users.id — try both so the undo button reflects the real stack.
+    action = None
+    matched_actor_id = teacher_id
+    for cid in (teacher_id, current_user["id"]):
+        if not cid:
+            continue
+        action = await session_engine.get_last_reversible_action(session_id=session_id, teacher_id=cid)
+        if action:
+            matched_actor_id = cid
+            break
     if action:
-        stack_depth = await session_engine.count_reversible_actions(session_id=session_id, teacher_id=teacher_id)
+        stack_depth = await session_engine.count_reversible_actions(session_id=session_id, teacher_id=matched_actor_id)
         return {
             "has_reversible": True,
             "stack_depth": stack_depth,
@@ -3281,12 +3291,13 @@ async def undo_last_session_action(
     result = await session_engine.undo_last_action(
         session_id=session_id,
         teacher_id=teacher_id,
+        user_id=current_user["id"],
     )
     if audit_engine:
         try:
             await audit_engine.log(
                 action=AuditAction.DATA_MODIFY,
-                performed_by=teacher_id,
+                performed_by=current_user["id"],
                 details={
                     "event": "session_action_reversed",
                     "session_id": session_id,

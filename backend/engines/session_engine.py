@@ -3483,6 +3483,7 @@ class TeacherSessionEngine:
         self,
         session_id: str,
         teacher_id: str,
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Reverse the teacher's last reversible action in this session.
 
@@ -3510,17 +3511,23 @@ class TeacherSessionEngine:
                 detail="لا يمكن التراجع — الحصة منتهية أو مؤرشفة",
             )
 
-        # 2. Resolve the owning teacher.  The caller has already passed
-        #    _verify_session_owner; here we normalise the teacher_id to the
-        #    one stored in the session so the event-log query is correct.
+        # 2. Resolve candidate actor ids.  Historically some action-recording
+        #    routes logged events with the caller's Users.id while the session
+        #    stores the Teachers.id, so an event's actor_id can be either one.
+        #    Try every distinct candidate so undo works regardless of which id
+        #    the original action was recorded under.
         session_teacher_id = session.get("teacher_id") or teacher_id
+        candidate_actor_ids: List[str] = []
+        for cid in (session_teacher_id, teacher_id, user_id):
+            if cid and cid not in candidate_actor_ids:
+                candidate_actor_ids.append(cid)
 
         # 3. Find last reversible event for this teacher in this session.
-        event = await self.get_last_reversible_action(session_id, session_teacher_id)
-        if event is None:
-            # Also try with the raw caller id in case teacher_id differs.
-            if teacher_id != session_teacher_id:
-                event = await self.get_last_reversible_action(session_id, teacher_id)
+        event = None
+        for cid in candidate_actor_ids:
+            event = await self.get_last_reversible_action(session_id, cid)
+            if event is not None:
+                break
         if event is None:
             raise HTTPException(
                 status_code=400,
