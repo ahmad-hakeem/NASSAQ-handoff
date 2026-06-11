@@ -940,7 +940,7 @@ class TeacherSessionEngine:
             actor_id=teacher_id,
             student_id=student_id,
             new_value=result.value,
-            metadata={"score_change": score_change}
+            metadata={"score_change": score_change, "interaction_id": interaction["id"]}
         )
         
         return {
@@ -998,7 +998,7 @@ class TeacherSessionEngine:
             actor_id=teacher_id,
             student_id=student_id,
             new_value=participation_type.value,
-            metadata={"score_change": score_change}
+            metadata={"score_change": score_change, "interaction_id": interaction["id"]}
         )
 
         return {
@@ -1061,7 +1061,7 @@ class TeacherSessionEngine:
             actor_id=teacher_id,
             student_id=student_id,
             new_value=f"{category.value}:{behaviour_type}",
-            metadata={"score_change": score_change, "details": details}
+            metadata={"score_change": score_change, "details": details, "interaction_id": interaction["id"]}
         )
 
         return {
@@ -1187,7 +1187,9 @@ class TeacherSessionEngine:
         total = len(attendance)
         attendance_approved = session.get("attendance_approved", False)
 
-        interactions = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=500)
+        all_interactions_rv = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=500)
+        # Exclude reversed interactions so review preview reflects only active actions.
+        interactions = [i for i in all_interactions_rv if not (i.get("data") or {}).get("reversed")]
 
         questions = [i for i in interactions if i.get("interaction_type") == InteractionType.QUESTION.value]
         correct = sum(1 for q in questions if q.get("answer_result") == AnswerResult.CORRECT.value)
@@ -1201,8 +1203,10 @@ class TeacherSessionEngine:
         positive_behaviours = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.POSITIVE.value)
         negative_behaviours = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.NEGATIVE.value)
 
-        skills_recorded = await gd_count(self.session, "student_skills", {"session_id": session_id})
+        # Count only non-reversed skill records.
         skills_docs = await gd_find(self.session, "student_skills", {"session_id": session_id})
+        skills_docs = [d for d in skills_docs if not d.get("is_reversed")]
+        skills_recorded = len(skills_docs)
         skills_students = list(set(d.get("student_id") for d in skills_docs))
 
         notes_count = await gd_count(self.session, "session_notes", {"session_id": session_id})
@@ -1376,7 +1380,9 @@ class TeacherSessionEngine:
         excused = sum(1 for a in attendance if a["status"] == AttendanceStatus.EXCUSED.value)
         total = len(attendance)
         
-        interactions = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=500)
+        all_interactions_es = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=500)
+        # Exclude reversed interactions so end-session summary reflects only active actions.
+        interactions = [i for i in all_interactions_es if not (i.get("data") or {}).get("reversed")]
         
         questions = [i for i in interactions if i.get("interaction_type") == InteractionType.QUESTION.value]
         correct = sum(1 for q in questions if q.get("answer_result") == AnswerResult.CORRECT.value)
@@ -1390,8 +1396,10 @@ class TeacherSessionEngine:
         positive_behaviours = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.POSITIVE.value)
         negative_behaviours = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.NEGATIVE.value)
         
-        skills_recorded = await gd_count(self.session, "student_skills", {"session_id": session_id})
+        # Count only non-reversed skill records.
         skills_docs_end = await gd_find(self.session, "student_skills", {"session_id": session_id})
+        skills_docs_end = [d for d in skills_docs_end if not d.get("is_reversed")]
+        skills_recorded = len(skills_docs_end)
         evaluated_students_count = len(set(d.get("student_id") for d in skills_docs_end if d.get("student_id")))
         notes_sent_count = await gd_count(self.session, "session_notes", {
             "session_id": session_id,
@@ -2877,7 +2885,12 @@ class TeacherSessionEngine:
             actor_id=teacher_id,
             student_id=student_id,
             new_value=event_marker,
-            metadata={"score_change": score_change, "skill_name": display_name}
+            metadata={
+                "score_change": score_change,
+                "skill_name": display_name,
+                "interaction_id": interaction["id"],
+                "skill_record_id": skill_record["id"],
+            }
         )
 
         return {
@@ -2891,8 +2904,12 @@ class TeacherSessionEngine:
 
     async def get_activity_log(self, session_id: str, limit: int = 50) -> list:
         """Fetch session interactions formatted as activity log entries"""
-        interactions = await gd_find(self.session, "session_interactions",
-            {"session_id": session_id}, order_by="recorded_at", desc_order=True, limit=limit)
+        all_interactions = await gd_find(self.session, "session_interactions",
+            {"session_id": session_id}, order_by="recorded_at", desc_order=True, limit=limit * 3)
+
+        # Exclude reversed interactions so that undone actions are invisible
+        # in the live activity log (avoids confusion about state post-undo).
+        interactions = [i for i in all_interactions if not (i.get("data") or {}).get("reversed")][:limit]
 
         if not interactions:
             return []
@@ -3120,7 +3137,9 @@ class TeacherSessionEngine:
 
         attendance = await gd_find(self.session, "session_attendance", {"session_id": session_id}, limit=200)
 
-        interactions = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=1000)
+        all_interactions = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=1000)
+        # Exclude reversed interactions so live metrics reflect only active actions.
+        interactions = [i for i in all_interactions if not (i.get("data") or {}).get("reversed")]
 
         present = sum(1 for a in attendance if a.get("status") == AttendanceStatus.PRESENT.value)
         absent = sum(1 for a in attendance if a.get("status") == AttendanceStatus.ABSENT.value)
@@ -3139,7 +3158,9 @@ class TeacherSessionEngine:
         pos_behaviours = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.POSITIVE.value)
         neg_behaviours = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.NEGATIVE.value)
 
-        skills_count = await gd_count(self.session, "student_skills", {"session_id": session_id})
+        # Count only non-reversed skills.
+        all_skills_docs = await gd_find(self.session, "student_skills", {"session_id": session_id}, limit=500)
+        skills_count = sum(1 for s in all_skills_docs if not s.get("is_reversed"))
         notes_count = await gd_count(self.session, "session_notes", {"session_id": session_id})
 
         duration_minutes = 0
@@ -3351,8 +3372,287 @@ class TeacherSessionEngine:
 
         return {"message": f"تم إغلاق {closed_count} حصة متروكة", "closed_count": closed_count}
 
+    # ---------- Undo Last Action ----------
+
+    # Event types that are eligible to be reversed.
+    # Attendance and homework changes are excluded: attendance is approved
+    # collectively, and homework status is a toggle without a score ledger.
+    REVERSIBLE_EVENT_TYPES = {
+        EventType.ANSWER_RECORDED.value,
+        EventType.PARTICIPATION_RECORDED.value,
+        EventType.BEHAVIOUR_RECORDED.value,
+        EventType.SKILL_RECORDED.value,
+    }
+
+    async def get_last_reversible_action(
+        self,
+        session_id: str,
+        teacher_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Return the most recent reversible event for this session and teacher.
+
+        Returns None when there is nothing left to undo (all actions have
+        already been reversed, or there are no eligible actions at all).
+        The caller is responsible for checking session ownership and status.
+        """
+        events = await gd_find(
+            self.session,
+            "session_event_log",
+            {
+                "session_id": session_id,
+                "actor_id": teacher_id,
+                "event_type": {"$in": list(self.REVERSIBLE_EVENT_TYPES)},
+            },
+            order_by="timestamp",
+            desc_order=True,
+            limit=200,
+        )
+        for event in events:
+            meta = event.get("metadata") or {}
+            if meta.get("reversed"):
+                continue
+            return event
+        return None
+
+    async def undo_last_action(
+        self,
+        session_id: str,
+        teacher_id: str,
+    ) -> Dict[str, Any]:
+        """Reverse the teacher's last reversible action in this session.
+
+        The reversal is a real backend operation:
+        - The original ``session_interactions`` row is marked as reversed.
+        - A compensating ``student_score_ledger`` entry is inserted for any
+          point-bearing action, and ``student_daily_scores`` is adjusted.
+        - A reversal event is written to ``session_event_log``.
+        - The original event's ``metadata.reversed`` flag is set to True so
+          repeat calls do not re-reverse the same action.
+
+        Raises HTTPException(400) when nothing is reversible.
+        Raises HTTPException(409) when the session has already ended.
+        """
+        now = datetime.now(timezone.utc)
+
+        # 1. Verify session exists and is active.
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
+        if not session:
+            raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
+
+        if session.get("status") in (SessionStatus.COMPLETED.value, SessionStatus.CANCELLED.value, SessionStatus.ARCHIVED.value):
+            raise HTTPException(
+                status_code=409,
+                detail="لا يمكن التراجع — الحصة منتهية أو مؤرشفة",
+            )
+
+        # 2. Resolve the owning teacher.  The caller has already passed
+        #    _verify_session_owner; here we normalise the teacher_id to the
+        #    one stored in the session so the event-log query is correct.
+        session_teacher_id = session.get("teacher_id") or teacher_id
+
+        # 3. Find last reversible event for this teacher in this session.
+        event = await self.get_last_reversible_action(session_id, session_teacher_id)
+        if event is None:
+            # Also try with the raw caller id in case teacher_id differs.
+            if teacher_id != session_teacher_id:
+                event = await self.get_last_reversible_action(session_id, teacher_id)
+        if event is None:
+            raise HTTPException(
+                status_code=400,
+                detail="لا توجد إجراءات يمكن التراجع عنها في هذه الحصة",
+            )
+
+        event_id = event.get("id")
+        event_type = event.get("event_type", "")
+        student_id = event.get("student_id")
+        original_meta = event.get("metadata") or {}
+        original_score_change = int(original_meta.get("score_change", 0))
+        event_timestamp = event.get("timestamp", "")
+
+        # 4. Mark the original interaction as reversed.
+        #    Match on session_id + student_id + type + timestamp proximity so
+        #    we avoid a missing-column migration. We update whichever row was
+        #    most recently inserted just before or at the event timestamp.
+        interaction_type_map = {
+            EventType.ANSWER_RECORDED.value: InteractionType.QUESTION.value,
+            EventType.PARTICIPATION_RECORDED.value: InteractionType.PARTICIPATION.value,
+            EventType.BEHAVIOUR_RECORDED.value: InteractionType.BEHAVIOUR.value,
+            EventType.SKILL_RECORDED.value: InteractionType.BEHAVIOUR.value,
+        }
+        itype = interaction_type_map.get(event_type)
+
+        # Find matching interaction row to mark as reversed.
+        interaction_filter: dict = {
+            "session_id": session_id,
+            "student_id": student_id,
+        }
+        if itype:
+            interaction_filter["interaction_type"] = itype
+        # For skill events, narrow to the skill sub-category.
+        if event_type == EventType.SKILL_RECORDED.value:
+            interaction_filter["behaviour_category"] = BehaviourCategory.SKILL.value
+
+        candidate_interactions = await gd_find(
+            self.session,
+            "session_interactions",
+            interaction_filter,
+            order_by="recorded_at",
+            desc_order=True,
+            limit=50,
+        )
+
+        # Pick the first non-reversed one (most recent matching row).
+        target_interaction = None
+        for ci in candidate_interactions:
+            ci_data = ci.get("data") or ci.get("metadata") or {}
+            if ci_data.get("reversed"):
+                continue
+            target_interaction = ci
+            break
+
+        # Prefer the deterministic interaction_id stored in event metadata (written
+        # for all new actions after this feature was introduced).  For older events
+        # that lack it we fall back to the fuzzy type+student match above.
+        if original_meta.get("interaction_id"):
+            by_id = await gd_find_one(
+                self.session, "session_interactions", {"id": original_meta["interaction_id"]}
+            )
+            if by_id:
+                target_interaction = by_id
+
+        if target_interaction:
+            existing_data = target_interaction.get("data") or {}
+            new_data = {**existing_data, "reversed": True, "reversed_at": now.isoformat(), "reversed_event_id": event_id}
+            await gd_update_one(
+                self.session,
+                "session_interactions",
+                {"id": target_interaction["id"]},
+                {"data": new_data},
+            )
+
+        # For skill events: also mark the student_skills record so skill counts
+        # in session summaries and live metrics stay accurate after undo.
+        if event_type == EventType.SKILL_RECORDED.value:
+            skill_record_id = original_meta.get("skill_record_id")
+            if skill_record_id:
+                existing_sk = await gd_find_one(self.session, "student_skills", {"id": skill_record_id})
+                if existing_sk:
+                    await gd_update_one(
+                        self.session,
+                        "student_skills",
+                        {"id": skill_record_id},
+                        {"is_reversed": True, "reversed_at": now.isoformat()},
+                    )
+            else:
+                # Fallback: find the most recent non-reversed skill for this student/session
+                skill_candidates = await gd_find(
+                    self.session,
+                    "student_skills",
+                    {"session_id": session_id, "student_id": student_id},
+                    order_by="timestamp",
+                    desc_order=True,
+                    limit=20,
+                )
+                for sk in skill_candidates:
+                    if sk.get("is_reversed"):
+                        continue
+                    await gd_update_one(
+                        self.session,
+                        "student_skills",
+                        {"id": sk["id"]},
+                        {"is_reversed": True, "reversed_at": now.isoformat()},
+                    )
+                    break
+
+        # 5. Compensate score if the original action was point-bearing.
+        student_name = "الطالب"
+        if student_id:
+            st = await gd_find_one(self.session, "students", {"id": student_id, "is_active": True})
+            if st:
+                student_name = st.get("full_name") or student_name
+
+        if original_score_change != 0 and student_id:
+            compensating_change = -original_score_change
+            today = now.strftime("%Y-%m-%d")
+            week_start = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+            month = now.strftime("%Y-%m")
+
+            school_id = None
+            if student_id:
+                st_row = await gd_find_one(self.session, "students", {"id": student_id, "is_active": True})
+                school_id = st_row.get("school_id") if st_row else None
+
+            compensating_ledger = {
+                "id": str(uuid.uuid4()),
+                "student_id": student_id,
+                "school_id": school_id,
+                "score_change": compensating_change,
+                "category": "undo",
+                "description": f"تراجع: عكس إجراء ({event_type})",
+                "date": today,
+                "week": week_start,
+                "month": month,
+                "created_at": now.isoformat(),
+            }
+            await gd_insert(self.session, "student_score_ledger", compensating_ledger)
+
+            # Adjust the daily aggregate.
+            existing_daily = await gd_find_one(
+                self.session, "student_daily_scores", {"student_id": student_id, "date": today}
+            )
+            if existing_daily:
+                await gd_update_one(
+                    self.session,
+                    "student_daily_scores",
+                    {"student_id": student_id, "date": today},
+                    {"score": existing_daily.get("score", 0) + compensating_change},
+                )
+            else:
+                await gd_insert(self.session, "student_daily_scores", {
+                    "id": str(uuid.uuid4()),
+                    "student_id": student_id,
+                    "school_id": school_id,
+                    "date": today,
+                    "score": compensating_change,
+                    "created_at": now.isoformat(),
+                })
+
+        # 6. Mark the original event as reversed so it is skipped on future calls.
+        updated_meta = {**original_meta, "reversed": True, "reversed_at": now.isoformat()}
+        await gd_update_one(
+            self.session,
+            "session_event_log",
+            {"id": event_id},
+            {"metadata": updated_meta},
+        )
+
+        # 7. Write a dedicated reversal event to the log.
+        await self._log_event(
+            session_id=session_id,
+            event_type="action_reversed",
+            actor_id=teacher_id,
+            student_id=student_id,
+            old_value=event_type,
+            new_value="reversed",
+            metadata={
+                "reversed_event_id": event_id,
+                "original_event_type": event_type,
+                "original_score_change": original_score_change,
+                "compensating_change": -original_score_change if original_score_change else 0,
+                "student_name": student_name,
+            },
+        )
+
+        return {
+            "message": "تم التراجع عن الإجراء بنجاح",
+            "reversed_event_type": event_type,
+            "student_id": student_id,
+            "student_name": student_name,
+            "score_restored": -original_score_change if original_score_change else 0,
+        }
+
     # ---------- Seating Order ----------
-    
+
     async def update_seating_order(
         self,
         session_id: str,

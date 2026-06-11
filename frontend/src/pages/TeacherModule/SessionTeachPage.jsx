@@ -228,7 +228,7 @@ function useSessionTimer(startTimeStr) {
 export default function SessionTeachPage() {
   const { user, api, isRTL } = useAuth();
   const { t } = useTranslation();
-  const { nassaqError } = useNassaqAlert();
+  const { nassaqError, nassaqConfirm } = useNassaqAlert();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -395,6 +395,7 @@ export default function SessionTeachPage() {
     });
     loadSkillTypes();
     loadActivityLog();
+    peekUndoState();
     loadSessionSettings();
     loadSubjectsList();
     return () => { isMounted = false; };
@@ -538,6 +539,16 @@ export default function SessionTeachPage() {
       setNotes(res.data?.notes || []);
     } catch (e) { console.error('Error loading notes:', e); }
   }, [api, sessionId]);
+
+  const peekUndoState = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const res = await api.get(`/session/${sessionId}/undo/peek`);
+      setCanUndo(res.data?.has_reversible === true);
+    } catch (e) {
+      // Non-fatal — leave canUndo as-is if the peek fails
+    }
+  }, [sessionId]);
 
   const loadActivityLog = async () => {
     try {
@@ -884,6 +895,9 @@ export default function SessionTeachPage() {
     }));
   }, []);
 
+  const [canUndo, setCanUndo] = useState(false);
+  const [undoLoading, setUndoLoading] = useState(false);
+
   const [remainingMinutes, setRemainingMinutes] = useState(null);
 
   useEffect(() => {
@@ -1122,6 +1136,7 @@ export default function SessionTeachPage() {
         addLog('skip', `${selectedStudent.full_name?.split(' ')[0]} — ${t('didNotAnswer')} (${change})`, 'text-amber-600');
         setStats(p => ({ ...p, questions: p.questions + 1 }));
       }
+      setCanUndo(true);
       setStudents(prev => prev.map(s =>
         s.id === selectedStudent.id
           ? { ...s, interactionCount: s.interactionCount + 1, correctAnswers: result === 'correct' ? s.correctAnswers + 1 : s.correctAnswers }
@@ -1151,6 +1166,7 @@ export default function SessionTeachPage() {
       const change = res.data?.score_change || 0;
       toast.success(`${t(pType.labelKey)} — ${selectedStudent.full_name?.split(' ')[0]}`);
       addLog('participation', `${selectedStudent.full_name?.split(' ')[0]} — ${t(pType.labelKey)} (${change > 0 ? '+' : ''}${change})`, change >= 0 ? 'text-blue-700' : 'text-amber-700');
+      setCanUndo(true);
       setStats(p => ({ ...p, participation: p.participation + 1 }));
       setStudents(prev => prev.map(s =>
         s.id === selectedStudent.id ? { ...s, interactionCount: s.interactionCount + 1 } : s
@@ -1180,6 +1196,7 @@ export default function SessionTeachPage() {
       const bLabel = bType.labelKey ? t(bType.labelKey) : bType.label;
       toast.success(`${t('behaviour')}: ${bLabel} — ${selectedStudent.full_name?.split(' ')[0]}`);
       addLog('behaviour', `${selectedStudent.full_name?.split(' ')[0]} — ${bLabel} (${change > 0 ? '+' : ''}${change})`, behaviourCategory === 'negative' ? 'text-red-600' : 'text-purple-700');
+      setCanUndo(true);
       setBehaviourNote('');
     } catch (e) {
       console.error('Error recording behaviour:', e);
@@ -1212,6 +1229,7 @@ export default function SessionTeachPage() {
       confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 }, colors: ['#8b5cf6', '#a78bfa', '#c4b5fd'] });
       toast.success(`${t('skill')}: ${skill.name_ar || skill.name} — ${selectedStudent.full_name?.split(' ')[0]}`);
       addLog('skill', `${selectedStudent.full_name?.split(' ')[0]} — ${skill.name_ar || skill.name} (${change > 0 ? '+' : ''}${change})`, 'text-purple-700');
+      setCanUndo(true);
       setSkillNote('');
       setStudents(prev => prev.map(s =>
         s.id === selectedStudent.id ? { ...s, interactionCount: s.interactionCount + 1 } : s
@@ -1257,6 +1275,34 @@ export default function SessionTeachPage() {
       console.error('Error recording recitation:', e);
       nassaqError(t('errorRecordingSkill'));
     }
+  };
+
+  const undoLastAction = () => {
+    nassaqConfirm(
+      t('undoLastActionConfirm') || 'هل تريد التراجع عن آخر إجراء؟ لا يمكن التراجع عن هذه العملية.',
+      async () => {
+        setUndoLoading(true);
+        try {
+          await api.post(`/session/${sessionId}/undo`);
+          toast.success(t('undoSuccess') || 'تم التراجع عن الإجراء بنجاح');
+          await Promise.all([loadStudents(), loadActivityLog(), loadLiveMetrics(), peekUndoState(), loadFollowupRecord()]);
+        } catch (e) {
+          const status = e?.response?.status;
+          if (status === 400) {
+            nassaqError(t('undoNoAction') || 'لا توجد إجراءات يمكن التراجع عنها');
+            setCanUndo(false);
+          } else if (status === 409) {
+            nassaqError(t('undoSessionEnded') || 'لا يمكن التراجع — الحصة منتهية');
+            setCanUndo(false);
+          } else {
+            nassaqError(t('errorOccurred') || 'حدث خطأ');
+          }
+        } finally {
+          setUndoLoading(false);
+        }
+      },
+      { confirmText: t('undoLastAction') || 'تراجع' }
+    );
   };
 
   const [pendingOps, setPendingOps] = useState([]);
@@ -1423,6 +1469,18 @@ export default function SessionTeachPage() {
         >
           <RotateCcw className="h-3.5 w-3.5" />
           <span>{t('refresh') || 'تحديث'}</span>
+        </button>
+        <button
+          onClick={undoLastAction}
+          disabled={!canUndo || undoLoading}
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-xs font-cairo font-bold border transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-amber-700 dark:text-amber-300 border-amber-400/40 hover:bg-amber-500/10 enabled:hover:text-amber-800"
+          title={t('undoLastAction') || 'تراجع عن آخر إجراء'}
+          aria-label={t('undoLastAction') || 'تراجع عن آخر إجراء'}
+        >
+          {undoLoading
+            ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            : <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />}
+          <span className="hidden sm:inline">{t('undoLastAction') || 'تراجع'}</span>
         </button>
         <div className="flex items-center bg-foreground/[0.04] border border-border rounded-md p-0.5">
           <button

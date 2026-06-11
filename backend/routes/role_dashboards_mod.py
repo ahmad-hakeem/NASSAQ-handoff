@@ -3230,6 +3230,73 @@ async def broadcast_session_note_to_parents(
     }
 
 
+@router.get("/session/{session_id}/undo/peek")
+async def peek_last_reversible_action(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Returns whether there is a reversible action available without modifying anything.
+    Used by the UI to decide whether to enable the undo button.
+    Only the owning teacher may call this — admin bypass is intentionally blocked
+    so peek accurately reflects the caller's own undo stack.
+    """
+    session = await gd_find_one(db.session, "class_sessions", {"id": session_id})
+    if not session:
+        raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
+    teacher_id = current_user.get("teacher_id") or current_user["id"]
+    if session.get("teacher_id") and session["teacher_id"] != teacher_id:
+        raise HTTPException(status_code=403, detail="ليس لديك صلاحية على هذه الجلسة")
+    action = await session_engine.get_last_reversible_action(session_id=session_id, teacher_id=teacher_id)
+    if action:
+        return {
+            "has_reversible": True,
+            "event_type": action.get("event_type"),
+            "student_id": action.get("student_id"),
+            "student_name": action.get("metadata", {}).get("student_name"),
+        }
+    return {"has_reversible": False, "event_type": None, "student_id": None, "student_name": None}
+
+
+@router.post("/session/{session_id}/undo")
+async def undo_last_session_action(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    التراجع عن آخر إجراء في الحصة
+    Reverse the teacher's last reversible action (answer / participation / behaviour / skill).
+    Blocked once the session has ended or been archived.
+    Admin bypass is intentionally blocked — only the owning teacher may undo their
+    own session actions to prevent privilege escalation through this surface.
+    """
+    session = await gd_find_one(db.session, "class_sessions", {"id": session_id})
+    if not session:
+        raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
+    teacher_id = current_user.get("teacher_id") or current_user["id"]
+    if session.get("teacher_id") and session["teacher_id"] != teacher_id:
+        raise HTTPException(status_code=403, detail="ليس لديك صلاحية على هذه الجلسة")
+    result = await session_engine.undo_last_action(
+        session_id=session_id,
+        teacher_id=teacher_id,
+    )
+    if audit_engine:
+        try:
+            await audit_engine.log(
+                action=AuditAction.DATA_MODIFY,
+                performed_by=teacher_id,
+                details={
+                    "event": "session_action_reversed",
+                    "session_id": session_id,
+                    "reversed_event_type": result.get("reversed_event_type"),
+                    "student_id": result.get("student_id"),
+                },
+            )
+        except Exception:
+            logger.debug("Audit log skipped for undo action")
+    return result
+
+
 @router.delete("/session/{session_id}/note/{note_id}")
 async def delete_session_note(
     session_id: str,
