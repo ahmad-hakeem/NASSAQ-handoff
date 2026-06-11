@@ -321,6 +321,9 @@ export default function SessionTeachPage() {
   const [followupData, setFollowupData] = useState({});
   const [followupColumns, setFollowupColumns] = useState([]);
   const [followupAbsences, setFollowupAbsences] = useState({});
+  // Tracks "studentId:columnId" pairs the teacher has manually typed into,
+  // so the live-refresh poll never overwrites an in-progress edit.
+  const dirtyFollowupCells = useRef(new Set());
   const [followupTab, setFollowupTab] = useState('students');
   const [showAddColumnModal, setShowAddColumnModal] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
@@ -734,6 +737,29 @@ export default function SessionTeachPage() {
     } catch (e) { /* ignore */ }
   }, [api, sessionId]);
 
+  // Polling variant: merges fresh server-derived values into followupData
+  // without touching cells the teacher has already edited manually.
+  const mergeFollowupRecord = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const res = await api.get(`/session/${sessionId}/followup-record`);
+      const fresh = res.data?.data || {};
+      setFollowupData(prev => {
+        const next = { ...prev };
+        for (const [sid, cols] of Object.entries(fresh)) {
+          for (const [cid, val] of Object.entries(cols)) {
+            if (!dirtyFollowupCells.current.has(`${sid}:${cid}`)) {
+              next[sid] = { ...(next[sid] || {}), [cid]: val };
+            }
+          }
+        }
+        return next;
+      });
+      // Absences are managed via the absence tab, not inline edits — always sync.
+      setFollowupAbsences(res.data?.absences || {});
+    } catch { /* silent — polling errors must not surface to the user */ }
+  }, [api, sessionId]);
+
   // Adapt backend grade-column shape to FollowupGradesTable's local shape.
   // Both keep the backend UUID as `id` so grade values map correctly across UIs.
   const adaptBackendColumn = (c) => ({
@@ -827,12 +853,36 @@ export default function SessionTeachPage() {
   // كشف المتابعة dialog is opened, so the Live Class always shows the same
   // columns as فصولي → سجل الطلاب, and the report reflects the latest
   // session-derived (live-scored) values once the columns are loaded.
+  // Also clears the dirty-cell set so the very first load is always a full
+  // replace (no edits have happened yet at that point).
   useEffect(() => {
     if (showFollowupRecord && classIdForGrades) {
+      dirtyFollowupCells.current = new Set();
       loadClassGradeColumns();
       loadFollowupRecord();
     }
   }, [showFollowupRecord, classIdForGrades, loadClassGradeColumns, loadFollowupRecord]);
+
+  // While the dialog is open, poll every 30 s so that interaction-point totals
+  // derived on the backend stay current without the teacher having to close and
+  // re-open the report.  Uses mergeFollowupRecord (not loadFollowupRecord) so
+  // cells the teacher is actively editing are preserved.
+  useEffect(() => {
+    if (!showFollowupRecord) return;
+    const id = setInterval(mergeFollowupRecord, 30_000);
+    return () => clearInterval(id);
+  }, [showFollowupRecord, mergeFollowupRecord]);
+
+  // Grade-change handler defined here (in SessionTeachPage scope) so it can
+  // reference dirtyFollowupCells, which is also defined here.  Passed down to
+  // FollowupRecordDialog as the onGradeChange prop.
+  const handleFollowupGradeChange = useCallback((sid, cid, value) => {
+    dirtyFollowupCells.current.add(`${sid}:${cid}`);
+    setFollowupData(prev => ({
+      ...prev,
+      [sid]: { ...(prev[sid] || {}), [cid]: value },
+    }));
+  }, []);
 
   const [remainingMinutes, setRemainingMinutes] = useState(null);
 
@@ -3058,6 +3108,7 @@ export default function SessionTeachPage() {
         onAddColumn={addClassGradeColumn}
         onUpdateColumn={updateClassGradeColumn}
         onDeleteColumn={deleteClassGradeColumn}
+        onGradeChange={handleFollowupGradeChange}
       />
 
       {/* Record Attendance (تسجيل الحضور) — opens the unified inline-editable
@@ -3352,6 +3403,7 @@ function FollowupRecordDialog({
   onAddColumn,
   onUpdateColumn,
   onDeleteColumn,
+  onGradeChange,
 }) {
   const { t } = useTranslation();
   const allStudents = students || [];
@@ -3553,12 +3605,7 @@ function FollowupRecordDialog({
                 students={allStudents}
                 columns={followupColumns}
                 gradesData={followupData}
-                onGradeChange={(sid, cid, value) => {
-                  setFollowupData(prev => ({
-                    ...prev,
-                    [sid]: { ...(prev[sid] || {}), [cid]: value }
-                  }));
-                }}
+                onGradeChange={onGradeChange}
                 t={t}
               />
             ) : (
