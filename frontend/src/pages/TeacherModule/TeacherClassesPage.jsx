@@ -233,6 +233,8 @@ export default function TeacherClassesPage() {
   const [classEvaluationItems, setClassEvaluationItems] = useState([]);
   const [classPositiveBehaviours, setClassPositiveBehaviours] = useState([]);
   const [classNegativeBehaviours, setClassNegativeBehaviours] = useState([]);
+  const [settingsShowAddOtherItems, setSettingsShowAddOtherItems] = useState(false);
+  const [settingsFollowupColumns, setSettingsFollowupColumns] = useState([]);
 
   const [showAddClassDialog, setShowAddClassDialog] = useState(false);
   const [addClassForm, setAddClassForm] = useState({ name: '', grade: '', section: '', weekly_count: 5 });
@@ -1210,7 +1212,11 @@ export default function TeacherClassesPage() {
         open={showSettingsModal}
         onOpenChange={(open) => {
           setShowSettingsModal(open);
-          if (!open) setSettingsSubject('');
+          if (!open) {
+            setSettingsSubject('');
+            setSettingsShowAddOtherItems(false);
+            setSettingsFollowupColumns([]);
+          }
         }}
         isRTL={isRTL}
         t={t}
@@ -1284,13 +1290,10 @@ export default function TeacherClassesPage() {
           recitationMaxAttempts: sessionConfig.recitation_attempts,
           onRecitationMaxAttemptsChange: (v) =>
             setSessionConfig((p) => ({ ...p, recitation_attempts: v })),
-          // The per-subject template doesn't carry follow-up columns —
-          // those are session-bound. Provide a no-op so the canonical
-          // patterns tab still renders consistently.
-          followupColumns: [],
-          onFollowupColumnsChange: () => {},
-          showAddOtherItems: false,
-          onShowAddOtherItemsChange: () => {},
+          followupColumns: settingsFollowupColumns,
+          onFollowupColumnsChange: setSettingsFollowupColumns,
+          showAddOtherItems: settingsShowAddOtherItems,
+          onShowAddOtherItemsChange: setSettingsShowAddOtherItems,
           onSave: doSaveSettings,
           saving: settingsSaving || settingsLoading,
         }}
