@@ -3284,6 +3284,16 @@ async def get_followup_record(
     else:
         lookup = {"session_id": session_id}
     record = await gd_find_one(db.session, "followup_records", lookup)
+    manual_data = record.get("data", {}) if record else {}
+    # Hydrate the coursework columns from the live session interactions so the
+    # Follow-up Report reflects the teacher's in-session scoring without manual
+    # re-entry. Manual teacher entries are preserved (never clobbered); exam
+    # columns stay manual. Falls back to the manual data if hydration fails.
+    try:
+        hydrated_data = await session_engine.build_followup_hydration(session_id, manual_data)
+    except Exception as e:
+        logger.warning(f"Follow-up hydration failed for session {session_id}: {e}")
+        hydrated_data = manual_data
     if not record:
         return {
             "session_id": session_id,
@@ -3294,13 +3304,13 @@ async def get_followup_record(
                 {"id": "short_test", "name": "الاختبار القصير", "maxGrade": 20, "type": "grade", "group": "exams"},
                 {"id": "final_test", "name": "اختبار نهاية الفترة", "maxGrade": 40, "type": "grade", "group": "exams"},
             ],
-            "data": {},
+            "data": hydrated_data,
             "absences": {},
         }
     return {
         "session_id": session_id,
         "columns": record.get("columns", []),
-        "data": record.get("data", {}),
+        "data": hydrated_data,
         "absences": record.get("absences", {}),
     }
 
@@ -3332,6 +3342,25 @@ async def save_followup_record(
         record_data["created_at"] = datetime.utcnow().isoformat()
         await gd_insert(db.session, "followup_records", record_data)
     return {"success": True, "session_id": session_id}
+
+
+@router.post("/session/{session_id}/commit-scores")
+async def commit_session_scores_route(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Idempotently commit the session's accumulated live scores into the
+    persistent student-record collections (school + parent profiles read
+    from these). Triggered by the explicit "حفظ الحصة" (save) action and
+    again on end-of-session. Safe to call repeatedly — deterministic ids
+    mean repeats update in place instead of duplicating."""
+    await _verify_session_owner(session_id, current_user)
+    try:
+        result = await session_engine.commit_session_scores(session_id)
+    except Exception as e:
+        logger.error(f"Manual session score commit failed for {session_id}: {e}")
+        raise HTTPException(status_code=500, detail="تعذّر حفظ درجات الحصة")
+    return {"success": True, "session_id": session_id, **result}
 
 
 @router.post("/session/{session_id}/followup-record/column")

@@ -1496,6 +1496,24 @@ class TeacherSessionEngine:
         }
         if closing_note:
             session_update["closing_note"] = closing_note
+
+        # Task #863 — commit the session's accumulated live scores into the
+        # persistent records the school + parent student profiles read. This
+        # runs BEFORE the session is marked COMPLETED on purpose: a re-ended
+        # COMPLETED session short-circuits to the cached summary and never
+        # retries the commit, so committing first keeps a failed end fully
+        # retryable. Idempotent (deterministic ids) so the retry never
+        # duplicates. Blocking: if scores can't be persisted we must NOT report
+        # a successful end — otherwise the report shows points the student /
+        # parent profiles never received.
+        try:
+            await self.commit_session_scores(session_id)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Session score commit failed for session {session_id}: {e}")
+            raise HTTPException(status_code=500, detail="تعذّر حفظ درجات الحصة")
+
         await gd_update_one(self.session, "class_sessions", {"id": session_id}, session_update)
 
         if closing_note:
@@ -1794,6 +1812,410 @@ class TeacherSessionEngine:
                         update_fields[field] = existing_student.get(field, 0) + inc_val
             
             await gd_update_one(self.session, "students", {"id": sid, "school_id": school_id}, update_fields)
+
+    # ==================================================================
+    # Live-session scoring bridge (Task #863)
+    # ------------------------------------------------------------------
+    # One backend-owned pipeline: in-session interactions are the single
+    # source of truth. The same aggregation feeds (a) the in-session
+    # Follow-up Report ("كشف المتابعة") while the class is live, and
+    # (b) the idempotent end-of-session commit into the persistent
+    # student-record collections the school + parent profiles read.
+    # ==================================================================
+
+    # Canonical coursework buckets derived from live interactions.
+    _CW_PARTICIPATION = "participation"
+    _CW_HOMEWORK = "homework"
+    _CW_PERFORMANCE = "performance_task"
+
+    # How to match a class grade_column to a derived bucket. A column is a
+    # match when it is a coursework column and its Arabic name equals the
+    # canonical name OR its English name contains the canonical token.
+    _CW_COLUMN_MATCHERS = {
+        _CW_PARTICIPATION: ("المشاركة", "participation"),
+        _CW_HOMEWORK: ("الواجبات", "homework"),
+        _CW_PERFORMANCE: ("المهام الأدائية", "performance"),
+    }
+
+    # Default coursework/exam columns, mirrors the /class/{id}/grade-columns
+    # route so the UUIDs the Follow-up Report keys on stay stable whether
+    # they are first created here or by that route.
+    _DEFAULT_GRADE_COLUMNS = [
+        {"name": "المشاركة", "name_en": "Participation", "column_type": "coursework", "max_grade": 5, "order": 1},
+        {"name": "الواجبات", "name_en": "Homework", "column_type": "coursework", "max_grade": 5, "order": 2},
+        {"name": "المهام الأدائية", "name_en": "Performance Tasks", "column_type": "coursework", "max_grade": 10, "order": 3},
+        {"name": "اختبار قصير", "name_en": "Short Quiz", "column_type": "exams", "max_grade": 10, "order": 4},
+        {"name": "اختبار نهاية الفترة", "name_en": "End of Period Exam", "column_type": "exams", "max_grade": 20, "order": 5},
+    ]
+
+    async def _ensure_grade_columns(self, class_id: str) -> list:
+        """Return the class grade columns, creating the canonical defaults
+        on first access (idempotent — only when none exist)."""
+        columns = await gd_find(self.session, "grade_columns", {"class_id": class_id}, order_by="order", limit=50)
+        if columns:
+            return columns
+        now_iso = datetime.now(timezone.utc).isoformat()
+        defaults = []
+        for d in self._DEFAULT_GRADE_COLUMNS:
+            doc = dict(d)
+            doc["id"] = str(uuid.uuid4())
+            doc["class_id"] = class_id
+            doc["visible"] = True
+            doc["created_at"] = now_iso
+            defaults.append(doc)
+        await gd_insert_many(self.session, "grade_columns", defaults)
+        return defaults
+
+    async def _resolve_coursework_columns(self, class_id: str) -> Dict[str, dict]:
+        """Map each derived coursework bucket to its class grade_column doc."""
+        columns = await self._ensure_grade_columns(class_id)
+        resolved: Dict[str, dict] = {}
+        for col in columns:
+            if (col.get("column_type") or "coursework") != "coursework":
+                continue
+            name_ar = (col.get("name") or "").strip()
+            name_en = (col.get("name_en") or "").strip().lower()
+            for bucket, (ar, en) in self._CW_COLUMN_MATCHERS.items():
+                if bucket in resolved:
+                    continue
+                if name_ar == ar or (name_en and en in name_en):
+                    resolved[bucket] = col
+        return resolved
+
+    async def compute_session_scores(self, session_id: str) -> Dict[str, Any]:
+        """Aggregate a session's interactions into per-student coursework
+        values, participation totals, and behaviour events. Pure read — no
+        writes. The session row is the only source of tenant/class/subject
+        scope; the caller never supplies them.
+        """
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
+        if not session:
+            return {"session": None, "students": {}}
+
+        rules = await self._get_session_score_rules(session_id)
+        interactions = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=2000)
+        homework_rows = await gd_find(self.session, "session_homework", {"session_id": session_id}, limit=2000)
+
+        students: Dict[str, Dict[str, Any]] = {}
+
+        def _bucket(sid: str) -> Dict[str, Any]:
+            if sid not in students:
+                students[sid] = {
+                    "participation_points": 0,
+                    "performance_points": 0,
+                    "homework_done": None,  # None=no homework row, True/False otherwise
+                    "behaviour_events": [],
+                }
+            return students[sid]
+
+        for it in interactions:
+            sid = it.get("student_id")
+            if not sid:
+                continue
+            b = _bucket(sid)
+            itype = it.get("interaction_type") or it.get("type")
+            if itype == InteractionType.QUESTION.value:
+                res = it.get("answer_result")
+                if res == AnswerResult.CORRECT.value:
+                    b["participation_points"] += int(rules.get("correct_answer", 5))
+                elif res == AnswerResult.NO_ANSWER.value:
+                    b["participation_points"] += int(rules.get("no_answer_after_selection", -1))
+            elif itype == InteractionType.PARTICIPATION.value:
+                ptype = it.get("participation_type")
+                if ptype == ParticipationType.ACTIVE.value:
+                    b["participation_points"] += int(rules.get("active_participation", 2))
+                elif ptype == ParticipationType.INITIATIVE.value:
+                    b["participation_points"] += int(rules.get("initiative", 2))
+                elif ptype == ParticipationType.REFUSED.value:
+                    b["participation_points"] += int(rules.get("refused", -1))
+            elif itype == InteractionType.BEHAVIOUR.value:
+                cat = it.get("behaviour_category")
+                btype = it.get("behaviour_type") or ""
+                if cat == BehaviourCategory.SKILL.value:
+                    b["performance_points"] += int(rules.get("special_skill", 3))
+                elif cat == BehaviourCategory.POSITIVE.value:
+                    pts = int(rules.get(btype, 2)) if not str(btype).startswith("custom:") else 2
+                    b["behaviour_events"].append({
+                        "interaction_id": it.get("id"),
+                        "category": cat,
+                        "behaviour_type": btype,
+                        "points": pts,
+                        "details": it.get("behaviour_details"),
+                        "recorded_by": it.get("recorded_by"),
+                        "recorded_at": it.get("recorded_at") or it.get("timestamp"),
+                    })
+                elif cat == BehaviourCategory.NEGATIVE.value:
+                    pts = int(rules.get(btype, -2)) if not str(btype).startswith("custom:") else -2
+                    b["behaviour_events"].append({
+                        "interaction_id": it.get("id"),
+                        "category": cat,
+                        "behaviour_type": btype,
+                        "points": pts,
+                        "details": it.get("behaviour_details"),
+                        "recorded_by": it.get("recorded_by"),
+                        "recorded_at": it.get("recorded_at") or it.get("timestamp"),
+                    })
+
+        for hw in homework_rows:
+            sid = hw.get("student_id")
+            if not sid:
+                continue
+            b = _bucket(sid)
+            status = (hw.get("status") or "").lower()
+            done = status in ("done", "completed", "submitted", "true") or hw.get("done") is True
+            # A single not_done overrides; any done with no recorded not_done counts as done.
+            if b["homework_done"] is None:
+                b["homework_done"] = done
+            else:
+                b["homework_done"] = b["homework_done"] and done
+
+        return {"session": session, "students": students}
+
+    @staticmethod
+    def _coursework_value(bucket: str, agg: Dict[str, Any], max_grade: float):
+        """Translate an aggregated bucket into a 0..max_grade column value.
+        Returns None when there is nothing to show (no phantom values)."""
+        try:
+            mg = float(max_grade)
+        except (TypeError, ValueError):
+            mg = 0.0
+        if bucket == TeacherSessionEngine._CW_HOMEWORK:
+            done = agg.get("homework_done")
+            if done is None:
+                return None
+            return round(mg) if done else 0
+        if bucket == TeacherSessionEngine._CW_PARTICIPATION:
+            pts = agg.get("participation_points", 0)
+        elif bucket == TeacherSessionEngine._CW_PERFORMANCE:
+            pts = agg.get("performance_points", 0)
+        else:
+            return None
+        if pts <= 0:
+            return None
+        return int(min(pts, mg))
+
+    async def build_followup_hydration(self, session_id: str, manual_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Overlay session-derived coursework values onto the Follow-up
+        Report data map (keyed student_id -> {column_uuid: value}). Manual
+        teacher entries are never clobbered; exam columns are untouched."""
+        computed = await self.compute_session_scores(session_id)
+        session = computed.get("session")
+        if not session:
+            return manual_data or {}
+        columns = await self._resolve_coursework_columns(session.get("class_id"))
+        if not columns:
+            return manual_data or {}
+
+        merged: Dict[str, Any] = {sid: dict(vals) for sid, vals in (manual_data or {}).items()}
+        for sid, agg in computed["students"].items():
+            row = merged.get(sid, {})
+            for bucket, col in columns.items():
+                col_id = col.get("id")
+                if not col_id:
+                    continue
+                # Respect manual override: only fill when teacher hasn't set it.
+                if col_id in row and row[col_id] not in (None, ""):
+                    continue
+                value = self._coursework_value(bucket, agg, col.get("max_grade", 0))
+                if value is not None:
+                    row[col_id] = value
+            if row:
+                merged[sid] = row
+        return merged
+
+    async def commit_session_scores(self, session_id: str) -> Dict[str, int]:
+        """Idempotently materialize the session's accumulated per-student
+        scores into the persistent records the school + parent profiles
+        read: student_grades (school grades), grades (parent grades),
+        participation_records, and behaviour_records.
+
+        Records are keyed deterministically on session + student (+ bucket /
+        interaction) so repeated saves / re-ends update in place rather than
+        inserting duplicates. Tenant/class/subject scope come only from the
+        session row.
+        """
+        computed = await self.compute_session_scores(session_id)
+        session = computed.get("session")
+        if not session:
+            return {"grades": 0, "participation": 0, "behaviour": 0}
+
+        tenant_id = session.get("tenant_id") or session.get("school_id") or ""
+        class_id = session.get("class_id")
+        subject_id = session.get("subject_id")
+        session_date = session.get("date") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        academic_year = session.get("academic_year") or ""
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        # Pull any manual coursework overrides so committed profile values
+        # agree with what the teacher sees in the report.
+        followup_lookup = {"class_id": class_id, "subject_id": subject_id} if class_id and subject_id else {"session_id": session_id}
+        followup = await gd_find_one(self.session, "followup_records", followup_lookup)
+        manual_data = (followup or {}).get("data", {}) if followup else {}
+
+        columns = await self._resolve_coursework_columns(class_id) if class_id else {}
+
+        subject_name = ""
+        if subject_id:
+            subj = await gd_find_one(self.session, "subjects", {"id": subject_id})
+            if subj:
+                subject_name = subj.get("name_ar") or subj.get("name") or subj.get("name_en") or ""
+
+        async def _upsert(collection: str, doc_id: str, doc: dict):
+            existing = await gd_find_one(self.session, collection, {"id": doc_id})
+            if existing:
+                await gd_update_one(self.session, collection, {"id": doc_id}, doc)
+            else:
+                await gd_insert(self.session, collection, {**doc, "id": doc_id})
+
+        grades_written = 0
+        participation_written = 0
+        behaviour_written = 0
+
+        for sid, agg in computed["students"].items():
+            student = await gd_find_one(self.session, "students", {"id": sid})
+            if not student:
+                continue
+            # Defensive scoping: only ever materialize scores for students that
+            # belong to the session's tenant (and class, when the session is
+            # class-bound). The session row — never the caller — is the source
+            # of tenant_id/class_id, so this fails closed if an interaction ever
+            # references a foreign-tenant or out-of-class student id.
+            student_tenant = student.get("tenant_id") or student.get("school_id") or ""
+            if tenant_id and student_tenant and student_tenant != tenant_id:
+                continue
+            if class_id and student.get("class_id") and student.get("class_id") != class_id:
+                continue
+            student_name = student.get("full_name", "")
+
+            # ---- Coursework grades -> student_grades (school) + grades (parent) ----
+            for bucket, col in columns.items():
+                col_id = col.get("id")
+                max_grade = col.get("max_grade", 0)
+                # Effective value: manual override wins, else derived.
+                override = manual_data.get(sid, {}).get(col_id) if isinstance(manual_data.get(sid), dict) else None
+                if override not in (None, ""):
+                    try:
+                        value = float(override)
+                    except (TypeError, ValueError):
+                        value = None
+                else:
+                    value = self._coursework_value(bucket, agg, max_grade)
+                if value is None:
+                    continue
+                try:
+                    max_f = float(max_grade) or 0.0
+                except (TypeError, ValueError):
+                    max_f = 0.0
+                percentage = round((value / max_f) * 100, 1) if max_f > 0 else 0
+                # generic_documents has a GLOBAL primary key on ``id`` alone
+                # (not (collection, id)), so deterministic ids MUST be unique
+                # across every target collection or the second upsert collides.
+                sg_id = f"sess:{session_id}:{sid}:{bucket}:sg"
+                pg_id = f"sess:{session_id}:{sid}:{bucket}:pg"
+                graded_at = now_iso
+                # School-side store
+                await _upsert("student_grades", sg_id, {
+                    "tenant_id": tenant_id,
+                    "school_id": tenant_id,
+                    "student_id": sid,
+                    "student_name": student_name,
+                    "class_id": class_id,
+                    "subject_id": subject_id,
+                    "subject": subject_name,
+                    "subject_name": subject_name,
+                    "assessment_id": f"session:{session_id}:{bucket}",
+                    "assessment_type": "coursework",
+                    "column_id": col_id,
+                    "score": value,
+                    "max_score": max_f,
+                    "percentage": percentage,
+                    "is_passing": percentage >= 50,
+                    "academic_year": academic_year,
+                    "graded_at": graded_at,
+                    "date": session_date,
+                    "session_id": session_id,
+                    "source": "live_session",
+                    "updated_at": now_iso,
+                })
+                # Parent-side store
+                await _upsert("grades", pg_id, {
+                    "tenant_id": tenant_id,
+                    "school_id": tenant_id,
+                    "student_id": sid,
+                    "student_name": student_name,
+                    "class_id": class_id,
+                    "subject_id": subject_id,
+                    "subject": subject_name,
+                    "subject_name": subject_name,
+                    "assessment_type": "coursework",
+                    "score": value,
+                    "max_score": max_f,
+                    "percentage": percentage,
+                    "date": session_date,
+                    "session_id": session_id,
+                    "source": "live_session",
+                    "visible_to_parent": True,
+                    "updated_at": now_iso,
+                })
+                grades_written += 1
+
+            # ---- Participation -> participation_records ----
+            part_pts = agg.get("participation_points", 0)
+            if part_pts > 0:
+                part_id = f"sess:{session_id}:{sid}:participation:pr"
+                await _upsert("participation_records", part_id, {
+                    "tenant_id": tenant_id,
+                    "student_id": sid,
+                    "student_name": student_name,
+                    "class_id": class_id,
+                    "subject_id": subject_id,
+                    "session_id": session_id,
+                    "participation_type": "session",
+                    "quality": "good",
+                    "points": int(part_pts),
+                    "notes": "تجميع تفاعل الحصة المباشرة",
+                    "date": session_date,
+                    "source": "live_session",
+                    "created_at": now_iso,
+                    "updated_at": now_iso,
+                })
+                participation_written += 1
+
+            # ---- Behaviour events -> behaviour_records ----
+            for ev in agg.get("behaviour_events", []):
+                iid = ev.get("interaction_id")
+                if not iid:
+                    continue
+                beh_id = f"si:{iid}:br"
+                cat = ev.get("category")
+                await _upsert("behaviour_records", beh_id, {
+                    "tenant_id": tenant_id,
+                    "school_id": tenant_id,
+                    "student_id": sid,
+                    "student_name": student_name,
+                    "class_id": class_id,
+                    "subject_id": subject_id,
+                    "session_id": session_id,
+                    "type": cat or "incident",
+                    "category": cat,
+                    "behaviour_type": ev.get("behaviour_type"),
+                    "points": ev.get("points", 0),
+                    "description": ev.get("details"),
+                    "incident_date": session_date,
+                    "status": "recorded",
+                    "visible_to_parent": True,
+                    "recorded_by": ev.get("recorded_by"),
+                    "recorded_at": ev.get("recorded_at") or now_iso,
+                    "source": "live_session",
+                    "updated_at": now_iso,
+                })
+                behaviour_written += 1
+
+        return {
+            "grades": grades_written,
+            "participation": participation_written,
+            "behaviour": behaviour_written,
+        }
 
     async def _trigger_session_analytics(self, session_id, school_id, class_id, subject_id, teacher_id,
                                           attendance_rate, engagement_rate, positive_b, negative_b,

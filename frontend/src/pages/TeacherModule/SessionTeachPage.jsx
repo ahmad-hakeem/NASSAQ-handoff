@@ -823,13 +823,16 @@ export default function SessionTeachPage() {
     }
   }, [api, loadClassGradeColumns, t]);
 
-  // Re-fetch class-level columns whenever the كشف المتابعة dialog is opened,
-  // so the Live Class always shows the same columns as فصولي → سجل الطلاب.
+  // Re-fetch class-level columns AND the follow-up record whenever the
+  // كشف المتابعة dialog is opened, so the Live Class always shows the same
+  // columns as فصولي → سجل الطلاب, and the report reflects the latest
+  // session-derived (live-scored) values once the columns are loaded.
   useEffect(() => {
     if (showFollowupRecord && classIdForGrades) {
       loadClassGradeColumns();
+      loadFollowupRecord();
     }
-  }, [showFollowupRecord, classIdForGrades, loadClassGradeColumns]);
+  }, [showFollowupRecord, classIdForGrades, loadClassGradeColumns, loadFollowupRecord]);
 
   const [remainingMinutes, setRemainingMinutes] = useState(null);
 
@@ -2735,9 +2738,15 @@ export default function SessionTeachPage() {
                     data: followupData, absences: followupAbsences
                   });
                 }
+                // Commit the session's accumulated live scores into the
+                // persistent student-record layer (school + parent profiles).
+                // Idempotent on the backend — safe to repeat. A failure here
+                // MUST surface (not be swallowed): otherwise the report shows
+                // points the student/parent profiles never received.
+                await api.post(`/session/${sessionId}/commit-scores`);
                 toast.success(t('savedSuccessfully') || 'تم الحفظ');
               } catch (e) {
-                toast.error(t('errorSaving') || 'خطأ في الحفظ');
+                nassaqError(getApiErrorMessage(e) || t('errorSaving') || 'تعذّر حفظ درجات الحصة');
               } finally {
                 setSavingSession(false);
               }
