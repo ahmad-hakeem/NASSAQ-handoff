@@ -1321,7 +1321,7 @@ export default function SessionTeachPage() {
             setCanUndo(false);
             setUndoCount(0);
           } else if (status === 404) {
-            nassaqError(t('undoNoAction') || 'لا توجد إجراءات يمكن التراجع عنها');
+            nassaqError(t('undoSessionNotFound') || 'الجلسة غير موجودة');
             setCanUndo(false);
             setUndoCount(0);
           } else if (status === 403) {

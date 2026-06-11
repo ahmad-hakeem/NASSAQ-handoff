@@ -894,7 +894,8 @@ class TeacherSessionEngine:
         session_id: str,
         student_id: str,
         result: AnswerResult,
-        teacher_id: str
+        teacher_id: str,
+        actor_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Record student answer (correct/wrong/no_answer)"""
         now = datetime.now(timezone.utc)
@@ -937,7 +938,7 @@ class TeacherSessionEngine:
         await self._log_event(
             session_id=session_id,
             event_type=EventType.ANSWER_RECORDED.value,
-            actor_id=teacher_id,
+            actor_id=actor_id or teacher_id,
             student_id=student_id,
             new_value=result.value,
             metadata={"score_change": score_change, "interaction_id": interaction["id"]}
@@ -954,7 +955,8 @@ class TeacherSessionEngine:
         session_id: str,
         student_id: str,
         participation_type: ParticipationType,
-        teacher_id: str
+        teacher_id: str,
+        actor_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Record student participation"""
         now = datetime.now(timezone.utc)
@@ -995,7 +997,7 @@ class TeacherSessionEngine:
         await self._log_event(
             session_id=session_id,
             event_type=EventType.PARTICIPATION_RECORDED.value,
-            actor_id=teacher_id,
+            actor_id=actor_id or teacher_id,
             student_id=student_id,
             new_value=participation_type.value,
             metadata={"score_change": score_change, "interaction_id": interaction["id"]}
@@ -1014,7 +1016,8 @@ class TeacherSessionEngine:
         category: BehaviourCategory,
         behaviour_type: str,
         details: Optional[str],
-        teacher_id: str
+        teacher_id: str,
+        actor_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Record student behaviour (positive/negative/skill)"""
         now = datetime.now(timezone.utc)
@@ -1058,7 +1061,7 @@ class TeacherSessionEngine:
         await self._log_event(
             session_id=session_id,
             event_type=EventType.BEHAVIOUR_RECORDED.value,
-            actor_id=teacher_id,
+            actor_id=actor_id or teacher_id,
             student_id=student_id,
             new_value=f"{category.value}:{behaviour_type}",
             metadata={"score_change": score_change, "details": details, "interaction_id": interaction["id"]}
@@ -2737,6 +2740,7 @@ class TeacherSessionEngine:
         notes: Optional[str] = None,
         custom_name: Optional[str] = None,
         points_override: Optional[int] = None,
+        actor_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Record a skill observation for a student during a session.
 
@@ -2882,7 +2886,7 @@ class TeacherSessionEngine:
         await self._log_event(
             session_id=session_id,
             event_type=EventType.SKILL_RECORDED.value,
-            actor_id=teacher_id,
+            actor_id=actor_id or teacher_id,
             student_id=student_id,
             new_value=event_marker,
             metadata={

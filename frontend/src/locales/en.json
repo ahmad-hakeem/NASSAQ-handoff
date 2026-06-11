@@ -5268,5 +5268,6 @@
   "undoSuccess": "Action undone successfully",
   "undoNoAction": "No actions left to undo in this session",
   "undoSessionEnded": "Cannot undo — the session has already ended",
-  "undoNotAllowed": "You are not allowed to undo this action"
+  "undoNotAllowed": "You are not allowed to undo this action",
+  "undoSessionNotFound": "Session not found"
 }

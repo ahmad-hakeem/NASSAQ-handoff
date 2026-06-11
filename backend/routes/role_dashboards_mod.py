@@ -2601,7 +2601,8 @@ async def record_student_answer(
         session_id=session_id,
         student_id=data.get("student_id"),
         result=AnswerResult(data.get("result", "correct")),
-        teacher_id=current_user["id"]
+        teacher_id=current_user["id"],
+        actor_id=current_user.get("teacher_id") or current_user["id"]
     )
     return result
 
@@ -2632,7 +2633,8 @@ async def record_student_participation(
         session_id=session_id,
         student_id=data.get("student_id"),
         participation_type=ParticipationType(data.get("type", "active")),
-        teacher_id=current_user["id"]
+        teacher_id=current_user["id"],
+        actor_id=current_user.get("teacher_id") or current_user["id"]
     )
     return result
 
@@ -2655,7 +2657,8 @@ async def record_student_behaviour(
         category=BehaviourCategory(data.get("category", "positive")),
         behaviour_type=data.get("behaviour_type"),
         details=data.get("details"),
-        teacher_id=current_user["id"]
+        teacher_id=current_user["id"],
+        actor_id=current_user.get("teacher_id") or current_user["id"]
     )
     return result
 
@@ -2919,11 +2922,12 @@ async def record_session_skill(
         notes=data.get("notes"),
         custom_name=data.get("custom_name"),
         points_override=data.get("points_override"),
+        actor_id=current_user.get("teacher_id") or current_user["id"],
     )
     if audit_engine:
         await audit_engine.log(
             action=AuditAction.DATA_MODIFY,
-            performed_by=teacher_id,
+            performed_by=current_user["id"],
             details={
                 "event": "skill_recorded",
                 "session_id": session_id,
