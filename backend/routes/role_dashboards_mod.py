@@ -2738,6 +2738,40 @@ async def update_seating_order(
     return result
 
 
+@router.get("/session/{session_id}/groups")
+async def get_session_groups(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    جلب مجموعات الطلاب المحفوظة للحصة الجارية
+    Get persisted student groups for the active session
+    """
+    await _verify_session_owner(session_id, current_user)
+    groups = await session_engine.get_session_groups(session_id)
+    return {"session_id": session_id, "groups": groups}
+
+
+@router.post("/session/{session_id}/groups")
+async def update_session_groups(
+    session_id: str,
+    data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    حفظ مجموعات الطلاب (إنشاء / تعديل / حذف)
+    Save student groups (create/update/delete)
+    """
+    await _verify_session_owner(session_id, current_user)
+    teacher_id = current_user.get("teacher_id") or current_user["id"]
+    result = await session_engine.update_session_groups(
+        session_id=session_id,
+        groups=data.get("groups", []),
+        teacher_id=teacher_id
+    )
+    return result
+
+
 @router.get("/session/{session_id}/review-preview")
 async def get_session_review_preview(
     session_id: str,

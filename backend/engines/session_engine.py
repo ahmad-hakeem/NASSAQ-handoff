@@ -75,6 +75,7 @@ class EventType(str, Enum):
     HOMEWORK_RECORDED = "homework_recorded"
     NOTE_ADDED = "note_added"
     SEATING_UPDATED = "seating_updated"
+    GROUPS_UPDATED = "groups_updated"
     MODE_CHANGED = "mode_changed"
     SESSION_ENDED = "session_ended"
     SESSION_REVIEW_OPENED = "session_review_opened"
@@ -3781,6 +3782,35 @@ class TeacherSessionEngine:
                 metadata={"student_count": len(student_order)}
             )
         return {"message": "تم حفظ ترتيب الجلوس"}
+
+    async def get_session_groups(self, session_id: str) -> List[Dict[str, Any]]:
+        """Get persisted student groups for the active session."""
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
+        if not session:
+            return []
+        groups = session.get("groups")
+        return groups if isinstance(groups, list) else []
+
+    async def update_session_groups(
+        self,
+        session_id: str,
+        groups: List[Dict[str, Any]],
+        teacher_id: str = None
+    ) -> Dict[str, Any]:
+        """Persist student groups on the active session record."""
+        safe_groups = groups if isinstance(groups, list) else []
+        await gd_update_one(self.session, "class_sessions",
+            {"id": session_id},
+            {"groups": safe_groups}
+        )
+        if teacher_id:
+            await self._log_event(
+                session_id=session_id,
+                event_type=EventType.GROUPS_UPDATED.value,
+                actor_id=teacher_id,
+                metadata={"group_count": len(safe_groups)}
+            )
+        return {"message": "تم حفظ المجموعات", "groups": safe_groups}
 
 
 # ============== SKILLS SEED DATA ==============

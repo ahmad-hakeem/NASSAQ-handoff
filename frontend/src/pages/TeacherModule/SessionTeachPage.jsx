@@ -304,6 +304,11 @@ export default function SessionTeachPage() {
   useEffect(() => { try { localStorage.setItem('sessionTeach.panelOpen', panelOpen ? '1' : '0'); } catch {} }, [panelOpen]);
   useEffect(() => { try { localStorage.setItem('sessionTeach.evalMode', evalMode); } catch {} }, [evalMode]);
   const [groups, setGroups] = useState([]);
+  // Backend is the source of truth for groups. This ref flips true only after
+  // the initial backend load completes, so the debounced save effect never
+  // clobbers the durable record with the empty/initial state on mount.
+  const groupsLoadedRef = useRef(false);
+  const groupsSaveRef = useRef(null);
   const [showGroupModal, setShowGroupModal] = useState(false);
   // Session settings (إعدادات الحصة) are now rendered as a tab group inside
   // SidebarSettingsDialog. The legacy `showSettingsModal` boolean is gone —
@@ -399,6 +404,7 @@ export default function SessionTeachPage() {
     peekUndoState();
     loadSessionSettings();
     loadSubjectsList();
+    loadGroups();
     return () => { isMounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
@@ -451,6 +457,20 @@ export default function SessionTeachPage() {
       console.error('Error loading subjects:', e);
     }
   }, [api]);
+
+  const loadGroups = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const res = await api.get(`/session/${sessionId}/groups`);
+      const list = Array.isArray(res.data?.groups) ? res.data.groups : [];
+      // Backend is authoritative — overwrite any optimistic sessionStorage paint.
+      setGroups(list);
+    } catch (e) {
+      console.error('Error loading groups:', e);
+    } finally {
+      groupsLoadedRef.current = true;
+    }
+  }, [api, sessionId]);
 
   const loadSessionSettings = useCallback(async () => {
     if (!sessionId) return;
@@ -650,6 +670,19 @@ export default function SessionTeachPage() {
       }
     } catch (e) { /* ignore */ }
   }, [sessionId]);
+
+  // Persist groups to the durable session record (create/update/delete) whenever
+  // they change. Debounced so rapid edits (drag, rename, add) coalesce into one
+  // write. Gated on groupsLoadedRef so the initial mount/hydration never clobbers
+  // the backend with empty state before the authoritative load completes.
+  useEffect(() => {
+    if (!sessionId || !groupsLoadedRef.current) return;
+    if (groupsSaveRef.current) clearTimeout(groupsSaveRef.current);
+    groupsSaveRef.current = setTimeout(() => {
+      api.post(`/session/${sessionId}/groups`, { groups }).catch(() => {});
+    }, 800);
+    return () => { if (groupsSaveRef.current) clearTimeout(groupsSaveRef.current); };
+  }, [groups, sessionId, api]);
 
   const [dragStudent, setDragStudent] = useState(null);
 
