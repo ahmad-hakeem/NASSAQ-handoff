@@ -545,9 +545,15 @@ export default function SessionTeachPage() {
     if (!sessionId) return;
     try {
       const res = await api.get(`/session/${sessionId}/undo/peek`);
-      const hasReversible = res.data?.has_reversible === true;
+      const data = res.data || {};
+      const hasReversible = data.has_reversible === true;
       setCanUndo(hasReversible);
-      setUndoCount(hasReversible ? (res.data?.stack_depth ?? 1) : 0);
+      setUndoCount(hasReversible ? (data.stack_depth ?? 1) : 0);
+      setUndoPeekData(
+        hasReversible
+          ? { event_type: data.event_type, student_name: data.student_name }
+          : null
+      );
     } catch (e) {
       // Non-fatal — leave canUndo as-is if the peek fails
     }
@@ -900,6 +906,7 @@ export default function SessionTeachPage() {
 
   const [canUndo, setCanUndo] = useState(false);
   const [undoCount, setUndoCount] = useState(0);
+  const [undoPeekData, setUndoPeekData] = useState(null);
   const [undoLoading, setUndoLoading] = useState(false);
 
   const [remainingMinutes, setRemainingMinutes] = useState(null);
@@ -1141,6 +1148,7 @@ export default function SessionTeachPage() {
         setStats(p => ({ ...p, questions: p.questions + 1 }));
       }
       setCanUndo(true);
+      void peekUndoState();
       setStudents(prev => prev.map(s =>
         s.id === selectedStudent.id
           ? { ...s, interactionCount: s.interactionCount + 1, correctAnswers: result === 'correct' ? s.correctAnswers + 1 : s.correctAnswers }
@@ -1171,6 +1179,7 @@ export default function SessionTeachPage() {
       toast.success(`${t(pType.labelKey)} — ${selectedStudent.full_name?.split(' ')[0]}`);
       addLog('participation', `${selectedStudent.full_name?.split(' ')[0]} — ${t(pType.labelKey)} (${change > 0 ? '+' : ''}${change})`, change >= 0 ? 'text-blue-700' : 'text-amber-700');
       setCanUndo(true);
+      void peekUndoState();
       setStats(p => ({ ...p, participation: p.participation + 1 }));
       setStudents(prev => prev.map(s =>
         s.id === selectedStudent.id ? { ...s, interactionCount: s.interactionCount + 1 } : s
@@ -1201,6 +1210,7 @@ export default function SessionTeachPage() {
       toast.success(`${t('behaviour')}: ${bLabel} — ${selectedStudent.full_name?.split(' ')[0]}`);
       addLog('behaviour', `${selectedStudent.full_name?.split(' ')[0]} — ${bLabel} (${change > 0 ? '+' : ''}${change})`, behaviourCategory === 'negative' ? 'text-red-600' : 'text-purple-700');
       setCanUndo(true);
+      void peekUndoState();
       setBehaviourNote('');
     } catch (e) {
       console.error('Error recording behaviour:', e);
@@ -1234,6 +1244,7 @@ export default function SessionTeachPage() {
       toast.success(`${t('skill')}: ${skill.name_ar || skill.name} — ${selectedStudent.full_name?.split(' ')[0]}`);
       addLog('skill', `${selectedStudent.full_name?.split(' ')[0]} — ${skill.name_ar || skill.name} (${change > 0 ? '+' : ''}${change})`, 'text-purple-700');
       setCanUndo(true);
+      void peekUndoState();
       setSkillNote('');
       setStudents(prev => prev.map(s =>
         s.id === selectedStudent.id ? { ...s, interactionCount: s.interactionCount + 1 } : s
@@ -1281,9 +1292,22 @@ export default function SessionTeachPage() {
     }
   };
 
+  const UNDO_EVENT_LABELS = {
+    answer_recorded: t('undoEventAnswer') || 'إجابة',
+    participation_recorded: t('undoEventParticipation') || 'مشاركة',
+    behaviour_recorded: t('undoEventBehaviour') || 'سلوك',
+    skill_recorded: t('undoEventSkill') || 'مهارة / تلاوة',
+  };
+
   const undoLastAction = () => {
+    const peekLabel = undoPeekData
+      ? `${UNDO_EVENT_LABELS[undoPeekData.event_type] || undoPeekData.event_type}${undoPeekData.student_name ? ` — ${undoPeekData.student_name}` : ''}`
+      : null;
+    const confirmMsg = peekLabel
+      ? (t('undoLastActionConfirmSpecific') || 'تراجع: {action}. سيتم استعادة النقاط إن وُجدت.').replace('{action}', peekLabel)
+      : t('undoLastActionConfirm') || 'هل تريد التراجع عن آخر إجراء؟ سيتم استعادة النقاط إن وُجدت.';
     nassaqConfirm(
-      t('undoLastActionConfirm') || 'هل تريد التراجع عن آخر إجراء؟ لا يمكن التراجع عن هذه العملية.',
+      confirmMsg,
       async () => {
         setUndoLoading(true);
         try {

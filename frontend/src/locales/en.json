@@ -5260,6 +5260,11 @@
   "itRotateConfirmBtn": "Rotate credentials",
   "undoLastAction": "Undo last action",
   "undoLastActionConfirm": "Undo the last action (answer / participation / behaviour / skill)? Any points will be restored.",
+  "undoLastActionConfirmSpecific": "Undo: {action}. Any points will be restored.",
+  "undoEventAnswer": "Answer",
+  "undoEventParticipation": "Participation",
+  "undoEventBehaviour": "Behaviour",
+  "undoEventSkill": "Skill / Recitation",
   "undoSuccess": "Action undone successfully",
   "undoNoAction": "No actions left to undo in this session",
   "undoSessionEnded": "Cannot undo — the session has already ended"

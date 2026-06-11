@@ -5260,6 +5260,11 @@
   "itRotateConfirmBtn": "تدوير البيانات",
   "undoLastAction": "تراجع عن آخر إجراء",
   "undoLastActionConfirm": "هل تريد التراجع عن آخر إجراء (إجابة / مشاركة / سلوك / مهارة)؟ سيتم استعادة النقاط إن وُجدت.",
+  "undoLastActionConfirmSpecific": "تراجع: {action}. سيتم استعادة النقاط إن وُجدت.",
+  "undoEventAnswer": "إجابة",
+  "undoEventParticipation": "مشاركة",
+  "undoEventBehaviour": "سلوك",
+  "undoEventSkill": "مهارة / تلاوة",
   "undoSuccess": "تم التراجع عن الإجراء بنجاح",
   "undoNoAction": "لا توجد إجراءات يمكن التراجع عنها في هذه الحصة",
   "undoSessionEnded": "لا يمكن التراجع — الحصة منتهية أو مؤرشفة"
