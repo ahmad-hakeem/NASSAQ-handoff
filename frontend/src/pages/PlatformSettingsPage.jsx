@@ -4,6 +4,7 @@ import { Sidebar } from '../components/layout/Sidebar';
 import { PageHeader } from '../components/layout/PageHeader';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { DEFAULT_PLATFORM_ADDRESS_AR } from '../constants/platformContact';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -169,7 +170,7 @@ export const PlatformSettingsPage = () => {
     supportEmail: 'support@nassaqapp.com',
     primaryPhone: '+966 11 234 5678',
     alternatePhone: '+966 11 234 5679',
-    address: 'الرياض، المملكة العربية السعودية، حي العليا، شارع العروبة',
+    address: DEFAULT_PLATFORM_ADDRESS_AR,
     workingHours: 'الأحد - الخميس: 8:00 ص - 4:00 م',
     website: 'https://nassaqapp.com',
     ownerName: 'شركة نَسَّق للتقنية التعليمية',
@@ -237,7 +238,7 @@ export const PlatformSettingsPage = () => {
             supportEmail: data.email || 'support@nassaqapp.com',
             primaryPhone: data.phone || '+966 11 234 5678',
             alternatePhone: '',
-            address: data.address_ar || 'الرياض، المملكة العربية السعودية',
+            address: data.address_ar || DEFAULT_PLATFORM_ADDRESS_AR,
             workingHours: data.working_hours_ar || 'الأحد - الخميس: 8:00 ص - 4:00 م',
             website: '',
             ownerName: 'شركة نَسَّق للتقنية التعليمية',

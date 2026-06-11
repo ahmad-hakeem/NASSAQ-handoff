@@ -4,6 +4,7 @@ import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { Mail, Phone, MapPin, Twitter, Linkedin, Facebook, Instagram, Youtube, Globe } from 'lucide-react';
 
 import { useAuth } from '../../contexts/AuthContext';
+import { DEFAULT_PLATFORM_ADDRESS_AR } from '../../constants/platformContact';
 const LOGO_WHITE = '/nassaq-logo-white.png';
 const BG_PATTERN = '/nassaq-background.png';
 
@@ -26,7 +27,7 @@ export const Footer = () => {
           primary_email: 'info@nassaqapp.com',
           support_email: 'support@nassaqapp.com',
           primary_phone: '+966 11 234 5678',
-          address: 'الرياض، المملكة العربية السعودية',
+          address: DEFAULT_PLATFORM_ADDRESS_AR,
           social_media: {}
         });
       } finally {

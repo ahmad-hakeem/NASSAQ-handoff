@@ -205,7 +205,7 @@ class TestUpdateContactSettings:
             "support_email": "support@nassaqapp.com",
             "primary_phone": "+966 11 234 5678",
             "alternate_phone": "",
-            "address": "الرياض، المملكة العربية السعودية",
+            "address": "الهفوف، الاحساء، المملكة العربية السعودية",
             "working_hours": "الأحد - الخميس: 8:00 ص - 4:00 م",
             "website": "https://nassaqapp.com",
             "owner_name": "شركة نَسَّق للتقنية التعليمية",

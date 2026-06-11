@@ -13,6 +13,7 @@ import uuid, os, logging, json, re, io, base64, secrets, hashlib
 from cryptography.fernet import Fernet
 
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
+from constants.platform_contact import DEFAULT_PLATFORM_ADDRESS_AR
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
     hash_password, verify_password, create_access_token,
@@ -387,7 +388,7 @@ class ContactInfoModel(BaseModel):
     support_email: str = "support@nassaqapp.com"
     primary_phone: str = "+966 11 234 5678"
     alternate_phone: Optional[str] = ""
-    address: str = "الرياض، المملكة العربية السعودية"
+    address: str = DEFAULT_PLATFORM_ADDRESS_AR
     working_hours: str = "الأحد - الخميس: 8:00 ص - 4:00 م"
     website: str = "https://nassaqapp.com"
     owner_name: str = "شركة نَسَّق للتقنية التعليمية"
@@ -836,7 +837,7 @@ async def get_public_contact_info():
             "primary_email": "info@nassaqapp.com",
             "support_email": "support@nassaqapp.com",
             "primary_phone": "+966 11 234 5678",
-            "address": "الرياض، المملكة العربية السعودية",
+            "address": DEFAULT_PLATFORM_ADDRESS_AR,
             "working_hours": "الأحد - الخميس: 8:00 ص - 4:00 م",
             "website": "https://nassaqapp.com",
             "owner_name": "شركة نَسَّق للتقنية التعليمية",
@@ -858,7 +859,7 @@ async def get_public_contact_info():
         "support_email": contact.get("support_email", "support@nassaqapp.com"),
         "primary_phone": contact.get("primary_phone", "+966 11 234 5678"),
         "alternate_phone": contact.get("alternate_phone"),
-        "address": contact.get("address", "الرياض، المملكة العربية السعودية"),
+        "address": contact.get("address", DEFAULT_PLATFORM_ADDRESS_AR),
         "working_hours": contact.get("working_hours", "الأحد - الخميس: 8:00 ص - 4:00 م"),
         "website": contact.get("website", "https://nassaqapp.com"),
         "owner_name": contact.get("owner_name", "شركة نَسَّق للتقنية التعليمية"),
