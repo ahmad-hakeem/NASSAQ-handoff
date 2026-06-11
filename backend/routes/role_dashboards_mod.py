@@ -3252,18 +3252,16 @@ async def peek_last_reversible_action(
     if session.get("teacher_id") and session["teacher_id"] != teacher_id:
         raise HTTPException(status_code=403, detail="ليس لديك صلاحية على هذه الجلسة")
     # An event's actor_id may be the Teachers.id or, for older actions, the
-    # caller's Users.id — try both so the undo button reflects the real stack.
-    action = None
-    matched_actor_id = teacher_id
-    for cid in (teacher_id, current_user["id"]):
-        if not cid:
-            continue
-        action = await session_engine.get_last_reversible_action(session_id=session_id, teacher_id=cid)
-        if action:
-            matched_actor_id = cid
-            break
+    # caller's Users.id — evaluate both as a union so the undo button reflects
+    # the truly most-recent action and the stack depth across all ids.
+    candidate_actor_ids = [cid for cid in (teacher_id, current_user["id"]) if cid]
+    action = await session_engine.get_last_reversible_action(
+        session_id=session_id, teacher_id=candidate_actor_ids
+    )
     if action:
-        stack_depth = await session_engine.count_reversible_actions(session_id=session_id, teacher_id=matched_actor_id)
+        stack_depth = await session_engine.count_reversible_actions(
+            session_id=session_id, teacher_id=candidate_actor_ids
+        )
         return {
             "has_reversible": True,
             "stack_depth": stack_depth,

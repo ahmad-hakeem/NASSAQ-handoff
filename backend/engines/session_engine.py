@@ -14,7 +14,7 @@ This engine handles the complete "Start Class" journey:
 
 from fastapi import APIRouter, HTTPException, Depends, Body
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Sequence, Union
 from datetime import datetime, timezone, timedelta
 from enum import Enum
 import uuid
@@ -3418,23 +3418,51 @@ class TeacherSessionEngine:
         EventType.SKILL_RECORDED.value,
     }
 
+    @staticmethod
+    def _normalize_actor_ids(teacher_id: Union[str, Sequence[str]]) -> List[str]:
+        """Coerce one or more actor ids into a deduplicated, non-empty list.
+
+        Accepts either a single id (str) or a sequence of candidate ids.
+        Historically some action-recording routes logged events with the
+        caller's Users.id while the session stores the Teachers.id, so an
+        event's actor_id can be either one.  Treating the candidates as a
+        union ensures we evaluate every possible id together rather than one
+        at a time.
+        """
+        if isinstance(teacher_id, str):
+            raw: Sequence[str] = [teacher_id]
+        else:
+            raw = teacher_id or []
+        actor_ids: List[str] = []
+        for cid in raw:
+            if cid and cid not in actor_ids:
+                actor_ids.append(cid)
+        return actor_ids
+
     async def get_last_reversible_action(
         self,
         session_id: str,
-        teacher_id: str,
+        teacher_id: Union[str, Sequence[str]],
     ) -> Optional[Dict[str, Any]]:
         """Return the most recent reversible event for this session and teacher.
+
+        ``teacher_id`` may be a single id or a sequence of candidate actor ids;
+        all candidates are evaluated as a union and the single most-recent
+        unreversed event (by timestamp) across every id is returned.
 
         Returns None when there is nothing left to undo (all actions have
         already been reversed, or there are no eligible actions at all).
         The caller is responsible for checking session ownership and status.
         """
+        actor_ids = self._normalize_actor_ids(teacher_id)
+        if not actor_ids:
+            return None
         events = await gd_find(
             self.session,
             "session_event_log",
             {
                 "session_id": session_id,
-                "actor_id": teacher_id,
+                "actor_id": {"$in": actor_ids},
                 "event_type": {"$in": list(self.REVERSIBLE_EVENT_TYPES)},
             },
             order_by="timestamp",
@@ -3451,22 +3479,29 @@ class TeacherSessionEngine:
     async def count_reversible_actions(
         self,
         session_id: str,
-        teacher_id: str,
+        teacher_id: Union[str, Sequence[str]],
         cap: int = 10,
     ) -> int:
         """Count how many unreversed reversible events exist for this teacher/session.
+
+        ``teacher_id`` may be a single id or a sequence of candidate actor ids;
+        all candidates are evaluated as a union so the depth count matches the
+        union used by get_last_reversible_action and undo_last_action.
 
         The count is capped at *cap* so the UI can show "10+" without fetching
         an unbounded number of rows.  The same 200-row fetch used by
         get_last_reversible_action is sufficient because a session rarely
         exceeds that many interactions.
         """
+        actor_ids = self._normalize_actor_ids(teacher_id)
+        if not actor_ids:
+            return 0
         events = await gd_find(
             self.session,
             "session_event_log",
             {
                 "session_id": session_id,
-                "actor_id": teacher_id,
+                "actor_id": {"$in": actor_ids},
                 "event_type": {"$in": list(self.REVERSIBLE_EVENT_TYPES)},
             },
             order_by="timestamp",
@@ -3518,20 +3553,18 @@ class TeacherSessionEngine:
         # 2. Resolve candidate actor ids.  Historically some action-recording
         #    routes logged events with the caller's Users.id while the session
         #    stores the Teachers.id, so an event's actor_id can be either one.
-        #    Try every distinct candidate so undo works regardless of which id
-        #    the original action was recorded under.
+        #    Collect every distinct candidate so undo works regardless of which
+        #    id the original action was recorded under.
         session_teacher_id = session.get("teacher_id") or teacher_id
-        candidate_actor_ids: List[str] = []
-        for cid in (session_teacher_id, teacher_id, user_id):
-            if cid and cid not in candidate_actor_ids:
-                candidate_actor_ids.append(cid)
+        candidate_actor_ids = self._normalize_actor_ids(
+            [session_teacher_id, teacher_id, user_id]
+        )
 
-        # 3. Find last reversible event for this teacher in this session.
-        event = None
-        for cid in candidate_actor_ids:
-            event = await self.get_last_reversible_action(session_id, cid)
-            if event is not None:
-                break
+        # 3. Find the single most-recent reversible event across the full union
+        #    of candidate actor ids.  Evaluating them together (rather than one
+        #    id at a time) guarantees undo reverses the truly latest action even
+        #    when events are split across multiple ids.
+        event = await self.get_last_reversible_action(session_id, candidate_actor_ids)
         if event is None:
             raise HTTPException(
                 status_code=400,
