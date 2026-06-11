@@ -202,7 +202,11 @@ async def _annotate_teacher_rows(
 
 
 async def _annotate_student_rows(
-    session, *, school_id: str, parsed_rows: List[Dict[str, Any]]
+    session,
+    *,
+    school_id: str,
+    parsed_rows: List[Dict[str, Any]],
+    class_pair_map: Optional[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
     """Annotate student rows.
 
@@ -224,6 +228,25 @@ async def _annotate_student_rows(
     import hashlib
     students = await load_school_student_index(session, school_id)
     classes = await load_school_class_index(session, school_id)
+    # Valid tenant class ids — a pair→class_id mapping is only honoured
+    # when it still points at a live class of THIS school (the index is
+    # already school-scoped + active-only). A stale/foreign id silently
+    # falls back to deterministic resolution so we never assign across
+    # tenants or to a deleted class.
+    valid_class_ids = {c.get("id") for c in classes if c.get("id")}
+
+    def _resolve_for(grade_code: str, section_code: str) -> Optional[str]:
+        if class_pair_map:
+            mapped = class_pair_map.get(
+                f"{(grade_code or '').strip()}||{(section_code or '').strip()}"
+            )
+            if mapped and mapped in valid_class_ids:
+                return mapped
+        return resolve_class(
+            grade_code=grade_code,
+            section_code=section_code,
+            class_index=classes,
+        )
 
     # Soft-match index: (norm_name, grade, section) -> {id, student_number}
     soft_idx: Dict[str, Dict[str, Any]] = {}
@@ -272,20 +295,12 @@ async def _annotate_student_rows(
                 dedupe = "update"
                 existing_id = students[num]["id"]
             elif full_name:
-                resolved_cid = resolve_class(
-                    grade_code=grade_code,
-                    section_code=section_code,
-                    class_index=classes,
-                )
+                resolved_cid = _resolve_for(grade_code, section_code)
                 soft_key = f"{full_name}|{grade_code}|{resolved_cid or ''}"
                 if soft_key in soft_idx:
                     dedupe = "ambiguous"
                     existing_id = soft_idx[soft_key]["id"]
-        class_id = resolve_class(
-            grade_code=grade_code,
-            section_code=section_code,
-            class_index=classes,
-        )
+        class_id = _resolve_for(grade_code, section_code)
         class_unresolved = class_id is None and (grade_code or section_code)
         # Only reserve the number when the row is actually
         # processable — otherwise an invalid row could poison a later
@@ -469,6 +484,7 @@ def create_noor_import_routes(db, get_current_user):
                 rows=rows,
                 created_by=principal_id,
                 ambiguous_treat_as_new=ambiguous_treat_as_new,
+                class_pair_map=payload.get("class_pair_map"),
             )
         else:
             raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
@@ -883,7 +899,10 @@ def create_noor_import_routes(db, get_current_user):
                 d["section_code"] = ov["section_override"]
             reseed_rows.append({"row_index": r.get("row_index"), "data": d})
         new_annotated = await _annotate_student_rows(
-            db.session, school_id=school_id, parsed_rows=reseed_rows
+            db.session,
+            school_id=school_id,
+            parsed_rows=reseed_rows,
+            class_pair_map=payload.get("class_pair_map"),
         )
         new_counts = _summarise_counts(new_annotated)
 
@@ -924,6 +943,156 @@ def create_noor_import_routes(db, get_current_user):
             "created_classes": created_pairs,
             "skipped_existing_classes": skipped_existing,
             "rejected_pairs": rejected_pairs,
+        }
+
+    @router.post("/draft/{draft_id}/map-existing-classes")
+    async def map_existing_classes_endpoint(
+        draft_id: str,
+        request: Request,
+        current_user: dict = Depends(get_current_user),
+    ):
+        """Map unresolved (grade, section) pairs to EXISTING tenant classes.
+
+        Option B (bulk pair→existing-class mapping): instead of inventing a
+        new class for every unmatched pair, the principal picks one of the
+        school's existing classes per distinct unmatched pair. The chosen
+        mapping is persisted in the draft payload (`class_pair_map`) and is
+        honoured both by re-annotation here and by `/commit` — which
+        re-resolves `class_id` from the live class index and would otherwise
+        ignore any class_id baked onto the row.
+
+        Fail-closed contract (matches /commit + create-missing authority):
+          • Only valid for `detected_type == STUDENT_REPORT`.
+          • Every chosen `class_id` is validated in ONE tenant-scoped query
+            (school + active). A foreign / inactive / unknown id is REJECTED
+            with a safe Arabic 400 — zero writes, zero draft mutation.
+          • An empty / null `class_id` CLEARS a previously-set mapping for
+            that pair (the pair returns to "unclassified" and can be
+            create-missing'd or left unmapped).
+        """
+        school_id = _require_school_role(current_user)
+        principal_id = str(current_user.get("id") or current_user.get("_id") or "")
+        draft = await load_draft(
+            db.session,
+            draft_id=draft_id,
+            principal_id=principal_id,
+            school_id=school_id,
+        )
+        if not draft:
+            raise HTTPException(status_code=403, detail=_SAFE_DRAFT_DENIED)
+        if draft["detected_type"] != STUDENT_REPORT:
+            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+
+        try:
+            raw_body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+        if not isinstance(raw_body, dict):
+            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+        mappings = raw_body.get("mappings")
+        if not isinstance(mappings, list):
+            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+
+        # First pass — shape validation + collect the class ids to verify.
+        set_entries: List[Dict[str, str]] = []
+        clear_keys: set = set()
+        requested_class_ids: set = set()
+        for item in mappings:
+            if not isinstance(item, dict):
+                raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+            g = (item.get("grade_code") or "").strip()
+            s = (item.get("section_code") or "").strip()
+            if not g and not s:
+                # A pair with no grade AND no section can never be a real
+                # unmatched key — reject so a malformed body fails loudly.
+                raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+            key = f"{g}||{s}"
+            cid_raw = item.get("class_id")
+            cid = (str(cid_raw).strip() if cid_raw is not None else "")
+            if not cid:
+                clear_keys.add(key)
+                continue
+            requested_class_ids.add(cid)
+            set_entries.append({"key": key, "class_id": cid})
+
+        # Validate every chosen class id in ONE tenant-scoped query. Active
+        # classes of THIS school only — anything else is a hard 400.
+        valid_class_ids: set = set()
+        if requested_class_ids:
+            res = await db.session.execute(
+                text(
+                    """
+                    SELECT id
+                    FROM classes
+                    WHERE school_id = :sid
+                      AND COALESCE(is_active, TRUE) = TRUE
+                      AND deleted_at IS NULL
+                      AND id = ANY(:ids)
+                    """
+                ),
+                {"sid": school_id, "ids": list(requested_class_ids)},
+            )
+            for row in res.mappings().all():
+                valid_class_ids.add(str(row["id"]))
+        for entry in set_entries:
+            if entry["class_id"] not in valid_class_ids:
+                # Tenant-isolation: the principal explicitly picked this
+                # class — reject (no silent drop) if it isn't a live class
+                # of their own school.
+                raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+
+        payload = draft.get("payload") or {}
+        existing_map = dict(payload.get("class_pair_map") or {})
+        for key in clear_keys:
+            existing_map.pop(key, None)
+        for entry in set_entries:
+            existing_map[entry["key"]] = entry["class_id"]
+
+        # Persist the merged map first, then re-annotate the rows against it
+        # so the preview counts reflect the new assignments immediately.
+        await patch_draft_payload(
+            db.session,
+            draft_id=draft_id,
+            principal_id=principal_id,
+            school_id=school_id,
+            patch={"class_pair_map": existing_map},
+        )
+
+        rows: List[Dict[str, Any]] = payload.get("rows") or []
+        reseed_rows = [
+            {"row_index": r.get("row_index"), "data": dict(r.get("data") or {})}
+            for r in rows
+        ]
+        new_annotated = await _annotate_student_rows(
+            db.session,
+            school_id=school_id,
+            parsed_rows=reseed_rows,
+            class_pair_map=existing_map,
+        )
+        new_counts = _summarise_counts(new_annotated)
+        updated_ok = await update_draft_rows(
+            db.session,
+            draft_id=draft_id,
+            principal_id=principal_id,
+            school_id=school_id,
+            rows=new_annotated,
+            counts=new_counts,
+        )
+        if not updated_ok:
+            raise HTTPException(status_code=403, detail=_SAFE_DRAFT_DENIED)
+
+        await db.session.commit()
+
+        return {
+            "import_draft_id": draft_id,
+            "detected_type": draft["detected_type"],
+            "header_row": draft["header_row"],
+            "sheet_name": payload.get("sheet_name"),
+            "mapped_columns": payload.get("mapped_columns") or {},
+            "rows": new_annotated,
+            "counts": new_counts,
+            "mapped_pairs": set_entries,
+            "cleared_pairs": sorted(clear_keys),
         }
 
     @router.post("/draft/{draft_id}/undo-created-classes")
@@ -1041,7 +1210,10 @@ def create_noor_import_routes(db, get_current_user):
             for r in rows
         ]
         new_annotated = await _annotate_student_rows(
-            db.session, school_id=school_id, parsed_rows=reseed_rows
+            db.session,
+            school_id=school_id,
+            parsed_rows=reseed_rows,
+            class_pair_map=payload.get("class_pair_map"),
         )
         new_counts = _summarise_counts(new_annotated)
         updated_ok = await update_draft_rows(
@@ -1883,6 +2055,7 @@ async def _commit_students(
     rows: List[Dict[str, Any]],
     created_by: str,
     ambiguous_treat_as_new: set,
+    class_pair_map: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     # Re-load indexes — state may have moved since /parse. We rebuild
     # BOTH the exact-number index and the soft-match (name+grade+class)
@@ -1890,6 +2063,12 @@ async def _commit_students(
     # DB state — the parse-time `r['dedupe']` is treated as advisory.
     students = await load_school_student_index(session, school_id)
     classes = await load_school_class_index(session, school_id)
+    # A principal-chosen pair→class_id mapping (Option B) is honoured only
+    # when it still points at a live class of THIS school. Re-validating
+    # against the freshly-loaded class index means a class deleted between
+    # mapping and commit falls back to deterministic resolution (and so the
+    # row is counted unclassified) instead of writing a dangling class_id.
+    valid_class_ids = {c.get("id") for c in classes if c.get("id")}
     soft_idx: Dict[str, Dict[str, Any]] = {}
     for s in students.values():
         nm = (s.get("full_name") or "").strip()
@@ -1930,11 +2109,19 @@ async def _commit_students(
                 grade_code = data.get("grade_code")
                 section_code = data.get("section_code")
                 mobile = data.get("mobile")
-                class_id = resolve_class(
-                    grade_code=grade_code,
-                    section_code=section_code,
-                    class_index=classes,
-                )
+                class_id = None
+                if class_pair_map:
+                    _mapped = class_pair_map.get(
+                        f"{(grade_code or '').strip()}||{(section_code or '').strip()}"
+                    )
+                    if _mapped and _mapped in valid_class_ids:
+                        class_id = _mapped
+                if class_id is None:
+                    class_id = resolve_class(
+                        grade_code=grade_code,
+                        section_code=section_code,
+                        class_index=classes,
+                    )
                 # In-batch duplicate detection MUST run before the
                 # update lookup. Otherwise the second row finds the
                 # just-inserted record in `students` and silently

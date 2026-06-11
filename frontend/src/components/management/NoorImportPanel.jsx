@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
-import { Loader2, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Database, Download, Undo2, History, RefreshCw, Trash2, RotateCcw } from 'lucide-react';
+import { Loader2, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Database, Download, Undo2, History, RefreshCw, Trash2, RotateCcw, Link2 } from 'lucide-react';
 import { getApiErrorMessage } from '../../utils/apiError';
 
 const ROLE_LABELS = {
@@ -515,6 +515,9 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
   const [undoingCommitted, setUndoingCommitted] = useState(false);
   const [classroomsList, setClassroomsList] = useState([]);
   const [loadingClassrooms, setLoadingClassrooms] = useState(false);
+  const [classesList, setClassesList] = useState([]);
+  const [loadingClasses, setLoadingClasses] = useState(false);
+  const [mappingClasses, setMappingClasses] = useState(false);
 
   const ambiguousRowIndexes = useMemo(
     () => (preview?.rows || []).filter(r => r.dedupe === 'ambiguous').map(r => r.row_index),
@@ -543,8 +546,24 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
   const needsClassEditor = missingClassPairs.length > 0 && preview?.detected_type === 'students';
   const teachersFetchedRef = useRef(false);
   const classroomsFetchedRef = useRef(false);
+  const classesFetchedRef = useRef(false);
   useEffect(() => {
     if (!needsClassEditor) return;
+    if (!classesFetchedRef.current) {
+      classesFetchedRef.current = true;
+      setLoadingClasses(true);
+      api.get('/classes')
+        .then(res => {
+          const raw = Array.isArray(res?.data)
+            ? res.data
+            : (Array.isArray(res?.data?.classes) ? res.data.classes : []);
+          // Active classes only — the backend hard-rejects mapping to an
+          // inactive/foreign class, so never offer one the principal can't use.
+          setClassesList(raw.filter(c => c && c.id && c.is_active !== false));
+        })
+        .catch(() => { setClassesList([]); })
+        .finally(() => { setLoadingClasses(false); });
+    }
     if (!teachersFetchedRef.current) {
       teachersFetchedRef.current = true;
       setLoadingTeachers(true);
@@ -582,8 +601,10 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
     if (!preview) {
       teachersFetchedRef.current = false;
       classroomsFetchedRef.current = false;
+      classesFetchedRef.current = false;
       setTeachersList([]);
       setClassroomsList([]);
+      setClassesList([]);
     }
   }, [preview]);
 
@@ -681,6 +702,57 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
       } finally {
         setCommitting(false);
       }
+  };
+
+  const onMapExistingClasses = async () => {
+    if (!preview?.import_draft_id) return;
+    if (missingClassPairs.length === 0) return;
+    // Only pairs where the principal actually picked an existing class are
+    // sent. Pairs left blank stay "بدون فصل" and can still be create-missing'd.
+    const mappings = missingClassPairs
+      .map(p => {
+        const key = `${p.grade_code}||${p.section_code}`;
+        const ov = classOverrides[key] || {};
+        if (!ov.existing_class_id) return null;
+        return {
+          grade_code: p.grade_code,
+          section_code: p.section_code,
+          class_id: ov.existing_class_id,
+        };
+      })
+      .filter(Boolean);
+    if (mappings.length === 0) {
+      nassaqWarning('اختر فصلاً موجوداً واحداً على الأقل للربط');
+      return;
+    }
+    const pairsLabel = mappings
+      .map(m => {
+        const cls = classesList.find(c => c.id === m.class_id);
+        const clsLabel = cls ? cls.name : '';
+        return `• ${m.grade_code || '—'} / ${m.section_code || '—'}  ←  ${clsLabel}`;
+      })
+      .join('\n');
+    nassaqConfirm(
+      `سيتم ربط طلاب ${mappings.length} مجموعة بفصول موجودة ثم إعادة المطابقة تلقائياً.\n\nالربط:\n${pairsLabel}`,
+      async () => {
+        setMappingClasses(true);
+        try {
+          const res = await api.post(
+            `/noor-import/draft/${preview.import_draft_id}/map-existing-classes`,
+            { mappings },
+          );
+          const data = res.data;
+          setPreview(prev => prev ? { ...prev, rows: data.rows, counts: data.counts } : prev);
+          const mappedN = (data.mapped_pairs || []).length;
+          if (nassaqInfo) nassaqInfo(`تم ربط ${mappedN} مجموعة بفصول موجودة وإعادة المطابقة.`);
+        } catch (err) {
+          nassaqError(getApiErrorMessage(err) || 'تعذّر الربط بالفصول الموجودة');
+        } finally {
+          setMappingClasses(false);
+        }
+      },
+      { title: 'الربط بالفصول الموجودة', confirmText: 'ربط وإعادة المطابقة', cancelText: 'إلغاء' },
+    );
   };
 
   const onCreateMissingClasses = async () => {
@@ -1011,7 +1083,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                       {needsClassEditor && (
                         <div className="mt-2 space-y-2">
                           <p className="text-[11px] text-yellow-800 dark:text-yellow-200">
-                            راجع الصف والفصل لكل سطر (يمكنك تصحيحهما إن كانت قيم الملف غير صحيحة)، ثم اختر السعة ورائد الفصل والقاعة (السعة الافتراضية 30، يمكنك تركها كما هي).
+                            لكل مجموعة غير مرتبطة: إمّا اربطها بفصل موجود من القائمة ثم اضغط «ربط بالفصول الموجودة»، أو راجع الصف والفصل والسعة والرائد والقاعة ثم اضغط «إنشاء الفصول الناقصة» (السعة الافتراضية 30).
                           </p>
                           <div className="max-h-[220px] overflow-auto border border-yellow-300 dark:border-yellow-700 rounded">
                             <table className="w-full text-[11px]" data-testid="missing-class-pairs">
@@ -1020,6 +1092,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                                   <th className="p-1.5 text-start">الصف</th>
                                   <th className="p-1.5 text-start">الفصل</th>
                                   <th className="p-1.5 text-start">عدد الطلاب</th>
+                                  <th className="p-1.5 text-start">ربط بفصل موجود</th>
                                   <th className="p-1.5 text-start">السعة</th>
                                   <th className="p-1.5 text-start">رائد الفصل</th>
                                   <th className="p-1.5 text-start">القاعة</th>
@@ -1056,6 +1129,22 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                                         />
                                       </td>
                                       <td className="p-1.5">{p.rows}</td>
+                                      <td className="p-1.5">
+                                        <select
+                                          value={ov.existing_class_id || ''}
+                                          onChange={(e) => setOverride(key, { existing_class_id: e.target.value || undefined })}
+                                          disabled={loadingClasses}
+                                          data-testid={`existing-class-select-${i}`}
+                                          className="max-w-[200px] px-1.5 py-0.5 rounded border border-yellow-300 dark:border-yellow-700 bg-white dark:bg-yellow-950/60 text-[11px]"
+                                        >
+                                          <option value="">{loadingClasses ? 'جارٍ التحميل…' : 'بدون ربط'}</option>
+                                          {classesList.map(c => (
+                                            <option key={c.id} value={c.id}>
+                                              {c.name}{(c.grade || c.section) ? ` (${c.grade ?? '—'}/${c.section ?? '—'})` : ''}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </td>
                                       <td className="p-1.5">
                                         <input
                                           type="number"
@@ -1102,18 +1191,32 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                               </tbody>
                             </table>
                           </div>
-                          <Button
-                            size="sm"
-                            type="button"
-                            variant="outline"
-                            disabled={creatingClasses}
-                            onClick={onCreateMissingClasses}
-                            data-testid="btn-create-missing-classes"
-                            className="border-yellow-500 text-yellow-900 hover:bg-yellow-100 hover:text-yellow-900 dark:text-yellow-100 dark:hover:bg-yellow-900/40 dark:hover:text-yellow-100"
-                          >
-                            {creatingClasses ? <Loader2 className="h-3.5 w-3.5 animate-spin me-2" /> : <Database className="h-3.5 w-3.5 me-2" />}
-                            إنشاء الفصول الناقصة وإعادة المطابقة
-                          </Button>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                              disabled={mappingClasses}
+                              onClick={onMapExistingClasses}
+                              data-testid="btn-map-existing-classes"
+                              className="border-yellow-500 text-yellow-900 hover:bg-yellow-100 hover:text-yellow-900 dark:text-yellow-100 dark:hover:bg-yellow-900/40 dark:hover:text-yellow-100"
+                            >
+                              {mappingClasses ? <Loader2 className="h-3.5 w-3.5 animate-spin me-2" /> : <Link2 className="h-3.5 w-3.5 me-2" />}
+                              ربط بالفصول الموجودة
+                            </Button>
+                            <Button
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                              disabled={creatingClasses}
+                              onClick={onCreateMissingClasses}
+                              data-testid="btn-create-missing-classes"
+                              className="border-yellow-500 text-yellow-900 hover:bg-yellow-100 hover:text-yellow-900 dark:text-yellow-100 dark:hover:bg-yellow-900/40 dark:hover:text-yellow-100"
+                            >
+                              {creatingClasses ? <Loader2 className="h-3.5 w-3.5 animate-spin me-2" /> : <Database className="h-3.5 w-3.5 me-2" />}
+                              إنشاء الفصول الناقصة وإعادة المطابقة
+                            </Button>
+                          </div>
                         </div>
                       )}
                     </div>
