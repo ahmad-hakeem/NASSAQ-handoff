@@ -490,6 +490,101 @@ async def get_subjects(
             logger.warning(f"Failed to serialize subject {s.get('id', 'unknown')}: {e}")
     return result
 
+def _serialize_subject(s: dict) -> Optional[SubjectResponse]:
+    """Coerce a raw subjects row into the canonical SubjectResponse shape,
+    backfilling the `name`/`weekly_periods` aliases the way GET /subjects
+    does. Returns None when the row cannot be serialized."""
+    if "name" not in s and "name_ar" in s:
+        s["name"] = s["name_ar"]
+    if "weekly_periods" not in s:
+        s["weekly_periods"] = (
+            s.get("default_periods_per_week") or s.get("weekly_hours") or 4
+        )
+    try:
+        return SubjectResponse(**s)
+    except Exception as e:
+        logger.warning(f"Failed to serialize subject {s.get('id', 'unknown')}: {e}")
+        return None
+
+
+@router.get("/teacher/my-subjects", response_model=List[SubjectResponse])
+async def get_my_subjects(
+    current_user: dict = Depends(
+        require_roles([UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER])
+    ),
+):
+    """Return only the subjects the authenticated teacher is authorised to
+    teach — the backing query for the session-settings subject dropdown.
+
+    * **School teachers**: JOIN `teacher_assignments` on the canonical
+      `(teacher_id, school_id)` derived from the session (never a
+      client-supplied id) and return only the distinct *active* subjects
+      linked to that teacher. Zero assignments → `[]` (the FE renders a
+      safe Arabic empty-state instead of the full catalogue).
+    * **Independent teachers**: return the full workspace-scoped subject
+      list, because an IT teacher owns every subject in their workspace
+      (no per-teacher narrowing applies). This matches the existing
+      `/subjects` response for IT callers — no regression.
+
+    Teacher-only: principal/admin callers receive 403 from `require_roles`
+    and must keep using the unfiltered `/subjects` route.
+    """
+    from auth_scope import is_independent_teacher, independent_workspace_id
+
+    if is_independent_teacher(current_user):
+        workspace_id = independent_workspace_id(current_user)
+        if not workspace_id:
+            raise HTTPException(status_code=403, detail="غير مصرح")
+        subjects = await gd_find(
+            db.session,
+            "subjects",
+            {"school_id": workspace_id, "is_active": {"$ne": False}},
+            limit=1000,
+        )
+        result = []
+        for s in subjects:
+            serialized = _serialize_subject(s)
+            if serialized is not None:
+                result.append(serialized)
+        return result
+
+    # School teacher: derive the canonical teacher_id + tenant from the
+    # session. Fail closed (empty list) if either is missing.
+    teacher_id = current_user.get("teacher_id")
+    school_id = current_user.get("tenant_id")
+    if not teacher_id or not school_id:
+        return []
+
+    assignments = await gd_find(
+        db.session,
+        "teacher_assignments",
+        {"teacher_id": teacher_id, "school_id": school_id, "is_active": {"$ne": False}},
+        limit=1000,
+    )
+    subject_ids = list(
+        {a.get("subject_id") for a in assignments if a.get("subject_id")}
+    )
+    if not subject_ids:
+        return []
+
+    subjects = await gd_find(
+        db.session,
+        "subjects",
+        {
+            "id": {"$in": subject_ids},
+            "school_id": school_id,
+            "is_active": {"$ne": False},
+        },
+        limit=1000,
+    )
+    result = []
+    for s in subjects:
+        serialized = _serialize_subject(s)
+        if serialized is not None:
+            result.append(serialized)
+    return result
+
+
 @router.get("/subjects/{subject_id}", response_model=SubjectResponse)
 async def get_subject(subject_id: str, current_user: dict = Depends(get_current_user)):
     """Get subject by ID. Tenant-scoped for non-platform callers; cross-

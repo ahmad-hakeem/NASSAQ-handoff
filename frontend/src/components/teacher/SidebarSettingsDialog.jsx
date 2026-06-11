@@ -640,7 +640,7 @@ export default function SidebarSettingsDialog({
             </select>
             {!sc.subjectsLoading && (sc.subjectsList || []).length === 0 && (
               <p className="text-[11px] text-amber-600 dark:text-amber-400 font-cairo">
-                {'لا توجد مواد مضافة لهذا المعلم'}
+                {'لم يتم تعيين مواد لك بعد — تواصل مع الإدارة'}
               </p>
             )}
             {!sc.subjectsLoading && (sc.subjectsList || []).length > 0 && !sc.subjectId && (

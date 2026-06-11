@@ -572,17 +572,19 @@ export default function TeacherClassesPage() {
   }, [api, isIndependentTeacher]);
 
   // Subject loader for the Lesson Settings modal. Runs for all teacher
-  // roles — the /subjects endpoint is already tenant-scoped server-side,
-  // so regular school teachers get their school's subjects and IT accounts
-  // get their workspace subjects. The IT guard on fetchWorkspaceSubjects
-  // is intentionally kept separate so the add-class dialog keeps its own
-  // independent subject state.
+  // roles. Uses /teacher/my-subjects so a regular school teacher only sees
+  // the subjects assigned to them via teacher_assignments (not the full
+  // school catalogue); IT accounts get their full workspace subject list
+  // (they own every subject in their workspace). The backend already
+  // guarantees only active subjects, so no client-side is_active filter is
+  // needed. The IT guard on fetchWorkspaceSubjects is intentionally kept
+  // separate so the add-class dialog keeps its own independent state.
   const fetchSubjectsForSettings = useCallback(async () => {
     setSubjectsLoading(true);
     try {
-      const res = await api.get('/subjects');
+      const res = await api.get('/teacher/my-subjects');
       const subjects = Array.isArray(res.data) ? res.data : (res.data?.subjects || []);
-      setSubjectsForSettings(subjects.filter(s => s?.is_active !== false));
+      setSubjectsForSettings(subjects);
     } catch (err) {
       console.error('Error fetching subjects for settings:', err);
       setSubjectsForSettings([]);
