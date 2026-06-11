@@ -134,46 +134,66 @@ async def startup_tasks():
     approval_engine.register(SchoolApprovalHandler())
     logger.info(f"Approval engine initialized with {len(approval_engine.get_registered_types())} handler(s)")
 
-    async def _product_hub_integrity():
-        try:
-            from routes.product_hub_routes import _ensure_issue_counter, _ensure_data_integrity
-            await _ensure_issue_counter()
-            integrity = await _ensure_data_integrity()
-            logger.info(f"Product hub data integrity: {integrity}")
-        except Exception as e:
-            logger.warning(f"Product hub data integrity check: {e}")
+    # Non-critical startup maintenance is deferred to a background task so the
+    # ASGI lifespan startup returns promptly and the app begins serving (and
+    # answering the autoscale healthcheck on GET /) without waiting on these DB
+    # round-trips. The schema head-gate above stays BLOCKING — it is the
+    # production safety guarantee and must complete before we serve any traffic.
+    # Product-hub integrity is a self-healing maintenance pass and the data
+    # snapshot is informational logging; both are safe to run a beat late.
+    async def _deferred_startup_maintenance():
+        # Yield once so the event loop can finish bringing the server up and
+        # start answering the healthcheck before we hold a DB session.
+        await _asyncio.sleep(0)
 
-    await _run_with_session("Product hub integrity", _product_hub_integrity)
+        async def _product_hub_integrity():
+            try:
+                from routes.product_hub_routes import _ensure_issue_counter, _ensure_data_integrity
+                await _ensure_issue_counter()
+                integrity = await _ensure_data_integrity()
+                logger.info(f"Product hub data integrity: {integrity}")
+            except Exception as e:
+                logger.warning(f"Product hub data integrity check: {e}")
 
-    db_has_data = False
+        await _run_with_session("Product hub integrity", _product_hub_integrity)
 
-    async def _data_snapshot():
-        nonlocal db_has_data
-        user_count_result = await gd_count(db.session, "users", {})
-        db_has_data = user_count_result > 0
-        school_count = await gd_count(db.session, "schools", {})
-        student_count = await gd_count(db.session, "students", {})
-        teacher_count = await gd_count(db.session, "teachers", {})
-        logger.info(f"DEPLOYMENT SAFETY: Data snapshot on startup — users={user_count_result}, schools={school_count}, students={student_count}, teachers={teacher_count}")
+        db_has_data = False
 
-    await _run_with_session("Data snapshot", _data_snapshot)
+        async def _data_snapshot():
+            nonlocal db_has_data
+            user_count_result = await gd_count(db.session, "users", {})
+            db_has_data = user_count_result > 0
+            school_count = await gd_count(db.session, "schools", {})
+            student_count = await gd_count(db.session, "students", {})
+            teacher_count = await gd_count(db.session, "teachers", {})
+            logger.info(f"DEPLOYMENT SAFETY: Data snapshot on startup — users={user_count_result}, schools={school_count}, students={student_count}, teachers={teacher_count}")
 
-    if config.seed_allowed() and not db_has_data:
-        await _run_with_session("Seed admins", _seed_platform_admins)
+        await _run_with_session("Data snapshot", _data_snapshot)
 
-        from seeds.timetable_hard_constraints import seed_hard_constraints
-        result = await _run_with_session("Hard constraints", lambda: seed_hard_constraints(db))
-        if result:
-            logger.info(f"Timetable hard constraints: {result}")
+        if config.seed_allowed() and not db_has_data:
+            await _run_with_session("Seed admins", _seed_platform_admins)
 
-        from seeds.timetable_soft_constraints import seed_soft_constraints
-        result = await _run_with_session("Soft constraints", lambda: seed_soft_constraints(db))
-        if result:
-            logger.info(f"Timetable soft constraints: {result}")
-    elif config.seed_allowed() and db_has_data:
-        logger.info("DEPLOYMENT SAFETY: Seed scripts SKIPPED (database already has data)")
-    else:
-        logger.info(f"DEPLOYMENT SAFETY: Seed scripts SKIPPED (environment={config.ENVIRONMENT})")
+            from seeds.timetable_hard_constraints import seed_hard_constraints
+            result = await _run_with_session("Hard constraints", lambda: seed_hard_constraints(db))
+            if result:
+                logger.info(f"Timetable hard constraints: {result}")
+
+            from seeds.timetable_soft_constraints import seed_soft_constraints
+            result = await _run_with_session("Soft constraints", lambda: seed_soft_constraints(db))
+            if result:
+                logger.info(f"Timetable soft constraints: {result}")
+        elif config.seed_allowed() and db_has_data:
+            logger.info("DEPLOYMENT SAFETY: Seed scripts SKIPPED (database already has data)")
+        else:
+            logger.info(f"DEPLOYMENT SAFETY: Seed scripts SKIPPED (environment={config.ENVIRONMENT})")
+
+    import asyncio as _asyncio
+    try:
+        global _deferred_maintenance_task
+        _deferred_maintenance_task = _asyncio.create_task(_deferred_startup_maintenance())
+        logger.info("Deferred startup maintenance scheduled (product-hub integrity + data snapshot)")
+    except Exception as e:
+        logger.warning(f"Could not schedule deferred startup maintenance: {e}")
 
     # Background task: periodically purge expired revoked tokens (D-02).
     # Runs once at startup (after a short delay) and then every 6 hours.
@@ -300,6 +320,7 @@ _revoked_token_cleanup_task = None
 _reactivation_reminder_task = None
 _auto_export_task = None
 _erasure_purge_task = None
+_deferred_maintenance_task = None
 
 
 # Reminder copy is sent once when the remaining reactivation window is
@@ -735,6 +756,19 @@ async def shutdown_tasks():
             _erasure_purge_task = None
     except Exception as e:
         logger.debug(f"Erasure purge loop cancellation: {e}")
+
+    # Cancel the deferred startup-maintenance task if it's still running.
+    try:
+        global _deferred_maintenance_task
+        if _deferred_maintenance_task is not None and not _deferred_maintenance_task.done():
+            _deferred_maintenance_task.cancel()
+            try:
+                await _deferred_maintenance_task
+            except Exception:
+                pass
+            _deferred_maintenance_task = None
+    except Exception as e:
+        logger.debug(f"Deferred maintenance cancellation: {e}")
 
     try:
         from routes.websocket_routes import get_connection_manager
