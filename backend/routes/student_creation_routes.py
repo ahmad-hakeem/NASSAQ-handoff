@@ -818,7 +818,11 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         school_id = current_user.get("tenant_id")
         if not school_id:
             raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
-        
+
+        # Bulk capacity policy: import a student WITHOUT a class when the target
+        # is full (never overfill, never drop) — surfaced as a per-row warning.
+        from engines.entity_counts import class_has_room, CLASS_FULL_NO_ASSIGN_WARNING
+
         results = {
             "total": len(request.students),
             "success": 0,
@@ -827,6 +831,7 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             "new_parents": 0,
             "linked_to_existing_parents": 0,
             "sibling_groups_detected": 0,
+            "warnings": [],
             "errors": []
         }
         
@@ -915,6 +920,23 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                     "created_at": now,
                     "created_by": current_user.get("id")
                 }
+                # Capacity gate (bulk — leave-without-class policy): when the
+                # target class is full the student is still imported but left
+                # UNASSIGNED, so no student is lost and no class is overfilled.
+                _eff_class_id = student_data.get("class_id")
+                if _eff_class_id:
+                    _bulk_class = await gd_find_one(
+                        db.session, "classes",
+                        {"id": _eff_class_id, "school_id": school_id},
+                    )
+                    if _bulk_class and not await class_has_room(db.session, _bulk_class, school_id):
+                        results["warnings"].append({
+                            "row": idx + 1,
+                            "student_name": student_data.get("full_name"),
+                            "warning": CLASS_FULL_NO_ASSIGN_WARNING,
+                        })
+                        _eff_class_id = None
+
                 # Wrap user insert in a savepoint so a later student-insert
                 # failure within this row can roll back BOTH the user and the
                 # student without poisoning prior successful rows in the batch.
@@ -931,7 +953,7 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                         "gender": student_data.get("gender", "male"),
                         "date_of_birth": student_data.get("date_of_birth"),
                         "grade": student_data.get("grade_id") or student_data.get("grade") or student_data.get("education_level"),
-                        "class_id": student_data.get("class_id"),
+                        "class_id": _eff_class_id,
                         "parent_id": parent_result["parent"].get("id"),
                         "parent_user_id": parent_result["parent"].get("user_id"),
                         "parent_name": parent_result["parent"].get("full_name"),

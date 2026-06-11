@@ -67,7 +67,7 @@ async def load_school_class_index(
     result = await session.execute(
         text(
             """
-            SELECT id, name, grade_id, grade_level, section
+            SELECT id, name, grade_id, grade_level, section, capacity
             FROM classes
             WHERE school_id = :sid AND COALESCE(is_active, TRUE) = TRUE
             """
@@ -163,6 +163,7 @@ async def update_student_mutable_fields(
     class_id: Optional[str],
     mobile: Optional[str],
     reactivate: bool = False,
+    clear_class: bool = False,
 ) -> None:
     """Patch the small set of mutable Noor fields on an existing student.
 
@@ -180,7 +181,9 @@ async def update_student_mutable_fields(
     if grade_code is not None:
         sets.append("grade = :grade")
         params["grade"] = grade_code
-    if class_id is not None:
+    if clear_class:
+        sets.append("class_id = NULL")
+    elif class_id is not None:
         sets.append("class_id = :cid")
         params["cid"] = class_id
     if mobile is not None:

@@ -511,6 +511,7 @@ def create_noor_import_routes(db, get_current_user):
         # which report type was processed, so the client contract is stable.
         outcome.setdefault("imported_student_ids", [])
         outcome.setdefault("imported_teacher_ids", [])
+        outcome.setdefault("warnings", [])
 
         # Create a short-lived undo manifest (1 h TTL) so the principal
         # can undo these specific records via /undo-committed.  The
@@ -2084,6 +2085,27 @@ async def _commit_students(
     # mapping and commit falls back to deterministic resolution (and so the
     # row is counted unclassified) instead of writing a dangling class_id.
     valid_class_ids = {c.get("id") for c in classes if c.get("id")}
+    classes_by_id = {c.get("id"): c for c in classes if c.get("id")}
+
+    # Bulk capacity policy (leave-without-class): when a target class is full,
+    # the student is still imported/updated but left UNASSIGNED, so no student
+    # is dropped and no class is ever overfilled. Occupancy uses the canonical
+    # live ACTIVE-student count, which grows as this batch inserts, so back-to-
+    # back rows targeting the same class still respect the cap.
+    from engines.entity_counts import (
+        class_has_room,
+        CLASS_FULL_NO_ASSIGN_WARNING,
+        CLASS_FULL_KEPT_CURRENT_WARNING,
+    )
+
+    async def _has_room(_cid: Optional[str]) -> bool:
+        if not _cid:
+            return True
+        _cdoc = classes_by_id.get(_cid)
+        if not _cdoc:
+            return True
+        return await class_has_room(session, _cdoc, school_id)
+
     # Soft-match index from ACTIVE students only — soft-deleted rows are
     # revivable solely via their exact number (the RESTORE path), never via
     # fuzzy name matching (mirrors _annotate_student_rows).
@@ -2105,6 +2127,7 @@ async def _commit_students(
     duplicates = 0
     unclassified = 0
     errors: List[Dict[str, Any]] = []
+    warnings: List[Dict[str, Any]] = []
     imported_student_ids: List[str] = []
     created_ids: List[str] = []
     updated_ids: List[str] = []
@@ -2200,19 +2223,28 @@ async def _commit_students(
                     # restore ALWAYS writes (even if cached fields look
                     # unchanged) — reviving the row is the meaningful change.
                     if existing.get("is_active") is False:
+                        # Reactivation is a net +1 to the effective target (the
+                        # row's class, or the pre-deletion class). If that class
+                        # is full, revive the student WITHOUT a class so the
+                        # class is never overfilled.
+                        restore_target = class_id if class_id is not None else existing_class
+                        restore_full = bool(restore_target) and not await _has_room(restore_target)
+                        if restore_full:
+                            warnings.append({"row": row_idx, "message": CLASS_FULL_NO_ASSIGN_WARNING})
                         await update_student_mutable_fields(
                             session,
                             student_id=existing["id"],
                             school_id=school_id,
                             full_name=full_name or None,
                             grade_code=grade_code,
-                            class_id=class_id,
+                            class_id=None if restore_full else class_id,
                             mobile=mobile,
                             reactivate=True,
+                            clear_class=restore_full,
                         )
                         updated_ids.append(str(existing["id"]))
                         restored += 1
-                        effective_class = class_id if class_id is not None else existing_class
+                        effective_class = None if restore_full else (class_id if class_id is not None else existing_class)
                         if effective_class is None and (grade_code or section_code):
                             unclassified += 1
                         continue
@@ -2228,6 +2260,13 @@ async def _commit_students(
                     name_changed = bool(incoming_name) and incoming_name != existing_name
                     grade_changed = bool(incoming_grade) and incoming_grade != existing_grade
                     class_changed = class_id is not None and class_id != existing_class
+                    # Capacity policy: a move into a FULL class is suppressed so
+                    # the target is never overfilled — the student keeps their
+                    # current class and we emit a per-row warning.
+                    if class_changed and not await _has_room(class_id):
+                        warnings.append({"row": row_idx, "message": CLASS_FULL_KEPT_CURRENT_WARNING})
+                        class_id = None
+                        class_changed = False
                     mobile_changed = bool(mobile)
                     if not (name_changed or grade_changed or class_changed or mobile_changed):
                         # No effective change — count as updated for
@@ -2256,6 +2295,10 @@ async def _commit_students(
                         unclassified += 1
                     continue
 
+                if class_id and not await _has_room(class_id):
+                    # Target class full — import the student UNASSIGNED.
+                    warnings.append({"row": row_idx, "message": CLASS_FULL_NO_ASSIGN_WARNING})
+                    class_id = None
                 new_id = await insert_student_record_only(
                     session,
                     school_id=school_id,
@@ -2298,6 +2341,7 @@ async def _commit_students(
         "duplicates": duplicates,
         "unclassified": unclassified,
         "errors": errors,
+        "warnings": warnings,
         "imported_student_ids": imported_student_ids,
         "created_ids": created_ids,
         "updated_ids": updated_ids,

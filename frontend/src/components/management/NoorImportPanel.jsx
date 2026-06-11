@@ -1396,6 +1396,18 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                     </Button>
                   </div>
                 )}
+                {(result.warnings || []).length > 0 && (
+                  <div className="max-h-[160px] overflow-y-auto space-y-1" data-testid="commit-warnings">
+                    {result.warnings.slice(0, 50).map((w, i) => (
+                      <div key={i} className="text-xs p-2 rounded bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300">صف {w.row}: {w.message}</div>
+                    ))}
+                    {result.warnings.length > 50 && (
+                      <div className="text-[11px] text-muted-foreground p-2">
+                        عرض أول 50 تنبيه من أصل {result.warnings.length}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {(result.errors || []).length > 0 && (
                   <div className="max-h-[160px] overflow-y-auto space-y-1">
                     {result.errors.slice(0, 50).map((e, i) => (

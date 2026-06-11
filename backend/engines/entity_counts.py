@@ -223,6 +223,20 @@ CLASS_FULL_DETAIL = (
     "This class has reached its maximum capacity. Please choose another class."
 )
 
+# Bulk-import policy message: the class is full, so the student is imported
+# WITHOUT a class (never overfilled, never dropped) and must be placed manually.
+CLASS_FULL_NO_ASSIGN_WARNING = (
+    "الفصل ممتلئ — تم استيراد الطالب بدون فصل، يرجى تعيين فصل له يدويًا / "
+    "Class is full — student imported without a class; please assign one manually."
+)
+
+# Bulk-update policy message: the TARGET class is full, so a requested move is
+# suppressed and the student is kept in their CURRENT class (never overfilled).
+CLASS_FULL_KEPT_CURRENT_WARNING = (
+    "الفصل الهدف ممتلئ — تم الإبقاء على الطالب في فصله الحالي ولم يُنقل / "
+    "Target class is full — student kept in their current class; move not applied."
+)
+
 
 def resolve_class_capacity(class_doc) -> int:
     """Single source of truth for a class's effective maximum size.
