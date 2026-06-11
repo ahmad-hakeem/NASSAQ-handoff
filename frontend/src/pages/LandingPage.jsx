@@ -600,62 +600,84 @@ export const LandingPage = () => {
               </div>
             </div>
 
-            {/* ── LEFT PANEL (RTL End): Hakim + dashboard contained in same height envelope ── */}
-            <div className="order-1 lg:order-2 flex flex-col">
-              {/* Hakim: fixed-height header row, anchored to the end (left in RTL).
-                  Sized so left column height = Hakim height + dashboard height + footnote.
-                  Feet meet the top edge of the dashboard browser bar. */}
+            {/* ── LEFT PANEL (RTL End): Hakim + dashboard as one art-directed scene ──
+                Single relative stage: the dashboard is offset toward the end and
+                Hakim is anchored to the shared baseline on the start side with a
+                controlled overlap, so they read as one grounded composition.
+                dir="ltr" + !direction lock the scene against page RTL flipping. */}
+            <div className="order-1 lg:order-2 flex flex-col justify-center">
               <div
-                className="pointer-events-none select-none self-end relative z-20
-                           w-28 h-28
-                           sm:w-32 sm:h-32
-                           lg:w-36 lg:h-36
-                           xl:w-40 xl:h-40"
-                aria-hidden="true"
+                className="relative ![direction:ltr] w-full max-w-[560px] mx-auto lg:mx-0 lg:ms-auto
+                           pt-10 sm:pt-12 lg:pt-16"
+                dir="ltr"
+                data-testid="hero-visual-composition"
               >
-                <div className="absolute inset-x-0 bottom-0 mx-auto w-[130%] h-[55%] rounded-full bg-brand-turquoise/20 blur-3xl" />
-                <img
-                  src="/hakim-welcome.png"
-                  alt=""
-                  width="320"
-                  height="320"
-                  loading="lazy"
-                  className="relative w-full h-full object-contain object-bottom drop-shadow-2xl animate-float motion-reduce:animate-none"
+                {/* Ambient glow halo behind the whole scene */}
+                <div
+                  className="pointer-events-none absolute -inset-x-6 bottom-6 top-2 rounded-[40px] bg-brand-turquoise/10 blur-3xl"
+                  aria-hidden="true"
                 />
-              </div>
 
-              {/* Dashboard: fills the remaining height — flex-1 so it grows to match right panel */}
-              <div
-                className="relative z-10 flex-1 w-full bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transform hover:scale-[1.02] transition-transform duration-500"
-                data-testid="hero-mockup"
-              >
-                {/* Browser chrome */}
-                <div className="flex items-center justify-between gap-2 px-4 h-9 bg-slate-50 border-b border-slate-100">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                    <span className="font-tajawal text-[11px] text-slate-500">{t('landingHeroLive')}</span>
+                {/* Dashboard: primary anchor — offset to the end, leaving a column for Hakim */}
+                <div
+                  className="relative z-10 ms-auto w-[74%] sm:w-[76%] lg:w-[78%]
+                             bg-white rounded-2xl shadow-2xl shadow-brand-navy/30 border border-slate-100 overflow-hidden
+                             transform transition-transform duration-500 hover:scale-[1.01]"
+                  data-testid="hero-mockup"
+                >
+                  {/* Browser chrome */}
+                  <div className="flex items-center justify-between gap-2 px-4 h-9 bg-slate-50 border-b border-slate-100">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                      <span className="font-tajawal text-[11px] text-slate-500">{t('landingHeroLive')}</span>
+                    </div>
+                    <span className="font-tajawal text-[11px] text-slate-500">
+                      {t('landingHeroDashboardTab')}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-slate-200" />
+                      <span className="w-2 h-2 rounded-full bg-slate-200" />
+                      <span className="w-2 h-2 rounded-full bg-slate-200" />
+                    </div>
                   </div>
-                  <span className="font-tajawal text-[11px] text-slate-500">
-                    {t('landingHeroDashboardTab')}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-slate-200" />
-                    <span className="w-2 h-2 rounded-full bg-slate-200" />
-                    <span className="w-2 h-2 rounded-full bg-slate-200" />
-                  </div>
+
+                  {/* Real product screenshot — natural aspect ratio, fully visible */}
+                  <img
+                    src="/images/landing-dashboard-preview.png"
+                    alt={t('landingHeroDashboardAlt')}
+                    width={1920}
+                    height={827}
+                    className="block w-full h-auto"
+                    loading="lazy"
+                  />
                 </div>
 
-                {/* Real product screenshot — fills card height */}
-                <img
-                  src="/images/landing-dashboard-preview.png"
-                  alt={t('landingHeroDashboardAlt')}
-                  className="block w-full h-full object-cover object-top"
-                  loading="lazy"
+                {/* Soft contact shadow grounding Hakim onto the same baseline as the card */}
+                <div
+                  className="pointer-events-none absolute z-10 bottom-1 start-[2%] w-[34%] sm:w-[30%] lg:w-[32%] h-3
+                             rounded-[50%] bg-brand-navy-dark/50 blur-md"
+                  aria-hidden="true"
                 />
+
+                {/* Hakim: large, static companion anchored to the shared baseline,
+                    overlapping the dashboard's start edge so they feel connected. */}
+                <div
+                  className="pointer-events-none select-none absolute z-20 bottom-0 start-[-2%] sm:start-0
+                             w-[46%] sm:w-[42%] lg:w-[44%] max-w-[300px]"
+                  aria-hidden="true"
+                >
+                  <img
+                    src="/hakim-welcome.png"
+                    alt=""
+                    width="320"
+                    height="320"
+                    loading="lazy"
+                    className="block w-full h-auto object-bottom drop-shadow-2xl"
+                  />
+                </div>
               </div>
 
-              {/* Footnote anchored to bottom of left panel */}
-              <p className="font-tajawal text-xs text-white/60 text-center mt-3 shrink-0">
+              <p className="font-tajawal text-xs text-white/60 text-center mt-4 shrink-0">
                 {t('landingHeroDashboardFootnote')}
               </p>
             </div>
