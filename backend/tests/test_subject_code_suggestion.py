@@ -230,3 +230,68 @@ async def test_hakim_code_collision_set_is_school_scoped(client, tenant_a, tenan
     # MATH101 is taken in tenant_a, MATH102 belongs to tenant_b and is NOT
     # counted, so the next free code within tenant_a is MATH102.
     assert resp.json()["code"] == "MATH102"
+
+
+# ---------------------------------------------------------------------------
+# 3. End-to-end — the suggested code is accepted by POST /api/subjects
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_suggested_code_is_accepted_by_create_flow(client, tenant_a):
+    """The whole point of the suggestion is to feed POST /subjects. Prove the
+    generated code is in a format/uniqueness the create path accepts (200),
+    not rejected as malformed or duplicate."""
+    headers = _headers(await _mk_user(UserRole.SCHOOL_PRINCIPAL, tenant_a))
+
+    suggest = await client.post(
+        "/subjects/hakim-code",
+        headers=headers,
+        json={"name": "رياضيات", "name_en": "Mathematics"},
+    )
+    assert suggest.status_code == 200, suggest.text
+    code = suggest.json()["code"]
+    assert code == "MATH101"
+
+    created = await client.post(
+        "/subjects",
+        headers=headers,
+        json={"name": "Mathematics", "name_en": "Mathematics", "code": code},
+    )
+    assert created.status_code == 200, created.text
+    # The create path persists the suggested code unchanged.
+    assert created.json()["code"] == code
+
+
+@pytest.mark.asyncio
+async def test_suggested_code_avoids_collision_with_existing_subject(client, tenant_a):
+    """When a subject already exists, the suggestion must produce a
+    non-colliding code that the create path then accepts (200)."""
+    # An existing active subject already owns MATH101 in this tenant.
+    await gd_insert(db.session, "subjects", {
+        "id": str(uuid.uuid4()),
+        "school_id": tenant_a,
+        "code": "MATH101",
+        "name": "رياضيات قديمة",
+        "is_active": True,
+    })
+
+    headers = _headers(await _mk_user(UserRole.SCHOOL_PRINCIPAL, tenant_a))
+
+    suggest = await client.post(
+        "/subjects/hakim-code",
+        headers=headers,
+        json={"name_en": "Mathematics"},
+    )
+    assert suggest.status_code == 200, suggest.text
+    code = suggest.json()["code"]
+    # MATH101 is taken, so the suggestion bumps to the next free code.
+    assert code == "MATH102"
+
+    created = await client.post(
+        "/subjects",
+        headers=headers,
+        json={"name": "Mathematics", "name_en": "Mathematics", "code": code},
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["code"] == code
