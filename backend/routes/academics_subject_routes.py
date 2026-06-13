@@ -354,6 +354,130 @@ async def _assert_subject_name_unique(
             raise HTTPException(status_code=409, detail="يوجد بالفعل مادة بنفس الاسم")
 
 
+# --- Subject-code suggestion ("Generate with Hakim") ---------------------
+# Category → deterministic ASCII prefix fallback, used when no usable English
+# name is available and the LLM yields nothing. Mirrors the category options
+# rendered by the frontend Add-Subject modal.
+_CATEGORY_CODE_PREFIX = {
+    "core": "CORE",
+    "elective": "ELEC",
+    "language": "LANG",
+    "science": "SCI",
+    "math": "MATH",
+    "social": "SOC",
+    "arts": "ART",
+    "physical": "PE",
+    "technology": "TECH",
+    "religion": "REL",
+}
+
+
+def _code_letters(raw: Optional[str], limit: int = 4) -> str:
+    """Uppercase A-Z letters only from an arbitrary string, capped at `limit`."""
+    if not raw:
+        return ""
+    return "".join(c for c in raw.upper() if "A" <= c <= "Z")[:limit]
+
+
+def _build_subject_code(
+    *,
+    name_en: Optional[str],
+    category: Optional[str],
+    llm_prefix: Optional[str],
+    existing_codes: set,
+) -> str:
+    """Build a normalized, collision-free subject code for one school.
+
+    Prefix precedence: a usable LLM-refined prefix → English name → category
+    fallback → generic "SUBJ". A numeric suffix is appended and bumped until
+    the value is free among the school's active subject codes. The result is
+    always uppercase letters+digits and satisfies the create-flow format.
+    """
+    prefix = _code_letters(llm_prefix) or _code_letters(name_en)
+    if len(prefix) < 2:
+        prefix = _CATEGORY_CODE_PREFIX.get((category or "").strip().lower(), "")
+    if len(prefix) < 2:
+        prefix = "SUBJ"
+    taken = {str(c).upper() for c in existing_codes if c}
+    n = 101
+    while f"{prefix}{n}" in taken:
+        n += 1
+        if n > 9999:
+            # Practically unreachable; vary the prefix to guarantee termination.
+            prefix = (prefix[:3] + "X")
+            n = 101
+    return f"{prefix}{n}"
+
+
+class SubjectCodeSuggestRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    name: Optional[str] = None
+    name_en: Optional[str] = None
+    category: Optional[str] = None
+
+
+@router.post("/subjects/hakim-code")
+async def hakim_subject_code(
+    payload: SubjectCodeSuggestRequest,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN])),
+    x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
+):
+    """Suggest a normalized, collision-free subject code for the caller's
+    school ("Generate with Hakim" in the Add-Subject modal).
+
+    School-scoped: existing codes are read only within the caller's resolved
+    tenant. The LLM output is treated purely as a candidate prefix — the
+    server always normalizes (uppercase, letters+digits, length cap) and
+    de-duplicates, with a deterministic fallback so a valid code is returned
+    even when the model yields nothing. Never auto-submits; the frontend
+    keeps the value editable and the normal POST /subjects path unchanged.
+    """
+    from utils.tenant_scope import resolve_school_id
+    school_id = resolve_school_id(current_user, x_school_context) or current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(status_code=400, detail="تعذّر تحديد المدرسة")
+
+    name_ar = (payload.name or "").strip()
+    name_en = (payload.name_en or "").strip()
+    if not name_ar and not name_en:
+        return {"success": False, "reason": "NAME_REQUIRED"}
+
+    # Tenant-scoped existing codes (active subjects only) — collision set.
+    existing = await gd_find(
+        db.session,
+        "subjects",
+        {"school_id": school_id, "is_active": {"$ne": False}},
+        limit=2000,
+    )
+    existing_codes = {str(r.get("code")) for r in existing if r.get("code")}
+
+    # Optional LLM refinement → an English prefix. Best-effort and never
+    # fatal: any failure / disabled-AI falls through to the deterministic
+    # path below.
+    llm_prefix: Optional[str] = None
+    try:
+        from services.hakim_llm_service import hakim_generate
+        result = await hakim_generate(
+            mode="generate",
+            field="subject_code",
+            context={"subject": name_en or name_ar, "category": payload.category or None},
+            language="en",
+            tenant_id=school_id,
+        )
+        if result.get("success"):
+            llm_prefix = result.get("text")
+    except Exception as e:  # noqa: BLE001 - best-effort refinement
+        logger.warning(f"[Hakim] subject_code generate failed: {e}")
+
+    code = _build_subject_code(
+        name_en=name_en,
+        category=payload.category,
+        llm_prefix=llm_prefix,
+        existing_codes=existing_codes,
+    )
+    return {"success": True, "code": code}
+
+
 @router.post("/subjects", response_model=SubjectResponse)
 async def create_subject(
     subject_data: SubjectMutate,

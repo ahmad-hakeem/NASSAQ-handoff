@@ -369,6 +369,29 @@ FIELD_REGISTRY: Dict[str, Dict[str, Any]] = {
             "channel, purpose and impact, in a respectful professional tone."
         ),
     },
+    # --- Subject code suggestion (Add Subject modal) ---------------------
+    # The LLM output is ONLY a candidate prefix; the subject-code endpoint
+    # always re-normalizes + de-duplicates server-side, so the high token
+    # budget exists purely to stop the reasoning model returning empty on a
+    # very short "produce a code" task (see academics_subject_routes).
+    "subject_code": {
+        "max_tokens": 2048,
+        "temp_generate": 0.3,
+        "temp_improve": 0.3,
+        "min_chars": 2,
+        "max_chars": 12,
+        "ar_only": False,
+        "rule_ar": (
+            "اقترح بادئة رمز مادة دراسية مكوّنة من ٣ إلى ٤ أحرف لاتينية كبيرة فقط "
+            "مأخوذة من الاسم الإنجليزي للمادة (مثل MATH للرياضيات وSCI للعلوم)، "
+            "بدون أرقام وبدون مسافات وبدون رموز. أعد الأحرف فقط."
+        ),
+        "rule_en": (
+            "Suggest a short subject-code prefix of 3-4 uppercase Latin letters only, "
+            "derived from the subject's English name (e.g. MATH for Mathematics, "
+            "SCI for Science). No digits, spaces or symbols. Return only the letters."
+        ),
+    },
 }
 
 TONE_SUFFIX_AR = {

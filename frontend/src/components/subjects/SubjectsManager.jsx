@@ -22,6 +22,7 @@ import {
   ChevronDown,
   ChevronUp,
   Undo2,
+  Sparkles,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -92,6 +93,7 @@ export function SubjectsManager({ embedded = false }) {
   const [deletingId, setDeletingId] = useState(null);
   const [deletedExpanded, setDeletedExpanded] = useState(false);
   const [restoringId, setRestoringId] = useState(null);
+  const [generatingCode, setGeneratingCode] = useState(false);
 
   const [newSubject, setNewSubject] = useState({
     name: '',
@@ -173,6 +175,34 @@ export function SubjectsManager({ embedded = false }) {
       nassaqError(getApiErrorMessage(error) || (t('failedToAddSubject')));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleGenerateCode = async () => {
+    if (generatingCode) return;
+    if (!newSubject.name && !newSubject.name_en) {
+      nassaqError(t('subjectCodeNeedsNameFirst'));
+      return;
+    }
+    setGeneratingCode(true);
+    try {
+      const res = await api.post('/subjects/hakim-code', {
+        name: newSubject.name || '',
+        name_en: newSubject.name_en || '',
+        category: newSubject.category || '',
+      });
+      if (res?.data?.success && res.data.code) {
+        setNewSubject((p) => ({ ...p, code: res.data.code }));
+        toast.success(t('subjectCodeGenerated'));
+      } else if (res?.data?.reason === 'NAME_REQUIRED') {
+        nassaqError(t('subjectCodeNeedsNameFirst'));
+      } else {
+        nassaqError(t('subjectCodeGenerateFailed'));
+      }
+    } catch (error) {
+      nassaqError(getApiErrorMessage(error) || t('subjectCodeGenerateFailed'));
+    } finally {
+      setGeneratingCode(false);
     }
   };
 
@@ -473,7 +503,24 @@ export function SubjectsManager({ embedded = false }) {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{t('subjectCode')}</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>{t('subjectCode')}</Label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleGenerateCode}
+                      disabled={generatingCode}
+                      className="h-7 px-2 text-[11px] gap-1 border-brand-purple/40 text-brand-purple hover:bg-brand-purple/5 hover:text-brand-purple"
+                      title={t('hakimGenerate')}
+                      data-testid="generate-subject-code-btn"
+                    >
+                      {generatingCode
+                        ? <Loader2 className="w-3 h-3 animate-spin" strokeWidth={1.5} aria-hidden="true" />
+                        : <Sparkles className="w-3 h-3" strokeWidth={1.5} aria-hidden="true" />}
+                      {t('hakimGenerate')}
+                    </Button>
+                  </div>
                   <Input
                     value={newSubject.code}
                     onChange={(e) => setNewSubject({ ...newSubject, code: e.target.value.toUpperCase() })}

@@ -133,6 +133,11 @@ RATE_LIMITS = {
     # while still bounding the blast radius of a single abusive account.
     # This mirrors the `/api/parent-portal/child/` limit applied in #438.
     "/api/hakim/chat": {"max": 20, "window": 60},
+    # SECURITY (task #891): the subject-code suggestion endpoint may issue a
+    # live LLM call per request. Per-IP outer cap so a single principal /
+    # admin account cannot script a tight loop and burn shared model quota.
+    # The deterministic fallback keeps the endpoint usable when AI is off.
+    "/api/subjects/hakim-code": {"max": 20, "window": 60},
     # SECURITY (task #483): per-IP outer caps on the auth hot path.
     # - /api/auth/refresh: bounds refresh-token rotation / family-revocation
     #   probing from an attacker holding a stolen refresh token. 30/60s
