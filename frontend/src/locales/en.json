@@ -2461,6 +2461,7 @@
   "subjectCodeNeedsNameFirst": "Enter the subject name first, then click \"Generate with Hakim\"",
   "subjectCodeGenerated": "Hakim suggested a subject code — feel free to edit it",
   "subjectCodeGenerateFailed": "Couldn't suggest a subject code, please try again or enter one manually",
+  "subjectCodeDuplicateWarning": "This code is already used by another subject ({name}). You can still save, but a unique code is recommended.",
   "portfolioTitleEn": "Title (English)",
   "portfolioTrainingCertificate": "Training Certificate",
   "portfolioTypesCount": "Evidence Types",

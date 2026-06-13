@@ -23,6 +23,7 @@ import {
   ChevronUp,
   Undo2,
   Sparkles,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -399,6 +400,21 @@ export function SubjectsManager({ embedded = false }) {
     return colors[category] || 'bg-gray-100 text-gray-700';
   };
 
+  // Advisory-only duplicate-code detection for the Add Subject modal.
+  // The backend intentionally has no uniqueness constraint on Subject.code
+  // (task #891), so this is a soft warning: it flags when the manually
+  // entered code matches another *active* subject's code in the same
+  // school, but never blocks creation. School scope follows the form's
+  // selected school (the tenant in embedded mode).
+  const normalizedNewCode = (newSubject.code || '').trim().toUpperCase();
+  const duplicateCodeSubject = normalizedNewCode
+    ? subjects.find((s) =>
+        !isDeleted(s) &&
+        s.school_id === newSubject.school_id &&
+        (s.code || '').trim().toUpperCase() === normalizedNewCode
+      )
+    : null;
+
   // School column shows in the main table only outside embedded mode.
   const showSchoolColumn = !embedded;
   // Deleted-section school column: outside embedded mode AND for
@@ -528,6 +544,19 @@ export function SubjectsManager({ embedded = false }) {
                     className="rounded-xl font-mono"
                     data-testid="subject-code-input"
                   />
+                  {duplicateCodeSubject && (
+                    <p
+                      className="flex items-start gap-1.5 text-xs text-amber-600 font-tajawal"
+                      data-testid="subject-code-duplicate-warning"
+                    >
+                      <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+                      <span>
+                        {t('subjectCodeDuplicateWarning', {
+                          name: duplicateCodeSubject.name || duplicateCodeSubject.name_en || duplicateCodeSubject.code,
+                        })}
+                      </span>
+                    </p>
+                  )}
                 </div>
                 {!embedded && (
                   <div className="space-y-2">

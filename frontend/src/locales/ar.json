@@ -2463,6 +2463,7 @@
   "subjectCodeNeedsNameFirst": "اكتب اسم المادة أولاً ثم اضغط \"إنشاء بواسطة حكيم\"",
   "subjectCodeGenerated": "اقترح حكيم رمزاً للمادة — يمكنك تعديله",
   "subjectCodeGenerateFailed": "تعذّر اقتراح رمز المادة، حاول لاحقاً أو أدخله يدوياً",
+  "subjectCodeDuplicateWarning": "هذا الرمز مستخدم بالفعل في مادة أخرى ({name}). يمكنك الحفظ، لكن يُفضَّل استخدام رمز فريد.",
   "portfolioTitleEn": "العنوان بالإنجليزية",
   "portfolioTrainingCertificate": "شهادة تدريب",
   "portfolioTypesCount": "أنواع الشواهد",
