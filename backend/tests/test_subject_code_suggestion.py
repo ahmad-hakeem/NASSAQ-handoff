@@ -232,6 +232,87 @@ async def test_hakim_code_uses_good_llm_prefix_over_fallback(client, tenant_a, m
 
 
 @pytest.mark.asyncio
+async def test_hakim_code_junk_llm_prefix_still_returns_clean_code(client, tenant_a, monkeypatch):
+    """A misbehaving model that returns junk text must not break the endpoint.
+
+    The autouse ``_stub_llm`` is re-patched so ``hakim_generate`` returns a
+    *junk* prefix ("b!i@o#123") with ``success: True``. The server treats the
+    LLM output purely as a candidate prefix: it strips the non-letter noise
+    ("!@#" and the digits) down to "BIO" and builds BIO101. The endpoint stays
+    200 and returns a clean code — no crash, no leaked junk."""
+    async def _fake_generate(*_a, **_k):
+        return {"success": True, "text": "b!i@o#123"}
+
+    monkeypatch.setattr(
+        "services.hakim_llm_service.hakim_generate", _fake_generate
+    )
+
+    headers = _headers(await _mk_user(UserRole.SCHOOL_PRINCIPAL, tenant_a))
+    resp = await client.post(
+        "/subjects/hakim-code",
+        headers=headers,
+        json={"name": "رياضيات", "name_en": "Mathematics"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True
+    # The junk is stripped to "BIO"; the English-name fallback (MATH) is not used.
+    assert body["code"] == "BIO101"
+
+
+@pytest.mark.asyncio
+async def test_hakim_code_unusable_llm_prefix_falls_back_to_english_name(client, tenant_a, monkeypatch):
+    """When the model returns an unusable prefix (only symbols), the sanitized
+    LLM prefix is too short to use, so the endpoint falls back to the English
+    name. ``hakim_generate`` returns "@@@" (no A-Z letters); the code is built
+    from name_en="Mathematics" → MATH101."""
+    async def _fake_generate(*_a, **_k):
+        return {"success": True, "text": "@@@"}
+
+    monkeypatch.setattr(
+        "services.hakim_llm_service.hakim_generate", _fake_generate
+    )
+
+    headers = _headers(await _mk_user(UserRole.SCHOOL_PRINCIPAL, tenant_a))
+    resp = await client.post(
+        "/subjects/hakim-code",
+        headers=headers,
+        json={"name": "رياضيات", "name_en": "Mathematics"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True
+    # "@@@" sanitizes to "" (unusable) → English-name fallback wins.
+    assert body["code"] == "MATH101"
+
+
+@pytest.mark.asyncio
+async def test_hakim_code_arabic_llm_prefix_falls_back_to_category(client, tenant_a, monkeypatch):
+    """An Arabic-only LLM prefix has no A-Z letters, so it sanitizes to nothing.
+    With no usable English name either, the endpoint falls back to the category
+    code. ``hakim_generate`` returns "رياضيات"; with name_en empty and
+    category="science" the code is built from the category → SCI101."""
+    async def _fake_generate(*_a, **_k):
+        return {"success": True, "text": "رياضيات"}
+
+    monkeypatch.setattr(
+        "services.hakim_llm_service.hakim_generate", _fake_generate
+    )
+
+    headers = _headers(await _mk_user(UserRole.SCHOOL_PRINCIPAL, tenant_a))
+    resp = await client.post(
+        "/subjects/hakim-code",
+        headers=headers,
+        json={"name": "رياضيات", "category": "science"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True
+    # Arabic prefix → "" (unusable), no English name → category fallback.
+    assert body["code"] == "SCI101"
+
+
+@pytest.mark.asyncio
 async def test_hakim_code_collision_set_is_school_scoped(client, tenant_a, tenant_b):
     """The collision set is read only within the caller's tenant. A foreign
     tenant's code must never bump the suggested number."""
