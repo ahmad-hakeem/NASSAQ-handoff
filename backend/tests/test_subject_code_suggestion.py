@@ -201,6 +201,37 @@ async def test_hakim_code_name_required_envelope(client, tenant_a):
 
 
 @pytest.mark.asyncio
+async def test_hakim_code_uses_good_llm_prefix_over_fallback(client, tenant_a, monkeypatch):
+    """A clean LLM prefix is sanitized and used to build the code, winning over
+    the deterministic English-name fallback.
+
+    The autouse ``_stub_llm`` forces the no-prefix path; this test re-patches
+    ``hakim_generate`` to return a usable prefix ("bio") and supplies an
+    English name whose fallback would be MATH101. The returned code must begin
+    with BIO (e.g. BIO101), proving the AI output — not the English name — is
+    what built the code."""
+    async def _fake_generate(*_a, **_k):
+        return {"success": True, "text": "bio"}
+
+    monkeypatch.setattr(
+        "services.hakim_llm_service.hakim_generate", _fake_generate
+    )
+
+    headers = _headers(await _mk_user(UserRole.SCHOOL_PRINCIPAL, tenant_a))
+    resp = await client.post(
+        "/subjects/hakim-code",
+        headers=headers,
+        json={"name": "رياضيات", "name_en": "Mathematics"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True
+    # The LLM prefix "bio" wins over the English-name fallback (MATH101).
+    assert body["code"].startswith("BIO")
+    assert body["code"] == "BIO101"
+
+
+@pytest.mark.asyncio
 async def test_hakim_code_collision_set_is_school_scoped(client, tenant_a, tenant_b):
     """The collision set is read only within the caller's tenant. A foreign
     tenant's code must never bump the suggested number."""
