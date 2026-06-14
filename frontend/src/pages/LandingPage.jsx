@@ -482,6 +482,7 @@ export const LandingPage = () => {
       body: t('landingInsightFeature1Body'),
       detail: t('landingInsightFeature1Detail'),
       hakimSays: t('landingInsightFeature1Hakim'),
+      pose: '/hakim-poses/giving-instructions.png',
     },
     {
       icon: TrendingDown,
@@ -489,6 +490,7 @@ export const LandingPage = () => {
       body: t('landingInsightFeature2Body'),
       detail: t('landingInsightFeature2Detail'),
       hakimSays: t('landingInsightFeature2Hakim'),
+      pose: '/hakim-poses/ai-thinking.png',
     },
     {
       icon: Bell,
@@ -496,6 +498,7 @@ export const LandingPage = () => {
       body: t('landingInsightFeature3Body'),
       detail: t('landingInsightFeature3Detail'),
       hakimSays: t('landingInsightFeature3Hakim'),
+      pose: '/hakim-poses/attention-gesture.png',
     },
     {
       icon: Activity,
@@ -503,6 +506,7 @@ export const LandingPage = () => {
       body: t('landingInsightFeature4Body'),
       detail: t('landingInsightFeature4Detail'),
       hakimSays: t('landingInsightFeature4Hakim'),
+      pose: '/hakim-poses/motivating.png',
     },
   ];
 
@@ -954,9 +958,9 @@ export const LandingPage = () => {
             <div className="absolute top-0 end-0 w-48 h-48 bg-gradient-to-bl from-brand-turquoise/5 to-transparent rounded-bl-full" aria-hidden="true" />
             <div className="absolute bottom-0 start-0 w-36 h-36 bg-gradient-to-tr from-brand-purple/[0.04] to-transparent rounded-tr-full" aria-hidden="true" />
 
-            <div className="relative z-10 grid lg:grid-cols-2 gap-8 lg:gap-12 lg:items-center">
-              {/* LEFT: active feature narrative */}
-              <div className="flex flex-col">
+            <div className="relative z-10 grid lg:grid-cols-2 gap-8 lg:gap-12 lg:items-stretch">
+              {/* LEFT: active feature narrative + Hakeem helper */}
+              <div className="flex flex-col h-full">
                 <div className="flex items-center gap-4 mb-5">
                   <div className="flex-shrink-0 w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-turquoise to-cyan-500 flex items-center justify-center shadow-xl shadow-brand-turquoise/25">
                     {(() => { const Icon = insightFeatures[activeInsightFeature].icon; return <Icon className="h-7 w-7 text-white" strokeWidth={1.5} aria-hidden="true" />; })()}
@@ -982,6 +986,24 @@ export const LandingPage = () => {
                     <span className="font-cairo font-bold text-brand-purple">{t('landingInsightHakimLabel')} </span>
                     {insightFeatures[activeInsightFeature].hakimSays}
                   </p>
+                </div>
+
+                {/* Hakeem helper visual — pose derives from the active card (same state source) */}
+                <div className="relative mt-6 flex-1 min-h-[240px] rounded-2xl bg-gradient-to-br from-brand-turquoise/5 via-transparent to-brand-purple/5 border border-slate-200/60 dark:border-white/10 overflow-hidden">
+                  <div className="absolute top-6 -end-8 w-32 h-32 rounded-full bg-brand-turquoise/15 blur-3xl" aria-hidden="true" />
+                  <div className="absolute bottom-6 -start-8 w-28 h-28 rounded-full bg-brand-purple/15 blur-3xl" aria-hidden="true" />
+                  <div className="absolute top-3 start-3 z-20 inline-flex items-center gap-1.5 bg-gradient-to-r from-brand-purple to-violet-600 text-white text-[11px] font-cairo font-bold px-2.5 py-1 rounded-full shadow-md">
+                    <Brain className="h-3 w-3 text-white" strokeWidth={1.5} aria-hidden="true" />
+                    {t('hakim')}
+                  </div>
+                  <div className="relative z-10 flex h-full items-end justify-center px-4 pt-12">
+                    <img
+                      key={activeInsightFeature}
+                      src={insightFeatures[activeInsightFeature].pose}
+                      alt={t('hakim')}
+                      className="hakim-img w-auto max-w-[78%] max-h-[300px] object-contain object-bottom animate-fade-in drop-shadow-2xl"
+                    />
+                  </div>
                 </div>
               </div>
 
