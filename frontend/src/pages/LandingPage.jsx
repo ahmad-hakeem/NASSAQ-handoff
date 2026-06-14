@@ -33,6 +33,8 @@ import {
   Shield,
   ArrowRight,
   Globe,
+  TrendingDown,
+  AlertTriangle,
 } from 'lucide-react';
 
 const LOGO_WHITE = '/nassaq-logo-white.png';
@@ -293,6 +295,7 @@ export const LandingPage = () => {
   const [journeyRef, journeyVisible] = useScrollReveal();
   const [aiRef, aiVisible] = useScrollReveal();
   const [ecoRef, ecoVisible] = useScrollReveal();
+  const [insightRef, insightVisible] = useScrollReveal();
 
   useEffect(() => {
     // Landing page is unauthenticated. The full /public/stats payload is
@@ -826,6 +829,144 @@ export const LandingPage = () => {
                 </p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ========== DAILY INSIGHT — Hakim command-center showcase (mock/static) ========== */}
+      <section
+        ref={insightRef}
+        id="insight"
+        className="relative bg-slate-50 dark:bg-slate-900 py-20 lg:py-28 overflow-hidden scroll-mt-24"
+        data-testid="insight-section"
+      >
+        {/* faint pattern + soft brand orbs — subtle AI/Hakim ambient */}
+        <div
+          className="absolute inset-0 opacity-[0.02]"
+          style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center center' }}
+          aria-hidden="true"
+        />
+        <div className="absolute top-0 end-0 w-[420px] h-[420px] rounded-full bg-brand-purple/5 blur-[120px]" aria-hidden="true" />
+        <div className="absolute bottom-0 start-0 w-[360px] h-[360px] rounded-full bg-brand-turquoise/5 blur-[100px]" aria-hidden="true" />
+
+        <div className={`relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 transition-all duration-1000 ${insightVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}>
+          <div className="grid lg:grid-cols-2 gap-10 lg:gap-14 lg:items-center">
+
+            {/* ---- Narrative + feature cards ---- */}
+            <div>
+              <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-purple/15 to-brand-turquoise/10 border border-brand-purple/25 rounded-full ps-2 pe-4 py-1.5 mb-5 backdrop-blur-sm">
+                <Brain className="h-4 w-4 text-brand-purple" strokeWidth={1.5} aria-hidden="true" />
+                <span className="font-tajawal text-sm text-brand-purple">{t('landingInsightEyebrow')}</span>
+              </div>
+              <h2 className="font-cairo font-bold text-brand-navy dark:text-white text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
+                {t('landingInsightHeadingLead')}
+                <span className="text-brand-purple">{t('landingInsightHeadingAccent')}</span>
+              </h2>
+              <p className="font-tajawal text-base text-slate-600 dark:text-slate-300 leading-relaxed mb-8 max-w-xl">
+                {t('landingInsightSubheading')}
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[
+                  { icon: ClipboardCheck, title: t('landingInsightFeature1Title'), body: t('landingInsightFeature1Body') },
+                  { icon: TrendingDown, title: t('landingInsightFeature2Title'), body: t('landingInsightFeature2Body') },
+                  { icon: Bell, title: t('landingInsightFeature3Title'), body: t('landingInsightFeature3Body') },
+                  { icon: Activity, title: t('landingInsightFeature4Title'), body: t('landingInsightFeature4Body') },
+                ].map((f, i) => (
+                  <div
+                    key={i}
+                    className="group bg-white dark:bg-slate-800/60 border border-slate-200/70 dark:border-white/10 rounded-2xl p-5 transition-all duration-300 hover:border-brand-turquoise/40 hover:shadow-lg hover:-translate-y-1 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+                  >
+                    <div className="w-11 h-11 rounded-xl bg-brand-turquoise/10 flex items-center justify-center mb-3 transition-transform group-hover:scale-110">
+                      <f.icon className="h-5 w-5 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+                    </div>
+                    <h3 className="font-cairo font-bold text-brand-navy dark:text-white text-base mb-1.5 leading-snug">{f.title}</h3>
+                    <p className="font-tajawal text-sm text-slate-500 dark:text-slate-400 leading-relaxed">{f.body}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ---- Branded mock dashboard panel (static) ---- */}
+            <div className="relative">
+              <div className="absolute -inset-4 bg-gradient-to-br from-brand-purple/10 via-transparent to-brand-turquoise/10 rounded-[2rem] blur-2xl" aria-hidden="true" />
+              <div className="relative bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-white/10 shadow-2xl shadow-brand-navy/10 p-5 sm:p-6">
+                {/* header */}
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="flex gap-1.5 flex-shrink-0" aria-hidden="true">
+                      <span className="w-2.5 h-2.5 rounded-full bg-slate-200 dark:bg-white/15" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-slate-200 dark:bg-white/15" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-slate-200 dark:bg-white/15" />
+                    </span>
+                    <span className="font-cairo font-bold text-sm text-brand-navy dark:text-white truncate">{t('landingInsightPanelTitle')}</span>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-full ps-2 pe-2.5 py-0.5 flex-shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
+                    <span className="font-tajawal text-xs font-medium">{t('landingInsightPanelStatus')}</span>
+                  </span>
+                </div>
+
+                {/* stat cards */}
+                <div className="grid grid-cols-2 gap-3 mb-5">
+                  {[
+                    { icon: Bell, value: '2K+', label: t('landingInsightStat1Label'), wrap: 'border-brand-turquoise/20 bg-brand-turquoise/[0.06]', iconCls: 'text-brand-turquoise bg-brand-turquoise/10' },
+                    { icon: TrendingUp, value: '3', label: t('landingInsightStat2Label'), wrap: 'border-emerald-200 dark:border-emerald-500/20 bg-emerald-50/60 dark:bg-emerald-500/[0.06]', iconCls: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10' },
+                    { icon: Target, value: '7', label: t('landingInsightStat3Label'), wrap: 'border-brand-purple/20 bg-brand-purple/[0.06]', iconCls: 'text-brand-purple bg-brand-purple/10' },
+                    { icon: AlertTriangle, value: '4', label: t('landingInsightStat4Label'), wrap: 'border-amber-200 dark:border-amber-500/20 bg-amber-50/60 dark:bg-amber-500/[0.06]', iconCls: 'text-amber-600 dark:text-amber-400 bg-amber-500/10' },
+                  ].map((s, i) => (
+                    <div key={i} className={`rounded-xl border p-3 ${s.wrap}`}>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-2 ${s.iconCls}`}>
+                        <s.icon className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+                      </div>
+                      <div className="font-cairo font-black text-xl text-brand-navy dark:text-white leading-none">{s.value}</div>
+                      <div className="font-tajawal text-xs text-slate-500 dark:text-slate-400 mt-1">{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* intervention list */}
+                <div className="rounded-2xl border border-slate-200 dark:border-white/10 p-4 mb-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <ClipboardCheck className="h-4 w-4 text-brand-purple" strokeWidth={1.5} aria-hidden="true" />
+                    <span className="font-cairo font-bold text-sm text-brand-navy dark:text-white">{t('landingInsightListTitle')}</span>
+                  </div>
+                  <div className="space-y-2.5">
+                    {[
+                      { name: t('landingInsightCase1Name'), score: '94', level: t('landingInsightLevelHigh'), high: true, trend: '18%' },
+                      { name: t('landingInsightCase2Name'), score: '78', level: t('landingInsightLevelMedium'), high: false, trend: '11%' },
+                      { name: t('landingInsightCase3Name'), score: '71', level: t('landingInsightLevelMedium'), high: false, trend: '7%' },
+                    ].map((r, i) => (
+                      <div key={i} className="flex items-center justify-between gap-3 bg-slate-50 dark:bg-white/[0.03] rounded-xl px-3 py-2.5">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-brand-navy/5 dark:bg-white/10 flex items-center justify-center font-cairo font-bold text-xs text-brand-navy dark:text-white">{r.score}</span>
+                          <span className="font-tajawal text-sm text-brand-navy dark:text-white truncate">{r.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className={`font-tajawal text-[11px] font-medium rounded-full px-2 py-0.5 ${r.high ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400' : 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400'}`}>{r.level}</span>
+                          <span className="inline-flex items-center gap-1 text-rose-500 dark:text-rose-400">
+                            <TrendingDown className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+                            <span className="font-cairo text-xs font-bold">{r.trend}</span>
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* hakim callout */}
+                <div className="flex items-start gap-2.5 bg-gradient-to-r from-brand-purple/10 to-brand-turquoise/10 border border-brand-purple/20 rounded-xl p-3">
+                  <span className="flex-shrink-0 w-7 h-7 rounded-lg bg-gradient-to-br from-brand-purple to-violet-600 flex items-center justify-center">
+                    <Brain className="h-4 w-4 text-white" strokeWidth={1.5} aria-hidden="true" />
+                  </span>
+                  <p className="font-tajawal text-xs sm:text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
+                    <span className="font-cairo font-bold text-brand-purple">{t('landingInsightHakimLabel')} </span>
+                    {t('landingInsightHakimAlert')}
+                  </p>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
       </section>
