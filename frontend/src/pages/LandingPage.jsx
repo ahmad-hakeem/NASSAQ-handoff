@@ -296,6 +296,8 @@ export const LandingPage = () => {
   const [aiRef, aiVisible] = useScrollReveal();
   const [ecoRef, ecoVisible] = useScrollReveal();
   const [insightRef, insightVisible] = useScrollReveal();
+  const [activeInsightFeature, setActiveInsightFeature] = useState(0);
+  const [insightPaused, setInsightPaused] = useState(false);
 
   useEffect(() => {
     // Landing page is unauthenticated. The full /public/stats payload is
@@ -363,6 +365,14 @@ export const LandingPage = () => {
     }, 3500);
     return () => clearInterval(interval);
   }, [ecosystemPaused]);
+
+  useEffect(() => {
+    if (insightPaused) return;
+    const interval = setInterval(() => {
+      setActiveInsightFeature((prev) => (prev + 1) % insightFeatures.length);
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [insightPaused]);
 
   const journeySteps = [
     {
@@ -462,6 +472,37 @@ export const LandingPage = () => {
       hakimSays: t('landingEcoRole4HakimSays'),
       icon: Users,
       gradient: 'from-amber-500 to-orange-600',
+    },
+  ];
+
+  const insightFeatures = [
+    {
+      icon: ClipboardCheck,
+      title: t('landingInsightFeature1Title'),
+      body: t('landingInsightFeature1Body'),
+      detail: t('landingInsightFeature1Detail'),
+      hakimSays: t('landingInsightFeature1Hakim'),
+    },
+    {
+      icon: TrendingDown,
+      title: t('landingInsightFeature2Title'),
+      body: t('landingInsightFeature2Body'),
+      detail: t('landingInsightFeature2Detail'),
+      hakimSays: t('landingInsightFeature2Hakim'),
+    },
+    {
+      icon: Bell,
+      title: t('landingInsightFeature3Title'),
+      body: t('landingInsightFeature3Body'),
+      detail: t('landingInsightFeature3Detail'),
+      hakimSays: t('landingInsightFeature3Hakim'),
+    },
+    {
+      icon: Activity,
+      title: t('landingInsightFeature4Title'),
+      body: t('landingInsightFeature4Body'),
+      detail: t('landingInsightFeature4Detail'),
+      hakimSays: t('landingInsightFeature4Hakim'),
     },
   ];
 
@@ -850,124 +891,170 @@ export const LandingPage = () => {
         <div className="absolute bottom-0 start-0 w-[360px] h-[360px] rounded-full bg-brand-turquoise/5 blur-[100px]" aria-hidden="true" />
 
         <div className={`relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 transition-all duration-1000 ${insightVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}>
-          <div className="grid lg:grid-cols-2 gap-10 lg:gap-14 lg:items-center">
-
-            {/* ---- Narrative + feature cards ---- */}
-            <div>
-              <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-purple/15 to-brand-turquoise/10 border border-brand-purple/25 rounded-full ps-2 pe-4 py-1.5 mb-5 backdrop-blur-sm">
-                <Brain className="h-4 w-4 text-brand-purple" strokeWidth={1.5} aria-hidden="true" />
-                <span className="font-tajawal text-sm text-brand-purple">{t('landingInsightEyebrow')}</span>
-              </div>
-              <h2 className="font-cairo font-bold text-brand-navy dark:text-white text-3xl sm:text-4xl lg:text-5xl leading-tight mb-4">
-                {t('landingInsightHeadingLead')}
-                <span className="text-brand-purple">{t('landingInsightHeadingAccent')}</span>
-              </h2>
-              <p className="font-tajawal text-base text-slate-600 dark:text-slate-300 leading-relaxed mb-8 max-w-xl">
-                {t('landingInsightSubheading')}
-              </p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {[
-                  { icon: ClipboardCheck, title: t('landingInsightFeature1Title'), body: t('landingInsightFeature1Body') },
-                  { icon: TrendingDown, title: t('landingInsightFeature2Title'), body: t('landingInsightFeature2Body') },
-                  { icon: Bell, title: t('landingInsightFeature3Title'), body: t('landingInsightFeature3Body') },
-                  { icon: Activity, title: t('landingInsightFeature4Title'), body: t('landingInsightFeature4Body') },
-                ].map((f, i) => (
-                  <div
-                    key={i}
-                    className="group bg-white dark:bg-slate-800/60 border border-slate-200/70 dark:border-white/10 rounded-2xl p-5 transition-all duration-300 hover:border-brand-turquoise/40 hover:shadow-lg hover:-translate-y-1 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
-                  >
-                    <div className="w-11 h-11 rounded-2xl bg-brand-turquoise/10 flex items-center justify-center mb-3 transition-transform group-hover:scale-110">
-                      <f.icon className="h-5 w-5 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
-                    </div>
-                    <h3 className="font-cairo font-bold text-brand-navy dark:text-white text-base mb-1.5 leading-snug">{f.title}</h3>
-                    <p className="font-tajawal text-sm text-slate-500 dark:text-slate-400 leading-relaxed">{f.body}</p>
-                  </div>
-                ))}
-              </div>
+          {/* ---- Centered header ---- */}
+          <div className="text-center mb-12 lg:mb-16">
+            <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-purple/15 to-brand-purple/5 border border-brand-purple/25 rounded-full px-5 py-2.5 mb-6 backdrop-blur-sm">
+              <Brain className="h-4 w-4 text-brand-purple" strokeWidth={1.5} aria-hidden="true" />
+              <span className="font-tajawal text-sm font-medium text-brand-purple">{t('landingInsightEyebrow')}</span>
             </div>
+            <h2 className="font-cairo text-3xl md:text-5xl lg:text-[3.5rem] font-black text-brand-navy dark:text-white mb-5 leading-tight">
+              {t('landingInsightHeadingLead')}
+              <span className="text-brand-purple">{t('landingInsightHeadingAccent')}</span>
+            </h2>
+            <p className="font-tajawal text-lg md:text-xl text-slate-600 dark:text-slate-300 leading-relaxed max-w-2xl mx-auto">
+              {t('landingInsightSubheading')}
+            </p>
+          </div>
 
-            {/* ---- Branded mock dashboard panel (static) ---- */}
-            <div className="relative">
-              <div className="absolute -inset-4 bg-gradient-to-br from-brand-purple/10 via-transparent to-brand-turquoise/10 rounded-[2rem] blur-2xl" aria-hidden="true" />
-              <div className="relative bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-white/10 shadow-2xl shadow-brand-navy/10 p-5 sm:p-6">
-                {/* header */}
-                <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="flex gap-1.5 flex-shrink-0" aria-hidden="true">
-                      <span className="w-2.5 h-2.5 rounded-full bg-slate-200 dark:bg-white/15" />
-                      <span className="w-2.5 h-2.5 rounded-full bg-slate-200 dark:bg-white/15" />
-                      <span className="w-2.5 h-2.5 rounded-full bg-slate-200 dark:bg-white/15" />
-                    </span>
-                    <span className="font-cairo font-bold text-sm text-brand-navy dark:text-white truncate">{t('landingInsightPanelTitle')}</span>
-                  </div>
-                  <span className="inline-flex items-center gap-1.5 bg-brand-turquoise/10 text-brand-turquoise border border-brand-turquoise/20 rounded-full ps-2 pe-2.5 py-0.5 flex-shrink-0">
+          {/* ---- Selectable feature cards ---- */}
+          <div
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-8 lg:mb-10"
+            onMouseEnter={() => setInsightPaused(true)}
+            onMouseLeave={() => setInsightPaused(false)}
+            onFocusCapture={() => setInsightPaused(true)}
+            onBlurCapture={() => setInsightPaused(false)}
+          >
+            {insightFeatures.map((f, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setActiveInsightFeature(i)}
+                aria-pressed={activeInsightFeature === i}
+                className={`text-start rounded-2xl p-5 md:p-6 border-2 transition-all duration-500 group ${
+                  activeInsightFeature === i
+                    ? 'bg-gradient-to-br from-brand-turquoise/10 to-brand-turquoise/[0.03] border-brand-turquoise shadow-xl shadow-brand-turquoise/25 scale-[1.03]'
+                    : 'bg-white/80 dark:bg-slate-800/60 border-slate-200/60 dark:border-white/10 opacity-70 hover:opacity-100 hover:border-brand-turquoise/30 hover:shadow-md'
+                }`}
+              >
+                <div className={`w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center mb-3 md:mb-4 transition-all duration-300 ${
+                  activeInsightFeature === i
+                    ? 'bg-gradient-to-br from-brand-turquoise to-cyan-500 shadow-xl shadow-brand-turquoise/25 scale-110'
+                    : 'bg-brand-turquoise/10 group-hover:bg-brand-turquoise/15 group-hover:scale-105'
+                }`}>
+                  <f.icon className={`h-6 w-6 md:h-7 md:w-7 ${activeInsightFeature === i ? 'text-white' : 'text-brand-turquoise'}`} strokeWidth={1.5} aria-hidden="true" />
+                </div>
+                <h3 className="font-cairo font-bold text-base md:text-lg text-brand-navy dark:text-white mb-1 leading-snug">{f.title}</h3>
+                <p className="font-tajawal text-xs text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2">{f.body}</p>
+                {activeInsightFeature === i && (
+                  <div className="mt-2.5 flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-brand-turquoise animate-pulse" aria-hidden="true" />
-                    <span className="font-tajawal text-xs font-medium">{t('landingInsightPanelStatus')}</span>
-                  </span>
-                </div>
-
-                {/* stat cards */}
-                <div className="grid grid-cols-2 gap-3 mb-5">
-                  {[
-                    { icon: Bell, value: '2K+', label: t('landingInsightStat1Label') },
-                    { icon: TrendingUp, value: '3', label: t('landingInsightStat2Label') },
-                    { icon: Target, value: '7', label: t('landingInsightStat3Label') },
-                    { icon: AlertTriangle, value: '4', label: t('landingInsightStat4Label'), alert: true },
-                  ].map((s, i) => (
-                    <div key={i} className={`rounded-xl border p-3 ${s.alert ? 'border-amber-200 dark:border-amber-500/20 bg-amber-50/60 dark:bg-amber-500/[0.06]' : 'border-slate-200/70 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.03]'}`}>
-                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-2 ${s.alert ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10' : 'text-brand-turquoise bg-brand-turquoise/10'}`}>
-                        <s.icon className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
-                      </div>
-                      <div className="font-cairo font-black text-xl text-brand-navy dark:text-white leading-none">{s.value}</div>
-                      <div className="font-tajawal text-xs text-slate-500 dark:text-slate-400 mt-1">{s.label}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* intervention list */}
-                <div className="rounded-2xl border border-slate-200 dark:border-white/10 p-4 mb-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <ClipboardCheck className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
-                    <span className="font-cairo font-bold text-sm text-brand-navy dark:text-white">{t('landingInsightListTitle')}</span>
+                    <span className="font-tajawal text-[10px] font-medium text-brand-turquoise">{t('active')}</span>
                   </div>
-                  <div className="space-y-2.5">
-                    {[
-                      { name: t('landingInsightCase1Name'), score: '94', level: t('landingInsightLevelHigh'), high: true, trend: '18%' },
-                      { name: t('landingInsightCase2Name'), score: '78', level: t('landingInsightLevelMedium'), high: false, trend: '11%' },
-                      { name: t('landingInsightCase3Name'), score: '71', level: t('landingInsightLevelMedium'), high: false, trend: '7%' },
-                    ].map((r, i) => (
-                      <div key={i} className="flex items-center justify-between gap-3 bg-slate-50 dark:bg-white/[0.03] rounded-xl px-3 py-2.5">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-brand-navy/5 dark:bg-white/10 flex items-center justify-center font-cairo font-bold text-xs text-brand-navy dark:text-white">{r.score}</span>
-                          <span className="font-tajawal text-sm text-brand-navy dark:text-white truncate">{r.name}</span>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className={`font-tajawal text-[11px] font-medium rounded-full px-2 py-0.5 ${r.high ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400' : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-400'}`}>{r.level}</span>
-                          <span className="inline-flex items-center gap-1 text-slate-400 dark:text-slate-500">
-                            <TrendingDown className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
-                            <span className="font-cairo text-xs font-bold">{r.trend}</span>
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* ---- Featured detail card (text + branded mock dashboard) ---- */}
+          <Card
+            className="relative overflow-hidden border border-slate-200/60 dark:border-white/10 bg-white/80 dark:bg-slate-800/60 backdrop-blur-sm p-6 sm:p-7 md:p-8 transition-all duration-500 hover:border-brand-turquoise/20 hover:shadow-xl"
+            onMouseEnter={() => setInsightPaused(true)}
+            onMouseLeave={() => setInsightPaused(false)}
+          >
+            <div className="absolute top-0 end-0 w-48 h-48 bg-gradient-to-bl from-brand-turquoise/5 to-transparent rounded-bl-full" aria-hidden="true" />
+            <div className="absolute bottom-0 start-0 w-36 h-36 bg-gradient-to-tr from-brand-purple/[0.04] to-transparent rounded-tr-full" aria-hidden="true" />
+
+            <div className="relative z-10 grid lg:grid-cols-2 gap-8 lg:gap-12 lg:items-center">
+              {/* LEFT: active feature narrative */}
+              <div className="flex flex-col">
+                <div className="flex items-center gap-4 mb-5">
+                  <div className="flex-shrink-0 w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-turquoise to-cyan-500 flex items-center justify-center shadow-xl shadow-brand-turquoise/25">
+                    {(() => { const Icon = insightFeatures[activeInsightFeature].icon; return <Icon className="h-7 w-7 text-white" strokeWidth={1.5} aria-hidden="true" />; })()}
+                  </div>
+                  <div className="min-w-0">
+                    <span className="font-cairo text-xs font-bold text-brand-turquoise">{t('landingInsightEyebrow')}</span>
+                    <h3 className="font-cairo text-xl md:text-2xl font-bold text-brand-navy dark:text-white leading-snug">
+                      {insightFeatures[activeInsightFeature].title}
+                    </h3>
                   </div>
                 </div>
 
-                {/* hakim callout */}
-                <div className="flex items-start gap-2.5 bg-gradient-to-r from-brand-purple/10 to-brand-turquoise/10 border border-brand-purple/20 rounded-xl p-3">
-                  <span className="flex-shrink-0 w-7 h-7 rounded-lg bg-gradient-to-br from-brand-purple to-violet-600 flex items-center justify-center">
+                <p className="font-tajawal text-[15px] text-slate-600 dark:text-slate-300 leading-relaxed mb-6">
+                  {insightFeatures[activeInsightFeature].detail}
+                </p>
+
+                {/* hakim callout (changes per feature) */}
+                <div className="flex items-start gap-2.5 bg-gradient-to-r from-brand-purple/10 to-brand-turquoise/10 border border-brand-purple/20 rounded-xl p-3.5">
+                  <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-brand-purple to-violet-600 flex items-center justify-center">
                     <Brain className="h-4 w-4 text-white" strokeWidth={1.5} aria-hidden="true" />
                   </span>
                   <p className="font-tajawal text-xs sm:text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
                     <span className="font-cairo font-bold text-brand-purple">{t('landingInsightHakimLabel')} </span>
-                    {t('landingInsightHakimAlert')}
+                    {insightFeatures[activeInsightFeature].hakimSays}
                   </p>
                 </div>
               </div>
-            </div>
 
-          </div>
+              {/* RIGHT: branded mock dashboard panel (static) */}
+              <div className="relative">
+                <div className="absolute -inset-4 bg-gradient-to-br from-brand-purple/10 via-transparent to-brand-turquoise/10 rounded-[2rem] blur-2xl" aria-hidden="true" />
+                <div className="relative bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-white/10 shadow-2xl shadow-brand-navy/10 p-5 sm:p-6">
+                  {/* header */}
+                  <div className="flex items-center justify-between mb-5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="flex gap-1.5 flex-shrink-0" aria-hidden="true">
+                        <span className="w-2.5 h-2.5 rounded-full bg-slate-200 dark:bg-white/15" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-slate-200 dark:bg-white/15" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-slate-200 dark:bg-white/15" />
+                      </span>
+                      <span className="font-cairo font-bold text-sm text-brand-navy dark:text-white truncate">{t('landingInsightPanelTitle')}</span>
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 bg-brand-turquoise/10 text-brand-turquoise border border-brand-turquoise/20 rounded-full ps-2 pe-2.5 py-0.5 flex-shrink-0">
+                      <span className="w-1.5 h-1.5 rounded-full bg-brand-turquoise animate-pulse" aria-hidden="true" />
+                      <span className="font-tajawal text-xs font-medium">{t('landingInsightPanelStatus')}</span>
+                    </span>
+                  </div>
+
+                  {/* stat cards */}
+                  <div className="grid grid-cols-2 gap-3 mb-5">
+                    {[
+                      { icon: Bell, value: '2K+', label: t('landingInsightStat1Label') },
+                      { icon: TrendingUp, value: '3', label: t('landingInsightStat2Label') },
+                      { icon: Target, value: '7', label: t('landingInsightStat3Label') },
+                      { icon: AlertTriangle, value: '4', label: t('landingInsightStat4Label'), alert: true },
+                    ].map((s, i) => (
+                      <div key={i} className={`rounded-xl border p-3 ${s.alert ? 'border-amber-200 dark:border-amber-500/20 bg-amber-50/60 dark:bg-amber-500/[0.06]' : 'border-slate-200/70 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.03]'}`}>
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-2 ${s.alert ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10' : 'text-brand-turquoise bg-brand-turquoise/10'}`}>
+                          <s.icon className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+                        </div>
+                        <div className="font-cairo font-black text-xl text-brand-navy dark:text-white leading-none">{s.value}</div>
+                        <div className="font-tajawal text-xs text-slate-500 dark:text-slate-400 mt-1">{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* intervention list */}
+                  <div className="rounded-2xl border border-slate-200 dark:border-white/10 p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <ClipboardCheck className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+                      <span className="font-cairo font-bold text-sm text-brand-navy dark:text-white">{t('landingInsightListTitle')}</span>
+                    </div>
+                    <div className="space-y-2.5">
+                      {[
+                        { name: t('landingInsightCase1Name'), score: '94', level: t('landingInsightLevelHigh'), high: true, trend: '18%' },
+                        { name: t('landingInsightCase2Name'), score: '78', level: t('landingInsightLevelMedium'), high: false, trend: '11%' },
+                        { name: t('landingInsightCase3Name'), score: '71', level: t('landingInsightLevelMedium'), high: false, trend: '7%' },
+                      ].map((r, i) => (
+                        <div key={i} className="flex items-center justify-between gap-3 bg-slate-50 dark:bg-white/[0.03] rounded-xl px-3 py-2.5">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-brand-navy/5 dark:bg-white/10 flex items-center justify-center font-cairo font-bold text-xs text-brand-navy dark:text-white">{r.score}</span>
+                            <span className="font-tajawal text-sm text-brand-navy dark:text-white truncate">{r.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className={`font-tajawal text-[11px] font-medium rounded-full px-2 py-0.5 ${r.high ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400' : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-400'}`}>{r.level}</span>
+                            <span className="inline-flex items-center gap-1 text-slate-400 dark:text-slate-500">
+                              <TrendingDown className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+                              <span className="font-cairo text-xs font-bold">{r.trend}</span>
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
         </div>
       </section>
 
