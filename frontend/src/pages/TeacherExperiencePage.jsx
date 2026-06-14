@@ -129,37 +129,53 @@ export const TeacherExperiencePage = () => {
             </div>
           </div>
 
-          {/* Visual: Hakim avatar flush on top of the teacher dashboard mockup
-              — mirrors the principal hero layout (LandingPage left panel). */}
-          <div className={`flex flex-col ${isRTL ? '' : 'order-1'}`}>
-            {/* Hakim avatar: anchored to the end (left in RTL); feet meet the
-                top edge of the mockup below, no vertical gap. */}
+          {/* Visual: two-layer scene — Hakeem transparent cutout peeking from
+              BEHIND the teacher dashboard window — mirrors the principal hero. */}
+          <div className={`flex flex-col justify-center ${isRTL ? '' : 'order-1'}`}>
             <div
-              className="pointer-events-none select-none self-end relative z-20
-                         w-28 h-28
-                         sm:w-32 sm:h-32
-                         lg:w-36 lg:h-36
-                         xl:w-40 xl:h-40"
-              aria-hidden="true"
+              className="relative ![direction:ltr] w-full max-w-[640px] mx-auto lg:mx-0 lg:max-w-none
+                         pt-8 lg:pt-10"
+              dir="ltr"
+              data-testid="teacher-hero-visual"
             >
-              <div className="absolute inset-x-0 bottom-0 mx-auto w-[130%] h-[55%] rounded-full bg-brand-turquoise/20 blur-3xl" />
-              <img
-                src="/hakim-welcome.png"
-                alt=""
-                width="320"
-                height="320"
-                loading="lazy"
-                className="relative w-full h-full object-contain object-bottom drop-shadow-2xl animate-float motion-reduce:animate-none"
+              {/* Ambient glow halo behind the whole scene */}
+              <div
+                className="pointer-events-none absolute -inset-x-6 inset-y-2 rounded-[40px] bg-brand-turquoise/10 blur-3xl"
+                aria-hidden="true"
               />
-            </div>
 
-            {/* Real teacher dashboard preview */}
-            <img
-              src="/teacher-dashboard-preview.png"
-              alt={t('teacherExpHeroImageAlt')}
-              className="relative z-10 w-full h-auto rounded-2xl border border-white/10 shadow-2xl bg-white/5 backdrop-blur-sm"
-              loading="lazy"
-            />
+              {/* Hakeem — transparent cutout peeking out from BEHIND the dashboard */}
+              <div
+                className="pointer-events-none select-none absolute z-0 bottom-0 start-[-2%] sm:start-0
+                           w-[36%] sm:w-[34%] lg:w-[36%] max-w-[280px]"
+                aria-hidden="true"
+              >
+                <img
+                  src="/images/hakeem-hide-seek.png"
+                  alt=""
+                  width={351}
+                  height={472}
+                  loading="lazy"
+                  className="block w-full h-auto object-bottom drop-shadow-2xl"
+                />
+              </div>
+
+              {/* Teacher dashboard — dominant foreground window, offset to the end side */}
+              <div
+                className="relative z-10 ms-auto w-[76%] sm:w-[78%] lg:w-[80%]
+                           bg-white rounded-2xl shadow-2xl shadow-brand-navy/30 border border-slate-100 overflow-hidden
+                           transform transition-transform duration-500 hover:scale-[1.01]"
+              >
+                <img
+                  src="/teacher-dashboard-preview.png"
+                  alt={t('teacherExpHeroImageAlt')}
+                  width={1920}
+                  height={827}
+                  className="block w-full h-auto"
+                  loading="lazy"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </section>
