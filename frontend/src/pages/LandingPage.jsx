@@ -603,22 +603,19 @@ export const LandingPage = () => {
                 dir="ltr" + !direction lock the scene against page RTL flipping. */}
             <div className="order-1 lg:order-2 flex flex-col justify-center">
               <div
-                className="relative ![direction:ltr] w-full max-w-[560px] mx-auto lg:mx-0 lg:ms-auto
-                           pt-10 sm:pt-12 lg:pt-16"
+                className="relative ![direction:ltr] w-full max-w-[640px] mx-auto lg:mx-0 lg:max-w-none"
                 dir="ltr"
                 data-testid="hero-visual-composition"
               >
-                {/* Ambient glow halo behind the whole scene */}
+                {/* Ambient glow halo behind the transparent scene */}
                 <div
-                  className="pointer-events-none absolute -inset-x-6 bottom-6 top-2 rounded-[40px] bg-brand-turquoise/10 blur-3xl"
+                  className="pointer-events-none absolute -inset-x-6 inset-y-2 rounded-[40px] bg-brand-turquoise/10 blur-3xl"
                   aria-hidden="true"
                 />
 
-                {/* Hero composition — Hakim + live leadership dashboard in one branded frame */}
+                {/* Transparent hero composition — Hakim + live leadership dashboard */}
                 <div
-                  className="relative z-10 w-full
-                             bg-white rounded-2xl shadow-2xl shadow-brand-navy/30 border border-slate-100 overflow-hidden
-                             transform transition-transform duration-500 hover:scale-[1.01]"
+                  className="relative z-10 w-full transform transition-transform duration-500 hover:scale-[1.01]"
                   data-testid="hero-mockup"
                 >
                   <img
@@ -626,7 +623,7 @@ export const LandingPage = () => {
                     alt={t('landingHeroDashboardAlt')}
                     width={1125}
                     height={470}
-                    className="block w-full h-auto"
+                    className="block w-full h-auto drop-shadow-2xl"
                     loading="lazy"
                   />
                 </div>
