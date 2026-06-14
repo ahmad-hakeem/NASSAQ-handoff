@@ -877,7 +877,7 @@ export const LandingPage = () => {
                     key={i}
                     className="group bg-white dark:bg-slate-800/60 border border-slate-200/70 dark:border-white/10 rounded-2xl p-5 transition-all duration-300 hover:border-brand-turquoise/40 hover:shadow-lg hover:-translate-y-1 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
                   >
-                    <div className="w-11 h-11 rounded-xl bg-brand-turquoise/10 flex items-center justify-center mb-3 transition-transform group-hover:scale-110">
+                    <div className="w-11 h-11 rounded-2xl bg-brand-turquoise/10 flex items-center justify-center mb-3 transition-transform group-hover:scale-110">
                       <f.icon className="h-5 w-5 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
                     </div>
                     <h3 className="font-cairo font-bold text-brand-navy dark:text-white text-base mb-1.5 leading-snug">{f.title}</h3>
@@ -901,8 +901,8 @@ export const LandingPage = () => {
                     </span>
                     <span className="font-cairo font-bold text-sm text-brand-navy dark:text-white truncate">{t('landingInsightPanelTitle')}</span>
                   </div>
-                  <span className="inline-flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 rounded-full ps-2 pe-2.5 py-0.5 flex-shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
+                  <span className="inline-flex items-center gap-1.5 bg-brand-turquoise/10 text-brand-turquoise border border-brand-turquoise/20 rounded-full ps-2 pe-2.5 py-0.5 flex-shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-turquoise animate-pulse" aria-hidden="true" />
                     <span className="font-tajawal text-xs font-medium">{t('landingInsightPanelStatus')}</span>
                   </span>
                 </div>
@@ -910,13 +910,13 @@ export const LandingPage = () => {
                 {/* stat cards */}
                 <div className="grid grid-cols-2 gap-3 mb-5">
                   {[
-                    { icon: Bell, value: '2K+', label: t('landingInsightStat1Label'), wrap: 'border-brand-turquoise/20 bg-brand-turquoise/[0.06]', iconCls: 'text-brand-turquoise bg-brand-turquoise/10' },
-                    { icon: TrendingUp, value: '3', label: t('landingInsightStat2Label'), wrap: 'border-emerald-200 dark:border-emerald-500/20 bg-emerald-50/60 dark:bg-emerald-500/[0.06]', iconCls: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10' },
-                    { icon: Target, value: '7', label: t('landingInsightStat3Label'), wrap: 'border-brand-purple/20 bg-brand-purple/[0.06]', iconCls: 'text-brand-purple bg-brand-purple/10' },
-                    { icon: AlertTriangle, value: '4', label: t('landingInsightStat4Label'), wrap: 'border-amber-200 dark:border-amber-500/20 bg-amber-50/60 dark:bg-amber-500/[0.06]', iconCls: 'text-amber-600 dark:text-amber-400 bg-amber-500/10' },
+                    { icon: Bell, value: '2K+', label: t('landingInsightStat1Label') },
+                    { icon: TrendingUp, value: '3', label: t('landingInsightStat2Label') },
+                    { icon: Target, value: '7', label: t('landingInsightStat3Label') },
+                    { icon: AlertTriangle, value: '4', label: t('landingInsightStat4Label'), alert: true },
                   ].map((s, i) => (
-                    <div key={i} className={`rounded-xl border p-3 ${s.wrap}`}>
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-2 ${s.iconCls}`}>
+                    <div key={i} className={`rounded-xl border p-3 ${s.alert ? 'border-amber-200 dark:border-amber-500/20 bg-amber-50/60 dark:bg-amber-500/[0.06]' : 'border-slate-200/70 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.03]'}`}>
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-2 ${s.alert ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10' : 'text-brand-turquoise bg-brand-turquoise/10'}`}>
                         <s.icon className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
                       </div>
                       <div className="font-cairo font-black text-xl text-brand-navy dark:text-white leading-none">{s.value}</div>
@@ -928,7 +928,7 @@ export const LandingPage = () => {
                 {/* intervention list */}
                 <div className="rounded-2xl border border-slate-200 dark:border-white/10 p-4 mb-4">
                   <div className="flex items-center gap-2 mb-3">
-                    <ClipboardCheck className="h-4 w-4 text-brand-purple" strokeWidth={1.5} aria-hidden="true" />
+                    <ClipboardCheck className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
                     <span className="font-cairo font-bold text-sm text-brand-navy dark:text-white">{t('landingInsightListTitle')}</span>
                   </div>
                   <div className="space-y-2.5">
@@ -943,8 +943,8 @@ export const LandingPage = () => {
                           <span className="font-tajawal text-sm text-brand-navy dark:text-white truncate">{r.name}</span>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className={`font-tajawal text-[11px] font-medium rounded-full px-2 py-0.5 ${r.high ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400' : 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400'}`}>{r.level}</span>
-                          <span className="inline-flex items-center gap-1 text-rose-500 dark:text-rose-400">
+                          <span className={`font-tajawal text-[11px] font-medium rounded-full px-2 py-0.5 ${r.high ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400' : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-400'}`}>{r.level}</span>
+                          <span className="inline-flex items-center gap-1 text-slate-400 dark:text-slate-500">
                             <TrendingDown className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
                             <span className="font-cairo text-xs font-bold">{r.trend}</span>
                           </span>
