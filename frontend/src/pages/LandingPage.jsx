@@ -38,7 +38,6 @@ import {
 const LOGO_WHITE = '/nassaq-logo-white.png';
 const BG_PATTERN = '/nassaq-pattern.png';
 const HAKIM_CHARACTER = '/hakim-poses/friendly-greeting.png';
-const HAKIM_HERO_WELCOME = '/hakim-poses/welcome.png';
 
 // Module-level cache for public landing data. The two-tab public shell
 // unmounts and remounts this page on every tab switch; without a cache,
@@ -253,9 +252,6 @@ export const LandingPage = () => {
       setActiveSection(id);
     }
   };
-
-  // Fixed welcome pose for hero (no rotation)
-  const heroHakim = { currentSrc: HAKIM_HERO_WELCOME };
 
   // Module-level cache (see below) hydrates these on remount so switching
   // between the public tabs does not refetch already-loaded data.
@@ -618,61 +614,20 @@ export const LandingPage = () => {
                   aria-hidden="true"
                 />
 
-                {/* Dashboard: primary anchor — offset to the end, leaving a column for Hakim */}
+                {/* Hero composition — Hakim + live leadership dashboard in one branded frame */}
                 <div
-                  className="relative z-10 ms-auto w-[74%] sm:w-[76%] lg:w-[78%]
+                  className="relative z-10 w-full
                              bg-white rounded-2xl shadow-2xl shadow-brand-navy/30 border border-slate-100 overflow-hidden
                              transform transition-transform duration-500 hover:scale-[1.01]"
                   data-testid="hero-mockup"
                 >
-                  {/* Browser chrome */}
-                  <div className="flex items-center justify-between gap-2 px-4 h-9 bg-slate-50 border-b border-slate-100">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                      <span className="font-tajawal text-[11px] text-slate-500">{t('landingHeroLive')}</span>
-                    </div>
-                    <span className="font-tajawal text-[11px] text-slate-500">
-                      {t('landingHeroDashboardTab')}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-slate-200" />
-                      <span className="w-2 h-2 rounded-full bg-slate-200" />
-                      <span className="w-2 h-2 rounded-full bg-slate-200" />
-                    </div>
-                  </div>
-
-                  {/* Real product screenshot — natural aspect ratio, fully visible */}
                   <img
-                    src="/images/landing-dashboard-preview.png"
+                    src="/images/landing-hero-composition.png"
                     alt={t('landingHeroDashboardAlt')}
-                    width={1920}
-                    height={827}
+                    width={1125}
+                    height={470}
                     className="block w-full h-auto"
                     loading="lazy"
-                  />
-                </div>
-
-                {/* Soft contact shadow grounding Hakim onto the same baseline as the card */}
-                <div
-                  className="pointer-events-none absolute z-10 bottom-1 start-[2%] w-[34%] sm:w-[30%] lg:w-[32%] h-3
-                             rounded-[50%] bg-brand-navy-dark/50 blur-md"
-                  aria-hidden="true"
-                />
-
-                {/* Hakim: large, static companion anchored to the shared baseline,
-                    overlapping the dashboard's start edge so they feel connected. */}
-                <div
-                  className="pointer-events-none select-none absolute z-20 bottom-0 start-[-2%] sm:start-0
-                             w-[46%] sm:w-[42%] lg:w-[44%] max-w-[300px]"
-                  aria-hidden="true"
-                >
-                  <img
-                    src="/hakim-welcome.png"
-                    alt=""
-                    width="320"
-                    height="320"
-                    loading="lazy"
-                    className="block w-full h-auto object-bottom drop-shadow-2xl"
                   />
                 </div>
               </div>
