@@ -44,6 +44,12 @@ import NoorImportPanel from '../components/management/NoorImportPanel';
 import { getApiErrorMessage } from '../utils/apiError';
 import { executeStudentTransfer } from '../utils/studentTransfer';
 
+// Visibility flag for the "Show them now" CTA inside the students-without-a-class
+// warning banner. The warning banner, its count, and the unassigned-students
+// detection stay fully intact regardless of this flag; only the optional CTA
+// button is suppressed. Flip to `true` to cleanly re-enable the button.
+const SHOW_NO_CLASS_BANNER_CTA = false;
+
 const THEME_COLORS = {
   student: {
     gradient: 'from-[#1B2A4A] to-[#2563eb]',
@@ -1772,14 +1778,16 @@ export default function UsersClassesManagement() {
                     : "These students won't appear in any timetable until you assign a class."}
                 </p>
               </div>
-              <Button
-                size="sm"
-                onClick={() => { setActiveFilter('noClass'); setSearchQuery(''); }}
-                className="bg-red-600 hover:bg-red-700 text-white shrink-0"
-                data-testid="banner-show-no-class"
-              >
-                {isRTL ? 'عرضهم الآن' : 'Show them now'}
-              </Button>
+              {SHOW_NO_CLASS_BANNER_CTA && (
+                <Button
+                  size="sm"
+                  onClick={() => { setActiveFilter('noClass'); setSearchQuery(''); }}
+                  className="bg-red-600 hover:bg-red-700 text-white shrink-0"
+                  data-testid="banner-show-no-class"
+                >
+                  {isRTL ? 'عرضهم الآن' : 'Show them now'}
+                </Button>
+              )}
             </div>
           )}
 
