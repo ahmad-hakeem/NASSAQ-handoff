@@ -616,8 +616,8 @@ export const LandingPage = () => {
 
                 {/* Hakeem — transparent cutout peeking out from BEHIND the dashboard */}
                 <div
-                  className="pointer-events-none select-none absolute z-0 bottom-0 start-[-2%] sm:start-0
-                             w-[40%] sm:w-[38%] lg:w-[40%] max-w-[330px]"
+                  className="pointer-events-none select-none absolute z-0 bottom-0 start-[-6%] sm:start-[-4%] lg:start-[-7%]
+                             w-[40%] sm:w-[38%] lg:w-[42%] max-w-[340px]"
                   aria-hidden="true"
                 >
                   <img
@@ -632,7 +632,7 @@ export const LandingPage = () => {
 
                 {/* Dashboard — dominant foreground window, offset to the end side */}
                 <div
-                  className="relative z-10 ms-auto w-[82%] sm:w-[86%] lg:w-[90%]
+                  className="relative z-10 ms-auto w-[80%] sm:w-[84%] lg:w-[86%]
                              bg-white rounded-2xl shadow-2xl shadow-brand-navy/30 border border-slate-100 overflow-hidden
                              transform transition-transform duration-500 hover:scale-[1.01]"
                   data-testid="hero-mockup"
