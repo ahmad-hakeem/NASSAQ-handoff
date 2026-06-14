@@ -596,34 +596,70 @@ export const LandingPage = () => {
               </div>
             </div>
 
-            {/* ── LEFT PANEL (RTL End): Hakim + dashboard as one art-directed scene ──
-                Single relative stage: the dashboard is offset toward the end and
-                Hakim is anchored to the shared baseline on the start side with a
-                controlled overlap, so they read as one grounded composition.
-                dir="ltr" + !direction lock the scene against page RTL flipping. */}
+            {/* ── LEFT PANEL (RTL End): Hakeem + dashboard as one art-directed scene ──
+                Two-layer stage: the dashboard is the dominant foreground window
+                offset toward the end, and Hakeem is a transparent cutout placed
+                BEHIND it on the start side, peeking out (hide & seek) on the shared
+                baseline. dir="ltr" + !direction lock the scene against page RTL flipping. */}
             <div className="order-1 lg:order-2 flex flex-col justify-center">
               <div
-                className="relative ![direction:ltr] w-full max-w-[640px] mx-auto lg:mx-0 lg:max-w-none"
+                className="relative ![direction:ltr] w-full max-w-[640px] mx-auto lg:mx-0 lg:max-w-none
+                           pt-8 lg:pt-10"
                 dir="ltr"
                 data-testid="hero-visual-composition"
               >
-                {/* Ambient glow halo behind the transparent scene */}
+                {/* Ambient glow halo behind the whole scene */}
                 <div
                   className="pointer-events-none absolute -inset-x-6 inset-y-2 rounded-[40px] bg-brand-turquoise/10 blur-3xl"
                   aria-hidden="true"
                 />
 
-                {/* Transparent hero composition — Hakim + live leadership dashboard */}
+                {/* Hakeem — transparent cutout peeking out from BEHIND the dashboard */}
                 <div
-                  className="relative z-10 w-full transform transition-transform duration-500 hover:scale-[1.01]"
-                  data-testid="hero-mockup"
+                  className="pointer-events-none select-none absolute z-0 bottom-0 start-[-2%] sm:start-0
+                             w-[36%] sm:w-[34%] lg:w-[36%] max-w-[280px]"
+                  aria-hidden="true"
                 >
                   <img
-                    src="/images/landing-hero-composition.png"
+                    src="/images/hakeem-hide-seek.png"
+                    alt=""
+                    width={351}
+                    height={472}
+                    loading="lazy"
+                    className="block w-full h-auto object-bottom drop-shadow-2xl"
+                  />
+                </div>
+
+                {/* Dashboard — dominant foreground window, offset to the end side */}
+                <div
+                  className="relative z-10 ms-auto w-[76%] sm:w-[78%] lg:w-[80%]
+                             bg-white rounded-2xl shadow-2xl shadow-brand-navy/30 border border-slate-100 overflow-hidden
+                             transform transition-transform duration-500 hover:scale-[1.01]"
+                  data-testid="hero-mockup"
+                >
+                  {/* Browser chrome */}
+                  <div className="flex items-center justify-between gap-2 px-4 h-9 bg-slate-50 border-b border-slate-100">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                      <span className="font-tajawal text-[11px] text-slate-500">{t('landingHeroLive')}</span>
+                    </div>
+                    <span className="font-tajawal text-[11px] text-slate-500">
+                      {t('landingHeroDashboardTab')}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-slate-200" />
+                      <span className="w-2 h-2 rounded-full bg-slate-200" />
+                      <span className="w-2 h-2 rounded-full bg-slate-200" />
+                    </div>
+                  </div>
+
+                  {/* Real product screenshot — natural aspect ratio, fully visible */}
+                  <img
+                    src="/images/landing-dashboard-preview.png"
                     alt={t('landingHeroDashboardAlt')}
-                    width={1125}
-                    height={470}
-                    className="block w-full h-auto drop-shadow-2xl"
+                    width={1920}
+                    height={827}
+                    className="block w-full h-auto"
                     loading="lazy"
                   />
                 </div>
