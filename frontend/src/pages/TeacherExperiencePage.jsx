@@ -78,7 +78,7 @@ export const TeacherExperiencePage = () => {
         <div className="absolute top-0 left-0 w-[500px] h-[500px] rounded-full bg-brand-turquoise/8 blur-[120px]" aria-hidden="true" />
         <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-brand-purple/8 blur-[100px]" aria-hidden="true" />
 
-        <div className="relative max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-12 lg:gap-16 lg:items-stretch">
+        <div className={`relative max-w-7xl mx-auto px-6 grid gap-12 lg:gap-16 lg:items-stretch ${isRTL ? 'lg:grid-cols-[1fr_1.2fr]' : 'lg:grid-cols-[1.2fr_1fr]'}`}>
           {/* Copy — distributed top → bottom so the column shares the same
               top/bottom boundary as the visual column (balanced 50/50). */}
           <div className={`flex flex-col justify-between gap-8 ${isRTL ? '' : 'order-2'}`}>
@@ -134,7 +134,7 @@ export const TeacherExperiencePage = () => {
           <div className={`flex flex-col justify-center ${isRTL ? '' : 'order-1'}`}>
             <div
               className="relative ![direction:ltr] w-full max-w-[640px] mx-auto lg:mx-0 lg:max-w-none
-                         pt-8 lg:pt-10"
+                         pt-4 lg:pt-2"
               dir="ltr"
               data-testid="teacher-hero-visual"
             >
@@ -146,8 +146,8 @@ export const TeacherExperiencePage = () => {
 
               {/* Hakeem — transparent cutout peeking out from BEHIND the dashboard */}
               <div
-                className="pointer-events-none select-none absolute z-0 bottom-0 start-[-2%] sm:start-0
-                           w-[36%] sm:w-[34%] lg:w-[36%] max-w-[280px]"
+                className="pointer-events-none select-none absolute z-0 bottom-0 start-[-6%] sm:start-[-4%] lg:start-[-7%]
+                           w-[40%] sm:w-[38%] lg:w-[42%] max-w-[340px]"
                 aria-hidden="true"
               >
                 <img
@@ -162,7 +162,7 @@ export const TeacherExperiencePage = () => {
 
               {/* Teacher dashboard — dominant foreground window, offset to the end side */}
               <div
-                className="relative z-10 ms-auto w-[76%] sm:w-[78%] lg:w-[80%]
+                className="relative z-10 ms-auto w-[80%] sm:w-[84%] lg:w-[86%]
                            bg-white rounded-2xl shadow-2xl shadow-brand-navy/30 border border-slate-100 overflow-hidden
                            transform transition-transform duration-500 hover:scale-[1.01]"
               >
