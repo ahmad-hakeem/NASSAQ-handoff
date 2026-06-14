@@ -494,7 +494,7 @@ export const LandingPage = () => {
           {/* Two strictly balanced columns: identical height via items-stretch.
               Left = dashboard visual group. Right = content group.
               Both share the same top and bottom boundary. */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:items-stretch">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-12 lg:items-stretch">
 
             {/* ── RIGHT PANEL (RTL Start): content distributed top → bottom ── */}
             <div className="flex flex-col justify-between gap-8 text-start order-2 lg:order-1">
@@ -604,7 +604,7 @@ export const LandingPage = () => {
             <div className="order-1 lg:order-2 flex flex-col justify-center">
               <div
                 className="relative ![direction:ltr] w-full max-w-[640px] mx-auto lg:mx-0 lg:max-w-none
-                           pt-8 lg:pt-10"
+                           pt-4 lg:pt-2"
                 dir="ltr"
                 data-testid="hero-visual-composition"
               >
@@ -617,7 +617,7 @@ export const LandingPage = () => {
                 {/* Hakeem — transparent cutout peeking out from BEHIND the dashboard */}
                 <div
                   className="pointer-events-none select-none absolute z-0 bottom-0 start-[-2%] sm:start-0
-                             w-[36%] sm:w-[34%] lg:w-[36%] max-w-[280px]"
+                             w-[40%] sm:w-[38%] lg:w-[40%] max-w-[330px]"
                   aria-hidden="true"
                 >
                   <img
@@ -632,7 +632,7 @@ export const LandingPage = () => {
 
                 {/* Dashboard — dominant foreground window, offset to the end side */}
                 <div
-                  className="relative z-10 ms-auto w-[76%] sm:w-[78%] lg:w-[80%]
+                  className="relative z-10 ms-auto w-[82%] sm:w-[86%] lg:w-[90%]
                              bg-white rounded-2xl shadow-2xl shadow-brand-navy/30 border border-slate-100 overflow-hidden
                              transform transition-transform duration-500 hover:scale-[1.01]"
                   data-testid="hero-mockup"
