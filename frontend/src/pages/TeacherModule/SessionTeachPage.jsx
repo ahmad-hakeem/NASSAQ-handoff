@@ -541,11 +541,30 @@ export default function SessionTeachPage() {
       const res = await api.get(`/session/${sessionId}/students`);
       const list = (res.data?.students || []).map(s => ({
         ...s,
-        interactionCount: s.participation_count || 0,
+        // Server is the source of truth for the badge totals: interaction_count
+        // is the per-student count of non-reversed session interactions, so a
+        // post-undo refresh only changes the truly-reversed student's number
+        // instead of zeroing the whole roster.
+        interactionCount: s.interaction_count || 0,
         correctAnswers: s.correct_answers || 0,
         isFlashing: false,
       }));
       setStudents(list);
+      // Keep the selected-student detail panel in sync with the authoritative
+      // server totals so it agrees with the roster badge after an undo/refresh.
+      setSelectedStudent(prev => {
+        if (!prev) return prev;
+        const fresh = list.find(s => s.id === prev.id);
+        if (!fresh) return prev;
+        return {
+          ...prev,
+          interactionCount: fresh.interactionCount,
+          correctAnswers: fresh.correctAnswers,
+          interaction_count: fresh.interaction_count,
+          correct_answers: fresh.correct_answers,
+          participation_count: fresh.participation_count,
+        };
+      });
       return list;
     } catch (e) {
       console.error('Error loading students:', e);

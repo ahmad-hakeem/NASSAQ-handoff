@@ -587,19 +587,71 @@ class TeacherSessionEngine:
         
         # Get students
         students = await gd_find(self.session, "students", {"class_id": session["class_id"], "is_active": True}, limit=200)
-        
+
+        # Authoritative per-student in-session totals derived from
+        # session_interactions. The backend — not optimistic frontend state —
+        # is the source of truth so any roster refresh (including the one that
+        # runs right after an undo) reflects accurate, scoped totals and only
+        # the truly-reversed student's number changes. Reversed rows are
+        # excluded using the same data.reversed flag honored everywhere else.
+        all_interactions = await gd_find(
+            self.session, "session_interactions", {"session_id": session_id}, limit=2000
+        )
+        totals_map: Dict[str, Dict[str, int]] = {}
+        for i in all_interactions:
+            if (i.get("data") or {}).get("reversed"):
+                continue
+            sid = i.get("student_id")
+            if not sid:
+                continue
+            agg = totals_map.get(sid)
+            if agg is None:
+                agg = {
+                    "correct_answers": 0,
+                    "wrong_answers": 0,
+                    "participation_count": 0,
+                    "positive_behaviour": 0,
+                    "negative_behaviour": 0,
+                    "interaction_count": 0,
+                }
+                totals_map[sid] = agg
+            agg["interaction_count"] += 1
+            itype = i.get("interaction_type") or i.get("type")
+            if itype == InteractionType.QUESTION.value:
+                ans = i.get("answer_result")
+                if ans == AnswerResult.CORRECT.value:
+                    agg["correct_answers"] += 1
+                elif ans == AnswerResult.WRONG.value:
+                    agg["wrong_answers"] += 1
+            elif itype == InteractionType.PARTICIPATION.value:
+                agg["participation_count"] += 1
+            elif itype == InteractionType.BEHAVIOUR.value:
+                cat = i.get("behaviour_category")
+                if cat == BehaviourCategory.POSITIVE.value:
+                    agg["positive_behaviour"] += 1
+                elif cat == BehaviourCategory.NEGATIVE.value:
+                    agg["negative_behaviour"] += 1
+
         # Enrich students with attendance
         result = []
         for student in students:
-            attendance = attendance_map.get(student.get("id"), {})
+            sid = student.get("id")
+            attendance = attendance_map.get(sid, {})
+            agg = totals_map.get(sid, {})
             result.append({
-                "id": student.get("id"),
+                "id": sid,
                 "full_name": student.get("full_name"),
                 "student_code": student.get("student_id") or student.get("code"),
                 "gender": student.get("gender", "male"),
                 "avatar_url": student.get("avatar_url"),
                 "attendance_status": attendance.get("status", AttendanceStatus.PRESENT.value),
-                "attendance_id": attendance.get("id")
+                "attendance_id": attendance.get("id"),
+                "correct_answers": agg.get("correct_answers", 0),
+                "wrong_answers": agg.get("wrong_answers", 0),
+                "participation_count": agg.get("participation_count", 0),
+                "positive_behaviour": agg.get("positive_behaviour", 0),
+                "negative_behaviour": agg.get("negative_behaviour", 0),
+                "interaction_count": agg.get("interaction_count", 0),
             })
         
         # Sort by gender (males first based on RTL layout)
@@ -1912,7 +1964,10 @@ class TeacherSessionEngine:
             return {"session": None, "students": {}}
 
         rules = await self._get_session_score_rules(session_id)
-        interactions = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=2000)
+        all_interactions = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=2000)
+        # Exclude reversed interactions so committed/persisted scores honor undo
+        # the same way the live roster, live metrics, and end-session summary do.
+        interactions = [it for it in all_interactions if not (it.get("data") or {}).get("reversed")]
         homework_rows = await gd_find(self.session, "session_homework", {"session_id": session_id}, limit=2000)
 
         students: Dict[str, Dict[str, Any]] = {}
