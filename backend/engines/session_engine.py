@@ -1849,6 +1849,13 @@ class TeacherSessionEngine:
         _CW_PERFORMANCE: ("المهام الأدائية", "performance"),
     }
 
+    # Reserved keys that live alongside the student-scores map inside a
+    # follow-up record's stored ``data`` blob. They are never student ids.
+    _FOLLOWUP_META_KEYS = frozenset({
+        "data", "columns", "absences", "class_id", "subject_id",
+        "session_id", "created_at", "updated_at",
+    })
+
     # Default coursework/exam columns, mirrors the /class/{id}/grade-columns
     # route so the UUIDs the Follow-up Report keys on stay stable whether
     # they are first created here or by that route.
@@ -2006,19 +2013,51 @@ class TeacherSessionEngine:
             return None
         return int(min(pts, mg))
 
+    @staticmethod
+    def _canonical_followup_data(blob: Any) -> Dict[str, Any]:
+        """Return the canonical ``student_id -> {column_id: value}`` map from a
+        follow-up record's stored data.
+
+        Heals legacy corruption where the whole record (its metadata plus a
+        nested ``data`` key) was repeatedly re-wrapped under another ``data``
+        key on every save — a self-perpetuating loop that buried the real
+        student map several levels deep and made it look like all-zero. We
+        unwrap any such metadata-wrapped layers, then keep only student-keyed
+        rows whose value is a dict, dropping reserved metadata keys.
+        """
+        seen = 0
+        while (
+            isinstance(blob, dict)
+            and isinstance(blob.get("data"), dict)
+            and any(k in blob for k in ("class_id", "subject_id", "session_id", "columns"))
+            and seen < 100
+        ):
+            blob = blob["data"]
+            seen += 1
+        if not isinstance(blob, dict):
+            return {}
+        clean: Dict[str, Any] = {}
+        for sid, vals in blob.items():
+            if sid in TeacherSessionEngine._FOLLOWUP_META_KEYS:
+                continue
+            if isinstance(vals, dict):
+                clean[sid] = vals
+        return clean
+
     async def build_followup_hydration(self, session_id: str, manual_data: Dict[str, Any]) -> Dict[str, Any]:
         """Overlay session-derived coursework values onto the Follow-up
         Report data map (keyed student_id -> {column_uuid: value}). Manual
         teacher entries are never clobbered; exam columns are untouched."""
+        manual_data = self._canonical_followup_data(manual_data)
         computed = await self.compute_session_scores(session_id)
         session = computed.get("session")
         if not session:
-            return manual_data or {}
+            return manual_data
         columns = await self._resolve_coursework_columns(session.get("class_id"))
         if not columns:
-            return manual_data or {}
+            return manual_data
 
-        merged: Dict[str, Any] = {sid: dict(vals) for sid, vals in (manual_data or {}).items()}
+        merged: Dict[str, Any] = {sid: dict(vals) for sid, vals in manual_data.items()}
         for sid, agg in computed["students"].items():
             row = merged.get(sid, {})
             for bucket, col in columns.items():
@@ -2062,7 +2101,7 @@ class TeacherSessionEngine:
         # agree with what the teacher sees in the report.
         followup_lookup = {"class_id": class_id, "subject_id": subject_id} if class_id and subject_id else {"session_id": session_id}
         followup = await gd_find_one(self.session, "followup_records", followup_lookup)
-        manual_data = (followup or {}).get("data", {}) if followup else {}
+        manual_data = self._canonical_followup_data((followup or {}).get("data", {})) if followup else {}
 
         columns = await self._resolve_coursework_columns(class_id) if class_id else {}
 

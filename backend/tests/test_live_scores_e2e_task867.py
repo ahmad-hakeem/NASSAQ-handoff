@@ -229,6 +229,67 @@ async def test_followup_record_does_not_clobber_manual_entry(client, tenant_a):
     )
 
 
+@pytest.mark.asyncio
+async def test_followup_record_heals_nested_metadata_corruption(client, tenant_a):
+    """A legacy follow-up record whose stored ``data`` blob was repeatedly
+    re-wrapped (metadata + a nested ``data`` key) must still hydrate to the
+    real per-student coursework values instead of reading back as all zeros.
+
+    Reproduces the runtime hop that produced all-zero coursework columns in
+    the Follow-up Report: hydration used to throw ValueError on the metadata
+    keys and fall back to the corrupted blob.
+    """
+    teacher_id = await _mk_user(tenant_a)
+    class_id = await _mk_class(tenant_a)
+    subject_id = await _mk_subject(tenant_a)
+    session_id = await _mk_session(tenant_a, class_id, subject_id, teacher_id)
+    student_id = await _mk_student(tenant_a, class_id)
+
+    eng = _session_engine()
+    cols = await eng._resolve_coursework_columns(class_id)
+    participation_col = cols["participation"]["id"]
+
+    await _mk_interaction(session_id, student_id, teacher_id,
+                          interaction_type=InteractionType.PARTICIPATION.value,
+                          participation_type=ParticipationType.ACTIVE.value)
+
+    # The real student map, buried under two layers of metadata-wrapping
+    # exactly as the self-perpetuating save loop produced in production.
+    real_map = {student_id: {participation_col: 7}}
+    inner = {
+        "class_id": class_id, "subject_id": subject_id, "session_id": session_id,
+        "columns": [], "absences": {}, "data": real_map,
+    }
+    corrupted = {
+        "class_id": class_id, "subject_id": subject_id, "session_id": session_id,
+        "columns": [], "absences": {}, "data": inner,
+    }
+    await gd_insert(db.session, "followup_records", {
+        "id": str(uuid.uuid4()),
+        "class_id": class_id,
+        "subject_id": subject_id,
+        "session_id": session_id,
+        "columns": [{"id": participation_col, "name": "المشاركة", "maxGrade": 10, "type": "grade"}],
+        "data": corrupted,
+        "absences": {},
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    headers = _auth(teacher_id, "teacher", tenant_a)
+    resp = await client.get(f"/session/{session_id}/followup-record", headers=headers)
+    assert resp.status_code == 200, resp.text
+
+    body = resp.json()
+    # The real student row surfaces, and no metadata key leaked in as a "student".
+    assert student_id in body["data"], f"Real student missing from healed data: {list(body['data'])}"
+    assert "class_id" not in body["data"] and "columns" not in body["data"]
+    student_data = body["data"][student_id]
+    # The preserved manual value (7) survives the unwrap, not zeroed out.
+    assert student_data.get(participation_col) == 7, (
+        f"Healed value lost: got {student_data.get(participation_col)} in {student_data}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # 2. commit-scores — idempotent, owner-only
 # ---------------------------------------------------------------------------

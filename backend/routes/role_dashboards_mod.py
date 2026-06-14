@@ -3453,7 +3453,11 @@ async def save_followup_record(
         "subject_id": s_id,
         "session_id": session_id,
         "columns": payload.get("columns", []),
-        "data": payload.get("data", {}),
+        # Canonicalize so only the student->{column_id: value} map is stored.
+        # The Follow-up Report re-posts whatever it last received; without this
+        # any stray metadata key would get re-wrapped under "data" on every
+        # save, compounding into a nested blob that reads back as all zeros.
+        "data": session_engine._canonical_followup_data(payload.get("data", {})),
         "absences": payload.get("absences", {}),
         "updated_at": datetime.utcnow().isoformat(),
     }
