@@ -29,6 +29,37 @@ function getEnvelopeBody(error) {
   return error?.response?.data ?? error?.data ?? (isEnvelope ? error : undefined);
 }
 
+/**
+ * Maps a stable, machine-readable backend error code to a frontend i18n key.
+ * This is the single, shared localization layer for coded API errors: when the
+ * backend rejects a request with one of these codes, the UI owns the language
+ * and renders its own translation instead of whatever string the backend sent.
+ *
+ * Add an entry here (plus the key in both locale files) whenever the backend
+ * introduces a new stable error code that the UI should localize itself.
+ */
+const ERROR_CODE_KEYS = {
+  // Class assignment/transfer blocked because the target class is full. Shared
+  // by every capacity-enforced surface (student creation, class transfer, …).
+  CLASS_CAPACITY_REACHED: 'classCapacityReached',
+};
+
+/**
+ * Extracts the stable backend error code from the NASSAQ envelope
+ * (`data.error.code`), degrading through the structured `detail.code` and a
+ * raw top-level `code`. Returns `undefined` when no usable code is present.
+ *
+ * @param {*} error The caught axios error (or any thrown value).
+ * @returns {string|undefined}
+ */
+export function getApiErrorCode(error) {
+  const data = getEnvelopeBody(error);
+  if (!data) return undefined;
+  const code =
+    data?.error?.code ?? data?.error?.detail?.code ?? data?.detail?.code ?? data?.code;
+  return typeof code === 'string' && code.trim() ? code : undefined;
+}
+
 export function getApiErrorMessage(error, fallback = undefined) {
   // A bare Error's generic `.message` (e.g. "Network Error") is intentionally
   // not surfaced — only the structured backend envelope is read.
@@ -55,6 +86,39 @@ export function getApiErrorMessage(error, fallback = undefined) {
     if (typeof topMsg === 'string' && topMsg.trim()) return topMsg;
   }
   return fallback;
+}
+
+/**
+ * Resolves the user-facing message for a failed request, PREFERRING a localized
+ * translation keyed off the backend's stable error code. This is the canonical
+ * way to surface coded backend errors (e.g. `CLASS_CAPACITY_REACHED`) in the
+ * user's language, regardless of the exact string the backend shipped.
+ *
+ * Resolution order:
+ *   1. translation for a known error code (when a translator is supplied and
+ *      the translator actually has a non-key value for it);
+ *   2. the backend's own safe message via `getApiErrorMessage`;
+ *   3. the caller-supplied `fallback`.
+ *
+ * @param {*} error The caught axios error (or any thrown value).
+ * @param {object} [options]
+ * @param {(key: string, params?: object) => string} [options.t] Translator from
+ *   `useTranslation()` / ThemeContext.
+ * @param {string} [options.fallback] Message when nothing usable is found.
+ * @returns {string|undefined}
+ */
+export function getLocalizedApiError(error, { t, fallback } = {}) {
+  const code = getApiErrorCode(error);
+  const key = code ? ERROR_CODE_KEYS[code] : undefined;
+  if (key && typeof t === 'function') {
+    const translated = t(key);
+    // A translator that has no entry echoes the key back; only use a real
+    // translation so we never render a bare i18n key to the user.
+    if (typeof translated === 'string' && translated.trim() && translated !== key) {
+      return translated;
+    }
+  }
+  return getApiErrorMessage(error, fallback);
 }
 
 /**

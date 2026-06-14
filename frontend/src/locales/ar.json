@@ -4201,6 +4201,7 @@
   "schoolDataNotFound": "لم يتم العثور على بيانات المدرسة المطلوبة",
   "networkErrorRetry": "تعذّر الاتصال بالخادم، تحقق من الشبكة وحاول مجدداً",
   "transferServerError": "تعذّر إكمال نقل الطالب بسبب خطأ في الخادم، يرجى المحاولة مرة أخرى",
+  "classCapacityReached": "وصل هذا الفصل إلى الحد الأقصى لعدد الطلاب المسموح به. الرجاء اختيار فصل آخر.",
   "failedToGenerateScheduleTitle": "تعذّر توليد الجدول",
   "pleaseSelectTeacher": "يرجى اختيار معلم",
   "absenceLogged": "تم تسجيل الغياب",

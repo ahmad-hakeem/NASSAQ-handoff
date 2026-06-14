@@ -215,13 +215,31 @@ async def reconcile_class_counts(session, class_id: str, school_id: str | None =
 # capacity (NULL / non-positive), which mirror the column default of 30.
 DEFAULT_CLASS_CAPACITY = 30
 
-# Safe bilingual message surfaced (HTTP 409) on every assignment path when a
-# class is full. The frontend renders the ``detail`` via NassaqAlertDialog.
-CLASS_FULL_DETAIL = (
-    "وصل هذا الفصل إلى الحد الأقصى لعدد الطلاب المسموح به. "
-    "الرجاء اختيار فصل آخر / "
+# Stable, machine-readable error code for the "class is full" rejection. The
+# frontend keys its localized copy off this code (see apiError.js
+# ``ERROR_CODE_KEYS``), so the user-facing language is owned by the UI and the
+# backend never has to ship a mixed-language string.
+CLASS_CAPACITY_REACHED_CODE = "CLASS_CAPACITY_REACHED"
+
+# Safe, Arabic-ONLY user-facing message surfaced (HTTP 409) on every assignment
+# path when a class is full. This is the ``message`` the frontend renders via
+# NassaqAlertDialog when no localized copy is mapped for the code. It must never
+# contain English — a previous bilingual string leaked raw English into the
+# principal popup (alongside the Arabic), which read like a danger/error dump.
+CLASS_FULL_MESSAGE_AR = (
+    "وصل هذا الفصل إلى الحد الأقصى لعدد الطلاب المسموح به. الرجاء اختيار فصل آخر."
+)
+
+# Internal English text kept for logs/observability ONLY. It is never placed in
+# the user-facing ``message`` field nor returned in the API response body.
+CLASS_FULL_DEBUG_EN = (
     "This class has reached its maximum capacity. Please choose another class."
 )
+
+# Back-compat alias. Older callers/tests referenced ``CLASS_FULL_DETAIL`` as the
+# raw 409 detail string; it now points at the safe Arabic-only message so no
+# code path can resurrect the mixed-language text.
+CLASS_FULL_DETAIL = CLASS_FULL_MESSAGE_AR
 
 # Bulk-import policy message: the class is full, so the student is imported
 # WITHOUT a class (never overfilled, never dropped) and must be placed manually.
@@ -286,17 +304,28 @@ async def enforce_class_capacity(
 ) -> None:
     """Backend-authoritative capacity gate.
 
-    Raises HTTP 409 with the safe bilingual ``CLASS_FULL_DETAIL`` message when
+    Raises HTTP 409 with a structured, machine-readable error contract when
     placing ``additional`` more student(s) into ``class_doc`` would exceed its
-    configured capacity. Callers MUST invoke this only for a NET addition to
-    the target class (a brand-new student, or a move/restore into a class the
-    student is not already an active member of), so an existing member is never
-    double-counted. No-ops when there is no class (unassigned).
+    configured capacity. The detail carries a stable ``code``
+    (``CLASS_CAPACITY_REACHED``) and a safe Arabic-only ``message`` — never a
+    mixed-language string — so the frontend can localize off the code while a
+    plain Arabic message is always available as the fallback.
+
+    Callers MUST invoke this only for a NET addition to the target class (a
+    brand-new student, or a move/restore into a class the student is not already
+    an active member of), so an existing member is never double-counted. No-ops
+    when there is no class (unassigned).
     """
     if not await class_has_room(session, class_doc, school_id, additional=additional):
         from fastapi import HTTPException
 
-        raise HTTPException(status_code=409, detail=CLASS_FULL_DETAIL)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": CLASS_CAPACITY_REACHED_CODE,
+                "message": CLASS_FULL_MESSAGE_AR,
+            },
+        )
 
 
 async def live_class_counts(session) -> Dict[str, int]:

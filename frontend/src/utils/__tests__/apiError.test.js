@@ -1,5 +1,7 @@
 import {
   getApiErrorMessage,
+  getApiErrorCode,
+  getLocalizedApiError,
   getValidationErrors,
   formatValidationErrors,
   getFormErrorMessage,
@@ -188,6 +190,67 @@ describe('apiError validation helpers', () => {
   describe('getApiErrorMessage is unchanged for non-validation envelopes', () => {
     it('still reads data.error.message', () => {
       expect(getApiErrorMessage({ response: { data: { error: { message: 'boom' } } } })).toBe('boom');
+    });
+  });
+
+  describe('getApiErrorCode', () => {
+    it('reads the canonical envelope error.code', () => {
+      const error = {
+        response: { data: { success: false, error: { code: 'CLASS_CAPACITY_REACHED', message: 'م' } } },
+      };
+      expect(getApiErrorCode(error)).toBe('CLASS_CAPACITY_REACHED');
+    });
+
+    it('falls back to a structured detail.code', () => {
+      const error = { response: { data: { error: { detail: { code: 'CLASS_CAPACITY_REACHED' } } } } };
+      expect(getApiErrorCode(error)).toBe('CLASS_CAPACITY_REACHED');
+    });
+
+    it('returns undefined when no usable code is present', () => {
+      expect(getApiErrorCode({ response: { data: { error: { message: 'x' } } } })).toBeUndefined();
+      expect(getApiErrorCode(new Error('boom'))).toBeUndefined();
+      expect(getApiErrorCode(null)).toBeUndefined();
+    });
+  });
+
+  describe('getLocalizedApiError', () => {
+    const capDict = { classCapacityReached: 'وصل هذا الفصل إلى الحد الأقصى المسموح به. الرجاء اختيار فصل آخر.' };
+    const capT = (key) => capDict[key] || key;
+
+    const fullEnvelope = {
+      response: {
+        data: {
+          success: false,
+          error: {
+            code: 'CLASS_CAPACITY_REACHED',
+            // The backend already sends a safe Arabic message, but the UI owns
+            // the copy and should localize off the code.
+            message: 'رسالة الخادم العربية',
+          },
+        },
+      },
+    };
+
+    it('prefers the localized translation keyed off the error code', () => {
+      expect(getLocalizedApiError(fullEnvelope, { t: capT })).toBe(capDict.classCapacityReached);
+    });
+
+    it('falls back to the backend message when no translator is supplied', () => {
+      expect(getLocalizedApiError(fullEnvelope, {})).toBe('رسالة الخادم العربية');
+    });
+
+    it('falls back to the backend message for an unmapped code', () => {
+      const error = { response: { data: { error: { code: 'SOME_OTHER_CODE', message: 'خطأ آخر' } } } };
+      expect(getLocalizedApiError(error, { t: capT })).toBe('خطأ آخر');
+    });
+
+    it('never renders a bare i18n key when the translator has no entry', () => {
+      const echoT = (key) => key; // translator with no matching entry
+      expect(getLocalizedApiError(fullEnvelope, { t: echoT })).toBe('رسالة الخادم العربية');
+    });
+
+    it('uses the fallback when neither code nor message resolve anything', () => {
+      expect(getLocalizedApiError(new Error('Network Error'), { t: capT, fallback: 'fb' })).toBe('fb');
     });
   });
 

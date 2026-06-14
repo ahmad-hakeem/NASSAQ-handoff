@@ -13,6 +13,7 @@
  *   - `messages.network`, only for a genuine no-response/network/timeout.
  */
 import { interpretTransferSuccess, classifyTransferError } from './transferResult';
+import { getLocalizedApiError } from './apiError';
 
 /**
  * @param {object} args
@@ -24,6 +25,9 @@ import { interpretTransferSuccess, classifyTransferError } from './transferResul
  * @param {(outcome:object)=>void} args.onSuccess Apply success to UI state.
  * @param {(msg:string)=>void} args.onToast Show the success toast.
  * @param {(msg:string)=>void} args.onError Show an error dialog (NassaqAlertDialog).
+ * @param {(key:string, params?:object)=>string} [args.t] Translator. When
+ *   supplied, a coded backend rejection (e.g. `CLASS_CAPACITY_REACHED`) is
+ *   localized off its error code instead of echoing the backend string.
  * @param {number} [args.maxAttempts=3]
  * @param {(ms:number)=>Promise<void>} [args.sleep] Injectable delay (tests stub it).
  * @returns {Promise<{status:string}>}
@@ -37,6 +41,7 @@ export async function executeStudentTransfer({
   onSuccess,
   onToast,
   onError,
+  t,
   maxAttempts = 3,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 }) {
@@ -64,9 +69,12 @@ export async function executeStudentTransfer({
       const classified = classifyTransferError(error);
       if (classified.kind === 'canceled') return { status: 'canceled' };
       if (classified.kind === 'backend') {
-        // Server responded — surface its message, or a transfer-specific
+        // Server responded — prefer a localized message resolved from the
+        // backend's stable error code (e.g. CLASS_CAPACITY_REACHED), then fall
+        // back to the backend's own safe message, then a transfer-specific
         // server-error message. Never the generic cause-hiding fallback.
-        onError(classified.message || messages.serverError);
+        const localized = getLocalizedApiError(error, { t });
+        onError(localized || classified.message || messages.serverError);
         return { status: 'backend-error' };
       }
       // no-response / network / timeout: retry, then a clear connection message.

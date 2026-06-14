@@ -1258,6 +1258,10 @@ export default function UsersClassesManagement() {
       onToast: (msg) => toast.success(msg),
       onSuccess: (outcome) => applyTransferSuccess(studentId, targetClassId, studentName, className, outcome),
       onError: (msg) => nassaqError(msg),
+      // Localize coded backend rejections (e.g. CLASS_CAPACITY_REACHED) off the
+      // error code so the popup shows one clean Arabic message — never the raw
+      // mixed-language backend string.
+      t,
     });
   };
 

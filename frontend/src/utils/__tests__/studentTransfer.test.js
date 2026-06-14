@@ -65,6 +65,44 @@ describe('executeStudentTransfer', () => {
     expect(post).toHaveBeenCalledTimes(1);
   });
 
+  test('a CLASS_CAPACITY_REACHED 409 is localized off the error code (one clean Arabic message)', async () => {
+    const CAP_AR = 'وصل هذا الفصل إلى الحد الأقصى المسموح به. الرجاء اختيار فصل آخر.';
+    const t = (key) => (key === 'classCapacityReached' ? CAP_AR : key);
+    const post = jest.fn().mockRejectedValue({
+      response: {
+        status: 409,
+        data: {
+          success: false,
+          // The backend ships a safe Arabic message, but the UI owns the copy
+          // and localizes off the stable code.
+          error: { code: 'CLASS_CAPACITY_REACHED', message: 'رسالة الخادم' },
+        },
+      },
+    });
+    const onSuccess = jest.fn();
+    const onToast = jest.fn();
+    const onError = jest.fn();
+    const result = await executeStudentTransfer({
+      api: { post },
+      studentId: 's1',
+      targetClassId: 'target',
+      messages: MESSAGES,
+      onSuccess,
+      onToast,
+      onError,
+      t,
+      sleep: jest.fn(),
+    });
+
+    expect(result.status).toBe('backend-error');
+    expect(onError).toHaveBeenCalledWith(CAP_AR);
+    // No English / mixed-language leak.
+    const shown = onError.mock.calls[0][0];
+    expect(shown).not.toMatch(/maximum capacity/i);
+    expect(shown).not.toContain(' / ');
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
+
   test('backend error WITHOUT a usable message shows the specific server-error message, never a generic fallback', async () => {
     const post = jest.fn().mockRejectedValue({ response: { status: 500, data: {} } });
     const h = makeHarness(post);
