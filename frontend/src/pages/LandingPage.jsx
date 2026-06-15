@@ -1089,6 +1089,136 @@ export const LandingPage = () => {
         </div>
       </section>
 
+      {/* ========== REAL RESULTS — outcome cards (mock/static), styled like "العمل اليومي في نَسَّق" ========== */}
+      <section
+        id="outcomes"
+        className="relative bg-brand-navy py-20 lg:py-24 overflow-hidden scroll-mt-24"
+        data-testid="results-section"
+      >
+        {/* nassaq background image + faint pattern + navy wash — same treatment as how-it-works */}
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-100"
+          style={{ backgroundImage: `url('/nassaq-background.png')` }}
+          aria-hidden="true"
+        />
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{ backgroundImage: `url(${BG_PATTERN})`, backgroundSize: '200% auto', backgroundPosition: 'center top' }}
+          aria-hidden="true"
+        />
+        <div className="absolute inset-0 bg-brand-navy/70" aria-hidden="true" />
+
+        <div className="relative max-w-6xl mx-auto px-6">
+          <div className="text-center max-w-5xl mx-auto mb-12">
+            <div className="inline-flex items-center gap-2 bg-brand-turquoise/15 border border-brand-turquoise/30 rounded-full ps-2 pe-4 py-1.5 mb-5 backdrop-blur-sm">
+              <BarChart3 className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+              <span className="font-tajawal text-sm text-brand-turquoise">
+                {t('landingResultsEyebrow')}
+              </span>
+            </div>
+            <h2 className="font-cairo font-bold text-white text-3xl sm:text-4xl md:text-5xl leading-tight tracking-normal text-center max-w-5xl mx-auto mb-4 selection:bg-brand-turquoise/30 selection:text-white">
+              {t('landingResultsHeading')}
+            </h2>
+            <p className="font-tajawal text-base text-white/80 leading-relaxed max-w-2xl mx-auto">
+              {t('landingResultsSubheading')}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {[
+              {
+                Icon: Bell,
+                RoleIcon: Users,
+                metric: t('landingResultsCard1Metric'),
+                stat: t('landingResultsCard1Stat'),
+                before: t('landingResultsCard1Before'),
+                after: t('landingResultsCard1After'),
+                role: t('landingResultsCard1Role'),
+                scope: t('landingResultsCard1Scope'),
+              },
+              {
+                Icon: TrendingUp,
+                RoleIcon: GraduationCap,
+                metric: t('landingResultsCard2Metric'),
+                stat: t('landingResultsCard2Stat'),
+                before: t('landingResultsCard2Before'),
+                after: t('landingResultsCard2After'),
+                role: t('landingResultsCard2Role'),
+                scope: t('landingResultsCard2Scope'),
+              },
+              {
+                Icon: TrendingDown,
+                RoleIcon: Building2,
+                metric: t('landingResultsCard3Metric'),
+                stat: t('landingResultsCard3Stat'),
+                before: t('landingResultsCard3Before'),
+                after: t('landingResultsCard3After'),
+                role: t('landingResultsCard3Role'),
+                scope: t('landingResultsCard3Scope'),
+              },
+            ].map((card, i) => {
+              const { Icon, RoleIcon } = card;
+              return (
+                <div
+                  key={i}
+                  className="relative flex flex-col h-full bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-sm transition-all duration-300 ease-out hover:bg-white/10 hover:border-brand-turquoise/40 hover:-translate-y-1.5 hover:shadow-xl motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+                >
+                  {/* header — metric + headline stat */}
+                  <div className="flex items-start gap-3 mb-5">
+                    <span className="flex-shrink-0 w-11 h-11 rounded-xl bg-brand-turquoise/15 border border-brand-turquoise/25 flex items-center justify-center">
+                      <Icon className="h-5 w-5 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="font-cairo font-bold text-white text-lg leading-snug mb-1">
+                        {card.metric}
+                      </h3>
+                      <p className="font-cairo font-bold text-brand-turquoise text-sm leading-snug">
+                        {card.stat}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* before */}
+                  <div className="mb-3">
+                    <span className="font-tajawal text-[11px] font-medium uppercase tracking-wide text-white/40">
+                      {t('landingResultsBeforeLabel')}
+                    </span>
+                    <p className="font-tajawal text-sm text-white/65 leading-relaxed mt-1">
+                      {card.before}
+                    </p>
+                  </div>
+
+                  {/* after — highlighted (turquoise accent, leading edge) */}
+                  <div className="rounded-xl bg-brand-turquoise/[0.07] border border-brand-turquoise/20 border-s-2 border-s-brand-turquoise p-3.5 mb-6">
+                    <span className="font-cairo text-[11px] font-bold uppercase tracking-wide text-brand-turquoise">
+                      {t('landingResultsAfterLabel')}
+                    </span>
+                    <p className="font-tajawal text-sm text-white leading-relaxed mt-1">
+                      {card.after}
+                    </p>
+                  </div>
+
+                  {/* footer — role-based descriptor, no personal names */}
+                  <div className="mt-auto pt-4 border-t border-white/10 flex items-center gap-3">
+                    <span className="flex-shrink-0 w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center">
+                      <RoleIcon className="h-4 w-4 text-brand-turquoise/70" strokeWidth={1.5} aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-cairo font-bold text-white text-sm truncate">
+                        {card.role}
+                      </p>
+                      <p className="font-tajawal text-xs text-white/50 truncate">
+                        {card.scope}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
       {/* ========== JOURNEY SECTION — hidden via SHOW_JOURNEY flag ========== */}
       {SHOW_JOURNEY && (
       <section
