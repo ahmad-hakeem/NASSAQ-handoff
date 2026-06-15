@@ -29,10 +29,17 @@ def validate(ctx: ConstraintContext, candidate=None) -> List[ConstraintViolation
 
     violations: List[ConstraintViolation] = []
     for cid, missing in missing_by_class.items():
+        # Incompleteness (a class missing some required periods) is often
+        # unavoidable real-world infeasibility — teacher availability and
+        # other hard constraints can prevent fitting every period. Per the
+        # product decision it is surfaced as a non-blocking warning (MEDIUM)
+        # rather than blocking publish; the missing periods are still shown
+        # to principals as insights. Over-placement remains a hard error in
+        # HC-09 (subject_weekly_periods).
         violations.append(ConstraintViolation(
             code="HC-14",
             validation_key="schedule_completeness",
-            severity=ConflictSeverity.CRITICAL,
+            severity=ConflictSeverity.MEDIUM,
             message_en=f"Class {cid} schedule is incomplete",
             message_ar=f"جدول الفصل {cid} غير مكتمل",
             refs={"class_id": cid, "missing_subjects": missing},
@@ -44,7 +51,7 @@ def validate(ctx: ConstraintContext, candidate=None) -> List[ConstraintViolation
 META = ValidatorMeta(
     code="HC-14",
     validation_key="schedule_completeness",
-    severity=ConflictSeverity.CRITICAL,
+    severity=ConflictSeverity.MEDIUM,
     tier="full",
     fn=validate,
 )

@@ -13,7 +13,11 @@ import pytest
 from fastapi import HTTPException
 
 from dependencies import db
-from engines.smart_scheduling_engine import SmartSchedulingEngine, ConflictSeverity
+from engines.smart_scheduling_engine import (
+    AcademicDemand,
+    ConflictSeverity,
+    SmartSchedulingEngine,
+)
 from engines.sql_utils import gd_insert, gd_find_one, gd_update_many
 from backend.routes._publish_gate import assert_publishable
 
@@ -174,6 +178,78 @@ async def test_validate_before_publish_respects_inactive_constraints(school_a_id
     result = await engine.validate_before_publish(school_id=school_a_id, timetable_id=tt_id)
 
     assert result["is_publishable"] is True
+
+
+async def test_validate_before_publish_under_warns_over_blocks(school_a_id):
+    """Period-quota policy at the publish gate: a subject placed FEWER times
+    than its weekly demand (under-placement / incomplete schedule) is a
+    non-blocking warning, while a subject placed MORE times than demanded
+    (over-placement) still blocks publish. Exercises HC-09
+    (subject_weekly_periods) and HC-14 (schedule_completeness) end-to-end
+    through validate_before_publish's severity partitioning.
+
+    build_academic_demand reads real curriculum data; here it is stubbed on
+    the instance so the test controls the demand without seeding a full
+    academic structure."""
+    await _isolate_hc()
+    tt_id = await _mk_timetable(school_a_id)
+    await _mk_hc("subject_weekly_periods", "HC-09", severity="high")
+    await _mk_hc("schedule_completeness", "HC-14", severity="medium")
+
+    under_cls, under_subj = str(uuid.uuid4()), str(uuid.uuid4())
+    over_cls, over_subj = str(uuid.uuid4()), str(uuid.uuid4())
+    # Under-placed: demand 4, place 3.
+    for p in range(1, 4):
+        await _mk_session(school_a_id, tt_id, teacher_id=str(uuid.uuid4()),
+                          class_id=under_cls, subject_id=under_subj,
+                          day_of_week="sunday", period_number=p)
+    # Over-placed: demand 1, place 3.
+    for p in range(1, 4):
+        await _mk_session(school_a_id, tt_id, teacher_id=str(uuid.uuid4()),
+                          class_id=over_cls, subject_id=over_subj,
+                          day_of_week="monday", period_number=p)
+
+    engine = SmartSchedulingEngine(db)
+
+    async def _stub_demand(*_a, **_k):
+        return [
+            AcademicDemand(
+                class_id=under_cls, class_name="Under", grade_id=str(uuid.uuid4()),
+                subjects=[{"subject_id": under_subj, "weekly_periods": 4,
+                           "suitable_teachers": []}],
+                total_periods_required=4,
+            ),
+            AcademicDemand(
+                class_id=over_cls, class_name="Over", grade_id=str(uuid.uuid4()),
+                subjects=[{"subject_id": over_subj, "weekly_periods": 1,
+                           "suitable_teachers": []}],
+                total_periods_required=1,
+            ),
+        ]
+
+    engine.build_academic_demand = _stub_demand
+
+    result = await engine.validate_before_publish(
+        school_id=school_a_id, timetable_id=tt_id
+    )
+
+    # Over-placement must block publish.
+    assert result["is_publishable"] is False
+    block = result["violations"]
+    assert any(
+        v["validation_key"] == "subject_weekly_periods"
+        and v["refs"].get("class_id") == over_cls
+        for v in block
+    )
+    # Under-placement must NOT block — it is surfaced only as a warning.
+    assert not any(v["refs"].get("class_id") == under_cls for v in block)
+    warn_keys = {w["validation_key"] for w in result["warnings"]}
+    assert "schedule_completeness" in warn_keys
+    assert any(
+        w["validation_key"] == "subject_weekly_periods"
+        and w["refs"].get("class_id") == under_cls
+        for w in result["warnings"]
+    )
 
 
 # ---------------------------------------------------------------------------

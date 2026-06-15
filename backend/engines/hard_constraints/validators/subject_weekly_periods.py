@@ -28,10 +28,18 @@ def validate(ctx: ConstraintContext) -> List[ConstraintViolation]:
         if actual == expected:
             continue
         delta = actual - expected
+        # Over-placement (delta > 0) is a hard error: a subject scheduled more
+        # than its weekly quota indicates a generation bug and must block
+        # publish (HIGH). Under-placement (delta < 0) is often unavoidable
+        # real-world infeasibility (teacher availability/constraints prevent
+        # fitting every period); per product decision it is surfaced as a
+        # non-blocking warning (MEDIUM) instead of blocking publish — the
+        # unscheduled demand is already shown to principals as insights.
+        severity = META.severity if delta > 0 else ConflictSeverity.MEDIUM
         violations.append(ConstraintViolation(
             code=META.code,
             validation_key=META.validation_key,
-            severity=META.severity,
+            severity=severity,
             message_en=(
                 f"Class {cls} subject {subj}: expected {expected} weekly periods, found {actual}"
             ),

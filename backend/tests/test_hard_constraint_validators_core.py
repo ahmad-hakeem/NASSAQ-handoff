@@ -8,6 +8,7 @@ from backend.engines.hard_constraints.validators import (
     teacher_overlap,
 )
 from backend.engines.hard_constraints.types import ConstraintContext
+from backend.engines.smart_scheduling_engine import ConflictSeverity
 
 
 def _ctx(sessions=None, demands=None, settings=None):
@@ -86,6 +87,8 @@ def test_subject_weekly_periods_under_target():
     assert refs["expected"] == 5
     assert refs["actual"] == 3
     assert refs["delta"] == -2
+    # Under-placement is a non-blocking warning, not a publish-blocking error.
+    assert violations[0].severity == ConflictSeverity.MEDIUM
 
 
 def test_subject_weekly_periods_over_target():
@@ -96,6 +99,8 @@ def test_subject_weekly_periods_over_target():
     violations = subject_weekly_periods.validate(_ctx(sessions=sessions, demands=demands))
     assert len(violations) == 1
     assert violations[0].refs["delta"] == 1
+    # Over-placement is a hard error that must block publish.
+    assert violations[0].severity == ConflictSeverity.HIGH
 
 
 def test_daily_period_limit_default_six():

@@ -2,6 +2,7 @@
 
 from backend.engines.hard_constraints import VALIDATION_REGISTRY
 from backend.engines.hard_constraints.types import ConstraintContext
+from backend.engines.smart_scheduling_engine import ConflictSeverity
 from backend.engines.hard_constraints.validators import (
     academic_structure_match,
     block_publish_on_conflict,
@@ -260,6 +261,8 @@ def test_hc14_schedule_completeness_violation():
     assert out[0].validation_key == "schedule_completeness"
     assert out[0].refs["class_id"] == "c1"
     assert any(m["subject_id"] == "math" for m in out[0].refs["missing_subjects"])
+    # Incompleteness is a non-blocking warning, not a publish-blocking error.
+    assert out[0].severity == ConflictSeverity.MEDIUM
 
 
 # ---------- HC-15 academic_structure_match ----------
