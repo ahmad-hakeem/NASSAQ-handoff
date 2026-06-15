@@ -29,6 +29,7 @@ export default function InlineAttendanceTable({
   classData = null,
   onStatusChange,
   showHistory = true,
+  sessionId = null,
 }) {
   const { t } = useTranslation();
   const { api, isRTL } = useAuth();
@@ -36,8 +37,28 @@ export default function InlineAttendanceTable({
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [togglingStudentId, setTogglingStudentId] = useState(null);
   const [historyStudent, setHistoryStudent] = useState(null);
+  // When rendered inside a live class session, the persisted truth for today's
+  // status is the canonical `session_attendance` store (driven by the session
+  // endpoints), not the school-wide daily `attendance` table. We track the
+  // session-scoped status locally and seed it from the roster the parent
+  // provides (server-sourced `attendance_status`).
+  const sessionMode = !!sessionId;
+  const [sessionStatus, setSessionStatus] = useState({});
 
   const todayISO = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  useEffect(() => {
+    if (!sessionMode) return;
+    setSessionStatus((prev) => {
+      const next = { ...prev };
+      students.forEach((s) => {
+        if (s?.id != null && next[s.id] === undefined && s.attendance_status) {
+          next[s.id] = s.attendance_status;
+        }
+      });
+      return next;
+    });
+  }, [sessionMode, students]);
 
   const fetchAttendanceData = useCallback(async () => {
     if (!classId) return;
@@ -60,20 +81,36 @@ export default function InlineAttendanceTable({
   }, [fetchAttendanceData]);
 
   const handleToggleAttendance = async (studentId, newStatus) => {
-    if (!classId || !studentId) return;
+    if (!studentId) return;
+    if (sessionMode) {
+      if (!sessionId) return;
+    } else if (!classId) {
+      return;
+    }
     setTogglingStudentId(studentId);
     try {
-      await api.post('/attendance/bulk', {
-        class_id: classId,
-        date: todayISO,
-        records: [{ student_id: studentId, status: newStatus }],
-      });
-      setAttendanceRecords((prev) => {
-        const filtered = prev.filter(
-          (r) => !(r.student_id === studentId && dateOnly(r.date) === todayISO),
-        );
-        return [...filtered, { student_id: studentId, date: todayISO, status: newStatus }];
-      });
+      if (sessionMode) {
+        // Live-session register: persist to the canonical session-attendance
+        // store so the live roster, live metrics, end-session summary and the
+        // lesson report all read one source of truth. The approve/finalize +
+        // daily-table sync is handled by the parent when the register closes.
+        await api.put(`/session/${sessionId}/attendance/${studentId}`, {
+          status: newStatus,
+        });
+        setSessionStatus((prev) => ({ ...prev, [studentId]: newStatus }));
+      } else {
+        await api.post('/attendance/bulk', {
+          class_id: classId,
+          date: todayISO,
+          records: [{ student_id: studentId, status: newStatus }],
+        });
+        setAttendanceRecords((prev) => {
+          const filtered = prev.filter(
+            (r) => !(r.student_id === studentId && dateOnly(r.date) === todayISO),
+          );
+          return [...filtered, { student_id: studentId, date: todayISO, status: newStatus }];
+        });
+      }
       toast.success(
         newStatus === 'present'
           ? t('markedPresent') || 'تم تسجيل الحضور'
@@ -111,11 +148,21 @@ export default function InlineAttendanceTable({
       else if (r.status === 'absent') entry.absentCount += 1;
       if (dateOnly(r.date) === todayISO) entry.todayStatus = r.status;
     });
+    if (sessionMode) {
+      // In a live session, today's toggle reflects the canonical session
+      // status, not the daily-table record. Default to present (drafts start
+      // present) when nothing is known yet.
+      Object.values(map).forEach((entry) => {
+        const sid = entry.student?.id;
+        entry.todayStatus =
+          sessionStatus[sid] ?? entry.student?.attendance_status ?? 'present';
+      });
+    }
     Object.values(map).forEach((entry) => {
       entry.records.sort((a, b) => dateOnly(b.date).localeCompare(dateOnly(a.date)));
     });
     return Object.values(map);
-  }, [students, attendanceRecords, todayISO]);
+  }, [students, attendanceRecords, todayISO, sessionMode, sessionStatus]);
 
   const renderHistoryDialog = () => {
     const records = historyStudent?.records || [];

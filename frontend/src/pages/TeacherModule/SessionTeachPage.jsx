@@ -244,6 +244,9 @@ export default function SessionTeachPage() {
   const [showRandomPopup, setShowRandomPopup] = useState(false);
   const [showQuickNote, setShowQuickNote] = useState(false);
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  // Tracks whether the live-session attendance register made a change so we
+  // only re-finalize (approve + daily sync) when something actually changed.
+  const attendanceDirtyRef = useRef(false);
   const [quickNoteText, setQuickNoteText] = useState('');
   const [quickNoteIds, setQuickNoteIds] = useState(() => new Set());
   const [quickNoteFilter, setQuickNoteFilter] = useState('');
@@ -569,6 +572,25 @@ export default function SessionTeachPage() {
     } catch (e) {
       console.error('Error loading students:', e);
       return [];
+    }
+  };
+
+  // Finalize the live-session attendance register: approve the canonical
+  // session-attendance drafts (which also syncs the school-wide daily table)
+  // and refresh the roster / live metrics / session info so the summary and
+  // every live panel read the same persisted source of truth. Idempotent on
+  // the backend, but we only run it when the register actually changed.
+  const finalizeSessionAttendance = async () => {
+    if (!sessionId || !attendanceDirtyRef.current) return;
+    attendanceDirtyRef.current = false;
+    try {
+      await api.post(`/session/${sessionId}/attendance/approve`);
+      const refreshed = await loadStudents();
+      await loadSessionInfo(refreshed);
+      loadLiveMetrics();
+    } catch (e) {
+      attendanceDirtyRef.current = true;
+      nassaqError(getApiErrorMessage(e) || t('saveFailed') || 'فشل حفظ الحضور');
     }
   };
 
@@ -3296,7 +3318,13 @@ export default function SessionTeachPage() {
           attendance table reused from فصولي → تفاصيل الفصل. Toggling a status
           fires the API immediately and updates the live class state without
           leaving /teacher/session/teach. */}
-      <Dialog open={showAttendanceModal} onOpenChange={setShowAttendanceModal}>
+      <Dialog
+        open={showAttendanceModal}
+        onOpenChange={(open) => {
+          setShowAttendanceModal(open);
+          if (!open) finalizeSessionAttendance();
+        }}
+      >
         <DialogContent
           className="max-w-3xl max-h-[85vh] overflow-y-auto"
           dir={isRTL ? 'rtl' : 'ltr'}
@@ -3309,12 +3337,14 @@ export default function SessionTeachPage() {
           </DialogHeader>
           <InlineAttendanceTable
             classId={classIdForGrades}
+            sessionId={sessionId}
             students={students}
             classData={{
               grade_name: sessionInfo?.grade_name || sessionInfo?.gradeName,
               section: sessionInfo?.section,
             }}
             onStatusChange={(studentId, newStatus) => {
+              attendanceDirtyRef.current = true;
               setStudents(prev => prev.map(s =>
                 s.id === studentId ? { ...s, attendance_status: newStatus } : s
               ));

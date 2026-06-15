@@ -732,23 +732,41 @@ class TeacherSessionEngine:
 
         rules = await self._get_session_score_rules(session_id)
 
+        def _status_score(st: str) -> int:
+            if st == AttendanceStatus.PRESENT.value:
+                return rules["present"]
+            if st == AttendanceStatus.ABSENT.value:
+                return rules["absent_no_excuse"]
+            if st == AttendanceStatus.LATE.value:
+                return rules["late"]
+            if st == AttendanceStatus.EXCUSED.value:
+                return rules["excused"]
+            return 0
+
+        # Apply attendance scores idempotently. `score_applied_status` records
+        # the status a score was last applied for. On the first approval it is
+        # unset, so the full score is applied (identical to the original
+        # behaviour). When approval runs again — e.g. the teacher edits
+        # attendance from the live-session register and re-finalizes — only the
+        # net delta between the old and new status is applied, so attendance
+        # scores are never double-counted.
         for record in records:
-            score_change = 0
-            if record["status"] == AttendanceStatus.PRESENT.value:
-                score_change = rules["present"]
-            elif record["status"] == AttendanceStatus.ABSENT.value:
-                score_change = rules["absent_no_excuse"]
-            elif record["status"] == AttendanceStatus.LATE.value:
-                score_change = rules["late"]
-            elif record["status"] == AttendanceStatus.EXCUSED.value:
-                score_change = rules["excused"]
-            
-            if score_change != 0:
+            new_status = record["status"]
+            prev_status = record.get("score_applied_status")
+            delta = _status_score(new_status) - (_status_score(prev_status) if prev_status else 0)
+
+            if delta != 0:
                 await self._update_student_score(
                     record["student_id"],
-                    score_change,
+                    delta,
                     "attendance",
-                    f"حضور الحصة: {record['status']}"
+                    f"حضور الحصة: {new_status}"
+                )
+
+            if prev_status != new_status:
+                await gd_update_one(self.session, "session_attendance",
+                    {"id": record["id"]},
+                    {"score_applied_status": new_status}
                 )
         
         # Count stats
