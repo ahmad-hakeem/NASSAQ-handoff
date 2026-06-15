@@ -691,9 +691,14 @@ async def delete_class(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
     """Soft-delete a class. Returns a requires_confirmation envelope when
-    blocking active records exist and force=False. On force=True, cascades
-    soft-deactivation to dependent rows without touching historical records
-    (attendance, grades, behaviour_records, assessments).
+    blocking active records exist (teacher-assignments / subjects / timetable
+    sessions / linked students) and force=False — NO deletion is performed in
+    that branch, so the caller must re-issue with force=True after confirming.
+    On force=True, the class is soft-deleted, dependent rows are
+    soft-deactivated, and every active student is unassigned from the class
+    (``class_id`` cleared) WITHOUT deleting the student rows — all in one
+    atomic transaction. Historical records (attendance, grades,
+    behaviour_records, assessments) are never touched.
     IT callers are pinned to their own workspace (cross-workspace ids return 404)."""
     from auth_scope import is_independent_teacher, independent_workspace_id
     if is_independent_teacher(current_user):
@@ -704,31 +709,36 @@ async def delete_class(
     if not class_doc:
         raise HTTPException(status_code=404, detail="الفصل غير موجود")
 
-    student_count = await gd_count(db.session, "students", {"class_id": class_id, "is_active": {"$ne": False}})
-    if student_count > 0:
-        raise HTTPException(
-            status_code=409,
-            detail=f"لا يمكن حذف الفصل لوجود {student_count} طالب مرتبط به. يرجى نقل الطلاب أولاً."
-        )
-
+    school_id = class_doc.get("school_id")
+    student_filter = {"class_id": class_id, "is_active": {"$ne": False}}
+    if school_id:
+        student_filter["school_id"] = school_id
+    student_count = await gd_count(db.session, "students", student_filter)
     teacher_assignments_count = await gd_count(db.session, "teacher_assignments", {"class_id": class_id, "is_active": {"$ne": False}})
     class_subjects_count = await gd_count(db.session, "class_subjects", {"class_id": class_id, "is_active": {"$ne": False}})
     timetable_sessions_count = await gd_count(db.session, "timetable_sessions", {"class_id": class_id, "is_active": {"$ne": False}})
 
-    blocking_count = teacher_assignments_count + class_subjects_count + timetable_sessions_count
+    blocking_count = student_count + teacher_assignments_count + class_subjects_count + timetable_sessions_count
     if blocking_count > 0 and not force:
+        parts = []
+        if teacher_assignments_count:
+            parts.append(f"{teacher_assignments_count} إسناد معلم")
+        if class_subjects_count:
+            parts.append(f"{class_subjects_count} مادة دراسية")
+        if timetable_sessions_count:
+            parts.append(f"{timetable_sessions_count} حصة جدولة")
+        if student_count:
+            parts.append(f"{student_count} طالب")
+        message = "هذا الفصل مرتبط بـ " + "، و".join(parts) + ". هل تريد المتابعة؟"
         return {
             "warning": True,
             "requires_confirmation": True,
-            "message": (
-                f"هذا الفصل مرتبط بـ {teacher_assignments_count} إسناد معلم"
-                f"، و{class_subjects_count} مادة دراسية"
-                f"، و{timetable_sessions_count} حصة جدولة. هل تريد المتابعة؟"
-            ),
+            "message": message,
             "dependencies": {
                 "teacher_assignments": teacher_assignments_count,
                 "class_subjects": class_subjects_count,
                 "timetable_sessions": timetable_sessions_count,
+                "students": student_count,
             },
         }
 
@@ -755,7 +765,13 @@ async def delete_class(
     r = await gd_update_many(db.session, "curriculum_lessons", {"class_id": class_id}, {"is_active": False})
     deactivated["curriculum_lessons"] = r
 
-    school_id = class_doc.get("school_id")
+    # Unassign every active student of this class within the acting tenant —
+    # clear class_id but keep the student rows (and all their history) intact
+    # so they can be reassigned to another class later. Pinned to the class's
+    # school_id so a cross-tenant student row can never be touched.
+    students_unassigned = await gd_update_many(db.session, "students", student_filter, {"class_id": None})
+    deactivated["students_unassigned"] = students_unassigned
+
     audit_log = {
         "id": str(uuid.uuid4()),
         "school_id": school_id,
@@ -763,7 +779,7 @@ async def delete_class(
         "entity_type": "class",
         "entity_id": class_id,
         "old_data": {"name": class_doc.get("name"), "is_active": True},
-        "new_data": {"is_active": False},
+        "new_data": {"is_active": False, "students_unassigned": students_unassigned},
         "performed_by": current_user["id"],
         "performed_by_name": current_user.get("full_name", ""),
         "timestamp": now_iso,
@@ -775,6 +791,7 @@ async def delete_class(
         "message": "تم حذف الفصل بنجاح",
         "success": True,
         "deactivated": deactivated,
+        "students_unassigned": students_unassigned,
     }
 
 

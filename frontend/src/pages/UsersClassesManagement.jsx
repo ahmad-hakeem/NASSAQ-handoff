@@ -1141,12 +1141,88 @@ export default function UsersClassesManagement() {
     }
   };
 
+  // Build the dependency-aware confirmation body the backend's
+  // requires_confirmation envelope warrants. The student line explicitly
+  // states students are unassigned (NOT deleted) so the principal knows
+  // their records survive.
+  const buildClassDeleteMessage = (deps = {}) => {
+    const lines = [];
+    if (deps.teacher_assignments > 0) lines.push(`• ${t('classDeleteDepTeacherAssignments', { count: deps.teacher_assignments })}`);
+    if (deps.class_subjects > 0) lines.push(`• ${t('classDeleteDepClassSubjects', { count: deps.class_subjects })}`);
+    if (deps.timetable_sessions > 0) lines.push(`• ${t('classDeleteDepTimetableSessions', { count: deps.timetable_sessions })}`);
+    let msg = '';
+    if (lines.length > 0) msg += `${t('classDeleteLinkedIntro')}\n${lines.join('\n')}\n\n`;
+    if (deps.students > 0) msg += `${t('classDeleteStudentsUnassignNote', { count: deps.students })}\n\n`;
+    msg += t('classDeleteConfirmQuestion');
+    return msg;
+  };
+
+  // Honest delete flow: a requires_confirmation envelope is NOT a deletion.
+  // We only treat it as success once the backend confirms the class was
+  // actually removed (data.success on a real delete or forced re-issue).
+  const runClassDelete = async (classId, { onDeleted, setBusy } = {}) => {
+    const headers = {};
+    if (isImpersonating && schoolContext?.school_id) headers['X-School-Context'] = schoolContext.school_id;
+    const forceDelete = async () => {
+      try {
+        const forced = await api.delete(`/classes/${classId}?force=true`, { headers });
+        if (forced.data?.success) {
+          await onDeleted?.(forced.data);
+        } else {
+          nassaqError(t('failedToDeleteClass'));
+        }
+      } catch (e) {
+        nassaqError(getApiErrorMessage(e) || (t('failedToDeleteClass')));
+      } finally {
+        setBusy?.(false);
+      }
+    };
+    setBusy?.(true);
+    try {
+      const res = await api.delete(`/classes/${classId}`, { headers });
+      if (res.data?.requires_confirmation) {
+        setBusy?.(false);
+        nassaqConfirm(
+          buildClassDeleteMessage(res.data.dependencies),
+          () => { setBusy?.(true); return forceDelete(); },
+          { title: t('confirmPermanentDelete'), confirmText: t('yesDeleteClass'), cancelText: t('cancel') }
+        );
+        return;
+      }
+      if (res.data?.success) {
+        await onDeleted?.(res.data);
+      } else {
+        nassaqError(t('failedToDeleteClass'));
+      }
+      setBusy?.(false);
+    } catch (e) {
+      nassaqError(getApiErrorMessage(e) || (t('failedToDeleteClass')));
+      setBusy?.(false);
+    }
+  };
+
   const handleDelete = (item, type) => {
+    if (type === 'class') {
+      // Class deletion is driven by the backend confirmation envelope so the
+      // card is only removed after a real deletion (no optimistic success on
+      // the requires_confirmation response).
+      runClassDelete(item.id, {
+        onDeleted: () => {
+          toast.success(t('classDeletedSuccessfully'));
+          // Optimistically remove so the totalClasses stat and tab badge
+          // update without waiting for the network round-trip, then run a
+          // targeted refetch that won't clobber the list on partial failure.
+          setClasses(prev => prev.filter(c => c.id !== item.id));
+          refetchClasses();
+        },
+      });
+      return;
+    }
     const typeLabels = { student: t('studentLower'), teacher: t('teacherLower'), parent: t('parentLower'), class: t('classLower') };
     const msg = t('confirmDeleteEntity', { label: typeLabels[type] });
     nassaqConfirm(msg, async () => {
       try {
-        const endpoints = { student: `/students/${item.id}`, teacher: `/teachers/${item.id}`, parent: `/parents/${item.id}`, class: `/classes/${item.id}` };
+        const endpoints = { student: `/students/${item.id}`, teacher: `/teachers/${item.id}`, parent: `/parents/${item.id}` };
         const ep = endpoints[type];
         const res = await api.delete(ep);
         const cleanup = res.data?.cleanup;
@@ -1159,15 +1235,7 @@ export default function UsersClassesManagement() {
           if (parts.length > 0) successMsg += ` (${parts.join(', ')})`;
         }
         toast.success(successMsg);
-        if (type === 'class') {
-          // Optimistically remove so the totalClasses stat and tab badge
-          // update without waiting for the network round-trip, then run a
-          // targeted refetch that won't clobber the list on partial failure.
-          setClasses(prev => prev.filter(c => c.id !== item.id));
-          refetchClasses();
-        } else {
-          fetchAllData();
-        }
+        fetchAllData();
       } catch (error) {
         let errMsg = t('deleteFailed');
         if (getApiErrorMessage(error)) {
@@ -2128,21 +2196,18 @@ export default function UsersClassesManagement() {
                     className="justify-start h-auto py-3 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-600 focus-visible:text-red-600 w-full"
                     disabled={viewClassSaving}
                     onClick={() => {
-                      nassaqConfirm(
-                        t('areYouSureYouWantToPermanentlyDeleteThisClassThisA'),
-                        async () => {
-                          setViewClassSaving(true);
-                          try {
-                            await api.delete(`/classes/${selectedItem.id}`);
-                            toast.success(t('classDeletedSuccessfully'));
-                            setViewDialogOpen(false);
-                            fetchAllData();
-                          } catch (e) {
-                            nassaqError(getApiErrorMessage(e) || (t('failedToDeleteClass')));
-                          } finally { setViewClassSaving(false); }
+                      // Backend-driven confirmation: the requires_confirmation
+                      // envelope (incl. the students-unassigned warning) is shown
+                      // before the class is actually deleted, and the dialog only
+                      // closes after a real deletion is confirmed.
+                      runClassDelete(selectedItem.id, {
+                        setBusy: setViewClassSaving,
+                        onDeleted: () => {
+                          toast.success(t('classDeletedSuccessfully'));
+                          setViewDialogOpen(false);
+                          fetchAllData();
                         },
-                        { title: t('confirmPermanentDelete'), confirmText: t('yesDeletePermanently'), cancelText: t('cancel') }
-                      );
+                      });
                     }}
                   >
                     <Trash2 className="h-4 w-4 me-2 text-red-500" />
