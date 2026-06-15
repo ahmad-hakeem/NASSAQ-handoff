@@ -3,7 +3,7 @@
 import time
 import uuid
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -17,7 +17,14 @@ from backend.engines.smart_scheduling_engine import (
 
 def _mk_engine():
     db = MagicMock()
-    db.session = MagicMock()
+    session = MagicMock()
+    # generate_draft_timetable emits run logs via gd_insert, which awaits
+    # session.flush(); a bare MagicMock isn't awaitable, so make the async
+    # session methods AsyncMocks. These unit tests exercise pure in-memory
+    # placement logic — the logging writes are harmless no-ops here.
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    db.session = session
     return SmartSchedulingEngine(db)
 
 
@@ -222,3 +229,41 @@ async def test_full_generation_still_succeeds_on_clean_fixture():
     assert len(sessions) > 0, "clean fixture should produce sessions"
     critical = [c for c in conflicts if c.severity == ConflictSeverity.CRITICAL.value]
     assert critical == [], f"clean fixture produced CRITICAL conflicts: {critical}"
+
+
+@pytest.mark.asyncio
+async def test_gap_filler_never_exceeds_subject_weekly_periods():
+    """Regression: a class whose total demand is far smaller than its
+    available slots (one subject, many empty periods) must NOT have its
+    empty slots flooded with that single subject by the gap-filler.
+
+    Before the quota guard, the gap-filler placed the only schedulable
+    subject into every empty slot (here 10 slots) even though its
+    weekly_periods was 2, producing an over-placed grid that HC-09
+    (subject_weekly_periods) then rejected at publish time. With the
+    guard the subject is placed exactly weekly_periods times and the
+    remaining slots are left as free periods.
+    """
+    engine = _mk_engine()
+    teacher = "teacher-1"
+    subject = "subj-only"
+    class_id, grade_id = "class-sparse", "grade-1"
+
+    # 2 days x 5 periods = 10 available slots, but only 2 periods of demand.
+    working_days = ["sunday", "monday"]
+    settings = _settings(periods=5, working_days=working_days)
+
+    demands = [_demand(class_id, grade_id, [
+        {"subject_id": subject, "weekly_periods": 2, "suitable_teachers": [teacher], "priority": 1},
+    ])]
+    resources = [_resource(teacher, [subject], weekly_load=20, periods=5, working_days=working_days)]
+    constraints = []
+
+    _, sessions, _conflicts, _unsched, _under = await engine.generate_draft_timetable(
+        "school-sparse", "run-sparse", demands, resources, settings, constraints,
+    )
+
+    placed = [s for s in sessions if s.class_id == class_id and s.subject_id == subject]
+    assert len(placed) == 2, (
+        f"gap-filler over-placed subject: expected 2 (weekly_periods), got {len(placed)}"
+    )

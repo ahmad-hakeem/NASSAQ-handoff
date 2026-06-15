@@ -2028,6 +2028,18 @@ class SmartSchedulingEngine:
                         weekly_needed = demand.get("weekly_periods", 4)
                         current_count = subject_session_counts.get(subject_id, 0)
 
+                        # HC-09 (subject_weekly_periods) treats every session beyond a
+                        # subject's weekly_periods as a publish-blocking violation, so
+                        # the gap-filler must never push a subject past its quota. Once
+                        # a subject is at (or over) weekly_needed it stops being a
+                        # gap-fill candidate and the slot is left as a free period.
+                        # Without this guard a class whose total demand is smaller than
+                        # its available slots (few subjects, many periods) gets its
+                        # empty slots flooded with its only schedulable subject, which
+                        # then fails HC-09 at publish time.
+                        if current_count >= weekly_needed:
+                            continue
+
                         for teacher_id in demand["suitable_teachers"]:
                             if teacher_id in teacher_grid[day][period]:
                                 continue
@@ -2067,10 +2079,10 @@ class SmartSchedulingEngine:
                             load_ratio = resource_usage.get(teacher_id, 0) / max(resource.weekly_load, 1)
                             score -= load_ratio * 15
 
-                            if current_count < weekly_needed:
-                                score += 25
-                            else:
-                                score -= 10
+                            # current_count < weekly_needed is guaranteed by the
+                            # quota guard above, so every gap-fill candidate is an
+                            # under-quota subject and is rewarded.
+                            score += 25
 
                             # Task #95: bias toward each teacher's stored
                             # preferences during gap-fill placement too.

@@ -54,6 +54,31 @@ def test_hc04_school_day_boundary_violation():
     assert out[0].validation_key == "school_day_boundary"
 
 
+def test_hc04_school_day_boundary_slot_number_only_time_slots():
+    # Regression: real-school time_slots carry the period index under
+    # ``slot_number`` (no ``period_number``/``period`` key). The validator
+    # must resolve the boundary from slot_number so valid in-range periods
+    # are NOT rejected — previously this produced an empty allowed set and
+    # rejected EVERY candidate (0 sessions placed).
+    ctx = _ctx(time_slots=[
+        {"slot_number": 1, "name": "الحصة الأولى"},
+        {"slot_number": 2, "name": "الحصة الثانية"},
+        {"slot_number": 3, "name": "الحصة الثالثة"},
+    ])
+    assert school_day_boundary.validate(ctx, {"period_number": 2}) == []
+    # Out-of-range period is still rejected.
+    out = school_day_boundary.validate(ctx, {"period_number": 9})
+    assert len(out) >= 1
+    assert out[0].validation_key == "school_day_boundary"
+
+
+def test_hc04_school_day_boundary_fails_open_with_no_time_slots():
+    # No resolvable boundary (no time slots / no period info) must fail
+    # open rather than rejecting every candidate, mirroring HC-07.
+    ctx = _ctx(time_slots=[])
+    assert school_day_boundary.validate(ctx, {"period_number": 3}) == []
+
+
 # ---------- HC-05 non_teaching_period ----------
 
 def test_hc05_non_teaching_period_ok():
