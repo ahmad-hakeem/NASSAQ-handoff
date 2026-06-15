@@ -120,3 +120,9 @@ id = "K7HkxNHc0YQleAbeXEgd3"
 uri = "file://.local/audit/FINDINGS-REPORT.md"
 type = "text"
 title = "NASSAQ Security & QA Audit — Findings Report"
+
+[[outputs]]
+id = "91c68PABBELcGi5VITHun"
+uri = "file://docs/HANDOVER_TECHNICAL_REPORT.md"
+type = "text"
+title = "NASSAQ — Engineering Handover Technical Report"
