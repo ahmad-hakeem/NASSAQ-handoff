@@ -774,13 +774,22 @@ export function useSchoolSettings() {
 
   const handleCreateClassAssignment = async (teacherId, classId) => {
     try {
-      const response = await api.post('/teacher-class-assignments', {
+      await api.post('/teacher-class-assignments', {
         teacher_id: teacherId,
         class_id: classId
       });
-      setClassAssignments(prev => [...prev, response.data.assignment]);
+      // Re-read the canonical set instead of trusting an optimistic append —
+      // the backend auto-resolves the subject and may dedupe the pairing.
+      await loadClassAssignments();
       toast.success('تم إسناد الفصل للمعلم بنجاح');
     } catch (error) {
+      // Class-only assignment couldn't auto-resolve a subject for this pairing.
+      // Surface the actionable backend message via NassaqAlertDialog.
+      const detail = error?.response?.data?.detail;
+      if (error?.response?.status === 409 && detail?.code === 'subject_required') {
+        nassaqError(detail.message || 'يرجى إسناد مادة مناسبة للمعلم أولًا.');
+        return;
+      }
       nassaqError(getApiErrorMessage(error) || 'فشل في إنشاء الإسناد');
     }
   };
@@ -788,13 +797,13 @@ export function useSchoolSettings() {
   const handleDeleteClassAssignment = async (assignmentId) => {
     try {
       await api.delete(`/teacher-class-assignments/${assignmentId}`);
-      setClassAssignments(prev => prev.filter(a => a.id !== assignmentId));
+      // Re-read the canonical set so the list reflects the unassignment
+      // (and any kept-but-flagged lessons) rather than an optimistic guess.
+      await loadClassAssignments();
       toast.success('تم حذف الإسناد بنجاح');
     } catch (error) {
-      // If the assignment already doesn't exist on the server (stale optimistic state),
-      // drop it from local state and resync instead of surfacing an error.
+      // If the assignment already doesn't exist on the server, resync silently.
       if (error?.response?.status === 404) {
-        setClassAssignments(prev => prev.filter(a => a.id !== assignmentId));
         await loadClassAssignments();
         toast.success('تم حذف الإسناد بنجاح');
         return;

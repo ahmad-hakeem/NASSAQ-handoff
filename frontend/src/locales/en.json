@@ -4307,6 +4307,7 @@
   "markAsReadLabel": "Mark as read",
   "alreadyAcknowledgedLabel": "Already acknowledged",
   "relocatedToLabel": "Relocated to",
+  "needsReviewHint": "This lesson needs review: the teacher was unassigned from this class",
   "infoOnlyNotice": "This notification is informational only — it will revert automatically.",
   "teachersWithCount": "{count} teachers",
   "loadingVacantSlotsAndCandidates": "Fetching vacant slots and computing candidates…",

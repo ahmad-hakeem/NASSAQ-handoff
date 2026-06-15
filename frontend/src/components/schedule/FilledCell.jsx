@@ -156,6 +156,23 @@ export default function FilledCell({ cell, onClick, onAcknowledgeRelocation, day
       </Popover>
     );
   }
+  if (cell?.needs_review) {
+    return (
+      <div className="relative w-full h-full" data-testid="cell-needs-review" title={t('needsReviewHint')}>
+        <span
+          aria-hidden="true"
+          className="absolute top-0.5 start-0.5 z-10 h-1.5 w-1.5 rounded-full bg-amber-500 ring-1 ring-amber-200"
+        />
+        <SessionCell
+          session={cell}
+          dayKey={dayKey}
+          onClick={onClick}
+          isLocked={!!cell?.is_locked}
+          compact={compact}
+        />
+      </div>
+    );
+  }
   return (
     <SessionCell
       session={cell}

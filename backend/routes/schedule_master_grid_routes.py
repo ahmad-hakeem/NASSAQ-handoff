@@ -656,6 +656,12 @@ async def get_master_grid(
             "subject_name": subj_name,
             "is_vacant": is_vacant_today,
         }
+        # Task #919: a lesson whose (teacher, class) pairing was later
+        # unassigned is kept but flagged for review. Surface it so the grid
+        # can render a subtle "بحاجة لمراجعة" indicator without a second call.
+        if sess.get("needs_review"):
+            cell_doc["needs_review"] = True
+            cell_doc["review_reason"] = sess.get("review_reason")
         # Apply relocation overlay (recurring match first, then today's
         # long-term blanket). Both flags are additive — they never replace
         # is_vacant / is_substituted styling, the frontend just composes a

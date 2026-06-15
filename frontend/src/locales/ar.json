@@ -4311,6 +4311,7 @@
   "markAsReadLabel": "تم الاطلاع",
   "alreadyAcknowledgedLabel": "تم الاطلاع مسبقاً",
   "relocatedToLabel": "نُقل إلى",
+  "needsReviewHint": "هذه الحصة بحاجة لمراجعة: تم إلغاء إسناد المعلم لهذا الفصل",
   "infoOnlyNotice": "هذا الإشعار للعلم فقط — سيُعاد إلى وضعه الطبيعي تلقائياً.",
   "teachersWithCount": "{count} معلم",
   "loadingVacantSlotsAndCandidates": "جارٍ جلب الحصص الشاغرة وحساب المرشحين…",

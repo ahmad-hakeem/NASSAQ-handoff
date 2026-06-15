@@ -28,6 +28,12 @@ from dependencies import (
 
 from auth_scope import is_independent_workspace_id
 from utils.it_schedule import synthesize_it_time_slots
+from utils.teacher_assignment_sync import (
+    materialize_default_class_assignments,
+    resolve_class_subject,
+    add_tombstone,
+    clear_tombstones,
+)
 
 router = APIRouter()
 
@@ -2213,9 +2219,12 @@ async def create_unavailability(
         # things up before generating), keep the legacy "notify everyone
         # assigned" behaviour so principals still hear back about the change.
         if not affected_sessions and not active_timetable:
-            class_assignments = await gd_find(db.session, "teacher_class_assignments", {
+            # Task #919: recipients come from canonical teacher_assignments
+            # (class-level rows), the single source of truth.
+            class_assignments = await gd_find(db.session, "teacher_assignments", {
                 "school_id": school_id,
-                "class_id": data.entity_id
+                "class_id": data.entity_id,
+                "is_active": True,
             }, limit=500)
             teacher_ids = list({a.get("teacher_id") for a in class_assignments if a.get("teacher_id")})
         else:
@@ -2556,121 +2565,40 @@ class TeacherClassAssignmentResponse(BaseModel):
     created_at: Optional[str] = None
 
 async def _auto_populate_teacher_class_assignments(school_id: str):
+    """Materialize the default "all teachers ↔ all classes" links into the
+    CANONICAL ``teacher_assignments`` table (Task #919).
+
+    Previously this wrote everyone-to-everyone rows into
+    ``teacher_class_assignments`` (TCA), which is a separate, subject-less table
+    that the teacher's "فصولي" page and the permission layer never read — so the
+    principal's settings view and the teacher's view diverged. The single source
+    of truth is now ``teacher_assignments``; we materialize (teacher, class,
+    auto-resolved subject) rows there instead. The work is ADDITIVE, idempotent
+    and tombstone-aware (an explicitly unassigned pairing is never recreated).
     """
-    Auto-populate teacher-class assignments: all teachers linked to all classes by default.
-    Runs ONLY ONCE per school, on first touch (when no assignments exist at all).
-    Subsequent additions of new teachers/classes are handled by `_ensure_teacher_linked_to_all_classes`
-    and `_ensure_class_linked_to_all_teachers` at create time.
-
-    This guarantees that if a principal/admin deletes an assignment, it stays
-    deleted — we will not silently recreate it on the next page load.
-
-    IMPORTANT: this runs from a GET handler. The pg_session_middleware rolls
-    back GET-request transactions to defend against accidental writes, which
-    means inserts on db.session would vanish at end-of-request. We use a
-    dedicated session with an explicit commit so the auto-populated rows
-    actually persist.
-    """
-    from db import async_session_factory
-
-    async with async_session_factory() as ses:
-        existing_count = await gd_count(ses, "teacher_class_assignments", {"school_id": school_id})
-        if existing_count > 0:
-            # School has already been initialized — never re-populate.
-            return 0
-
-        teachers = await gd_find(ses, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=2000)
-        classes = await gd_find(ses, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
-
-        if not teachers or not classes:
-            return 0
-
-        now = datetime.now(timezone.utc).isoformat()
-        upserted = 0
-        for t in teachers:
-            for c in classes:
-                filt = {"school_id": school_id, "teacher_id": t["id"], "class_id": c["id"]}
-                doc = {
-                    "id": str(uuid.uuid4()),
-                    "school_id": school_id,
-                    "teacher_id": t["id"],
-                    "class_id": c["id"],
-                    "is_active": True,
-                    "created_at": now,
-                }
-                try:
-                    async with ses.begin_nested():
-                        await gd_upsert(ses, "teacher_class_assignments", filt, doc)
-                    upserted += 1
-                except Exception as e:
-                    logger.warning(f"auto-populate upsert failed for teacher={t['id']} class={c['id']}: {e}")
-        try:
-            await ses.commit()
-        except Exception as e:
-            logger.warning(f"auto-populate commit failed for school {school_id}: {e}")
-            await ses.rollback()
-            return 0
-        return upserted
+    return await materialize_default_class_assignments(school_id)
 
 
 async def _ensure_teacher_linked_to_all_classes(school_id: str, teacher_id: str):
-    """When a new teacher is created, auto-assign to all classes via bulk upsert."""
-    classes = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
-    if not classes:
+    """When a new teacher is created, materialize canonical class assignments for
+    that teacher across the classes they can teach (subject auto-resolved)."""
+    if not school_id or not teacher_id:
         return
-
-    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
-    academic_year_id = None
-    if settings:
-        nested = settings.get("settings", {})
-        academic_year_id = nested.get("academic_year") or settings.get("academicYear")
-
-    now = datetime.now(timezone.utc).isoformat()
-    for c in classes:
-        filt = {"school_id": school_id, "teacher_id": teacher_id, "class_id": c["id"]}
-        doc = {
-            "id": str(uuid.uuid4()),
-            "teacher_id": teacher_id,
-            "class_id": c["id"],
-            "school_id": school_id,
-            "is_active": True,
-            "created_at": now,
-        }
-        try:
-            async with db.session.begin_nested():
-                await gd_upsert(db.session, "teacher_class_assignments", filt, doc)
-        except Exception as e:
-            logger.warning(f"_ensure_teacher_linked upsert failed teacher={teacher_id} class={c['id']}: {e}")
+    try:
+        await materialize_default_class_assignments(school_id, teacher_ids=[teacher_id])
+    except Exception as e:
+        logger.warning(f"_ensure_teacher_linked failed teacher={teacher_id}: {e}")
 
 
 async def _ensure_class_linked_to_all_teachers(school_id: str, class_id: str):
-    """When a new class is created, auto-assign all teachers to it via bulk upsert."""
-    teachers = await gd_find(db.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=2000)
-    if not teachers:
+    """When a new class is created, materialize canonical assignments linking the
+    school's teachers to it (subject auto-resolved)."""
+    if not school_id or not class_id:
         return
-
-    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
-    academic_year_id = None
-    if settings:
-        nested = settings.get("settings", {})
-        academic_year_id = nested.get("academic_year") or settings.get("academicYear")
-
-    now = datetime.now(timezone.utc).isoformat()
-    for t in teachers:
-        filt = {"school_id": school_id, "teacher_id": t["id"], "class_id": class_id}
-        doc = {
-            "id": str(uuid.uuid4()),
-            "teacher_id": t["id"],
-            "class_id": class_id,
-            "school_id": school_id,
-            "is_active": True,
-            "created_at": now,
-        }
-        try:
-            async with db.session.begin_nested():
-                await gd_upsert(db.session, "teacher_class_assignments", filt, doc)
-        except Exception as e:
-            logger.warning(f"_ensure_class_linked upsert failed teacher={t['id']} class={class_id}: {e}")
+    try:
+        await materialize_default_class_assignments(school_id, class_ids=[class_id])
+    except Exception as e:
+        logger.warning(f"_ensure_class_linked failed class={class_id}: {e}")
 
 
 @router.get("/teacher-class-assignments")
@@ -2690,52 +2618,69 @@ async def get_teacher_class_assignments(
     school_id = await get_school_id_from_context(current_user, x_school_context)
     if not school_id:
         raise HTTPException(status_code=400, detail="Missing school context")
-    
+
+    # Source of truth (Task #919): the principal's class-assignment view reads
+    # the CANONICAL ``teacher_assignments`` table — the exact same set the
+    # teacher's "فصولي" page, the permission layer and the scheduler read — so
+    # the two surfaces can never diverge. We first materialize the default
+    # links (idempotent, tombstone-aware) into canonical, then project one row
+    # per distinct (teacher, class) pair.
     created = await _auto_populate_teacher_class_assignments(school_id)
     if created > 0:
-        logger.info(f"Auto-populated {created} teacher-class assignments for school {school_id}")
+        logger.info(f"Materialized {created} canonical teacher-class assignments for school {school_id}")
 
-    query_filter = {"school_id": school_id}
+    ta_filter = {"school_id": school_id, "is_active": True}
     if teacher_id:
-        query_filter["teacher_id"] = teacher_id
-    if class_id:
-        query_filter["class_id"] = class_id
+        ta_filter["teacher_id"] = teacher_id
+    canonical = await gd_find(db.session, "teacher_assignments", ta_filter, limit=50000)
 
-    total = await gd_count(db.session, "teacher_class_assignments", query_filter)
-    skip = (page - 1) * page_size
+    # Collapse subject-level rows to one entry per (teacher, class). Rows with no
+    # class_id are school-wide subject assignments and are not class links.
+    pair_map: Dict[tuple, dict] = {}
+    for a in canonical:
+        cid = a.get("class_id")
+        tid = a.get("teacher_id")
+        if not cid or not tid:
+            continue
+        if class_id and cid != class_id:
+            continue
+        key = (tid, cid)
+        if key not in pair_map:
+            pair_map[key] = a
 
-    assignments = await gd_find(db.session, "teacher_class_assignments", query_filter, offset=skip, limit=page_size)
-
-    t_ids = list({a.get("teacher_id") for a in assignments if a.get("teacher_id")})
-    c_ids = list({a.get("class_id") for a in assignments if a.get("class_id")})
-
+    t_ids = list({tid for tid, _ in pair_map.keys()})
+    c_ids = list({cid for _, cid in pair_map.keys()})
     teachers_list = await gd_find(db.session, "teachers", {"id": {"$in": t_ids}}, limit=len(t_ids) + 1) if t_ids else []
     classes_list = await gd_find(db.session, "classes", {"id": {"$in": c_ids}, "is_active": {"$ne": False}}, limit=len(c_ids) + 1) if c_ids else []
-
     teacher_map = {t["id"]: t for t in teachers_list}
     class_map = {c["id"]: c for c in classes_list}
 
-    result = []
-    for assignment in assignments:
-        tid = assignment.get("teacher_id")
-        cid = assignment.get("class_id")
-        teacher = teacher_map.get(tid)
+    rows = []
+    for (tid, cid), a in pair_map.items():
         class_doc = class_map.get(cid)
-
-        result.append({
-            "id": assignment.get("id"),
+        if not class_doc:
+            # Class soft-deleted / cross-tenant — never surface it.
+            continue
+        teacher = teacher_map.get(tid)
+        rows.append({
+            "id": a.get("id"),
             "teacher_id": tid,
             "class_id": cid,
-            "school_id": assignment.get("school_id"),
-            "academic_year_id": assignment.get("academic_year_id"),
+            "school_id": a.get("school_id"),
+            "academic_year_id": a.get("academic_year_id"),
             "teacher_name": teacher.get("full_name") if teacher else None,
-            "class_name": f"{class_doc.get('name', '')} - {class_doc.get('section', '')}" if class_doc else None,
-            "auto_assigned": assignment.get("auto_assigned", False),
-            "created_at": assignment.get("created_at")
+            "class_name": f"{class_doc.get('name', '')} - {class_doc.get('section', '')}",
+            "auto_assigned": a.get("auto_assigned", False),
+            "created_at": a.get("created_at"),
         })
 
+    rows.sort(key=lambda r: (r.get("teacher_name") or "", r.get("class_name") or ""))
+    total = len(rows)
+    skip = (page - 1) * page_size
+    paged = rows[skip:skip + page_size]
+
     return {
-        "data": result,
+        "data": paged,
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -2763,48 +2708,80 @@ async def create_teacher_class_assignment(
     class_doc = await gd_find_one(db.session, "classes", {"id": assignment.class_id, "school_id": school_id})
     if not class_doc:
         raise HTTPException(status_code=404, detail="الفصل غير موجود في هذه المدرسة")
-    
-    # Check if assignment already exists (model has no academic_year_id column)
-    existing = await gd_find_one(db.session, "teacher_class_assignments", {
+
+    # Class-only assignment (Task #919): auto-resolve the subject from the
+    # teacher's subjects ∩ the class grade's curriculum. When the choice is
+    # ambiguous or there is no overlap, return a structured "subject required"
+    # signal so the principal can pick/assign a subject (handled in the UI via
+    # NassaqAlertDialog) instead of silently guessing.
+    subject_id, reason = await resolve_class_subject(db.session, school_id, teacher, class_doc)
+    if not subject_id:
+        if reason == "ambiguous":
+            msg = "لهذا الفصل أكثر من مادة يدرّسها المعلم. يرجى تحديد المادة المناسبة أولًا من تبويب إسناد المواد."
+        else:
+            msg = "تعذّر تحديد مادة مناسبة لهذا المعلم في هذا الفصل تلقائيًا. يرجى إسناد مادة مناسبة للمعلم أولًا من تبويب إسناد المواد."
+        raise HTTPException(status_code=409, detail={
+            "code": "subject_required",
+            "message": msg,
+            "teacher_id": assignment.teacher_id,
+            "class_id": assignment.class_id,
+        })
+
+    # Already linked? (active canonical row for this pair+subject)
+    existing = await gd_find_one(db.session, "teacher_assignments", {
         "school_id": school_id,
         "teacher_id": assignment.teacher_id,
         "class_id": assignment.class_id,
+        "subject_id": subject_id,
+        "is_active": True,
     })
-    
     if existing:
         raise HTTPException(status_code=400, detail="هذا الإسناد موجود بالفعل")
-    
-    # Get settings for academic year if not provided
-    academic_year_id = assignment.academic_year_id
-    if not academic_year_id:
-        settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
-        if settings:
-            nested = settings.get("settings", {})
-            academic_year_id = nested.get("academic_year") or settings.get("academicYear")
-    
-    # Create new assignment (model has no academic_year_id / updated_at columns)
-    new_assignment = {
-        "id": str(uuid.uuid4()),
+
+    # Re-assigning clears any prior removal for this (teacher, class).
+    await clear_tombstones(db.session, school_id, assignment.teacher_id, class_id=assignment.class_id)
+
+    subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Reactivate a soft-deactivated canonical row if present, else insert.
+    deactivated = await gd_find_one(db.session, "teacher_assignments", {
+        "school_id": school_id,
         "teacher_id": assignment.teacher_id,
         "class_id": assignment.class_id,
-        "school_id": school_id,
-        "is_active": True,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    
-    await gd_insert(db.session, "teacher_class_assignments", new_assignment)
-    
+        "subject_id": subject_id,
+        "is_active": False,
+    })
+    if deactivated:
+        await gd_update_one(db.session, "teacher_assignments", {"id": deactivated.get("id")},
+                            {"is_active": True, "updated_at": now})
+        new_id = deactivated.get("id")
+    else:
+        new_id = str(uuid.uuid4())
+        await gd_insert(db.session, "teacher_assignments", {
+            "id": new_id,
+            "teacher_id": assignment.teacher_id,
+            "class_id": assignment.class_id,
+            "subject_id": subject_id,
+            "school_id": school_id,
+            "teacher_name": teacher.get("full_name"),
+            "subject_name": (subject.get("name_ar") or subject.get("name")) if subject else None,
+            "is_active": True,
+            "created_at": now,
+        })
+
     return {
         "message": "تم إنشاء الإسناد بنجاح",
         "assignment": {
-            "id": new_assignment["id"],
-            "teacher_id": new_assignment["teacher_id"],
-            "class_id": new_assignment["class_id"],
-            "school_id": new_assignment["school_id"],
-            "academic_year_id": academic_year_id,
+            "id": new_id,
+            "teacher_id": assignment.teacher_id,
+            "class_id": assignment.class_id,
+            "subject_id": subject_id,
+            "school_id": school_id,
             "teacher_name": teacher.get("full_name") if teacher else None,
+            "subject_name": (subject.get("name_ar") or subject.get("name")) if subject else None,
             "class_name": f"{class_doc.get('name', '')} - {class_doc.get('section', '')}" if class_doc else None,
-            "created_at": new_assignment["created_at"]
+            "created_at": now,
         }
     }
 
@@ -2821,16 +2798,64 @@ async def delete_teacher_class_assignment(
     school_id = await get_school_id_from_context(current_user, x_school_context)
     if not school_id:
         raise HTTPException(status_code=400, detail="Missing school context")
-    
-    result = await gd_delete_one(db.session, "teacher_class_assignments", {
-        "id": assignment_id,
-        "school_id": school_id
-    })
-    
-    if result == 0:
+
+    # Resolve (teacher, class) from the assignment id. The settings list now
+    # returns CANONICAL teacher_assignments row ids, but tolerate a legacy
+    # teacher_class_assignments id too.
+    teacher_id = None
+    class_id = None
+    canonical_row = await gd_find_one(db.session, "teacher_assignments", {"id": assignment_id, "school_id": school_id})
+    if canonical_row:
+        teacher_id = canonical_row.get("teacher_id")
+        class_id = canonical_row.get("class_id")
+    else:
+        legacy = await gd_find_one(db.session, "teacher_class_assignments", {"id": assignment_id, "school_id": school_id})
+        if legacy:
+            teacher_id = legacy.get("teacher_id")
+            class_id = legacy.get("class_id")
+
+    if not teacher_id or not class_id:
         raise HTTPException(status_code=404, detail="الإسناد غير موجود")
-    
-    return {"message": "تم حذف الإسناد بنجاح"}
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    # 1) Deactivate every canonical (teacher, class) row (all subjects) — the
+    #    pairing is fully unassigned.
+    await gd_update_many(db.session, "teacher_assignments", {
+        "school_id": school_id, "teacher_id": teacher_id, "class_id": class_id, "is_active": True,
+    }, {"is_active": False, "updated_at": now})
+
+    # 2) Record an explicit removal so the default materializer and the
+    #    published-schedule reconciler never resurrect it.
+    await add_tombstone(db.session, school_id, teacher_id, class_id, None,
+                        created_by=current_user.get("id"))
+
+    # 3) Drop the legacy TCA projection rows for the pair (kept only for older
+    #    scheduler fallbacks).
+    await gd_delete_many(db.session, "teacher_class_assignments", {
+        "school_id": school_id, "teacher_id": teacher_id, "class_id": class_id,
+    })
+
+    # 4) Keep already-PUBLISHED lessons for this pairing but flag them for review
+    #    and exclude them from new generation (the scheduler tombstone filter).
+    flagged = 0
+    try:
+        published_tts = await gd_find(db.session, "timetables", {
+            "school_id": school_id, "status": "published",
+        }, limit=200)
+        tt_ids = [t.get("id") for t in published_tts if t.get("id")]
+        if tt_ids:
+            flagged = await gd_update_many(db.session, "timetable_sessions", {
+                "timetable_id": {"$in": tt_ids}, "teacher_id": teacher_id, "class_id": class_id,
+            }, {
+                "needs_review": True,
+                "review_reason": "unassigned_pairing",
+                "review_flagged_at": now,
+            })
+    except Exception as e:
+        logger.warning(f"flag sessions on unassign failed teacher={teacher_id} class={class_id}: {e}")
+
+    return {"message": "تم حذف الإسناد بنجاح", "flagged_sessions": flagged}
 
 @router.get("/teacher-class-assignments/classes-without-teachers")
 async def get_classes_without_teachers(
@@ -2848,7 +2873,13 @@ async def get_classes_without_teachers(
     # Get all classes
     all_classes = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
     
-    assigned_class_ids = set(await gd_distinct(db.session, "teacher_class_assignments", "class_id", {"school_id": school_id}))
+    # Task #919: derive from canonical teacher_assignments (class-level rows),
+    # the single source of truth — never the legacy teacher_class_assignments.
+    canonical_links = await gd_find(
+        db.session, "teacher_assignments",
+        {"school_id": school_id, "is_active": True}, limit=50000,
+    )
+    assigned_class_ids = {a.get("class_id") for a in canonical_links if a.get("class_id")}
     
     # Filter unassigned classes
     unassigned = []
@@ -3011,22 +3042,31 @@ async def get_teacher_assignments(
     if not school_id:
         raise HTTPException(status_code=400, detail="Missing school context")
     
-    assignments = await gd_find(db.session, "teacher_class_assignments", {
+    # Task #919: read canonical teacher_assignments (class-level rows), the
+    # single source of truth, and collapse subject-level rows to one per class.
+    assignments = await gd_find(db.session, "teacher_assignments", {
         "school_id": school_id,
-        "teacher_id": teacher_id
-    }, limit=500)
-    
-    class_ids = list({a.get("class_id") for a in assignments if a.get("class_id")})
+        "teacher_id": teacher_id,
+        "is_active": True,
+    }, limit=2000)
+
+    per_class: Dict[str, dict] = {}
+    for a in assignments:
+        cid = a.get("class_id")
+        if cid and cid not in per_class:
+            per_class[cid] = a
+
+    class_ids = list(per_class.keys())
     classes_docs = await gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=500) if class_ids else []
     class_map = {c["id"]: c for c in classes_docs}
 
     result = []
-    for assignment in assignments:
-        class_doc = class_map.get(assignment.get("class_id"))
+    for cid, assignment in per_class.items():
+        class_doc = class_map.get(cid)
         if class_doc:
             result.append({
                 "id": assignment.get("id"),
-                "class_id": assignment.get("class_id"),
+                "class_id": cid,
                 "class_name": class_doc.get("name"),
                 "section": class_doc.get("section"),
                 "grade_id": class_doc.get("grade_id")

@@ -362,6 +362,20 @@ async def _reconcile_teacher_assignments_from_schedule(
     if not pairs:
         return 0
 
+    # Task #919: an explicitly UNASSIGNED (teacher, class) pairing must stay
+    # unassigned even though the teacher still has published lessons for it
+    # (those lessons are kept but flagged needs-review). Honor the removal
+    # tombstones so this additive reconcile never resurrects the pairing.
+    from utils.teacher_assignment_sync import load_tombstones, is_tombstoned
+    tombstones = await load_tombstones(db.session, school_id, resolved_teacher_id)
+    if tombstones:
+        pairs = {
+            (cid, sid) for (cid, sid) in pairs
+            if not is_tombstoned(tombstones, resolved_teacher_id, cid, sid)
+        }
+        if not pairs:
+            return 0
+
     from db import async_session_factory
 
     created = 0
@@ -2867,13 +2881,9 @@ async def get_teacher_class_metrics(
     await _assert_teacher_identity(teacher, current_user, teacher_id)
     _check_teacher_tenant(teacher, current_user)
     resolved_teacher_id = teacher.get("id") if teacher else teacher_id
+    # Task #919: canonical teacher_assignments is the single source of truth.
     assignments = await gd_find(db.session, "teacher_assignments", {"teacher_id": resolved_teacher_id, "is_active": True}, limit=200)
-    class_ids_from_ta = set(a.get("class_id") for a in assignments if a.get("class_id"))
-
-    tca_docs = await gd_find(db.session, "teacher_class_assignments", {"teacher_id": resolved_teacher_id}, limit=200)
-    class_ids_from_tca = set(d.get("class_id") for d in tca_docs if d.get("class_id"))
-
-    all_class_ids = list(class_ids_from_ta | class_ids_from_tca)
+    all_class_ids = list({a.get("class_id") for a in assignments if a.get("class_id")})
     metrics = {}
     for class_id in all_class_ids:
         metrics[class_id] = await session_engine.get_class_metrics(resolved_teacher_id, class_id)
@@ -3693,9 +3703,9 @@ async def get_teacher_achievements(
     school_id = teacher.get("school_id") if teacher else current_user.get("tenant_id")
     resolved_teacher_id = teacher.get("id") if teacher else teacher_id
 
+    # Task #919: canonical teacher_assignments is the single source of truth.
     assignments = await gd_find(db.session, "teacher_assignments", {"teacher_id": resolved_teacher_id, "is_active": True}, limit=200)
-    tca_docs = await gd_find(db.session, "teacher_class_assignments", {"teacher_id": resolved_teacher_id}, limit=200)
-    class_ids = list(set(a.get("class_id") for a in assignments if a.get("class_id")) | set(d.get("class_id") for d in tca_docs if d.get("class_id")))
+    class_ids = list({a.get("class_id") for a in assignments if a.get("class_id")})
 
     total_classes = len(class_ids)
     total_students = 0

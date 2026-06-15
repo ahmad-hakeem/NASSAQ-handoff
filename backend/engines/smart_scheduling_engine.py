@@ -873,14 +873,22 @@ class SmartSchedulingEngine:
             all_assignments_cache = await gd_find(self.session, "teacher_assignments", {"school_id": school_id, "is_active": True}, limit=5000)
         all_teachers_cache = await gd_find(self.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
 
-        # Load school-wide subjects + teacher_class_assignments so we can synthesize
-        # per-class subject demand when teacher_assignments is sparse (the common
-        # case — the principal UI populates teacher_class_assignments only).
+        # Load school-wide subjects. Task #919: legacy teacher_class_assignments
+        # links are backfilled into canonical ``teacher_assignments`` before
+        # generation, so the scheduler reads ONE source (teacher_assignments) and
+        # no longer synthesizes eligibility from TCA.
         all_subjects_cache = await gd_find(self.session, "subjects", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
+
+        # Task #919: explicitly UNASSIGNED (teacher, class[, subject]) pairings
+        # must be excluded from eligibility so they are not re-scheduled. Load
+        # the removal tombstones once and filter suitable_teachers below.
         try:
-            all_tca_cache = await gd_find(self.session, "teacher_class_assignments", {"school_id": school_id, "is_active": True}, limit=5000)
+            from utils.teacher_assignment_sync import load_tombstones, is_tombstoned
+            _removal_tombstones = await load_tombstones(self.session, school_id)
         except Exception:
-            all_tca_cache = []
+            _removal_tombstones = []
+            def is_tombstoned(*_a, **_k):  # type: ignore
+                return False
 
         # name_ar -> subject_id (and name_en as a courtesy)
         subject_by_name: Dict[str, str] = {}
@@ -915,18 +923,6 @@ class SmartSchedulingEngine:
                     if sid:
                         teacher_subject_map[tid] = sid
                         break
-
-        # class_id -> [(teacher_id, subject_id), ...]
-        class_tca_map: Dict[str, List[tuple]] = {}
-        for r in all_tca_cache:
-            cid = r.get("class_id")
-            tid = r.get("teacher_id")
-            if not cid or not tid:
-                continue
-            sid = teacher_subject_map.get(tid)
-            if not sid:
-                continue
-            class_tca_map.setdefault(cid, []).append((tid, sid))
 
         assignments_by_subject = {}
         for a in all_assignments_cache:
@@ -963,32 +959,7 @@ class SmartSchedulingEngine:
                             "teacher_id": assignment.get("teacher_id"),
                         })
 
-                # 2) Synthesize from teacher_class_assignments (class↔teacher links)
-                #    crossed with each teacher's subject. This is the path that
-                #    populates schedules when the principal UI assigned teachers
-                #    to classes but never populated subject-level rows.
-                tca_pairs = class_tca_map.get(class_id, [])
-                for tid, sub_id in tca_pairs:
-                    if sub_id in seen_subjects:
-                        continue
-                    seen_subjects.add(sub_id)
-                    sub_meta = subject_meta.get(sub_id, {})
-                    weekly = (
-                        sub_meta.get("default_periods_per_week")
-                        or sub_meta.get("weekly_periods")
-                        or 4
-                    )
-                    try:
-                        weekly = max(1, int(weekly))
-                    except (TypeError, ValueError):
-                        weekly = 4
-                    grade_subjects.append({
-                        "subject_id": sub_id,
-                        "weekly_periods": weekly,
-                        "teacher_id": tid,
-                    })
-
-                # 3) Last-resort: leak in school-wide (NULL class_id) assignments,
+                # 2) Last-resort: leak in school-wide (NULL class_id) assignments,
                 #    but ONLY if we still found nothing — otherwise these would
                 #    pollute every class with the same 1-2 subjects.
                 if not grade_subjects:
@@ -1021,15 +992,9 @@ class SmartSchedulingEngine:
                     if ta.get("teacher_id") not in suitable_teachers:
                         suitable_teachers.append(ta.get("teacher_id"))
 
-                # Prefer teachers explicitly tied to this class via
-                # teacher_class_assignments who teach this subject.
-                for tid, sub_id in class_tca_map.get(class_id, []):
-                    if sub_id == subject_id and tid not in suitable_teachers:
-                        suitable_teachers.append(tid)
-
                 # Final fallback: any teacher in the school whose subject
-                # resolves to this subject_id (covers schools that haven't
-                # populated teacher_class_assignments yet).
+                # resolves to this subject_id (covers schools whose canonical
+                # teacher_assignments are still sparse after backfill).
                 if not suitable_teachers:
                     for t in all_teachers_cache:
                         tid = t.get("id") or t.get("teacher_id")
@@ -1041,7 +1006,16 @@ class SmartSchedulingEngine:
                             or teacher_subject_map.get(tid) == subject_id
                         ):
                             suitable_teachers.append(tid)
-                
+
+                # Task #919: drop any teacher whose (class, subject) pairing was
+                # explicitly unassigned by the principal — published lessons are
+                # kept (flagged needs-review) but never re-scheduled.
+                if _removal_tombstones:
+                    suitable_teachers = [
+                        tid for tid in suitable_teachers
+                        if not is_tombstoned(_removal_tombstones, tid, class_id, subject_id)
+                    ]
+
                 subjects_data.append({
                     "subject_id": subject_id,
                     "weekly_periods": weekly_periods,
@@ -2963,6 +2937,11 @@ class SmartSchedulingEngine:
         try:
             from routes.school_settings_mod import _auto_populate_teacher_class_assignments
             await _auto_populate_teacher_class_assignments(school_id)
+            # Task #919: backfill canonical teacher_assignments from any legacy
+            # teacher_class_assignments links so the canonical table is the
+            # COMPLETE eligibility source — the scheduler no longer reads TCA.
+            from utils.teacher_assignment_sync import materialize_class_assignments_from_legacy_tca
+            await materialize_class_assignments_from_legacy_tca(school_id)
         except Exception as _seed_err:
             seed_error = str(_seed_err)
             logger.error(
@@ -2976,10 +2955,18 @@ class SmartSchedulingEngine:
         teachers_check_count = await gd_count(self.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}})
         classes_check_count = await gd_count(self.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}})
         if teachers_check_count > 0 and classes_check_count > 0:
-            tca_check_count = await gd_count(self.session, "teacher_class_assignments", {"school_id": school_id, "is_active": True})
-            if tca_check_count == 0:
+            # Task #919: the single source of truth is class-level rows in
+            # ``teacher_assignments``. Legacy ``teacher_class_assignments`` links
+            # were just backfilled into canonical above, so the readiness gate
+            # counts ONLY canonical class links (no second source of truth).
+            ta_rows_check = await gd_find(
+                self.session, "teacher_assignments",
+                {"school_id": school_id, "is_active": True}, limit=50000,
+            )
+            canonical_class_links = sum(1 for r in ta_rows_check if r.get("class_id"))
+            if canonical_class_links == 0:
                 msg_en = (
-                    f"Refusing to generate: teacher_class_assignments is empty despite "
+                    f"Refusing to generate: teacher_assignments has no class links despite "
                     f"{teachers_check_count} teacher(s) and {classes_check_count} class(es)."
                     + (f" Auto-seed error: {seed_error}" if seed_error else " Auto-seed produced no rows.")
                 )
