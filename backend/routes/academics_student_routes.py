@@ -589,7 +589,15 @@ async def get_student(student_id: str, current_user: dict = Depends(get_current_
     # Normalize field names
     if not student.get("full_name") and student.get("full_name_ar"):
         student["full_name"] = student["full_name_ar"]
-    
+
+    # Read-after-write: the students table has no parent_relationship
+    # column, so surface the canonical guardian relationship (and backfill
+    # any missing parent contact mirror) from guardian_links / parents,
+    # scoped to this student's tenant. Single-student GET only — the class
+    # roster stays unenriched to avoid an N+1.
+    from services.parent_linking import enrich_student_guardian_fields
+    await enrich_student_guardian_fields(db.session, student)
+
     student["class_name"] = class_name
     return StudentResponse(**student)
 
@@ -646,10 +654,25 @@ async def update_student(
         update_fields["date_of_birth"] = student_data.date_of_birth
     if student_data.gender is not None:
         update_fields["gender"] = student_data.gender
-    if student_data.parent_phone is not None:
-        update_fields["parent_phone"] = student_data.parent_phone
-    if student_data.parent_name is not None:
-        update_fields["parent_name"] = student_data.parent_name
+    # Guardian fields are resolved below. Real-school callers route through
+    # the shared parent service so RELATIONSHIP + EMAIL persist AND a real
+    # parent account is created/linked (same contract as the manual
+    # student-creation wizard — see services/parent_linking.py). IT callers
+    # keep their pre-existing behaviour (denormalised name/phone only) so
+    # the §5.6 pending_parent_*/inline-link path is not regressed.
+    from auth_scope import is_independent_teacher as _is_independent_teacher
+    _is_it_caller = _is_independent_teacher(current_user)
+    _guardian_provided = any(v is not None for v in (
+        student_data.parent_name,
+        student_data.parent_phone,
+        student_data.parent_email,
+        student_data.parent_relationship,
+    ))
+    if _is_it_caller:
+        if student_data.parent_phone is not None:
+            update_fields["parent_phone"] = student_data.parent_phone
+        if student_data.parent_name is not None:
+            update_fields["parent_name"] = student_data.parent_name
     if student_data.talents is not None:
         update_fields["talents"] = student_data.talents
         update_fields["is_gifted"] = len(student_data.talents) > 0
@@ -660,10 +683,46 @@ async def update_student(
     if student_data.is_active is not None:
         update_fields["is_active"] = student_data.is_active
     
-    result = await gd_update_one(db.session, "students", query, update_fields)
-    if result == 0:
-        raise HTTPException(status_code=404, detail="الطالب غير موجود")
-    
+    # Tenant anchor for any guardian write is ALWAYS the existing student's
+    # school — never the caller-supplied/JWT value — so a platform admin
+    # (tenant_id may be NULL) or a crafted request can't widen scope across
+    # tenants.
+    tenant_anchor = existing.get("school_id") or school_id
+
+    # Group the (optional) guardian provisioning and the students-row write
+    # under ONE savepoint so any failure rolls back BOTH — the request
+    # middleware commits non-GET responses even on 4xx, so partial writes
+    # must be impossible.
+    async with db.session.begin_nested():
+        if _guardian_provided and not _is_it_caller:
+            from services.parent_linking import link_or_update_real_school_guardian
+            from dependencies import hash_password, generate_secure_password
+            mirror = await link_or_update_real_school_guardian(
+                db.session,
+                existing,
+                tenant_anchor,
+                current_user.get("id"),
+                parent_name=student_data.parent_name,
+                parent_phone=student_data.parent_phone,
+                parent_email=student_data.parent_email,
+                parent_relationship=student_data.parent_relationship,
+                hash_password=hash_password,
+                generate_secure_password=generate_secure_password,
+            )
+            # Mirror the resolved (real, non-placeholder) contact onto the
+            # students row so the roster + StudentResponse read directly.
+            update_fields["parent_id"] = mirror["parent_id"]
+            if mirror.get("parent_name") is not None:
+                update_fields["parent_name"] = mirror["parent_name"]
+            if mirror.get("parent_phone") is not None:
+                update_fields["parent_phone"] = mirror["parent_phone"]
+            if mirror.get("parent_email") is not None:
+                update_fields["parent_email"] = mirror["parent_email"]
+
+        result = await gd_update_one(db.session, "students", query, update_fields)
+        if result == 0:
+            raise HTTPException(status_code=404, detail="الطالب غير موجود")
+
     await audit_engine.log(
         action=AuditAction.USER_UPDATED.value,
         performed_by=current_user.get("id"),

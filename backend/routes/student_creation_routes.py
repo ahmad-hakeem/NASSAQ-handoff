@@ -144,140 +144,25 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
     router = APIRouter(prefix="/student-wizard", tags=["Student Wizard"])
     
     async def find_or_create_parent(parent_data: dict, school_id: str, created_by: str):
+        """البحث عن ولي أمر موجود أو إنشاء جديد (يدعم ربط الأشقاء تلقائياً).
+
+        Thin delegate to the shared, route-agnostic real-school parent
+        service (``services.parent_linking.find_or_create_parent``) so the
+        manual wizard and the existing-student guardian-edit flow
+        (``PUT /students/{id}``) provision/link parents through ONE
+        canonical implementation. Tenant rules, per-school dedupe, global
+        users reuse-by-email, and the return shape are unchanged.
         """
-        البحث عن ولي أمر موجود أو إنشاء جديد
-        يدعم ربط الأشقاء تلقائياً
-
-        Tenant rules (important):
-          • The parents row is ALWAYS scoped to the current school. We never
-            reuse a parents row from another school — that would break tenant
-            isolation and let a student in School A get linked to a parent
-            record owned by School B.
-          • The users row is global (users.email is globally unique). When a
-            user account already exists for the same email, we reuse the
-            existing user_id and create a fresh per-school parents row that
-            references it. This avoids `users_email_key` IntegrityErrors
-            without leaking data across tenants.
-        """
-        existing_parent = None
-        linked_students = []
-
-        # parents lookup is per-school only.
-        if parent_data.get("national_id"):
-            existing_parent = await gd_find_one(db.session, "parents", {
-                "national_id": parent_data["national_id"],
-                "school_id": school_id
-            })
-        if not existing_parent and parent_data.get("phone"):
-            existing_parent = await gd_find_one(db.session, "parents", {
-                "phone": parent_data["phone"],
-                "school_id": school_id
-            })
-        if not existing_parent and parent_data.get("email"):
-            existing_parent = await gd_find_one(db.session, "parents", {
-                "email": parent_data["email"],
-                "school_id": school_id
-            })
-
-        if existing_parent:
-            # Get linked students (siblings) — restrict to this school so we
-            # don't leak siblings from other tenants.
-            student_ids = existing_parent.get("student_ids", [])
-            if student_ids:
-                siblings = await gd_find(
-                    db.session, "students",
-                    {"id": {"$in": student_ids}, "school_id": school_id},
-                    limit=20,
-                )
-                linked_students = siblings
-
-            # Enrich with linked user_id (parents table has no user_id column;
-            # link is by email) so downstream code can write guardian_links
-            if not existing_parent.get("user_id") and existing_parent.get("email"):
-                linked_user = await gd_find_one(db.session, "users", {
-                    "email": existing_parent["email"],
-                    "role": UserRole.PARENT.value
-                })
-                if linked_user:
-                    existing_parent["user_id"] = linked_user.get("id")
-
-            return {
-                "parent": existing_parent,
-                "is_new": False,
-                "linked_students": linked_students
-            }
-
-        # 3) Reuse a global users row when only the user account exists
-        #    (e.g. a parent whose previous parents row was archived). This
-        #    avoids tripping the users_email_key UNIQUE constraint below.
-        existing_user = None
-        if parent_data.get("email"):
-            existing_user = await gd_find_one(db.session, "users", {
-                "email": parent_data["email"],
-            })
-            if existing_user and existing_user.get("role") != UserRole.PARENT.value:
-                # Email belongs to a non-parent account — refuse with a
-                # specific, actionable message instead of a 500.
-                raise HTTPException(
-                    status_code=409,
-                    detail="البريد الإلكتروني مستخدم مسبقاً لحساب آخر",
-                )
-
-        # Create new parent
-        parent_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
-
-        if existing_user:
-            user_id = existing_user.get("id")
-            parent_email = existing_user.get("email")
-            temp_password = None  # account already exists
-        else:
-            # Generate temp password and a fresh user account
-            temp_password = generate_secure_password()
-            user_id = str(uuid.uuid4())
-            parent_email = parent_data.get("email") or f"parent_{parent_id[:8]}@nassaq.local"
-
-            user_doc = {
-                "id": user_id,
-                "email": parent_email,
-                "password_hash": hash_password(temp_password),
-                "full_name": parent_data["full_name"],
-                "role": UserRole.PARENT.value,
-                "phone": parent_data.get("phone"),
-                "is_active": True,
-                "must_change_password": True,
-                "tenant_id": school_id,
-                "created_at": now,
-                "created_by": created_by
-            }
-            await gd_insert(db.session, "users", user_doc)
-
-        parent_doc = {
-            "id": parent_id,
-            # parents table has no user_id column; keep this field for
-            # downstream code (e.g. guardian_links) while harmless for the ORM
-            "user_id": user_id,
-            "full_name": parent_data["full_name"],
-            "national_id": parent_data.get("national_id"),
-            "phone": parent_data.get("phone"),
-            "email": parent_email,
-            "relationship": parent_data.get("relationship", "guardian"),
-            "address": parent_data.get("address"),
-            "student_ids": [],
-            "school_id": school_id,
-            "is_active": True,
-            "created_at": now,
-            "created_by": created_by,
-        }
-
-        await gd_insert(db.session, "parents", parent_doc)
-
-        return {
-            "parent": parent_doc,
-            "is_new": True,
-            "linked_students": [],
-            "temp_password": temp_password
-        }
+        from services.parent_linking import find_or_create_parent as _shared_find_or_create_parent
+        return await _shared_find_or_create_parent(
+            db.session,
+            parent_data,
+            school_id,
+            created_by,
+            hash_password=hash_password,
+            generate_secure_password=generate_secure_password,
+            parent_role_value=UserRole.PARENT.value,
+        )
     
     
     @router.post("/create")
