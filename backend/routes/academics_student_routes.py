@@ -682,6 +682,12 @@ async def update_student(
         update_fields["character_traits"] = student_data.character_traits
     if student_data.is_active is not None:
         update_fields["is_active"] = student_data.is_active
+    # Health & Notes — persist the canonical nested health_info object onto
+    # the students row so the detail view (which reads student.health_info)
+    # renders saved values. This is the only post-creation write path for
+    # health data; the create wizard writes the same nested shape.
+    if student_data.health_info is not None:
+        update_fields["health_info"] = student_data.health_info.model_dump()
     
     # Tenant anchor for any guardian write is ALWAYS the existing student's
     # school — never the caller-supplied/JWT value — so a platform admin

@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { StatCard } from '../components/student-profile/ProfileComponents';
 import { OverviewTab, AcademicTab, TalentsTab, BehaviourTab, ActivitiesTab, PlansTab, LongitudinalTab } from '../components/student-profile/StudentTabsContent';
-import { EditProfileModal, BehaviourModal, ExportPlanModal, ActivityModal, CertificateModal, FullProfileExportModal } from '../components/student-profile/StudentModals';
+import { EditProfileModal, HealthModal, BehaviourModal, ExportPlanModal, ActivityModal, CertificateModal, FullProfileExportModal } from '../components/student-profile/StudentModals';
 import { useStudentProfile } from '../hooks/useStudentProfile';
 
 import { useTranslation } from '../contexts/ThemeContext';
@@ -280,6 +280,7 @@ export default function StudentProfilePage() {
       </main>
 
       <EditProfileModal hook={hook} />
+      <HealthModal hook={hook} />
       <BehaviourModal hook={hook} />
       <ExportPlanModal hook={hook} />
       <ActivityModal hook={hook} />

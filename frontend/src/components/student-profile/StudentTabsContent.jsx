@@ -35,7 +35,7 @@ export function OverviewTab({ hook }) {
     isRTL, student, classNameFromState, classDetail,
     attendanceRate, loadingAttendance, homeworkRate, loadingHomework,
     behaviourSummary, loadingBehaviour, profileCompleteness,
-    setFormData, setEditProfileOpen, setActiveTab,
+    setFormData, setEditProfileOpen, setActiveTab, openHealthModal,
   } = hook;
 
   const relationshipMap = { father: t('father'), mother: t('mother'), guardian: isRTL ? 'ولي أمر' : 'Guardian', brother: t('brother'), sister: t('sister'), uncle: t('uncle'), other: t('other') };
@@ -158,10 +158,17 @@ export function OverviewTab({ hook }) {
 
         <Card>
           <CardContent className="p-5">
-            <h3 className="font-bold text-sm font-cairo flex items-center gap-2 mb-4">
-              <Stethoscope className="h-4 w-4 text-rose-500" />
-              {t('healthNotes')}
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-sm font-cairo flex items-center gap-2">
+                <Stethoscope className="h-4 w-4 text-rose-500" />
+                {t('healthNotes')}
+              </h3>
+              {student.health_info && Object.keys(student.health_info).length > 0 && (
+                <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs text-brand-turquoise hover:text-brand-turquoise hover:bg-brand-turquoise/10" onClick={openHealthModal}>
+                  <Edit className="h-3.5 w-3.5" /> {t('edit')}
+                </Button>
+              )}
+            </div>
             {student.health_info && Object.keys(student.health_info).length > 0 ? (
               <div className="space-y-3">
                 {student.health_info.blood_type && <DataField label={t('bloodType')} value={student.health_info.blood_type} />}
@@ -188,7 +195,7 @@ export function OverviewTab({ hook }) {
                 )}
               </div>
             ) : (
-              <EmptyState icon={Stethoscope} message={t('noHealthInfoRecorded')} actionLabel={t('addInfo')} onAction={() => { setFormData({ ...student }); setEditProfileOpen(true); }} />
+              <EmptyState icon={Stethoscope} message={t('noHealthInfoRecorded')} actionLabel={t('addInfo')} onAction={openHealthModal} />
             )}
           </CardContent>
         </Card>

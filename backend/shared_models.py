@@ -519,6 +519,20 @@ class ClassCreate(BaseModel):
     grade_id: Optional[str] = None
     academic_year_id: Optional[str] = None
 
+class StudentHealthInfoUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    blood_type: Optional[str] = None
+    has_chronic_conditions: bool = False
+    chronic_conditions: Optional[str] = None
+    has_allergies: bool = False
+    allergies: Optional[str] = None
+    has_disabilities: bool = False
+    disabilities: Optional[str] = None
+    current_medications: Optional[str] = None
+    requires_special_care: bool = False
+    special_care_notes: Optional[str] = None
+    emergency_medical_notes: Optional[str] = None
+
 class StudentUpdate(BaseModel):
     full_name: Optional[str] = None
     full_name_en: Optional[str] = None
@@ -538,6 +552,7 @@ class StudentUpdate(BaseModel):
     talents: Optional[List[str]] = None
     character_traits: Optional[List[str]] = None
     is_active: Optional[bool] = None
+    health_info: Optional[StudentHealthInfoUpdate] = None
 
 class ClassUpdate(BaseModel):
     model_config = ConfigDict(extra="ignore")

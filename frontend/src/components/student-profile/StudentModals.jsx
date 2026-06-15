@@ -6,10 +6,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Badge } from '../ui/badge';
+import { Switch } from '../ui/switch';
 import {
   User, Edit, Save, Loader2, Download, Heart, FileText,
   Stethoscope, Rocket, Medal, Trophy, GraduationCap,
-  Sparkles, BarChart3, ClipboardList, ScrollText, CheckSquare
+  Sparkles, BarChart3, ClipboardList, ScrollText, CheckSquare,
+  Droplet, AlertTriangle
 } from 'lucide-react';
 
 import { useTranslation } from '../../contexts/ThemeContext';
@@ -118,6 +120,91 @@ export function EditProfileModal({ hook }) {
             <Button variant="outline" onClick={() => setEditProfileOpen(false)} className="font-cairo">{t('cancel')}</Button>
             <Button onClick={handleSave} disabled={saving} className="bg-brand-navy hover:bg-brand-navy/90 text-white font-cairo gap-1.5">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {t('saveChanges')}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function HealthModal({ hook }) {
+  const { t } = useTranslation();
+  const {
+    isRTL, healthModalOpen, setHealthModalOpen, student,
+    healthForm, setHealthForm, savingHealth, handleSaveHealth,
+  } = hook;
+
+  const hasHealth = student?.health_info && Object.keys(student.health_info).length > 0;
+  const setField = (k, v) => setHealthForm({ ...healthForm, [k]: v });
+  const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+  const ToggleRow = ({ field, detailField, label, placeholder, icon: Icon }) => (
+    <div className="rounded-lg border p-3 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-xs font-cairo flex items-center gap-2">
+          {Icon && <Icon className="h-3.5 w-3.5 text-rose-500" strokeWidth={1.5} aria-hidden="true" />}
+          {label}
+        </Label>
+        <Switch checked={!!healthForm[field]} onCheckedChange={(v) => setField(field, v)} />
+      </div>
+      {healthForm[field] && (
+        <Textarea
+          value={healthForm[detailField] || ''}
+          onChange={(e) => setField(detailField, e.target.value)}
+          className="rounded-lg resize-none" rows={2} placeholder={placeholder}
+        />
+      )}
+    </div>
+  );
+
+  return (
+    <Dialog open={healthModalOpen} onOpenChange={setHealthModalOpen}>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto" dir={isRTL ? 'rtl' : 'ltr'}>
+        <DialogHeader>
+          <DialogTitle className="font-cairo flex items-center gap-2">
+            <Stethoscope className="h-5 w-5 text-rose-500" strokeWidth={1.5} aria-hidden="true" />
+            {hasHealth ? t('editHealthNotes') : t('addHealthNotes')}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-cairo flex items-center gap-2">
+              <Droplet className="h-3.5 w-3.5 text-rose-500" strokeWidth={1.5} aria-hidden="true" />
+              {t('bloodType')}
+            </Label>
+            <Select value={healthForm.blood_type || ''} onValueChange={(v) => setField('blood_type', v)}>
+              <SelectTrigger><SelectValue placeholder={t('select')} /></SelectTrigger>
+              <SelectContent>
+                {bloodTypes.map(bt => <SelectItem key={bt} value={bt}>{bt}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <ToggleRow field="has_chronic_conditions" detailField="chronic_conditions" label={t('chronicConditions')} placeholder={t('chronicConditions')} />
+          <ToggleRow field="has_allergies" detailField="allergies" label={t('allergies')} placeholder={t('allergies')} />
+          <ToggleRow field="has_disabilities" detailField="disabilities" label={t('disabilities')} placeholder={t('disabilities')} />
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-cairo">{t('currentMedications')}</Label>
+            <Textarea value={healthForm.current_medications || ''} onChange={(e) => setField('current_medications', e.target.value)} className="rounded-lg resize-none" rows={2} placeholder={t('currentMedications')} />
+          </div>
+
+          <ToggleRow field="requires_special_care" detailField="special_care_notes" label={t('requiresSpecialCare')} placeholder={t('specialCareNotes')} icon={AlertTriangle} />
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-cairo flex items-center gap-2">
+              <Heart className="h-3.5 w-3.5 text-red-500" strokeWidth={1.5} aria-hidden="true" />
+              {t('emergencyMedicalNotes')}
+            </Label>
+            <Textarea value={healthForm.emergency_medical_notes || ''} onChange={(e) => setField('emergency_medical_notes', e.target.value)} className="rounded-lg resize-none" rows={2} placeholder={t('emergencyMedicalNotes')} />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <Button variant="outline" onClick={() => setHealthModalOpen(false)} className="font-cairo">{t('cancel')}</Button>
+            <Button onClick={handleSaveHealth} disabled={savingHealth} className="bg-brand-navy hover:bg-brand-navy/90 text-white font-cairo gap-1.5">
+              {savingHealth ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {t('saveChanges')}
             </Button>
           </div>

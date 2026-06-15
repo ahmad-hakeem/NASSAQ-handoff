@@ -27,6 +27,9 @@ export function useStudentProfile() {
   const [activeTab, setActiveTab] = useState('overview');
   const [classes, setClasses] = useState([]);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [healthModalOpen, setHealthModalOpen] = useState(false);
+  const [healthForm, setHealthForm] = useState({});
+  const [savingHealth, setSavingHealth] = useState(false);
 
   const [attendanceSummary, setAttendanceSummary] = useState(null);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
@@ -422,6 +425,49 @@ export function useStudentProfile() {
     } finally { setSaving(false); }
   };
 
+  const openHealthModal = () => {
+    const h = student?.health_info || {};
+    setHealthForm({
+      blood_type: h.blood_type || '',
+      has_chronic_conditions: !!h.has_chronic_conditions,
+      chronic_conditions: h.chronic_conditions || '',
+      has_allergies: !!h.has_allergies,
+      allergies: h.allergies || '',
+      has_disabilities: !!h.has_disabilities,
+      disabilities: h.disabilities || '',
+      current_medications: h.current_medications || '',
+      requires_special_care: !!h.requires_special_care,
+      special_care_notes: h.special_care_notes || '',
+      emergency_medical_notes: h.emergency_medical_notes || '',
+    });
+    setHealthModalOpen(true);
+  };
+
+  const handleSaveHealth = async () => {
+    setSavingHealth(true);
+    try {
+      const health_info = {
+        blood_type: healthForm.blood_type || null,
+        has_chronic_conditions: !!healthForm.has_chronic_conditions,
+        chronic_conditions: healthForm.has_chronic_conditions ? (healthForm.chronic_conditions || null) : null,
+        has_allergies: !!healthForm.has_allergies,
+        allergies: healthForm.has_allergies ? (healthForm.allergies || null) : null,
+        has_disabilities: !!healthForm.has_disabilities,
+        disabilities: healthForm.has_disabilities ? (healthForm.disabilities || null) : null,
+        current_medications: healthForm.current_medications || null,
+        requires_special_care: !!healthForm.requires_special_care,
+        special_care_notes: healthForm.requires_special_care ? (healthForm.special_care_notes || null) : null,
+        emergency_medical_notes: healthForm.emergency_medical_notes || null,
+      };
+      await api.put(`/students/${student.id}`, { health_info }, { headers });
+      toast.success(t('studentDataSavedSuccessfully'));
+      setHealthModalOpen(false); fetchStudent();
+    } catch (error) {
+      const msg = getApiErrorMessage(error);
+      nassaqError(typeof msg === 'string' ? msg : (t('saveFailed')));
+    } finally { setSavingHealth(false); }
+  };
+
   const handleAction = async (action) => {
     setActionLoading(action);
     try {
@@ -658,6 +704,8 @@ export function useStudentProfile() {
     classNameFromState, rolePrefix, isTeacher, headers,
     student, loading, error, saving, formData, setFormData, activeTab, setActiveTab, classes,
     editProfileOpen, setEditProfileOpen,
+    healthModalOpen, setHealthModalOpen, healthForm, setHealthForm, savingHealth,
+    openHealthModal, handleSaveHealth,
     attendanceSummary, loadingAttendance, homeworkRate, loadingHomework,
     riskData, loadingRisk, remedialPlan, enrichmentPlan, loadingRemedial, loadingEnrichment,
     exportingPlan, exportModalOpen, setExportModalOpen, exportPlanType, setExportPlanType,
