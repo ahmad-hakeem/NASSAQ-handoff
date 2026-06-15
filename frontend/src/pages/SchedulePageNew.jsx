@@ -204,7 +204,7 @@ function MasterMatrixSkeleton({ rows = 10, days = 5, periods = 7, isDaily = fals
       {/* Day-band header row */}
       <div
         className="sticky bg-slate-100 border-b border-slate-200 z-10"
-        style={{ top: 'var(--sticky-band-h, 88px)', insetInlineStart: 0, height: dayBandH }}
+        style={{ top: 0, insetInlineStart: 0, height: dayBandH }}
       />
       {Array.from({ length: days }).map((_, d) => (
         <div
@@ -2045,26 +2045,21 @@ export default function SchedulePageNew() {
           ref={matrixContainerRef}
           data-testid="master-matrix-container"
           data-matrix-overflow={viewMode === 'weekly' ? 'horizontal' : 'none'}
-          className={`relative bg-white border border-slate-200/70 rounded-2xl shadow-[0_1px_2px_rgba(15,42,75,0.04),0_8px_24px_-12px_rgba(15,42,75,0.12)] ${
-            viewMode === 'weekly'
-              // Weekly mode: intentional two-axis scroll container.
-              // overflow-x:auto handles horizontal scroll (wide day columns).
-              // overflow-y:auto + flex-grow + min-h-0 make this a constrained-
-              // height vertical scroll box — the matrix scrolls inside this
-              // container rather than at the page level. This is the correct
-              // architectural pattern because overflow-x:auto alone is coerced
-              // by the browser to overflow-y:auto anyway (CSS spec §overflow
-              // coercion: a non-visible overflow on one axis forces the other
-              // axis from visible → auto). Embracing that coercion and giving
-              // the container a real constrained height means position:sticky
-              // elements inside correctly stick relative to this container —
-              // day-band and period-header cells use top:0 / top:DAY_H (not
-              // the page-level --sticky-band-h offset), so they pin to the
-              // container viewport without the 45 px push-down that previously
-              // overlapped the first teacher row.
-              ? 'overflow-x-auto overflow-y-auto flex-grow min-h-0'
-              : 'overflow-visible'
-          }`}
+          // Both view modes share a single constrained two-axis internal
+          // scroll container — the matrix scrolls INSIDE this box, never at
+          // the page level. overflow-x:auto handles horizontal scroll (wide
+          // weekly day columns; daily uses minmax(0,1fr) so it normally fits
+          // and no horizontal scrollbar appears). overflow-y:auto + flex-grow
+          // + min-h-0 give the container a real constrained height, so it
+          // becomes a vertical scroll box bounded by the page shell. Because
+          // the container — not the document — is the scroll parent,
+          // position:sticky headers inside stick relative to it (corner /
+          // day-band at top:0, period row at top:DAY_HEADER_HEIGHT) without
+          // any page-level --sticky-band-h offset. (CSS overflow coercion
+          // forces a non-visible overflow on one axis to coerce the other
+          // visible → auto anyway, so embracing it with an explicit
+          // constrained height is the correct architectural pattern.)
+          className="relative bg-white border border-slate-200/70 rounded-2xl shadow-[0_1px_2px_rgba(15,42,75,0.04),0_8px_24px_-12px_rgba(15,42,75,0.12)] overflow-x-auto overflow-y-auto flex-grow min-h-0"
         >
           {loading ? (
             <MasterMatrixSkeleton
@@ -2554,9 +2549,10 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
         data-testid="master-matrix-corner"
         className={`sticky bg-slate-50 text-slate-700 text-xs font-semibold flex items-center justify-center border-b border-l border-slate-200 rounded-ts-2xl ${teacherStickyShadow}`}
         style={{
-          // In weekly mode the container is the scroll parent (not the page),
-          // so headers stick at top:0. Daily mode remains page-level sticky.
-          top: isDaily ? 'var(--sticky-band-h, 88px)' : 0,
+          // Both view modes use the matrix container as their scroll parent
+          // (not the page), so the corner header sticks at top:0 of the
+          // container in daily and weekly alike.
+          top: 0,
           insetInlineStart: 0, zIndex: 30, height: DAY_HEADER_HEIGHT,
         }}
       >
@@ -2567,7 +2563,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
           key={`day-h-${dayKey}`}
           data-testid={`master-matrix-day-band-${dayKey}`}
           className={`sticky z-20 ${getDayBandClass(dayKey)} ${getDayTextOnBand(dayKey)} text-sm font-cairo font-bold text-center flex items-center justify-center tracking-wide ${dayIdx > 0 ? 'border-s-2 border-s-white/70' : ''} ${dayIdx === displayDays.length - 1 ? 'rounded-te-2xl' : ''} shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.12),0_1px_2px_rgba(15,42,75,0.08)]`}
-          style={{ top: isDaily ? 'var(--sticky-band-h, 88px)' : 0, gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
+          style={{ top: 0, gridColumn: `span ${periods.length}`, height: DAY_HEADER_HEIGHT }}
         >
           {dayLabelMap[dayKey] || dayKey}
           {dayKey === today && (
@@ -2582,9 +2578,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
       <div
         className={`sticky bg-slate-50 text-slate-500 text-[10px] font-medium px-2 flex items-center justify-end border-b border-l border-slate-200 ${teacherStickyShadow}`}
         style={{
-          top: isDaily
-            ? `calc(var(--sticky-band-h, 88px) + ${DAY_HEADER_HEIGHT}px)`
-            : `${DAY_HEADER_HEIGHT}px`,
+          top: `${DAY_HEADER_HEIGHT}px`,
           insetInlineStart: 0, zIndex: 30, height: PERIOD_HEADER_HEIGHT,
         }}
       >
@@ -2600,11 +2594,10 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
           return (
             <div
               key={`ph-${dayKey}-${p}`}
+              data-testid={`master-matrix-period-head-${dayKey}-${p}`}
               className={`sticky z-20 ${getDayTintClass(dayKey)} text-brand-navy/90 text-center flex flex-col items-center justify-center leading-tight border-b border-white/70 border-l border-l-white/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),inset_0_-1px_0_rgba(15,42,75,0.05)] ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
               style={{
-                top: isDaily
-                  ? `calc(var(--sticky-band-h, 88px) + ${DAY_HEADER_HEIGHT}px)`
-                  : `${DAY_HEADER_HEIGHT}px`,
+                top: `${DAY_HEADER_HEIGHT}px`,
                 height: PERIOD_HEADER_HEIGHT,
               }}
               title={timeLabel ? t('periodLabelWithTime', { num: p, time: timeLabel }) : t('periodLabelShort', { num: p })}

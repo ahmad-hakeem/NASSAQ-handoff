@@ -118,11 +118,13 @@ describe('MasterMatrix — daily vs weekly layout (Task #142)', () => {
   test('top-left corner header is sticky on both axes with the highest z-index', () => {
     renderMatrix({ viewMode: 'weekly' });
     const corner = screen.getByTestId('master-matrix-corner');
-    // sticky + top-0 + insetInlineStart=0 means it stays in the corner
+    // sticky + top:0 + insetInlineStart:0 means it stays in the corner
     // when the grid scrolls in either axis. z-index 30 is above day
-    // bands (z-20) and teacher column (z-10).
+    // bands (z-20) and teacher column (z-10). The container — not the
+    // page — is the scroll parent, so the corner sticks at top:0 of the
+    // container (inline style, not a Tailwind class).
     expect(corner.className).toMatch(/\bsticky\b/);
-    expect(corner.className).toMatch(/\btop-0\b/);
+    expect(corner.style.top).toMatch(/^0(px)?$/);
     expect(corner.style.insetInlineStart).toMatch(/^0(px)?$/);
     expect(corner.style.zIndex).toBe('30');
   });
@@ -131,7 +133,8 @@ describe('MasterMatrix — daily vs weekly layout (Task #142)', () => {
     renderMatrix({ viewMode: 'weekly' });
     const sundayBand = screen.getByTestId('master-matrix-day-band-sunday');
     expect(sundayBand.className).toMatch(/\bsticky\b/);
-    expect(sundayBand.className).toMatch(/\btop-0\b/);
+    // Sticks at top:0 of the scroll container (inline style).
+    expect(sundayBand.style.top).toMatch(/^0(px)?$/);
     // z-20: above body cells, below the corner cell (z-30).
     expect(sundayBand.className).toMatch(/\bz-20\b/);
   });
@@ -141,8 +144,8 @@ describe('MasterMatrix — daily vs weekly layout (Task #142)', () => {
     const root = screen.getByTestId('master-matrix-weekly');
     const tpl = root.style.gridTemplateColumns;
     // 5 days × 7 periods = 35 data columns + the leading teacher column.
-    expect(tpl).toMatch(/repeat\(35,\s*minmax\(76px,\s*1fr\)\)/);
-    expect(tpl).toMatch(/clamp\(170px/);
+    expect(tpl).toMatch(/repeat\(35,\s*minmax\(84px,\s*1fr\)\)/);
+    expect(tpl).toMatch(/clamp\(220px/);
   });
 
   test('weekly mode places a strong inline-start separator on every new day-group', () => {
@@ -168,6 +171,49 @@ describe('MasterMatrix — daily vs weekly layout (Task #142)', () => {
     // never overflows horizontally.
     expect(tpl).toMatch(/clamp\(220px/);
     expect(tpl).toMatch(/repeat\(7,\s*minmax\(0,\s*1fr\)\)/);
+  });
+});
+
+describe('MasterMatrix — daily scroll-ownership (Task #904)', () => {
+  // Regression: daily view used to let the whole page scroll because its
+  // matrix container was `overflow-visible` and its sticky headers were
+  // anchored to the page-level `--sticky-band-h` offset
+  // (top: var(--sticky-band-h) / calc(var(--sticky-band-h) + DAY_H)).
+  // The fix makes daily adopt weekly's constrained-internal-scroll model:
+  // the container is the scroll owner and the corner/day-band/period-head
+  // cells stick relative to THAT container (top:0 and top:DAY_HEADER_HEIGHT),
+  // never to the page band. These guards assert daily headers anchor to the
+  // container and never reintroduce the `--sticky-band-h` / calc offset.
+  test('daily corner + day-band stick at top:0 of the container (no page band offset)', () => {
+    renderMatrix({ viewMode: 'daily', selectedDay: 'monday' });
+    const corner = screen.getByTestId('master-matrix-corner');
+    const mondayBand = screen.getByTestId('master-matrix-day-band-monday');
+    // top:0 (container-relative), not var(--sticky-band-h).
+    expect(corner.style.top).toMatch(/^0(px)?$/);
+    expect(mondayBand.style.top).toMatch(/^0(px)?$/);
+    // Must never fall back to the page-level band offset.
+    expect(corner.style.top).not.toMatch(/sticky-band-h/);
+    expect(corner.style.top).not.toMatch(/calc/);
+    expect(mondayBand.style.top).not.toMatch(/sticky-band-h/);
+  });
+
+  test('daily period-number header sticks at DAY_HEADER_HEIGHT (40px), not the band + calc offset', () => {
+    renderMatrix({ viewMode: 'daily', selectedDay: 'monday' });
+    // Daily DAY_HEADER_HEIGHT is 40px (weekly is 36px); the period row
+    // stacks directly beneath the day band inside the container.
+    const periodHead = screen.getByTestId('master-matrix-period-head-monday-1');
+    expect(periodHead.style.top).toBe('40px');
+    expect(periodHead.style.top).not.toMatch(/sticky-band-h/);
+    expect(periodHead.style.top).not.toMatch(/calc/);
+  });
+
+  test('weekly period-number header still sticks at DAY_HEADER_HEIGHT (36px) — unchanged', () => {
+    renderMatrix({ viewMode: 'weekly' });
+    // Weekly behavior must be byte-for-byte identical: day band at top:0,
+    // period row at the weekly day-header height (36px).
+    const periodHead = screen.getByTestId('master-matrix-period-head-sunday-1');
+    expect(periodHead.style.top).toBe('36px');
+    expect(periodHead.style.top).not.toMatch(/sticky-band-h/);
   });
 });
 
