@@ -550,6 +550,42 @@ export function useSchoolSettings() {
     }
   };
 
+  const handleHardConstraintToggle = (code) => {
+    const c = hardConstraints.find(x => x.code === code);
+    if (!c) return;
+    // Mandatory blockers cannot be disabled — surface a branded warning
+    // instead of attempting a request the backend would reject.
+    if (!c.can_disable) {
+      nassaqWarning('هذا القيد إلزامي ولا يمكن تعطيله');
+      return;
+    }
+    const newActive = !c.is_active;
+    const apply = async () => {
+      setHardConstraints(prev => prev.map(x => x.code === code ? { ...x, is_active: newActive } : x));
+      try {
+        await api.put(`/school/settings/hard-constraints/${code}`, { is_active: newActive });
+        // Re-read from the API so the merged (system + override) state is the
+        // single source of truth rather than trusting the optimistic update.
+        const res = await api.get('/school/settings/hard-constraints');
+        const hc = res.data?.hard_constraints || [];
+        setHardConstraints(Array.isArray(hc) ? hc : []);
+        toast.success('تم تحديث القيد بنجاح');
+      } catch (e) {
+        setHardConstraints(prev => prev.map(x => x.code === code ? { ...x, is_active: !newActive } : x));
+        nassaqError(getApiErrorMessage(e) || 'حدث خطأ في تحديث القيد');
+      }
+    };
+    if (newActive) {
+      apply();
+    } else {
+      nassaqConfirm(
+        'سيؤدي تعطيل هذا القيد إلى استبعاده من توليد الجدول لهذه المدرسة. هل أنت متأكد؟',
+        apply,
+        { title: 'تأكيد تعطيل القيد', confirmText: 'نعم، عطّل', cancelText: 'إلغاء' }
+      );
+    }
+  };
+
   const handleSoftConstraintWeight = async (code, weight) => {
     const prev = softConstraints.find(x => x.code === code)?.weight;
     setSoftConstraints(p => p.map(x => x.code === code ? { ...x, weight } : x));
@@ -1031,6 +1067,7 @@ export function useSchoolSettings() {
     handleDragStart, handleDragEnd, handleSelectSubject, handleAssignToTeacher,
     removeAssignment, getTeacherAssignments, getSubjectById, deleteClass,
     handleSettingChange, handleWorkDayChange,
+    handleHardConstraintToggle,
     handleSoftConstraintToggle, handleSoftConstraintWeight, toggleAllConstraints,
     handleSoftConstraintTargetSubjects,
     handleAddCustomConstraint, handleUpdateCustomConstraint, handleDeleteCustomConstraint, handleToggleCustomConstraint,

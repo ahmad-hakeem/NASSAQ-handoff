@@ -29,6 +29,7 @@ ALLOWED_DESTRUCTIVE = {
     "f3a4b5c6d7e8": "Drops extraneous columns added in error by a prior migration.",
     "h1i2j3k4l5m6": "Data migration: after copying events/system_settings into dedicated tables, removes the now-migrated rows from generic_documents.",
     "l1m2n3o4p5q6": "Removes orphaned approval_events rows (request_id with no matching request) before adding the FK constraint.",
+    "d8e9f0a1b2c3": "Task #907: rewrites the timetable_hard/soft_constraints generic_documents collections to the canonical system set, removing corrupt category:'test' / duplicate HC-01 reference rows. Reference data only — no school/user data.",
 }
 
 VERSIONS_DIR = os.path.join(os.path.dirname(__file__), "..", "alembic", "versions")

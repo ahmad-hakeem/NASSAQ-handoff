@@ -1196,7 +1196,30 @@ async def get_hard_constraints(
         UserRole.PLATFORM_ADMIN, UserRole.TEACHER
     ]))
 ):
-    constraints = await gd_find(db.session, "timetable_hard_constraints", {"is_system": True}, order_by="order", desc_order=False, limit=50)
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    global_constraints = await gd_find(db.session, "timetable_hard_constraints", {"is_system": True}, order_by="order", desc_order=False, limit=50)
+
+    # Per-school overrides only ever flip `is_active` for can_disable rules —
+    # the global timetable_hard_constraints rows are IMMUTABLE system reference
+    # data. Mirrors the soft-constraint override merge above.
+    school_overrides: Dict[str, dict] = {}
+    if school_id:
+        overrides = await gd_find(db.session, "school_hard_constraint_overrides", {"school_id": school_id}, limit=200)
+        school_overrides = {ov["code"]: ov for ov in overrides if ov.get("code")}
+
+    constraints = []
+    for c in global_constraints:
+        merged = dict(c)
+        # Surface metadata the UI needs to decide between a toggle and a lock.
+        merged["origin"] = "system"
+        can_disable = bool(c.get("can_disable", False))
+        merged["can_disable"] = can_disable
+        ov = school_overrides.get(c.get("code"))
+        # A stale/forged override can never re-enable disabling a rule the
+        # system marks non-disableable (defense in depth — see also the PUT).
+        if ov and "is_active" in ov and can_disable:
+            merged["is_active"] = ov["is_active"]
+        constraints.append(merged)
 
     categories = {}
     for c in constraints:
@@ -1317,6 +1340,44 @@ async def toggle_soft_constraint(
         await gd_insert(db.session, "school_soft_constraint_overrides", update)
 
     return {"success": True, "message": "تم تحديث القيد التفضيلي بنجاح"}
+
+
+@router.put("/school/settings/hard-constraints/{code}")
+async def toggle_hard_constraint(
+    code: str,
+    data: dict,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
+):
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(status_code=403, detail="المستخدم غير مرتبط بمدرسة")
+
+    constraint = await gd_find_one(db.session, "timetable_hard_constraints", {"code": code})
+    if not constraint:
+        raise HTTPException(status_code=404, detail="القيد غير موجود")
+
+    if "is_active" not in data:
+        raise HTTPException(status_code=400, detail="الحقل is_active مطلوب")
+    is_active = bool(data["is_active"])
+
+    # Only rules the system marks `can_disable: true` may be turned off per
+    # school. Disabling a mandatory blocker is rejected with a safe Arabic
+    # message; re-enabling is always allowed.
+    if not is_active and not bool(constraint.get("can_disable", False)):
+        raise HTTPException(status_code=400, detail="هذا القيد إلزامي ولا يمكن تعطيله")
+
+    now = datetime.now(timezone.utc).isoformat()
+    update = {"code": code, "school_id": school_id, "is_active": is_active, "updated_at": now}
+
+    existing_ov = await gd_find_one(db.session, "school_hard_constraint_overrides", {"school_id": school_id, "code": code})
+    if existing_ov:
+        await gd_update_one(db.session, "school_hard_constraint_overrides", {"school_id": school_id, "code": code}, update)
+    else:
+        update["id"] = str(uuid.uuid4())
+        update["created_at"] = now
+        await gd_insert(db.session, "school_hard_constraint_overrides", update)
+
+    return {"success": True, "message": "تم تحديث القيد الإلزامي بنجاح"}
 
 
 # ============ CUSTOM SOFT CONSTRAINTS ============

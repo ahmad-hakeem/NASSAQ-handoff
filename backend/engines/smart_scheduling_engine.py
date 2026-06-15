@@ -1454,6 +1454,18 @@ class SmartSchedulingEngine:
             for row in (hard_constraints_rows or [])
             if row.get("is_active", True) and row.get("validation_key")
         }
+        # FAIL-SAFE: if NOT A SINGLE hard-constraint row carries a validation
+        # key (the collection is empty/corrupt/unseeded), enforce EVERY
+        # registered validator rather than silently skipping all hard rules.
+        # This only triggers on total absence — a school that merely disabled
+        # the can_disable rules still has its non-disableable blockers present,
+        # so its explicit choices are always respected.
+        has_any_validatable_row = any(
+            row.get("validation_key") for row in (hard_constraints_rows or [])
+        )
+        if not has_any_validatable_row:
+            from engines.hard_constraints import VALIDATION_REGISTRY
+            active = set(VALIDATION_REGISTRY.keys())
         if period_bans:
             active.add("school_period_bans")
 
@@ -3099,7 +3111,8 @@ class SmartSchedulingEngine:
                 hard_constraints = [c for c in hard_payload if c.get("is_active", True)]
                 hard_source = "ui_payload"
             else:
-                hard_constraints = await gd_find(self.session, "timetable_hard_constraints", {"is_system": True, "is_active": True}, limit=50)
+                merged_hard = await self._load_school_hard_constraints(school_id)
+                hard_constraints = [c for c in merged_hard if c.get("is_active", True)]
                 hard_source = "db_fallback"
             await self._log_run(run_id, "info", f"تم تحميل {len(hard_constraints)} قيد إلزامي ({hard_source})", {"hard_constraints_count": len(hard_constraints), "source": hard_source})
 
@@ -3634,6 +3647,39 @@ class SmartSchedulingEngine:
         """Get all timetables for a school"""
         return await gd_find(self.session, "timetables", {"school_id": school_id}, order_by="created_at", desc_order=True, limit=100)
     
+    async def _load_school_hard_constraints(
+        self, school_id: str
+    ) -> List[Dict[str, Any]]:
+        """Load the canonical system hard constraints merged with this school's
+        per-school overrides.
+
+        A per-school ``school_hard_constraint_overrides`` row may only flip
+        ``is_active`` for a rule the system marks ``can_disable: true``;
+        mandatory blockers are never silenced even if a stale override row
+        exists. This mirrors the merge performed by the route's
+        ``_assemble_hakim_context_payload`` so publish-time validation and
+        generation honour the exact same principal toggles. The returned rows
+        keep their ``is_active`` flag — ``_build_constraint_context`` is what
+        filters disabled keys out of ``active_validation_keys``.
+        """
+        global_hard = await gd_find(
+            self.session, "timetable_hard_constraints", {"is_system": True},
+            limit=100,
+        )
+        overrides = await gd_find(
+            self.session, "school_hard_constraint_overrides",
+            {"school_id": school_id}, limit=200,
+        )
+        overrides_by_code = {ov["code"]: ov for ov in overrides if ov.get("code")}
+        merged: List[Dict[str, Any]] = []
+        for c in global_hard:
+            row = dict(c)
+            ov = overrides_by_code.get(c.get("code"))
+            if ov and "is_active" in ov and bool(c.get("can_disable", False)):
+                row["is_active"] = ov["is_active"]
+            merged.append(row)
+        return merged
+
     async def validate_before_publish(
         self, *, school_id: str, timetable_id: str
     ) -> Dict[str, Any]:
@@ -3652,10 +3698,10 @@ class SmartSchedulingEngine:
             self.session, "timetable_sessions",
             {"timetable_id": timetable_id}, limit=50000
         )
-        hc_rows = await gd_find(
-            self.session, "timetable_hard_constraints",
-            {"is_active": True}, limit=100
-        )
+        # School-aware: merge per-school overrides so a principal-disabled
+        # can_disable rule (e.g. HC-10) is NOT enforced at publish time for
+        # this school, exactly as it is excluded during generation.
+        hc_rows = await self._load_school_hard_constraints(school_id)
         time_slots = await gd_find(
             self.session, "time_slots", {"school_id": school_id}, limit=500
         )

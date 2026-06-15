@@ -46,6 +46,7 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
     saveAllSettings, saveSchoolInfo, generateTimeSlots,
     getTeacherAssignments, removeAssignment, deleteClass,
     handleSettingChange, handleWorkDayChange,
+    handleHardConstraintToggle,
     handleSoftConstraintToggle, handleSoftConstraintWeight, toggleAllConstraints,
     handleSoftConstraintTargetSubjects,
     handleAddCustomConstraint, handleUpdateCustomConstraint, handleDeleteCustomConstraint, handleToggleCustomConstraint,
@@ -899,6 +900,7 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
             setShowAddConstraintModal={setShowAddConstraintModal}
             showAddDutyModal={showAddDutyModal}
             setShowAddDutyModal={setShowAddDutyModal}
+            handleHardConstraintToggle={handleHardConstraintToggle}
             handleSoftConstraintToggle={handleSoftConstraintToggle}
             handleSoftConstraintWeight={handleSoftConstraintWeight}
             toggleAllConstraints={toggleAllConstraints}
@@ -976,6 +978,7 @@ function ConstraintsPanel({
   teachers = [], otherDuties = [], workloadSummary = [], workloadLoading = false,
   activeHardTab, setActiveHardTab, activeSoftTab, setActiveSoftTab,
   showAddConstraintModal, setShowAddConstraintModal, showAddDutyModal, setShowAddDutyModal,
+  handleHardConstraintToggle,
   handleSoftConstraintToggle, handleSoftConstraintWeight, toggleAllConstraints,
   handleSoftConstraintTargetSubjects, handleAddCustomConstraint, handleUpdateCustomConstraint,
   handleDeleteCustomConstraint, handleToggleCustomConstraint, handleAddConstraintPattern,
@@ -1074,17 +1077,30 @@ function ConstraintsPanel({
               filteredHard.map(c => {
                 const catInfo = hardCategoryLabels[c.category] || { label: c.category, color: 'slate' };
                 return (
-                  <div key={c.code} className={`flex items-start gap-2.5 p-3 rounded-xl border ${bgColors[catInfo.color] || bgColors.slate}`}>
+                  <div key={c.code} className={`flex items-start gap-2.5 p-3 rounded-xl border transition-all ${bgColors[catInfo.color] || bgColors.slate} ${c.is_active === false ? 'opacity-60' : ''}`}>
                     <div className="w-7 h-7 rounded-lg bg-white border flex items-center justify-center shadow-sm flex-shrink-0 mt-0.5"><Lock className="h-3.5 w-3.5 text-red-500" /></div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
                         <span className="text-[10px] font-mono bg-white/60 px-1.5 py-0.5 rounded border text-slate-500">{c.code}</span>
-                        <span className="text-sm font-semibold text-slate-800">{c.name_ar}</span>
+                        <span className={`text-sm font-semibold ${c.is_active === false ? 'text-slate-400' : 'text-slate-800'}`}>{c.name_ar}</span>
                       </div>
                       <p className="text-xs text-slate-500 leading-relaxed">{c.description_ar}</p>
-                      {c.can_disable && <Badge className="mt-1.5 bg-yellow-100 text-yellow-700 border border-yellow-300 text-[10px]">قابل للتعطيل</Badge>}
+                      {c.can_disable
+                        ? <Badge className="mt-1.5 bg-yellow-100 text-yellow-700 border border-yellow-300 text-[10px]">قابل للتعطيل</Badge>
+                        : <Badge className="mt-1.5 bg-red-100 text-red-700 border border-red-300 text-[10px]">إلزامي دائماً</Badge>}
                     </div>
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500 flex-shrink-0 mt-1" />
+                    {c.can_disable ? (
+                      <Switch
+                        checked={c.is_active !== false}
+                        onCheckedChange={() => handleHardConstraintToggle(c.code)}
+                        className="flex-shrink-0 mt-0.5"
+                      />
+                    ) : (
+                      <div className="flex items-center gap-1 flex-shrink-0 mt-1" title="قيد إلزامي لا يمكن تعطيله">
+                        <Lock className="h-3.5 w-3.5 text-red-400" />
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      </div>
+                    )}
                   </div>
                 );
               })

@@ -200,17 +200,31 @@ async def _assemble_hakim_context_payload(school_id: str) -> Dict[str, Any]:
     admin_constraints = await gd_find(db.session, "administrative_constraints", {"school_id": school_id, "is_active": True}, limit=500)
 
     # ── Constraints UI tab #1: Hard Constraints (القيود الإلزامية) ───────
-    # ACTIVATION MODEL: hard constraints are SYSTEM-LEVEL. The
-    # `timetable_hard_constraints` collection is global (no per-school
-    # override collection exists, by design — hard constraints are the
-    # spec's "absolute blockers"). The UI displays them as read-only
-    # category cards; principals do not toggle them per-school. The
-    # row-level `is_active` flag here is the platform admin's master
-    # switch, and the registry honours it via `active_validation_keys`.
-    hard_constraints = await gd_find(
+    # ACTIVATION MODEL: hard constraints are SYSTEM-LEVEL absolute blockers.
+    # The `timetable_hard_constraints` collection is the immutable global
+    # reference; principals may only toggle the handful of rules the system
+    # marks `can_disable: true`, stored as per-school rows in
+    # `school_hard_constraint_overrides`. We merge those overrides in here so
+    # the engine honours the principal's toggles on the next generation run.
+    # The registry honours the merged `is_active` via `active_validation_keys`.
+    global_hard = await gd_find(
         db.session, "timetable_hard_constraints", {"is_system": True},
         order_by="order", desc_order=False, limit=50,
     )
+    hard_overrides_rows = await gd_find(
+        db.session, "school_hard_constraint_overrides", {"school_id": school_id}, limit=200,
+    )
+    hard_overrides_by_code = {ov["code"]: ov for ov in hard_overrides_rows if ov.get("code")}
+    hard_constraints: list = []
+    for c in global_hard:
+        merged = dict(c)
+        ov = hard_overrides_by_code.get(c.get("code"))
+        # A per-school override can only disable a rule the system explicitly
+        # allows to be disabled — mandatory blockers are never silenced even
+        # if a stale override row exists.
+        if ov and "is_active" in ov and bool(c.get("can_disable", False)):
+            merged["is_active"] = ov["is_active"]
+        hard_constraints.append(merged)
 
     # ── Constraints UI tab #2: Soft Constraints (القيود التفضيلية) ───────
     # Global immutable list + per-school overrides (is_active / weight /
