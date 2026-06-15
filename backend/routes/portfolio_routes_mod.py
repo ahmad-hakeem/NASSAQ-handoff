@@ -413,19 +413,38 @@ async def _save_meta(teacher_id: str, school_id: Optional[str], updates: Dict[st
     return await _load_meta(teacher_id)
 
 
-async def _load_teacher_profile(teacher_id: str) -> Dict[str, Any]:
-    """Load lightweight teacher info used as context for AI generation and CV personal-data grid."""
+async def _load_teacher_profile(current_user: dict) -> Dict[str, Any]:
+    """Load lightweight teacher info used as context for AI generation and CV personal-data grid.
+
+    Identity fields (full_name, email, phone) come from the authenticated user's
+    own `users` row and are always returned, even when no `teachers` row exists.
+    Teacher-specific fields (specialization, subject, qualification, ...) are
+    layered on top when the `teachers` row is found via the resolved teacher id
+    (`current_user["teacher_id"]`) or, as a fallback, `teachers.user_id`.
+    """
+    user_id = current_user.get("id")
+    resolved_teacher_id = current_user.get("teacher_id")
     try:
         from pg_models import Teacher, User
-        result = await db.session.execute(select(Teacher).where(Teacher.id == teacher_id))
-        teacher = result.scalar_one_or_none()
-        if not teacher:
-            return {}
-        user_res = await db.session.execute(select(User).where(User.id == teacher_id))
+
+        user_res = await db.session.execute(select(User).where(User.id == user_id))
         user = user_res.scalar_one_or_none()
+
+        teacher = None
+        if resolved_teacher_id:
+            result = await db.session.execute(
+                select(Teacher).where(Teacher.id == resolved_teacher_id)
+            )
+            teacher = result.scalar_one_or_none()
+        if not teacher and user_id:
+            result = await db.session.execute(
+                select(Teacher).where(Teacher.user_id == user_id)
+            )
+            teacher = result.scalar_one_or_none()
+
         return {
             "full_name": (getattr(user, "full_name", None) or getattr(teacher, "full_name", None) or ""),
-            "email": getattr(user, "email", None) or "",
+            "email": getattr(user, "email", None) or getattr(teacher, "email", None) or "",
             "phone": getattr(user, "phone", None) or getattr(teacher, "phone", None) or "",
             "specialization": getattr(teacher, "specialization", None) or "",
             "subject": getattr(teacher, "subject", None) or "",
@@ -476,7 +495,7 @@ async def get_portfolio_sections(current_user: dict = Depends(get_current_user))
     school_id = current_user.get("tenant_id")
 
     meta = await _load_meta(teacher_id)
-    profile = await _load_teacher_profile(teacher_id)
+    profile = await _load_teacher_profile(current_user)
 
     # Evidence list (for sub-section counts + auto-CV)
     query: Dict[str, Any] = {"teacher_id": teacher_id}
@@ -988,7 +1007,7 @@ async def export_portfolio_pdf(
     school_id = current_user.get("tenant_id")
 
     meta = await _load_meta(teacher_id)
-    profile = await _load_teacher_profile(teacher_id)
+    profile = await _load_teacher_profile(current_user)
     portfolio = await _engine.get_teacher_portfolio(teacher_id, school_id)
     progress = await _engine.get_portfolio_progress(teacher_id, school_id)
 
@@ -1594,7 +1613,7 @@ async def generate_evidence_description(
     mode = (payload.mode or "generate").strip().lower()
     if mode not in ("generate", "improve"):
         raise HTTPException(status_code=422, detail="invalid_mode")
-    profile = await _load_teacher_profile(current_user["id"])
+    profile = await _load_teacher_profile(current_user)
     context = {
         "teacher_name": profile.get("full_name"),
         "subject": profile.get("specialization") or profile.get("subject"),
@@ -1618,7 +1637,7 @@ async def generate_intro(payload: AIGenerateRequest, current_user: dict = Depend
     if mode not in ("generate", "improve"):
         raise HTTPException(status_code=422, detail="invalid_mode")
 
-    profile = await _load_teacher_profile(current_user["id"])
+    profile = await _load_teacher_profile(current_user)
     context = {
         "teacher_name": profile.get("full_name"),
         "subject": profile.get("specialization") or profile.get("subject"),
@@ -1652,7 +1671,7 @@ async def generate_vmv(payload: VMVGenerateRequest, current_user: dict = Depends
     if mode not in ("generate", "improve"):
         raise HTTPException(status_code=422, detail="invalid_mode")
 
-    profile = await _load_teacher_profile(current_user["id"])
+    profile = await _load_teacher_profile(current_user)
     context = {
         "teacher_name": profile.get("full_name"),
         "subject": profile.get("specialization") or profile.get("subject"),
