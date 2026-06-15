@@ -1,7 +1,7 @@
 """students.health_info column
 
-Revision ID: d8e9f0a1b2c3
-Revises: c7d8e9f0a1b2
+Revision ID: d8e9f0a1b2c4
+Revises: d8e9f0a1b2c3
 Create Date: 2026-06-15
 
 The School-Manager Student Profile → "الصحة والملاحظات" (Health & Notes)
@@ -29,8 +29,8 @@ from migration_idempotent import has_column
 from sqlalchemy.dialects import postgresql
 
 
-revision: str = "d8e9f0a1b2c3"
-down_revision: Union[str, Sequence[str], None] = "c7d8e9f0a1b2"
+revision: str = "d8e9f0a1b2c4"
+down_revision: Union[str, Sequence[str], None] = "d8e9f0a1b2c3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
