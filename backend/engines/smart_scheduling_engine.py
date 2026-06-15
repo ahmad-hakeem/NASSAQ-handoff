@@ -3749,18 +3749,75 @@ class SmartSchedulingEngine:
             validate_placement(ctx, candidate=None)
         )
 
+        # Resolve raw entity UUIDs embedded in validator messages to
+        # human-readable Arabic names so the publish-blocked dialog shows
+        # class/subject/teacher names instead of opaque identifiers. This
+        # is presentation-only: it never changes which violations block
+        # publish. Fail-open — if the name lookups fail we keep the
+        # original (id-bearing) messages rather than breaking validation.
+        import re as _re
+        _uuid_re = _re.compile(
+            r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+            r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+        )
+        label_map: Dict[str, str] = {}
+        try:
+            for c in await gd_find(
+                self.session, "classes", {"school_id": school_id}, limit=2000
+            ):
+                cid = c.get("id")
+                if cid:
+                    label_map[cid] = (
+                        c.get("name") or c.get("name_ar")
+                        or c.get("name_en") or cid
+                    )
+            for s in await gd_find(
+                self.session, "subjects", {"school_id": school_id}, limit=2000
+            ):
+                sid = s.get("id")
+                if sid:
+                    label_map[sid] = (
+                        s.get("name_ar") or s.get("name")
+                        or s.get("name_en") or sid
+                    )
+            for tch in await gd_find(
+                self.session, "teachers", {"school_id": school_id}, limit=2000
+            ):
+                tid = tch.get("id")
+                if tid:
+                    label_map[tid] = (
+                        tch.get("full_name") or tch.get("name") or tid
+                    )
+        except Exception:
+            label_map = {}
+
+        def _humanize(text: str) -> str:
+            if not text or not label_map:
+                return text
+            return _uuid_re.sub(
+                lambda m: label_map.get(m.group(0), m.group(0)), text
+            )
+
         blocking: List[Dict[str, Any]] = []
         warnings: List[Dict[str, Any]] = []
         for v in violations:
             sev = v.severity
             sev_value = sev.value if hasattr(sev, "value") else str(sev)
+            refs = dict(v.refs or {})
+            for _key in (
+                "class_id", "subject_id", "teacher_id",
+                "room_id", "resource_id",
+            ):
+                _rid = refs.get(_key)
+                if _rid and _rid in label_map:
+                    refs[_key.replace("_id", "_name")] = label_map[_rid]
             item = {
                 "code": v.code,
                 "validation_key": v.validation_key,
                 "severity": sev_value,
-                "message_en": v.message_en,
-                "message_ar": v.message_ar,
-                "refs": v.refs,
+                "message_en": _humanize(v.message_en),
+                "message_ar": _humanize(v.message_ar),
+                "refs": refs,
             }
             if sev in (ConflictSeverity.CRITICAL, ConflictSeverity.HIGH):
                 blocking.append(item)

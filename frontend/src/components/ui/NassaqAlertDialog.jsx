@@ -184,12 +184,12 @@ export const NassaqAlertProvider = ({ children }) => {
       {children}
       <AlertDialog open={alertState.open} onOpenChange={(open) => { if (!open) closeAlert(); }}>
         <AlertDialogContent
-          className="max-w-md rounded-2xl p-0 overflow-hidden border-0 shadow-2xl"
+          className="max-w-md max-h-[85vh] flex flex-col rounded-2xl p-0 gap-0 overflow-hidden border-0 shadow-2xl"
           dir="rtl"
           data-nassaq-alert={alertState.type}
           data-testid="nassaq-alert-dialog"
         >
-          <div className={`${config.bgColor} ${config.borderColor} border-b px-6 pt-6 pb-4`}>
+          <div className={`flex-shrink-0 ${config.bgColor} ${config.borderColor} border-b px-6 pt-6 pb-4`}>
             <AlertDialogHeader className="flex flex-row items-center gap-3 space-y-0">
               <div className={`flex-shrink-0 w-12 h-12 rounded-full ${config.bgColor} border-2 ${config.borderColor} flex items-center justify-center`}>
                 <IconComponent className={`h-6 w-6 ${config.iconColor}`} />
@@ -202,13 +202,13 @@ export const NassaqAlertProvider = ({ children }) => {
             </AlertDialogHeader>
           </div>
 
-          <div className="px-6 py-5">
-            <AlertDialogDescription className="text-sm text-gray-700 leading-relaxed font-cairo text-right whitespace-pre-wrap">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+            <AlertDialogDescription className="text-sm text-gray-700 leading-relaxed font-cairo text-right whitespace-pre-wrap break-words">
               {alertState.message}
             </AlertDialogDescription>
           </div>
 
-          <AlertDialogFooter className="px-6 pb-5 gap-2 flex-row-reverse sm:flex-row-reverse">
+          <AlertDialogFooter className="flex-shrink-0 px-6 pb-5 pt-3 gap-2 flex-row-reverse sm:flex-row-reverse">
             <Button
               onClick={handleConfirm}
               className={`${config.buttonClass} rounded-xl px-6 py-2.5 text-sm font-bold font-cairo shadow-md hover:shadow-lg transition-all`}

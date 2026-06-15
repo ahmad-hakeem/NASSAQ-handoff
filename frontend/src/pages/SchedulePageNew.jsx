@@ -1352,7 +1352,7 @@ export default function SchedulePageNew() {
           // the generic toast.
           if (detail?.code === 'PUBLISH_BLOCKED') {
             const violations = Array.isArray(detail.violations) ? detail.violations : [];
-            const lines = violations.slice(0, 8).map((v) => {
+            const lines = violations.map((v) => {
               if (typeof v === 'string') return `• ${v}`;
               return `• ${v.message_ar || v.message || v.code || ''}`.trim();
             }).filter(Boolean);
