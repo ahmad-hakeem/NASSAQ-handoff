@@ -977,15 +977,24 @@ export const LandingPage = () => {
                   {insightFeatures[activeInsightFeature].detail}
                 </p>
 
-                {/* hakim callout (changes per feature) */}
-                <div className="flex items-start gap-2.5 bg-gradient-to-r from-brand-purple/10 to-brand-turquoise/10 border border-brand-purple/20 rounded-xl p-3.5">
-                  <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-brand-purple to-violet-600 flex items-center justify-center">
-                    <Brain className="h-4 w-4 text-white" strokeWidth={1.5} aria-hidden="true" />
-                  </span>
-                  <p className="font-tajawal text-xs sm:text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
-                    <span className="font-cairo font-bold text-brand-purple">{t('landingInsightHakimLabel')} </span>
-                    {insightFeatures[activeInsightFeature].hakimSays}
-                  </p>
+                {/* hakim message — composed pattern (image + anchored brain icon + adjacent text), mirrors the "منظومة تعليمية متكاملة" section */}
+                <div className="flex items-start gap-3">
+                  <div className="relative flex-shrink-0">
+                    <img
+                      src="/hakim-poses/giving-instructions.png"
+                      alt={t('hakim')}
+                      className="hakim-img w-16 h-16 rounded-xl object-contain border-2 border-brand-purple/40 shadow-lg bg-gradient-to-br from-violet-50 to-cyan-50 p-1"
+                    />
+                    <span className="absolute -bottom-1 -end-1 w-5 h-5 rounded-md bg-brand-purple flex items-center justify-center border border-white dark:border-slate-800">
+                      <Brain className="h-2.5 w-2.5 text-white" strokeWidth={1.5} aria-hidden="true" />
+                    </span>
+                  </div>
+                  <div className="flex-1 bg-gradient-to-br from-white to-slate-50 dark:from-slate-700/90 dark:to-slate-800/90 rounded-xl p-4 shadow-md border border-brand-purple/15">
+                    <p className="font-tajawal text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
+                      <span className="font-cairo font-bold text-brand-purple">{t('landingInsightHakimLabel')} </span>
+                      {insightFeatures[activeInsightFeature].hakimSays}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Hakeem helper visual — pose derives from the active card (same state source) */}
