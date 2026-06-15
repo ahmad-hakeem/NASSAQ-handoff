@@ -544,8 +544,10 @@ export const LandingPage = () => {
               Both share the same top and bottom boundary. */}
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-12 lg:items-stretch">
 
-            {/* ── RIGHT PANEL (RTL Start): content distributed top → bottom ── */}
-            <div className="flex flex-col justify-between gap-8 text-start order-2 lg:order-1">
+            {/* ── RIGHT PANEL (RTL Start): content distributed top → bottom ──
+                Mobile: text-first (order-1) for a value-prop-first hierarchy.
+                Desktop (lg): content on the RTL start/right (lg:order-1). */}
+            <div className="flex flex-col justify-between gap-8 text-start order-1 lg:order-1">
 
               {/* TOP GROUP: badge + headline + subheading */}
               <div className="space-y-6">
@@ -648,8 +650,9 @@ export const LandingPage = () => {
                 Two-layer stage: the dashboard is the dominant foreground window
                 offset toward the end, and Hakeem is a transparent cutout placed
                 BEHIND it on the start side, peeking out (hide & seek) on the shared
-                baseline. dir="ltr" + !direction lock the scene against page RTL flipping. */}
-            <div className="order-1 lg:order-2 flex flex-col justify-center">
+                baseline. dir="ltr" + !direction lock the scene against page RTL flipping.
+                Mobile: visual sits BELOW the text (order-2). Desktop: RTL end/left (lg:order-2). */}
+            <div className="order-2 lg:order-2 flex flex-col justify-center">
               <div
                 className="relative ![direction:ltr] w-full max-w-[640px] mx-auto lg:mx-0 lg:max-w-none
                            pt-4 lg:pt-2"
