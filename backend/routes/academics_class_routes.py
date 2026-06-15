@@ -688,17 +688,19 @@ async def update_class(
 async def delete_class(
     class_id: str,
     force: bool = False,
+    target_class_id: Optional[str] = None,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
     """Soft-delete a class. Returns a requires_confirmation envelope when
     blocking active records exist (teacher-assignments / subjects / timetable
     sessions / linked students) and force=False — NO deletion is performed in
     that branch, so the caller must re-issue with force=True after confirming.
-    On force=True, the class is soft-deleted, dependent rows are
-    soft-deactivated, and every active student is unassigned from the class
-    (``class_id`` cleared) WITHOUT deleting the student rows — all in one
-    atomic transaction. Historical records (attendance, grades,
-    behaviour_records, assessments) are never touched.
+    On force=True, the class is soft-deleted and dependent rows are
+    soft-deactivated. Active students are then EITHER moved to ``target_class_id``
+    (when supplied — validated for same-tenant + capacity) OR unassigned from the
+    class (``class_id`` cleared) when no destination is chosen — WITHOUT deleting
+    the student rows, all in one atomic transaction. Historical records
+    (attendance, grades, behaviour_records, assessments) are never touched.
     IT callers are pinned to their own workspace (cross-workspace ids return 404)."""
     from auth_scope import is_independent_teacher, independent_workspace_id
     if is_independent_teacher(current_user):
@@ -742,6 +744,24 @@ async def delete_class(
             },
         }
 
+    # Optional reassignment destination: when supplied, every active student of
+    # the deleted class is MOVED into ``target_class_id`` instead of being left
+    # unassigned. Validate it BEFORE any write so the whole operation fails
+    # closed (no partial delete) if the target is invalid, cross-tenant, or full.
+    target_class = None
+    if target_class_id:
+        if target_class_id == class_id:
+            raise HTTPException(status_code=400, detail="لا يمكن نقل الطلاب إلى الفصل الذي يتم حذفه")
+        target_filter = {"id": target_class_id, "is_active": {"$ne": False}}
+        if school_id:
+            target_filter["school_id"] = school_id
+        target_class = await gd_find_one(db.session, "classes", target_filter)
+        if not target_class:
+            raise HTTPException(status_code=404, detail="الفصل المستهدف غير موجود")
+        if student_count > 0:
+            from engines.entity_counts import enforce_class_capacity
+            await enforce_class_capacity(db.session, target_class, school_id, additional=student_count)
+
     now_iso = datetime.now(timezone.utc).isoformat()
     soft_delete_payload = {
         "is_active": False,
@@ -765,12 +785,22 @@ async def delete_class(
     r = await gd_update_many(db.session, "curriculum_lessons", {"class_id": class_id}, {"is_active": False})
     deactivated["curriculum_lessons"] = r
 
-    # Unassign every active student of this class within the acting tenant —
-    # clear class_id but keep the student rows (and all their history) intact
-    # so they can be reassigned to another class later. Pinned to the class's
-    # school_id so a cross-tenant student row can never be touched.
-    students_unassigned = await gd_update_many(db.session, "students", student_filter, {"class_id": None})
-    deactivated["students_unassigned"] = students_unassigned
+    # Reassign or unassign every active student of this class within the acting
+    # tenant — keep the student rows (and all their history) intact. When a
+    # validated destination was supplied, MOVE them (set class_id to the target
+    # and reconcile its live counter); otherwise clear class_id so they can be
+    # reassigned later. Pinned to the class's school_id so a cross-tenant student
+    # row can never be touched.
+    students_moved = 0
+    students_unassigned = 0
+    if target_class is not None:
+        students_moved = await gd_update_many(db.session, "students", student_filter, {"class_id": target_class_id})
+        deactivated["students_moved"] = students_moved
+        from engines.entity_counts import reconcile_class_counts
+        await reconcile_class_counts(db.session, target_class_id, school_id)
+    else:
+        students_unassigned = await gd_update_many(db.session, "students", student_filter, {"class_id": None})
+        deactivated["students_unassigned"] = students_unassigned
 
     audit_log = {
         "id": str(uuid.uuid4()),
@@ -779,7 +809,12 @@ async def delete_class(
         "entity_type": "class",
         "entity_id": class_id,
         "old_data": {"name": class_doc.get("name"), "is_active": True},
-        "new_data": {"is_active": False, "students_unassigned": students_unassigned},
+        "new_data": {
+            "is_active": False,
+            "students_unassigned": students_unassigned,
+            "students_moved": students_moved,
+            "moved_to_class_id": target_class_id if target_class is not None else None,
+        },
         "performed_by": current_user["id"],
         "performed_by_name": current_user.get("full_name", ""),
         "timestamp": now_iso,
@@ -792,6 +827,8 @@ async def delete_class(
         "success": True,
         "deactivated": deactivated,
         "students_unassigned": students_unassigned,
+        "students_moved": students_moved,
+        "moved_to_class_id": target_class_id if target_class is not None else None,
     }
 
 

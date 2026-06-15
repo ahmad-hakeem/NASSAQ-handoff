@@ -71,6 +71,7 @@ export const NassaqAlertProvider = ({ children }) => {
     showCancel: false,
     secondaryActionText: '',
     onSecondaryAction: null,
+    extraContent: null,
   });
 
   // Refs hold the latest callbacks so handleConfirm/handleCancel/handleSecondaryAction
@@ -90,6 +91,7 @@ export const NassaqAlertProvider = ({ children }) => {
     showCancel = false,
     secondaryActionText,
     onSecondaryAction,
+    extraContent = null,
   }) => {
     // Keep refs in sync BEFORE the state update so any in-flight handler
     // immediately sees the correct callbacks even before a re-render.
@@ -109,6 +111,7 @@ export const NassaqAlertProvider = ({ children }) => {
       showCancel,
       secondaryActionText: secondaryActionText || '',
       onSecondaryAction: onSecondaryAction || null,
+      extraContent: extraContent || null,
     });
   }, []);
 
@@ -206,6 +209,11 @@ export const NassaqAlertProvider = ({ children }) => {
             <AlertDialogDescription className="text-sm text-gray-700 leading-relaxed font-cairo text-right whitespace-pre-wrap break-words">
               {alertState.message}
             </AlertDialogDescription>
+            {alertState.extraContent && (
+              <div className="mt-4 text-right">
+                {alertState.extraContent}
+              </div>
+            )}
           </div>
 
           <AlertDialogFooter className="flex-shrink-0 px-6 pb-5 pt-3 gap-2 flex-row-reverse sm:flex-row-reverse">

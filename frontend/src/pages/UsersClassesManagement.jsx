@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -99,6 +99,59 @@ const THEME_COLORS = {
     bar: 'bg-gradient-to-r from-violet-500 to-purple-600',
     icon: 'text-purple-500',
   },
+};
+
+// Optional destination picker shown inside the class-delete confirmation when
+// the class still has students. Defaults to "remove from class" (unassign);
+// choosing a destination moves every student there instead. Self-contained:
+// holds its own selection and reports it up via onChange so the confirm
+// callback can read the latest value. Classes already at/over capacity for the
+// incoming students are disabled so an impossible move can't be requested.
+const ClassMovePicker = ({ classes = [], excludeId, studentCount = 0, onChange }) => {
+  const { t } = useTranslation();
+  const [value, setValue] = useState('__unassign__');
+  const options = useMemo(() => (
+    (classes || [])
+      .filter(c => c && c.is_active !== false && c.id !== excludeId)
+      .map(c => {
+        const capacity = c.capacity || 30;
+        const current = c.student_count || 0;
+        const room = capacity - current;
+        return {
+          id: c.id,
+          name: c.name_ar || c.name || c.id,
+          current,
+          capacity,
+          full: studentCount > 0 && room < studentCount,
+        };
+      })
+  ), [classes, excludeId, studentCount]);
+
+  const handleChange = (v) => {
+    setValue(v);
+    onChange?.(v === '__unassign__' ? null : v);
+  };
+
+  return (
+    <div className="space-y-2" data-testid="class-move-picker">
+      <Label className="text-sm font-medium text-gray-700 font-cairo">
+        {t('classDeleteMovePickerLabel')}
+      </Label>
+      <Select value={value} onValueChange={handleChange}>
+        <SelectTrigger className="w-full text-right font-cairo">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent dir="rtl">
+          <SelectItem value="__unassign__">{t('classDeleteMoveOptionUnassign')}</SelectItem>
+          {options.map(o => (
+            <SelectItem key={o.id} value={o.id} disabled={o.full}>
+              {o.name} ({o.current}/{o.capacity}){o.full ? ` — ${t('classDeleteMoveOptionFull')}` : ''}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
 };
 
 const CartoonMaleAvatar = ({ name, size = 'md' }) => {
@@ -1163,9 +1216,14 @@ export default function UsersClassesManagement() {
   const runClassDelete = async (classId, { onDeleted, setBusy } = {}) => {
     const headers = {};
     if (isImpersonating && schoolContext?.school_id) headers['X-School-Context'] = schoolContext.school_id;
+    // Holds the principal's optional destination choice from the confirm dialog's
+    // class picker. Read at force-delete time so the latest selection is sent.
+    const moveTargetRef = { current: null };
     const forceDelete = async () => {
       try {
-        const forced = await api.delete(`/classes/${classId}?force=true`, { headers });
+        let url = `/classes/${classId}?force=true`;
+        if (moveTargetRef.current) url += `&target_class_id=${encodeURIComponent(moveTargetRef.current)}`;
+        const forced = await api.delete(url, { headers });
         if (forced.data?.success) {
           await onDeleted?.(forced.data);
         } else {
@@ -1182,10 +1240,23 @@ export default function UsersClassesManagement() {
       const res = await api.delete(`/classes/${classId}`, { headers });
       if (res.data?.requires_confirmation) {
         setBusy?.(false);
+        const studentCount = res.data.dependencies?.students || 0;
         nassaqConfirm(
           buildClassDeleteMessage(res.data.dependencies),
           () => { setBusy?.(true); return forceDelete(); },
-          { title: t('confirmPermanentDelete'), confirmText: t('yesDeleteClass'), cancelText: t('cancel') }
+          {
+            title: t('confirmPermanentDelete'),
+            confirmText: t('yesDeleteClass'),
+            cancelText: t('cancel'),
+            extraContent: studentCount > 0 ? (
+              <ClassMovePicker
+                classes={classes}
+                excludeId={classId}
+                studentCount={studentCount}
+                onChange={(v) => { moveTargetRef.current = v; }}
+              />
+            ) : null,
+          }
         );
         return;
       }
