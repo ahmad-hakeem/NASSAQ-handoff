@@ -112,9 +112,7 @@ export default function InlineAttendanceTable({
         });
       }
       toast.success(
-        newStatus === 'present'
-          ? t('markedPresent') || 'تم تسجيل الحضور'
-          : t('markedAbsent') || 'تم تسجيل الغياب',
+        newStatus === 'present' ? t('markedPresent') : t('markedAbsent'),
       );
       if (typeof onStatusChange === 'function') {
         onStatusChange(studentId, newStatus, todayISO);
