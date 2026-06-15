@@ -372,6 +372,10 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
       if (formData.class_id) updateData.class_id = formData.class_id;
       if (formData.gender) updateData.gender = formData.gender;
       if (typeof formData.is_active === 'boolean') updateData.is_active = formData.is_active;
+      if (formData.parent_name !== undefined && formData.parent_name !== student.parent_name) updateData.parent_name = formData.parent_name;
+      if (formData.parent_phone !== undefined && formData.parent_phone !== student.parent_phone) updateData.parent_phone = formData.parent_phone;
+      if (formData.parent_email !== undefined && formData.parent_email !== student.parent_email) updateData.parent_email = formData.parent_email;
+      if (formData.parent_relationship !== undefined && formData.parent_relationship !== student.parent_relationship) updateData.parent_relationship = formData.parent_relationship;
 
       if (Object.keys(updateData).length === 0) {
         nassaqWarning(t('noChangesToSave'));
@@ -606,17 +610,48 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
               </div>
             </div>
 
-            {student.parent_name && (
-              <Card className="bg-muted/30">
-                <CardContent className="p-4">
-                  <h4 className="font-medium text-sm mb-2">{t('guardianInfo')}</h4>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div><span className="text-muted-foreground">{t('name')}:</span> {student.parent_name}</div>
-                    <div><span className="text-muted-foreground">{t('phone2')}:</span> {student.parent_phone || '-'}</div>
+            <Card className="bg-muted/30">
+              <CardContent className="p-4">
+                <h4 className="font-medium text-sm mb-3 flex items-center gap-2">
+                  <User className="h-4 w-4 text-brand-turquoise" />
+                  {t('guardianInfo')}
+                </h4>
+                {editing ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">{t('guardianName')}</Label>
+                      <Input value={formData.parent_name || ''} onChange={(e) => setFormData({ ...formData, parent_name: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">{t('relationship')}</Label>
+                      <Select value={formData.parent_relationship || ''} onValueChange={(v) => setFormData({ ...formData, parent_relationship: v })}>
+                        <SelectTrigger><SelectValue placeholder={t('select')} /></SelectTrigger>
+                        <SelectContent>
+                          {Object.entries({ father: t('father'), mother: t('mother'), guardian: isRTL ? 'ولي أمر' : 'Guardian', brother: t('brother'), sister: t('sister'), uncle: t('uncle'), other: t('other') }).map(([k, v]) => (
+                            <SelectItem key={k} value={k}>{v}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">{t('guardianPhone')}</Label>
+                      <Input value={formData.parent_phone || ''} onChange={(e) => setFormData({ ...formData, parent_phone: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">{t('guardianEmail')}</Label>
+                      <Input type="email" value={formData.parent_email || ''} onChange={(e) => setFormData({ ...formData, parent_email: e.target.value })} />
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div><span className="text-muted-foreground">{t('name')}:</span> {student.parent_name || '-'}</div>
+                    <div><span className="text-muted-foreground">{t('relationship')}:</span> {student.parent_relationship || '-'}</div>
+                    <div><span className="text-muted-foreground">{t('phone2')}:</span> {student.parent_phone || '-'}</div>
+                    <div><span className="text-muted-foreground">{t('email2')}:</span> {student.parent_email || '-'}</div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="academic" className="space-y-4">
