@@ -648,7 +648,7 @@ export default function TeacherSchedulePage() {
                     {timeSlots.map((slot, idx) => (
                       <tr key={slot.id} className={idx % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-muted/20'}>
                         <td className="p-3 border-b">
-                          <div className="text-sm font-medium">{isRTL ? `الحصة ${['الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة','السابعة','الثامنة','التاسعة','العاشرة'][(slot.period_number || slot.slot_number || 1) - 1] || (slot.period_number || slot.slot_number)}` : `Period ${slot.period_number || slot.slot_number}`}</div>
+                          <div className="text-sm font-medium">{isRTL ? `الحصة ${['الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة','السابعة','الثامنة','التاسعة','العاشرة'][idx] || (idx + 1)}` : `Period ${idx + 1}`}</div>
                           <div className="text-xs text-muted-foreground">{slot.start_time?.slice(0,5)} - {slot.end_time?.slice(0,5)}</div>
                         </td>
                         {(view === 'weekly' ? DAYS : [DAYS.find(d => d.key === selectedDay)]).map(day => {
