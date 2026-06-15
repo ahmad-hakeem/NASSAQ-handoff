@@ -1149,20 +1149,42 @@ export default function SessionTeachPage() {
   };
 
   // Record a teacher-defined evaluation item from the right action
-  // sidebar. Posts a typed note carrying the item name and points so
-  // the activity log + reports stay in sync; no points are stored on
-  // the score endpoint since custom items have arbitrary magnitudes.
+  // sidebar. Score-bearing items (points != 0) are routed through the
+  // canonical scoring endpoint so the configured points reach the
+  // Follow-up Report and the school / parent profiles; genuinely
+  // non-scoring items stay a cosmetic note.
   const recordCustomEvaluation = async (item) => {
     if (!selectedStudent) { toast.error(t('selectStudentFirst') || 'اختر طالباً أولاً'); return; }
     const points = Number(item?.points) || 0;
     const signed = points > 0 ? `+${points}` : String(points);
     const firstName = selectedStudent.full_name?.split(' ')[0] || '';
     try {
-      await api.post(`/session/${sessionId}/note`, {
-        student_id: selectedStudent.id,
-        text: `${item.name}${points ? ` (${signed})` : ''}`,
-        note_type: 'evaluation',
-      });
+      if (points !== 0) {
+        // Score-bearing evaluation item: route through the canonical scoring
+        // pipeline so the points reach the Follow-up Report and the school /
+        // parent profiles instead of being a cosmetic note.
+        await api.post(`/session/${sessionId}/evaluation`, {
+          student_id: selectedStudent.id,
+          name: item.name,
+          points,
+          item_id: item.id,
+        });
+        setStudents(prev => prev.map(s =>
+          s.id === selectedStudent.id ? { ...s, interactionCount: (s.interactionCount || 0) + 1 } : s
+        ));
+        setSelectedStudent(prev => prev ? {
+          ...prev,
+          interactionCount: (prev.interactionCount || 0) + 1,
+          interaction_count: (prev.interaction_count || 0) + 1,
+        } : null);
+      } else {
+        // Genuinely non-scoring item stays a note.
+        await api.post(`/session/${sessionId}/note`, {
+          student_id: selectedStudent.id,
+          text: `${item.name}`,
+          note_type: 'evaluation',
+        });
+      }
       toast.success(`${firstName} — ${item.name}${points ? ` (${signed})` : ''}`);
       addLog(
         'note',
@@ -1349,6 +1371,7 @@ export default function SessionTeachPage() {
     participation_recorded: t('undoEventParticipation') || 'مشاركة',
     behaviour_recorded: t('undoEventBehaviour') || 'سلوك',
     skill_recorded: t('undoEventSkill') || 'مهارة / تلاوة',
+    evaluation_recorded: t('undoEventEvaluation') || 'تقييم',
   };
 
   const undoLastAction = () => {

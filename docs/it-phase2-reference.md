@@ -328,3 +328,37 @@ request after passkey assertion.
   no-op for non-IT) from `backend/dependencies.py`.
 - Do not call bare `require_recent_mfa` on shared routes — its 401
   status is treated as a hard logout by the FE.
+
+## Live-session evaluation items → grades ledger (Task #911)
+
+The teacher live-class right side-strip "التقييم" (evaluation) items each
+carry a configurable **signed** points value. Teacher-added custom items used
+to `POST /session/{id}/note` (`note_type:'evaluation'`) only — cosmetic, so
+their points never reached scoring and كشف المتابعة / school profile / parent
+portal showed zeros.
+
+**Mapping (backend-owned — the caller never decides where points land):**
+- Score-bearing items (`points != 0`) now `POST /session/{session_id}/evaluation`
+  (`backend/routes/role_dashboards_mod.py`). Guarded by `_verify_session_owner`
+  (404 unknown session / 403 non-owner) exactly like `/skill` and `/answer`.
+- `TeacherSessionEngine.record_evaluation()` writes a `session_interactions`
+  row with `interaction_type='evaluation'` carrying the explicit signed
+  `points`, updates the student score ledger, and logs a reversible
+  `evaluation_recorded` event (deterministic `interaction_id` in metadata).
+- `compute_session_scores` folds `points` into the **participation bucket**
+  (المشاركة) — sign honored; negative-only nets ≤0 so no phantom coursework
+  grade. From there the existing canonical flow (`build_followup_hydration`
+  → idempotent `commit_session_scores`) materializes into `student_grades`
+  (school), `grades` (parent, `visible_to_parent`), so the values surface in
+  the Follow-up Report, school student profile, and parent portal.
+- Undo: `evaluation_recorded` is in `REVERSIBLE_EVENT_TYPES` and the undo
+  `interaction_type_map`, so "تراجع" reverses the interaction and compensates
+  the score like every other point-bearing action.
+- Genuinely non-scoring items (`points == 0`) stay a cosmetic note — no
+  interaction, no phantom value.
+
+Manual Follow-up entries still win (hydration never clobbers a manual value),
+exam columns are untouched, and tenant/class scope comes from the session row
+only — a foreign-class student is rejected (400) unless present in this
+session's attendance. Works identically for IT workspaces (the IT teacher is
+the session owner; same route, same guard).

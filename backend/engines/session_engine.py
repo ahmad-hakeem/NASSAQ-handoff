@@ -73,6 +73,7 @@ class EventType(str, Enum):
     BEHAVIOUR_RECORDED = "behaviour_recorded"
     SKILL_RECORDED = "skill_recorded"
     HOMEWORK_RECORDED = "homework_recorded"
+    EVALUATION_RECORDED = "evaluation_recorded"
     NOTE_ADDED = "note_added"
     SEATING_UPDATED = "seating_updated"
     GROUPS_UPDATED = "groups_updated"
@@ -89,6 +90,7 @@ class InteractionType(str, Enum):
     QUESTION = "question"
     PARTICIPATION = "participation"
     BEHAVIOUR = "behaviour"
+    EVALUATION = "evaluation"
 
 
 class AnswerResult(str, Enum):
@@ -2002,6 +2004,14 @@ class TeacherSessionEngine:
                     b["participation_points"] += int(rules.get("initiative", 2))
                 elif ptype == ParticipationType.REFUSED.value:
                     b["participation_points"] += int(rules.get("refused", -1))
+            elif itype == InteractionType.EVALUATION.value:
+                # Configurable side-strip evaluation items carry their own
+                # explicit signed points (backend-owned mapping → participation
+                # bucket / المشاركة). Honor the configured magnitude and sign.
+                try:
+                    b["participation_points"] += int(it.get("points", 0) or 0)
+                except (TypeError, ValueError):
+                    pass
             elif itype == InteractionType.BEHAVIOUR.value:
                 cat = it.get("behaviour_category")
                 btype = it.get("behaviour_type") or ""
@@ -2999,6 +3009,108 @@ class TeacherSessionEngine:
             "skill_record_id": skill_record["id"]
         }
 
+    async def record_evaluation(
+        self,
+        session_id: str,
+        student_id: str,
+        item_name: str,
+        points: int,
+        teacher_id: str,
+        item_id: Optional[str] = None,
+        actor_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Record a configurable side-strip evaluation-item tap as a real
+        scoring action.
+
+        The teacher-configured "التقييم" sidebar items (custom items added by
+        the teacher, each with its own configured signed points) used to be
+        stored only as a cosmetic note, so their points never reached the
+        scoring pipeline. This routes each score-bearing tap through the
+        canonical flow instead: a ``session_interactions`` row carrying the
+        explicit signed ``points`` plus a student-score update and a reversible
+        event. ``compute_session_scores`` folds the points into the
+        participation bucket (المشاركة), so they surface in the Follow-up
+        Report and the committed school / parent ledgers.
+
+        The backend owns the column mapping and never trusts the caller to
+        decide where the points land. Tenant / class membership is enforced
+        exactly as ``record_skill`` does (the session row is the only source
+        of class scope; a foreign-class student is rejected unless present in
+        this session's attendance).
+        """
+        now = datetime.now(timezone.utc)
+
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
+        if not session:
+            raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
+
+        student = await gd_find_one(self.session, "students", {"id": student_id, "is_active": True})
+        if not student:
+            raise HTTPException(status_code=404, detail="الطالب غير موجود")
+
+        if student.get("class_id") != session.get("class_id"):
+            attendance = await gd_find_one(
+                self.session,
+                "session_attendance",
+                {"session_id": session_id, "student_id": student_id},
+            )
+            if not attendance:
+                logger.warning(
+                    "Evaluation record rejected: student %s (class=%s) not in session %s (class=%s) and no attendance row",
+                    student_id, student.get("class_id"), session_id, session.get("class_id"),
+                )
+                raise HTTPException(status_code=400, detail="الطالب لا ينتمي لهذا الفصل")
+
+        try:
+            score_change = int(points)
+        except (TypeError, ValueError):
+            score_change = 0
+
+        display_name = (item_name or "").strip() or "تقييم"
+
+        interaction = {
+            "id": str(uuid.uuid4()),
+            "session_id": session_id,
+            "student_id": student_id,
+            "type": InteractionType.EVALUATION.value,
+            "interaction_type": InteractionType.EVALUATION.value,
+            "evaluation_name": display_name,
+            "evaluation_item_id": item_id,
+            "points": score_change,
+            "recorded_by": teacher_id,
+            "recorded_at": now.isoformat(),
+            "timestamp": now.isoformat(),
+            "editable_until": (now + timedelta(hours=1)).isoformat(),
+        }
+        await gd_insert(self.session, "session_interactions", interaction)
+
+        if score_change != 0:
+            await self._update_student_score(
+                student_id,
+                score_change,
+                "evaluation",
+                f"تقييم: {display_name}",
+            )
+
+        await self._log_event(
+            session_id=session_id,
+            event_type=EventType.EVALUATION_RECORDED.value,
+            actor_id=actor_id or teacher_id,
+            student_id=student_id,
+            new_value=display_name,
+            metadata={
+                "score_change": score_change,
+                "evaluation_name": display_name,
+                "interaction_id": interaction["id"],
+            },
+        )
+
+        return {
+            "message": "تم تسجيل التقييم",
+            "evaluation": display_name,
+            "score_change": score_change,
+        }
+
     # ---------- Activity Log ----------
 
     async def get_activity_log(self, session_id: str, limit: int = 50) -> list:
@@ -3100,6 +3212,17 @@ class TeacherSessionEngine:
                     emoji = "👍" if bcat == "positive" else "⚠️"
                     text = f"{first_name} — {label} ({sign})"
                     color = "text-purple-700" if bcat == "positive" else "text-red-600"
+
+            elif itype == "evaluation":
+                label = i.get("evaluation_name") or "تقييم"
+                try:
+                    change = int(i.get("points", 0) or 0)
+                except (TypeError, ValueError):
+                    change = 0
+                sign = f"+{change}" if change > 0 else str(change)
+                emoji = "📝"
+                text = f"{first_name} — {label} ({sign})"
+                color = "text-blue-700" if change >= 0 else "text-amber-700"
             else:
                 continue
 
@@ -3511,6 +3634,7 @@ class TeacherSessionEngine:
         EventType.PARTICIPATION_RECORDED.value,
         EventType.BEHAVIOUR_RECORDED.value,
         EventType.SKILL_RECORDED.value,
+        EventType.EVALUATION_RECORDED.value,
     }
 
     @staticmethod
@@ -3682,6 +3806,7 @@ class TeacherSessionEngine:
             EventType.PARTICIPATION_RECORDED.value: InteractionType.PARTICIPATION.value,
             EventType.BEHAVIOUR_RECORDED.value: InteractionType.BEHAVIOUR.value,
             EventType.SKILL_RECORDED.value: InteractionType.BEHAVIOUR.value,
+            EventType.EVALUATION_RECORDED.value: InteractionType.EVALUATION.value,
         }
         itype = interaction_type_map.get(event_type)
 

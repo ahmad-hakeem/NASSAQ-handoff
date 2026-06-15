@@ -2972,6 +2972,46 @@ async def record_session_skill(
     return result
 
 
+@router.post("/session/{session_id}/evaluation")
+async def record_session_evaluation(
+    session_id: str,
+    data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    تسجيل بند تقييم لطالب خلال الحصة
+    Record a configurable side-strip evaluation item for a student.
+
+    The teacher-configured evaluation items carry an explicit signed points
+    value; the backend folds them into the canonical scoring pipeline
+    (participation bucket -> Follow-up Report -> committed school/parent
+    ledgers) instead of recording them as a cosmetic note.
+    """
+    await _verify_session_owner(session_id, current_user)
+    teacher_id = current_user["id"]
+    result = await session_engine.record_evaluation(
+        session_id=session_id,
+        student_id=data.get("student_id"),
+        item_name=data.get("name") or data.get("item_name"),
+        points=data.get("points", 0),
+        teacher_id=teacher_id,
+        item_id=data.get("item_id"),
+        actor_id=current_user.get("teacher_id") or current_user["id"],
+    )
+    if audit_engine:
+        await audit_engine.log(
+            action=AuditAction.DATA_MODIFY,
+            performed_by=current_user["id"],
+            details={
+                "event": "evaluation_recorded",
+                "session_id": session_id,
+                "student_id": data.get("student_id"),
+                "item_id": data.get("item_id"),
+            }
+        )
+    return result
+
+
 @router.post("/session/{session_id}/note")
 async def add_session_note(
     session_id: str,
