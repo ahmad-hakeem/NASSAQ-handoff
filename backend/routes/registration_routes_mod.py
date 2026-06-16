@@ -681,7 +681,7 @@ async def get_registration_requests(
     status: Optional[str] = None,
     account_type: Optional[str] = None,
     source: Optional[str] = None,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_SUB_ADMIN]))
 ):
     """Get all registration requests (admin only) with optional filters"""
     query = {}

@@ -257,33 +257,38 @@ export default function AppRoutes() {
         } />
 
         {/* Platform Admin Routes */}
-        {/* Task #938 — platform_sub_admin (نائب مدير منصة / deputy manager) is
-            allowed into the /admin dashboard shell ONLY. Every /admin/* sub-page
-            below is intentionally restricted and must stay that way: the backend
-            RBAC that powers them (admin_dashboard_routes.py command-center stats,
-            user_routes_mod.py platform-users, monitoring_routes.py, audit_routes.py)
-            grants those data endpoints solely to platform_admin (and a couple to
-            platform_operations_manager). Adding platform_sub_admin to a sub-route
-            here without first granting the matching backend permission would only
-            render a page that 403s on every fetch. Do NOT add platform_sub_admin
-            to the routes below until the corresponding backend RBAC is extended. */}
+        {/* Task #940 — platform_sub_admin (نائب مدير منصة / deputy manager) is a
+            READ-ONLY deputy. It may view the dashboard shell plus the schools and
+            users read pages, because Task #940 extended the backend RBAC that
+            powers them (admin_dashboard_routes.py command-center stats/schools-
+            overview/system-health, dashboard_routes_mod.py super-admin stats,
+            platform_routes_mod.py analytics overview, school_routes_mod.py GET
+            /schools, user_routes_mod.py platform-users/management-stats/by-school/
+            teacher-school-mismatches, registration_routes_mod.py GET
+            /registration-requests) to accept platform_sub_admin.
+            Every WRITE/management endpoint stays platform_admin-only, and the
+            privileged surfaces below (monitoring, audit, security, integrations,
+            rules, workspace-purge, communication, school/user DETAIL pages) remain
+            restricted — platform_sub_admin has no permission for them and their
+            backend endpoints would 403. Do NOT add platform_sub_admin to those
+            routes without first granting the matching read-only backend RBAC. */}
         <Route path="/admin" element={
           <ProtectedRoute allowedRoles={['platform_admin', 'platform_operations_manager', 'platform_sub_admin']}><AdminDashboard /></ProtectedRoute>
         } />
         <Route path="/admin/schools" element={
-          <ProtectedRoute allowedRoles={['platform_admin']}><TenantsManagement /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['platform_admin', 'platform_sub_admin']}><TenantsManagement /></ProtectedRoute>
         } />
         <Route path="/admin/tenants" element={
-          <ProtectedRoute allowedRoles={['platform_admin']}><TenantsManagement /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['platform_admin', 'platform_sub_admin']}><TenantsManagement /></ProtectedRoute>
         } />
         <Route path="/admin/schools-table" element={
-          <ProtectedRoute allowedRoles={['platform_admin']}><PlatformSchoolsPage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['platform_admin', 'platform_sub_admin']}><PlatformSchoolsPage /></ProtectedRoute>
         } />
         <Route path="/platform/schools/:schoolId" element={
           <ProtectedRoute allowedRoles={['platform_admin']}><PlatformSchoolDetailPage /></ProtectedRoute>
         } />
         <Route path="/admin/users" element={
-          <ProtectedRoute allowedRoles={['platform_admin']}><UsersManagement /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['platform_admin', 'platform_sub_admin']}><UsersManagement /></ProtectedRoute>
         } />
         <Route path="/admin/users/:userId" element={
           <ProtectedRoute allowedRoles={['platform_admin']}><UserDetailsPage /></ProtectedRoute>

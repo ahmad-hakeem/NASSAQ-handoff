@@ -337,7 +337,7 @@ async def create_platform_user(
 
 @router.get("/users/management-stats")
 async def get_users_management_stats(
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_SUB_ADMIN])),
 ):
     """Real-time stats for the Users Management page analysis cards.
     All values are direct DB counts — no mock data, no hardcoded values."""
@@ -368,7 +368,7 @@ async def get_users_management_stats(
 
 @router.get("/users/platform-users")
 async def get_platform_users(
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_SUB_ADMIN])),
     skip: int = 0,
     limit: int = 100,
     role: Optional[str] = None,
@@ -512,7 +512,7 @@ _SCHOOL_USER_ROLES = [
 
 @router.get("/users/by-school")
 async def get_users_by_school(
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_SUB_ADMIN]))
 ):
     """Return school-level users grouped by tenant in a single query.
 
@@ -742,7 +742,7 @@ async def get_teacher_school_mismatches(
         description="Max mismatches to return in this page.",
     ),
     offset: int = Query(0, ge=0, description="Page offset into the result list."),
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_SUB_ADMIN]))
 ):
     """List teacher users whose intended school differs from their academic record.
 

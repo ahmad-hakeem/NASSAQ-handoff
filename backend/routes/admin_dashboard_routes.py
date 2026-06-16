@@ -61,7 +61,7 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
 
     @router.get("/command-center/stats")
     async def get_command_center_stats(
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER]))
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER, UserRole.PLATFORM_SUB_ADMIN]))
     ):
         try:
             now = datetime.now(timezone.utc)
@@ -200,7 +200,7 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
 
     @router.get("/command-center/schools-overview")
     async def get_schools_overview(
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER]))
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER, UserRole.PLATFORM_SUB_ADMIN]))
     ):
         try:
             from sqlalchemy import text as _sa_text
@@ -298,7 +298,7 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
 
     @router.get("/command-center/system-health")
     async def get_system_health(
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER]))
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER, UserRole.PLATFORM_SUB_ADMIN]))
     ):
         try:
             now = datetime.now(timezone.utc)

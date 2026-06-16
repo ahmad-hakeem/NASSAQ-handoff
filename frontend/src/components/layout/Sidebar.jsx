@@ -320,9 +320,12 @@ export const Sidebar = ({ children }) => {
   const menuItems = useMemo(() => {
     // Platform Admin Menu Items - مدير المنصة
     const platformAdminItems = [
-      { icon: LayoutDashboard, label: t('controlDashboard'), href: '/admin', roles: ['platform_admin'] },
-      { icon: Building2, label: t('schoolsManagement'), href: '/admin/schools-table', roles: ['platform_admin'] },
-      { icon: Users, label: t('usersManagement'), href: '/admin/users', roles: ['platform_admin'] },
+      // Task #940 — platform_sub_admin (read-only deputy) sees the dashboard,
+      // schools, and users read pages. All other platform items below stay
+      // platform_admin-only (their backend endpoints 403 for the deputy).
+      { icon: LayoutDashboard, label: t('controlDashboard'), href: '/admin', roles: ['platform_admin', 'platform_sub_admin'] },
+      { icon: Building2, label: t('schoolsManagement'), href: '/admin/schools-table', roles: ['platform_admin', 'platform_sub_admin'] },
+      { icon: Users, label: t('usersManagement'), href: '/admin/users', roles: ['platform_admin', 'platform_sub_admin'] },
       { icon: Activity, label: t('systemMonitoring'), href: '/admin/monitoring', roles: ['platform_admin'] },
       // AI Insights intentionally omitted for platform_admin: /principal/ai-insights
       // is a school-scoped page and a platform admin has no school context, so the

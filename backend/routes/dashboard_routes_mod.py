@@ -255,7 +255,7 @@ async def get_dashboard_stats(
 # ============== SUPER ADMIN LEADERSHIP DASHBOARD API ==============
 @router.get("/super-admin/dashboard-stats", response_model=SuperAdminDashboardStats)
 async def get_super_admin_dashboard_stats(
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_SUB_ADMIN]))
 ):
     """
     Get comprehensive statistics for Super Admin leadership dashboard.

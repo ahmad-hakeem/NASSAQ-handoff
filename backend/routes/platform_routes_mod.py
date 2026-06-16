@@ -61,7 +61,7 @@ def _decrypt_api_key(value: str) -> str:
 
 @router.get("/analytics/overview")
 async def get_analytics_overview(
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_SUB_ADMIN]))
 ):
     """Get platform analytics overview"""
     total_schools = await gd_count(db.session, "schools", {})

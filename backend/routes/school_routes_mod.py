@@ -504,7 +504,7 @@ async def _live_entity_counts_by_tenant() -> Tuple[Dict[str, int], Dict[str, int
 @router.get("/schools", response_model=List[SchoolResponse])
 async def get_schools(
     status: Optional[str] = None,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.MINISTRY_REP]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.MINISTRY_REP, UserRole.PLATFORM_SUB_ADMIN]))
 ):
     query = {}
     if status:
