@@ -1441,25 +1441,16 @@ async def _capture_before_states(issue_ids: list) -> dict:
 
 
 async def _save_action_history(action_type: str, user: dict, issue_ids: list, before_states: dict, after_state: dict) -> str:
-    now = _now_iso()
-    expiry = (datetime.now(timezone.utc) + timedelta(minutes=UNDO_EXPIRY_MINUTES)).isoformat()
-    action_id = str(uuid.uuid4())
     record = {
-        "action_id": action_id,
         "action_type": action_type,
-        "performed_by": user.get("email", "unknown"),
+        "performed_by": get_user_id(user) or None,
         "performed_by_name": user.get("full_name", user.get("email", "unknown")),
-        "timestamp": now,
-        "affected_items": issue_ids,
-        "affected_count": len(issue_ids),
-        "before_state": before_states,
-        "after_state": after_state,
-        "is_undoable": True,
-        "undo_expiry": expiry,
-        "status": "active",
+        "issue_ids": issue_ids,
+        "old_values": before_states,
+        "is_undone": False,
     }
-    await gd_insert(db.session, "bulk_action_history", record)
-    return action_id
+    inserted_id = await gd_insert(db.session, "bulk_action_history", record)
+    return inserted_id
 
 
 @router.post("/issues/bulk-update")
@@ -1581,19 +1572,16 @@ async def undo_action(
     if not is_main_admin(current_user):
         _hub_error(403, "FORBIDDEN", "هذه العملية متاحة فقط للمسؤولين الرئيسيين")
 
-    record = await gd_find_one(db.session, "bulk_action_history", {"action_id": action_id})
+    record = await gd_find_one(db.session, "bulk_action_history", {"id": action_id})
     if not record:
         _hub_error(404, "NOT_FOUND", "العملية غير موجودة")
 
-    if record.get("status") != "active":
-        _hub_error(400, "NOT_UNDOABLE", f"لا يمكن التراجع — الحالة: {record.get('status')}")
+    if record.get("is_undone"):
+        _hub_error(400, "NOT_UNDOABLE", "تم التراجع عن هذه العملية مسبقاً")
 
     now_dt = datetime.now(timezone.utc)
-    if record.get("undo_expiry", "") < now_dt.isoformat():
-        await gd_update_one(db.session, "bulk_action_history", {"action_id": action_id}, {"status": "expired", "is_undoable": False})
-        _hub_error(400, "EXPIRED", "انتهت مهلة التراجع")
 
-    before_states = record.get("before_state", {})
+    before_states = record.get("old_values", {})
     action_type = record.get("action_type", "")
     restored_count = 0
     now = _now_iso()
@@ -1617,12 +1605,9 @@ async def undo_action(
     else:
         _hub_error(400, "UNSUPPORTED", f"نوع العملية غير مدعوم للتراجع: {action_type}")
 
-    await gd_update_one(db.session, "bulk_action_history", {"action_id": action_id}, {
-            "status": "undone",
-            "is_undoable": False,
+    await gd_update_one(db.session, "bulk_action_history", {"id": action_id}, {
+            "is_undone": True,
             "undone_at": now,
-            "undone_by": current_user.get("email", "unknown"),
-            "restored_count": restored_count,
         })
 
     logger.info(f"[ProductHub] Undo {action_type} ({action_id[:8]}): restored {restored_count} issues by {current_user.get('email', 'unknown')}")
