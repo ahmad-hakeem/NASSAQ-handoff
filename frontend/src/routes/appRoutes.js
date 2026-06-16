@@ -257,6 +257,16 @@ export default function AppRoutes() {
         } />
 
         {/* Platform Admin Routes */}
+        {/* Task #938 — platform_sub_admin (نائب مدير منصة / deputy manager) is
+            allowed into the /admin dashboard shell ONLY. Every /admin/* sub-page
+            below is intentionally restricted and must stay that way: the backend
+            RBAC that powers them (admin_dashboard_routes.py command-center stats,
+            user_routes_mod.py platform-users, monitoring_routes.py, audit_routes.py)
+            grants those data endpoints solely to platform_admin (and a couple to
+            platform_operations_manager). Adding platform_sub_admin to a sub-route
+            here without first granting the matching backend permission would only
+            render a page that 403s on every fetch. Do NOT add platform_sub_admin
+            to the routes below until the corresponding backend RBAC is extended. */}
         <Route path="/admin" element={
           <ProtectedRoute allowedRoles={['platform_admin', 'platform_operations_manager', 'platform_sub_admin']}><AdminDashboard /></ProtectedRoute>
         } />
