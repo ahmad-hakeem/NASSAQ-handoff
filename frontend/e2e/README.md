@@ -41,6 +41,18 @@ E2E_IT_PRE_BOOTSTRAP_PASSWORD=...
 E2E_PRINCIPAL_EMAIL=...
 E2E_PRINCIPAL_PASSWORD=...
 
+# Platform-level roles (login-platform-roles.spec.ts).
+# All three must resolve to the /admin dashboard. The canonical
+# Platform Admin account is in TEST_CREDENTIALS.md; the operations-
+# manager and sub-admin accounts must be seeded with those roles in
+# the dev database before this spec can run.
+E2E_PLATFORM_ADMIN_EMAIL=...
+E2E_PLATFORM_ADMIN_PASSWORD=...
+E2E_PLATFORM_OPS_MANAGER_EMAIL=...
+E2E_PLATFORM_OPS_MANAGER_PASSWORD=...
+E2E_PLATFORM_SUB_ADMIN_EMAIL=...
+E2E_PLATFORM_SUB_ADMIN_PASSWORD=...
+
 # Parent (any school parent — used by sign-out-other-devices.spec.ts
 # AND parent-change-password.spec.ts).
 # The account does NOT need to be MFA-enrolled; the spec drives two
@@ -149,6 +161,18 @@ events or carry a `DataTransfer` payload. Selectors use the
 > dev/staging database with the seeded test school — never a production
 > database. It needs `E2E_PRINCIPAL_EMAIL` / `E2E_PRINCIPAL_PASSWORD` and
 > at least two seeded classes where one has a student.
+
+`e2e/login-platform-roles.spec.ts` (Task #939) — logs in as each
+platform-level role and asserts the login orchestration resolves the
+correct redirect (`resolveRedirectTarget` in `LoginPage.jsx`, mirrored
+by `ROLE_DASHBOARDS`). Pins the regression class behind the silent
+`platform_sub_admin` no-op. Four scenarios:
+
+1. `platform_admin` login → `/admin`, no error surface.
+2. `platform_operations_manager` login → `/admin`, no error surface.
+3. `platform_sub_admin` login → `/admin`, no error surface.
+4. Wrong password → stays on `/login` with the canonical Arabic error
+   inside `NassaqAlertDialog`, no sonner toast.
 
 The six scenarios in `e2e/auth/post-login-redirect.spec.ts`:
 

@@ -53,6 +53,27 @@ export function getParentCredentials(): Credential {
   };
 }
 
+export function getPlatformAdminCredentials(): Credential {
+  return {
+    email: readEnv('E2E_PLATFORM_ADMIN_EMAIL'),
+    password: readEnv('E2E_PLATFORM_ADMIN_PASSWORD'),
+  };
+}
+
+export function getPlatformOperationsManagerCredentials(): Credential {
+  return {
+    email: readEnv('E2E_PLATFORM_OPS_MANAGER_EMAIL'),
+    password: readEnv('E2E_PLATFORM_OPS_MANAGER_PASSWORD'),
+  };
+}
+
+export function getPlatformSubAdminCredentials(): Credential {
+  return {
+    email: readEnv('E2E_PLATFORM_SUB_ADMIN_EMAIL'),
+    password: readEnv('E2E_PLATFORM_SUB_ADMIN_PASSWORD'),
+  };
+}
+
 export function getMfaUserCredentials(): Credential & { recoveryCode: string } {
   return {
     email: readEnv('E2E_MFA_USER_EMAIL'),
