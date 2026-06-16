@@ -9,6 +9,7 @@ export const ROLE_DASHBOARDS = {
   school_sub_admin: "/school",
   school_admin: "/principal",
   platform_operations_manager: "/admin",
+  platform_sub_admin: "/admin",
   teacher: "/teacher",
   independent_teacher: "/teacher",
   // Student portal is temporarily disabled platform-wide. Mapping the

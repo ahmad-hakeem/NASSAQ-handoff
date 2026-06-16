@@ -144,6 +144,7 @@ export const LoginPage = () => {
       case 'school_sub_admin': return '/school';
       case 'school_admin': return '/principal';
       case 'platform_operations_manager': return '/admin';
+      case 'platform_sub_admin': return '/admin';
       case 'teacher': return '/teacher';
       // Student login is platform-wide disabled — backend rejects the
       // /auth/login attempt before we ever resolve a redirect, but keep

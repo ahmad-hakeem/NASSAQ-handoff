@@ -258,7 +258,7 @@ export default function AppRoutes() {
 
         {/* Platform Admin Routes */}
         <Route path="/admin" element={
-          <ProtectedRoute allowedRoles={['platform_admin', 'platform_operations_manager']}><AdminDashboard /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['platform_admin', 'platform_operations_manager', 'platform_sub_admin']}><AdminDashboard /></ProtectedRoute>
         } />
         <Route path="/admin/schools" element={
           <ProtectedRoute allowedRoles={['platform_admin']}><TenantsManagement /></ProtectedRoute>
