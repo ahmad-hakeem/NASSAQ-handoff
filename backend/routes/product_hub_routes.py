@@ -32,6 +32,8 @@ Collections:
 from fastapi import APIRouter, HTTPException, Depends, Query, Body, UploadFile, File
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
+import asyncio
+import re
 import uuid
 import logging
 import json
@@ -207,120 +209,417 @@ def _fallback_analysis(issue: dict) -> dict:
     }
 
 
-async def _generate_prompt(issue: dict) -> str:
-    hakim = issue.get("hakim_analysis", {})
-    issue_type = ISSUE_TYPE_LABELS.get(issue.get('issue_type', ''), issue.get('issue_type', ''))
-    title = issue.get('title', hakim.get('suggested_title', ''))
-    priority = PRIORITY_LABELS.get(issue.get('priority', ''), issue.get('priority', ''))
-    section = issue.get('section', 'N/A')
-    page = issue.get('page', 'N/A')
-    account_type = issue.get('account_type', 'N/A')
-    current_behavior = issue.get('current_behavior', 'N/A')
-    expected_behavior = issue.get('expected_behavior', 'N/A')
-    steps = issue.get('steps_to_reproduce', '')
-    reproducibility = issue.get('reproducibility', 'N/A')
-    error_msg = issue.get('error_message', '')
-    url = issue.get('url', '')
-    device = issue.get('device', '')
-    browser = issue.get('browser', '')
-    impact_list = issue.get('impact', [])
-    impact_assessment = hakim.get('impact_assessment', '')
-    priority_reasoning = hakim.get('priority_reasoning', '')
-    technical_notes = hakim.get('technical_notes', '')
-    team = hakim.get('suggested_team', 'N/A')
-    team_reasoning = hakim.get('team_reasoning', '')
+# ---------------------------------------------------------------------------
+# Hakim engineering-prompt generation (Replit execution-ready structure)
+# ---------------------------------------------------------------------------
+# Source of truth for the prompt the team copies into the coding platform.
+# Hakim transforms the issue (in any language) into a strict, root-cause-
+# oriented, implementation-ready engineering prompt written in professional
+# English. The structure below is canonical and enforced by validation; the
+# LLM produces the rich content, and a deterministic builder guarantees the
+# same structure whenever the LLM is unavailable or returns invalid output.
 
-    impact_text = ', '.join(impact_list) if impact_list else impact_assessment or 'N/A'
+# Exact section order — do NOT reorder without updating validation + builders.
+ENGINEERING_PROMPT_SECTIONS = [
+    "Objective",
+    "Investigation Steps",
+    "Execution Logic",
+    "Constraints / Guardrails",
+    "Expected Output",
+    "QA / Verification",
+    "Important implementation note",
+]
 
+# Minimum characters of content required inside each section for the LLM
+# output to be accepted (otherwise we fall back to the deterministic build).
+_MIN_SECTION_CONTENT_CHARS = 20
+
+# Markers from the previous descriptive format. If any survive in the output
+# we reject it so the old weak structure can never be reused underneath.
+_LEGACY_PROMPT_MARKERS = (
+    "[ISSUE TYPE]",
+    "[CURRENT BEHAVIOR]",
+    "[EXPECTED BEHAVIOR]",
+    "EXECUTION INSTRUCTIONS",
+    "HAKIM AI ANALYSIS",
+)
+
+
+def _section_header(name: str) -> str:
+    return f"## {name}"
+
+
+# Matches an ATX heading start with CommonMark-permitted leading indentation
+# (any amount; we escape conservatively) followed by space/tab or end-of-line.
+_HEADER_LINE_RE = re.compile(r"(?m)^([ \t]*)(#{1,6})(?=[ \t]|$)")
+
+# Free-text fact keys that carry user/LLM-derived content and are interpolated
+# into the prompt markdown. These MUST be sanitized; structural/control fields
+# (issue_number, issue_type_code, has_attachments) are deliberately excluded.
+_SANITIZE_FACT_KEYS = (
+    "issue_type", "title", "priority", "section", "page", "account_type",
+    "current_behavior", "expected_behavior", "steps", "reproducibility",
+    "error_msg", "url", "device", "browser", "impact_text", "technical_notes",
+    "team", "team_reasoning", "priority_reasoning",
+)
+
+
+def _sanitize_fact(value) -> str:
+    """Neutralize user-controlled text so it cannot break the canonical structure.
+
+    - Escapes any line that starts with markdown header marks (``#``..``######``)
+      so reporter text can never inject an extra ``##`` section header.
+    - Swaps the ASCII space inside any legacy-format marker for a non-breaking
+      space (visually identical) so embedded marker literals cannot trip the
+      validator and force a fallback or reject a legitimate prompt.
+    """
+    text = str(value).replace("\r\n", "\n").replace("\r", "\n")
+    text = _HEADER_LINE_RE.sub(r"\1\\\2", text)
+    for marker in _LEGACY_PROMPT_MARKERS:
+        text = re.sub(re.escape(marker), marker.replace(" ", "\u00a0"), text, flags=re.IGNORECASE)
+    return text
+
+
+def _collect_issue_facts(issue: dict) -> dict:
+    """Normalise the issue document into the facts the prompt builders read."""
+    hakim = issue.get("hakim_analysis", {}) or {}
+    impact_list = issue.get("impact", []) or []
+    facts = {
+        "issue_number": issue.get("issue_number", ""),
+        "issue_type_code": issue.get("issue_type", ""),
+        "issue_type": ISSUE_TYPE_LABELS.get(issue.get("issue_type", ""), issue.get("issue_type", "")),
+        "title": issue.get("title") or hakim.get("suggested_title", ""),
+        "priority": PRIORITY_LABELS.get(issue.get("priority", ""), issue.get("priority", "")),
+        "section": issue.get("section", "") or "N/A",
+        "page": issue.get("page", "") or "N/A",
+        "account_type": issue.get("account_type", "") or "N/A",
+        "current_behavior": issue.get("current_behavior", "") or "N/A",
+        "expected_behavior": issue.get("expected_behavior", "") or "N/A",
+        "steps": issue.get("steps_to_reproduce", "") or "",
+        "reproducibility": issue.get("reproducibility", "") or "N/A",
+        "error_msg": issue.get("error_message", "") or "",
+        "url": issue.get("url", "") or "",
+        "device": issue.get("device", "") or "",
+        "browser": issue.get("browser", "") or "",
+        "impact_text": ", ".join(impact_list) if impact_list else (hakim.get("impact_assessment", "") or "N/A"),
+        "technical_notes": hakim.get("technical_notes", "") or "",
+        "team": hakim.get("suggested_team", "") or "N/A",
+        "team_reasoning": hakim.get("team_reasoning", "") or "",
+        "priority_reasoning": hakim.get("priority_reasoning", "") or "",
+        "has_attachments": bool(issue.get("attachments") or issue.get("evidence") or issue.get("screenshots")),
+    }
+    for key in _SANITIZE_FACT_KEYS:
+        facts[key] = _sanitize_fact(facts[key])
+    return facts
+
+
+_ENGINEERING_SYSTEM_PROMPT = (
+    "You are Hakim (حكيم), the senior engineering intelligence assistant for NASSAQ "
+    "(نَسَّق), a multi-tenant school management platform.\n\n"
+    "Your job: transform a product/issue report into a single, strict, "
+    "implementation-ready engineering prompt that an engineer pastes directly into "
+    "a coding agent to fix the issue with zero rewriting.\n\n"
+    "NASSAQ stack & rules you MUST encode into every prompt:\n"
+    "- Frontend: React (CRACO) + Tailwind, RTL Arabic UI, brand design tokens.\n"
+    "- Backend: FastAPI (Python) + PostgreSQL + SQLAlchemy (async), Pydantic schemas.\n"
+    "- Strict multi-tenancy: tenant_id/school_id isolation must be preserved.\n"
+    "- RBAC and role hierarchy must be preserved; never weaken role/permission checks.\n"
+    "- One source of truth per concern; backend/data rules are authoritative over UI.\n"
+    "- Prefer the smallest safe vertical slice; no fake/cosmetic fixes.\n\n"
+    "Engineering standards every prompt MUST enforce:\n"
+    "- Full-stack-first reasoning: inspect actual routes, models/tables/enums, API "
+    "endpoints/services, guards/middleware/role checks, and feature flags/config.\n"
+    "- Determine ROOT CAUSE before implementing; do not stop at describing symptoms.\n"
+    "- Avoid UI-only fixes when backend/data rules may be the real cause.\n"
+    "- Be regression-aware: protect existing working flows.\n\n"
+    "OUTPUT FORMAT — absolutely mandatory:\n"
+    "- Write the ENTIRE prompt in clear, professional English, even when the issue "
+    "input is in Arabic. Understand the Arabic business meaning, then express it in "
+    "English. Do not translate literally; capture intent.\n"
+    "- Output ONLY the prompt. No preamble, no meta commentary, no code fences "
+    "around the whole thing.\n"
+    "- Start the output DIRECTLY with the line '## Objective'. Do NOT add any title, "
+    "H1 banner, or any text before it.\n"
+    "- Use EXACTLY these seven section headers, each as its own line, written exactly "
+    "as shown (## then the title), in THIS order, once each, and do NOT add any other "
+    "'#' or '##' header beyond these seven:\n"
+    "  ## Objective\n"
+    "  ## Investigation Steps\n"
+    "  ## Execution Logic\n"
+    "  ## Constraints / Guardrails\n"
+    "  ## Expected Output\n"
+    "  ## QA / Verification\n"
+    "  ## Important implementation note\n"
+    "- Within a section you may use bullet/numbered lists for content, but do not "
+    "introduce additional '##' top-level headers.\n"
+    "- Every section must contain substantive, issue-specific content (no empty "
+    "sections, no generic boilerplate that could apply to any bug).\n"
+    "- Scale depth to complexity: a simple issue yields a concise but complete "
+    "prompt; a complex issue yields deeper investigation and QA detail.\n"
+    "- Map the issue metadata into the structure: current behavior feeds Objective "
+    "and Investigation Steps; expected behavior feeds Objective, Execution Logic, "
+    "and QA; page/section/account/role/context enrich Investigation Steps and QA; "
+    "attachments/screenshots guide visual or flow-specific validation.\n"
+    "- Investigation Steps must instruct inspecting real routes, models/tables/enums, "
+    "API endpoints/services, guards/middleware/role checks, and feature flags before "
+    "any code change, and must require confirming the root cause first.\n"
+    "- QA / Verification must include concrete, role-aware and tenancy-aware "
+    "regression scenarios.\n"
+)
+
+
+def _build_engineering_user_prompt(facts: dict) -> str:
+    parts = []
+    parts.append(
+        "Transform the following NASSAQ issue report into the strict engineering "
+        "prompt described in your instructions. Preserve the business meaning; "
+        "output professional English only.\n"
+    )
+    parts.append("=== ISSUE REPORT ===")
+    if facts["issue_number"]:
+        parts.append(f"Issue Number: {facts['issue_number']}")
+    parts.append(f"Issue Type: {facts['issue_type']} ({facts['issue_type_code']})")
+    parts.append(f"Title: {facts['title']}")
+    parts.append(f"Priority: {facts['priority']}")
+    if facts["priority_reasoning"]:
+        parts.append(f"Priority Reasoning: {facts['priority_reasoning']}")
+    parts.append(f"Section: {facts['section']}")
+    parts.append(f"Page: {facts['page']}")
+    parts.append(f"Account Type / Role context: {facts['account_type']}")
+    if facts["url"]:
+        parts.append(f"URL: {facts['url']}")
+    if facts["device"]:
+        parts.append(f"Device: {facts['device']}")
+    if facts["browser"]:
+        parts.append(f"Browser: {facts['browser']}")
+    parts.append("")
+    parts.append(f"Current Behavior (as reported):\n{facts['current_behavior']}")
+    parts.append("")
+    parts.append(f"Expected Behavior (as reported):\n{facts['expected_behavior']}")
+    if facts["steps"]:
+        parts.append("")
+        parts.append(f"Steps to Reproduce:\n{facts['steps']}")
+    parts.append("")
+    parts.append(f"Reproducibility: {facts['reproducibility']}")
+    if facts["error_msg"]:
+        parts.append(f"Error Message:\n{facts['error_msg']}")
+    parts.append(f"Impact: {facts['impact_text']}")
+    if facts["technical_notes"]:
+        parts.append(f"Hakim Technical Notes (prior analysis): {facts['technical_notes']}")
+    parts.append(f"Suggested Owning Team: {facts['team']}")
+    if facts["team_reasoning"]:
+        parts.append(f"Team Reasoning: {facts['team_reasoning']}")
+    if facts["has_attachments"]:
+        parts.append(
+            "Attachments/screenshots are present — include visual/flow-specific "
+            "validation steps in QA / Verification."
+        )
+    parts.append("=== END ISSUE REPORT ===")
+    return "\n".join(parts)
+
+
+# CommonMark ATX heading: 0-3 leading spaces, 1-6 '#', then space/tab+title or EOL.
+_HEADER_RE = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$")
+
+
+def _validate_engineering_prompt(text: str) -> bool:
+    """Strictly enforce the canonical structure.
+
+    Requirements:
+    - No legacy descriptive-format markers anywhere.
+    - Output starts directly with the first required header (no preamble, no H1).
+    - EXACTLY the seven required ``## `` headers, each once, in exact order, with
+      no other top-level (``#``/``##``) headers. ``###`` and deeper are allowed
+      only as in-section subheaders.
+    - Each section holds substantive content.
+    """
+    if not text or not text.strip():
+        return False
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    upper = text.upper()
+    for marker in _LEGACY_PROMPT_MARKERS:
+        if marker.upper() in upper:
+            return False
+
+    required = [s.lower() for s in ENGINEERING_PROMPT_SECTIONS]
+    lines = text.split("\n")
+
+    h2_headers = []  # (name_lower, line_index)
+    seen_first_header = False
+    for idx, line in enumerate(lines):
+        m = _HEADER_RE.match(line)
+        if not m:
+            # Reject any non-blank content before the first required header.
+            if not seen_first_header and line.strip():
+                return False
+            continue
+        level = len(m.group(1))
+        name = (m.group(2) or "").strip()
+        if level == 1:
+            return False  # no H1 titles/banners allowed
+        if level == 2:
+            seen_first_header = True
+            h2_headers.append((name.lower(), idx))
+        else:
+            # ###+ subheaders are content, but only inside a section.
+            if not seen_first_header:
+                return False
+
+    # Exactly the seven required H2 headers, in order, once each — nothing else.
+    if [h[0] for h in h2_headers] != required:
+        return False
+
+    for i, (_name, line_idx) in enumerate(h2_headers):
+        start = line_idx + 1
+        end = h2_headers[i + 1][1] if i + 1 < len(h2_headers) else len(lines)
+        content = "\n".join(lines[start:end]).strip()
+        if len(content) < _MIN_SECTION_CONTENT_CHARS:
+            return False
+    return True
+
+
+def _fallback_engineering_prompt(facts: dict) -> str:
+    """Deterministic builder that always satisfies the canonical structure.
+
+    Used when the LLM is unavailable or returns output that fails validation.
+    It still produces a real, root-cause-oriented engineering prompt (never the
+    old descriptive format), mapping the issue metadata into the structure.
+    """
+    page = facts["page"]
+    section = facts["section"]
+    issue_type = facts["issue_type"]
+    account = facts["account_type"]
+
+    # Output MUST start directly with the first required header (no preamble/H1).
     lines = []
-    lines.append("=" * 60)
-    lines.append("  NASSAQ — AI Generated Prompt by Hakim")
-    lines.append("=" * 60)
+
+    # Objective
+    lines.append(_section_header("Objective"))
+    ref = f" (Issue #{facts['issue_number']}, priority: {facts['priority']})" if facts["issue_number"] else ""
+    lines.append(f"Title: {facts['title']}.")
+    lines.append(
+        f"Resolve the reported {issue_type}{ref} on the \"{page}\" page "
+        f"(section: {section}, account/role context: {account})."
+    )
+    lines.append(f"- Reported current behavior: {facts['current_behavior']}")
+    lines.append(f"- Required expected behavior: {facts['expected_behavior']}")
+    lines.append(
+        "Deliver a root-cause fix that makes the actual behavior match the expected "
+        "behavior without weakening RBAC or tenant isolation."
+    )
     lines.append("")
 
-    lines.append(f"[ISSUE TYPE]: {issue_type}")
-    lines.append("")
-    lines.append(f"[TITLE]:")
-    lines.append(f"{title}")
-    lines.append("")
-
-    lines.append("[CONTEXT]:")
-    lines.append(f"  - Account Type: {account_type}")
-    lines.append(f"  - Section: {section}")
-    lines.append(f"  - Page: {page}")
-    if url:
-        lines.append(f"  - URL: {url}")
-    if device:
-        lines.append(f"  - Device: {device}")
-    if browser:
-        lines.append(f"  - Browser: {browser}")
+    # Investigation Steps
+    lines.append(_section_header("Investigation Steps"))
+    lines.append("Before writing any code, confirm the root cause by inspecting the real system:")
+    lines.append(f"1. Reproduce the issue on the \"{page}\" page for an `{account}` account.")
+    lines.append("2. Inspect the actual backend routes/services that power this page (FastAPI routers under `backend/routes/`).")
+    lines.append("3. Inspect the relevant SQLAlchemy models/tables/enums and Pydantic schemas in `shared_models.py`.")
+    lines.append("4. Inspect guards/middleware and role/permission checks (RBAC) and tenant scoping on those routes.")
+    lines.append("5. Check any feature flags or config-driven behavior that could change the outcome.")
+    if facts["steps"]:
+        lines.append(f"6. Follow the reporter's reproduction steps:\n{facts['steps']}")
+    if facts["error_msg"]:
+        lines.append(f"7. Trace this error to its source:\n{facts['error_msg']}")
+    lines.append("Determine the true root cause before implementing; do not stop at the symptom.")
     lines.append("")
 
-    lines.append("[CURRENT BEHAVIOR]:")
-    lines.append(f"{current_behavior}")
+    # Execution Logic
+    lines.append(_section_header("Execution Logic"))
+    lines.append("Implement the smallest safe vertical slice that fixes the confirmed root cause:")
+    lines.append("- Fix the authoritative source of truth (backend/data rules) first; do not apply a UI-only patch when a backend/data rule is wrong.")
+    lines.append(f"- Make the behavior on \"{page}\" match the expected behavior described above.")
+    lines.append("- Keep one source of truth per concern; avoid duplicating logic across frontend and backend.")
+    lines.append("- Preserve RTL Arabic UI and existing brand design tokens for any frontend change.")
+    if facts["technical_notes"]:
+        lines.append(f"- Prior Hakim technical analysis to consider: {facts['technical_notes']}")
     lines.append("")
 
-    lines.append("[EXPECTED BEHAVIOR]:")
-    lines.append(f"{expected_behavior}")
+    # Constraints / Guardrails
+    lines.append(_section_header("Constraints / Guardrails"))
+    lines.append("- Preserve multi-tenancy: every data access must stay scoped by tenant_id/school_id.")
+    lines.append("- Preserve RBAC and role hierarchy; never weaken or bypass permission checks.")
+    lines.append("- Do not break existing working flows (regression-aware).")
+    lines.append("- No fake or cosmetic fixes; no relabeling without fixing the underlying behavior.")
+    lines.append("- Schema changes only via Alembic; no destructive DB operations.")
+    lines.append("- API errors must return safe Arabic messages (no raw exception strings).")
+    lines.append("- Use NassaqAlertDialog for user-facing warnings/errors/confirms.")
     lines.append("")
 
-    if steps:
-        lines.append("[REPRODUCTION STEPS]:")
-        for i, step in enumerate(steps.split('\n'), 1):
-            step = step.strip()
-            if step:
-                if not step[0].isdigit():
-                    lines.append(f"  {i}. {step}")
-                else:
-                    lines.append(f"  {step}")
-        lines.append("")
-
-    lines.append(f"[REPRODUCIBILITY]: {reproducibility}")
+    # Expected Output
+    lines.append(_section_header("Expected Output"))
+    lines.append("- A root-cause summary explaining why the issue happened.")
+    lines.append("- The exact files changed and why.")
+    lines.append(f"- The \"{page}\" behavior now matching: {facts['expected_behavior']}")
+    lines.append("- Confirmation that RBAC and tenant isolation are intact.")
     lines.append("")
 
-    if error_msg:
-        lines.append("[ERROR MESSAGE]:")
-        lines.append(f"```")
-        lines.append(f"{error_msg}")
-        lines.append(f"```")
-        lines.append("")
-
-    lines.append(f"[IMPACT]: {impact_text}")
+    # QA / Verification
+    lines.append(_section_header("QA / Verification"))
+    lines.append(f"- Verify the fix end-to-end on \"{page}\" as an `{account}` account.")
+    lines.append("- Verify the expected behavior is met and the reported current behavior no longer occurs.")
+    lines.append("- Role-aware regression: confirm other roles still see only what they are entitled to.")
+    lines.append("- Tenancy regression: confirm no cross-tenant data leakage on the affected endpoints.")
+    if facts["has_attachments"]:
+        lines.append("- Visually validate against the attached screenshots/flows.")
+    lines.append(f"- Reproducibility was reported as: {facts['reproducibility']} — confirm it is now resolved.")
     lines.append("")
 
-    lines.append(f"[PRIORITY]: {priority}")
-    if priority_reasoning:
-        lines.append(f"  Reasoning: {priority_reasoning}")
-    lines.append("")
-
-    lines.append("-" * 60)
-    lines.append("  HAKIM AI ANALYSIS")
-    lines.append("-" * 60)
-    lines.append("")
-
-    if technical_notes:
-        lines.append("[TECHNICAL NOTES]:")
-        lines.append(f"{technical_notes}")
-        lines.append("")
-
-    lines.append(f"[ASSIGNED TEAM]: {team}")
-    if team_reasoning:
-        lines.append(f"  Reasoning: {team_reasoning}")
-    lines.append("")
-
-    lines.append("-" * 60)
-    lines.append("  EXECUTION INSTRUCTIONS")
-    lines.append("-" * 60)
-    lines.append("")
-    lines.append("Fix the issue described above in the NASSAQ codebase.")
-    lines.append("Stack: React (frontend) + FastAPI (backend) + PostgreSQL.")
-    lines.append("RTL Arabic UI — use existing brand design tokens.")
-    lines.append("Ensure the fix handles edge cases and does not break existing functionality.")
-    lines.append("Test the fix before marking as complete.")
-    lines.append("")
-    lines.append("=" * 60)
+    # Important implementation note
+    lines.append(_section_header("Important implementation note"))
+    lines.append(
+        "Do not consider this complete until the root cause is fixed at the "
+        "source-of-truth level (backend/data first), RBAC and tenant isolation are "
+        "preserved, existing flows are not regressed, and the fix is verified "
+        "end-to-end — not just visually adjusted."
+    )
 
     return "\n".join(lines)
+
+
+def _llm_generate_engineering_prompt(facts: dict) -> Optional[str]:
+    """Ask Hakim to produce the engineering prompt. Returns None on any failure."""
+    try:
+        from openai import OpenAI
+        import os
+        api_key = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY", "")
+        base_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL", "")
+        if not api_key:
+            return None
+
+        client = OpenAI(api_key=api_key, base_url=base_url if base_url else None)
+        response = client.chat.completions.create(
+            model="gpt-5-mini",
+            messages=[
+                {"role": "system", "content": _ENGINEERING_SYSTEM_PROMPT},
+                {"role": "user", "content": _build_engineering_user_prompt(facts)},
+            ],
+            max_completion_tokens=4096,
+            reasoning_effort="minimal",
+            timeout=60,
+        )
+        text = (response.choices[0].message.content or "").strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        return text or None
+    except Exception as e:
+        logger.warning(f"Hakim engineering-prompt generation failed: {e}")
+        return None
+
+
+async def _generate_prompt(issue: dict) -> str:
+    """Generate the Replit-ready engineering prompt for an issue.
+
+    Source of truth for the prompt the team copies into the coding platform.
+    Tries Hakim (LLM) first, validates the structure, and falls back to a
+    deterministic builder that always satisfies the canonical structure.
+    """
+    facts = _collect_issue_facts(issue)
+    llm_text = await asyncio.to_thread(_llm_generate_engineering_prompt, facts)
+    if llm_text and _validate_engineering_prompt(llm_text):
+        return llm_text
+    return _fallback_engineering_prompt(facts)
 
 
 async def _next_issue_number() -> int:
