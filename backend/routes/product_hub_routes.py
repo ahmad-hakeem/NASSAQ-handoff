@@ -1426,8 +1426,14 @@ async def delete_issue(
 
     now = _now_iso()
     await gd_update_one(db.session, "product_issues", {"id": issue_id}, {"is_deleted": True, "deleted_at": now, "deleted_by": get_user_id(current_user)})
-    await audit_issue_updated(issue_id, current_user, {"action": "delete_issue", "deleted_at": now})
-    logger.info(f"[ProductHub] Issue {issue_id[:8]} deleted by {current_user.get('email', 'unknown')}")
+    logger.info(
+        "[ProductHub] Issue %s deleted by %s",
+        issue_id[:8], current_user.get("email", "unknown"),
+    )
+    try:
+        await audit_issue_updated(issue_id, current_user, {"action": "delete_issue", "deleted_at": now})
+    except Exception as exc:
+        logger.warning("[ProductHub] audit_issue_updated failed (non-fatal) issue=%s err=%s", issue_id, exc)
     return {"success": True, "issue_id": issue_id}
 
 
@@ -1440,17 +1446,44 @@ async def _capture_before_states(issue_ids: list) -> dict:
     return {iss["id"]: {k: iss.get(k) for k in TRACKED_SNAPSHOT_FIELDS} for iss in issues}
 
 
-async def _save_action_history(action_type: str, user: dict, issue_ids: list, before_states: dict, after_state: dict) -> str:
+async def _resolve_performed_by(user: dict) -> Optional[str]:
+    """Return a users.id that is guaranteed to exist in the DB, or None.
+
+    get_user_id may return a value that is absent from users.id for certain
+    platform-admin token shapes, which would fire a FK violation on
+    bulk_action_history.performed_by → users.id.  We look up the row first
+    and fall back to None (nullable FK with ondelete=SET NULL) rather than
+    inserting an invalid reference.
+    """
+    raw_id = get_user_id(user)
+    if not raw_id:
+        return None
+    try:
+        row = await gd_find_one(db.session, "users", {"id": raw_id})
+        return raw_id if row else None
+    except Exception:
+        return None
+
+
+async def _save_action_history(action_type: str, user: dict, issue_ids: list, before_states: dict, after_state: dict) -> Optional[str]:
+    performed_by = await _resolve_performed_by(user)
     record = {
         "action_type": action_type,
-        "performed_by": get_user_id(user) or None,
+        "performed_by": performed_by,
         "performed_by_name": user.get("full_name", user.get("email", "unknown")),
         "issue_ids": issue_ids,
         "old_values": before_states,
         "is_undone": False,
     }
-    inserted_id = await gd_insert(db.session, "bulk_action_history", record)
-    return inserted_id
+    try:
+        inserted_id = await gd_insert(db.session, "bulk_action_history", record)
+        return inserted_id
+    except Exception as exc:
+        logger.warning(
+            "[ProductHub] _save_action_history failed (non-fatal) action=%s user=%s err=%s",
+            action_type, user.get("email", "unknown"), exc,
+        )
+        return None
 
 
 @router.post("/issues/bulk-update")
@@ -1498,9 +1531,15 @@ async def bulk_update_issues(
             changes_log["priority"] = data.priority
         if data.assigned_team:
             changes_log["assigned_team"] = data.assigned_team
-        await audit_issue_updated(issue_id, current_user, {"action": "bulk_update", **changes_log})
+        try:
+            await audit_issue_updated(issue_id, current_user, {"action": "bulk_update", **changes_log})
+        except Exception as exc:
+            logger.warning("[ProductHub] audit_issue_updated failed (non-fatal) issue=%s err=%s", issue_id, exc)
 
-    logger.info(f"[ProductHub] Bulk update {result}/{len(data.issue_ids)} issues by {current_user.get('email', 'unknown')}")
+    logger.info(
+        "[ProductHub] Bulk update %d/%d issues by %s",
+        result, len(data.issue_ids), current_user.get("email", "unknown"),
+    )
     return {
         "success": True,
         "modified_count": result,
@@ -1522,12 +1561,19 @@ async def bulk_delete_issues(
     now = _now_iso()
     result = await gd_update_many(db.session, "product_issues", {"id": {"$in": data.issue_ids}, "is_deleted": {"$ne": True}}, {"is_deleted": True, "deleted_at": now, "deleted_by": get_user_id(current_user)})
 
+    logger.info(
+        "[ProductHub] Bulk delete %d/%d issues by %s ids=%s",
+        result, len(data.issue_ids), current_user.get("email", "unknown"), data.issue_ids,
+    )
+
     action_id = await _save_action_history("bulk_delete", current_user, data.issue_ids, before_states, {"is_deleted": True})
 
     for issue_id in data.issue_ids:
-        await audit_issue_updated(issue_id, current_user, {"action": "bulk_delete", "deleted_at": now})
+        try:
+            await audit_issue_updated(issue_id, current_user, {"action": "bulk_delete", "deleted_at": now})
+        except Exception as exc:
+            logger.warning("[ProductHub] audit_issue_updated failed (non-fatal) issue=%s err=%s", issue_id, exc)
 
-    logger.info(f"[ProductHub] Bulk delete {result}/{len(data.issue_ids)} issues by {current_user.get('email', 'unknown')}")
     return {
         "success": True,
         "deleted_count": result,

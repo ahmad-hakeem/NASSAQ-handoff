@@ -225,9 +225,14 @@ export default function IssuesTableView({ issues, loading, total, page, totalPag
   }, [api, onRefresh]);
 
   const handleBulkEdit = useCallback(async (fields) => {
+    const validIds = selectedIds.filter(id => id != null && id !== '');
+    if (validIds.length === 0) {
+      toast.error('لا توجد تحديات صالحة للتعديل');
+      return;
+    }
     try {
       const res = await api.post('/product-hub/issues/bulk-update', {
-        issue_ids: selectedIds,
+        issue_ids: validIds,
         ...fields,
       });
       const actionId = res.data.action_id;
@@ -245,9 +250,14 @@ export default function IssuesTableView({ issues, loading, total, page, totalPag
   }, [selectedIds, onRefresh, handleUndoAction]);
 
   const handleBulkDelete = useCallback(async () => {
+    const validIds = selectedIds.filter(id => id != null && id !== '');
+    if (validIds.length === 0) {
+      toast.error('لا توجد تحديات صالحة للحذف');
+      return;
+    }
     try {
       const res = await api.post('/product-hub/issues/bulk-delete', {
-        issue_ids: selectedIds,
+        issue_ids: validIds,
       });
       const actionId = res.data.action_id;
       toast.success(`تم حذف ${res.data.deleted_count} تحدي`, {

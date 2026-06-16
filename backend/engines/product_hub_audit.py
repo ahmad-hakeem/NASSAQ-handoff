@@ -66,6 +66,27 @@ def _get_session():
     return db.session
 
 
+async def _resolve_performed_by_audit(user: dict) -> Optional[str]:
+    """Return a users.id that exists in the DB, or None.
+
+    IssueActivityLog.performed_by has a FK constraint to users.id with
+    ondelete=SET NULL.  Inserting an ID that is absent from users fires a
+    FK violation and aborts the transaction.  We verify existence first and
+    fall back to None so the audit entry is still written without the
+    performed_by reference.
+    """
+    from engines.sql_utils import gd_find_one
+    raw_id = _get_user_id(user)
+    if not raw_id:
+        return None
+    try:
+        session = _get_session()
+        row = await gd_find_one(session, "users", {"id": raw_id})
+        return raw_id if row else None
+    except Exception:
+        return None
+
+
 async def write_audit_log(
     issue_id: str,
     action: AuditAction,
@@ -75,11 +96,12 @@ async def write_audit_log(
 ) -> dict:
     entry_id = str(uuid.uuid4())
     now = _now_iso()
+    performed_by = await _resolve_performed_by_audit(user)
     entry = {
         "id": entry_id,
         "issue_id": issue_id,
         "action": action.value,
-        "performed_by": _get_user_id(user),
+        "performed_by": performed_by,
         "performed_by_name": user.get("full_name", ""),
         "timestamp": now,
         "details": {
@@ -96,13 +118,13 @@ async def write_audit_log(
 
     logger.info(
         f"[Audit] {action.value} on issue={issue_id[:8]} "
-        f"by={_get_user_id(user)[:8]} role={_resolve_role(user)}"
+        f"by={(_get_user_id(user) or '')[:8]} role={_resolve_role(user)}"
     )
     return {
         "id": entry_id,
         "issue_id": issue_id,
         "action": action.value,
-        "performed_by": _get_user_id(user),
+        "performed_by": performed_by,
         "performed_by_name": user.get("full_name", ""),
         "role": _resolve_role(user),
         "timestamp": now,
