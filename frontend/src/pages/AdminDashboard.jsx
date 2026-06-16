@@ -303,11 +303,13 @@ export const AdminDashboard = () => {
   }));
 
   const quickActions = [
-    { icon: Building2, label: t('addSchool'), action: () => setShowAddSchoolWizard(true), color: 'bg-brand-navy hover:bg-brand-navy/90' },
+    // "Add School" is a write action (POST /schools is platform_admin-only); the
+    // read-only deputy (platform_sub_admin) must not see a button that would 403.
+    { icon: Building2, label: t('addSchool'), action: () => setShowAddSchoolWizard(true), color: 'bg-brand-navy hover:bg-brand-navy/90', roles: ['platform_admin'] },
     { icon: Users, label: t('manageUsers'), action: () => navigate('/admin/users'), color: 'bg-brand-purple hover:bg-brand-purple/90' },
     { icon: BarChart3, label: t('aiInsights') || 'AI Insights', action: () => navigate('/principal/ai-insights'), color: 'bg-brand-turquoise hover:bg-brand-turquoise/90' },
     { icon: Settings, label: t('settings'), action: () => navigate('/settings'), color: 'bg-slate-700 hover:bg-slate-600' },
-  ];
+  ].filter((a) => !a.roles || a.roles.includes(user?.role));
 
   return (
     <Sidebar>

@@ -359,9 +359,21 @@ async def _compute_super_admin_dashboard_stats(_CACHE_KEY, _CACHE_TTL):
 
 
 # ============== COMMAND CENTER STATS ==============
+# NOTE: This is the EFFECTIVE /admin/command-center/stats handler. This router is
+# registered before admin_dashboard_routes' router (app/routes.py), so FastAPI's
+# first-match-wins makes THIS the route that serves the request. Keep the allowed
+# roles here IDENTICAL to /super-admin/dashboard-stats — the FE merges both responses
+# into one stats object ({...sa, ...cc}), so any role allowed on one but not the other
+# gets a half-populated dashboard. Editing the (shadowed) copy in
+# admin_dashboard_routes.py has no runtime effect. Stats below are platform-global
+# (no tenant scoping), so the read-only deputy (platform_sub_admin) sees identical
+# data to platform_admin.
 @router.get("/admin/command-center/stats")
 async def get_command_center_stats(
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+    current_user: dict = Depends(require_roles([
+        UserRole.PLATFORM_ADMIN,
+        UserRole.PLATFORM_SUB_ADMIN,
+    ]))
 ):
     """
     Get comprehensive statistics for the Command Center dashboard.
@@ -442,7 +454,29 @@ async def get_command_center_stats(
             logger.debug(f"Hijri date conversion failed: {e}")
             hijri_date = ""
         gregorian_date = now.strftime("%Y-%m-%d")
-        
+
+        # Platform-global activity/inventory counts consumed by AdminDashboard.jsx
+        # widgets and the hero "sessions today" card. These are NOT returned by
+        # /super-admin/dashboard-stats, so without them the cards render 0 for every
+        # platform role (admin + deputy). Computed as real counts (no heuristics).
+        active_statuses = ["in_progress", "session_opened", "attendance_in_progress",
+                           "attendance_approved", "teaching_in_progress",
+                           "interaction_running", "session_review"]
+        (sessions_today, active_sessions_now, notifications_sent_today,
+         behaviour_records_today, published_timetables, total_parents,
+         total_subjects, total_school_admins) = await asyncio.gather(
+            gd_count(db.session, "class_sessions", {"date": today_str}),
+            gd_count(db.session, "class_sessions", {"date": today_str, "status": {"$in": active_statuses}}),
+            gd_count(db.session, "notifications", {"created_at": {"$gte": today_start.isoformat()}}),
+            gd_count(db.session, "behaviour_records", {"date": {"$gte": today_str}}),
+            gd_count(db.session, "timetable_runs", {"status": "published"}),
+            gd_count(db.session, "parents", {}),
+            gd_count(db.session, "subjects", {}),
+            gd_count(db.session, "users", {"role": {"$in": ["school_admin", "school_principal", "school_sub_admin"]}}),
+        )
+        if total_parents == 0:
+            total_parents = await gd_count(db.session, "users", {"role": "parent"})
+
         _result = {
             "registered_schools": registered_schools,
             "registered_students": registered_students,
@@ -453,6 +487,15 @@ async def get_command_center_stats(
             "ai_enabled_schools": ai_enabled_schools,
             "student_attendance_rate": student_attendance_rate,
             "teacher_attendance_rate": teacher_attendance_rate,
+            "sessions_today": sessions_today,
+            "active_sessions_now": active_sessions_now,
+            "notifications_sent_today": notifications_sent_today,
+            "behaviour_records_today": behaviour_records_today,
+            "published_timetables": published_timetables,
+            "total_parents": total_parents,
+            "total_subjects": total_subjects,
+            "total_school_admins": total_school_admins,
+            "total_users": total_users,
             "schools_delta": schools_delta_pct,
             "students_delta": students_delta_pct,
             "teachers_delta": teachers_delta_pct,
