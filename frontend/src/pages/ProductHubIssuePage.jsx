@@ -26,7 +26,8 @@ import {
   ArrowRight, Brain, Copy, Send, Shield, MessageSquare, Activity,
   FileText, Loader2, ThumbsUp, ThumbsDown, UserPlus, ChevronDown, ChevronUp,
   Monitor, Globe, Eye, AlertTriangle, CheckCircle2, Clock, Users, Tag,
-  Zap, Calendar, BarChart3, RefreshCw,
+  Zap, Calendar, BarChart3, RefreshCw, Download, X, Image as ImageIcon,
+  ExternalLink, Paperclip,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -50,10 +51,21 @@ export function ProductHubIssuePage() {
   const [expandedSections, setExpandedSections] = useState({ timeline: true });
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
   const [promptCopied, setPromptCopied] = useState(false);
+  const [attachmentPreview, setAttachmentPreview] = useState(null);
 
   const isAdmin = user?.role === 'platform_admin';
+  const canManageAttachments = user?.role === 'platform_admin' || user?.role === 'technical_team';
   const perms = issue?.permissions || {};
   const isMainAdmin = perms.is_main_admin || false;
+
+  const handleDownloadAttachment = (attachment) => {
+    const a = document.createElement('a');
+    a.href = attachment.url;
+    a.download = attachment.name || 'attachment';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   const fetchIssue = useCallback(async () => {
     setLoading(true);
@@ -583,7 +595,92 @@ export function ProductHubIssuePage() {
                 </CardContent>
               </Card>
 
-              {/* ═══════ 6. AI GENERATED PROMPT (Main Admins Only) ═══════ */}
+              {/* ═══════ 6. ATTACHMENTS ═══════ */}
+              {issue.attachments && issue.attachments.length > 0 && (
+                <Card className="border shadow-sm rounded-xl">
+                  <CardHeader
+                    className="pb-3 cursor-pointer"
+                    onClick={() => toggleSection('attachments')}
+                  >
+                    <CardTitle className="text-base flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        <Paperclip className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+                        المرفقات ({issue.attachments.length})
+                      </span>
+                      {expandedSections.attachments === false
+                        ? <ChevronDown className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+                        : <ChevronUp className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />}
+                    </CardTitle>
+                  </CardHeader>
+                  {expandedSections.attachments !== false && (
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {issue.attachments.map((att, idx) => {
+                          const isImage = att.kind === 'image' || (att.type && att.type.startsWith('image/'));
+                          const isDataUrl = typeof att.url === 'string' && att.url.startsWith('data:');
+                          const showThumb = isImage && (isDataUrl || att.url);
+                          return (
+                            <div key={idx} className="group flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+                              {showThumb ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setAttachmentPreview(att.url)}
+                                  className="relative aspect-video w-full overflow-hidden bg-slate-100 hover:opacity-90 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise"
+                                  aria-label={`معاينة ${att.name || `مرفق ${idx + 1}`}`}
+                                >
+                                  <img
+                                    src={att.url}
+                                    alt={att.name || `مرفق ${idx + 1}`}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = 'none';
+                                    }}
+                                  />
+                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                    <Eye className="h-5 w-5 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" strokeWidth={1.5} aria-hidden="true" />
+                                  </div>
+                                </button>
+                              ) : (
+                                <div className="aspect-video w-full flex flex-col items-center justify-center gap-2 bg-slate-100 text-slate-400">
+                                  <ImageIcon className="h-8 w-8" strokeWidth={1.5} aria-hidden="true" />
+                                  <span className="text-[10px] text-muted-foreground px-2 text-center truncate w-full">{att.name || `مرفق ${idx + 1}`}</span>
+                                </div>
+                              )}
+                              <div className="px-2 pb-2 space-y-1">
+                                <p className="text-[11px] font-medium text-slate-700 truncate" title={att.name}>{att.name || `مرفق ${idx + 1}`}</p>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => window.open(att.url, '_blank', 'noopener,noreferrer')}
+                                    className="flex items-center gap-1 text-[10px] text-brand-turquoise hover:underline focus-visible:underline"
+                                    aria-label={`فتح ${att.name}`}
+                                  >
+                                    <ExternalLink className="h-3 w-3" strokeWidth={1.5} aria-hidden="true" />
+                                    فتح
+                                  </button>
+                                  {canManageAttachments && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDownloadAttachment(att)}
+                                      className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-brand-navy hover:underline focus-visible:underline"
+                                      aria-label={`تنزيل ${att.name}`}
+                                    >
+                                      <Download className="h-3 w-3" strokeWidth={1.5} aria-hidden="true" />
+                                      تنزيل
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  )}
+                </Card>
+              )}
+
+              {/* ═══════ 7. AI GENERATED PROMPT (Main Admins Only) ═══════ */}
               {isMainAdmin && (
                 <Card className="border-2 border-brand-purple/20 shadow-md rounded-2xl overflow-hidden">
                   <div className="bg-gradient-to-l from-brand-purple/10 via-brand-purple/5 to-transparent px-5 py-4 flex items-center justify-between border-b border-brand-purple/10">
@@ -857,6 +954,28 @@ export function ProductHubIssuePage() {
 
         </div>
       </div>
+
+      {attachmentPreview && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-6"
+          onClick={() => setAttachmentPreview(null)}
+        >
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setAttachmentPreview(null); }}
+            className="absolute top-6 left-6 w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition"
+            aria-label="إغلاق"
+          >
+            <X className="h-5 w-5" strokeWidth={1.5} aria-hidden="true" />
+          </button>
+          <img
+            src={attachmentPreview}
+            alt="معاينة المرفق"
+            className="max-w-full max-h-full rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </Sidebar>
   );
 }
