@@ -1029,7 +1029,8 @@ class TeacherSessionEngine:
         student_id: str,
         participation_type: ParticipationType,
         teacher_id: str,
-        actor_id: Optional[str] = None
+        actor_id: Optional[str] = None,
+        points_override: Optional[int] = None
     ) -> Dict[str, Any]:
         """Record student participation"""
         now = datetime.now(timezone.utc)
@@ -1057,6 +1058,14 @@ class TeacherSessionEngine:
             score_change = rules["initiative"]
         elif participation_type == ParticipationType.REFUSED:
             score_change = rules.get("refused", -1)
+
+        # Apply teacher-configured score override when provided and valid
+        if points_override is not None and isinstance(points_override, int) and 0 < points_override <= 100:
+            logger.debug(
+                "record_participation: applying points_override=%s (was %s) for type=%s session=%s",
+                points_override, score_change, participation_type.value, session_id
+            )
+            score_change = points_override
         
         # Update student score
         if score_change != 0:

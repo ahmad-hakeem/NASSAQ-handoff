@@ -2643,12 +2643,21 @@ async def record_student_participation(
     """
     await _verify_session_owner(session_id, current_user)
     from engines.session_engine import ParticipationType
+    points_override = data.get("points_override")
+    if points_override is not None:
+        try:
+            points_override = int(points_override)
+            if points_override <= 0 or points_override > 100:
+                raise HTTPException(status_code=422, detail="points_override يجب أن يكون بين 1 و100")
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=422, detail="points_override يجب أن يكون رقماً صحيحاً")
     result = await session_engine.record_participation(
         session_id=session_id,
         student_id=data.get("student_id"),
         participation_type=ParticipationType(data.get("type", "active")),
         teacher_id=current_user["id"],
-        actor_id=current_user.get("teacher_id") or current_user["id"]
+        actor_id=current_user.get("teacher_id") or current_user["id"],
+        points_override=points_override
     )
     return result
 
@@ -3612,6 +3621,7 @@ async def get_session_settings(
         "recitation_max_attempts": 1,
         "skill_enabled": False,
         "extra_columns": [],
+        "participation_scores": {},
     }
     if not record:
         return {"session_id": session_id, **default}
@@ -3625,6 +3635,7 @@ async def get_session_settings(
         "recitation_max_attempts": record.get("recitation_max_attempts", 1),
         "skill_enabled": record.get("skill_enabled", False),
         "extra_columns": record.get("extra_columns", []),
+        "participation_scores": record.get("participation_scores", {}),
     }
 
 
@@ -3663,6 +3674,19 @@ async def save_session_settings(
                 "group": c.get("group") if c.get("group") in ("coursework", "exams") else "coursework",
                 "hidden": bool(c.get("hidden", False)),
             })
+    _valid_participation_types = {"active", "initiative", "inactive", "refused"}
+    raw_p_scores = payload.get("participation_scores") or {}
+    participation_scores = {}
+    if isinstance(raw_p_scores, dict):
+        for k, v in raw_p_scores.items():
+            if k not in _valid_participation_types:
+                continue
+            try:
+                iv = int(v)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= iv <= 100:
+                participation_scores[k] = iv
     record_data = {
         "class_id": c_id,
         "subject_id": s_id,
@@ -3674,6 +3698,7 @@ async def save_session_settings(
         "recitation_max_attempts": attempts,
         "skill_enabled": bool(payload.get("skill_enabled", False)),
         "extra_columns": extra_columns,
+        "participation_scores": participation_scores,
         "updated_at": datetime.utcnow().isoformat(),
     }
     if existing:

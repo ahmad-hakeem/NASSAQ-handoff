@@ -650,6 +650,53 @@ export default function SidebarSettingsDialog({
             )}
           </div>
         )}
+        {/* Participation type score overrides */}
+        {sc.participationScores !== undefined && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Hand className="h-4 w-4 text-brand-turquoise" />
+              <span className="text-sm font-medium font-cairo">{t('participationScores') || 'درجة المشاركة'}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { id: 'active',     label: t('participationActive')     || 'مشاركة فعالة' },
+                { id: 'initiative', label: t('participationInitiative') || 'مبادرة' },
+              ].map(({ id, label }) => (
+                <label key={id} className="flex flex-col gap-1">
+                  <span className="text-[10px] font-cairo text-muted-foreground text-center">{label}</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    inputMode="numeric"
+                    value={(sc.participationScores || {})[id] ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const parsed = parseInt(raw, 10);
+                      const next = { ...(sc.participationScores || {}) };
+                      if (raw === '' || raw === '0') {
+                        delete next[id];
+                      } else if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 100) {
+                        next[id] = parsed;
+                      }
+                      sc.onParticipationScoresChange?.(next);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') e.preventDefault();
+                    }}
+                    placeholder={t('default') || 'افتراضي'}
+                    dir="ltr"
+                    className="text-sm bg-card dark:bg-muted border border-border rounded-full px-3 py-2 outline-none focus:border-brand-turquoise font-cairo text-center placeholder:text-muted-foreground/50"
+                  />
+                </label>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground font-cairo">
+              {t('participationScoresHint') || 'اتركه فارغاً لاستخدام الدرجة الافتراضية'}
+            </p>
+          </div>
+        )}
         {/* Homework toggle + view-mode options */}
         <div className="space-y-2">
               <SettingsToggleRow

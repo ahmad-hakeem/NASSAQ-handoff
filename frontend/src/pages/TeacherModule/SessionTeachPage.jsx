@@ -355,6 +355,7 @@ export default function SessionTeachPage() {
   const [recitationMaxAttempts, setRecitationMaxAttempts] = useState(1);
   const [skillEnabled, setSkillEnabled] = useState(false);
   const [showAddOtherItems, setShowAddOtherItems] = useState(false);
+  const [participationScores, setParticipationScores] = useState({});
   const [savingSettings, setSavingSettings] = useState(false);
   // If the active action tab gets disabled by settings, switch to a safe default
   useEffect(() => {
@@ -502,6 +503,9 @@ export default function SessionTeachPage() {
         setFollowupColumns(s.extra_columns.map(migrateColumn));
         setShowAddOtherItems(true);
       }
+      if (s.participation_scores && typeof s.participation_scores === 'object') {
+        setParticipationScores(s.participation_scores);
+      }
     } catch (e) {
       console.error('Error loading session settings:', e);
     }
@@ -531,6 +535,7 @@ export default function SessionTeachPage() {
         recitation_max_attempts: recitationMaxAttempts,
         skill_enabled: skillEnabled,
         extra_columns: followupColumns,
+        participation_scores: participationScores,
       });
       // Persist grade values only. Columns are owned by the class-level
       // grade-columns API (single source of truth shared with سجل الطلاب).
@@ -1277,10 +1282,15 @@ export default function SessionTeachPage() {
   const recordParticipation = async (pType) => {
     if (!selectedStudent) return;
     try {
-      const res = await api.post(`/session/${sessionId}/participation`, {
+      const payload = {
         student_id: selectedStudent.id,
         type: pType.id,
-      });
+      };
+      const configuredScore = participationScores[pType.id];
+      if (Number.isFinite(Number(configuredScore)) && Number(configuredScore) > 0 && Number(configuredScore) <= 100) {
+        payload.points_override = Number(configuredScore);
+      }
+      const res = await api.post(`/session/${sessionId}/participation`, payload);
       const change = res.data?.score_change || 0;
       toast.success(`${t(pType.labelKey)} — ${selectedStudent.full_name?.split(' ')[0]}`);
       addLog('participation', `${selectedStudent.full_name?.split(' ')[0]} — ${t(pType.labelKey)} (${change > 0 ? '+' : ''}${change})`, change >= 0 ? 'text-blue-700' : 'text-amber-700');
@@ -3296,6 +3306,8 @@ export default function SessionTeachPage() {
           onFollowupColumnsChange: setFollowupColumns,
           showAddOtherItems,
           onShowAddOtherItemsChange: setShowAddOtherItems,
+          participationScores,
+          onParticipationScoresChange: setParticipationScores,
           onSave: saveSessionSettings,
           saving: savingSettings,
         }}
