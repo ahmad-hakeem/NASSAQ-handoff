@@ -567,10 +567,30 @@ class TeacherSessionEngine:
         ):
             columns = await self._resolve_coursework_columns(class_id)
             hw_col = columns.get(self._CW_HOMEWORK)
-            col_id = hw_col.get("id") if hw_col else None
+            # Fail loudly if no homework column is resolvable — a partial state
+            # (session_homework rows written but no grade rows) is worse than a
+            # clean failure that the teacher can diagnose and fix.
+            if not hw_col:
+                logger.warning(
+                    "session_start_homework_no_column: cannot find homework "
+                    "grade column after broad matching; failing session start",
+                    extra={
+                        "class_id": class_id,
+                        "session_id": session_id,
+                        "school_id": school_id,
+                    },
+                )
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "لا يوجد عمود درجات للواجبات في هذا الفصل — "
+                        "يرجى إعداد أعمدة الدرجات أولاً"
+                    ),
+                )
+            col_id = hw_col["id"]
             # Provisional score is 0; commit_session_scores overwrites with
             # max_grade when the session ends and the student is still "done".
-            max_f = float(hw_col.get("max_grade") or 0) if hw_col else 0.0
+            max_f = float(hw_col.get("max_grade") or 0)
 
             for student in students:
                 sid = student.get("id")
@@ -600,59 +620,57 @@ class TeacherSessionEngine:
 
                 # Provisional grade entries — keyed deterministically so
                 # commit_session_scores upserts over them (never duplicates).
-                grade_entry_info: dict | None = None
-                if col_id:
-                    sg_id = f"sess:{session_id}:{sid}:{self._CW_HOMEWORK}:sg"
-                    pg_id = f"sess:{session_id}:{sid}:{self._CW_HOMEWORK}:pg"
-                    grade_base: dict = {
-                        "tenant_id": school_id or "",
-                        "school_id": school_id or "",
-                        "student_id": sid,
-                        "student_name": student.get("full_name", ""),
-                        "class_id": class_id,
-                        "subject_id": subject_id,
-                        "subject": subject_name,
-                        "subject_name": subject_name,
-                        "assessment_id": f"session:{session_id}:{self._CW_HOMEWORK}",
-                        "assessment_type": "coursework",
-                        "column_id": col_id,
-                        "score": 0,
-                        "max_score": max_f,
-                        "percentage": 0.0,
-                        "is_passing": False,
-                        "academic_year": "",
-                        "session_id": session_id,
-                        "source": "live_session",
-                        "date": today,
-                        "graded_at": now.isoformat(),
-                        "updated_at": now.isoformat(),
-                    }
-                    existing_sg = await gd_find_one(
-                        self.session, "student_grades", {"id": sg_id}
+                # col_id is guaranteed non-None here (we raised above otherwise).
+                sg_id = f"sess:{session_id}:{sid}:{self._CW_HOMEWORK}:sg"
+                pg_id = f"sess:{session_id}:{sid}:{self._CW_HOMEWORK}:pg"
+                grade_base: dict = {
+                    "tenant_id": school_id or "",
+                    "school_id": school_id or "",
+                    "student_id": sid,
+                    "student_name": student.get("full_name", ""),
+                    "class_id": class_id,
+                    "subject_id": subject_id,
+                    "subject": subject_name,
+                    "subject_name": subject_name,
+                    "assessment_id": f"session:{session_id}:{self._CW_HOMEWORK}",
+                    "assessment_type": "coursework",
+                    "column_id": col_id,
+                    "score": 0,
+                    "max_score": max_f,
+                    "percentage": 0.0,
+                    "is_passing": False,
+                    "academic_year": "",
+                    "session_id": session_id,
+                    "source": "live_session",
+                    "date": today,
+                    "graded_at": now.isoformat(),
+                    "updated_at": now.isoformat(),
+                }
+                existing_sg = await gd_find_one(
+                    self.session, "student_grades", {"id": sg_id}
+                )
+                if not existing_sg:
+                    await gd_insert(
+                        self.session, "student_grades",
+                        {**grade_base, "id": sg_id},
                     )
-                    if not existing_sg:
-                        await gd_insert(
-                            self.session, "student_grades",
-                            {**grade_base, "id": sg_id},
-                        )
-                    existing_pg = await gd_find_one(
-                        self.session, "grades", {"id": pg_id}
+                existing_pg = await gd_find_one(
+                    self.session, "grades", {"id": pg_id}
+                )
+                if not existing_pg:
+                    await gd_insert(
+                        self.session, "grades",
+                        {**grade_base, "id": pg_id, "visible_to_parent": True},
                     )
-                    if not existing_pg:
-                        await gd_insert(
-                            self.session, "grades",
-                            {**grade_base, "id": pg_id, "visible_to_parent": True},
-                        )
-                    grade_entry_info = {
-                        "column_id": col_id,
-                        "score": 0,
-                        "max_score": max_f,
-                    }
 
                 homework_auto_submitted_count += 1
                 homework_auto_submitted.append({
                     "student_id": sid,
-                    "grade_entry": grade_entry_info,
+                    "grade_entry": {
+                        "column_id": col_id,
+                        "score": 0,
+                        "max_score": max_f,
+                    },
                 })
 
         try:
@@ -1410,6 +1428,16 @@ class TeacherSessionEngine:
         columns = await self._resolve_coursework_columns(class_id)
         hw_col = columns.get(self._CW_HOMEWORK)
         if not hw_col:
+            logger.warning(
+                "sync_homework_grade_no_column: no matching homework grade "
+                "column after broad matching; grade rows will NOT be written",
+                extra={
+                    "session_id": session_id,
+                    "student_id": student_id,
+                    "class_id": class_id,
+                    "school_id": school_id,
+                },
+            )
             return None
 
         col_id = hw_col.get("id")
@@ -2215,13 +2243,17 @@ class TeacherSessionEngine:
     _CW_HOMEWORK = "homework"
     _CW_PERFORMANCE = "performance_task"
 
-    # How to match a class grade_column to a derived bucket. A column is a
-    # match when it is a coursework column and its Arabic name equals the
-    # canonical name OR its English name contains the canonical token.
+    # How to match a class grade_column to a derived bucket.
+    # Each tuple is (canonical_ar, en_token, ar_partial).
+    # A column matches when:
+    #   1. Its Arabic name equals canonical_ar exactly, OR
+    #   2. Its lowercased English name contains en_token, OR
+    #   3. Its Arabic name contains ar_partial (tolerates variants like
+    #      "واجب" matching "الواجبات" and similar naming deviations).
     _CW_COLUMN_MATCHERS = {
-        _CW_PARTICIPATION: ("المشاركة", "participation"),
-        _CW_HOMEWORK: ("الواجبات", "homework"),
-        _CW_PERFORMANCE: ("المهام الأدائية", "performance"),
+        _CW_PARTICIPATION: ("المشاركة", "participation", "مشارك"),
+        _CW_HOMEWORK: ("الواجبات", "homework", "واجب"),
+        _CW_PERFORMANCE: ("المهام الأدائية", "performance", "مهم"),
     }
 
     # Reserved keys that live alongside the student-scores map inside a
@@ -2261,7 +2293,14 @@ class TeacherSessionEngine:
         return defaults
 
     async def _resolve_coursework_columns(self, class_id: str) -> Dict[str, dict]:
-        """Map each derived coursework bucket to its class grade_column doc."""
+        """Map each derived coursework bucket to its class grade_column doc.
+
+        Matching priority (first match wins per bucket):
+          1. Exact canonical Arabic name.
+          2. English name contains the EN token (case-insensitive).
+          3. Arabic name contains the ar_partial substring (tolerates common
+             naming variants such as "واجب" matching "الواجبات").
+        """
         columns = await self._ensure_grade_columns(class_id)
         resolved: Dict[str, dict] = {}
         for col in columns:
@@ -2269,10 +2308,14 @@ class TeacherSessionEngine:
                 continue
             name_ar = (col.get("name") or "").strip()
             name_en = (col.get("name_en") or "").strip().lower()
-            for bucket, (ar, en) in self._CW_COLUMN_MATCHERS.items():
+            for bucket, (ar, en, ar_partial) in self._CW_COLUMN_MATCHERS.items():
                 if bucket in resolved:
                     continue
-                if name_ar == ar or (name_en and en in name_en):
+                if (
+                    name_ar == ar
+                    or (name_en and en in name_en)
+                    or (ar_partial and ar_partial in name_ar)
+                ):
                     resolved[bucket] = col
         return resolved
 
