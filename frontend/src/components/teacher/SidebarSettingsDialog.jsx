@@ -203,7 +203,7 @@ export default function SidebarSettingsDialog({
     // Pass an object so the parent can store the configured magnitude
     // alongside the name. Parents that haven't migrated yet will simply
     // see the name via the legacy `.name` access path.
-    onAddCustomSkill?.({ id: `skl_${Date.now()}`, name, points });
+    onAddCustomSkill?.({ id: `custom_${Date.now()}`, name, points });
     setSkillDraft({ name: '', points: 3 });
   };
 

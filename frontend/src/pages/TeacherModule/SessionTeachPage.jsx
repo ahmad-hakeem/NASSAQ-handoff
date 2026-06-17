@@ -1326,7 +1326,7 @@ export default function SessionTeachPage() {
 
   const recordSkill = async (skill) => {
     if (!selectedStudent) return;
-    const isCustom = String(skill.id).startsWith('custom_');
+    const isCustom = String(skill.id).startsWith('custom_') || String(skill.id).startsWith('skl_');
     try {
       // Both predefined and custom skills now go through the same
       // `/skill` endpoint so the student's score is updated in the
@@ -1365,14 +1365,9 @@ export default function SessionTeachPage() {
       const status = e?.response?.status;
       const detail = getApiErrorMessage(e) || e?.response?.data?.message || e?.message;
       if (status === 404) {
-        // Skill type not found — likely created after this page loaded.
-        // Refresh the list so the teacher can retry without a page reload.
+        // Skill type not found — refresh the list as a safety net.
         loadSkillTypes();
-        nassaqError(
-          detail
-            ? `${t('errorRecordingSkill')}: ${detail} — ${t('skillsListRefreshed') || 'تم تحديث قائمة المهارات تلقائياً، يرجى المحاولة مجدداً'}`
-            : t('errorRecordingSkill')
-        );
+        nassaqError(detail ? `${t('errorRecordingSkill')}: ${detail}` : t('errorRecordingSkill'));
       } else {
         nassaqError(detail ? `${t('errorRecordingSkill')}: ${detail}` : t('errorRecordingSkill'));
       }
@@ -2413,7 +2408,9 @@ export default function SessionTeachPage() {
                           }
                           const name = s?.name ?? '';
                           const pts = Math.abs(Number(s?.points)) || 3;
-                          return { id: s?.id || `custom_${name}`, name, name_ar: name, points: pts };
+                          const rawId = s?.id || `custom_${name}`;
+                          const id = rawId.startsWith('custom_') ? rawId : `custom_${rawId}`;
+                          return { id, name, name_ar: name, points: pts };
                         })
                       ].map(skill => {
                         const pts = Number(skill.points);
@@ -2653,7 +2650,9 @@ export default function SessionTeachPage() {
                     }
                     const name = s?.name ?? '';
                     const pts = Math.abs(Number(s?.points)) || 3;
-                    return { id: s?.id || `custom_${name}`, name, name_ar: name, points: pts };
+                    const rawId = s?.id || `custom_${name}`;
+                    const id = rawId.startsWith('custom_') ? rawId : `custom_${rawId}`;
+                    return { id, name, name_ar: name, points: pts };
                   })
                 ].map(skill => {
                   const pts = Number(skill.points);
