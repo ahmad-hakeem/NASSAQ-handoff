@@ -542,7 +542,119 @@ class TeacherSessionEngine:
         
         if attendance_drafts:
             await gd_insert_many(self.session, "session_attendance", attendance_drafts)
-        
+
+        # Auto-initialize homework submission records when the teacher's
+        # session settings use homework_mode = "submitted".
+        # This ensures that: (a) session_homework rows exist so
+        # compute_session_scores / commit_session_scores can derive grades,
+        # and (b) provisional grade entries are written immediately so the
+        # gradebook reflects the submission before the session ends.
+        # The operation is idempotent — existing rows are left untouched.
+        # No exception handler here: a DB failure must roll back the full
+        # session-start transaction atomically rather than committing partial
+        # state (some students with homework rows, others without).
+        homework_auto_submitted_count = 0
+        homework_auto_submitted: list[dict] = []
+
+        hw_settings = await gd_find_one(self.session, "session_settings", {
+            "teacher_id": teacher_id,
+            "subject_id": subject_id,
+        })
+        if (
+            hw_settings
+            and hw_settings.get("homework_enabled")
+            and hw_settings.get("homework_mode") == "submitted"
+        ):
+            columns = await self._resolve_coursework_columns(class_id)
+            hw_col = columns.get(self._CW_HOMEWORK)
+            col_id = hw_col.get("id") if hw_col else None
+            # Provisional score is 0; commit_session_scores overwrites with
+            # max_grade when the session ends and the student is still "done".
+            max_f = float(hw_col.get("max_grade") or 0) if hw_col else 0.0
+
+            for student in students:
+                sid = student.get("id")
+                if not sid:
+                    continue
+                student_tenant = (
+                    student.get("tenant_id") or student.get("school_id") or ""
+                )
+                if school_id and student_tenant and student_tenant != school_id:
+                    continue
+
+                # session_homework row — status "done" means submitted
+                existing_hw = await gd_find_one(
+                    self.session,
+                    "session_homework",
+                    {"session_id": session_id, "student_id": sid},
+                )
+                if not existing_hw:
+                    await gd_insert(self.session, "session_homework", {
+                        "id": str(uuid.uuid4()),
+                        "session_id": session_id,
+                        "student_id": sid,
+                        "status": "done",
+                        "recorded_by": teacher_id,
+                        "recorded_at": now.isoformat(),
+                    })
+
+                # Provisional grade entries — keyed deterministically so
+                # commit_session_scores upserts over them (never duplicates).
+                grade_entry_info: dict | None = None
+                if col_id:
+                    sg_id = f"sess:{session_id}:{sid}:{self._CW_HOMEWORK}:sg"
+                    pg_id = f"sess:{session_id}:{sid}:{self._CW_HOMEWORK}:pg"
+                    grade_base: dict = {
+                        "tenant_id": school_id or "",
+                        "school_id": school_id or "",
+                        "student_id": sid,
+                        "student_name": student.get("full_name", ""),
+                        "class_id": class_id,
+                        "subject_id": subject_id,
+                        "subject": subject_name,
+                        "subject_name": subject_name,
+                        "assessment_id": f"session:{session_id}:{self._CW_HOMEWORK}",
+                        "assessment_type": "coursework",
+                        "column_id": col_id,
+                        "score": 0,
+                        "max_score": max_f,
+                        "percentage": 0.0,
+                        "is_passing": False,
+                        "academic_year": "",
+                        "session_id": session_id,
+                        "source": "live_session",
+                        "date": today,
+                        "graded_at": now.isoformat(),
+                        "updated_at": now.isoformat(),
+                    }
+                    existing_sg = await gd_find_one(
+                        self.session, "student_grades", {"id": sg_id}
+                    )
+                    if not existing_sg:
+                        await gd_insert(
+                            self.session, "student_grades",
+                            {**grade_base, "id": sg_id},
+                        )
+                    existing_pg = await gd_find_one(
+                        self.session, "grades", {"id": pg_id}
+                    )
+                    if not existing_pg:
+                        await gd_insert(
+                            self.session, "grades",
+                            {**grade_base, "id": pg_id, "visible_to_parent": True},
+                        )
+                    grade_entry_info = {
+                        "column_id": col_id,
+                        "score": 0,
+                        "max_score": max_f,
+                    }
+
+                homework_auto_submitted_count += 1
+                homework_auto_submitted.append({
+                    "student_id": sid,
+                    "grade_entry": grade_entry_info,
+                })
+
         try:
             from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
             _pe = PortfolioEvidenceEngine(self)
@@ -573,6 +685,8 @@ class TeacherSessionEngine:
             "subject_name": subject_name,
             "teacher_name": teacher.get("full_name", "معلم"),
             "student_count": len(students),
+            "homework_auto_submitted_count": homework_auto_submitted_count,
+            "homework_auto_submitted": homework_auto_submitted,
             "message": "تم بدء الحصة بنجاح"
         }
     
@@ -1177,6 +1291,19 @@ class TeacherSessionEngine:
         att = await gd_find_one(self.session, "session_attendance", {"session_id": session_id, "student_id": student_id})
         if not att:
             raise HTTPException(status_code=400, detail="الطالب ليس في هذه الحصة")
+
+        # Tenant isolation: ensure the student belongs to the session's school.
+        # Reject cross-tenant writes with 404 (does not reveal foreign-tenant data).
+        sess_doc = await gd_find_one(self.session, "class_sessions", {"id": session_id})
+        if sess_doc:
+            sess_school = sess_doc.get("school_id") or sess_doc.get("tenant_id", "")
+            if sess_school:
+                stu_doc = await gd_find_one(self.session, "students", {"id": student_id})
+                if stu_doc:
+                    stu_tenant = stu_doc.get("tenant_id") or stu_doc.get("school_id", "")
+                    if stu_tenant and stu_tenant != sess_school:
+                        raise HTTPException(status_code=404, detail="الطالب غير موجود في هذه الجلسة")
+
         now = datetime.now(timezone.utc)
         existing = await gd_find_one(self.session, "session_homework", {"session_id": session_id, "student_id": student_id})
         if existing:
@@ -1197,6 +1324,15 @@ class TeacherSessionEngine:
                 "recorded_by": teacher_id,
                 "recorded_at": now.isoformat()
             })
+        # Keep grade entries in sync with the homework status.
+        # "done" upserts provisional grade rows; "not_done" removes them.
+        # No exception handler: a DB failure must roll back the whole request.
+        grade_entry = await self._sync_homework_grade_for_student(
+            session_id=session_id,
+            student_id=student_id,
+            status=status,
+        )
+
         await self._log_event(
             session_id=session_id,
             event_type=EventType.HOMEWORK_RECORDED.value,
@@ -1204,7 +1340,119 @@ class TeacherSessionEngine:
             student_id=student_id,
             new_value=status
         )
-        return {"message": "تم تسجيل حالة الواجب", "student_id": student_id, "status": status}
+        return {
+            "message": "تم تسجيل حالة الواجب",
+            "student_id": student_id,
+            "status": status,
+            "grade_entry": grade_entry,
+        }
+
+    async def _sync_homework_grade_for_student(
+        self,
+        session_id: str,
+        student_id: str,
+        status: str,
+        student_name: str = "",
+    ) -> "dict | None":
+        """Keep provisional grade entries in sync with a student's homework status.
+
+        - status="not_done": unconditionally deletes the deterministic grade rows
+          (safe if they were never created).
+        - status="done": upserts grade rows only when the session was started under
+          homework_mode="submitted"; no-ops otherwise.
+
+        Returns the grade_entry dict ``{column_id, score, max_score}`` on "done"
+        (when rows were upserted), or None on "not_done" / no-op.
+
+        Callers must NOT wrap this in a broad try/except — DB failures should
+        propagate so the enclosing transaction rolls back cleanly.
+        """
+        sg_id = f"sess:{session_id}:{student_id}:{self._CW_HOMEWORK}:sg"
+        pg_id = f"sess:{session_id}:{student_id}:{self._CW_HOMEWORK}:pg"
+
+        if status == "not_done":
+            await gd_delete_one(self.session, "student_grades", {"id": sg_id})
+            await gd_delete_one(self.session, "grades", {"id": pg_id})
+            return None
+
+        # status == "done" — only upsert if the session uses homework_mode=submitted
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
+        if not session:
+            return None
+
+        class_id = session.get("class_id", "")
+        subject_id = session.get("subject_id", "")
+        school_id = session.get("school_id", "") or session.get("tenant_id", "")
+        teacher_id = session.get("teacher_id", "")
+        subject_name = session.get("subject_name", "")
+
+        # Defense-in-depth: skip grade upsert for cross-tenant students.
+        # The route layer already rejects mismatches, but this guard
+        # makes the helper safe to call directly in bulk paths too.
+        if school_id:
+            stu_doc = await gd_find_one(self.session, "students", {"id": student_id})
+            if stu_doc:
+                stu_tenant = stu_doc.get("tenant_id") or stu_doc.get("school_id", "")
+                if stu_tenant and stu_tenant != school_id:
+                    return None
+
+        hw_settings = await gd_find_one(self.session, "session_settings", {
+            "teacher_id": teacher_id,
+            "subject_id": subject_id,
+        })
+        if not (
+            hw_settings
+            and hw_settings.get("homework_enabled")
+            and hw_settings.get("homework_mode") == "submitted"
+        ):
+            return None
+
+        columns = await self._resolve_coursework_columns(class_id)
+        hw_col = columns.get(self._CW_HOMEWORK)
+        if not hw_col:
+            return None
+
+        col_id = hw_col.get("id")
+        max_f = float(hw_col.get("max_grade") or 0)
+
+        now = datetime.now(timezone.utc)
+        today = now.date().isoformat()
+        grade_base: dict = {
+            "tenant_id": school_id,
+            "school_id": school_id,
+            "student_id": student_id,
+            "student_name": student_name,
+            "class_id": class_id,
+            "subject_id": subject_id,
+            "subject": subject_name,
+            "subject_name": subject_name,
+            "assessment_id": f"session:{session_id}:{self._CW_HOMEWORK}",
+            "assessment_type": "coursework",
+            "column_id": col_id,
+            "score": 0,
+            "max_score": max_f,
+            "percentage": 0.0,
+            "is_passing": False,
+            "academic_year": "",
+            "session_id": session_id,
+            "source": "live_session",
+            "date": today,
+            "graded_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+        }
+
+        existing_sg = await gd_find_one(self.session, "student_grades", {"id": sg_id})
+        if not existing_sg:
+            await gd_insert(self.session, "student_grades", {**grade_base, "id": sg_id})
+
+        existing_pg = await gd_find_one(self.session, "grades", {"id": pg_id})
+        if not existing_pg:
+            await gd_insert(
+                self.session, "grades",
+                {**grade_base, "id": pg_id, "visible_to_parent": True},
+            )
+
+        return {"column_id": col_id, "score": 0, "max_score": max_f}
 
     async def get_homework_statuses(self, session_id: str) -> Dict[str, str]:
         """Retrieve homework completion statuses for a session."""
@@ -1224,11 +1472,28 @@ class TeacherSessionEngine:
             if not rec.get("student_id") or rec.get("status") not in ("done", "not_done"):
                 raise HTTPException(status_code=400, detail="بيانات غير صالحة: كل سجل يجب أن يحتوي student_id وstatus (done/not_done)")
         now = datetime.now(timezone.utc)
+
+        # Resolve session tenant once for cross-tenant filtering in the loop.
+        sess_doc = await gd_find_one(self.session, "class_sessions", {"id": session_id})
+        sess_school = ""
+        if sess_doc:
+            sess_school = sess_doc.get("school_id") or sess_doc.get("tenant_id", "")
+
         for rec in records:
-            existing = await gd_find_one(self.session, "session_homework", {"session_id": session_id, "student_id": rec["student_id"]})
+            sid = rec["student_id"]
+            # Skip cross-tenant students silently (bulk path must not fail the
+            # whole batch for anomalous data; single path raises 404 instead).
+            if sess_school:
+                stu_doc = await gd_find_one(self.session, "students", {"id": sid})
+                if stu_doc:
+                    stu_tenant = stu_doc.get("tenant_id") or stu_doc.get("school_id", "")
+                    if stu_tenant and stu_tenant != sess_school:
+                        continue
+
+            existing = await gd_find_one(self.session, "session_homework", {"session_id": session_id, "student_id": sid})
             if existing:
                 await gd_update_one(self.session, "session_homework",
-                    {"session_id": session_id, "student_id": rec["student_id"]},
+                    {"session_id": session_id, "student_id": sid},
                     {
                         "status": rec["status"],
                         "recorded_by": teacher_id,
@@ -1239,20 +1504,45 @@ class TeacherSessionEngine:
                 await gd_insert(self.session, "session_homework", {
                     "id": str(uuid.uuid4()),
                     "session_id": session_id,
-                    "student_id": rec["student_id"],
+                    "student_id": sid,
                     "status": rec["status"],
                     "recorded_by": teacher_id,
                     "recorded_at": now.isoformat()
                 })
         done = sum(1 for r in records if r["status"] == "done")
         not_done = sum(1 for r in records if r["status"] == "not_done")
+
+        # Sync grade entries for every student in the bulk update.
+        # "done" upserts provisional rows; "not_done" removes them.
+        # No exception handler: a DB failure rolls back the whole request.
+        done_synced = 0
+        not_done_removed = 0
+        for rec in records:
+            await self._sync_homework_grade_for_student(
+                session_id=session_id,
+                student_id=rec["student_id"],
+                status=rec["status"],
+            )
+            if rec["status"] == "done":
+                done_synced += 1
+            else:
+                not_done_removed += 1
+
         await self._log_event(
             session_id=session_id,
             event_type=EventType.HOMEWORK_RECORDED.value,
             actor_id=teacher_id,
             metadata={"done": done, "not_done": not_done, "total": len(records)}
         )
-        return {"message": "تم حفظ حالات الواجب", "done": done, "not_done": not_done}
+        return {
+            "message": "تم حفظ حالات الواجب",
+            "done": done,
+            "not_done": not_done,
+            "grade_updates": {
+                "done_synced": done_synced,
+                "not_done_removed": not_done_removed,
+            },
+        }
 
     # ---------- Session Review & End ----------
 
