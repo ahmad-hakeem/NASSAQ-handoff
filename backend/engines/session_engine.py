@@ -557,13 +557,14 @@ class TeacherSessionEngine:
         homework_auto_submitted: list[dict] = []
 
         hw_settings = await gd_find_one(self.session, "session_settings", {
-            "teacher_id": teacher_id,
+            "class_id": class_id,
             "subject_id": subject_id,
+            "tenant_id": school_id,
         })
         if (
             hw_settings
             and hw_settings.get("homework_enabled")
-            and hw_settings.get("homework_mode") == "submitted"
+            and hw_settings.get("homework_view_mode") == "submitted"
         ):
             columns = await self._resolve_coursework_columns(class_id)
             hw_col = columns.get(self._CW_HOMEWORK)
@@ -1415,13 +1416,14 @@ class TeacherSessionEngine:
                     return None
 
         hw_settings = await gd_find_one(self.session, "session_settings", {
-            "teacher_id": teacher_id,
+            "class_id": class_id,
             "subject_id": subject_id,
+            "tenant_id": school_id,
         })
         if not (
             hw_settings
             and hw_settings.get("homework_enabled")
-            and hw_settings.get("homework_mode") == "submitted"
+            and hw_settings.get("homework_view_mode") == "submitted"
         ):
             return None
 
