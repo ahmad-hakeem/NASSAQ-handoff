@@ -543,12 +543,11 @@ class TeacherSessionEngine:
         if attendance_drafts:
             await gd_insert_many(self.session, "session_attendance", attendance_drafts)
 
-        # Auto-initialize homework submission records when the teacher's
-        # session settings use homework_mode = "submitted".
-        # This ensures that: (a) session_homework rows exist so
-        # compute_session_scores / commit_session_scores can derive grades,
-        # and (b) provisional grade entries are written immediately so the
-        # gradebook reflects the submission before the session ends.
+        # Auto-initialize homework submission records for all students when
+        # homework is enabled (the default). All students start as "done"
+        # (= max grade); the teacher manually marks students who did not
+        # submit during the session. homework_view_mode is a UI display
+        # filter, not a grade-init gate.
         # The operation is idempotent — existing rows are left untouched.
         # No exception handler here: a DB failure must roll back the full
         # session-start transaction atomically rather than committing partial
@@ -561,11 +560,8 @@ class TeacherSessionEngine:
             "subject_id": subject_id,
             "tenant_id": school_id,
         })
-        if (
-            hw_settings
-            and hw_settings.get("homework_enabled")
-            and hw_settings.get("homework_view_mode") == "submitted"
-        ):
+        hw_enabled = hw_settings.get("homework_enabled", True) if hw_settings else True
+        if hw_enabled:
             columns = await self._resolve_coursework_columns(class_id)
             hw_col = columns.get(self._CW_HOMEWORK)
             # Fail loudly if no homework column is resolvable — a partial state
@@ -636,10 +632,10 @@ class TeacherSessionEngine:
                     "assessment_id": f"session:{session_id}:{self._CW_HOMEWORK}",
                     "assessment_type": "coursework",
                     "column_id": col_id,
-                    "score": 0,
+                    "score": max_f,
                     "max_score": max_f,
-                    "percentage": 0.0,
-                    "is_passing": False,
+                    "percentage": 100.0 if max_f > 0 else 0.0,
+                    "is_passing": max_f > 0,
                     "academic_year": "",
                     "session_id": session_id,
                     "source": "live_session",
@@ -1420,11 +1416,8 @@ class TeacherSessionEngine:
             "subject_id": subject_id,
             "tenant_id": school_id,
         })
-        if not (
-            hw_settings
-            and hw_settings.get("homework_enabled")
-            and hw_settings.get("homework_view_mode") == "submitted"
-        ):
+        hw_enabled = hw_settings.get("homework_enabled", True) if hw_settings else True
+        if not hw_enabled:
             return None
 
         columns = await self._resolve_coursework_columns(class_id)
