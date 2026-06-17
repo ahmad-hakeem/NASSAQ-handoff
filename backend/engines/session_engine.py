@@ -2889,6 +2889,9 @@ class TeacherSessionEngine:
             isinstance(skill_type_id, str) and skill_type_id.startswith("custom_")
         )
 
+        # Resolve the school that owns this session for tenant-isolation checks.
+        session_school_id = session.get("school_id")
+
         skill_type = None
         if skill_type_id and not is_custom:
             skill_type = await gd_find_one(self.session, "skills_types", {"id": skill_type_id})
@@ -2896,6 +2899,17 @@ class TeacherSessionEngine:
                 skill_type = await gd_find_one(self.session, "skills_types", {"name_ar": skill_type_id})
             if not skill_type:
                 skill_type = await gd_find_one(self.session, "skills_types", {"name_en": skill_type_id})
+            # Enforce tenant isolation: a skill that carries a school_id must
+            # belong to the same school as the session. Global/seed skills
+            # (no school_id) are visible to all tenants.
+            if skill_type and skill_type.get("school_id") and session_school_id:
+                if skill_type["school_id"] != session_school_id:
+                    logger.warning(
+                        "Skill record rejected: skill_type_id=%r belongs to school %r, "
+                        "but session %r belongs to school %r",
+                        skill_type_id, skill_type["school_id"], session_id, session_school_id,
+                    )
+                    skill_type = None
 
         if not skill_type and not is_custom:
             existing = await gd_find(self.session, "skills_types", {}, limit=200)

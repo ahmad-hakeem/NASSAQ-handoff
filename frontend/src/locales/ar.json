@@ -1215,6 +1215,7 @@
   "errorRecordingBehaviour": "خطأ في تسجيل السلوك",
   "errorRecordingParticipation": "خطأ في تسجيل المشاركة",
   "errorRecordingSkill": "خطأ في تسجيل المهارة",
+  "skillsListRefreshed": "تم تحديث قائمة المهارات تلقائياً، يرجى المحاولة مجدداً",
   "errorRemovingImage": "خطأ في حذف الصورة",
   "errorReturningToOriginalRole": "حدث خطأ في العودة للدور الأصلي",
   "errors": "الأخطاء",

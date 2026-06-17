@@ -1211,6 +1211,7 @@
   "errorRecordingBehaviour": "Error recording behaviour",
   "errorRecordingParticipation": "Error recording participation",
   "errorRecordingSkill": "Error recording skill",
+  "skillsListRefreshed": "Skills list refreshed automatically, please try again",
   "errorRemovingImage": "Error removing image",
   "errorReturningToOriginalRole": "Error returning to original role",
   "errors": "Errors",

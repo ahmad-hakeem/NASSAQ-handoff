@@ -412,6 +412,16 @@ export default function SessionTeachPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
+  // Re-fetch skill types whenever the teacher opens the skill panel so that
+  // skills created by an admin/principal after the page loaded are visible
+  // immediately — without requiring a full page reload.
+  useEffect(() => {
+    if (actionTab === 'skill') {
+      loadSkillTypes();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionTab]);
+
   const loadSessionInfo = async (studentList) => {
     try {
       const res = await api.get(`/session/${sessionId}`);
@@ -1352,8 +1362,20 @@ export default function SessionTeachPage() {
       } : null);
     } catch (e) {
       console.error('Error recording skill:', e?.response?.status, e?.response?.data, e);
+      const status = e?.response?.status;
       const detail = getApiErrorMessage(e) || e?.response?.data?.message || e?.message;
-      nassaqError(detail ? `${t('errorRecordingSkill')}: ${detail}` : t('errorRecordingSkill'));
+      if (status === 404) {
+        // Skill type not found — likely created after this page loaded.
+        // Refresh the list so the teacher can retry without a page reload.
+        loadSkillTypes();
+        nassaqError(
+          detail
+            ? `${t('errorRecordingSkill')}: ${detail} — ${t('skillsListRefreshed') || 'تم تحديث قائمة المهارات تلقائياً، يرجى المحاولة مجدداً'}`
+            : t('errorRecordingSkill')
+        );
+      } else {
+        nassaqError(detail ? `${t('errorRecordingSkill')}: ${detail}` : t('errorRecordingSkill'));
+      }
     }
   };
 

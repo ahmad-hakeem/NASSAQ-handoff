@@ -2896,10 +2896,10 @@ async def get_skills_types(
 ):
     """
     جلب أنواع المهارات المتاحة
-    Get all available skill types
+    Get all available skill types (global + caller's school-specific)
     """
-    skills = await gd_find(db.session, "skills_types", {}, limit=100)
-    if not skills:
+    all_skills = await gd_find(db.session, "skills_types", {}, limit=200)
+    if not all_skills:
         from engines.session_engine import DEFAULT_SKILLS_TYPES
         now = datetime.now(timezone.utc).isoformat()
         for s in DEFAULT_SKILLS_TYPES:
@@ -2914,35 +2914,54 @@ async def get_skills_types(
                 )
             except Exception:
                 logger.debug("Skipped audit log for skills_types seed (FK constraint)")
-        skills = await gd_find(db.session, "skills_types", {}, limit=100)
+        all_skills = await gd_find(db.session, "skills_types", {}, limit=200)
+
+    caller_school_id = current_user.get("tenant_id") or current_user.get("school_id") or None
+    if caller_school_id:
+        # Return global skills (no school_id) plus school-specific ones
+        skills = [
+            s for s in (all_skills or [])
+            if not s.get("school_id") or s.get("school_id") == caller_school_id
+        ]
+    else:
+        # Platform admin or no school context: return all skills
+        skills = all_skills or []
     return skills
 
 
 @router.post("/skills-types")
 async def create_skill_type(
     data: dict = Body(...),
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_PRINCIPAL]))
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.TEACHER]))
 ):
     """
     إنشاء نوع مهارة جديد
-    Create a new skill type (admin only)
+    Create a new skill type (admin/principal/teacher)
     """
     now = datetime.now(timezone.utc)
+    # Derive school_id from the caller's JWT — never from the request body
+    # to prevent cross-tenant pollution. PLATFORM_ADMIN has no school scope.
+    caller_school_id = current_user.get("tenant_id") or current_user.get("school_id") or None
     skill = {
         "id": f"skill-{str(uuid.uuid4())[:8]}",
         "name": data.get("name", ""),
         "name_ar": data.get("name_ar", ""),
         "description": data.get("description", ""),
         "category": data.get("category", "general"),
-        "created_at": now.isoformat()
+        "created_at": now.isoformat(),
     }
+    if caller_school_id:
+        skill["school_id"] = caller_school_id
     await gd_insert(db.session, "skills_types", skill)
     if audit_engine:
-        await audit_engine.log(
-            action=AuditAction.SYSTEM_CONFIG,
-            performed_by=current_user.get("id"),
-            details={"event": "skill_type_created", "skill_id": skill["id"], "name": skill["name"]}
-        )
+        try:
+            await audit_engine.log(
+                action=AuditAction.SYSTEM_CONFIG,
+                performed_by=current_user.get("id"),
+                details={"event": "skill_type_created", "skill_id": skill["id"], "name": skill["name"], "school_id": caller_school_id}
+            )
+        except Exception as audit_err:
+            logger.debug("Skipped audit log for skill_type_created: %s", audit_err)
     return {"message": "تم إنشاء نوع المهارة", "skill": {k: v for k, v in skill.items() if k != "_id"}}
 
 

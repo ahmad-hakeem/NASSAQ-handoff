@@ -1047,6 +1047,8 @@ class SkillType(Base):
     description = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
+    # NULL = global/seed skill (visible to all schools); non-NULL = school-scoped.
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True, index=True)
 
 
 class StudentSkill(Base):
