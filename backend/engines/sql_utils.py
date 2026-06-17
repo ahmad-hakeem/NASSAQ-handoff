@@ -51,6 +51,7 @@ def _get_orm_model(collection: str):
         LessonPlan,
         NotificationPreference,
         ParentInvitation, WorkspaceCollaborator, WorkspaceQuota,
+        IssueVersion,
     )
     _ORM_REGISTRY = {
         "users": User,
@@ -117,6 +118,7 @@ def _get_orm_model(collection: str):
         "parent_invitations": ParentInvitation,
         "workspace_collaborators": WorkspaceCollaborator,
         "workspace_quota": WorkspaceQuota,
+        "issue_versions": IssueVersion,
     }
     return _ORM_REGISTRY.get(collection)
 

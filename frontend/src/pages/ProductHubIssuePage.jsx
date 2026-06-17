@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Separator } from '../components/ui/separator';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/ThemeContext';
+import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -27,7 +28,7 @@ import {
   FileText, Loader2, ThumbsUp, ThumbsDown, UserPlus, ChevronDown, ChevronUp,
   Monitor, Globe, Eye, AlertTriangle, CheckCircle2, Clock, Users, Tag,
   Zap, Calendar, BarChart3, RefreshCw, Download, X, Image as ImageIcon,
-  ExternalLink, Paperclip,
+  ExternalLink, Paperclip, Pencil, History,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -52,6 +53,14 @@ export function ProductHubIssuePage() {
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
   const [promptCopied, setPromptCopied] = useState(false);
   const [attachmentPreview, setAttachmentPreview] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [versions, setVersions] = useState([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [versionsLoaded, setVersionsLoaded] = useState(false);
+
+  const { nassaqConfirm } = useNassaqAlert();
 
   const isAdmin = user?.role === 'platform_admin';
   const canManageAttachments = user?.role === 'platform_admin' || user?.role === 'technical_team';
@@ -196,6 +205,93 @@ export function ProductHubIssuePage() {
     setExpandedSections(s => ({ ...s, [key]: !s[key] }));
   };
 
+  const handleEditOpen = () => {
+    setEditForm({
+      title: issue?.title || '',
+      current_behavior: issue?.current_behavior || '',
+      expected_behavior: issue?.expected_behavior || '',
+      steps_to_reproduce: issue?.steps_to_reproduce || '',
+      error_message: issue?.error_message || '',
+      additional_details: issue?.additional_details || '',
+    });
+    setEditOpen(true);
+  };
+
+  const handleEditSave = async () => {
+    const payload = {};
+    if (editForm.title !== (issue?.title || '')) payload.title = editForm.title;
+    if (editForm.current_behavior !== (issue?.current_behavior || '')) payload.current_behavior = editForm.current_behavior;
+    if (editForm.expected_behavior !== (issue?.expected_behavior || '')) payload.expected_behavior = editForm.expected_behavior;
+    if (editForm.steps_to_reproduce !== (issue?.steps_to_reproduce || '')) payload.steps_to_reproduce = editForm.steps_to_reproduce;
+    if (editForm.error_message !== (issue?.error_message || '')) payload.error_message = editForm.error_message;
+    if (editForm.additional_details !== (issue?.additional_details || '')) payload.additional_details = editForm.additional_details;
+
+    if (Object.keys(payload).length === 0) {
+      setEditOpen(false);
+      return;
+    }
+    setEditSaving(true);
+    try {
+      await axios.patch(`/api/product-hub/issues/${issueId}`, payload, { headers: authHeaders() });
+      toast.success('تم حفظ التعديلات');
+      setEditOpen(false);
+      setVersionsLoaded(false);
+      fetchIssue();
+    } catch (err) {
+      const detail = err.response?.data?.detail ?? {};
+      toast.error(typeof detail === 'object' ? detail.message : (detail || 'فشل في حفظ التعديلات'));
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleLoadVersions = async () => {
+    if (versionsLoaded) return;
+    setVersionsLoading(true);
+    try {
+      const res = await axios.get(`/api/product-hub/issues/${issueId}/versions`, { headers: authHeaders() });
+      setVersions(res.data.versions || []);
+      setVersionsLoaded(true);
+    } catch {
+      toast.error('فشل في تحميل سجل التعديلات');
+    } finally {
+      setVersionsLoading(false);
+    }
+  };
+
+  const reloadVersions = async () => {
+    setVersionsLoading(true);
+    try {
+      const res = await axios.get(`/api/product-hub/issues/${issueId}/versions`, { headers: authHeaders() });
+      setVersions(res.data.versions || []);
+      setVersionsLoaded(true);
+    } catch {
+      toast.error('فشل في تحميل سجل التعديلات');
+    } finally {
+      setVersionsLoading(false);
+    }
+  };
+
+  const handleRevertVersion = (version) => {
+    const prevVals = version.previous_values || {};
+    if (Object.keys(prevVals).length === 0) return;
+    nassaqConfirm(
+      `هل تريد استعادة هذه المراجعة؟ سيتم تطبيق القيم السابقة من المراجعة ${version.revision ?? ''} وتسجيل تعديل جديد في السجل.`,
+      async () => {
+        try {
+          await axios.patch(`/api/product-hub/issues/${issueId}`, prevVals, { headers: authHeaders() });
+          toast.success('تم استعادة المراجعة السابقة');
+          fetchIssue();
+          reloadVersions();
+        } catch (err) {
+          const detail = err.response?.data?.detail ?? getApiErrorMessage(err);
+          toast.error(typeof detail === 'object' ? detail.message : (detail || 'فشل في استعادة المراجعة'));
+        }
+      },
+      { title: 'تأكيد الاستعادة', confirmText: 'نعم، استعادة', cancelText: 'إلغاء' }
+    );
+  };
+
   if (loading) {
     return (
       <Sidebar>
@@ -301,6 +397,19 @@ export function ProductHubIssuePage() {
                   </div>
                 </div>
               </div>
+              {isAdmin && (
+                <div className="flex-shrink-0 flex items-start">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleEditOpen}
+                    className="rounded-lg text-white/70 hover:text-white hover:bg-white/10 border border-white/20 gap-1.5"
+                  >
+                    <Pencil className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+                    تعديل
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -934,6 +1043,101 @@ export function ProductHubIssuePage() {
                   </CardContent>
                 </Card>
               )}
+
+              {/* ═══════ VERSION HISTORY ═══════ */}
+              {isAdmin && (
+                <Card className="border shadow-sm rounded-xl">
+                  <CardHeader
+                    className="pb-3 cursor-pointer"
+                    onClick={() => {
+                      toggleSection('versions');
+                      if (!expandedSections.versions) handleLoadVersions();
+                    }}
+                  >
+                    <CardTitle className="text-base flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        <History className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+                        سجل التعديلات
+                      </span>
+                      {expandedSections.versions
+                        ? <ChevronUp className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+                        : <ChevronDown className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />}
+                    </CardTitle>
+                  </CardHeader>
+                  {expandedSections.versions && (
+                    <CardContent>
+                      {versionsLoading ? (
+                        <div className="flex justify-center py-4">
+                          <Loader2 className="h-5 w-5 animate-spin text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+                        </div>
+                      ) : versions.length === 0 ? (
+                        <EmptyState icon={History} title="لا توجد تعديلات بعد" className="py-4" />
+                      ) : (
+                        <div className="space-y-3">
+                          {versions.map((v, i) => {
+                            const fieldLabels = {
+                              title: 'العنوان',
+                              current_behavior: 'السلوك الحالي',
+                              expected_behavior: 'السلوك المتوقع',
+                              steps_to_reproduce: 'خطوات الإنتاج',
+                              error_message: 'رسالة الخطأ',
+                              additional_details: 'تفاصيل إضافية',
+                              reproducibility: 'قابلية الإنتاج',
+                              impact: 'التأثير',
+                            };
+                            const prev = v.previous_values || {};
+                            const next = v.new_values || {};
+                            const hasPrev = Object.keys(prev).length > 0;
+                            return (
+                              <div key={v.id || i} className="text-xs p-3 rounded-xl border bg-slate-50 space-y-2">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex flex-col gap-0.5">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="bg-brand-navy/10 text-brand-navy px-1.5 py-0.5 rounded text-[10px] font-bold tabular-nums">
+                                        م. {v.revision ?? (versions.length - i)}
+                                      </span>
+                                      <span className="font-semibold text-slate-700">{v.changed_by_name || '—'}</span>
+                                    </div>
+                                    <span className="text-muted-foreground text-[10px] ps-1">{formatDualDateTime(v.changed_at)}</span>
+                                  </div>
+                                  {isAdmin && hasPrev && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRevertVersion(v)}
+                                      className="shrink-0 text-[10px] font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded transition"
+                                    >
+                                      استعادة
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {(v.changed_fields || []).map(f => (
+                                    <span key={f} className="bg-brand-turquoise/10 text-brand-turquoise px-1.5 py-0.5 rounded text-[10px] font-medium">
+                                      {fieldLabels[f] || f}
+                                    </span>
+                                  ))}
+                                </div>
+                                {next.title !== undefined && (
+                                  <div className="space-y-1 pt-0.5">
+                                    {prev.title !== undefined && (
+                                      <p className="text-[10px] text-muted-foreground line-through truncate" title={prev.title}>
+                                        {prev.title || '—'}
+                                      </p>
+                                    )}
+                                    <p className="text-[10px] text-slate-800 font-medium truncate" title={next.title}>
+                                      {next.title || '—'}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </CardContent>
+                  )}
+                </Card>
+              )}
             </div>
           </div>
 
@@ -954,6 +1158,110 @@ export function ProductHubIssuePage() {
 
         </div>
       </div>
+
+      {editOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setEditOpen(false); }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="text-base font-bold text-brand-navy flex items-center gap-2">
+                <Pencil className="h-4 w-4 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+                تعديل التحدي
+              </h2>
+              <button
+                type="button"
+                onClick={() => setEditOpen(false)}
+                className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500 transition"
+                aria-label="إغلاق"
+              >
+                <X className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">العنوان</label>
+                <Input
+                  value={editForm.title || ''}
+                  onChange={(e) => setEditForm(f => ({ ...f, title: e.target.value }))}
+                  placeholder="عنوان التحدي"
+                  className="text-right"
+                  maxLength={300}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">السلوك الحالي</label>
+                <Textarea
+                  value={editForm.current_behavior || ''}
+                  onChange={(e) => setEditForm(f => ({ ...f, current_behavior: e.target.value }))}
+                  placeholder="صف المشكلة أو السلوك الحالي"
+                  className="text-right min-h-[100px]"
+                  maxLength={5000}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">السلوك المتوقع</label>
+                <Textarea
+                  value={editForm.expected_behavior || ''}
+                  onChange={(e) => setEditForm(f => ({ ...f, expected_behavior: e.target.value }))}
+                  placeholder="صف النتيجة المرجوة"
+                  className="text-right min-h-[100px]"
+                  maxLength={5000}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">خطوات إعادة الإنتاج</label>
+                <Textarea
+                  value={editForm.steps_to_reproduce || ''}
+                  onChange={(e) => setEditForm(f => ({ ...f, steps_to_reproduce: e.target.value }))}
+                  placeholder="الخطوات اللازمة لإعادة الإنتاج (اختياري)"
+                  className="text-right min-h-[80px]"
+                  maxLength={5000}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">رسالة الخطأ</label>
+                <Textarea
+                  value={editForm.error_message || ''}
+                  onChange={(e) => setEditForm(f => ({ ...f, error_message: e.target.value }))}
+                  placeholder="رسالة الخطأ إن وجدت (اختياري)"
+                  className="text-right font-mono text-sm min-h-[60px]"
+                  maxLength={5000}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">تفاصيل إضافية</label>
+                <Textarea
+                  value={editForm.additional_details || ''}
+                  onChange={(e) => setEditForm(f => ({ ...f, additional_details: e.target.value }))}
+                  placeholder="أي معلومات إضافية (اختياري)"
+                  className="text-right min-h-[60px]"
+                  maxLength={5000}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t bg-slate-50 rounded-b-2xl">
+              <Button
+                variant="outline"
+                onClick={() => setEditOpen(false)}
+                disabled={editSaving}
+                className="rounded-lg"
+              >
+                إلغاء
+              </Button>
+              <Button
+                onClick={handleEditSave}
+                disabled={editSaving}
+                className="rounded-lg bg-brand-turquoise hover:bg-brand-turquoise/90 text-white gap-1.5"
+              >
+                {editSaving ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />}
+                حفظ التعديلات
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {attachmentPreview && (
         <div

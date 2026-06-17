@@ -156,7 +156,6 @@ def check_permission(user: dict, action: HubAction) -> bool:
 
 MAIN_ADMIN_ONLY_ACTIONS = {
     HubAction.DELETE_ISSUE,
-    HubAction.UPDATE_ISSUE,
     HubAction.ASSIGN_ISSUE,
     HubAction.CHANGE_STATUS,
     HubAction.SET_FINAL_STATUS,

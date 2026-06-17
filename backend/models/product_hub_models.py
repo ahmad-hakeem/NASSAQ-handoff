@@ -703,6 +703,7 @@ class IssueCreate(BaseModel):
 
 
 class IssueUpdate(BaseModel):
+    title: Optional[str] = None
     current_behavior: Optional[str] = None
     expected_behavior: Optional[str] = None
     steps_to_reproduce: Optional[str] = None
@@ -711,6 +712,17 @@ class IssueUpdate(BaseModel):
     impact: Optional[List[str]] = None
     related_to: Optional[List[str]] = None
     reproducibility: Optional[str] = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v):
+        if v is not None:
+            if not v.strip():
+                raise ValueError("العنوان لا يمكن أن يكون فارغاً")
+            if len(v.strip()) > 300:
+                raise ValueError("العنوان طويل جداً (الحد الأقصى 300 حرف)")
+            return v.strip()
+        return v
 
     @field_validator("current_behavior", "expected_behavior")
     @classmethod

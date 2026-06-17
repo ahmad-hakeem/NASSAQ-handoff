@@ -6,7 +6,20 @@ API Contracts:
 - POST   /issues                    — Create issue (any authenticated user)
 - GET    /issues                    — List issues (own for users, all for admin)
 - GET    /issues/{id}               — Issue detail (own for users, any for admin)
-- PATCH  /issues/{id}               — Update issue fields (admin only)
+- PATCH  /issues/{id}               — Update issue fields (platform_admin only).
+                                       Requires UPDATE_ISSUE permission.
+                                       Writes an IssueVersion row whose revision is
+                                       computed atomically (MAX subquery INSERT) and
+                                       guaranteed unique by uq_issue_versions_issue_revision.
+                                       Returns 404 for both non-existent and unauthorized
+                                       callers so the API does not confirm issue existence.
+- GET    /issues/{id}/versions      — Paginated edit history ordered by revision desc
+                                       (platform_admin only). Returns 404 for both
+                                       non-existent issues and unauthorized callers.
+                                       Response: {versions, total, skip, limit, issue_id}
+                                       Each version carries: id, issue_id, revision,
+                                       tenant_id, changed_by_user_id, changed_by_name,
+                                       changed_at, changed_fields, previous_values, new_values
 - PUT    /issues/{id}/status        — Change status (admin only)
 - PUT    /issues/{id}/assign        — Assign team (admin only)
 - PUT    /issues/{id}/title         — Update title (admin only)
@@ -19,6 +32,9 @@ API Contracts:
 - GET    /issues/{id}/hakim-insights — Get Hakim analysis (admin only)
 - GET    /issues/{id}/activity-log  — Get activity log (owner + admin)
 - GET    /issues/{id}/duplicates    — Get duplicate matches (admin only)
+- POST   /issues/bulk-update        — Bulk status/priority/team update (main_admin only).
+                                       Pre-validates all issue_ids exist before any write;
+                                       returns 422 with missing_ids if any are absent.
 - GET    /dashboard                 — Dashboard analytics (admin only)
 - GET    /config                    — Hub configuration (any authenticated)
 
@@ -27,6 +43,7 @@ Collections:
 - issue_activity_log: Activity timeline + event log + audit trail
 - issue_comments: Discussion threads
 - issue_duplicates_map: Duplicate detection results
+- issue_versions: Immutable edit history; (issue_id, revision) unique; tenant_id nullable
 """
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Body, UploadFile, File
@@ -37,6 +54,8 @@ import re
 import uuid
 import logging
 import json
+from sqlalchemy import text as _sa_text
+from pg_models import IssueVersion as _IssueVersionModel
 
 from dependencies import db, get_current_user, require_roles, UserRole
 from engines.product_hub_rbac import (
@@ -1034,8 +1053,14 @@ async def update_issue(
     data: IssueUpdate,
     current_user: dict = Depends(get_current_user),
 ):
+    if not is_platform_admin(current_user):
+        _hub_error(403, "FORBIDDEN", "هذه العملية مقصورة على مديري المنصة فقط")
     enforce_permission(current_user, HubAction.UPDATE_ISSUE)
     issue = await _get_issue_or_404(issue_id)
+    issue_tenant = issue.get("school_id") or issue.get("tenant_id")
+    user_tenant = current_user.get("school_id") or current_user.get("tenant_id")
+    if issue_tenant and user_tenant and issue_tenant != user_tenant:
+        _hub_error(404, "NOT_FOUND", "التحدي غير موجود")
 
     changes = {}
     update_fields = [
@@ -1047,6 +1072,8 @@ async def update_issue(
         if value is not None:
             changes[field] = value.strip() if isinstance(value, str) else value
 
+    if data.title is not None:
+        changes["title"] = data.title
     if data.impact is not None:
         changes["impact"] = data.impact
     if data.related_to is not None:
@@ -1054,6 +1081,14 @@ async def update_issue(
 
     if not changes:
         _hub_error(422, "NO_CHANGES", "لم يتم إرسال أي تعديلات")
+
+    _VERSION_FIELDS = {
+        "title", "current_behavior", "expected_behavior",
+        "steps_to_reproduce", "error_message", "additional_details",
+        "reproducibility", "impact",
+    }
+    previous_values = {k: issue.get(k) for k in changes if k in _VERSION_FIELDS}
+    new_values = {k: changes[k] for k in changes if k in _VERSION_FIELDS}
 
     now = _now_iso()
     changes["updated_at"] = now
@@ -1066,11 +1101,62 @@ async def update_issue(
     if "reproducibility" in changes:
         changes["description.reproducible"] = changes["reproducibility"]
 
+    if new_values:
+        rev_row = await db.session.execute(
+            _sa_text("SELECT COALESCE(MAX(revision), 0) + 1 FROM issue_versions WHERE issue_id = :iid"),
+            {"iid": issue_id},
+        )
+        next_revision = rev_row.scalar() or 1
+        version_obj = _IssueVersionModel(
+            id=str(uuid.uuid4()),
+            issue_id=issue_id,
+            revision=next_revision,
+            tenant_id=current_user.get("tenant_id") or current_user.get("school_id"),
+            changed_by_user_id=get_user_id(current_user),
+            changed_by_name=current_user.get("full_name", current_user.get("email", "")),
+            changed_fields=list(new_values.keys()),
+            previous_values=previous_values,
+            new_values=new_values,
+        )
+        db.session.add(version_obj)
+
     await gd_update_one(db.session, "product_issues", {"id": issue_id}, changes)
     await handle_issue_updated(issue_id, current_user, changes)
     await audit_issue_updated(issue_id, current_user, changes)
 
     return {"success": True, "updated_fields": list(changes.keys())}
+
+
+@router.get("/issues/{issue_id}/versions")
+async def get_issue_versions(
+    issue_id: str,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    current_user: dict = Depends(get_current_user),
+):
+    if not is_platform_admin(current_user):
+        _hub_error(403, "FORBIDDEN", "هذه العملية مقصورة على مديري المنصة فقط")
+    issue = await _get_issue_or_404(issue_id)
+    issue_tenant = issue.get("school_id") or issue.get("tenant_id")
+    user_tenant = current_user.get("school_id") or current_user.get("tenant_id")
+    if issue_tenant and user_tenant and issue_tenant != user_tenant:
+        _hub_error(404, "NOT_FOUND", "التحدي غير موجود")
+
+    total = await gd_count(db.session, "issue_versions", {"issue_id": issue_id})
+
+    versions = await gd_find(
+        db.session, "issue_versions",
+        {"issue_id": issue_id},
+        order_by="revision", desc_order=True, limit=limit, offset=skip,
+    )
+
+    return {
+        "versions": versions,
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "issue_id": issue_id,
+    }
 
 
 @router.put("/issues/{issue_id}/status")
@@ -1496,6 +1582,18 @@ async def bulk_update_issues(
 
     if not data.status and not data.priority and not data.assigned_team:
         _hub_error(422, "NO_CHANGES", "يجب تحديد حقل واحد على الأقل للتعديل")
+
+    valid_statuses = {e.value for e in IssueStatus}
+    valid_priorities = {e.value for e in IssuePriority}
+    if data.status and data.status not in valid_statuses:
+        _hub_error(422, "INVALID_STATUS", f"حالة غير صالحة: {data.status}", {"valid": sorted(valid_statuses)})
+    if data.priority and data.priority not in valid_priorities:
+        _hub_error(422, "INVALID_PRIORITY", f"أولوية غير صالحة: {data.priority}", {"valid": sorted(valid_priorities)})
+
+    existing_ids = set(await gd_distinct(db.session, "product_issues", "id", {"id": {"$in": data.issue_ids}, "is_deleted": {"$ne": True}}))
+    missing_ids = [iid for iid in data.issue_ids if iid not in existing_ids]
+    if missing_ids:
+        _hub_error(422, "ISSUES_NOT_FOUND", f"تحديات غير موجودة أو محذوفة: {len(missing_ids)} من أصل {len(data.issue_ids)}", {"missing_ids": missing_ids[:20]})
 
     before_states = await _capture_before_states(data.issue_ids)
 

@@ -662,6 +662,27 @@ class BulkActionHistory(Base):
     )
 
 
+class IssueVersion(Base):
+    __tablename__ = "issue_versions"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    issue_id = Column(String, ForeignKey("product_issues.id", ondelete="CASCADE"), nullable=False, index=True)
+    revision = Column(Integer, nullable=False, default=0)
+    tenant_id = Column(String, nullable=True)
+    changed_by_user_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    changed_by_name = Column(String, nullable=True)
+    changed_at = Column(DateTime(timezone=True), default=_utcnow, index=True)
+    changed_fields = Column(JSONB, default=list)
+    previous_values = Column(JSONB, default=dict)
+    new_values = Column(JSONB, default=dict)
+
+    __table_args__ = (
+        Index("idx_pg_versions_issue_time", "issue_id", "changed_at"),
+        Index("idx_pg_versions_issue_tenant", "issue_id", "tenant_id"),
+        UniqueConstraint("issue_id", "revision", name="uq_issue_versions_issue_revision"),
+    )
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
