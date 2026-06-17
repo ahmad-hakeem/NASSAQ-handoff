@@ -3731,12 +3731,12 @@ async def save_session_settings(
         "skill_enabled": bool(payload.get("skill_enabled", False)),
         "extra_columns": extra_columns,
         "participation_scores": participation_scores,
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     if existing:
         await gd_update_one(db.session, "session_settings", lookup, {"$set": record_data})
     else:
-        record_data["created_at"] = datetime.utcnow().isoformat()
+        record_data["created_at"] = datetime.now(timezone.utc).isoformat()
         await gd_insert(db.session, "session_settings", record_data)
     return {"success": True, "session_id": session_id, **record_data}
 
