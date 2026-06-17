@@ -282,6 +282,10 @@ async def load_tenant_score_rules(db: Any, tenant_id: str) -> dict:
             merged = dict(DEFAULT_SCORE_RULES)
             merged.update(settings["value"])
             return merged
+        logger.warning(
+            "load_tenant_score_rules: no score_rules configured for tenant=%s — falling back to DEFAULT_SCORE_RULES",
+            tenant_id,
+        )
     except Exception as e:
         logger.warning("Failed to load tenant score rules for %s: %s", tenant_id, e)
     return DEFAULT_SCORE_RULES

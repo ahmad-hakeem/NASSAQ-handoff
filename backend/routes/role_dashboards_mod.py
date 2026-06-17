@@ -3606,11 +3606,12 @@ async def get_session_settings(
     current_user: dict = Depends(get_current_user)
 ):
     await _verify_session_owner(session_id, current_user)
+    tenant_id = current_user.get("tenant_id") or current_user.get("school_id") or ""
     session = await gd_find_one(db.session, "class_sessions", {"id": session_id})
     if session:
-        lookup = {"class_id": session.get("class_id"), "subject_id": session.get("subject_id")}
+        lookup = {"class_id": session.get("class_id"), "subject_id": session.get("subject_id"), "tenant_id": tenant_id}
     else:
-        lookup = {"session_id": session_id}
+        lookup = {"session_id": session_id, "tenant_id": tenant_id}
     record = await gd_find_one(db.session, "session_settings", lookup)
     default = {
         "subject_id": session.get("subject_id") if session else None,
@@ -3624,6 +3625,10 @@ async def get_session_settings(
         "participation_scores": {},
     }
     if not record:
+        logger.warning(
+            "get_session_settings: no stored record for session=%s tenant=%s — returning defaults",
+            session_id, tenant_id
+        )
         return {"session_id": session_id, **default}
     return {
         "session_id": session_id,
@@ -3646,11 +3651,31 @@ async def save_session_settings(
     current_user: dict = Depends(get_current_user)
 ):
     await _verify_session_owner(session_id, current_user)
+    tenant_id = current_user.get("tenant_id") or current_user.get("school_id") or ""
     session = await gd_find_one(db.session, "class_sessions", {"id": session_id})
     c_id = session.get("class_id") if session else None
     s_id = payload.get("subject_id") or (session.get("subject_id") if session else None)
-    lookup = {"class_id": c_id, "subject_id": s_id} if c_id and s_id else {"session_id": session_id}
+    lookup = {"class_id": c_id, "subject_id": s_id, "tenant_id": tenant_id} if c_id and s_id else {"session_id": session_id, "tenant_id": tenant_id}
     existing = await gd_find_one(db.session, "session_settings", lookup)
+    # Fetch the tenant's configured participation max (falls back to 100)
+    _p_max_setting = None
+    if tenant_id:
+        try:
+            _p_max_setting = await gd_find_one(
+                db.session, "tenant_settings",
+                {"tenant_id": tenant_id, "setting_key": "participation_max"}
+            )
+        except Exception as _pme:
+            logger.warning("save_session_settings: failed to load participation_max for tenant=%s: %s", tenant_id, _pme)
+    if _p_max_setting and isinstance(_p_max_setting.get("value"), (int, float)):
+        tenant_participation_max = int(_p_max_setting["value"])
+    else:
+        if not _p_max_setting and tenant_id:
+            logger.warning(
+                "save_session_settings: no participation_max configured for tenant=%s — falling back to 100",
+                tenant_id
+            )
+        tenant_participation_max = 100
     # Validate enum / numeric ranges
     hv_mode = payload.get("homework_view_mode", "not_submitted")
     if hv_mode not in ("not_submitted", "submitted"):
@@ -3685,12 +3710,19 @@ async def save_session_settings(
                 iv = int(v)
             except (TypeError, ValueError):
                 continue
-            if 1 <= iv <= 100:
-                participation_scores[k] = iv
+            if iv < 1:
+                continue
+            if iv > tenant_participation_max:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"قيمة المشاركة ({iv}) تتجاوز الحد الأقصى المسموح به للمدرسة ({tenant_participation_max})"
+                )
+            participation_scores[k] = iv
     record_data = {
         "class_id": c_id,
         "subject_id": s_id,
         "session_id": session_id,
+        "tenant_id": tenant_id,
         "participation_enabled": bool(payload.get("participation_enabled", True)),
         "homework_enabled": bool(payload.get("homework_enabled", True)),
         "homework_view_mode": hv_mode,
