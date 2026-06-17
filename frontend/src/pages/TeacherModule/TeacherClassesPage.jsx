@@ -223,6 +223,7 @@ export default function TeacherClassesPage() {
     recitation_attempts: 1,
     skills_enabled: false,
     custom_skills: [],
+    participation_scores: {},
   });
   // Transient local state for the canonical SidebarSettingsDialog's Group A
   // tabs (evaluation items + behaviours). The current /teacher/{id}/session-settings
@@ -459,6 +460,9 @@ export default function TeacherClassesPage() {
           recitation_attempts: res.data.recitation_attempts ?? 1,
           skills_enabled: res.data.skills_enabled ?? false,
           custom_skills: res.data.custom_skills ?? [],
+          participation_scores: (res.data.participation_scores && typeof res.data.participation_scores === 'object')
+            ? res.data.participation_scores
+            : {},
         });
       } else {
         setSessionConfig({
@@ -1294,6 +1298,9 @@ export default function TeacherClassesPage() {
           onFollowupColumnsChange: setSettingsFollowupColumns,
           showAddOtherItems: settingsShowAddOtherItems,
           onShowAddOtherItemsChange: setSettingsShowAddOtherItems,
+          participationScores: sessionConfig.participation_scores,
+          onParticipationScoresChange: (v) =>
+            setSessionConfig((p) => ({ ...p, participation_scores: v })),
           onSave: doSaveSettings,
           saving: settingsSaving || settingsLoading,
         }}

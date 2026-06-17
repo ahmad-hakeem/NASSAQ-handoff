@@ -546,6 +546,7 @@ export default function SessionTeachPage() {
       }
       toast.success(t('saved') || t('saveSettings'));
       setShowSidebarSettings(false);
+      loadSessionSettings();
     } catch (e) {
       console.error('Error saving session settings:', e);
       toast.error(t('errorOccurred') || 'Error');
@@ -2239,7 +2240,7 @@ export default function SessionTeachPage() {
                         color={`${p.color} hover:opacity-80`}
                         icon={<p.icon className="h-4 w-4" />}
                         label={p.labelKey ? t(p.labelKey) : p.label}
-                        sub={p.score}
+                        sub={participationScores[p.id] ?? p.score}
                         onClick={() => recordParticipation(p)}
                       />
                     ))}
