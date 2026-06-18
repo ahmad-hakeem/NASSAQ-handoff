@@ -45,6 +45,14 @@ _WORKSPACE_ALLOWLIST_PREFIXES = (
     # perimeter handler and pops the "finish setup" dialog on top of
     # the public landing/register surfaces.
     "/teacher-registration/options/",
+    # Self-profile name/details update. The GenericNameGuard modal forces a
+    # newly-registered user whose name is generic (e.g. "Mj") to set their real
+    # personal name before continuing, and persists it via PUT /users/me/profile.
+    # That endpoint is self-scoped (current_user.id only) and touches no tenant
+    # data, so it must stay reachable BEFORE an IT workspace is materialised —
+    # otherwise a pre-bootstrap IT caller is deadlocked: the guard demands a real
+    # name but the only endpoint that saves it 409s here.
+    "/users/me/profile",
 )
 
 
