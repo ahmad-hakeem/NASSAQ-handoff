@@ -263,11 +263,49 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         for s in students:
             child_id = s.get("id")
 
-            total_days = await gd_count(db.session, "attendance", {"student_id": child_id})
-            present_days = await gd_count(db.session, "attendance", {"student_id": child_id, "status": "present"})
-            # Null when truly empty so KPI cards can render a placeholder
-            # instead of an invented 0%/100% claim. (Audit 2026-05-10.)
-            att_rate = round((present_days / total_days * 100), 1) if total_days > 0 else None
+            # Root-cause fix: some UI paths (e.g. "mark all present") only
+            # write DB rows for present students; absent students get no row.
+            # Counting only this student's own rows makes denominator == present
+            # count → always 100%. The correct denominator is the number of
+            # distinct calendar dates the class had ANY attendance recorded
+            # (i.e. how many days the teacher took attendance). We also scope
+            # every query by school_id to prevent cross-tenant bleed-in.
+            child_school_id = s.get("school_id") or school_id
+            child_class_id = s.get("class_id")
+
+            if child_class_id and child_school_id:
+                # gd_distinct returns ALL distinct date values with no row
+                # limit, so there is no truncation risk.  The date column is
+                # DateTime(tz), so multiple sessions on the same calendar day
+                # produce different timestamps; str()[:10] normalises them to
+                # YYYY-MM-DD before deduplication.
+                class_dates = await gd_distinct(
+                    db.session, "attendance", "date",
+                    {"school_id": child_school_id, "class_id": child_class_id},
+                )
+                distinct_days = len({str(d)[:10] for d in class_dates if d})
+                # Numerator is class-scoped (same school+class) so rate is
+                # always ≤ 100% even if the student has records in past classes.
+                present_days = await gd_count(
+                    db.session, "attendance",
+                    {"school_id": child_school_id, "class_id": child_class_id,
+                     "student_id": child_id, "status": "present"},
+                )
+                # Null when truly empty so KPI cards can render a placeholder
+                # instead of an invented 0%/100% claim. (Audit 2026-05-10.)
+                att_rate = round((present_days / distinct_days * 100), 1) if distinct_days > 0 else None
+            else:
+                # No class context — use the student's own record count as a
+                # best-effort denominator (still scoped by school_id).
+                total_days = await gd_count(
+                    db.session, "attendance",
+                    {"school_id": child_school_id, "student_id": child_id},
+                )
+                present_days = await gd_count(
+                    db.session, "attendance",
+                    {"school_id": child_school_id, "student_id": child_id, "status": "present"},
+                )
+                att_rate = round((present_days / total_days * 100), 1) if total_days > 0 else None
 
             all_grades = await gd_find(db.session, "grades", {"student_id": child_id}, limit=500)
             avg_score = None
@@ -490,23 +528,51 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
 
-        query = {"student_id": child_id}
+        # Scope queries by school_id to prevent cross-tenant bleed-in.
+        child_school_id = child.get("school_id") or current_user.get("tenant_id")
+        child_class_id = child.get("class_id")
 
+        query = {"school_id": child_school_id, "student_id": child_id}
+
+        date_filter = None
         if month and year:
             start_date = f"{year}-{month:02d}-01"
             if month == 12:
                 end_date = f"{year + 1}-01-01"
             else:
                 end_date = f"{year}-{month + 1:02d}-01"
-            query["date"] = {"$gte": start_date, "$lt": end_date}
+            date_filter = {"$gte": start_date, "$lt": end_date}
+            query["date"] = date_filter
 
         records = await gd_find(db.session, "attendance", query, order_by="date", desc_order=True, limit=500)
 
-        total = len(records)
-        present = sum(1 for r in records if r.get("status") == "present")
-        absent = sum(1 for r in records if r.get("status") == "absent")
-        late = sum(1 for r in records if r.get("status") == "late")
-        excused = sum(1 for r in records if r.get("status") == "excused")
+        # Statistics — scope numerator to the student's current class so
+        # cross-class history cannot make rate > 100%.
+        if child_class_id:
+            stat_records = [r for r in records if r.get("class_id") == child_class_id]
+        else:
+            stat_records = records
+
+        present = sum(1 for r in stat_records if r.get("status") == "present")
+        absent = sum(1 for r in stat_records if r.get("status") == "absent")
+        late = sum(1 for r in stat_records if r.get("status") == "late")
+        excused = sum(1 for r in stat_records if r.get("status") == "excused")
+
+        # Denominator fix: use the number of distinct calendar dates the class
+        # had ANY attendance recorded, not just this student's own row count.
+        # Some UI paths only write "present" rows; absent students get no row,
+        # so student-level total == student-level present → always 100%.
+        # gd_distinct returns all distinct date values without a row limit —
+        # no truncation risk. str()[:10] normalises DateTime to calendar day.
+        if child_class_id and child_school_id:
+            class_date_q: dict = {"school_id": child_school_id, "class_id": child_class_id}
+            if date_filter:
+                class_date_q["date"] = date_filter
+            class_dates = await gd_distinct(db.session, "attendance", "date", class_date_q)
+            total_days = len({str(d)[:10] for d in class_dates if d})
+        else:
+            # No class context — fall back to the student's own record count.
+            total_days = len(records)
 
         return {
             "child_name": child.get("full_name"),
@@ -521,14 +587,14 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 for r in records
             ],
             "statistics": {
-                "total_days": total,
+                "total_days": total_days,
                 "present": present,
                 "absent": absent,
                 "late": late,
                 "excused": excused,
                 # Honest empty: no records => null, not a fake 100%.
                 # Frontend renders a placeholder when null. (Audit 2026-05-10.)
-                "attendance_rate": round((present / total * 100), 1) if total > 0 else None
+                "attendance_rate": round((present / total_days * 100), 1) if total_days > 0 else None
             }
         }
 
