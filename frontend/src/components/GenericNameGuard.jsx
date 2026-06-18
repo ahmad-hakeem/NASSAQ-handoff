@@ -4,7 +4,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { AlertTriangle, User, X, Check, Loader2, ArrowLeft } from 'lucide-react';
-import axios from 'axios';
 import { toast } from 'sonner';
 import { getApiErrorMessage } from '../utils/apiError';
 
@@ -50,20 +49,25 @@ export function isGenericName(name) {
   return false;
 }
 
+// Mirror of the backend `_FORMULA_INJECTION_CHARS` rule in
+// engines/name_validation.py — a real personal name never begins with a
+// spreadsheet-formula metacharacter. Mirroring it here gives instant inline
+// feedback instead of a server round-trip, but the backend remains the
+// single source of truth (it re-validates on every save).
+const FORMULA_INJECTION_CHARS = new Set(['=', '+', '-', '@', '\t', '\r']);
+
 function validateNewName(name) {
   if (!name || !name.trim()) return 'الاسم الشخصي مطلوب';
-  if (name.trim().length < 3) return 'الاسم قصير جداً — يجب أن يكون 3 أحرف على الأقل';
-  if (isGenericName(name)) return 'يجب استخدام اسمك الشخصي الحقيقي بدلاً من اسم عام أو وظيفي';
-  if (/^[\d\s]+$/.test(name.trim())) return 'الاسم يجب أن يحتوي على أحرف';
+  const cleaned = name.trim();
+  if (cleaned.length < 3) return 'الاسم قصير جداً — يجب أن يكون 3 أحرف على الأقل';
+  if (FORMULA_INJECTION_CHARS.has(cleaned[0])) return 'الاسم يحتوي على رمز غير مسموح به';
+  if (isGenericName(cleaned)) return 'يجب استخدام اسمك الشخصي الحقيقي بدلاً من اسم عام أو وظيفي';
+  if (/^[\d\s]+$/.test(cleaned)) return 'الاسم يجب أن يحتوي على أحرف';
   return '';
 }
 
-const authHeaders = () => {
-  const t = localStorage.getItem('nassaq_token');
-  return t ? { Authorization: `Bearer ${t}` } : {};
-};
-
 function NameUpdateModal({ currentName, onClose, onSuccess }) {
+  const { api } = useAuth();
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -79,7 +83,13 @@ function NameUpdateModal({ currentName, onClose, onSuccess }) {
     setSaving(true);
     setError('');
     try {
-      await axios.put('/api/users/me/profile', { full_name: name.trim() }, { headers: authHeaders() });
+      // Use the app's configured `api` client (from AuthContext) rather than a
+      // raw axios call: it attaches the bearer token, refreshes-and-retries on
+      // an expired access token (401), retries transient blips, and normalizes
+      // the backend `{success:false,error:{message}}` envelope so a clear Arabic
+      // reason is surfaced inline. The raw call bypassed all of this, which made
+      // a save after the token aged out fail silently with a generic error.
+      await api.put('/users/me/profile', { full_name: name.trim() });
       toast.success('تم تحديث اسمك بنجاح');
       onSuccess(name.trim());
     } catch (e) {
