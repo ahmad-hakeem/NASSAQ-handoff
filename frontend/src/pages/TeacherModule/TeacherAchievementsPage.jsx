@@ -254,6 +254,11 @@ export default function TeacherAchievementsPage() {
   const [manualEvPreviewMime, setManualEvPreviewMime] = useState(null);
   const manualEvPreviewUrlRef = useRef(null);
 
+  // --- File preview state (CV dialog) ---
+  const [cvPreviewSrc, setCvPreviewSrc] = useState(null);
+  const [cvPreviewMime, setCvPreviewMime] = useState(null);
+  const cvPreviewUrlRef = useRef(null);
+
   const _clearEditPreview = () => {
     if (editPreviewUrlRef.current && editPreviewUrlRef.current !== 'office') {
       try { URL.revokeObjectURL(editPreviewUrlRef.current); } catch {}
@@ -300,11 +305,34 @@ export default function TeacherAchievementsPage() {
     }
   };
 
+  const _clearCvPreview = () => {
+    if (cvPreviewUrlRef.current && cvPreviewUrlRef.current !== 'office') {
+      try { URL.revokeObjectURL(cvPreviewUrlRef.current); } catch {}
+    }
+    cvPreviewUrlRef.current = null;
+    setCvPreviewSrc(null);
+    setCvPreviewMime(null);
+  };
+
+  const _setCvPreview = (file) => {
+    _clearCvPreview();
+    if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+      const url = URL.createObjectURL(file);
+      cvPreviewUrlRef.current = url;
+      setCvPreviewSrc(url);
+      setCvPreviewMime(file.type);
+    } else {
+      cvPreviewUrlRef.current = 'office';
+      setCvPreviewSrc('office');
+      setCvPreviewMime(file.type);
+    }
+  };
+
   const handleEditEvidenceFile = async (file) => {
     if (editFileInputRef.current) editFileInputRef.current.value = '';
     if (!file) return;
     const MAX = 10 * 1024 * 1024;
-    if (file.size > MAX) { toast.error('حجم الملف يتجاوز 10 ميغابايت'); return; }
+    if (file.size > MAX) { nassaqError('حجم الملف يتجاوز 10 ميغابايت'); return; }
     _setEditPreview(file);
     const token = ++editUploadTokenRef.current;
     setEditFileUploading(true);
@@ -509,7 +537,7 @@ export default function TeacherAchievementsPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (!file) return;
     const MAX = 10 * 1024 * 1024;
-    if (file.size > MAX) { toast.error('حجم الملف يتجاوز 10 ميغابايت'); return; }
+    if (file.size > MAX) { nassaqError('حجم الملف يتجاوز 10 ميغابايت'); return; }
     _setManualEvPreview(file);
     const token = ++manualEvUploadTokenRef.current;
     setManualEvUploading(true);
@@ -690,7 +718,8 @@ export default function TeacherAchievementsPage() {
     if (cvFileInputRef.current) cvFileInputRef.current.value = '';
     if (!file) return;
     const MAX = 10 * 1024 * 1024;
-    if (file.size > MAX) { toast.error('حجم الملف يتجاوز 10 ميغابايت'); return; }
+    if (file.size > MAX) { nassaqError('حجم الملف يتجاوز 10 ميغابايت'); return; }
+    _setCvPreview(file);
     const token = ++cvUploadTokenRef.current;
     setCvFileUploading(true);
     try {
@@ -1949,7 +1978,7 @@ export default function TeacherAchievementsPage() {
       </Dialog>
 
       {/* CV manual-add dialog */}
-      <Dialog open={cvDialog.open} onOpenChange={(open) => { if (!open) setCvDialog({ open: false, kind: 'training_attended' }); }}>
+      <Dialog open={cvDialog.open} onOpenChange={(open) => { if (!open) { _clearCvPreview(); setCvDialog({ open: false, kind: 'training_attended' }); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-cairo">
@@ -2008,7 +2037,7 @@ export default function TeacherAchievementsPage() {
                     variant="ghost"
                     className="h-7 w-7 shrink-0"
                     title="إزالة الملف"
-                    onClick={() => { cvUploadTokenRef.current++; setCvFileUploading(false); setCvForm(p => ({ ...p, file_url: '', file_name: '' })); }}
+                    onClick={() => { cvUploadTokenRef.current++; setCvFileUploading(false); _clearCvPreview(); setCvForm(p => ({ ...p, file_url: '', file_name: '' })); }}
                   >
                     <Trash2 className="w-3.5 h-3.5 text-red-500" />
                   </Button>
@@ -2034,10 +2063,51 @@ export default function TeacherAchievementsPage() {
                   )}
                 </button>
               )}
+              {/* Inline file preview */}
+              {cvPreviewSrc && (
+                <div className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                    <span className="text-[11px] text-gray-500 font-cairo">معاينة الملف</span>
+                    <button
+                      type="button"
+                      aria-label="إزالة الملف والمعاينة"
+                      onClick={() => { cvUploadTokenRef.current++; setCvFileUploading(false); _clearCvPreview(); setCvForm(p => ({ ...p, file_url: '', file_name: '' })); }}
+                      className="text-gray-400 hover:text-red-500 transition-colors p-0.5"
+                    >
+                      <X className="w-3.5 h-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                  <div className="p-3">
+                    {cvPreviewMime?.startsWith('image/') ? (
+                      <img
+                        src={cvPreviewSrc}
+                        alt={cvForm.file_name || 'معاينة الصورة'}
+                        className="max-h-48 w-auto rounded-lg object-contain mx-auto block"
+                      />
+                    ) : cvPreviewMime === 'application/pdf' ? (
+                      <iframe
+                        src={cvPreviewSrc}
+                        title="معاينة PDF"
+                        className="w-full h-64 rounded-lg border border-gray-200 dark:border-gray-700"
+                      />
+                    ) : (
+                      <div className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <FileText className="w-8 h-8 text-gray-400 shrink-0" aria-hidden="true" strokeWidth={1.5} />
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate font-tajawal">
+                            {cvForm.file_name || 'ملف'}
+                          </div>
+                          <div className="text-[11px] text-gray-500 mt-0.5 font-cairo">لا تتوفر معاينة لهذا النوع</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCvDialog({ open: false, kind: 'training_attended' })}>إلغاء</Button>
+            <Button variant="outline" onClick={() => { _clearCvPreview(); setCvDialog({ open: false, kind: 'training_attended' }); }}>إلغاء</Button>
             <Button onClick={handleAddCVItem} disabled={cvSaving || cvFileUploading || !cvForm.title || cvForm.title.trim().length < 2}>
               {cvSaving && <Loader2 className={`w-4 h-4 animate-spin ${isRTL ? 'ml-2' : 'mr-2'}`} />}
               حفظ
