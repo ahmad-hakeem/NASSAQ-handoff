@@ -397,6 +397,7 @@ async def test_csp_header_contains_phase1_directives(client):
     resp = await client.get("/public/health")
     csp = resp.headers.get("content-security-policy") or resp.headers.get("Content-Security-Policy") or ""
     assert "object-src 'none'" in csp
+    assert "frame-src blob:" in csp  # intentional: allows blob: URLs for inline PDF preview iframes
     assert "base-uri 'none'" in csp
     assert "form-action 'self'" in csp
     # connect-src is intentionally narrow (no https: wildcard).

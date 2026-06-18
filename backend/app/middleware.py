@@ -108,6 +108,7 @@ def register_middleware(app: FastAPI):
             "media-src 'self' https:; "
             "connect-src 'self' wss: ws:; "
             "object-src 'none'; "
+            "frame-src blob:; "
             "base-uri 'none'; "
             "form-action 'self'; "
             "frame-ancestors 'none';"
