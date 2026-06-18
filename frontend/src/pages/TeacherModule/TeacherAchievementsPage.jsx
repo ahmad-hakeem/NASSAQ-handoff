@@ -244,11 +244,68 @@ export default function TeacherAchievementsPage() {
   const editFileInputRef = useRef(null);
   const editUploadTokenRef = useRef(0);
 
+  // --- File preview state (evidence dialog) ---
+  const [editPreviewSrc, setEditPreviewSrc] = useState(null);
+  const [editPreviewMime, setEditPreviewMime] = useState(null);
+  const editPreviewUrlRef = useRef(null);
+
+  // --- File preview state (manual evidence dialog) ---
+  const [manualEvPreviewSrc, setManualEvPreviewSrc] = useState(null);
+  const [manualEvPreviewMime, setManualEvPreviewMime] = useState(null);
+  const manualEvPreviewUrlRef = useRef(null);
+
+  const _clearEditPreview = () => {
+    if (editPreviewUrlRef.current && editPreviewUrlRef.current !== 'office') {
+      try { URL.revokeObjectURL(editPreviewUrlRef.current); } catch {}
+    }
+    editPreviewUrlRef.current = null;
+    setEditPreviewSrc(null);
+    setEditPreviewMime(null);
+  };
+
+  const _clearManualEvPreview = () => {
+    if (manualEvPreviewUrlRef.current && manualEvPreviewUrlRef.current !== 'office') {
+      try { URL.revokeObjectURL(manualEvPreviewUrlRef.current); } catch {}
+    }
+    manualEvPreviewUrlRef.current = null;
+    setManualEvPreviewSrc(null);
+    setManualEvPreviewMime(null);
+  };
+
+  const _setEditPreview = (file) => {
+    _clearEditPreview();
+    if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+      const url = URL.createObjectURL(file);
+      editPreviewUrlRef.current = url;
+      setEditPreviewSrc(url);
+      setEditPreviewMime(file.type);
+    } else {
+      editPreviewUrlRef.current = 'office';
+      setEditPreviewSrc('office');
+      setEditPreviewMime(file.type);
+    }
+  };
+
+  const _setManualEvPreview = (file) => {
+    _clearManualEvPreview();
+    if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+      const url = URL.createObjectURL(file);
+      manualEvPreviewUrlRef.current = url;
+      setManualEvPreviewSrc(url);
+      setManualEvPreviewMime(file.type);
+    } else {
+      manualEvPreviewUrlRef.current = 'office';
+      setManualEvPreviewSrc('office');
+      setManualEvPreviewMime(file.type);
+    }
+  };
+
   const handleEditEvidenceFile = async (file) => {
     if (editFileInputRef.current) editFileInputRef.current.value = '';
     if (!file) return;
     const MAX = 10 * 1024 * 1024;
     if (file.size > MAX) { toast.error('حجم الملف يتجاوز 10 ميغابايت'); return; }
+    _setEditPreview(file);
     const token = ++editUploadTokenRef.current;
     setEditFileUploading(true);
     try {
@@ -436,6 +493,7 @@ export default function TeacherAchievementsPage() {
   const openManualEvDialog = (sectionKey) => {
     const sub = SUBSECTION_CONFIG_V2.find(s => s.key === sectionKey);
     const defaultType = sub?.types?.[0] || '';
+    _clearManualEvPreview();
     setManualEvForm({
       section_key: sectionKey || (SUBSECTION_CONFIG_V2[0]?.key || ''),
       evidence_type: defaultType,
@@ -452,6 +510,7 @@ export default function TeacherAchievementsPage() {
     if (!file) return;
     const MAX = 10 * 1024 * 1024;
     if (file.size > MAX) { toast.error('حجم الملف يتجاوز 10 ميغابايت'); return; }
+    _setManualEvPreview(file);
     const token = ++manualEvUploadTokenRef.current;
     setManualEvUploading(true);
     try {
@@ -704,7 +763,9 @@ export default function TeacherAchievementsPage() {
   const closeEvidenceDialog = useCallback(() => {
     editUploadTokenRef.current++;
     setEditFileUploading(false);
+    _clearEditPreview();
     setEvidenceDialog({ open: false, mode: 'add', data: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const openAddDialog = (sectionKey) => {
@@ -712,6 +773,7 @@ export default function TeacherAchievementsPage() {
     const defaultType = cfg?.types?.[0] || '';
     editUploadTokenRef.current++;
     setEditFileUploading(false);
+    _clearEditPreview();
     setEvidenceForm({
       evidence_type: defaultType,
       title_ar: '', title_en: '',
@@ -742,6 +804,7 @@ export default function TeacherAchievementsPage() {
     // Invalidate any in-flight edit-upload from a previous open
     editUploadTokenRef.current++;
     setEditFileUploading(false);
+    _clearEditPreview();
     setEvidenceForm({
       evidence_type: evidence.evidence_type || '',
       title_ar: evidence.title_ar || '',
@@ -1375,7 +1438,7 @@ export default function TeacherAchievementsPage() {
               <Label className="text-xs font-medium mb-1.5 block">نوع الملف</Label>
               <Select
                 value={evidenceForm.file_kind || 'pdf'}
-                onValueChange={(v) => { editUploadTokenRef.current++; setEditFileUploading(false); setEvidenceForm(prev => ({ ...prev, file_kind: v, file_url: '', file_name: '' })); }}
+                onValueChange={(v) => { editUploadTokenRef.current++; setEditFileUploading(false); _clearEditPreview(); setEvidenceForm(prev => ({ ...prev, file_kind: v, file_url: '', file_name: '' })); }}
               >
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -1440,12 +1503,53 @@ export default function TeacherAchievementsPage() {
                       </div>
                     )}
                   </button>
+                  {/* Inline file preview */}
+                  {editPreviewSrc && (
+                    <div className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                      <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                        <span className="text-[11px] text-gray-500 font-cairo">معاينة الملف</span>
+                        <button
+                          type="button"
+                          aria-label="إزالة الملف والمعاينة"
+                          onClick={() => { editUploadTokenRef.current++; setEditFileUploading(false); _clearEditPreview(); setEvidenceForm(prev => ({ ...prev, file_url: '', file_name: '' })); }}
+                          className="text-gray-400 hover:text-red-500 transition-colors p-0.5"
+                        >
+                          <X className="w-3.5 h-3.5" aria-hidden="true" />
+                        </button>
+                      </div>
+                      <div className="p-3">
+                        {editPreviewMime?.startsWith('image/') ? (
+                          <img
+                            src={editPreviewSrc}
+                            alt={evidenceForm.file_name || 'معاينة الصورة'}
+                            className="max-h-48 w-auto rounded-lg object-contain mx-auto block"
+                          />
+                        ) : editPreviewMime === 'application/pdf' ? (
+                          <iframe
+                            src={editPreviewSrc}
+                            title="معاينة PDF"
+                            className="w-full h-64 rounded-lg border border-gray-200 dark:border-gray-700"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                            <FileText className="w-8 h-8 text-gray-400 shrink-0" aria-hidden="true" strokeWidth={1.5} />
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate font-tajawal">
+                                {evidenceForm.file_name || 'ملف'}
+                              </div>
+                              <div className="text-[11px] text-gray-500 mt-0.5 font-cairo">لا تتوفر معاينة لهذا النوع</div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
-              {evidenceForm.file_url && (
+              {evidenceForm.file_url && !editPreviewSrc && (
                 <button
                   type="button"
-                  onClick={() => { editUploadTokenRef.current++; setEditFileUploading(false); setEvidenceForm(prev => ({ ...prev, file_url: '', file_name: '' })); }}
+                  onClick={() => { editUploadTokenRef.current++; setEditFileUploading(false); _clearEditPreview(); setEvidenceForm(prev => ({ ...prev, file_url: '', file_name: '' })); }}
                   className="mt-2 text-[11px] text-red-600 hover:text-red-700 underline"
                 >
                   {evidenceForm.file_kind === 'link' ? 'إزالة الرابط' : 'إزالة الملف'}
@@ -1470,7 +1574,7 @@ export default function TeacherAchievementsPage() {
       </Dialog>
 
       {/* Manual evidence dialog (V2) */}
-      <Dialog open={manualEvDialog.open} onOpenChange={(open) => { if (!open) setManualEvDialog({ open: false }); }}>
+      <Dialog open={manualEvDialog.open} onOpenChange={(open) => { if (!open) { _clearManualEvPreview(); setManualEvDialog({ open: false }); } }}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-cairo text-right">إضافة شاهد يدوي</DialogTitle>
@@ -1616,7 +1720,7 @@ export default function TeacherAchievementsPage() {
               <Label className="text-xs font-medium mb-1 block">نوع الدليل</Label>
               <Select
                 value={manualEvForm.file_kind}
-                onValueChange={(v) => setManualEvForm(p => ({ ...p, file_kind: v, file_url: '', file_name: '' }))}
+                onValueChange={(v) => { _clearManualEvPreview(); setManualEvForm(p => ({ ...p, file_kind: v, file_url: '', file_name: '' })); }}
               >
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -1691,13 +1795,54 @@ export default function TeacherAchievementsPage() {
                       </div>
                     )}
                   </button>
+                  {/* Inline file preview */}
+                  {manualEvPreviewSrc && (
+                    <div className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                      <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                        <span className="text-[11px] text-gray-500 font-cairo">معاينة الملف</span>
+                        <button
+                          type="button"
+                          aria-label="إزالة الملف والمعاينة"
+                          onClick={() => { _clearManualEvPreview(); setManualEvForm(p => ({ ...p, file_url: '', file_name: '' })); }}
+                          className="text-gray-400 hover:text-red-500 transition-colors p-0.5"
+                        >
+                          <X className="w-3.5 h-3.5" aria-hidden="true" />
+                        </button>
+                      </div>
+                      <div className="p-3">
+                        {manualEvPreviewMime?.startsWith('image/') ? (
+                          <img
+                            src={manualEvPreviewSrc}
+                            alt={manualEvForm.file_name || 'معاينة الصورة'}
+                            className="max-h-48 w-auto rounded-lg object-contain mx-auto block"
+                          />
+                        ) : manualEvPreviewMime === 'application/pdf' ? (
+                          <iframe
+                            src={manualEvPreviewSrc}
+                            title="معاينة PDF"
+                            className="w-full h-64 rounded-lg border border-gray-200 dark:border-gray-700"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                            <FileText className="w-8 h-8 text-gray-400 shrink-0" aria-hidden="true" strokeWidth={1.5} />
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate font-tajawal">
+                                {manualEvForm.file_name || 'ملف'}
+                              </div>
+                              <div className="text-[11px] text-gray-500 mt-0.5 font-cairo">لا تتوفر معاينة لهذا النوع</div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
           </div>
 
           <DialogFooter className="mt-3">
-            <Button variant="outline" onClick={() => setManualEvDialog({ open: false })}>إلغاء</Button>
+            <Button variant="outline" onClick={() => { _clearManualEvPreview(); setManualEvDialog({ open: false }); }}>إلغاء</Button>
             <Button onClick={handleSaveManualEvidence} disabled={manualEvSaving || !manualEvForm.evidence_type || !(manualEvForm.title_ar || '').trim()} className="gap-1.5">
               {manualEvSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
               إضافة الشاهد
