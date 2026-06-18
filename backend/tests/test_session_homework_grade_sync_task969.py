@@ -2,8 +2,8 @@
 Task #969 — Unit + integration tests for homework auto-submission grade sync.
 
 Covers:
-  1. Grade upserted when session starts with homework_mode = "submitted"
-  2. Grade removed when a student is flipped to "not_done"
+  1. Grade upserted at full marks when session starts with homework_mode = "submitted"
+  2. Grade zeroed (NOT removed) when a student is flipped to "not_done"
   3. Idempotent replay: starting the same session again creates no duplicate rows
   4. Cross-tenant writes are rejected (tenant_id scoping from session row, not caller)
   5. IT (independent-teacher) workspace sees identical behaviour
@@ -139,6 +139,11 @@ async def test_grade_rows_created_on_session_start_with_homework_submitted():
     session_id = result["session_record_id"]
     assert result["homework_auto_submitted_count"] == 2
 
+    # Homework column max — submitted homework earns full marks.
+    columns = await engine._resolve_coursework_columns(class_id)
+    hw_max = float(columns[TeacherSessionEngine._CW_HOMEWORK]["max_grade"])
+    assert hw_max > 0
+
     # session_homework rows should exist and be "done"
     for sid in (s1, s2):
         hw = await gd_find_one(db.session, "session_homework", {
@@ -153,7 +158,7 @@ async def test_grade_rows_created_on_session_start_with_homework_submitted():
         assert sg is not None, f"Missing student_grades row for student {sid}"
         assert sg["tenant_id"] == tenant
         assert sg["student_id"] == sid
-        assert sg["score"] == 0  # provisional
+        assert sg["score"] == hw_max  # submitted -> full marks
 
         # grades row (parent-side)
         pg_id = f"sess:{session_id}:{sid}:homework:pg"
@@ -169,8 +174,9 @@ async def test_grade_rows_created_on_session_start_with_homework_submitted():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_grade_rows_removed_on_flip_to_not_done():
-    """Flipping a student to not_done removes provisional grade entries."""
+async def test_grade_rows_zeroed_on_flip_to_not_done():
+    """Flipping a student to not_done ZEROES the grade entries (does not delete
+    them) so كشف المتابعة and the school/parent grade stores show an explicit 0."""
     tenant = str(uuid.uuid4())
     await _mk_school(tenant)
     teacher_id = await _mk_teacher(tenant)
@@ -202,14 +208,20 @@ async def test_grade_rows_removed_on_flip_to_not_done():
         teacher_id=teacher_id,
     )
 
-    # s1's grade rows must be gone
-    assert await gd_find_one(db.session, "student_grades", {"id": sg_id}) is None
+    # s1's grade rows must now read 0 (zeroed, NOT deleted)
+    sg_after = await gd_find_one(db.session, "student_grades", {"id": sg_id})
+    assert sg_after is not None, "not_done must keep the row (zeroed), not delete it"
+    assert sg_after["score"] == 0
     pg_id = f"sess:{session_id}:{s1}:homework:pg"
-    assert await gd_find_one(db.session, "grades", {"id": pg_id}) is None
+    pg_after = await gd_find_one(db.session, "grades", {"id": pg_id})
+    assert pg_after is not None
+    assert pg_after["score"] == 0
 
-    # s2's grade rows must remain untouched
+    # s2's grade rows must remain untouched (still full marks)
     sg_id_s2 = f"sess:{session_id}:{s2}:homework:sg"
-    assert await gd_find_one(db.session, "student_grades", {"id": sg_id_s2}) is not None
+    sg_s2 = await gd_find_one(db.session, "student_grades", {"id": sg_id_s2})
+    assert sg_s2 is not None
+    assert sg_s2["score"] > 0
 
 
 # ---------------------------------------------------------------------------
@@ -347,8 +359,9 @@ async def test_cross_tenant_student_skipped_during_auto_submit():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_bulk_not_done_removes_grade_rows():
-    """bulk_record_homework with not_done removes provisional grade entries."""
+async def test_bulk_not_done_zeroes_grade_rows():
+    """bulk_record_homework with not_done ZEROES provisional grade entries
+    (does not delete them); done entries keep full marks."""
     tenant = str(uuid.uuid4())
     await _mk_school(tenant)
     teacher_id = await _mk_teacher(tenant)
@@ -383,18 +396,21 @@ async def test_bulk_not_done_removes_grade_rows():
         teacher_id=teacher_id,
     )
 
-    # s1's grade rows should be gone
-    assert await gd_find_one(db.session, "student_grades", {
+    # s1's grade rows should now read 0 (zeroed, NOT deleted)
+    s1_sg = await gd_find_one(db.session, "student_grades", {
         "id": f"sess:{session_id}:{s1}:homework:sg"
-    }) is None
-    assert await gd_find_one(db.session, "grades", {
+    })
+    assert s1_sg is not None and s1_sg["score"] == 0
+    s1_pg = await gd_find_one(db.session, "grades", {
         "id": f"sess:{session_id}:{s1}:homework:pg"
-    }) is None
+    })
+    assert s1_pg is not None and s1_pg["score"] == 0
 
-    # s2's grade rows should remain
-    assert await gd_find_one(db.session, "student_grades", {
+    # s2's grade rows should remain at full marks
+    s2_sg = await gd_find_one(db.session, "student_grades", {
         "id": f"sess:{session_id}:{s2}:homework:sg"
-    }) is not None
+    })
+    assert s2_sg is not None and s2_sg["score"] > 0
 
 
 # ---------------------------------------------------------------------------
@@ -438,8 +454,8 @@ async def test_session_start_response_includes_structured_grade_data():
     ge = s1_entry["grade_entry"]
     assert ge is not None
     assert "column_id" in ge
-    assert ge["score"] == 0
     assert "max_score" in ge
+    assert ge["score"] == ge["max_score"]  # submitted -> full marks
 
 
 # ---------------------------------------------------------------------------
@@ -447,9 +463,9 @@ async def test_session_start_response_includes_structured_grade_data():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_flip_back_to_done_recreates_grade_rows():
-    """After flipping a student to not_done (which removes grade rows),
-    flipping them back to done must recreate the grade entries."""
+async def test_flip_not_done_then_done_roundtrips_grade_rows():
+    """Flipping a student to not_done zeroes the grade rows; flipping back to
+    done restores full marks. The rows persist across the round-trip."""
     tenant = str(uuid.uuid4())
     await _mk_school(tenant)
     teacher_id = await _mk_teacher(tenant)
@@ -468,7 +484,7 @@ async def test_flip_back_to_done_recreates_grade_rows():
     )
     session_id = result["session_record_id"]
 
-    # Step 1: flip to not_done — grade rows should vanish
+    # Step 1: flip to not_done — grade rows must read 0 (kept, not deleted)
     flip_result = await engine.record_homework(
         session_id=session_id,
         student_id=s1,
@@ -476,14 +492,17 @@ async def test_flip_back_to_done_recreates_grade_rows():
         teacher_id=teacher_id,
     )
     assert flip_result["status"] == "not_done"
-    assert flip_result["grade_entry"] is None
+    assert flip_result["grade_entry"] is not None
+    assert flip_result["grade_entry"]["score"] == 0
 
     sg_id = f"sess:{session_id}:{s1}:homework:sg"
     pg_id = f"sess:{session_id}:{s1}:homework:pg"
-    assert await gd_find_one(db.session, "student_grades", {"id": sg_id}) is None
-    assert await gd_find_one(db.session, "grades", {"id": pg_id}) is None
+    sg_nd = await gd_find_one(db.session, "student_grades", {"id": sg_id})
+    pg_nd = await gd_find_one(db.session, "grades", {"id": pg_id})
+    assert sg_nd is not None and sg_nd["score"] == 0
+    assert pg_nd is not None and pg_nd["score"] == 0
 
-    # Step 2: flip back to done — grade rows must be recreated
+    # Step 2: flip back to done — grade rows must read full marks
     restore_result = await engine.record_homework(
         session_id=session_id,
         student_id=s1,
@@ -492,10 +511,14 @@ async def test_flip_back_to_done_recreates_grade_rows():
     )
     assert restore_result["status"] == "done"
     assert restore_result["grade_entry"] is not None
-    assert restore_result["grade_entry"]["score"] == 0
+    hw_max = restore_result["grade_entry"]["max_score"]
+    assert hw_max > 0
+    assert restore_result["grade_entry"]["score"] == hw_max
 
-    assert await gd_find_one(db.session, "student_grades", {"id": sg_id}) is not None
-    assert await gd_find_one(db.session, "grades", {"id": pg_id}) is not None
+    sg_done = await gd_find_one(db.session, "student_grades", {"id": sg_id})
+    pg_done = await gd_find_one(db.session, "grades", {"id": pg_id})
+    assert sg_done is not None and sg_done["score"] == hw_max
+    assert pg_done is not None and pg_done["score"] == hw_max
 
 
 # ---------------------------------------------------------------------------
@@ -505,7 +528,7 @@ async def test_flip_back_to_done_recreates_grade_rows():
 @pytest.mark.asyncio
 async def test_bulk_homework_response_includes_grade_updates():
     """bulk_record_homework response must include grade_updates with
-    done_synced and not_done_removed counts."""
+    done_synced and not_done_synced counts."""
     tenant = str(uuid.uuid4())
     await _mk_school(tenant)
     teacher_id = await _mk_teacher(tenant)
@@ -537,9 +560,9 @@ async def test_bulk_homework_response_includes_grade_updates():
     assert "grade_updates" in bulk_result, "Response must include grade_updates"
     gu = bulk_result["grade_updates"]
     assert "done_synced" in gu
-    assert "not_done_removed" in gu
+    assert "not_done_synced" in gu
     assert gu["done_synced"] == 1
-    assert gu["not_done_removed"] == 1
+    assert gu["not_done_synced"] == 1
 
 
 # ---------------------------------------------------------------------------

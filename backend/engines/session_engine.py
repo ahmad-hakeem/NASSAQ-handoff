@@ -665,7 +665,7 @@ class TeacherSessionEngine:
                     "student_id": sid,
                     "grade_entry": {
                         "column_id": col_id,
-                        "score": 0,
+                        "score": max_f,
                         "max_score": max_f,
                     },
                 })
@@ -1340,7 +1340,7 @@ class TeacherSessionEngine:
                 "recorded_at": now.isoformat()
             })
         # Keep grade entries in sync with the homework status.
-        # "done" upserts provisional grade rows; "not_done" removes them.
+        # "done" upserts full-mark rows; "not_done" upserts score-0 rows.
         # No exception handler: a DB failure must roll back the whole request.
         grade_entry = await self._sync_homework_grade_for_student(
             session_id=session_id,
@@ -1371,13 +1371,20 @@ class TeacherSessionEngine:
     ) -> "dict | None":
         """Keep provisional grade entries in sync with a student's homework status.
 
-        - status="not_done": unconditionally deletes the deterministic grade rows
-          (safe if they were never created).
-        - status="done": upserts grade rows only when the session was started under
-          homework_mode="submitted"; no-ops otherwise.
+        The homework toggle is the single source of truth for the homework
+        coursework column:
+          - status="done": upserts grade rows with full marks (score = max).
+          - status="not_done": upserts grade rows with score 0 (student did not
+            submit) — it never deletes, so the Follow-up Report and the
+            school/parent grade stores show an explicit 0 instead of a blank.
 
-        Returns the grade_entry dict ``{column_id, score, max_score}`` on "done"
-        (when rows were upserted), or None on "not_done" / no-op.
+        Rows are written only when the session resolves a homework grade column
+        and homework is enabled for the session; otherwise any stale rows are
+        cleaned up (on not_done) and the call no-ops. All tenant/class/subject
+        scope comes from the session row — never the caller.
+
+        Returns the grade_entry dict ``{column_id, score, max_score}`` when rows
+        were upserted, or None on a no-op / cleanup path.
 
         Callers must NOT wrap this in a broad try/except — DB failures should
         propagate so the enclosing transaction rolls back cleanly.
@@ -1385,31 +1392,31 @@ class TeacherSessionEngine:
         sg_id = f"sess:{session_id}:{student_id}:{self._CW_HOMEWORK}:sg"
         pg_id = f"sess:{session_id}:{student_id}:{self._CW_HOMEWORK}:pg"
 
-        if status == "not_done":
+        async def _delete_stale() -> None:
             await gd_delete_one(self.session, "student_grades", {"id": sg_id})
             await gd_delete_one(self.session, "grades", {"id": pg_id})
-            return None
 
-        # status == "done" — only upsert if the session uses homework_mode=submitted
         session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
         if not session:
+            if status == "not_done":
+                await _delete_stale()
             return None
 
         class_id = session.get("class_id", "")
         subject_id = session.get("subject_id", "")
         school_id = session.get("school_id", "") or session.get("tenant_id", "")
-        teacher_id = session.get("teacher_id", "")
         subject_name = session.get("subject_name", "")
 
-        # Defense-in-depth: skip grade upsert for cross-tenant students.
-        # The route layer already rejects mismatches, but this guard
-        # makes the helper safe to call directly in bulk paths too.
-        if school_id:
-            stu_doc = await gd_find_one(self.session, "students", {"id": student_id})
-            if stu_doc:
-                stu_tenant = stu_doc.get("tenant_id") or stu_doc.get("school_id", "")
-                if stu_tenant and stu_tenant != school_id:
-                    return None
+        # Fetch the student doc once: used both for the cross-tenant guard and
+        # to resolve the display name (so an update never blanks a stored name).
+        stu_doc = await gd_find_one(self.session, "students", {"id": student_id})
+        # Defense-in-depth: never touch grade rows for cross-tenant students.
+        # The route layer already rejects mismatches and the bulk path skips
+        # them, but this guard makes the helper safe to call directly too.
+        if school_id and stu_doc:
+            stu_tenant = stu_doc.get("tenant_id") or stu_doc.get("school_id", "")
+            if stu_tenant and stu_tenant != school_id:
+                return None
 
         hw_settings = await gd_find_one(self.session, "session_settings", {
             "class_id": class_id,
@@ -1418,6 +1425,8 @@ class TeacherSessionEngine:
         })
         hw_enabled = hw_settings.get("homework_enabled", True) if hw_settings else True
         if not hw_enabled:
+            if status == "not_done":
+                await _delete_stale()
             return None
 
         columns = await self._resolve_coursework_columns(class_id)
@@ -1433,10 +1442,22 @@ class TeacherSessionEngine:
                     "school_id": school_id,
                 },
             )
+            if status == "not_done":
+                await _delete_stale()
             return None
 
         col_id = hw_col.get("id")
         max_f = float(hw_col.get("max_grade") or 0)
+
+        # Resolve the display name without ever blanking a stored one: prefer the
+        # caller-supplied name, then fall back to the canonical students row.
+        resolved_name = student_name or (stu_doc.get("full_name", "") if stu_doc else "")
+
+        # Canonical homework grade: submitted -> full marks, not submitted -> 0.
+        done = status == "done"
+        score = max_f if done else 0.0
+        percentage = (100.0 if max_f > 0 else 0.0) if done else 0.0
+        is_passing = bool(max_f > 0) if done else False
 
         now = datetime.now(timezone.utc)
         today = now.date().isoformat()
@@ -1444,7 +1465,7 @@ class TeacherSessionEngine:
             "tenant_id": school_id,
             "school_id": school_id,
             "student_id": student_id,
-            "student_name": student_name,
+            "student_name": resolved_name,
             "class_id": class_id,
             "subject_id": subject_id,
             "subject": subject_name,
@@ -1452,10 +1473,10 @@ class TeacherSessionEngine:
             "assessment_id": f"session:{session_id}:{self._CW_HOMEWORK}",
             "assessment_type": "coursework",
             "column_id": col_id,
-            "score": 0,
+            "score": score,
             "max_score": max_f,
-            "percentage": 0.0,
-            "is_passing": False,
+            "percentage": percentage,
+            "is_passing": is_passing,
             "academic_year": "",
             "session_id": session_id,
             "source": "live_session",
@@ -1465,17 +1486,27 @@ class TeacherSessionEngine:
         }
 
         existing_sg = await gd_find_one(self.session, "student_grades", {"id": sg_id})
-        if not existing_sg:
+        if existing_sg:
+            sg_patch = dict(grade_base)
+            if not resolved_name:
+                sg_patch["student_name"] = existing_sg.get("student_name", "")
+            await gd_update_one(self.session, "student_grades", {"id": sg_id}, sg_patch)
+        else:
             await gd_insert(self.session, "student_grades", {**grade_base, "id": sg_id})
 
         existing_pg = await gd_find_one(self.session, "grades", {"id": pg_id})
-        if not existing_pg:
+        if existing_pg:
+            pg_patch = {**grade_base, "visible_to_parent": True}
+            if not resolved_name:
+                pg_patch["student_name"] = existing_pg.get("student_name", "")
+            await gd_update_one(self.session, "grades", {"id": pg_id}, pg_patch)
+        else:
             await gd_insert(
                 self.session, "grades",
                 {**grade_base, "id": pg_id, "visible_to_parent": True},
             )
 
-        return {"column_id": col_id, "score": 0, "max_score": max_f}
+        return {"column_id": col_id, "score": score, "max_score": max_f}
 
     async def get_homework_statuses(self, session_id: str) -> Dict[str, str]:
         """Retrieve homework completion statuses for a session."""
@@ -1536,10 +1567,10 @@ class TeacherSessionEngine:
         not_done = sum(1 for r in records if r["status"] == "not_done")
 
         # Sync grade entries for every student in the bulk update.
-        # "done" upserts provisional rows; "not_done" removes them.
+        # "done" upserts full-mark rows; "not_done" upserts score-0 rows.
         # No exception handler: a DB failure rolls back the whole request.
         done_synced = 0
-        not_done_removed = 0
+        not_done_synced = 0
         for rec in records:
             await self._sync_homework_grade_for_student(
                 session_id=session_id,
@@ -1549,7 +1580,7 @@ class TeacherSessionEngine:
             if rec["status"] == "done":
                 done_synced += 1
             else:
-                not_done_removed += 1
+                not_done_synced += 1
 
         await self._log_event(
             session_id=session_id,
@@ -1563,7 +1594,7 @@ class TeacherSessionEngine:
             "not_done": not_done,
             "grade_updates": {
                 "done_synced": done_synced,
-                "not_done_removed": not_done_removed,
+                "not_done_synced": not_done_synced,
             },
         }
 
@@ -2488,10 +2519,17 @@ class TeacherSessionEngine:
                 col_id = col.get("id")
                 if not col_id:
                     continue
-                # Respect manual override: only fill when teacher hasn't set it.
+                value = self._coursework_value(bucket, agg, col.get("max_grade", 0))
+                # Homework is authoritative from the session toggle: the live
+                # derived value (full marks / 0) always wins over any stored
+                # follow-up value when it is determinable. Other coursework
+                # buckets respect the teacher's manual override.
+                if bucket == self._CW_HOMEWORK:
+                    if value is not None:
+                        row[col_id] = value
+                    continue
                 if col_id in row and row[col_id] not in (None, ""):
                     continue
-                value = self._coursework_value(bucket, agg, col.get("max_grade", 0))
                 if value is not None:
                     row[col_id] = value
             if row:
@@ -2566,15 +2604,22 @@ class TeacherSessionEngine:
             for bucket, col in columns.items():
                 col_id = col.get("id")
                 max_grade = col.get("max_grade", 0)
-                # Effective value: manual override wins, else derived.
-                override = manual_data.get(sid, {}).get(col_id) if isinstance(manual_data.get(sid), dict) else None
-                if override not in (None, ""):
-                    try:
-                        value = float(override)
-                    except (TypeError, ValueError):
-                        value = None
+                derived = self._coursework_value(bucket, agg, max_grade)
+                # Homework is authoritative from the session toggle: the live
+                # derived value (full marks / 0) always wins over a stored
+                # manual override. Other coursework buckets honor the teacher's
+                # manual override, falling back to the derived value.
+                if bucket == self._CW_HOMEWORK:
+                    value = derived
                 else:
-                    value = self._coursework_value(bucket, agg, max_grade)
+                    override = manual_data.get(sid, {}).get(col_id) if isinstance(manual_data.get(sid), dict) else None
+                    if override not in (None, ""):
+                        try:
+                            value = float(override)
+                        except (TypeError, ValueError):
+                            value = None
+                    else:
+                        value = derived
                 if value is None:
                     continue
                 try:
