@@ -31,7 +31,7 @@ import {
   User as UserIcon, Mail, Phone, BookMarked, Heart, Compass,
   ScrollText, Shield, Building2, ListChecks, Video, ImageIcon,
   ClipboardList, FileCheck, PenSquare, Megaphone, HandHeart,
-  PlayCircle, Wand2, Upload
+  PlayCircle, Wand2, Upload, ExternalLink
 } from 'lucide-react';
 import { useTranslation } from '../../contexts/ThemeContext';
 import { getApiErrorMessage } from '../../utils/apiError';
@@ -1554,11 +1554,21 @@ export default function TeacherAchievementsPage() {
                             className="max-h-48 w-auto rounded-lg object-contain mx-auto block"
                           />
                         ) : editPreviewMime === 'application/pdf' ? (
-                          <iframe
-                            src={editPreviewSrc}
-                            title="معاينة PDF"
-                            className="w-full h-64 rounded-lg border border-gray-200 dark:border-gray-700"
-                          />
+                          <div className="flex flex-col items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                            <FileText className="w-12 h-12 text-red-500 dark:text-red-400" aria-hidden="true" strokeWidth={1.5} />
+                            <div className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate max-w-full font-tajawal text-center">
+                              {evidenceForm.file_name || 'ملف PDF'}
+                            </div>
+                            <a
+                              href={editPreviewSrc}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-sm rounded-lg transition-colors font-cairo"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" strokeWidth={1.5} />
+                              فتح PDF
+                            </a>
+                          </div>
                         ) : (
                           <div className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
                             <FileText className="w-8 h-8 text-gray-400 shrink-0" aria-hidden="true" strokeWidth={1.5} />
@@ -1846,11 +1856,21 @@ export default function TeacherAchievementsPage() {
                             className="max-h-48 w-auto rounded-lg object-contain mx-auto block"
                           />
                         ) : manualEvPreviewMime === 'application/pdf' ? (
-                          <iframe
-                            src={manualEvPreviewSrc}
-                            title="معاينة PDF"
-                            className="w-full h-64 rounded-lg border border-gray-200 dark:border-gray-700"
-                          />
+                          <div className="flex flex-col items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                            <FileText className="w-12 h-12 text-red-500 dark:text-red-400" aria-hidden="true" strokeWidth={1.5} />
+                            <div className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate max-w-full font-tajawal text-center">
+                              {manualEvForm.file_name || 'ملف PDF'}
+                            </div>
+                            <a
+                              href={manualEvPreviewSrc}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-sm rounded-lg transition-colors font-cairo"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" strokeWidth={1.5} />
+                              فتح PDF
+                            </a>
+                          </div>
                         ) : (
                           <div className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
                             <FileText className="w-8 h-8 text-gray-400 shrink-0" aria-hidden="true" strokeWidth={1.5} />
@@ -2085,11 +2105,21 @@ export default function TeacherAchievementsPage() {
                         className="max-h-48 w-auto rounded-lg object-contain mx-auto block"
                       />
                     ) : cvPreviewMime === 'application/pdf' ? (
-                      <iframe
-                        src={cvPreviewSrc}
-                        title="معاينة PDF"
-                        className="w-full h-64 rounded-lg border border-gray-200 dark:border-gray-700"
-                      />
+                      <div className="flex flex-col items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                        <FileText className="w-12 h-12 text-red-500 dark:text-red-400" aria-hidden="true" strokeWidth={1.5} />
+                        <div className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate max-w-full font-tajawal text-center">
+                          {cvForm.file_name || 'ملف PDF'}
+                        </div>
+                        <a
+                          href={cvPreviewSrc}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-sm rounded-lg transition-colors font-cairo"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" strokeWidth={1.5} />
+                          فتح PDF
+                        </a>
+                      </div>
                     ) : (
                       <div className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
                         <FileText className="w-8 h-8 text-gray-400 shrink-0" aria-hidden="true" strokeWidth={1.5} />
