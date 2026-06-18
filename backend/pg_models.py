@@ -409,10 +409,15 @@ class Timetable(Base):
     effective_to = Column(String, nullable=True)
     working_days = Column(JSONB, default=list)
     status = Column(String, default="draft")
+    is_published = Column(Boolean, default=False, nullable=True)
     total_sessions = Column(Integer, default=0)
     version = Column(Integer, default=1)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    published_by = Column(String, nullable=True)
+    created_by = Column(String, nullable=True)
+    updated_by = Column(String, nullable=True)
 
 
 class TimetableRun(Base):

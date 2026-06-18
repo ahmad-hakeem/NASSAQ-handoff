@@ -67,6 +67,19 @@ class SmartTimetableResponse(BaseModel):
     statistics: dict = {}
 
 
+class ManualTimetableCreateRequest(BaseModel):
+    """طلب إنشاء جدول يدوي فارغ"""
+    name: str = Field(..., min_length=1, max_length=200)
+    academic_year: Optional[str] = None
+    semester: Optional[int] = None
+
+    @model_validator(mode="after")
+    def name_not_whitespace(self) -> "ManualTimetableCreateRequest":
+        if not self.name.strip():
+            raise ValueError("اسم الجدول لا يمكن أن يكون فارغاً أو مسافات فقط")
+        return self
+
+
 class SmartTimetableSessionResponse(BaseModel):
     """استجابة حصة في الجدول"""
     model_config = ConfigDict(extra="ignore")
@@ -444,23 +457,84 @@ async def smart_get_school_timetables(
     }
 
 
-# --- Timetable Versions List API (New - Must be before dynamic route) ---
-@router.get("/smart-scheduling/timetable/versions")
-async def get_timetable_versions(
-    current_user: dict = Depends(get_current_user),
-    x_school_context: Optional[str] = Header(None)
+# --- Manual Timetable Creation API ---
+@router.post("/smart-scheduling/timetables/manual", status_code=201)
+async def create_timetable_manually(
+    request: ManualTimetableCreateRequest,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN])),
+    x_school_context: Optional[str] = Header(None),
 ):
     """
-    الحصول على جميع نسخ الجدول للمدرسة
-    Get all timetable versions for the school
+    إنشاء جدول يدوي فارغ
+    Create a blank manual draft timetable that the admin can populate session-by-session.
     """
     school_id = resolve_school_id(current_user, x_school_context)
     if not school_id:
         raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
-    
-    # Fetch all timetables
-    timetables = await gd_find(db.session, "timetables", {"school_id": school_id}, order_by="created_at", desc_order=True, limit=100)
-    
+    assert_school_access(current_user, school_id)
+
+    now = datetime.now(timezone.utc).isoformat()
+    timetable_id = str(uuid.uuid4())
+    user_id = current_user.get("id", "system")
+
+    await gd_insert(db.session, "timetables", {
+        "id": timetable_id,
+        "school_id": school_id,
+        "name": request.name.strip(),
+        "academic_year": request.academic_year or "2026-2027",
+        "semester": request.semester or 1,
+        "status": TimetableStatus.DRAFT.value,
+        "is_published": False,
+        "total_sessions": 0,
+        "version": 1,
+        "generation_mode": "manual",
+        "created_by": user_id,
+        "updated_by": user_id,
+        "created_at": now,
+        "updated_at": now,
+    })
+
+    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+    if not timetable:
+        raise HTTPException(status_code=500, detail="تعذّر إنشاء الجدول")
+
+    return {
+        "id": timetable.get("id"),
+        "school_id": timetable.get("school_id"),
+        "name": timetable.get("name"),
+        "status": timetable.get("status"),
+        "is_published": timetable.get("is_published", False),
+        "generation_mode": timetable.get("generation_mode", "manual"),
+        "created_at": timetable.get("created_at"),
+        "created_by": timetable.get("created_by"),
+        "message_ar": "تم إنشاء الجدول اليدوي بنجاح",
+        "message_en": "Manual timetable created successfully",
+    }
+
+
+# --- Timetable Versions List API (New - Must be before dynamic route) ---
+@router.get("/smart-scheduling/timetable/versions")
+async def get_timetable_versions(
+    current_user: dict = Depends(get_current_user),
+    x_school_context: Optional[str] = Header(None),
+    status: Optional[str] = Query(None, description="Filter by status. Default returns draft+published, excludes archived."),
+):
+    """
+    الحصول على جميع نسخ الجدول للمدرسة
+    Get all timetable versions for the school (draft + published by default, excludes archived).
+    """
+    school_id = resolve_school_id(current_user, x_school_context)
+    if not school_id:
+        raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
+
+    query: dict = {"school_id": school_id}
+    if status:
+        query["status"] = status
+    else:
+        query["status"] = {"$in": [TimetableStatus.DRAFT.value, TimetableStatus.PUBLISHED.value]}
+
+    timetables = await gd_find(db.session, "timetables", query, order_by="created_at", desc_order=True, limit=100)
+
     versions = []
     for tt in timetables:
         versions.append({
@@ -473,13 +547,15 @@ async def get_timetable_versions(
             "warnings_count": tt.get("warnings_count", 0),
             "created_at": tt.get("created_at"),
             "published_at": tt.get("published_at"),
+            "published_by": tt.get("published_by"),
             "created_by": tt.get("created_by", "النظام"),
+            "updated_by": tt.get("updated_by"),
         })
-    
+
     return {
         "school_id": school_id,
         "total": len(versions),
-        "versions": versions
+        "versions": versions,
     }
 
 
@@ -888,6 +964,52 @@ async def publish_schedule(
         "notified_count": notified_count,
         "message_ar": "تم نشر الجدول بنجاح.",
         "message_en": "Timetable published successfully.",
+    }
+
+
+# --- Unpublish Timetable API ---
+@router.post("/smart-scheduling/timetable/{timetable_id}/unpublish")
+async def unpublish_timetable(
+    timetable_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN])),
+):
+    """
+    إلغاء نشر الجدول — يعيده إلى حالة المسودة
+    Unpublish a timetable, returning it to draft so it can be edited.
+    """
+    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+    if not timetable:
+        raise HTTPException(status_code=404, detail="الجدول غير موجود")
+
+    school_id = str(timetable.get("school_id", ""))
+    assert_school_access(current_user, school_id)
+
+    if timetable.get("status") != TimetableStatus.PUBLISHED.value:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "NOT_PUBLISHED",
+                "message_ar": "لا يمكن إلغاء نشر جدول غير منشور.",
+                "message_en": "Only published timetables can be unpublished.",
+            },
+        )
+
+    now = datetime.now(timezone.utc).isoformat()
+    user_id = current_user.get("id", "system")
+    await gd_update_one(db.session, "timetables", {"id": timetable_id}, {
+        "status": TimetableStatus.DRAFT.value,
+        "is_published": False,
+        "updated_by": user_id,
+        "updated_at": now,
+    })
+
+    updated = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+    return {
+        "ok": True,
+        "timetable_id": timetable_id,
+        "status": (updated or {}).get("status", TimetableStatus.DRAFT.value),
+        "message_ar": "تم إلغاء نشر الجدول وعاد إلى المسودة.",
+        "message_en": "Timetable unpublished and returned to draft.",
     }
 
 

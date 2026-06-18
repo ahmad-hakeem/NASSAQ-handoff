@@ -21,6 +21,7 @@ import { Button } from '../components/ui/button';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../components/ui/select';
@@ -38,6 +39,7 @@ import {
   Scale, Hourglass, UserMinus, AlertOctagon, AlertTriangle,
   ShieldAlert, Settings, ArrowLeft,
   Undo2, Layers, Lightbulb, X, ExternalLink, CheckCircle2,
+  PenLine, History, Unlock,
 } from 'lucide-react';
 import CandidatesSidePanel from '../components/schedule/CandidatesSidePanel';
 import BulkSubstitutionPanel from '../components/schedule/BulkSubstitutionPanel';
@@ -727,6 +729,17 @@ export default function SchedulePageNew() {
   }, [scheduleView]);
   const [publishing, setPublishing] = useState(false);
 
+  // ── Manual timetable create dialog ────────────────────────────────
+  const [manualCreateOpen, setManualCreateOpen] = useState(false);
+  const [manualCreateName, setManualCreateName] = useState('');
+  const [manualCreating, setManualCreating] = useState(false);
+
+  // ── Timetable versions panel ───────────────────────────────────────
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const [versionsData, setVersionsData] = useState([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [unpublishing, setUnpublishing] = useState(false);
+
   // ── Sticky band density + height tracking (workspace redesign) ────
   // The sticky action band exposes its measured height to the matrix
   // header offsets via the `--sticky-band-h` CSS custom property on
@@ -1313,6 +1326,81 @@ export default function SchedulePageNew() {
     loadGrid();
   }, [loadGrid]);
 
+  // ── Manual timetable create handler ───────────────────────────────
+  const handleManualCreate = useCallback(async () => {
+    const name = manualCreateName.trim();
+    if (!name) {
+      nassaqError(t('manualCreateScheduleNameRequired'), { title: t('manualCreateScheduleFailedTitle') });
+      return;
+    }
+    setManualCreating(true);
+    try {
+      await api.post(
+        '/smart-scheduling/timetables/manual',
+        { name },
+        { headers: { 'X-School-Context': schoolId } },
+      );
+      setManualCreateOpen(false);
+      setManualCreateName('');
+      setScheduleView('draft');
+      setRefreshing(true);
+      await loadGrid('draft');
+      toast.success(t('manualCreateScheduleSuccess'));
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      const msg = (typeof detail === 'string' && detail) || detail?.message_ar
+        || e?.response?.data?.message_ar || t('manualCreateScheduleFailed');
+      nassaqError(msg, { title: t('manualCreateScheduleFailedTitle') });
+    } finally {
+      setManualCreating(false);
+    }
+  }, [api, manualCreateName, schoolId, loadGrid, setScheduleView, nassaqError, t]);
+
+  // ── Versions panel handlers ────────────────────────────────────────
+  const handleOpenVersions = useCallback(async () => {
+    setVersionsOpen(true);
+    setVersionsLoading(true);
+    try {
+      const resp = await api.get('/smart-scheduling/timetable/versions', {
+        headers: { 'X-School-Context': schoolId },
+      });
+      setVersionsData(Array.isArray(resp?.data?.versions) ? resp.data.versions : []);
+    } catch {
+      toast.error(t('timetableVersionLoadFailed'));
+    } finally {
+      setVersionsLoading(false);
+    }
+  }, [api, schoolId, t]);
+
+  const handleUnpublish = useCallback((timetableId) => {
+    nassaqConfirm(
+      t('timetableUnpublishConfirmMessage'),
+      async () => {
+        setUnpublishing(true);
+        try {
+          await api.post(
+            `/smart-scheduling/timetable/${timetableId}/unpublish`,
+            {},
+            { headers: { 'X-School-Context': schoolId } },
+          );
+          toast.success(t('timetableUnpublishSuccess'));
+          setScheduleView('draft');
+          setVersionsOpen(false);
+          setRefreshing(true);
+          await loadGrid('draft');
+        } catch (e) {
+          const detail = e?.response?.data?.detail;
+          const msg = (typeof detail === 'string' && detail) || detail?.message_ar
+            || e?.response?.data?.message_ar || t('timetableUnpublishFailed');
+          nassaqError(msg, { title: t('timetableUnpublishFailedTitle') });
+        } finally {
+          setUnpublishing(false);
+        }
+      },
+      { title: t('timetableUnpublishConfirmTitle'), confirmText: t('timetableUnpublish') },
+    );
+  }, [api, schoolId, loadGrid, setScheduleView, nassaqError, nassaqConfirm, t]);
+
   // Task #141 — Publish flow. Confirms via NassaqAlertDialog (per
   // replit.md: never use native confirm/toast.error for important
   // warnings), POSTs /api/schedule/publish, switches the view to
@@ -1875,6 +1963,42 @@ export default function SchedulePageNew() {
                 </span>
               </Button>
 
+              {/* Create manually */}
+              <Button
+                onClick={() => { setManualCreateName(''); setManualCreateOpen(true); }}
+                disabled={generating}
+                variant="outline"
+                className="border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-700 focus-visible:text-slate-700 shadow-sm h-8 px-2.5"
+                data-band-action="manual-create"
+                title={t('manualCreateSchedule')}
+                aria-label={t('manualCreateSchedule')}
+                data-testid="manual-create-schedule-btn"
+              >
+                <PenLine className="h-4 w-4" />
+                <span data-band-action-label className="ms-1.5">
+                  {t('manualCreateSchedule')}
+                </span>
+                <span data-band-action-label-short className="ms-1.5 hidden">
+                  {t('manualCreateScheduleShort')}
+                </span>
+              </Button>
+
+              {/* Versions */}
+              <Button
+                onClick={handleOpenVersions}
+                variant="outline"
+                className="border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-700 focus-visible:text-slate-700 shadow-sm h-8 px-2.5"
+                data-band-action="versions"
+                title={t('timetableVersionsOpen')}
+                aria-label={t('timetableVersionsOpen')}
+                data-testid="open-timetable-versions-btn"
+              >
+                <History className="h-4 w-4" />
+                <span data-band-action-label className="ms-1.5">
+                  {t('timetableVersionsOpen')}
+                </span>
+              </Button>
+
               {/* Publish */}
               {(() => {
                 const noDraft = !(grid?.timetable_status === 'draft');
@@ -2108,6 +2232,16 @@ export default function SchedulePageNew() {
                   )}
                   {generating ? t('generatingSchedule') : t('autoGenerateSchedule')}
                 </Button>
+                <Button
+                  onClick={() => { setManualCreateName(''); setManualCreateOpen(true); }}
+                  disabled={generating}
+                  variant="outline"
+                  className="border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-700 focus-visible:text-slate-700"
+                  data-testid="empty-state-manual-create-btn"
+                >
+                  <PenLine className="h-4 w-4 me-2" />
+                  {t('manualCreateSchedule')}
+                </Button>
                 {scheduleView === 'published' && (
                   <Button
                     onClick={() => setScheduleView('draft')}
@@ -2303,6 +2437,162 @@ export default function SchedulePageNew() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      {/* ── Manual timetable create dialog ─────────────────────────
+          Dialog with a single text input for naming the blank draft.
+          On submit: POST /smart-scheduling/timetables/manual → switches
+          to draft view and reloads the grid. */}
+      <Dialog open={manualCreateOpen} onOpenChange={(v) => { if (!v) setManualCreateOpen(false); }}>
+        <DialogContent dir={direction} className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-brand-navy">
+              <PenLine className="h-5 w-5 text-brand-turquoise" aria-hidden="true" />
+              {t('manualCreateScheduleTitle')}
+            </DialogTitle>
+            <DialogDescription>
+              {t('manualCreateScheduleDescription')}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 py-2">
+            <Label htmlFor="manual-timetable-name" className="text-xs font-semibold">
+              {t('manualCreateScheduleNameLabel')}
+            </Label>
+            <Input
+              id="manual-timetable-name"
+              dir={direction}
+              value={manualCreateName}
+              onChange={(e) => setManualCreateName(e.target.value)}
+              placeholder={t('manualCreateScheduleNamePlaceholder')}
+              disabled={manualCreating}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !manualCreating) handleManualCreate(); }}
+              data-testid="manual-create-name-input"
+            />
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setManualCreateOpen(false)} disabled={manualCreating}>
+              {t('cancelAction')}
+            </Button>
+            <Button
+              onClick={handleManualCreate}
+              disabled={manualCreating || !manualCreateName.trim()}
+              className="bg-brand-turquoise hover:bg-brand-turquoise-dark text-white"
+              data-testid="manual-create-confirm-btn"
+            >
+              {manualCreating ? (
+                <Loader2 className="h-4 w-4 animate-spin me-1" />
+              ) : (
+                <PenLine className="h-4 w-4 me-1" />
+              )}
+              {manualCreating ? t('manualCreateScheduleCreating') : t('manualCreateScheduleSubmit')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Timetable versions panel ────────────────────────────────
+          Side Sheet listing all draft+published timetables for the school.
+          Published items show a "منشور" badge and an "إلغاء النشر" button.
+          Clicking a draft item switches the grid to draft view. */}
+      <Sheet open={versionsOpen} onOpenChange={setVersionsOpen}>
+        <SheetContent
+          side={direction === 'rtl' ? 'left' : 'right'}
+          dir={direction}
+          className="w-full sm:max-w-md p-0 flex flex-col gap-0"
+          data-testid="timetable-versions-panel"
+        >
+          <SheetHeader className="p-5 bg-gradient-to-l from-brand-turquoise/15 to-brand-turquoise/5 border-b border-brand-turquoise/30 text-start">
+            <SheetTitle className="flex items-center gap-2 text-brand-navy">
+              <History className="h-5 w-5 text-brand-turquoise" aria-hidden="true" />
+              {t('timetableVersionsTitle')}
+            </SheetTitle>
+            <SheetDescription className="text-brand-navy/70 text-xs">
+              {t('timetableVersionsOpen')}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
+            {versionsLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+              </div>
+            ) : versionsData.length === 0 ? (
+              <p className="text-center text-slate-500 text-sm py-10">
+                {t('timetableVersionsEmpty')}
+              </p>
+            ) : (
+              versionsData.map((v) => {
+                const isPublished = v.status === 'published';
+                const isDraft = v.status === 'draft';
+                const isManual = v.generation_mode === 'manual';
+                return (
+                  <div
+                    key={v.id}
+                    className={`rounded-lg border bg-white p-3 flex flex-col gap-2 ${isPublished ? 'border-emerald-200' : 'border-slate-200'}`}
+                    data-testid={`version-row-${v.status}`}
+                  >
+                    <div className="flex items-start justify-between gap-2 min-w-0">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-sm text-brand-navy truncate">
+                          {v.versionName}
+                        </p>
+                        {v.created_at && (
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            {t('timetableCreatedAtLabel')}{' '}
+                            {new Date(v.created_at).toLocaleDateString(direction === 'rtl' ? 'ar-EG' : 'en-US')}
+                          </p>
+                        )}
+                        {isPublished && v.published_at && (
+                          <p className="text-[11px] text-emerald-600 mt-0.5">
+                            {t('timetablePublishedAtLabel')}{' '}
+                            {new Date(v.published_at).toLocaleDateString(direction === 'rtl' ? 'ar-EG' : 'en-US')}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1 shrink-0">
+                        {isPublished && (
+                          <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-[10px]" data-testid="published-badge">
+                            {t('timetablePublishedBadge')}
+                          </Badge>
+                        )}
+                        {isDraft && (
+                          <Badge variant="outline" className="border-amber-400 text-amber-700 bg-amber-50 text-[10px]">
+                            {t('timetableDraftBadge')}
+                          </Badge>
+                        )}
+                        {isManual && (
+                          <Badge variant="outline" className="border-slate-300 text-slate-600 bg-slate-50 text-[10px]">
+                            {t('timetableManualBadge')}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    {isPublished && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleUnpublish(v.id)}
+                        disabled={unpublishing}
+                        className="self-start border-amber-300 text-amber-700 hover:bg-amber-50 hover:text-amber-700 focus-visible:text-amber-700 h-7 text-xs gap-1"
+                        data-testid="unpublish-timetable-btn"
+                      >
+                        {unpublishing ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Unlock className="h-3 w-3" />
+                        )}
+                        {t('timetableUnpublish')}
+                      </Button>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
       </div>
     </Sidebar>
   );
