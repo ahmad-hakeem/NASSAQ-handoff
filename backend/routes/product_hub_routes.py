@@ -46,7 +46,7 @@ Collections:
 - issue_versions: Immutable edit history; (issue_id, revision) unique; tenant_id nullable
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Body, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, Query, Body, UploadFile, File, BackgroundTasks
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 import asyncio
@@ -169,7 +169,8 @@ Respond in this exact JSON format (Arabic text preferred):
   "impact_assessment": "impact assessment in Arabic"
 }}"""
 
-        response = client.chat.completions.create(
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
             model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": "You are a product intelligence AI. Respond ONLY with valid JSON."},
@@ -820,8 +821,160 @@ async def upload_evidence(
     }
 
 
+async def _enrich_created_issue(issue_id: str, actor: dict, user_provided_title: bool) -> None:
+    """Run the heavy Hakim AI work for a freshly created issue, off the request path.
+
+    The Hakim analysis + engineering-prompt generation are two sequential LLM
+    calls that used to run synchronously inside ``create_issue`` and pushed the
+    POST to ~38s. The dev proxy / production load balancer severs the connection
+    long before that, so the browser never received the 200 and showed a false
+    "فشل في إرسال التحدي" toast even though the issue was already saved. We now
+    return immediately and enrich here, after the response is sent.
+
+    This runs with its OWN SQLAlchemy session because the request-scoped session
+    bound by ``pg_session_middleware`` is already closed by the time a background
+    task executes. It is best-effort and fail-safe: any error is logged and
+    swallowed so a failed enrichment never crashes the worker, and the issue can
+    still be re-analyzed via ``POST /issues/{id}/reanalyze``.
+    """
+    from db import async_session_factory
+    try:
+        async with async_session_factory() as session:
+            db.set_session(session)
+            try:
+                issue = await gd_find_one(
+                    db.session, "product_issues", {"id": issue_id, "is_deleted": {"$ne": True}}
+                )
+                if not issue:
+                    logger.info(f"[ProductHub] Skip AI enrichment — issue {issue_id[:8]} missing/deleted")
+                    return
+
+                now = datetime.now(timezone.utc)
+                hakim_analysis = await _run_hakim_analysis(issue)
+                suggested_title = hakim_analysis.get("suggested_title", "")
+                suggested_priority = hakim_analysis.get("suggested_priority", "medium")
+                suggested_team = hakim_analysis.get("suggested_team")
+
+                # Reflect AI results on the in-memory doc so the engineering
+                # prompt is generated against the enriched facts. These in-memory
+                # mutations feed prompt generation only — what we actually persist
+                # is decided below against a fresh re-fetch.
+                issue["hakim_analysis"] = hakim_analysis
+                if not user_provided_title and suggested_title:
+                    issue["title"] = suggested_title
+                if suggested_priority and suggested_priority != "medium":
+                    issue["priority"] = suggested_priority
+                if suggested_team:
+                    issue["assigned_team"] = suggested_team
+                generated_prompt = await _generate_prompt(issue)
+
+                # Re-fetch immediately before writing. The LLM calls above take
+                # tens of seconds, during which an admin may have edited the
+                # issue. Base every conditional override on the CURRENT persisted
+                # state so enrichment never clobbers a human edit.
+                current = await gd_find_one(
+                    db.session, "product_issues", {"id": issue_id, "is_deleted": {"$ne": True}}
+                )
+                if not current:
+                    logger.info(f"[ProductHub] Skip AI enrichment write — issue {issue_id[:8]} missing/deleted")
+                    return
+
+                existing_ai = current.get("ai") if isinstance(current.get("ai"), dict) else {}
+                updates: dict = {
+                    "hakim_analysis": hakim_analysis,
+                    "ai_suggested_priority": suggested_priority,
+                    "ai": {
+                        **existing_ai,
+                        "suggested_title": suggested_title,
+                        "duplicate_detected": bool(hakim_analysis.get("duplicate_ids")),
+                        "duplicate_candidates": [
+                            {"issue_id": did, "confidence": 0.0}
+                            for did in hakim_analysis.get("duplicate_ids", [])[:3]
+                        ],
+                        "suggested_team": suggested_team,
+                        "priority_reasoning": hakim_analysis.get("priority_reasoning", ""),
+                        "team_reasoning": hakim_analysis.get("team_reasoning", ""),
+                        "technical_notes": hakim_analysis.get("technical_notes", ""),
+                        "impact_assessment": hakim_analysis.get("impact_assessment", ""),
+                    },
+                    "updated_at": now.isoformat(),
+                }
+
+                # Only override creation-time defaults — never clobber an admin edit.
+                default_title = f"مشكلة في {current.get('page')}"
+                if not user_provided_title and suggested_title and current.get("title") == default_title:
+                    updates["title"] = suggested_title
+
+                if current.get("priority") == "medium" and suggested_priority and suggested_priority != "medium":
+                    updates["priority"] = suggested_priority
+                    sla = calculate_sla(suggested_priority, now)
+                    updates["sla_deadline"] = sla["sla_deadline"]
+                    updates["sla_status"] = sla["sla_status"]
+
+                if not current.get("assigned_team") and suggested_team:
+                    updates["assigned_team"] = suggested_team
+                    updates["assignment"] = {**(current.get("assignment") or {}), "team": suggested_team}
+
+                # Keep an admin-regenerated prompt if one now exists; otherwise
+                # persist the one we just generated.
+                if current.get("generated_prompt"):
+                    updates["ai"]["generated_prompt"] = current.get("generated_prompt")
+                else:
+                    updates["generated_prompt"] = generated_prompt
+                    updates["ai"]["generated_prompt"] = generated_prompt
+
+                await gd_update_one(db.session, "product_issues", {"id": issue_id}, updates)
+
+                if hakim_analysis.get("duplicate_ids"):
+                    for dup_id in hakim_analysis["duplicate_ids"][:3]:
+                        try:
+                            already = await gd_find_one(
+                                db.session, "issue_duplicates_map",
+                                {"issue_id": issue_id, "duplicate_of": dup_id},
+                            )
+                            if already:
+                                continue
+                            target = await gd_find_one(
+                                db.session, "product_issues",
+                                {"id": dup_id, "is_deleted": {"$ne": True}},
+                            )
+                            if not target:
+                                logger.warning(f"[ProductHub] Skipping duplicate entry: issue {dup_id} not found in product_issues")
+                                continue
+                            await gd_insert(db.session, "issue_duplicates_map", {
+                                "id": str(uuid.uuid4()),
+                                "issue_id": issue_id,
+                                "duplicate_of": dup_id,
+                                "confidence": 0.0,
+                                "detected_by": "hakim",
+                                "created_at": now.isoformat(),
+                            })
+                            await audit_duplicate_detected(issue_id, actor, dup_id)
+                        except Exception as dup_err:
+                            logger.warning(f"[ProductHub] Failed to record duplicate for {dup_id}: {dup_err}")
+
+                await handle_hakim_analysis(issue_id, actor, hakim_analysis, source="auto_on_create")
+                await audit_ai_analyzed(issue_id, actor, hakim_analysis)
+                await handle_prompt_generated(issue_id, actor)
+                await audit_prompt_generated(issue_id, actor)
+
+                await session.commit()
+                logger.info(f"[ProductHub] AI enrichment complete for issue {issue_id[:8]}")
+            except Exception:
+                await session.rollback()
+                raise
+            finally:
+                db.set_session(None)
+    except Exception as e:
+        logger.warning(f"[ProductHub] Background AI enrichment failed for issue {issue_id[:8]}: {e}")
+
+
 @router.post("/issues")
-async def create_issue(data: IssueCreate, current_user: dict = Depends(get_current_user)):
+async def create_issue(
+    data: IssueCreate,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
+):
     now = datetime.now(timezone.utc)
     user_id = get_user_id(current_user)
 
@@ -829,72 +982,45 @@ async def create_issue(data: IssueCreate, current_user: dict = Depends(get_curre
     issue_id = issue["id"]
     issue["issue_number"] = await _next_issue_number()
 
-    hakim_analysis = await _run_hakim_analysis(issue)
-    issue["hakim_analysis"] = hakim_analysis
-    issue["ai"] = {
-        "suggested_title": hakim_analysis.get("suggested_title", ""),
-        "duplicate_detected": bool(hakim_analysis.get("duplicate_ids")),
-        "duplicate_candidates": [
-            {"issue_id": did, "confidence": 0.0}
-            for did in hakim_analysis.get("duplicate_ids", [])[:3]
-        ],
-        "suggested_team": hakim_analysis.get("suggested_team"),
-        "generated_prompt": None,
-        "priority_reasoning": hakim_analysis.get("priority_reasoning", ""),
-        "team_reasoning": hakim_analysis.get("team_reasoning", ""),
-        "technical_notes": hakim_analysis.get("technical_notes", ""),
-        "impact_assessment": hakim_analysis.get("impact_assessment", ""),
-    }
-
-    issue["title"] = data.title.strip() if data.title and data.title.strip() else hakim_analysis.get("suggested_title", f"مشكلة في {data.page}")
-    issue["priority"] = hakim_analysis.get("suggested_priority", "medium")
-    issue["ai_suggested_priority"] = hakim_analysis.get("suggested_priority", "medium")
-    issue["assigned_team"] = hakim_analysis.get("suggested_team")
-    issue["assignment"]["team"] = hakim_analysis.get("suggested_team")
+    # Insert with safe defaults and return fast. The heavy AI work (Hakim
+    # analysis + engineering-prompt generation) is offloaded to a post-response
+    # background task — see _enrich_created_issue for the full rationale.
+    user_provided_title = bool(data.title and data.title.strip())
+    issue["title"] = data.title.strip() if user_provided_title else f"مشكلة في {data.page}"
+    issue["priority"] = "medium"
+    issue["ai_suggested_priority"] = "medium"
 
     sla = calculate_sla(issue["priority"], now)
     issue["sla_deadline"] = sla["sla_deadline"]
     issue["sla_status"] = sla["sla_status"]
 
-    issue["generated_prompt"] = await _generate_prompt(issue)
-    issue["ai"]["generated_prompt"] = issue["generated_prompt"]
-
     issue["system"]["last_status_changed_at"] = now.isoformat()
 
-    # Insert the main issue FIRST so foreign-key constraints on issue_duplicates_map are satisfied
     await gd_insert(db.session, "product_issues", {**issue, "_id": issue_id})
-
-    if hakim_analysis.get("duplicate_ids"):
-        for dup_id in hakim_analysis["duplicate_ids"][:3]:
-            try:
-                existing = await gd_find_one(db.session, "product_issues", {"id": dup_id, "is_deleted": {"$ne": True}})
-                if not existing:
-                    logger.warning(f"[ProductHub] Skipping duplicate entry: issue {dup_id} not found in product_issues")
-                    continue
-                dup_entry = {
-                    "id": str(uuid.uuid4()),
-                    "issue_id": issue_id,
-                    "duplicate_of": dup_id,
-                    "confidence": 0.0,
-                    "detected_by": "hakim",
-                    "created_at": now.isoformat(),
-                }
-                await gd_insert(db.session, "issue_duplicates_map", dup_entry)
-                await audit_duplicate_detected(issue_id, current_user, dup_id)
-            except Exception as dup_err:
-                logger.warning(f"[ProductHub] Failed to record duplicate for {dup_id}: {dup_err}")
 
     await handle_issue_created(issue_id, issue, current_user)
     await audit_issue_created(issue_id, current_user, issue)
 
-    await handle_hakim_analysis(issue_id, current_user, hakim_analysis, source="auto_on_create")
-    await audit_ai_analyzed(issue_id, current_user, hakim_analysis)
+    # Commit the creation NOW so the row is durable and visible before the
+    # background enrichment task runs. Under BaseHTTPMiddleware, the response's
+    # BackgroundTasks execute concurrently with pg_session_middleware's own
+    # post-response commit, so without this explicit commit the task's fresh
+    # session can race ahead and not yet see the freshly-inserted issue —
+    # causing it to skip enrichment entirely.
+    await db.session.commit()
 
-    await handle_prompt_generated(issue_id, current_user)
-    await audit_prompt_generated(issue_id, current_user)
-
-    logger.info(f"[ProductHub] Issue created: #{issue['issue_number']} ({issue_id[:8]})")
     issue.pop("_id", None)
+    logger.info(f"[ProductHub] Issue created: #{issue['issue_number']} ({issue_id[:8]}) — AI enrichment scheduled")
+
+    # Sanitized actor copy (identity/role only — no token/password fields) for
+    # the background task's event/audit writes.
+    actor = {
+        "id": user_id,
+        "full_name": current_user.get("full_name", ""),
+        "role": current_user.get("role", ""),
+        "email": current_user.get("email", ""),
+    }
+    background_tasks.add_task(_enrich_created_issue, issue_id, actor, user_provided_title)
 
     redact_issue_for_role(issue, current_user)
     enrich_sla_state(issue)
