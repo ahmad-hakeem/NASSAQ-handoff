@@ -181,11 +181,33 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         for child in children:
             child_id = child.get("id")
 
-            total_days = await gd_count(db.session, "attendance", {"student_id": child_id})
-            present_days = await gd_count(db.session, "attendance", {"student_id": child_id, "status": "present"})
-            # Honest empty: when no attendance records exist, return null
-            # rather than an invented "100%" that masks missing data. The
-            # frontend renders a placeholder for null. (Audit 2026-05-10.)
+            # Use class-level distinct dates as denominator (same pattern as
+            # the new dashboard path lines 276-296 and detail endpoint 561-575).
+            # Raw gd_count(student rows) == gd_count(present rows) when absent
+            # students have no row → always 100%. Scope by school_id always.
+            child_class_id = child.get("class_id")
+            child_school_id = child.get("school_id") or school_id
+            if child_class_id and child_school_id:
+                class_dates = await gd_distinct(
+                    db.session, "attendance", "date",
+                    {"school_id": child_school_id, "class_id": child_class_id},
+                )
+                total_days = len({str(d)[:10] for d in class_dates if d})
+                present_days = await gd_count(
+                    db.session, "attendance",
+                    {"school_id": child_school_id, "class_id": child_class_id,
+                     "student_id": child_id, "status": "present"},
+                )
+            else:
+                total_days = await gd_count(
+                    db.session, "attendance",
+                    {"school_id": child_school_id, "student_id": child_id},
+                )
+                present_days = await gd_count(
+                    db.session, "attendance",
+                    {"school_id": child_school_id, "student_id": child_id, "status": "present"},
+                )
+            # Honest empty: no sessions → null, not invented 100%. (Audit 2026-05-10.)
             attendance_rate = (present_days / total_days * 100) if total_days > 0 else None
 
             recent_grades = await gd_find(db.session, "grades", {"student_id": child_id}, order_by="date", desc_order=True, limit=3)
