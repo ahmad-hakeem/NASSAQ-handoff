@@ -1446,6 +1446,8 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             # inclusive [start, end] on a timestamp column.
             return {"$gte": start.isoformat(), "$lt": (end + timedelta(days=1)).isoformat()}
 
+        child_class_id = child.get("class_id")
+
         # ----- Attendance (this week) -----
         attendance_records = await gd_find(db.session, "attendance", {
             "student_id": child_id,
@@ -1463,7 +1465,17 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             if day_key:
                 per_day_status[day_key] = status
 
-        att_total = sum(att_counts.values())
+        # Denominator: class-level distinct dates so absent students with no
+        # row still count toward total (mirrors dashboard/children fix, Issue #30).
+        if child_class_id:
+            _cls_dates_wk = await gd_distinct(
+                db.session, "attendance", "date",
+                {"school_id": tenant_school_id, "class_id": child_class_id,
+                 "date": _date_range(week_start, week_end)},
+            )
+            att_total = len({str(d)[:10] for d in _cls_dates_wk if d})
+        else:
+            att_total = len({str(r.get("date") or "")[:10] for r in attendance_records if r.get("date")}) or sum(att_counts.values())
         att_rate = round(((att_counts["present"] + att_counts["late"]) / att_total) * 100) if att_total > 0 else None
 
         # Prior-week attendance for trend
@@ -1473,7 +1485,15 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "date": _date_range(prev_week_start, prev_week_end),
         }, limit=50)
         prev_present = sum(1 for r in prev_attendance if (r.get("status") or "").lower() in ("present", "late"))
-        prev_total = len(prev_attendance)
+        if child_class_id:
+            _cls_dates_pw = await gd_distinct(
+                db.session, "attendance", "date",
+                {"school_id": tenant_school_id, "class_id": child_class_id,
+                 "date": _date_range(prev_week_start, prev_week_end)},
+            )
+            prev_total = len({str(d)[:10] for d in _cls_dates_pw if d})
+        else:
+            prev_total = len(prev_attendance)
         prev_att_rate = round((prev_present / prev_total) * 100) if prev_total > 0 else None
         att_trend = (att_rate - prev_att_rate) if (att_rate is not None and prev_att_rate is not None) else None
 
@@ -2910,12 +2930,23 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
 
-        total_attendance = await gd_count(db.session, "attendance", {"student_id": child_id})
         present = await gd_count(db.session, "attendance", {"student_id": child_id, "status": "present"})
         absent = await gd_count(db.session, "attendance", {"student_id": child_id, "status": "absent"})
         late = await gd_count(db.session, "attendance", {"student_id": child_id, "status": "late"})
-        # Honest empty: null when no records (was a fake 100%). (Audit 2026-05-10.)
-        attendance_rate = round((present / total_attendance * 100), 1) if total_attendance > 0 else None
+        # Denominator: class-level distinct dates so absent-with-no-row students
+        # are counted. Falls back to student row count when class unknown.
+        # Numerator includes late as "attended" for consistency. (Issue #30.)
+        _pr_school_id = child.get("school_id") or current_user.get("tenant_id")
+        _pr_class_id = child.get("class_id")
+        if _pr_class_id and _pr_school_id:
+            _pr_cls_dates = await gd_distinct(
+                db.session, "attendance", "date",
+                {"school_id": _pr_school_id, "class_id": _pr_class_id},
+            )
+            total_attendance = len({str(d)[:10] for d in _pr_cls_dates if d})
+        else:
+            total_attendance = await gd_count(db.session, "attendance", {"student_id": child_id})
+        attendance_rate = round(((present + late) / total_attendance * 100), 1) if total_attendance > 0 else None
 
         grades = await gd_find(db.session, "grades", {"student_id": child_id}, limit=500)
         subjects_grades = {}
