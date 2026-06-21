@@ -357,6 +357,7 @@ export default function SessionTeachPage() {
   const [showAddOtherItems, setShowAddOtherItems] = useState(false);
   const [participationScores, setParticipationScores] = useState({});
   const [correctAnswerWeight, setCorrectAnswerWeight] = useState(null);
+  const [correctAnswerWeightDirty, setCorrectAnswerWeightDirty] = useState(false);
   const [effectiveCorrectAnswerWeight, setEffectiveCorrectAnswerWeight] = useState(5);
   const [savingSettings, setSavingSettings] = useState(false);
   // If the active action tab gets disabled by settings, switch to a safe default
@@ -510,6 +511,7 @@ export default function SessionTeachPage() {
       }
       const caw = s.correct_answer_weight;
       setCorrectAnswerWeight(caw != null ? Number(caw) : null);
+      setCorrectAnswerWeightDirty(false);
       // effective_correct_answer_weight is the resolved value after the
       // session-override → tenant-default → system-default (5) waterfall.
       const ecaw = s.effective_correct_answer_weight;
@@ -534,7 +536,7 @@ export default function SessionTeachPage() {
     }
     setSavingSettings(true);
     try {
-      await api.post(`/session/${sessionId}/settings`, {
+      const settingsPayload = {
         subject_id: effectiveSubjectId,
         participation_enabled: participationEnabled,
         homework_enabled: homeworkEnabled,
@@ -544,8 +546,14 @@ export default function SessionTeachPage() {
         skill_enabled: skillEnabled,
         extra_columns: followupColumns,
         participation_scores: participationScores,
-        correct_answer_weight: correctAnswerWeight,
-      });
+      };
+      // Only include correct_answer_weight when the teacher explicitly changed
+      // it in this dialog session. Omitting the key entirely means "don't touch"
+      // on the backend, preventing an accidental clear of a previously saved weight.
+      if (correctAnswerWeightDirty) {
+        settingsPayload.correct_answer_weight = correctAnswerWeight;
+      }
+      await api.post(`/session/${sessionId}/settings`, settingsPayload);
       // Persist grade values only. Columns are owned by the class-level
       // grade-columns API (single source of truth shared with سجل الطلاب).
       if (Object.keys(followupData).length > 0) {
@@ -554,6 +562,7 @@ export default function SessionTeachPage() {
         }).catch(() => {});
       }
       toast.success(t('saved') || t('saveSettings'));
+      setCorrectAnswerWeightDirty(false);
       setShowSidebarSettings(false);
       loadSessionSettings();
     } catch (e) {
@@ -3320,7 +3329,7 @@ export default function SessionTeachPage() {
           onParticipationScoresChange: setParticipationScores,
           correctAnswerWeight,
           effectiveCorrectAnswerWeight,
-          onCorrectAnswerWeightChange: setCorrectAnswerWeight,
+          onCorrectAnswerWeightChange: (v) => { setCorrectAnswerWeight(v); setCorrectAnswerWeightDirty(true); },
           onSave: saveSessionSettings,
           saving: savingSettings,
         }}
