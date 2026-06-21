@@ -1011,11 +1011,15 @@ async def get_curriculum_plan(
     lessons = await gd_find(db.session, "curriculum_lessons", query, order_by="week", limit=500)
     total = len(lessons)
     completed = len([l for l in lessons if l.get("is_completed")])
+    class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
+    date_range = await _get_curriculum_date_range(class_doc or {})
     return {
         "lessons": lessons,
         "total": total,
         "completed": completed,
         "progress": round((completed / total * 100) if total > 0 else 0),
+        "curriculum_start_date": date_range.get("curriculum_start_date"),
+        "curriculum_end_date": date_range.get("curriculum_end_date"),
     }
 
 

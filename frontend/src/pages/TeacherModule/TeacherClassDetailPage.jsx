@@ -75,7 +75,7 @@ export default function TeacherClassDetailPage() {
     setSearchParams({ tab }, { replace: true });
   };
 
-  const [curriculumData, setCurriculumData] = useState({ lessons: [], total: 0, completed: 0, progress: 0 });
+  const [curriculumData, setCurriculumData] = useState({ lessons: [], total: 0, completed: 0, progress: 0, curriculum_start_date: null, curriculum_end_date: null });
   const [curriculumLoading, setCurriculumLoading] = useState(false);
   const [curriculumError, setCurriculumError] = useState(false);
   const [expandedWeeks, setExpandedWeeks] = useState({});
@@ -504,7 +504,17 @@ export default function TeacherClassDetailPage() {
     };
   }, [curriculumData.lessons]);
 
-  const isBehind = curriculumData.total > 0 && curriculumData.progress < 40;
+  const isBehind = (() => {
+    if (!curriculumData.total || !curriculumData.curriculum_start_date || !curriculumData.curriculum_end_date) return false;
+    const start = new Date(curriculumData.curriculum_start_date).getTime();
+    const end = new Date(curriculumData.curriculum_end_date).getTime();
+    const now = Date.now();
+    const termLength = end - start;
+    if (termLength <= 0) return false;
+    const elapsed = Math.min(Math.max(now - start, 0), termLength);
+    const expectedProgress = (elapsed / termLength) * 100;
+    return curriculumData.progress < expectedProgress - 15;
+  })();
 
   const visibleColumns = gradeColumns.filter(c => c.visible !== false);
 
