@@ -444,6 +444,10 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
 
+        # Issue #30: enrich with live class name from classes table (stale denorm fix).
+        from utils.parent_children_resolution import enrich_children_with_class_names
+        [child] = await enrich_children_with_class_names([child], db.session, child.get("school_id") or current_user.get("tenant_id"))
+
         child_sid = child.get("school_id") or current_user.get("tenant_id")
         child_school_name = child.get("school_name")
         if not child_school_name and child_sid:
@@ -2089,6 +2093,10 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"), current_user=current_user)
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح")
+
+        # Issue #30: enrich with live class name from classes table (stale denorm fix).
+        from utils.parent_children_resolution import enrich_children_with_class_names
+        [child] = await enrich_children_with_class_names([child], db.session, child.get("school_id") or current_user.get("tenant_id"))
 
         sid = child.get("school_id") or current_user.get("tenant_id")
         school_name = child.get("school_name", "")
