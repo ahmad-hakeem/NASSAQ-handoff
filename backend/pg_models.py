@@ -746,6 +746,10 @@ class Notification(Base):
     # that don't pass a category still render in the catch-all bucket.
     category = Column(String, nullable=False, default="general", server_default="general")
     cta_url = Column(String, nullable=True)
+    # Task #1006 — optional student reference so parents can filter their
+    # notification inbox by child. Nullable and SET NULL on student delete
+    # so notification history is preserved even when a student is removed.
+    student_id = Column(String, ForeignKey("students.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     user = relationship("User", back_populates="notifications", foreign_keys=[user_id], lazy="selectin")

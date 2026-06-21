@@ -109,6 +109,9 @@ class NotificationEngine:
             read_at=None,
             action_url=kwargs.get("action_url"),
             extra_data=meta,
+            # Task #1006 — persist the student reference so parents can
+            # filter their notification inbox by child.
+            student_id=kwargs.get("student_id"),
             created_at=now,
         )
         self.session.add(obj)
@@ -560,7 +563,8 @@ class NotificationEngine:
             category=NotificationCategory.ATTENDANCE.value,
             priority=NotificationPriority.HIGH.value,
             entity_type="attendance",
-            entity_id=student_id
+            entity_id=student_id,
+            student_id=student_id,
         )
 
     async def trigger_grade_posted(
@@ -589,6 +593,7 @@ class NotificationEngine:
             category=NotificationCategory.ACADEMIC.value,
             priority=NotificationPriority.MEDIUM.value,
             entity_type="assessment",
+            student_id=student_id,
             metadata={
                 "score": score,
                 "max_score": max_score,
@@ -619,7 +624,8 @@ class NotificationEngine:
             category=NotificationCategory.BEHAVIOUR.value,
             priority=NotificationPriority.MEDIUM.value if is_positive else NotificationPriority.HIGH.value,
             entity_type="behaviour",
-            entity_id=student_id
+            entity_id=student_id,
+            student_id=student_id,
         )
 
     async def get_notification_stats(

@@ -16,7 +16,7 @@ import {
   Bell, BellOff, Check, CheckCheck, Trash2, Filter, RefreshCw,
   Calendar, CalendarCheck, ClipboardList, AlertTriangle, Info,
   MessageSquare, Megaphone, Eye, Clock, Search, Settings,
-  Inbox, AlertCircle, Loader2, FileText
+  Inbox, AlertCircle, Loader2, FileText, User
 } from 'lucide-react';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -82,6 +82,7 @@ export const NotificationsPage = ({ embedded = false }) => {
 
   const isManagerView = isPlatformAdmin || isSchoolPrincipal;
   const isReceiverView = !isManagerView;
+  const isParent = user?.role === 'parent';
 
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -100,6 +101,9 @@ export const NotificationsPage = ({ embedded = false }) => {
   // two flows can evolve independently. Server also persists the state on
   // the unavailability doc, but this gives us instant UI feedback.
   const [acknowledgedRelocationIds, setAcknowledgedRelocationIds] = useState(() => new Set());
+  // Task #1006 — per-child filter for parent inbox
+  const [linkedChildren, setLinkedChildren] = useState([]);
+  const [selectedChildId, setSelectedChildId] = useState('all');
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -107,14 +111,15 @@ export const NotificationsPage = ({ embedded = false }) => {
       let url = '/notifications?limit=200';
       if (filterType && filterType !== 'all') url += `&notification_type=${filterType}`;
       if (filterRead !== 'all') url += `&read_status=${filterRead === 'read'}`;
+      if (isParent && selectedChildId && selectedChildId !== 'all') url += `&student_id=${encodeURIComponent(selectedChildId)}`;
       const response = await api.get(url);
       setNotifications(response.data);
     } catch (error) {
-      console.error('Failed to fetch notifications:', error);
+      // intentionally silent — parent inbox failure is handled by empty state
     } finally {
       setLoading(false);
     }
-  }, [api, filterType, filterRead]);
+  }, [api, filterType, filterRead, isParent, selectedChildId]);
 
   const fetchAnalytics = async () => {
     try {
@@ -129,6 +134,19 @@ export const NotificationsPage = ({ embedded = false }) => {
       setPrefSettings(res.data || {});
     } catch (error) { console.error('Failed to fetch prefs:', error); }
   };
+
+  useEffect(() => {
+    if (!isParent || !embedded) return;
+    api.get('/parent-portal/children')
+      .then(res => {
+        const raw = res.data;
+        const list = Array.isArray(raw) ? raw
+          : Array.isArray(raw?.children) ? raw.children
+          : [];
+        setLinkedChildren(list);
+      })
+      .catch(() => {});
+  }, [api, isParent, embedded]);
 
   useEffect(() => {
     fetchNotifications();
@@ -388,6 +406,12 @@ export const NotificationsPage = ({ embedded = false }) => {
                 <p className="text-xs text-muted-foreground line-clamp-2">
                   {prettifyText(isRTL ? notification.message : (notification.message_en || notification.message), isRTL)}
                 </p>
+                {notification.student && (notification.student.name_ar || notification.student.code) && (
+                  <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-medium text-brand-navy/70 dark:text-brand-turquoise/70 bg-brand-navy/5 dark:bg-brand-turquoise/10 rounded-full px-2 py-0.5 w-fit">
+                    <User className="h-2.5 w-2.5 shrink-0" aria-hidden="true" strokeWidth={1.5} />
+                    {notification.student.name_ar || notification.student.code}
+                  </span>
+                )}
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <Badge className={`${typeConf.color} text-white text-[10px] border-0`}>
@@ -535,6 +559,22 @@ export const NotificationsPage = ({ embedded = false }) => {
                   <div className="flex items-center justify-between flex-wrap gap-3">
                     <CardTitle className="text-base font-cairo">{isRTL ? 'جميع الإشعارات' : 'All Notifications'}</CardTitle>
                     <div className="flex gap-2 flex-wrap">
+                      {isParent && embedded && linkedChildren.length > 0 && (
+                        <Select value={selectedChildId} onValueChange={val => { setSelectedChildId(val); }}>
+                          <SelectTrigger className="w-[140px] h-9">
+                            <User className="h-3.5 w-3.5 me-1.5 text-muted-foreground" aria-hidden="true" strokeWidth={1.5} />
+                            <SelectValue placeholder={isRTL ? 'كل الأبناء' : 'All Children'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">{isRTL ? 'كل الأبناء' : 'All Children'}</SelectItem>
+                            {linkedChildren.map(child => (
+                              <SelectItem key={child.id} value={child.id}>
+                                {child.full_name || child.name || child.id}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                       <Select value={filterType} onValueChange={val => { setFilterType(val); setTimeout(() => fetchNotifications(), 0); }}>
                         <SelectTrigger className="w-[130px] h-9"><SelectValue placeholder={t('type4')} /></SelectTrigger>
                         <SelectContent>

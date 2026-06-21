@@ -129,6 +129,13 @@ class NotificationCreate(BaseModel):
     # the rules dict remain unrestricted (legacy behaviour preserved).
     template_id: Optional[str] = None
 
+class StudentRef(BaseModel):
+    """Minimal student reference surfaced on notification responses."""
+    id: str
+    name_ar: str
+    code: Optional[str] = None
+
+
 class NotificationResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str
@@ -158,6 +165,9 @@ class NotificationResponse(BaseModel):
     # unavailability with an alternative location.
     unavailability_id: Optional[str] = None
     alternative_location: Optional[str] = None
+    # Task #1006 — minimal student reference so the parent inbox can show
+    # which child the notification is about without a second round-trip.
+    student: Optional[StudentRef] = None
 
 class NotificationBulkCreate(BaseModel):
     title: str
@@ -189,6 +199,7 @@ async def create_notification_internal(
     extra_data: Optional[Dict[str, Any]] = None,
     category: Optional[str] = None,
     cta_url: Optional[str] = None,
+    student_id: Optional[str] = None,
 ):
     """Internal helper to create notifications from other engines.
 
@@ -234,6 +245,7 @@ async def create_notification_internal(
         "acknowledged_at": None,
         "category": (category or "general"),
         "cta_url": cta_url,
+        "student_id": student_id,
         "created_at": datetime.now(timezone.utc),
     }
     if extra_data:
@@ -654,6 +666,7 @@ async def get_my_notifications(
     read_status: Optional[bool] = None,
     limit: int = 50,
     skip: int = 0,
+    student_id: Optional[str] = Query(default=None),
     x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user)
 ):
@@ -673,11 +686,101 @@ async def get_my_notifications(
         query['type'] = notification_type
     if read_status is not None:
         query['is_read'] = read_status
-    
+
+    # Task #1006 — per-child filter for the parent inbox.
+    # Only parents may use this filter; for other roles it is silently
+    # ignored to keep the door closed against cross-tenant probing.
+    if student_id and current_user.get('role') == 'parent':
+        # Validate that student_id belongs to one of this parent's linked
+        # children.  We check both the canonical students.parent_id path and
+        # the guardian_links join table so every linking strategy is covered.
+        parent_refs = [current_user.get('id'), current_user.get('parent_id')]
+        parent_refs = [r for r in parent_refs if r]
+        tenant_id = current_user.get('tenant_id')
+
+        # Path A: canonical students table
+        student_doc = await gd_find_one(db.session, "students", {"id": student_id})
+        is_linked = False
+        if student_doc:
+            sid_parent = student_doc.get('parent_id') or student_doc.get('parent_user_id')
+            if sid_parent and sid_parent in parent_refs:
+                is_linked = True
+
+        # Path B: guardian_links join table (best-effort, fail-safe)
+        if not is_linked:
+            try:
+                gl_query: Dict[str, Any] = {
+                    "student_id": student_id,
+                    "parent_ref": {"$in": parent_refs},
+                    "is_active": True,
+                }
+                if tenant_id:
+                    gl_query["tenant_id"] = tenant_id
+                link = await gd_find_one(db.session, "guardian_links", gl_query)
+                if link:
+                    is_linked = True
+            except Exception:
+                logger.debug(
+                    "guardian_links lookup degraded for parent %s when filtering notifications",
+                    current_user.get('id'),
+                )
+
+        # Path C: parents.student_ids array (legacy linkage — some installs only
+        # use this path and never populate guardian_links or students.parent_id)
+        if not is_linked:
+            parent_record_id = current_user.get('parent_id')
+            if parent_record_id:
+                try:
+                    parent_rec = await gd_find_one(db.session, "parents", {"id": parent_record_id})
+                    if parent_rec and isinstance(parent_rec.get("student_ids"), list):
+                        if student_id in parent_rec["student_ids"]:
+                            is_linked = True
+                except Exception:
+                    logger.debug(
+                        "parents.student_ids lookup degraded for parent %s when filtering notifications",
+                        current_user.get('id'),
+                    )
+
+        if not is_linked:
+            raise HTTPException(status_code=403, detail="غير مصرح بالوصول إلى بيانات هذا الطالب")
+
+        query['student_id'] = student_id
+
     notifications = await gd_find(db.session, "notifications", query, order_by="created_at", desc_order=True, offset=skip, limit=limit)
-    
+
+    # Batch-enrich with student data so the frontend can show a child
+    # name tag without a second round-trip. Restricted to parent role:
+    # other roles already have direct access to student data through
+    # their own dashboards and must receive student=null here to keep
+    # the existing response shape unchanged.
+    is_parent_caller = current_user.get('role') == 'parent'
+    student_map: Dict[str, Any] = {}
+    if is_parent_caller:
+        unique_student_ids = list({n['student_id'] for n in notifications if n.get('student_id')})
+        if unique_student_ids:
+            try:
+                student_docs = await gd_find(
+                    db.session, "students",
+                    {"id": {"$in": unique_student_ids}},
+                    limit=len(unique_student_ids) + 1,
+                )
+                for s in student_docs:
+                    student_map[s['id']] = s
+            except Exception:
+                logger.debug("Student enrichment for notifications failed; continuing without student refs")
+
     result = []
     for n in notifications:
+        student_ref: Optional[StudentRef] = None
+        if is_parent_caller:
+            sid = n.get('student_id')
+            if sid and sid in student_map:
+                s = student_map[sid]
+                student_ref = StudentRef(
+                    id=s['id'],
+                    name_ar=s.get('full_name') or s.get('name') or '',
+                    code=s.get('student_number') or s.get('code'),
+                )
         result.append(NotificationResponse(
             id=n['id'],
             title=n.get('title', ''),
@@ -697,6 +800,7 @@ async def get_my_notifications(
             acknowledged_at=n.get('acknowledged_at'),
             unavailability_id=n.get('unavailability_id'),
             alternative_location=n.get('alternative_location'),
+            student=student_ref,
         ))
 
     return result
