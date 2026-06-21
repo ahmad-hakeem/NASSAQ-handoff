@@ -2,6 +2,7 @@ import React, { useEffect, useCallback, useState, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { useParentActiveStudent } from '../../contexts/ParentActiveStudentContext';
+import { useAuth } from '../../contexts/AuthContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent } from '../../components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
@@ -35,6 +36,7 @@ const ParentChildrenPage = () => {
     setActiveChildId,
     isLoading: loading,
   } = useParentActiveStudent();
+  const { api, token } = useAuth();
 
   const urlChildId = searchParams.get('child');
   const urlTabRaw = searchParams.get('tab');
@@ -44,6 +46,35 @@ const ParentChildrenPage = () => {
   // opens from the header CTA. Lives at the page level so it can be
   // re-keyed per child to guarantee sibling isolation.
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+
+  // Lift grades + attendance fetches to page level so both the top KPI
+  // strip and DetailsPanel read from the same live endpoint response,
+  // eliminating the stale-cache vs. fresh-fetch mismatch.
+  const [childGrades, setChildGrades] = useState(null);
+  const [childAttendance, setChildAttendance] = useState(null);
+  const [kpiLoading, setKpiLoading] = useState(false);
+
+  useEffect(() => {
+    if (!activeChild?.id) return;
+    let cancelled = false;
+    setKpiLoading(true);
+    setChildGrades(null);
+    setChildAttendance(null);
+    (async () => {
+      try {
+        const [gradesRes, attendanceRes] = await Promise.all([
+          api.get(`/parent-portal/child/${activeChild.id}/grades`).catch(() => ({ data: null })),
+          api.get(`/parent-portal/child/${activeChild.id}/attendance`).catch(() => ({ data: null })),
+        ]);
+        if (cancelled) return;
+        setChildGrades(gradesRes.data);
+        setChildAttendance(attendanceRes.data);
+      } finally {
+        if (!cancelled) setKpiLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeChild?.id, token, api]);
 
   // Force-close the dialog when the parent switches to a different
   // child via the shell switcher. The dialog is also re-keyed by
@@ -194,19 +225,20 @@ const ParentChildrenPage = () => {
                 </div>
 
                 <CardContent className="p-4 space-y-4">
-                  {/* KPI summary */}
+                  {/* KPI summary — reads from the live /grades and /attendance
+                      endpoints (same source as DetailsPanel) so the numbers
+                      are always consistent, never stale from the children list. */}
                   <div className="grid grid-cols-2 gap-3">
-                    {/* KPI render is honest: backend returns null when the
-                        student has no attendance/grade records, and we show
-                        an em-dash here rather than inventing a 0% / 100%
-                        value that would mask missing data. */}
                     <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40">
                       <span className="w-9 h-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
                         <CheckCircle className="h-5 w-5" />
                       </span>
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">
-                          {activeChild.attendance_rate == null ? '—' : `${activeChild.attendance_rate}%`}
+                          {kpiLoading ? '…' : (() => {
+                            const r = childAttendance?.statistics?.attendance_rate;
+                            return r == null ? '—' : `${r}%`;
+                          })()}
                         </p>
                         <p className="text-[10px] text-muted-foreground font-tajawal">{t('attendance2')}</p>
                       </div>
@@ -217,7 +249,10 @@ const ParentChildrenPage = () => {
                       </span>
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-blue-700 dark:text-blue-300 tabular-nums">
-                          {activeChild.average_score == null ? '—' : `${activeChild.average_score}%`}
+                          {kpiLoading ? '…' : (() => {
+                            const o = childGrades?.overall_average;
+                            return o == null ? '—' : `${o}%`;
+                          })()}
                         </p>
                         <p className="text-[10px] text-muted-foreground font-tajawal">{t('average')}</p>
                       </div>
@@ -281,7 +316,12 @@ const ParentChildrenPage = () => {
                   >
                     <Suspense fallback={<Skeleton className="h-48 w-full rounded-2xl" />}>
                       {activeTab === 'details' && (
-                        <DetailsPanel key={`details-${activeChild.id}`} childId={activeChild.id} />
+                        <DetailsPanel
+                          key={`details-${activeChild.id}`}
+                          childId={activeChild.id}
+                          grades={childGrades}
+                          attendance={childAttendance}
+                        />
                       )}
                       {activeTab === 'schedule' && (
                         <SchedulePanel key={`schedule-${activeChild.id}`} childId={activeChild.id} />

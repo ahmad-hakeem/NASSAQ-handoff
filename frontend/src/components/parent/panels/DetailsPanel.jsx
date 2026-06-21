@@ -12,16 +12,18 @@ import {
   BookOpen, CheckCircle, XCircle, AlertCircle, Clock, Award, Calendar,
 } from 'lucide-react';
 
-const DetailsPanel = ({ childId }) => {
+const DetailsPanel = ({ childId, grades: gradesProp, attendance: attendanceProp }) => {
   const { t } = useTranslation();
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
-  const [loading, setLoading] = useState(true);
-  const [grades, setGrades] = useState(null);
-  const [attendance, setAttendance] = useState(null);
+  const propsProvided = gradesProp !== undefined && attendanceProp !== undefined;
+  const [loading, setLoading] = useState(!propsProvided);
+  const [grades, setGrades] = useState(gradesProp ?? null);
+  const [attendance, setAttendance] = useState(attendanceProp ?? null);
   const [section, setSection] = useState('analytics');
 
   useEffect(() => {
+    if (propsProvided) return;
     let cancelled = false;
     setLoading(true);
     (async () => {
@@ -38,7 +40,13 @@ const DetailsPanel = ({ childId }) => {
       }
     })();
     return () => { cancelled = true; };
-  }, [childId, token, api]);
+  }, [childId, token, api, propsProvided]);
+
+  useEffect(() => {
+    if (!propsProvided) return;
+    setGrades(gradesProp ?? null);
+    setAttendance(attendanceProp ?? null);
+  }, [gradesProp, attendanceProp, propsProvided]);
 
   const getGradeColor = (p) => {
     if (p >= 90) return 'text-green-600 dark:text-green-400';
