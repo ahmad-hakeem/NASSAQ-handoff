@@ -9,6 +9,7 @@ from sqlalchemy import select, and_, or_, func, delete as sa_delete
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.types import DateTime, Date
+from sqlalchemy.orm.attributes import flag_modified
 
 _sql_logger = logging.getLogger("nassaq.sql_utils")
 
@@ -674,6 +675,7 @@ async def gd_update_one(session, collection: str, filters: dict, updates: dict) 
     current_data = dict(obj.data) if obj.data else {}
     _apply_dict_updates(current_data, updates)
     obj.data = current_data
+    flag_modified(obj, "data")
     await session.flush()
     return 1
 
@@ -744,6 +746,7 @@ async def gd_upsert(session, collection: str, filters: dict, updates: dict) -> i
         current_data = dict(obj.data) if obj.data else {}
         _apply_dict_updates(current_data, updates)
         obj.data = current_data
+        flag_modified(obj, "data")
         await session.flush()
         return 1
     else:
@@ -782,6 +785,7 @@ async def gd_update_many(session, collection: str, filters: dict, updates: dict)
         current_data = dict(obj.data) if obj.data else {}
         _apply_dict_updates(current_data, updates)
         obj.data = current_data
+        flag_modified(obj, "data")
         count += 1
     if count:
         await session.flush()

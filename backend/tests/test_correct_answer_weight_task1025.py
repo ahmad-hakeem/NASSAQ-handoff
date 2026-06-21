@@ -308,6 +308,68 @@ async def test_mid_session_weight_change_takes_effect_immediately(tenant_a):
     )
 
 
+@pytest.mark.asyncio
+async def test_record_answer_score_change_uses_saved_weight(tenant_a):
+    """Regression: after saving correct_answer_weight=2 on the session doc,
+    record_answer must return score_change=2 (not the system default of 5).
+
+    This exercises the full path: gd_update_one → flush → gd_find_one in
+    _get_session_score_rules → score_change in record_answer return value.
+    Previously, gd_update_one for GenericDocument JSONB columns was missing
+    flag_modified(), which could silently suppress the UPDATE and leave the
+    stale value in the DB.
+    """
+    class_id = await _mk_class(tenant_a)
+    subject_id = await _mk_subject(tenant_a)
+    teacher_id = await _mk_user(tenant_a)
+    session_id = await _mk_session(tenant_a, class_id, subject_id, teacher_id)
+    student_id = await _mk_student(tenant_a, class_id)
+
+    eng = _engine()
+
+    # Simulate save_session_settings writing correct_answer_weight=2
+    # to the class_sessions GenericDocument (the same path the route uses).
+    await gd_update_one(
+        db.session,
+        "class_sessions",
+        {"id": session_id},
+        {"correct_answer_weight": 2},
+    )
+
+    # Now record a correct answer — score_change MUST reflect the saved weight.
+    result = await _record_answer(eng, session_id, student_id, teacher_id, AnswerResult.CORRECT)
+    assert result["score_change"] == 2, (
+        f"expected score_change=2 (saved weight), got {result['score_change']}; "
+        "gd_update_one may not have persisted the JSONB mutation (missing flag_modified)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_record_answer_wrong_result_unaffected_by_weight(tenant_a):
+    """Saving a custom correct_answer_weight must NOT change the score for
+    wrong answers (wrong answer score_change is 0 by default)."""
+    class_id = await _mk_class(tenant_a)
+    subject_id = await _mk_subject(tenant_a)
+    teacher_id = await _mk_user(tenant_a)
+    session_id = await _mk_session(tenant_a, class_id, subject_id, teacher_id)
+    student_id = await _mk_student(tenant_a, class_id)
+
+    eng = _engine()
+
+    await gd_update_one(
+        db.session,
+        "class_sessions",
+        {"id": session_id},
+        {"correct_answer_weight": 99},
+    )
+
+    result = await _record_answer(eng, session_id, student_id, teacher_id, AnswerResult.WRONG)
+    assert result["score_change"] == 0, (
+        f"wrong-answer score_change should be 0 regardless of correct_answer_weight; "
+        f"got {result['score_change']}"
+    )
+
+
 # ──────────────────── type-validation unit tests ────────────────────
 # The validation helpers in the route layer (role_dashboards_mod.py) and the
 # engine (session_engine.py) must reject strings, booleans, and non-integer
