@@ -2465,6 +2465,12 @@ class TeacherSessionEngine:
                     b["performance_points"] += int(rules.get("special_skill", 3))
                 elif cat == BehaviourCategory.POSITIVE.value:
                     pts = int(rules.get(btype, 2)) if not str(btype).startswith("custom:") else 2
+                    # Behaviour (سلوك) folds into the participation (المشاركة)
+                    # column: positive raises it, negative lowers it. The points
+                    # also stay in behaviour_events so commit still writes the
+                    # individual behaviour_records rows. _coursework_value caps at
+                    # the column max and never reports below 0.
+                    b["participation_points"] += pts
                     b["behaviour_events"].append({
                         "interaction_id": it.get("id"),
                         "category": cat,
@@ -2476,6 +2482,7 @@ class TeacherSessionEngine:
                     })
                 elif cat == BehaviourCategory.NEGATIVE.value:
                     pts = int(rules.get(btype, -2)) if not str(btype).startswith("custom:") else -2
+                    b["participation_points"] += pts
                     b["behaviour_events"].append({
                         "interaction_id": it.get("id"),
                         "category": cat,

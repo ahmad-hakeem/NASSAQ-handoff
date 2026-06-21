@@ -154,10 +154,12 @@ async def test_compute_session_scores_aggregates(tenant_a):
 
     computed = await _engine().compute_session_scores(session_id)
     agg = computed["students"][sid]
-    # correct(5) + active(2)
-    assert agg["participation_points"] == 7
+    # correct(5) + active(2) + positive behaviour respect(2) — behaviour (سلوك)
+    # folds into the participation (المشاركة) bucket.
+    assert agg["participation_points"] == 9
     assert agg["performance_points"] == 3  # special_skill
     assert agg["homework_done"] is True
+    # The positive behaviour also stays in behaviour_events for commit → behaviour_records.
     assert len(agg["behaviour_events"]) == 1
     assert agg["behaviour_events"][0]["category"] == BehaviourCategory.POSITIVE.value
 
