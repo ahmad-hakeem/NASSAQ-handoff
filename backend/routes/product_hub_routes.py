@@ -51,11 +51,13 @@ from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 import asyncio
 import re
+import time
 import uuid
 import logging
 import json
-from sqlalchemy import text as _sa_text
+from sqlalchemy import text as _sa_text, update as _sa_update, case as _sa_case
 from pg_models import IssueVersion as _IssueVersionModel
+from pg_models import ProductIssue as _ProductIssueModel
 
 from dependencies import db, get_current_user, require_roles, UserRole
 from engines.product_hub_rbac import (
@@ -1042,6 +1044,7 @@ async def list_issues(
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user),
 ):
+    _t0 = time.perf_counter()
     admin = is_platform_admin(current_user)
     user_id = get_user_id(current_user)
 
@@ -1080,37 +1083,54 @@ async def list_issues(
         ]
 
     total = await gd_count(db.session, "product_issues", query)
-    skip = (page - 1) * limit
-    issues = await gd_find(db.session, "product_issues", query, order_by="created_at", desc_order=True, offset=skip, limit=limit)
+    issues = await gd_find(db.session, "product_issues", query, order_by="created_at", desc_order=True, offset=(page - 1) * limit, limit=limit)
 
     issue_ids = [i.get("id") for i in issues if i.get("id")]
-    comment_counts = {}
-    recent_comments_map = {}
+    comment_counts: dict = {}
+    recent_comments_map: dict = {}
     if issue_ids:
-        pipeline = [
-            {"$match": {"issue_id": {"$in": issue_ids}}},
-            {"$group": {"_id": "$issue_id", "count": {"$sum": 1}}}
-        ]
-        count_results = await _gd_aggregate(db.session, "issue_comments", pipeline)
-        for doc in count_results:
-            comment_counts[doc["_id"]] = doc["count"]
-
-        recent_pipeline = [
-            {"$match": {"issue_id": {"$in": issue_ids}}},
-            {"$sort": {"timestamp": -1}},
-            {"$group": {
-                "_id": "$issue_id",
-                "comments": {"$push": {
-                    "user_name": "$user_name",
-                    "content": "$content",
-                    "timestamp": "$timestamp",
-                    "created_by": "$created_by",
-                }},
-            }},
-        ]
-        recent_results = await _gd_aggregate(db.session, "issue_comments", recent_pipeline)
-        for doc in recent_results:
-            recent_comments_map[doc["_id"]] = doc["comments"][:3]
+        # Single SQL query: window functions are computed over the full partition
+        # (all comments per issue) BEFORE the outer WHERE rn<=3 filter, so
+        # total_count always reflects the true comment count even when >3 exist.
+        # Queries issue_comments directly (it has its own ORM table, not JSONB).
+        _comment_rows = await db.session.execute(
+            _sa_text("""
+                SELECT
+                    issue_id,
+                    total_count,
+                    created_by_name  AS user_name,
+                    content,
+                    timestamp::text  AS ts,
+                    created_by
+                FROM (
+                    SELECT
+                        issue_id,
+                        COUNT(*) OVER (PARTITION BY issue_id)::int AS total_count,
+                        created_by_name,
+                        content,
+                        timestamp,
+                        created_by,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY issue_id
+                            ORDER BY timestamp DESC NULLS LAST
+                        ) AS rn
+                    FROM issue_comments
+                    WHERE issue_id = ANY(:ids)
+                ) sub
+                WHERE rn <= 3
+            """),
+            {"ids": issue_ids},
+        )
+        for row in _comment_rows.mappings():
+            iid = row["issue_id"]
+            if iid:
+                comment_counts[iid] = row["total_count"]
+                recent_comments_map.setdefault(iid, []).append({
+                    "user_name": row["user_name"],
+                    "content": row["content"],
+                    "timestamp": row["ts"],
+                    "created_by": row["created_by"],
+                })
 
     for issue in issues:
         enrich_sla_state(issue)
@@ -1118,11 +1138,14 @@ async def list_issues(
         issue["comment_count"] = comment_counts.get(issue.get("id"), 0)
         issue["recent_comments"] = recent_comments_map.get(issue.get("id"), [])
 
+    _elapsed_ms = (time.perf_counter() - _t0) * 1000
+    logger.info("list_issues %.0f ms (page=%s, search=%s)", _elapsed_ms, page, bool(search))
     return {"issues": issues, "total": total, "page": page, "limit": limit}
 
 
 @router.get("/issues/{issue_id}")
 async def get_issue(issue_id: str, current_user: dict = Depends(get_current_user)):
+    _t0 = time.perf_counter()
     admin = is_platform_admin(current_user)
 
     issue = await _get_issue_or_404(issue_id)
@@ -1130,13 +1153,48 @@ async def get_issue(issue_id: str, current_user: dict = Depends(get_current_user
     if not admin:
         enforce_ownership_or_admin(current_user, issue, HubAction.VIEW_OWN_ISSUE)
 
-    activity = await gd_find(db.session, "issue_activity_log", {"issue_id": issue_id}, order_by="timestamp", desc_order=True, limit=100)
-
-    comments = await gd_find(db.session, "issue_comments", {"issue_id": issue_id}, order_by="timestamp", desc_order=False, limit=200)
-
-    duplicates = []
-    if is_main_admin(current_user):
-        duplicates = await gd_find(db.session, "issue_duplicates_map", {"$or": [{"issue_id": issue_id}, {"duplicate_of": issue_id}]}, limit=20)
+    # Batch all three related-data queries into one SQL round-trip via UNION ALL.
+    # row_to_json serialises each row as a dict; asyncpg decodes json columns
+    # automatically.  The three sub-SELECTs share no columns so they stay
+    # separate, but they travel to the DB in a single network call.
+    _batch = await db.session.execute(
+        _sa_text("""
+            (SELECT 'activity'  AS kind, row_to_json(a.*) AS row
+             FROM issue_activity_log a
+             WHERE a.issue_id = :id
+             ORDER BY a.timestamp DESC NULLS LAST
+             LIMIT 100)
+            UNION ALL
+            (SELECT 'comment'   AS kind, row_to_json(c.*) AS row
+             FROM issue_comments c
+             WHERE c.issue_id = :id
+             ORDER BY c.timestamp ASC NULLS LAST
+             LIMIT 200)
+            UNION ALL
+            (SELECT 'duplicate' AS kind, row_to_json(d.*) AS row
+             FROM issue_duplicates_map d
+             WHERE d.issue_id = :id OR d.duplicate_of = :id
+             LIMIT 20)
+        """),
+        {"id": issue_id},
+    )
+    activity: list = []
+    _raw_comments: list = []
+    _raw_dups: list = []
+    for kind, row in _batch:
+        if isinstance(row, str):
+            import json as _json
+            row = _json.loads(row)
+        if row:
+            row.setdefault("_id", row.get("id"))
+        if kind == "activity":
+            activity.append(row)
+        elif kind == "comment":
+            _raw_comments.append(row)
+        else:
+            _raw_dups.append(row)
+    comments = _raw_comments
+    duplicates = _raw_dups if is_main_admin(current_user) else []
 
     enrich_sla_state(issue)
     await check_sla_warning(issue_id, issue, current_user)
@@ -1170,6 +1228,8 @@ async def get_issue(issue_id: str, current_user: dict = Depends(get_current_user
     issue["permissions"] = permissions
 
     redact_issue_for_role(issue, current_user)
+    _elapsed_ms = (time.perf_counter() - _t0) * 1000
+    logger.info("get_issue %.0f ms (%s)", _elapsed_ms, issue_id[:8])
     return issue
 
 
@@ -1945,17 +2005,35 @@ async def get_duplicates(
 async def resequence_issue_numbers(current_user: dict = Depends(get_current_user)):
     if not is_main_admin(current_user):
         raise HTTPException(status_code=403, detail="Main admin only")
+    _t0 = time.perf_counter()
     issues = await gd_find(db.session, "product_issues", {"is_deleted": {"$ne": True}}, order_by="created_at", desc_order=False, limit=10000)
     updates = []
     for idx, issue in enumerate(issues, start=1):
         if issue.get("issue_number") != idx:
             updates.append({"id": issue["id"], "old": issue.get("issue_number"), "new": idx})
-            await gd_update_one(db.session, "product_issues", {"id": issue["id"]}, {"issue_number": idx})
+
+    if updates:
+        id_to_seq = {u["id"]: u["new"] for u in updates}
+        ids = list(id_to_seq.keys())
+        case_expr = _sa_case(
+            *[(_ProductIssueModel.id == uid, seq) for uid, seq in id_to_seq.items()],
+            else_=_ProductIssueModel.issue_number,
+        )
+        stmt = (
+            _sa_update(_ProductIssueModel)
+            .where(_ProductIssueModel.id.in_(ids))
+            .values(issue_number=case_expr)
+            .execution_options(synchronize_session=False)
+        )
+        await db.session.execute(stmt)
+
     from db import engine as _engine
-    from sqlalchemy import text
     async with _engine.connect() as conn:
-        await conn.execute(text("SELECT setval('product_issue_number_seq', :val)"), {"val": len(issues)})
+        await conn.execute(_sa_text("SELECT setval('product_issue_number_seq', :val)"), {"val": len(issues)})
         await conn.commit()
+
+    _elapsed_ms = (time.perf_counter() - _t0) * 1000
+    logger.info("resequence %.0f ms (%d rows, %d changed)", _elapsed_ms, len(issues), len(updates))
     return {"resequenced": len(updates), "total_active": len(issues), "changes": updates}
 
 
@@ -1963,139 +2041,144 @@ async def resequence_issue_numbers(current_user: dict = Depends(get_current_user
 async def get_dashboard(current_user: dict = Depends(get_current_user)):
     enforce_permission(current_user, HubAction.VIEW_FULL_ANALYTICS)
 
+    _t0 = time.perf_counter()
     now = datetime.now(timezone.utc)
     week_ago = (now - timedelta(days=7)).isoformat()
 
-    active_filter = {"$match": {"is_deleted": {"$ne": True}}}
+    # product_issues has no tenant_id column; this endpoint is PLATFORM_ADMIN-only.
+    # All aggregations use proper DB-side GROUP BY / SQL AVG — only summary rows
+    # are returned to Python (no full-corpus fetch).
+    now_iso = now.isoformat()
+    open_statuses_list = list(OPEN_STATUSES)
 
-    pipeline_status = [
-        active_filter,
-        {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+    # ── Scalar metrics + SQL AVG in one CTE query ─────────────────────────────
+    _scalars_r = await db.session.execute(
+        _sa_text("""
+            SELECT
+                COUNT(*) FILTER (WHERE created_at IS NOT NULL AND created_at::text >= :week_ago)::int      AS new_this_week,
+                COUNT(*) FILTER (WHERE priority = 'critical' AND status = ANY(:open))::int                AS critical_open,
+                COUNT(*) FILTER (
+                    WHERE sla_deadline IS NOT NULL AND sla_deadline::text <= :now_iso
+                      AND status = ANY(:open))::int                                                       AS sla_exceeded,
+                COUNT(*) FILTER (
+                    WHERE hakim_analysis IS NOT NULL
+                      AND hakim_analysis::text NOT IN ('{}', 'null'))::int                                AS hakim_analyzed,
+                COUNT(*) FILTER (
+                    WHERE hakim_analysis->>'suggested_priority' IS NOT NULL
+                      AND hakim_analysis->>'suggested_priority' != COALESCE(priority, ''))::int           AS hakim_priority_changed,
+                COALESCE(
+                    ROUND(
+                        EXTRACT(EPOCH FROM AVG(resolved_at - created_at)) / 3600.0,
+                        1
+                    ),
+                    0
+                )::float                                                                                   AS avg_resolution_hours
+            FROM product_issues
+            WHERE is_deleted IS NOT TRUE
+        """),
+        {"week_ago": week_ago, "open": open_statuses_list, "now_iso": now_iso},
+    )
+    _s = _scalars_r.mappings().one()
+    new_this_week         = _s["new_this_week"]
+    critical_open         = _s["critical_open"]
+    sla_exceeded          = _s["sla_exceeded"]
+    hakim_analyzed        = _s["hakim_analyzed"]
+    hakim_priority_changed = _s["hakim_priority_changed"]
+    avg_resolution        = float(_s["avg_resolution_hours"])
+
+    # ── Group-by aggregations (each returns only summary rows) ────────────────
+    _sr = await db.session.execute(_sa_text(
+        "SELECT status, COUNT(*)::int as cnt FROM product_issues "
+        "WHERE is_deleted IS NOT TRUE GROUP BY status"))
+    status_counts = {r.status: r.cnt for r in _sr}
+
+    _tr = await db.session.execute(_sa_text(
+        "SELECT issue_type, COUNT(*)::int as cnt FROM product_issues "
+        "WHERE is_deleted IS NOT TRUE GROUP BY issue_type"))
+    by_type = [
+        {"type": r.issue_type, "label": ISSUE_TYPE_LABELS.get(r.issue_type, r.issue_type or ""), "count": r.cnt}
+        for r in _tr
     ]
-    status_counts_raw = await _gd_aggregate(db.session, "product_issues", pipeline_status)
-    status_counts = {s["_id"]: s["count"] for s in status_counts_raw}
 
-    total = sum(status_counts.values())
-    total_open = sum(status_counts.get(s, 0) for s in OPEN_STATUSES)
-
-    pipeline_type = [active_filter, {"$group": {"_id": "$issue_type", "count": {"$sum": 1}}}]
-    type_counts_raw = await _gd_aggregate(db.session, "product_issues", pipeline_type)
-    by_type = [{"type": t["_id"], "label": ISSUE_TYPE_LABELS.get(t["_id"], t["_id"]), "count": t["count"]} for t in type_counts_raw]
-
-    pipeline_priority = [active_filter, {"$group": {"_id": "$priority", "count": {"$sum": 1}}}]
-    priority_counts_raw = await _gd_aggregate(db.session, "product_issues", pipeline_priority)
-    by_priority = [{"priority": p["_id"], "label": PRIORITY_LABELS.get(p["_id"], p["_id"] or ""), "count": p["count"]} for p in priority_counts_raw]
-
-    pipeline_team = [
-        {"$match": {"assigned_team": {"$ne": None}, "is_deleted": {"$ne": True}}},
-        {"$group": {"_id": "$assigned_team", "count": {"$sum": 1}}}
+    _pr = await db.session.execute(_sa_text(
+        "SELECT priority, COUNT(*)::int as cnt FROM product_issues "
+        "WHERE is_deleted IS NOT TRUE GROUP BY priority"))
+    by_priority = [
+        {"priority": r.priority, "label": PRIORITY_LABELS.get(r.priority, r.priority or ""), "count": r.cnt}
+        for r in _pr
     ]
-    team_counts_raw = await _gd_aggregate(db.session, "product_issues", pipeline_team)
-    by_team = [{"team": t["_id"], "count": t["count"]} for t in team_counts_raw]
 
-    new_this_week = await gd_count(db.session, "product_issues", {"created_at": {"$gte": week_ago}, "is_deleted": {"$ne": True}})
-    critical_open = await gd_count(db.session, "product_issues", {"priority": "critical", "status": {"$in": list(OPEN_STATUSES)}, "is_deleted": {"$ne": True}})
-    sla_exceeded = await gd_count(db.session, "product_issues", {
-        "sla_deadline": {"$lte": now.isoformat()},
-        "status": {"$in": list(OPEN_STATUSES)},
-        "is_deleted": {"$ne": True},
-    })
+    _tmr = await db.session.execute(_sa_text(
+        "SELECT assigned_team, COUNT(*)::int as cnt FROM product_issues "
+        "WHERE is_deleted IS NOT TRUE AND assigned_team IS NOT NULL GROUP BY assigned_team"))
+    by_team = [{"team": r.assigned_team, "count": r.cnt} for r in _tmr]
 
-    resolved = await gd_find(db.session, "product_issues", {"resolved_at": {"$ne": None}, "is_deleted": {"$ne": True}}, limit=500)
-    avg_resolution = 0
-    if resolved:
-        total_hours = 0
-        count = 0
-        for r in resolved:
-            try:
-                created = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00"))
-                res = datetime.fromisoformat(r["resolved_at"].replace("Z", "+00:00"))
-                total_hours += (res - created).total_seconds() / 3600
-                count += 1
-            except (ValueError, TypeError, KeyError):
-                pass
-        if count:
-            avg_resolution = round(total_hours / count, 1)
+    _scr = await db.session.execute(_sa_text(
+        "SELECT section, COUNT(*)::int as cnt FROM product_issues "
+        "WHERE is_deleted IS NOT TRUE AND section IS NOT NULL "
+        "GROUP BY section ORDER BY cnt DESC LIMIT 10"))
+    top_sections = [{"_id": r.section, "count": r.cnt} for r in _scr]
 
-    pipeline_section = [
-        active_filter,
-        {"$group": {"_id": "$section", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}},
-        {"$limit": 10}
+    _cr = await db.session.execute(_sa_text(
+        "SELECT employee_name, created_by, COUNT(*)::int as cnt FROM product_issues "
+        "WHERE is_deleted IS NOT TRUE "
+        "GROUP BY employee_name, created_by ORDER BY cnt DESC LIMIT 10"))
+    top_contributors = [{"name": r.employee_name, "count": r.cnt} for r in _cr]
+
+    _dr = await db.session.execute(_sa_text(
+        "SELECT account_type, COUNT(*)::int as cnt FROM product_issues "
+        "WHERE is_deleted IS NOT TRUE AND account_type IS NOT NULL "
+        "GROUP BY account_type ORDER BY cnt DESC LIMIT 10"))
+    by_department = [{"department": r.account_type, "count": r.cnt} for r in _dr]
+
+    _ar = await db.session.execute(_sa_text(
+        """SELECT employee_name,
+                  COUNT(*)::int                                         AS total,
+                  COUNT(*) FILTER (WHERE status != 'rejected')::int    AS valid
+           FROM product_issues
+           WHERE is_deleted IS NOT TRUE
+             AND status IN ('done', 'user_feedback_confirmed', 'rejected')
+           GROUP BY employee_name
+           ORDER BY (COUNT(*) FILTER (WHERE status != 'rejected')::float / NULLIF(COUNT(*), 0)) DESC
+           LIMIT 10"""))
+    most_accurate = [
+        {"name": r.employee_name, "total": r.total, "valid": r.valid,
+         "accuracy": round(r.valid / max(1, r.total) * 100, 1)}
+        for r in _ar if r.total >= 2
     ]
-    top_sections = await _gd_aggregate(db.session, "product_issues", pipeline_section)
+
+    _htr = await db.session.execute(_sa_text(
+        "SELECT hakim_analysis->>'suggested_team' AS team, COUNT(*)::int AS cnt "
+        "FROM product_issues "
+        "WHERE is_deleted IS NOT TRUE AND hakim_analysis->>'suggested_team' IS NOT NULL "
+        "GROUP BY hakim_analysis->>'suggested_team' ORDER BY cnt DESC LIMIT 5"))
+    hakim_top_teams = [{"team": r.team, "count": r.cnt} for r in _htr]
 
     dup_count = await gd_count(db.session, "issue_duplicates_map", {})
 
-    pipeline_contributors = [
-        active_filter,
-        {"$group": {"_id": {"name": "$employee_name", "user_id": "$created_by"}, "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}},
-        {"$limit": 10}
-    ]
-    contributors_raw = await _gd_aggregate(db.session, "product_issues", pipeline_contributors)
-    top_contributors = [{"name": c["_id"]["name"], "count": c["count"]} for c in contributors_raw]
-
-    pipeline_accuracy = [
-        {"$match": {"status": {"$in": ["done", "user_feedback_confirmed", "rejected"]}, "is_deleted": {"$ne": True}}},
-        {"$group": {
-            "_id": "$employee_name",
-            "total": {"$sum": 1},
-            "valid": {"$sum": {"$cond": [{"$ne": ["$status", "rejected"]}, 1, 0]}},
-        }},
-        {"$project": {
-            "name": "$_id",
-            "total": 1,
-            "valid": 1,
-            "accuracy": {"$multiply": [{"$divide": ["$valid", "$total"]}, 100]},
-        }},
-        {"$sort": {"accuracy": -1}},
-        {"$limit": 10}
-    ]
-    accuracy_raw = await _gd_aggregate(db.session, "product_issues", pipeline_accuracy)
-    most_accurate = [
-        {"name": a["name"], "total": a["total"], "valid": a["valid"],
-         "accuracy": round(a.get("accuracy", 0), 1)}
-        for a in accuracy_raw if a.get("total", 0) >= 2
-    ]
-
-    pipeline_dept = [
-        active_filter,
-        {"$group": {"_id": "$account_type", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}},
-        {"$limit": 10}
-    ]
-    dept_raw = await _gd_aggregate(db.session, "product_issues", pipeline_dept)
-    by_department = [{"department": d["_id"], "count": d["count"]} for d in dept_raw]
-
-    hakim_analyzed = await gd_count(db.session, "product_issues", {"hakim_analysis": {"$exists": True, "$ne": {}}, "is_deleted": {"$ne": True}})
-    hakim_priority_changed = await gd_count(db.session, "product_issues", {
-        "hakim_analysis.suggested_priority": {"$exists": True},
-        "$expr": {"$ne": ["$priority", "$hakim_analysis.suggested_priority"]},
-        "is_deleted": {"$ne": True},
-    })
-    pipeline_hakim_teams = [
-        {"$match": {"hakim_analysis.suggested_team": {"$exists": True, "$ne": None}, "is_deleted": {"$ne": True}}},
-        {"$group": {"_id": "$hakim_analysis.suggested_team", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}},
-        {"$limit": 5}
-    ]
-    hakim_teams_raw = await _gd_aggregate(db.session, "product_issues", pipeline_hakim_teams)
-    hakim_top_teams = [{"team": t["_id"], "count": t["count"]} for t in hakim_teams_raw]
-
-    recent_hakim = await gd_find(db.session, "product_issues", {"hakim_analysis.impact_assessment": {"$exists": True, "$ne": ""}, "is_deleted": {"$ne": True}}, order_by="created_at", desc_order=True, limit=5)
+    _rhr = await db.session.execute(_sa_text(
+        "SELECT id, title, issue_number, priority, hakim_analysis "
+        "FROM product_issues "
+        "WHERE is_deleted IS NOT TRUE "
+        "  AND hakim_analysis->>'impact_assessment' IS NOT NULL "
+        "  AND hakim_analysis->>'impact_assessment' != '' "
+        "ORDER BY created_at DESC LIMIT 5"))
     hakim_recent_insights = []
-    for ri in recent_hakim:
-        ha = ri.get("hakim_analysis", {})
+    for r in _rhr:
+        ha = r.hakim_analysis or {}
         hakim_recent_insights.append({
-            "id": ri.get("id"),
-            "title": ri.get("title"),
-            "issue_number": ri.get("issue_number"),
-            "priority": ri.get("priority"),
+            "id": r.id,
+            "title": r.title,
+            "issue_number": r.issue_number,
+            "priority": r.priority,
             "impact": ha.get("impact_assessment", ""),
             "suggested_team": ha.get("suggested_team", ""),
             "priority_reasoning": ha.get("priority_reasoning", ""),
         })
+
+    # ── Derived totals from status_counts ────────────────────────────────────
+    total       = sum(status_counts.values())
+    total_open  = sum(status_counts.get(s, 0) for s in OPEN_STATUSES)
 
     resolved_statuses = {"done", "user_feedback_confirmed"}
     total_resolved = sum(status_counts.get(s, 0) for s in resolved_statuses)
@@ -2104,6 +2187,9 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
     qa_validation = status_counts.get("qa_validation", 0)
     new_count = status_counts.get("new", 0)
     resolution_rate = round((total_resolved / max(1, total)) * 100, 1)
+
+    _elapsed_ms = (time.perf_counter() - _t0) * 1000
+    logger.info("get_dashboard %.0f ms", _elapsed_ms)
 
     return {
         "total_issues": total,
