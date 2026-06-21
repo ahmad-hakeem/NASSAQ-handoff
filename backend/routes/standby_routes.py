@@ -893,6 +893,7 @@ async def get_my_standby_roster(
     return {
         "teacher_id": teacher_id,
         "teacher_name": teacher.get("full_name") or teacher.get("name") or "",
+        "teacher_subject": teacher.get("specialization") or teacher.get("subject") or "",
         "periods": periods,
         "days": days_payload,
         "total_slots": len(my_slots),

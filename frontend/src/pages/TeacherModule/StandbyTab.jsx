@@ -311,7 +311,9 @@ export default function StandbyTab() {
                             ? <span className="text-slate-700 dark:text-slate-200">{row.subject_name}</span>
                             : isAssigned
                               ? <span className="text-slate-400 dark:text-slate-500">—</span>
-                              : <span className="text-xs text-amber-600 dark:text-amber-400 font-cairo">بانتظار الإسناد</span>
+                              : data?.teacher_subject
+                                ? <span className="text-slate-600 dark:text-slate-300 text-sm">{data.teacher_subject}</span>
+                                : <span className="text-xs text-amber-600 dark:text-amber-400 font-cairo">بانتظار الإسناد</span>
                           }
                         </td>
 
