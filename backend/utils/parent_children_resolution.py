@@ -159,8 +159,78 @@ async def resolve_parent_children(
     return children
 
 
+async def enrich_children_with_class_names(
+    children: List[Dict[str, Any]],
+    session: Any,
+    school_id: Optional[str],
+) -> List[Dict[str, Any]]:
+    """Overwrite each child's ``class_name`` with the live value from the
+    ``classes`` table, keyed by the child's ``class_id``.
+
+    This corrects stale denormalized ``students.class_name`` values that were
+    written at enrollment time and never updated when the student was moved.
+
+    Guarantees:
+    - Only classes belonging to ``school_id`` are fetched (tenant-scoped).
+    - If a child has no ``class_id``, or no matching class row exists, the
+      existing ``class_name`` value is kept as a fallback and a warning is
+      logged (no PII, no raw DB internals exposed).
+    - If the returned class row's ``id`` does not equal the student's
+      ``class_id`` (a ``gd_find`` matching anomaly), the row is skipped and
+      an error is logged; the child's ``class_name`` is left unchanged
+      (fail-safe, not fail-hard).
+    """
+    if not children:
+        return children
+
+    class_ids = list({
+        c.get("class_id") for c in children if c.get("class_id")
+    })
+    if not class_ids:
+        return children
+
+    query: Dict[str, Any] = {"id": {"$in": class_ids}}
+    if school_id:
+        query["school_id"] = school_id
+
+    class_rows = await gd_find(session, "classes", query, limit=len(class_ids) + 10)
+
+    class_map: Dict[str, str] = {}
+    queried_ids = set(class_ids)
+    for row in class_rows:
+        row_id = row.get("id")
+        if not row_id:
+            continue
+        if row_id not in queried_ids:
+            logger.error(
+                "enrich_children_with_class_names: gd_find returned unexpected "
+                "class row id=%s (not in queried set) — skipping",
+                row_id,
+            )
+            continue
+        class_map[row_id] = row.get("name") or row.get("class_name") or ""
+
+    for child in children:
+        class_id = child.get("class_id")
+        if not class_id:
+            continue
+        if class_id in class_map:
+            child["class_name"] = class_map[class_id]
+        else:
+            logger.warning(
+                "enrich_children_with_class_names: no class row found "
+                "student_id=%s class_id=%s school_id=%s — keeping fallback",
+                child.get("id"),
+                class_id,
+                school_id,
+            )
+
+    return children
+
+
 __all__ = [
     "LEGACY_LINKAGE_DB_ERRORS",
     "parent_refs",
     "resolve_parent_children",
+    "enrich_children_with_class_names",
 ]

@@ -176,6 +176,9 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
         children = await _find_children(current_user, parent_phone, school_id)
 
+        from utils.parent_children_resolution import enrich_children_with_class_names
+        children = await enrich_children_with_class_names(children, db.session, school_id)
+
         school_name_cache = {}
         children_data = []
         for child in children:
@@ -279,6 +282,9 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         school_id = current_user.get("tenant_id")
 
         students = await _find_children(current_user, parent_phone, school_id)
+
+        from utils.parent_children_resolution import enrich_children_with_class_names
+        students = await enrich_children_with_class_names(students, db.session, school_id)
 
         school_name_cache = {}
         children = []
