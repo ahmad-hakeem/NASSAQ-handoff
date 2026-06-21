@@ -777,11 +777,114 @@ async def get_my_standby_roster(
     my_slots = sorted(final_roster.get(teacher_id, set()),
                       key=lambda x: (DAYS.index(x[0]) if x[0] in DAYS else 99, x[1]))
 
-    # Group by day for the UI.
+    # --- Enrich with substitute_assignment data for the current ISO week ---
+    from services.substitution_service import _iso_week_start
+    from datetime import timedelta
+    now_utc = datetime.now(timezone.utc)
+    week_start = _iso_week_start(now_utc)
+    week_end = (datetime.fromisoformat(week_start) + timedelta(days=7)).date().isoformat()
+
+    sub_rows = await gd_find(
+        db.session, "substitute_assignments",
+        {"school_id": str(sid), "substitute_teacher_id": teacher_id},
+        limit=500,
+    )
+    # Index by (day_of_week, period_number) — keep only rows in current week.
+    sub_index: dict = {}
+    for row in sub_rows:
+        ad = (row.get("absence_date") or "")[:10]
+        if not (week_start <= ad < week_end):
+            continue
+        day_key = (row.get("day_of_week") or "").lower()
+        period_key = int(row.get("period_number") or 0)
+        if day_key and period_key:
+            sub_index[(day_key, period_key)] = row
+
+    # Derive a short human-readable session code from day + period,
+    # e.g. "SUN-P3". This is unique per week slot and searchable.
+    _DAY_CODE = {
+        "sunday": "SUN", "monday": "MON", "tuesday": "TUE",
+        "wednesday": "WED", "thursday": "THU",
+    }
+
+    # Pre-fetch classes collection only if we might need class-name fallback.
+    # We do a single bulk fetch keyed by school to avoid per-slot queries.
+    _classes_by_id: dict = {}
+    _classes_fetched = False
+
+    async def _ensure_classes() -> dict:
+        nonlocal _classes_fetched, _classes_by_id
+        if not _classes_fetched:
+            _classes_fetched = True
+            try:
+                cls_rows = await gd_find(
+                    db.session, "classes",
+                    {"school_id": str(sid)},
+                    limit=2000,
+                )
+                _classes_by_id = {r["id"]: r for r in cls_rows if r.get("id")}
+            except Exception:
+                _classes_by_id = {}
+        return _classes_by_id
+
+    # Group by day; each period entry is now an enriched object.
     by_day: dict = {d: [] for d in DAYS}
     for d, p in my_slots:
-        if d in by_day:
-            by_day[d].append(p)
+        if d not in by_day:
+            continue
+        session_code = f"{_DAY_CODE.get(d, d[:3].upper())}-P{p}"
+        assignment = sub_index.get((d, p))
+        if assignment:
+            class_name = assignment.get("class_name") or None
+            subject_name = assignment.get("subject_name") or None
+            orig_session_id = assignment.get("original_session_id")
+            class_id = assignment.get("class_id")
+
+            # Step 1: try the already-loaded timetable_sessions list.
+            if (not class_name or not subject_name) and orig_session_id:
+                orig_sess = next(
+                    (s for s in sessions if s.get("id") == orig_session_id),
+                    None,
+                )
+                if orig_sess:
+                    class_name = class_name or orig_sess.get("class_name") or None
+                    subject_name = subject_name or orig_sess.get("subject_name") or None
+                    class_id = class_id or orig_sess.get("class_id")
+
+            # Step 2: fall back to classes collection if names still missing.
+            if (not class_name) and class_id:
+                cls_map = await _ensure_classes()
+                cls_row = cls_map.get(str(class_id))
+                if cls_row:
+                    class_name = (
+                        cls_row.get("name")
+                        or cls_row.get("name_ar")
+                        or None
+                    )
+
+            entry = {
+                "period": p,
+                "session_code": session_code,
+                "assignment_id": assignment.get("id"),
+                "original_session_id": orig_session_id,
+                "class_name": class_name,
+                "subject_name": subject_name,
+                "absence_date": assignment.get("absence_date"),
+                "status": "assigned",
+            }
+        else:
+            entry = {
+                "period": p,
+                "session_code": session_code,
+                "assignment_id": None,
+                "original_session_id": None,
+                "class_name": None,
+                "subject_name": None,
+                "absence_date": None,
+                "status": "standby",
+            }
+        by_day[d].append(entry)
+
     days_payload = [
         {"day": d, "day_ar": _AR_DAY_LABEL.get(d, d), "periods": by_day[d]}
         for d in DAYS
