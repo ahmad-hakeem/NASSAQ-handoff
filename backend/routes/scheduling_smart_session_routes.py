@@ -7,7 +7,7 @@ from fastapi.responses import Response
 from starlette.responses import StreamingResponse
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
 from typing import List, Optional, Any, Dict
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date as _date
 import uuid, os, logging, json, random, re, io, base64
 
 logger = logging.getLogger("nassaq.scheduling")
@@ -801,6 +801,10 @@ class LessonCreate(BaseModel):
     week: int = Field(default=1, ge=1, le=52)
     order: int = Field(default=1, ge=1, le=100)
     notes: Optional[str] = Field(default=None, max_length=500)
+    start_date: Optional[_date] = Field(default=None)
+    end_date: Optional[_date] = Field(default=None)
+    override_curriculum: bool = False
+    override_reason: Optional[str] = Field(default=None, max_length=1000)
 
 class LessonUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
@@ -898,6 +902,102 @@ async def _verify_class_access(class_id: str, current_user: dict, *, write: bool
     raise HTTPException(status_code=403, detail="غير مصرح بالوصول إلى هذا الفصل")
 
 
+async def _get_curriculum_date_range(class_doc: dict) -> dict:
+    """Resolve the curriculum date range from the active term for a class's tenant.
+
+    Returns a dict with keys: curriculum_start_date, curriculum_end_date
+    (both may be None when no active academic year/term is found).
+    """
+    school_id = class_doc.get("school_id") or class_doc.get("tenant_id")
+    if not school_id:
+        return {"curriculum_start_date": None, "curriculum_end_date": None}
+
+    # Try current academic year first
+    year = await gd_find_one(db.session, "academic_years", {"school_id": school_id, "is_current": True})
+    if not year:
+        # Fallback: most recent academic year by start_date
+        years = await gd_find(db.session, "academic_years", {"school_id": school_id}, order_by="start_date", desc_order=True, limit=1)
+        year = years[0] if years else None
+
+    if not year:
+        return {"curriculum_start_date": None, "curriculum_end_date": None}
+
+    # Try current term
+    term = await gd_find_one(db.session, "terms", {"school_id": school_id, "is_current": True})
+    if not term:
+        term = await gd_find_one(db.session, "terms", {"academic_year_id": year.get("id"), "is_current": True})
+    if not term:
+        # Fallback: most recent term for the year
+        terms = await gd_find(db.session, "terms", {"academic_year_id": year.get("id")}, order_by="start_date", limit=1)
+        term = terms[0] if terms else None
+
+    if term:
+        return {
+            "curriculum_start_date": str(term.get("start_date", ""))[:10] or None,
+            "curriculum_end_date": str(term.get("end_date", ""))[:10] or None,
+        }
+
+    # Use academic year dates as fallback
+    return {
+        "curriculum_start_date": str(year.get("start_date", ""))[:10] or None,
+        "curriculum_end_date": str(year.get("end_date", ""))[:10] or None,
+    }
+
+
+def _date_in_range(d: "_date | str", range_start: str, range_end: str) -> bool:
+    """Return True if d falls within [range_start, range_end] (inclusive).
+
+    Fails closed: any unparseable input returns False (treated as out-of-range).
+    Accepts either a Python date object or an ISO-format string.
+    """
+    try:
+        if isinstance(d, _date):
+            parsed = d
+        else:
+            parsed = _date.fromisoformat(str(d)[:10])
+        s = _date.fromisoformat(range_start[:10])
+        e = _date.fromisoformat(range_end[:10])
+        return s <= parsed <= e
+    except (ValueError, TypeError, AttributeError):
+        return False  # fail-closed on any unparseable value
+
+
+@class_teaching_router.get("/class/{class_id}/curriculum-plan/lesson/new-metadata")
+async def get_lesson_new_metadata(
+    class_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Return curriculum date range and sensible defaults for the Add Lesson dialog."""
+    await _verify_class_access(class_id, current_user)
+    cls = await gd_find_one(db.session, "classes", {"id": class_id})
+    if not cls:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    date_range = await _get_curriculum_date_range(cls)
+    curriculum_start = date_range["curriculum_start_date"]
+    curriculum_end = date_range["curriculum_end_date"]
+
+    # Default start = max(today, curriculum_start); default end = curriculum_end
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    default_start = today_str
+    if curriculum_start:
+        try:
+            cs = _date.fromisoformat(curriculum_start)
+            td = _date.fromisoformat(today_str)
+            default_start = max(cs, td).isoformat()
+        except ValueError:
+            pass
+    default_end = curriculum_end or today_str
+
+    return {
+        "curriculum_start_date": curriculum_start,
+        "curriculum_end_date": curriculum_end,
+        "default_start_date": default_start,
+        "default_end_date": default_end,
+        "allow_override": True,
+    }
+
+
 @class_teaching_router.get("/class/{class_id}/curriculum-plan")
 async def get_curriculum_plan(
     class_id: str,
@@ -927,7 +1027,44 @@ async def add_lesson(
     current_user: dict = Depends(get_current_user),
 ):
     await _verify_class_access(class_id, current_user, write=True)
+
+    cls = await gd_find_one(db.session, "classes", {"id": class_id})
+    if not cls:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    now_ts = datetime.now(timezone.utc).isoformat()
     doc_id = str(uuid.uuid4())
+
+    # Date-range validation (only when dates are supplied)
+    date_range = await _get_curriculum_date_range(cls)
+    curriculum_start = date_range["curriculum_start_date"]
+    curriculum_end = date_range["curriculum_end_date"]
+
+    out_of_range = False
+    if lesson.start_date or lesson.end_date:
+        if curriculum_start and curriculum_end:
+            start_ok = _date_in_range(lesson.start_date, curriculum_start, curriculum_end) if lesson.start_date else True
+            end_ok = _date_in_range(lesson.end_date, curriculum_start, curriculum_end) if lesson.end_date else True
+            out_of_range = not (start_ok and end_ok)
+
+    if out_of_range:
+        if not lesson.override_curriculum:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "curriculum_date_conflict",
+                    "message": "الدرس خارج نطاق المنهج",
+                    "details": {
+                        "curriculum_start": curriculum_start,
+                        "curriculum_end": curriculum_end,
+                        "provided_start": lesson.start_date,
+                        "provided_end": lesson.end_date,
+                    },
+                },
+            )
+        if not (lesson.override_reason or "").strip():
+            raise HTTPException(status_code=422, detail="يجب كتابة مبرر للتجاوز")
+
     doc = {
         "id": doc_id,
         "class_id": class_id,
@@ -938,8 +1075,54 @@ async def add_lesson(
         "notes": lesson.notes,
         "is_completed": False,
         "is_skipped": False,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": now_ts,
     }
+
+    start_iso = lesson.start_date.isoformat() if lesson.start_date else None
+    end_iso = lesson.end_date.isoformat() if lesson.end_date else None
+
+    if start_iso:
+        doc["start_date"] = start_iso
+    if end_iso:
+        doc["end_date"] = end_iso
+
+    if out_of_range and lesson.override_curriculum:
+        doc["override_curriculum"] = True
+        doc["override_reason"] = lesson.override_reason.strip()
+        doc["override_by_user_id"] = current_user.get("id")
+        doc["override_time"] = now_ts
+
+        # Audit record
+        tenant_id = cls.get("school_id") or cls.get("tenant_id") or ""
+        audit_doc = {
+            "id": str(uuid.uuid4()),
+            "lesson_id": doc_id,
+            "class_id": class_id,
+            "tenant_id": tenant_id,
+            "user_id": current_user.get("id"),
+            "override_reason": lesson.override_reason.strip(),
+            "provided_start": start_iso,
+            "provided_end": end_iso,
+            "curriculum_start": curriculum_start,
+            "curriculum_end": curriculum_end,
+            "created_at": now_ts,
+        }
+        await gd_insert(db.session, "curriculum_lesson_audit", audit_doc)
+        logger.info(
+            "curriculum_lesson_override",
+            extra={
+                "lesson_id": doc_id,
+                "class_id": class_id,
+                "tenant_id": tenant_id,
+                "user_id": current_user.get("id"),
+                "override_reason": lesson.override_reason.strip(),
+                "provided_start": start_iso,
+                "provided_end": end_iso,
+                "curriculum_start": curriculum_start,
+                "curriculum_end": curriculum_end,
+            },
+        )
+
     await gd_insert(db.session, "curriculum_lessons", doc)
     return doc
 

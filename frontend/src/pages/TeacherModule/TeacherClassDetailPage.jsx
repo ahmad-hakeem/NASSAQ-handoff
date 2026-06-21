@@ -85,6 +85,16 @@ export default function TeacherClassDetailPage() {
   const [editingLesson, setEditingLesson] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
 
+  // Add Lesson — date & override state
+  const [lessonMeta, setLessonMeta] = useState(null);
+  const [lessonMetaLoading, setLessonMetaLoading] = useState(false);
+  const [lessonStartDate, setLessonStartDate] = useState('');
+  const [lessonEndDate, setLessonEndDate] = useState('');
+  const [overrideChecked, setOverrideChecked] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
+  const [showConflictDialog, setShowConflictDialog] = useState(false);
+  const overrideReasonRef = useRef(null);
+
   const [gradeColumns, setGradeColumns] = useState([]);
   const [studentGrades, setStudentGrades] = useState({});
   const [gradesLoading, setGradesLoading] = useState(false);
@@ -289,22 +299,76 @@ export default function TeacherClassDetailPage() {
     }
   };
 
+  const resetAddLessonForm = () => {
+    setNewLessonTitle('');
+    setNewLessonWeek(1);
+    setLessonMeta(null);
+    setLessonStartDate('');
+    setLessonEndDate('');
+    setOverrideChecked(false);
+    setOverrideReason('');
+    setShowConflictDialog(false);
+  };
+
+  const openAddLesson = async () => {
+    resetAddLessonForm();
+    setShowAddLesson(true);
+    setLessonMetaLoading(true);
+    try {
+      const res = await api.get(`/class/${classId}/curriculum-plan/lesson/new-metadata`);
+      const meta = res.data || {};
+      setLessonMeta(meta);
+      setLessonStartDate(meta.default_start_date || '');
+      setLessonEndDate(meta.default_end_date || '');
+    } catch {
+      setLessonMeta({});
+    } finally {
+      setLessonMetaLoading(false);
+    }
+  };
+
+  const datesOutOfRange = (() => {
+    if (!lessonMeta) return false;
+    const { curriculum_start_date: cs, curriculum_end_date: ce } = lessonMeta;
+    if (!cs || !ce) return false;
+    const inRange = (d) => {
+      if (!d) return true;
+      try {
+        return d >= cs && d <= ce;
+      } catch { return true; }
+    };
+    return !inRange(lessonStartDate) || !inRange(lessonEndDate);
+  })();
+
   const handleAddLesson = async () => {
     if (!newLessonTitle.trim()) return;
     try {
       const weekLessons = curriculumData.lessons.filter(l => l.week === newLessonWeek);
-      await api.post(`/class/${classId}/curriculum-plan/lesson`, {
+      const body = {
         title: newLessonTitle.trim(),
         week: newLessonWeek,
         order: weekLessons.length + 1,
-      });
+      };
+      if (lessonStartDate) body.start_date = lessonStartDate;
+      if (lessonEndDate) body.end_date = lessonEndDate;
+      if (overrideChecked) {
+        body.override_curriculum = true;
+        body.override_reason = overrideReason.trim();
+      }
+      await api.post(`/class/${classId}/curriculum-plan/lesson`, body);
       toast.success(t('lessonAdded'));
-      setNewLessonTitle('');
+      resetAddLessonForm();
       setShowAddLesson(false);
       fetchCurriculum();
     } catch (err) {
-      const detail = getApiErrorMessage(err);
-      nassaqError(typeof detail === 'string' ? detail : t('errorAddingLesson'));
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail;
+      if (status === 409 && detail?.code === 'curriculum_date_conflict') {
+        setShowConflictDialog(true);
+        return;
+      }
+      const msg = getApiErrorMessage(err);
+      nassaqError(typeof msg === 'string' ? msg : t('errorAddingLesson'));
     }
   };
 
@@ -497,7 +561,7 @@ export default function TeacherClassDetailPage() {
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowAddLesson(true)}>
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={openAddLesson}>
             <Plus className="h-3.5 w-3.5" />
             {t('addLesson')}
           </Button>
@@ -815,46 +879,169 @@ export default function TeacherClassDetailPage() {
     />
   );
 
-  const renderAddLessonDialog = () => (
-    <Dialog open={showAddLesson} onOpenChange={setShowAddLesson}>
-      <DialogContent className="max-w-sm" dir={isRTL ? 'rtl' : 'ltr'}>
-        <DialogHeader>
-          <DialogTitle className="font-cairo flex items-center gap-2">
-            <Plus className="h-5 w-5 text-brand-turquoise" />
-            {t('addLesson')}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label className="font-cairo text-sm">{t('lessonTitle')}</Label>
-            <Input
-              value={newLessonTitle}
-              onChange={(e) => setNewLessonTitle(e.target.value)}
-              placeholder={t('lessonTitle')}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddLesson()}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label className="font-cairo text-sm">{t('weekNumber')}</Label>
-            <Input
-              type="number"
-              min={1}
-              max={52}
-              value={newLessonWeek}
-              onChange={(e) => setNewLessonWeek(parseInt(e.target.value) || 1)}
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setShowAddLesson(false)}>{t('cancel')}</Button>
-          <Button className="bg-brand-navy hover:bg-brand-navy-dark text-white" onClick={handleAddLesson}>
-            <Plus className="h-4 w-4 me-2" />
-            {t('add')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
+  const renderAddLessonDialog = () => {
+    const cs = lessonMeta?.curriculum_start_date;
+    const ce = lessonMeta?.curriculum_end_date;
+    const hasCurriculumRange = !!(cs && ce);
+    const savable = !(datesOutOfRange && (!overrideChecked || overrideReason.trim().length < 10));
+
+    return (
+      <>
+        <Dialog open={showAddLesson} onOpenChange={(open) => {
+          if (!open) { resetAddLessonForm(); }
+          setShowAddLesson(open);
+        }}>
+          <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+            <DialogHeader>
+              <DialogTitle className="font-cairo flex items-center gap-2">
+                <Plus className="h-5 w-5 text-brand-turquoise" aria-hidden="true" />
+                {t('addLesson')}
+              </DialogTitle>
+            </DialogHeader>
+
+            {lessonMetaLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-brand-turquoise" aria-hidden="true" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="font-cairo text-sm">{t('lessonTitle')}</Label>
+                  <Input
+                    value={newLessonTitle}
+                    onChange={(e) => setNewLessonTitle(e.target.value)}
+                    placeholder={t('lessonTitle')}
+                    onKeyDown={(e) => e.key === 'Enter' && savable && handleAddLesson()}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="font-cairo text-sm">{t('weekNumber')}</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={52}
+                    value={newLessonWeek}
+                    onChange={(e) => setNewLessonWeek(parseInt(e.target.value) || 1)}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label className="font-cairo text-sm">{t('lessonStartDate')}</Label>
+                    <Input
+                      type="date"
+                      dir="ltr"
+                      value={lessonStartDate}
+                      onChange={(e) => setLessonStartDate(e.target.value)}
+                      className="text-start"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="font-cairo text-sm">{t('lessonEndDate')}</Label>
+                    <Input
+                      type="date"
+                      dir="ltr"
+                      value={lessonEndDate}
+                      onChange={(e) => setLessonEndDate(e.target.value)}
+                      className="text-start"
+                    />
+                  </div>
+                </div>
+
+                {hasCurriculumRange && (
+                  <p className="text-xs text-muted-foreground font-tajawal">
+                    {t('curriculumRange')}: <span dir="ltr" className="inline-block">{cs} — {ce}</span>
+                  </p>
+                )}
+
+                {datesOutOfRange && (
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                      <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" aria-hidden="true" />
+                      <p className="text-sm text-amber-700 dark:text-amber-300 font-tajawal">{t('datesOutsideCurriculumRange')}</p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="override-checkbox"
+                        checked={overrideChecked}
+                        onCheckedChange={(v) => setOverrideChecked(!!v)}
+                      />
+                      <Label htmlFor="override-checkbox" className="font-cairo text-sm cursor-pointer">
+                        {t('overrideCurriculumWarning')}
+                      </Label>
+                    </div>
+
+                    {overrideChecked && (
+                      <div className="space-y-1">
+                        <Label className="font-cairo text-sm">{t('overrideReason')}</Label>
+                        <textarea
+                          ref={overrideReasonRef}
+                          value={overrideReason}
+                          onChange={(e) => setOverrideReason(e.target.value)}
+                          placeholder={t('overrideReasonPlaceholder')}
+                          rows={3}
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-tajawal resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                        {overrideReason.trim().length > 0 && overrideReason.trim().length < 10 && (
+                          <p className="text-xs text-red-500 font-tajawal">{t('overrideReasonTooShort')}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { resetAddLessonForm(); setShowAddLesson(false); }}>{t('cancel')}</Button>
+              <Button
+                className="bg-brand-navy hover:bg-brand-navy-dark text-white"
+                onClick={handleAddLesson}
+                disabled={!newLessonTitle.trim() || lessonMetaLoading || !savable}
+              >
+                <Plus className="h-4 w-4 me-2" aria-hidden="true" />
+                {t('add')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* 409 Curriculum date conflict dialog */}
+        <Dialog open={showConflictDialog} onOpenChange={setShowConflictDialog}>
+          <DialogContent className="max-w-sm" dir={isRTL ? 'rtl' : 'ltr'}>
+            <DialogHeader>
+              <DialogTitle className="font-cairo flex items-center gap-2 text-amber-600">
+                <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+                {t('curriculumDateConflict')}
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-sm font-tajawal text-muted-foreground py-2">{t('curriculumDateConflictDesc')}</p>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={() => setShowConflictDialog(false)}
+              >
+                {t('editDates')}
+              </Button>
+              <Button
+                className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 text-white"
+                onClick={() => {
+                  setShowConflictDialog(false);
+                  setOverrideChecked(true);
+                  setTimeout(() => overrideReasonRef.current?.focus(), 100);
+                }}
+              >
+                {t('overrideWithReason')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </>
+    );
+  };
 
   const renderColumnSettings = () => (
     <Dialog open={showColumnSettings} onOpenChange={setShowColumnSettings}>
