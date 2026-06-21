@@ -299,7 +299,9 @@ export default function StandbyTab() {
                         <td className="border border-slate-200 dark:border-slate-700 px-3 py-2.5">
                           {row.class_name
                             ? <span className="font-semibold text-slate-800 dark:text-slate-100">{row.class_name}</span>
-                            : <span className="text-slate-400 dark:text-slate-500">—</span>
+                            : isAssigned
+                              ? <span className="text-slate-400 dark:text-slate-500">—</span>
+                              : <span className="text-xs text-amber-600 dark:text-amber-400 font-cairo">بانتظار الإسناد</span>
                           }
                         </td>
 
@@ -307,7 +309,9 @@ export default function StandbyTab() {
                         <td className="border border-slate-200 dark:border-slate-700 px-3 py-2.5">
                           {row.subject_name
                             ? <span className="text-slate-700 dark:text-slate-200">{row.subject_name}</span>
-                            : <span className="text-slate-400 dark:text-slate-500">—</span>
+                            : isAssigned
+                              ? <span className="text-slate-400 dark:text-slate-500">—</span>
+                              : <span className="text-xs text-amber-600 dark:text-amber-400 font-cairo">بانتظار الإسناد</span>
                           }
                         </td>
 
