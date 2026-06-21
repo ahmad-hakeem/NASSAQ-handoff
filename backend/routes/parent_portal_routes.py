@@ -293,19 +293,22 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                     db.session,
                     {"school_id": child_school_id, "class_id": child_class_id},
                 ))
-                present_days = await _att_count(
-                    db.session,
-                    {"school_id": child_school_id, "class_id": child_class_id,
-                     "student_id": child_id, "status": "present"},
+                # Count present + late as "attended" (late = physically present,
+                # just tardy). Consistent with the weekly-analysis formula (line 1557).
+                present_days = (
+                    await _att_count(db.session, {"school_id": child_school_id, "class_id": child_class_id,
+                                                   "student_id": child_id, "status": "present"})
+                    + await _att_count(db.session, {"school_id": child_school_id, "class_id": child_class_id,
+                                                    "student_id": child_id, "status": "late"})
                 )
             else:
                 total_days = await _att_count(
                     db.session,
                     {"school_id": child_school_id, "student_id": child_id},
                 )
-                present_days = await _att_count(
-                    db.session,
-                    {"school_id": child_school_id, "student_id": child_id, "status": "present"},
+                present_days = (
+                    await _att_count(db.session, {"school_id": child_school_id, "student_id": child_id, "status": "present"})
+                    + await _att_count(db.session, {"school_id": child_school_id, "student_id": child_id, "status": "late"})
                 )
             # Honest empty: no sessions → null, not invented 100%. (Audit 2026-05-10.)
             attendance_rate = (present_days / total_days * 100) if total_days > 0 else None
@@ -618,13 +621,16 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             data["average"] = round((data["total_score"] / data["total_max"]) * 100, 1) if data["total_max"] > 0 else 0
 
         total_grades = len(grades)
-        overall_avg = sum(g.get("percentage", 0) for g in grades) / total_grades if total_grades > 0 else 0
+        # Return null (not 0) when there are no grades so the frontend can
+        # distinguish "no data yet" from a genuine 0% score. (Mirrors the
+        # honest-empty pattern used by the attendance and children endpoints.)
+        overall_avg = (sum(g.get("percentage", 0) for g in grades) / total_grades) if total_grades > 0 else None
 
         return {
             "child_name": child.get("full_name"),
             "subjects": list(subjects_data.values()),
             "total_grades": total_grades,
-            "overall_average": round(overall_avg, 1)
+            "overall_average": round(overall_avg, 1) if overall_avg is not None else None,
         }
 
     # ============= CHILD ATTENDANCE =============
@@ -705,7 +711,9 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 "excused": excused,
                 # Honest empty: no records => null, not a fake 100%.
                 # Frontend renders a placeholder when null. (Audit 2026-05-10.)
-                "attendance_rate": round((present / total_days * 100), 1) if total_days > 0 else None
+                # Include late in the rate — a late student is physically at
+                # school (consistent with weekly-analysis formula).
+                "attendance_rate": round(((present + late) / total_days * 100), 1) if total_days > 0 else None
             }
         }
 

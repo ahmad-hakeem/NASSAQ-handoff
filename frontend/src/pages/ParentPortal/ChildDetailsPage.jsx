@@ -300,11 +300,11 @@ const ChildDetailsPage = () => {
                   <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
                 </div>
                 <span className="text-2xl font-bold text-green-600 dark:text-green-400">
-                  {attendance?.statistics?.attendance_rate || 0}%
+                  {attendance?.statistics?.attendance_rate != null ? `${attendance.statistics.attendance_rate}%` : '—'}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">{isRTL ? 'نسبة الحضور' : 'Attendance'}</p>
-              <Progress value={attendance?.statistics?.attendance_rate || 0} className="h-1.5 mt-2" />
+              <Progress value={attendance?.statistics?.attendance_rate ?? 0} className="h-1.5 mt-2" />
             </CardContent>
           </Card>
 
@@ -315,11 +315,11 @@ const ChildDetailsPage = () => {
                   <Award className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 </div>
                 <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                  {grades?.overall_average || 0}%
+                  {grades?.overall_average != null ? `${grades.overall_average}%` : '—'}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">{t('average2')}</p>
-              <Progress value={grades?.overall_average || 0} className="h-1.5 mt-2" />
+              <Progress value={grades?.overall_average ?? 0} className="h-1.5 mt-2" />
             </CardContent>
           </Card>
         </div>
