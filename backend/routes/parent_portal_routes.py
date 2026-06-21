@@ -28,7 +28,24 @@ logger = logging.getLogger("nassaq.parent_portal_routes")
 # ---------------------------------------------------------------------------
 
 def _att_where(model, filters: dict):
-    """Build SQLAlchemy WHERE conditions from a filter dict."""
+    """Build SQLAlchemy WHERE conditions from a filter dict.
+
+    attendance.date is DateTime(timezone=True) → timestamptz.  Passing bare
+    ISO strings lets asyncpg bind them as varchar, which Postgres rejects with
+    "operator does not exist: timestamptz >= character varying".  We convert
+    string values to datetime.date so asyncpg sends the correct type; Postgres
+    implicitly casts date → timestamptz for the comparison.
+    """
+    from datetime import date as _pydate
+
+    def _coerce_date(v):
+        if isinstance(v, str):
+            try:
+                return _pydate.fromisoformat(v)
+            except ValueError:
+                return v
+        return v
+
     conds = []
     for key, val in (filters or {}).items():
         if key == "student_id":
@@ -41,13 +58,13 @@ def _att_where(model, filters: dict):
             conds.append(model.status == val)
         elif key == "date" and isinstance(val, dict):
             if "$gte" in val:
-                conds.append(model.date >= val["$gte"])
+                conds.append(model.date >= _coerce_date(val["$gte"]))
             if "$lte" in val:
-                conds.append(model.date <= val["$lte"])
+                conds.append(model.date <= _coerce_date(val["$lte"]))
             if "$lt" in val:
-                conds.append(model.date < val["$lt"])
+                conds.append(model.date < _coerce_date(val["$lt"]))
         elif key == "date":
-            conds.append(model.date == val)
+            conds.append(model.date == _coerce_date(val))
     return conds
 
 
