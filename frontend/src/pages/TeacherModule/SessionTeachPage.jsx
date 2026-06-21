@@ -356,6 +356,8 @@ export default function SessionTeachPage() {
   const [skillEnabled, setSkillEnabled] = useState(false);
   const [showAddOtherItems, setShowAddOtherItems] = useState(false);
   const [participationScores, setParticipationScores] = useState({});
+  const [correctAnswerWeight, setCorrectAnswerWeight] = useState(null);
+  const [effectiveCorrectAnswerWeight, setEffectiveCorrectAnswerWeight] = useState(5);
   const [savingSettings, setSavingSettings] = useState(false);
   // If the active action tab gets disabled by settings, switch to a safe default
   useEffect(() => {
@@ -506,6 +508,12 @@ export default function SessionTeachPage() {
       if (s.participation_scores && typeof s.participation_scores === 'object') {
         setParticipationScores(s.participation_scores);
       }
+      const caw = s.correct_answer_weight;
+      setCorrectAnswerWeight(caw != null ? Number(caw) : null);
+      // effective_correct_answer_weight is the resolved value after the
+      // session-override → tenant-default → system-default (5) waterfall.
+      const ecaw = s.effective_correct_answer_weight;
+      setEffectiveCorrectAnswerWeight(ecaw != null ? Number(ecaw) : 5);
     } catch (e) {
       console.error('Error loading session settings:', e);
     }
@@ -536,6 +544,7 @@ export default function SessionTeachPage() {
         skill_enabled: skillEnabled,
         extra_columns: followupColumns,
         participation_scores: participationScores,
+        correct_answer_weight: correctAnswerWeight,
       });
       // Persist grade values only. Columns are owned by the class-level
       // grade-columns API (single source of truth shared with سجل الطلاب).
@@ -3309,6 +3318,9 @@ export default function SessionTeachPage() {
           onShowAddOtherItemsChange: setShowAddOtherItems,
           participationScores,
           onParticipationScoresChange: setParticipationScores,
+          correctAnswerWeight,
+          effectiveCorrectAnswerWeight,
+          onCorrectAnswerWeightChange: setCorrectAnswerWeight,
           onSave: saveSessionSettings,
           saving: savingSettings,
         }}

@@ -650,6 +650,73 @@ export default function SidebarSettingsDialog({
             )}
           </div>
         )}
+        {/* Correct-answer weight — per-session override */}
+        {sc.correctAnswerWeight !== undefined && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-hidden="true" strokeWidth={1.5} />
+              <span className="text-sm font-medium font-cairo">{t('correctAnswerWeight') || 'وزن الإجابة الصحيحة'}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                max="1000"
+                step="1"
+                inputMode="numeric"
+                value={sc.correctAnswerWeight ?? ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    sc.onCorrectAnswerWeightChange?.(null);
+                    return;
+                  }
+                  // Reject floats/non-integers — Number.isInteger ensures no
+                  // silent truncation matching the backend's strict 422 rule.
+                  const n = Number(raw);
+                  if (Number.isFinite(n) && Number.isInteger(n) && n >= 1 && n <= 1000) {
+                    sc.onCorrectAnswerWeightChange?.(n);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') e.preventDefault();
+                }}
+                placeholder="5"
+                dir="ltr"
+                className="w-20 text-sm bg-card dark:bg-muted border border-border rounded-full px-3 py-2 outline-none focus:border-brand-turquoise font-cairo text-center placeholder:text-muted-foreground/50 tabular-nums"
+              />
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[1, 2, 5, 10].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => sc.onCorrectAnswerWeightChange?.(v)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold font-cairo border transition-colors ${
+                      sc.correctAnswerWeight === v
+                        ? 'bg-emerald-500 text-white border-emerald-500'
+                        : 'bg-card dark:bg-muted border-border text-muted-foreground hover:border-emerald-400 hover:text-emerald-600'
+                    }`}
+                  >
+                    {v}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => sc.onCorrectAnswerWeightChange?.(null)}
+                  className="px-2.5 py-1 rounded-full text-xs font-cairo border border-dashed border-border text-muted-foreground hover:text-brand-turquoise hover:border-brand-turquoise transition-colors"
+                >
+                  {t('restoreDefault') || 'استعادة الافتراضي'}
+                </button>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground font-cairo">
+              {sc.correctAnswerWeight == null
+                ? `يُستخدم الوزن الافتراضي للحصة (${sc.effectiveCorrectAnswerWeight ?? 5} نقاط)`
+                : `كل إجابة صحيحة = ${sc.correctAnswerWeight} ${sc.correctAnswerWeight === 1 ? 'نقطة' : 'نقاط'} في هذه الحصة`}
+            </p>
+          </div>
+        )}
+
         {/* Participation type score overrides */}
         {sc.participationScores !== undefined && (
           <div className="space-y-2">

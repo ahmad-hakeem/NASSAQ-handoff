@@ -10,7 +10,7 @@ import {
   Users, CheckCircle2, Loader2, Play,
   ArrowRight, UserCheck, UserX, Sun, Moon,
   LayoutGrid, List, BookOpen, Sparkles, GraduationCap,
-  AlertCircle, Heart, ShieldAlert, AlertTriangle, Eye
+  AlertCircle, Heart, ShieldAlert, AlertTriangle, Eye, Star,
 } from 'lucide-react';
 
 const STATUS_CONFIG = {
@@ -71,6 +71,8 @@ export default function SessionStartPage() {
   const [lessonData, setLessonData] = useState(null);
   const [genderSplit, setGenderSplit] = useState(true);
   const [transitionProgress, setTransitionProgress] = useState(0);
+  const [correctAnswerWeight, setCorrectAnswerWeight] = useState(null);
+  const [effectiveCorrectAnswerWeight, setEffectiveCorrectAnswerWeight] = useState(5);
 
   const { nassaqError } = useNassaqAlert();
   const teacherId = user?.teacher_id || user?.id;
@@ -92,6 +94,17 @@ export default function SessionStartPage() {
   useEffect(() => {
     if (lessonData && teacherId) startSession();
   }, [lessonData, teacherId]);
+
+  // Once the session is created, fetch the resolved effective weight from the
+  // backend (session-override → tenant-default → system-default waterfall) so
+  // the default hint shows the correct active value instead of a hardcoded 5.
+  useEffect(() => {
+    if (!sessionId) return;
+    api.get(`/session/${sessionId}/settings`).then((res) => {
+      const ecaw = res.data?.effective_correct_answer_weight;
+      if (ecaw != null) setEffectiveCorrectAnswerWeight(Number(ecaw));
+    }).catch(() => {});
+  }, [api, sessionId]);
 
   const handleSessionResult = async (res, isRetry = false) => {
     const sid = res.data?.session_record_id;
@@ -138,6 +151,10 @@ export default function SessionStartPage() {
       schedule_session_id: lessonData.schedule_session_id || lessonData.id,
       class_id: lessonData.classId || lessonData.class_id,
       subject_id: lessonData.subjectId || lessonData.subject_id,
+      // Include current weight state (null = use tenant/system default).
+      // correctAnswerWeight starts as null and can be updated during the
+      // attendance step; the backend stores it only when non-null.
+      correct_answer_weight: correctAnswerWeight,
     };
     try {
       const res = await api.post('/session/start', payload);
@@ -164,6 +181,24 @@ export default function SessionStartPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const saveWeightToSession = async (sid, weight) => {
+    if (!sid) return;
+    try {
+      await api.post(`/session/${sid}/settings`, {
+        subject_id: lessonData?.subjectId || lessonData?.subject_id || '',
+        correct_answer_weight: weight,
+      });
+    } catch (e) {
+      const msg = e.response?.data?.detail || 'خطأ في حفظ الوزن';
+      nassaqError(msg);
+    }
+  };
+
+  const handleWeightChange = (weight) => {
+    setCorrectAnswerWeight(weight);
+    if (sessionId) saveWeightToSession(sessionId, weight);
   };
 
   const fetchStudents = async (sid) => {
@@ -456,6 +491,80 @@ export default function SessionStartPage() {
             >
               <UserX className="h-4 w-4" /> {t('allAbsent')}
             </button>
+          </div>
+
+          {/* Correct-answer weight — pre-session configuration */}
+          <div className={`rounded-2xl border ${themeStyles.cardBg} p-4 transition-colors duration-300`}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                <Star className="h-4 w-4 text-emerald-500" aria-hidden="true" strokeWidth={1.5} />
+              </div>
+              <div className="flex-1">
+                <p className={`font-cairo font-bold ${themeStyles.text} text-sm`}>
+                  {t('correctAnswerWeight') || 'وزن الإجابة الصحيحة'}
+                </p>
+                <p className={`${themeStyles.textMuted} text-[10px] font-cairo mt-0.5`}>
+                  {correctAnswerWeight == null
+                    ? `يُستخدم الوزن الافتراضي للحصة (${effectiveCorrectAnswerWeight} نقاط)`
+                    : `كل إجابة صحيحة = ${correctAnswerWeight} ${correctAnswerWeight === 1 ? 'نقطة' : 'نقاط'} في هذه الحصة`}
+                </p>
+              </div>
+              <input
+                type="number"
+                min="1"
+                max="1000"
+                step="1"
+                inputMode="numeric"
+                value={correctAnswerWeight ?? ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') { handleWeightChange(null); return; }
+                  const n = Number(raw);
+                  if (Number.isFinite(n) && Number.isInteger(n) && n >= 1 && n <= 1000) {
+                    handleWeightChange(n);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E' || e.key === '.') e.preventDefault();
+                }}
+                placeholder="5"
+                dir="ltr"
+                className={`w-16 text-sm border rounded-full px-2 py-1.5 outline-none focus:border-emerald-500 font-cairo text-center tabular-nums ${
+                  isDark
+                    ? 'bg-card border-border text-foreground placeholder:text-muted-foreground/50'
+                    : 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-400'
+                }`}
+              />
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {[1, 2, 5, 10].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => handleWeightChange(v)}
+                  className={`px-3 py-1 rounded-full text-xs font-bold font-cairo border transition-colors ${
+                    correctAnswerWeight === v
+                      ? 'bg-emerald-500 text-foreground border-emerald-500 shadow-sm shadow-emerald-500/30'
+                      : isDark
+                        ? 'bg-card border-border text-muted-foreground hover:border-emerald-400 hover:text-emerald-400'
+                        : 'bg-white border-gray-300 text-gray-600 hover:border-emerald-400 hover:text-emerald-600'
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => handleWeightChange(null)}
+                className={`px-3 py-1 rounded-full text-xs font-cairo border border-dashed transition-colors ${
+                  isDark
+                    ? 'border-border text-muted-foreground hover:text-brand-turquoise hover:border-brand-turquoise'
+                    : 'border-gray-300 text-gray-500 hover:text-brand-turquoise hover:border-brand-turquoise'
+                }`}
+              >
+                {t('restoreDefault') || 'استعادة الافتراضي'}
+              </button>
+            </div>
           </div>
 
           {showSplit ? (

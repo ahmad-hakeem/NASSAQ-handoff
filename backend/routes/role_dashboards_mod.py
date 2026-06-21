@@ -2423,12 +2423,40 @@ async def start_class_session(
     requested_teacher = data.get("teacher_id") or caller_teacher
     if requested_teacher != caller_teacher and current_user.get("role") not in ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="لا يمكنك بدء حصة لمعلم آخر")
+    raw_weight = data.get("correct_answer_weight")
+    parsed_weight = None
+    if raw_weight is not None:
+        # Require a JSON integer: reject strings, booleans, and non-integer floats
+        # so the API never silently truncates or accepts text values.
+        if isinstance(raw_weight, bool) or isinstance(raw_weight, str):
+            raise HTTPException(
+                status_code=422,
+                detail="وزن الإجابة الصحيحة يجب أن يكون عدداً صحيحاً بين 1 و1000",
+            )
+        if isinstance(raw_weight, float) and not raw_weight.is_integer():
+            raise HTTPException(
+                status_code=422,
+                detail="وزن الإجابة الصحيحة يجب أن يكون عدداً صحيحاً (بدون كسور عشرية)",
+            )
+        try:
+            parsed_weight = int(raw_weight)
+            if not (1 <= parsed_weight <= 1000):
+                raise HTTPException(
+                    status_code=422,
+                    detail="وزن الإجابة الصحيحة يجب أن يكون بين 1 و1000",
+                )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=422,
+                detail="وزن الإجابة الصحيحة يجب أن يكون عدداً صحيحاً بين 1 و1000",
+            ) from exc
     result = await session_engine.start_session(
         teacher_id=requested_teacher,
         schedule_session_id=data.get("schedule_session_id"),
         class_id=data.get("class_id"),
         subject_id=data.get("subject_id"),
-        force_new=data.get("force_new") is True
+        force_new=data.get("force_new") is True,
+        correct_answer_weight=parsed_weight,
     )
     return result
 
@@ -2489,11 +2517,18 @@ async def get_session_info(
     session_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get session information"""
+    """Get session information.
+
+    The response always includes ``correct_answer_weight`` so the frontend
+    can display the currently active weight when reopening the settings panel.
+    The field is ``None`` when no per-session override was set (meaning the
+    engine will fall back to the tenant default → system default of 5).
+    """
     await _verify_session_owner(session_id, current_user)
     session = await gd_find_one(db.session, "class_sessions", {"id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
+    session.setdefault("correct_answer_weight", None)
     return session
 
 
@@ -3624,12 +3659,31 @@ async def get_session_settings(
         "extra_columns": [],
         "participation_scores": {},
     }
+    # Read correct_answer_weight from the live session document so the UI
+    # always reflects the value actually used by the scoring engine, even
+    # when the session was started before settings were persisted.
+    session_doc_weight = session.get("correct_answer_weight") if session else None
+
+    # Resolve the *effective* weight via the engine waterfall so the UI can
+    # display the true active value (session override → tenant default → 5)
+    # rather than a hardcoded "5" when no per-session override is set.
+    try:
+        resolved_rules = await session_engine._get_session_score_rules(session_id)
+        effective_correct_answer_weight = resolved_rules.get("correct_answer", 5)
+    except Exception:
+        effective_correct_answer_weight = 5
+
     if not record:
         logger.warning(
             "get_session_settings: no stored record for session=%s tenant=%s — returning defaults",
             session_id, tenant_id
         )
-        return {"session_id": session_id, **default}
+        return {
+            "session_id": session_id,
+            **default,
+            "correct_answer_weight": session_doc_weight,
+            "effective_correct_answer_weight": effective_correct_answer_weight,
+        }
     return {
         "session_id": session_id,
         "subject_id": record.get("subject_id") or default["subject_id"],
@@ -3641,6 +3695,8 @@ async def get_session_settings(
         "skill_enabled": record.get("skill_enabled", False),
         "extra_columns": record.get("extra_columns", []),
         "participation_scores": record.get("participation_scores", {}),
+        "correct_answer_weight": session_doc_weight,
+        "effective_correct_answer_weight": effective_correct_answer_weight,
     }
 
 
@@ -3718,6 +3774,52 @@ async def save_session_settings(
                     detail=f"قيمة المشاركة ({iv}) تتجاوز الحد الأقصى المسموح به للمدرسة ({tenant_participation_max})"
                 )
             participation_scores[k] = iv
+    # Validate and persist correct_answer_weight on the live session document.
+    # The session document (class_sessions) is the authoritative storage for
+    # this field; session_settings is NOT updated for it because the weight is
+    # session-scoped, not class+subject-template-scoped.
+    raw_caw = payload.get("correct_answer_weight")
+    # Empty string means "restore default" (same as explicit null).
+    if raw_caw is not None and raw_caw != "":
+        # Require a JSON integer: reject strings, booleans, and non-integer floats.
+        if isinstance(raw_caw, bool) or isinstance(raw_caw, str):
+            raise HTTPException(
+                status_code=422,
+                detail="وزن الإجابة الصحيحة يجب أن يكون عدداً صحيحاً بين 1 و1000",
+            )
+        if isinstance(raw_caw, float) and not raw_caw.is_integer():
+            raise HTTPException(
+                status_code=422,
+                detail="وزن الإجابة الصحيحة يجب أن يكون عدداً صحيحاً (بدون كسور عشرية)",
+            )
+        try:
+            caw = int(raw_caw)
+            if not (1 <= caw <= 1000):
+                raise HTTPException(
+                    status_code=422,
+                    detail="وزن الإجابة الصحيحة يجب أن يكون بين 1 و1000",
+                )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=422,
+                detail="وزن الإجابة الصحيحة يجب أن يكون عدداً صحيحاً بين 1 و1000",
+            ) from exc
+        await gd_update_one(
+            db.session,
+            "class_sessions",
+            {"id": session_id},
+            {"correct_answer_weight": caw},
+        )
+    elif raw_caw == "" or (raw_caw is None and "correct_answer_weight" in payload):
+        # Explicit None/empty → teacher clicked "Restore default": remove the
+        # per-session override so the engine falls back to tenant/system default.
+        await gd_update_one(
+            db.session,
+            "class_sessions",
+            {"id": session_id},
+            {"correct_answer_weight": None},
+        )
+
     record_data = {
         "class_id": c_id,
         "subject_id": s_id,

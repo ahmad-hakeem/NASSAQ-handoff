@@ -128,6 +128,15 @@ class SessionStartRequest(BaseModel):
     teacher_id: str
     class_id: str
     subject_id: str
+    # Per-session correct-answer weight (1–1000). When set it overrides
+    # the tenant default for the ``correct_answer`` score rule in this
+    # session only. None → use tenant/system default.
+    correct_answer_weight: Optional[int] = Field(
+        None,
+        ge=1,
+        le=1000,
+        description="وزن الإجابة الصحيحة (1–1000)",
+    )
     
 
 class SessionStartResponse(BaseModel):
@@ -337,10 +346,30 @@ class TeacherSessionEngine:
         return self._tenant_levels_cache[tenant_id]
 
     async def _get_session_score_rules(self, session_id: str) -> dict:
-        """Resolve tenant-aware score rules for a session, cached by tenant_id."""
+        """Resolve score rules for a session using the waterfall:
+        system defaults → tenant overrides → per-session correct_answer_weight.
+
+        The per-session weight (stored on class_sessions.correct_answer_weight)
+        overrides only the ``correct_answer`` key; all other rule keys come from
+        the tenant/default waterfall unchanged.  This keeps existing scoring
+        behaviour for every event type except correct answers intact.
+
+        Security: correct_answer_weight is written only by the session-owning
+        teacher's request (gated by _verify_session_owner in the routes), so no
+        cross-tenant write can reach this field.
+        """
         session_doc = await gd_find_one(self.session, "class_sessions", {"id": session_id})
         tid = (session_doc or {}).get("tenant_id") or (session_doc or {}).get("school_id") or ""
-        return await self._get_score_rules(tid)
+        rules = dict(await self._get_score_rules(tid))
+        weight = (session_doc or {}).get("correct_answer_weight")
+        if weight is not None:
+            try:
+                w = int(weight)
+                if 1 <= w <= 1000:
+                    rules["correct_answer"] = w
+            except (TypeError, ValueError):
+                pass
+        return rules
 
     # ---------- Session Management ----------
     
@@ -438,12 +467,13 @@ class TeacherSessionEngine:
         return schedule_session
     
     async def start_session(
-        self, 
-        teacher_id: str, 
+        self,
+        teacher_id: str,
         schedule_session_id: str,
         class_id: str,
         subject_id: str,
-        force_new: bool = False
+        force_new: bool = False,
+        correct_answer_weight: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Start a new class session.
@@ -515,8 +545,34 @@ class TeacherSessionEngine:
             "attendance_approved": False,
             "interaction_mode": None,
             "created_by": teacher_id,
-            "created_at": now.isoformat()
+            "created_at": now.isoformat(),
         }
+        if correct_answer_weight is not None:
+            # Require a JSON integer: reject strings, booleans, and non-integer floats.
+            if isinstance(correct_answer_weight, bool) or isinstance(correct_answer_weight, str):
+                raise HTTPException(
+                    status_code=422,
+                    detail="وزن الإجابة الصحيحة يجب أن يكون عدداً صحيحاً بين 1 و1000",
+                )
+            if isinstance(correct_answer_weight, float) and not correct_answer_weight.is_integer():
+                raise HTTPException(
+                    status_code=422,
+                    detail="وزن الإجابة الصحيحة يجب أن يكون عدداً صحيحاً (بدون كسور عشرية)",
+                )
+            try:
+                w = int(correct_answer_weight)
+                if 1 <= w <= 1000:
+                    session_record["correct_answer_weight"] = w
+                else:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="وزن الإجابة الصحيحة يجب أن يكون بين 1 و1000",
+                    )
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail="وزن الإجابة الصحيحة يجب أن يكون عدداً صحيحاً بين 1 و1000",
+                ) from exc
         
         await gd_insert(self.session, "class_sessions", session_record)
 
