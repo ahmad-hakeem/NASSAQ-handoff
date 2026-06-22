@@ -1,6 +1,23 @@
 """
 Test Notification Engine APIs for NASSAQ School Management System
 Tests: Notification CRUD, Mark as Read, Mark All as Read, Analytics, Attendance-triggered notifications
+
+LIVE-SERVER SUITE — this file talks to a real, running HTTP server using the
+`requests` library against `REACT_APP_BACKEND_URL`. Unlike the rest of the test
+suite (which drives the app in-process via the ASGI `client` fixture), these
+tests need a booted server, a reachable database, and the seeded principal /
+teacher test accounts.
+
+The entire module is therefore gated behind the `live_server` marker and is
+SKIPPED unless `REACT_APP_BACKEND_URL` is set, so the default
+`pytest backend/tests` run no longer fails with a LocationParseError. Run it
+from a dedicated live-server CI job, e.g.:
+
+    REACT_APP_BACKEND_URL=https://<host> pytest backend/tests/test_notification_api.py -m live_server
+
+In-process ASGI coverage for the same notification surface already lives in
+`test_parent_notification_child_tag.py`, `test_role_communication_apis.py`,
+and `test_independent_teacher_notifications_inbox.py`.
 """
 import pytest
 import requests
@@ -9,6 +26,15 @@ import uuid
 from datetime import datetime
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+
+if not BASE_URL:
+    pytest.skip(
+        "REACT_APP_BACKEND_URL is not set — skipping live-server notification "
+        "integration tests (run them in the dedicated live-server CI job).",
+        allow_module_level=True,
+    )
+
+pytestmark = pytest.mark.live_server
 
 # Test credentials
 PRINCIPAL_EMAIL = "principal@nassaq.com"
