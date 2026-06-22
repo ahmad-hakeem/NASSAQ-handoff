@@ -1341,11 +1341,31 @@ export default function SessionTeachPage() {
         details: behaviourNote || null,
       });
       const change = res.data?.score_change || 0;
+      const signed = change > 0 ? `+${change}` : String(change);
       const bLabel = bType.labelKey ? t(bType.labelKey) : bType.label;
-      toast.success(`${t('behaviour')}: ${bLabel} — ${selectedStudent.full_name?.split(' ')[0]}`);
-      addLog('behaviour', `${selectedStudent.full_name?.split(' ')[0]} — ${bLabel} (${change > 0 ? '+' : ''}${change})`, behaviourCategory === 'negative' ? 'text-red-600' : 'text-purple-700');
+      const firstName = selectedStudent.full_name?.split(' ')[0];
+      const toastMsg = `${t('behaviour')}: ${bLabel} — ${firstName}${change ? ` (${signed})` : ''}`;
+      // Sign-aware toast so a negative behaviour reads as a deduction, not a win.
+      if (change < 0) {
+        toast.info(toastMsg);
+      } else {
+        toast.success(toastMsg);
+      }
+      addLog('behaviour', `${firstName} — ${bLabel} (${signed})`, behaviourCategory === 'negative' ? 'text-red-600' : 'text-purple-700');
       setCanUndo(true);
       void peekUndoState();
+      // Optimistically reflect the behaviour in the live student stats so the
+      // teacher sees it register instantly (mirrors answers/participation). A
+      // behaviour counts as an interaction in get_session_students, so only the
+      // interaction tally is bumped here — participation_count stays server-owned.
+      setStudents(prev => prev.map(s =>
+        s.id === selectedStudent.id ? { ...s, interactionCount: (s.interactionCount || 0) + 1 } : s
+      ));
+      setSelectedStudent(prev => prev ? {
+        ...prev,
+        interactionCount: (prev.interactionCount || 0) + 1,
+        interaction_count: (prev.interaction_count || 0) + 1,
+      } : null);
       setBehaviourNote('');
     } catch (e) {
       console.error('Error recording behaviour:', e);
