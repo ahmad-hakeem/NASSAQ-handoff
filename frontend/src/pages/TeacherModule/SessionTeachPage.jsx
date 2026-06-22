@@ -333,6 +333,16 @@ export default function SessionTeachPage() {
   // Tracks "studentId:columnId" pairs the teacher has manually typed into,
   // so the live-refresh poll never overwrites an in-progress edit.
   const dirtyFollowupCells = useRef(new Set());
+  // Per-cell edit counter. A save snapshots each dirty cell's revision at send
+  // time and, on success, clears ONLY the cells whose revision is unchanged —
+  // so an edit made while a save is in flight keeps its dirty mark (and is not
+  // clobbered by the 30 s merge poll) until its own later save persists it.
+  const followupCellRev = useRef(new Map());
+  // Same dirty/revision model for absence edits (keyed by student id), so an
+  // absence add/remove is persisted and survives the merge poll / reopen the
+  // same way a grade edit does.
+  const dirtyFollowupAbsences = useRef(new Set());
+  const followupAbsenceRev = useRef(new Map());
   const [followupTab, setFollowupTab] = useState('students');
   const [showAddColumnModal, setShowAddColumnModal] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
@@ -554,13 +564,10 @@ export default function SessionTeachPage() {
         settingsPayload.correct_answer_weight = correctAnswerWeight;
       }
       await api.post(`/session/${sessionId}/settings`, settingsPayload);
-      // Persist grade values only. Columns are owned by the class-level
-      // grade-columns API (single source of truth shared with سجل الطلاب).
-      if (Object.keys(followupData).length > 0) {
-        await api.post(`/session/${sessionId}/followup-record`, {
-          data: followupData
-        }).catch(() => {});
-      }
+      // Persist grade values via the serialized flush so this settings-save
+      // can never race another follow-up writer. Columns are owned by the
+      // class-level grade-columns API (single source of truth shared with سجل الطلاب).
+      await flushFollowupRecord({ silent: true }).catch(() => {});
       toast.success(t('saved') || t('saveSettings'));
       setCorrectAnswerWeightDirty(false);
       setShowSidebarSettings(false);
@@ -708,18 +715,113 @@ export default function SessionTeachPage() {
           evalMode, groups, stats, mode: mode?.id, actionTab, followupData, followupColumns, followupAbsences,
           customPositiveBehaviours, customNegativeBehaviours, customSkills, customEvaluationItems
         }));
-        // Only autosave grade values + absences. Columns are persisted via the
-        // class-level grade-columns API so we don't overwrite them here.
-        if (Object.keys(followupData).length > 0 || Object.keys(followupAbsences).length > 0) {
-          api.post(`/session/${sessionId}/followup-record`, {
-            data: followupData, absences: followupAbsences
-          }).catch(() => {});
-        }
+        // Follow-up grade/absence persistence now flows exclusively through the
+        // serialized flush (debounce while typing + flush on close + Save Class).
+        // The old direct POST here raced those writes and could land a stale
+        // blob on the server; sessionStorage above remains the local backstop.
       } catch (e) { /* ignore */ }
     };
     autoSaveRef.current = setInterval(saveState, 10000);
     return () => { if (autoSaveRef.current) clearInterval(autoSaveRef.current); };
   }, [sessionId, evalMode, groups, stats, mode, actionTab, followupData, followupColumns, followupAbsences, api, customPositiveBehaviours, customNegativeBehaviours, customSkills, customEvaluationItems]);
+
+  // ---- Follow-up record persistence (كشف المتابعة) -------------------------
+  // The follow-up grade/absence state lives in this parent component so it
+  // survives the dialog closing, but a close never persisted the pending edit
+  // and the next reopen blind-replaced local state from a stale server copy —
+  // losing the edit. We now (1) debounce a save while typing, (2) flush on
+  // close, and (3) make the reopen reload wait for any in-flight flush. Refs
+  // mirror the latest state so the flush always posts the most recent values
+  // without recreating the callback on every keystroke.
+  const followupDataRef = useRef(followupData);
+  const followupAbsencesRef = useRef(followupAbsences);
+  useEffect(() => { followupDataRef.current = followupData; }, [followupData]);
+  useEffect(() => { followupAbsencesRef.current = followupAbsences; }, [followupAbsences]);
+  const followupSaveTimer = useRef(null);
+  // Serializes saves so an older (stale) snapshot can never land on the server
+  // after a newer one. Each queued flush reads the latest refs at send time and
+  // waits for the previous flush to finish, so the last write always wins. The
+  // ref itself never rejects, so a reopen can await it safely.
+  const followupFlushChain = useRef(Promise.resolve());
+
+  const flushFollowupRecord = useCallback(({ silent = false } = {}) => {
+    if (!sessionId) return Promise.resolve();
+    const run = async () => {
+      const data = followupDataRef.current || {};
+      const absences = followupAbsencesRef.current || {};
+      // Skip only when there is genuinely nothing to persist. An empty payload
+      // WITH dirty cells/absences is meaningful — it's a deletion (e.g. the
+      // teacher removed the last absence and there are no grades), so it must
+      // still POST {} to clear the server record and release the dirty markers.
+      if (
+        Object.keys(data).length === 0 &&
+        Object.keys(absences).length === 0 &&
+        dirtyFollowupCells.current.size === 0 &&
+        dirtyFollowupAbsences.current.size === 0
+      ) {
+        return;
+      }
+      // Snapshot the revision of every dirty cell this POST is about to persist,
+      // so a successful save only clears cells not edited again mid-flight.
+      const sentRev = new Map();
+      dirtyFollowupCells.current.forEach((k) => sentRev.set(k, followupCellRev.current.get(k) || 0));
+      const sentAbsRev = new Map();
+      dirtyFollowupAbsences.current.forEach((sid) => sentAbsRev.set(sid, followupAbsenceRev.current.get(sid) || 0));
+      try {
+        await api.post(`/session/${sessionId}/followup-record`, { data, absences });
+        // Confirmed on the server: clear only the cells/students whose value did
+        // not change since this POST's snapshot was taken (later edits stay dirty).
+        sentRev.forEach((rev, k) => {
+          if ((followupCellRev.current.get(k) || 0) === rev) dirtyFollowupCells.current.delete(k);
+        });
+        sentAbsRev.forEach((rev, sid) => {
+          if ((followupAbsenceRev.current.get(sid) || 0) === rev) dirtyFollowupAbsences.current.delete(sid);
+        });
+      } catch (e) {
+        // Never drop the edit on failure: surface a safe Arabic message (unless
+        // this is the silent backstop) and keep the value — and its dirty mark —
+        // in memory so a reopen merges around it instead of clobbering it.
+        if (!silent) {
+          nassaqError(getApiErrorMessage(e) || t('errorSaving') || 'تعذّر حفظ درجات الحصة');
+        }
+        throw e;
+      }
+    };
+    // Append to the chain; a prior failure must not block later saves, and the
+    // chain ref never rejects so the reopen effect can await it safely.
+    const next = followupFlushChain.current.catch(() => {}).then(run);
+    followupFlushChain.current = next.catch(() => {});
+    return next;
+  }, [api, sessionId, nassaqError, t]);
+
+  // Debounced backstop: fires 1.5 s after the last edit so rapid consecutive
+  // keystrokes cannot postpone a save indefinitely (the old 10 s interval reset
+  // its timer on every keystroke). Silent — failures are retried/surfaced on close.
+  const scheduleFollowupSave = useCallback(() => {
+    if (followupSaveTimer.current) clearTimeout(followupSaveTimer.current);
+    followupSaveTimer.current = setTimeout(() => {
+      flushFollowupRecord({ silent: true }).catch(() => {});
+    }, 1500);
+  }, [flushFollowupRecord]);
+
+  // Persist pending edits whenever the sheet closes — the إغلاق button, the
+  // Escape key, and click-outside all route through the dialog's onOpenChange.
+  // Cancel the debounce first so we don't double-post, then flush only when
+  // there is something unsaved (a pending debounce or dirty cells); the reopen
+  // effect awaits this flush so the reload reflects the just-saved values.
+  const handleFollowupOpenChange = useCallback((next) => {
+    if (!next) {
+      const hadPending = !!followupSaveTimer.current;
+      if (followupSaveTimer.current) {
+        clearTimeout(followupSaveTimer.current);
+        followupSaveTimer.current = null;
+      }
+      if (hadPending || dirtyFollowupCells.current.size > 0 || dirtyFollowupAbsences.current.size > 0) {
+        flushFollowupRecord().catch(() => {});
+      }
+    }
+    setShowFollowupRecord(next);
+  }, [flushFollowupRecord]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -883,8 +985,17 @@ export default function SessionTeachPage() {
         }
         return next;
       });
-      // Absences are managed via the absence tab, not inline edits — always sync.
-      setFollowupAbsences(res.data?.absences || {});
+      // Merge absences around any student whose absence list the teacher is
+      // mid-editing (dirty), so the poll can't clobber an unsaved absence edit;
+      // non-dirty students always sync to the fresh server values.
+      setFollowupAbsences(prev => {
+        const next = { ...(res.data?.absences || {}) };
+        dirtyFollowupAbsences.current.forEach((sid) => {
+          if (prev[sid] !== undefined) next[sid] = prev[sid];
+          else delete next[sid];
+        });
+        return next;
+      });
     } catch { /* silent — polling errors must not surface to the user */ }
   }, [api, sessionId]);
 
@@ -981,15 +1092,23 @@ export default function SessionTeachPage() {
   // كشف المتابعة dialog is opened, so the Live Class always shows the same
   // columns as فصولي → سجل الطلاب, and the report reflects the latest
   // session-derived (live-scored) values once the columns are loaded.
-  // Also clears the dirty-cell set so the very first load is always a full
-  // replace (no edits have happened yet at that point).
   useEffect(() => {
     if (showFollowupRecord && classIdForGrades) {
-      dirtyFollowupCells.current = new Set();
       loadClassGradeColumns();
-      loadFollowupRecord();
+      // If a previous close is still flushing edits, wait for it first so the
+      // GET returns the just-saved values. Then MERGE rather than blind-replace:
+      // a successful flush leaves no dirty cells (merge == full refresh), but if
+      // a close-save failed its cells stay dirty and the merge preserves the
+      // teacher's unsaved edits instead of clobbering them with stale data.
+      let cancelled = false;
+      (async () => {
+        const pending = followupFlushChain.current;
+        if (pending) { try { await pending; } catch { /* surfaced on close */ } }
+        if (!cancelled) mergeFollowupRecord();
+      })();
+      return () => { cancelled = true; };
     }
-  }, [showFollowupRecord, classIdForGrades, loadClassGradeColumns, loadFollowupRecord]);
+  }, [showFollowupRecord, classIdForGrades, loadClassGradeColumns, mergeFollowupRecord]);
 
   // While the dialog is open, poll every 30 s so that interaction-point totals
   // derived on the backend stay current without the teacher having to close and
@@ -1005,12 +1124,42 @@ export default function SessionTeachPage() {
   // reference dirtyFollowupCells, which is also defined here.  Passed down to
   // FollowupRecordDialog as the onGradeChange prop.
   const handleFollowupGradeChange = useCallback((sid, cid, value) => {
-    dirtyFollowupCells.current.add(`${sid}:${cid}`);
+    const key = `${sid}:${cid}`;
+    dirtyFollowupCells.current.add(key);
+    followupCellRev.current.set(key, (followupCellRev.current.get(key) || 0) + 1);
     setFollowupData(prev => ({
       ...prev,
       [sid]: { ...(prev[sid] || {}), [cid]: value },
     }));
-  }, []);
+    scheduleFollowupSave();
+  }, [scheduleFollowupSave]);
+
+  // Absence add/remove run here (parent scope) so they can mark the per-student
+  // dirty/revision state and schedule the same serialized flush as grade edits.
+  const markFollowupAbsenceDirty = useCallback((studentId) => {
+    dirtyFollowupAbsences.current.add(studentId);
+    followupAbsenceRev.current.set(studentId, (followupAbsenceRev.current.get(studentId) || 0) + 1);
+    scheduleFollowupSave();
+  }, [scheduleFollowupSave]);
+  const handleFollowupAbsenceAdd = useCallback((studentId, date) => {
+    if (!date) return;
+    setFollowupAbsences(prev => {
+      const list = prev[studentId] || [];
+      if (list.includes(date)) return prev;
+      return { ...prev, [studentId]: [...list, date].sort() };
+    });
+    markFollowupAbsenceDirty(studentId);
+  }, [markFollowupAbsenceDirty]);
+  const handleFollowupAbsenceRemove = useCallback((studentId, date) => {
+    setFollowupAbsences(prev => {
+      const list = (prev[studentId] || []).filter(d => d !== date);
+      const next = { ...prev };
+      if (list.length === 0) delete next[studentId];
+      else next[studentId] = list;
+      return next;
+    });
+    markFollowupAbsenceDirty(studentId);
+  }, [markFollowupAbsenceDirty]);
 
   const [canUndo, setCanUndo] = useState(false);
   const [undoCount, setUndoCount] = useState(0);
@@ -3056,11 +3205,11 @@ export default function SessionTeachPage() {
             onClick={async () => {
               setSavingSession(true);
               try {
-                if (Object.keys(followupData).length > 0 || Object.keys(followupAbsences).length > 0) {
-                  await api.post(`/session/${sessionId}/followup-record`, {
-                    data: followupData, absences: followupAbsences
-                  });
-                }
+                // Persist pending grade edits through the serialized flush
+                // (silent: the catch below surfaces a single error dialog), then
+                // commit. If the grade save fails it throws here, so commit-scores
+                // is skipped and the report can't show points never persisted.
+                await flushFollowupRecord({ silent: true });
                 // Commit the session's accumulated live scores into the
                 // persistent student-record layer (school + parent profiles).
                 // Idempotent on the backend — safe to repeat. A failure here
@@ -3302,13 +3451,9 @@ export default function SessionTeachPage() {
         open={showSidebarSettings}
         onOpenChange={(open) => {
           setShowSidebarSettings(open);
-          // Preserve the legacy autosave behavior of the deleted Session
-          // Settings modal: persist follow-up grade values on close.
-          if (!open && sessionId && Object.keys(followupData).length > 0) {
-            api.post(`/session/${sessionId}/followup-record`, {
-              data: followupData,
-            }).catch(() => {});
-          }
+          // Persist follow-up grade values on close through the serialized flush
+          // so it can't race another writer (it self-guards empty/no session).
+          if (!open) flushFollowupRecord({ silent: true }).catch(() => {});
         }}
         isRTL={isRTL}
         t={t}
@@ -3361,7 +3506,7 @@ export default function SessionTeachPage() {
       {/* Follow-up Record (كشف المتابعة) Dialog */}
       <FollowupRecordDialog
         open={showFollowupRecord}
-        onOpenChange={setShowFollowupRecord}
+        onOpenChange={handleFollowupOpenChange}
         isRTL={isRTL}
         students={students}
         followupColumns={followupColumns}
@@ -3369,7 +3514,8 @@ export default function SessionTeachPage() {
         followupData={followupData}
         setFollowupData={setFollowupData}
         followupAbsences={followupAbsences}
-        setFollowupAbsences={setFollowupAbsences}
+        onAbsenceAdd={handleFollowupAbsenceAdd}
+        onAbsenceRemove={handleFollowupAbsenceRemove}
         followupTab={followupTab}
         setFollowupTab={setFollowupTab}
         showAddColumnModal={showAddColumnModal}
@@ -3678,7 +3824,7 @@ function FollowupRecordDialog({
   open, onOpenChange, isRTL, students,
   followupColumns, setFollowupColumns,
   followupData, setFollowupData,
-  followupAbsences, setFollowupAbsences,
+  followupAbsences, onAbsenceAdd, onAbsenceRemove,
   followupTab, setFollowupTab,
   showAddColumnModal, setShowAddColumnModal,
   showColumnSettings, setShowColumnSettings,
@@ -3816,24 +3962,10 @@ function FollowupRecordDialog({
     } catch { return dateStr; }
   };
 
-  const addAbsence = (studentId, date) => {
-    if (!date) return;
-    setFollowupAbsences(prev => {
-      const list = prev[studentId] || [];
-      if (list.includes(date)) return prev;
-      const next = [...list, date].sort();
-      return { ...prev, [studentId]: next };
-    });
-  };
-  const removeAbsence = (studentId, date) => {
-    setFollowupAbsences(prev => {
-      const list = (prev[studentId] || []).filter(d => d !== date);
-      const next = { ...prev };
-      if (list.length === 0) delete next[studentId];
-      else next[studentId] = list;
-      return next;
-    });
-  };
+  // Delegate to the parent handlers so absence edits mark dirty + schedule the
+  // serialized flush (and survive the merge poll / reopen) like grade edits.
+  const addAbsence = onAbsenceAdd;
+  const removeAbsence = onAbsenceRemove;
 
   return (
     <>
