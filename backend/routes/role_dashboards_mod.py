@@ -2394,14 +2394,62 @@ async def get_teacher_activity_log(
 
 ADMIN_ROLES = {"admin", "super_admin", "platform_admin", "school_admin"}
 
-async def _verify_session_owner(session_id: str, current_user: dict):
+async def _verify_session_owner(session_id: str, current_user: dict, *, allow_admin: bool = True):
+    """Authorize access to a class session, failing closed on the tenant boundary.
+
+    Order of checks:
+      1. Missing session -> 404.
+      2. The owning teacher (matched by teacher identity, which is unique per
+         workspace for both school teachers and Independent Teachers) is always
+         allowed.
+      3. Platform admins legitimately traverse every tenant -> allowed (only
+         when ``allow_admin`` is True).
+      4. Cross-tenant by-id access -> 404 (NEVER 403/200). Returning 403 here
+         would confirm the existence of another school's / IT workspace's
+         session to a foreign caller, violating IT spec §8 invariant 3 and
+         leaking foreign rows to school-scoped admins. The pre-fix code fetched
+         the session globally with no tenant filter and skipped every check for
+         ``ADMIN_ROLES`` members, so a school-scoped ``school_admin`` had a
+         cross-tenant read+write IDOR on every session-by-id route.
+      5. Same-tenant, non-owner: only school admins/principals may view another
+         teacher's session (``allow_admin`` True); everyone else -> 403. A
+         same-tenant 403 leaks nothing across the tenant boundary.
+
+    Pass ``allow_admin=False`` for owner-only surfaces (e.g. undo) where no
+    admin — platform or school — may act on another teacher's session.
+    """
+    from utils.tenant_scope import _is_platform_admin
+    from auth_scope import independent_workspace_id
+
     session = await gd_find_one(db.session, "class_sessions", {"id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
+
     caller_teacher = current_user.get("teacher_id") or current_user.get("id")
-    if session.get("teacher_id") and session["teacher_id"] != caller_teacher:
-        if current_user.get("role") not in ADMIN_ROLES:
-            raise HTTPException(status_code=403, detail="ليس لديك صلاحية على هذه الجلسة")
+    if session.get("teacher_id") and session["teacher_id"] == caller_teacher:
+        return session
+
+    if allow_admin and _is_platform_admin(current_user):
+        return session
+
+    caller_tenant = (
+        current_user.get("tenant_id")
+        or current_user.get("school_id")
+        or independent_workspace_id(current_user)
+    )
+    # class_sessions is keyed on school_id (canonical); fall back to tenant_id
+    # for any legacy row that only carries that column.
+    session_school = session.get("school_id") or session.get("tenant_id")
+    if not session_school or str(session_school) != str(caller_tenant or ""):
+        # Fail closed: either the session has no resolvable tenant (we cannot
+        # prove the caller is entitled — a missing school_id must NOT grant a
+        # foreign admin access) or it belongs to another tenant. Never confirm
+        # a foreign / unresolvable session's existence — 404, not 403.
+        raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
+
+    if allow_admin and current_user.get("role") in ADMIN_ROLES:
+        return session
+    raise HTTPException(status_code=403, detail="ليس لديك صلاحية على هذه الجلسة")
 
 
 @router.post("/session/start")
@@ -3392,12 +3440,10 @@ async def peek_last_reversible_action(
     Only the owning teacher may call this — admin bypass is intentionally blocked
     so peek accurately reflects the caller's own undo stack.
     """
-    session = await gd_find_one(db.session, "class_sessions", {"id": session_id})
-    if not session:
-        raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
+    # Owner-only surface: no admin (platform or school) may peek another
+    # teacher's undo stack. Cross-tenant ids still 404 (never 403) via the helper.
+    await _verify_session_owner(session_id, current_user, allow_admin=False)
     teacher_id = current_user.get("teacher_id") or current_user["id"]
-    if session.get("teacher_id") and session["teacher_id"] != teacher_id:
-        raise HTTPException(status_code=403, detail="ليس لديك صلاحية على هذه الجلسة")
     # An event's actor_id may be the Teachers.id or, for older actions, the
     # caller's Users.id — evaluate both as a union so the undo button reflects
     # the truly most-recent action and the stack depth across all ids.
@@ -3431,12 +3477,10 @@ async def undo_last_session_action(
     Admin bypass is intentionally blocked — only the owning teacher may undo their
     own session actions to prevent privilege escalation through this surface.
     """
-    session = await gd_find_one(db.session, "class_sessions", {"id": session_id})
-    if not session:
-        raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
+    # Owner-only surface: admin bypass is intentionally blocked so undo cannot
+    # be used for privilege escalation. Cross-tenant ids 404 (never 403).
+    await _verify_session_owner(session_id, current_user, allow_admin=False)
     teacher_id = current_user.get("teacher_id") or current_user["id"]
-    if session.get("teacher_id") and session["teacher_id"] != teacher_id:
-        raise HTTPException(status_code=403, detail="ليس لديك صلاحية على هذه الجلسة")
     result = await session_engine.undo_last_action(
         session_id=session_id,
         teacher_id=teacher_id,
@@ -3565,6 +3609,10 @@ async def save_followup_record(
         "class_id": c_id,
         "subject_id": s_id,
         "session_id": session_id,
+        # Defense-in-depth tenant pin (additive). The lookup key stays
+        # {class_id, subject_id} so existing records are never orphaned; this
+        # only stamps the owning workspace for future tenant filtering.
+        "school_id": session.get("school_id") if session else None,
         "columns": payload.get("columns", []),
         # Canonicalize so only the student->{column_id: value} map is stored.
         # The Follow-up Report re-posts whatever it last received; without this
@@ -3627,6 +3675,7 @@ async def add_followup_column(
         await gd_insert(db.session, "followup_records", {
             **lookup,
             "session_id": session_id,
+            "school_id": session.get("school_id") if session else None,
             "columns": [column],
             "data": {},
             "created_at": datetime.utcnow().isoformat(),

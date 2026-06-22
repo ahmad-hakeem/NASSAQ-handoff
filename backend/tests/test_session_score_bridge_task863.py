@@ -329,7 +329,9 @@ async def test_commit_route_cross_tenant_denied(client, tenant_a, tenant_b):
 
     _, foreign_headers = await _mk_teacher_auth(tenant_b)
     resp = await client.post(f"/session/{session_id}/commit-scores", headers=foreign_headers)
-    assert resp.status_code == 403
+    # Cross-tenant by-id access must 404 (never 403) so the API does not confirm
+    # the foreign session's existence (IT spec §8 invariant 3).
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
