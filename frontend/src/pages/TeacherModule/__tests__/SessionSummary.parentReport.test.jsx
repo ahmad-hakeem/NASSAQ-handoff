@@ -19,7 +19,7 @@
  */
 
 import React from 'react';
-import { render, waitFor } from '@testing-library/react';
+import { render, waitFor, screen, fireEvent } from '@testing-library/react';
 
 const mockGet = jest.fn();
 const mockPost = jest.fn();
@@ -129,5 +129,47 @@ describe('SessionSummary — IT parent-report delivery UX', () => {
     expect(mockToast.error).not.toHaveBeenCalledWith(BROADCAST_DENY_AR);
     // A genuine failure must not also claim success.
     expect(mockToast.success).not.toHaveBeenCalled();
+  });
+
+  test('after a failed send, the resend button re-runs delivery and shows the success toast', async () => {
+    // First (auto) send fails → resend button appears.
+    const err = new Error('denied');
+    err.response = { status: 500, data: { detail: 'boom' } };
+    mockPost.mockRejectedValueOnce(err);
+
+    render(<SessionSummary summary={SUMMARY} sessionInfo={SESSION_INFO} onHome={jest.fn()} isRTL />);
+
+    await waitFor(() => {
+      expect(mockNassaqError).toHaveBeenCalledWith('failedToSendNotifications');
+    }, { timeout: 3000 });
+
+    // The resend button is only rendered once a delivery failure is recorded.
+    const resendBtn = await screen.findByText('resendReport');
+    expect(mockPost).toHaveBeenCalledTimes(1);
+
+    // Second attempt (manual resend) succeeds.
+    mockPost.mockResolvedValueOnce({ data: { success: true } });
+    fireEvent.click(resendBtn);
+
+    await waitFor(() => {
+      expect(mockToast.success).toHaveBeenCalledWith('reportSentToParentsOnly');
+    }, { timeout: 3000 });
+
+    // Exactly two POSTs total: the failed auto-send and the successful resend.
+    expect(mockPost).toHaveBeenCalledTimes(2);
+  });
+
+  test('a successful auto-send never renders the resend button (no accidental duplicate send)', async () => {
+    mockPost.mockResolvedValue({ data: { success: true } });
+
+    render(<SessionSummary summary={SUMMARY} sessionInfo={SESSION_INFO} onHome={jest.fn()} isRTL />);
+
+    await waitFor(() => {
+      expect(mockToast.success).toHaveBeenCalledWith('reportSentToParentsOnly');
+    }, { timeout: 3000 });
+
+    // No failure → no resend affordance, and the send stays one-shot.
+    expect(screen.queryByText('resendReport')).toBeNull();
+    expect(mockPost).toHaveBeenCalledTimes(1);
   });
 });

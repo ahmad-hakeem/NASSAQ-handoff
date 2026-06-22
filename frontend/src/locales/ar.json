@@ -2720,6 +2720,7 @@
   "reportScheduledSuccessfully": "تم جدولة التقرير بنجاح",
   "reportSentToParentsAndAdmin": "تم إرسال الملخص لأولياء الأمور والإدارة",
   "reportSentToParentsOnly": "تم إرسال الملخص لأولياء الأمور",
+  "resendReport": "إعادة إرسال التقرير",
   "reportSharedSuccessfully": "تم إرسال التقرير بنجاح",
   "reportsToReview": "تقارير للمراجعة",
   "reportSummary": "ملخص التقرير",

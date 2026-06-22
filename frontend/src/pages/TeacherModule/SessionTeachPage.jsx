@@ -4635,6 +4635,8 @@ export function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
   const { nassaqError } = useNassaqAlert();
   const navigate = useNavigate();
   const [exporting, setExporting] = useState(false);
+  const [sendFailed, setSendFailed] = useState(false);
+  const [resending, setResending] = useState(false);
   const hasSentReport = useRef(false);
 
   useEffect(() => {
@@ -4650,6 +4652,12 @@ export function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
       hasSentReport.current = false;
       if (storageKey) {
         try { sessionStorage.removeItem(storageKey); } catch (_) { /* noop */ }
+      }
+    };
+    const setGuardSent = () => {
+      hasSentReport.current = true;
+      if (storageKey) {
+        try { sessionStorage.setItem(storageKey, '1'); } catch (_) { /* noop */ }
       }
     };
     const subjectName = sessionInfo?.subject_name || sessionInfo?.subjectName || '';
@@ -4691,6 +4699,10 @@ export function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
       // toast: parents+admin only when management actually
       // received the summary, otherwise parents-only.
       await api.post('/notifications', notifPayload);
+      // Re-arm the one-shot guard on success so a reload/re-mount (or a
+      // manual resend after an earlier failure) never double-sends.
+      setGuardSent();
+      setSendFailed(false);
       const mgmtSent = Number(summary?.management_notifications_sent || 0);
       if (mgmtSent > 0) {
         toast.success(t('reportSentToParentsAndAdmin'));
@@ -4700,6 +4712,7 @@ export function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
       confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#34d399', '#6ee7b7'] });
     } catch (e) {
       clearGuardForRetry();
+      setSendFailed(true);
       // Never surface the raw backend message here: a genuine delivery
       // failure could carry the IT broadcast-deny wording
       // ("لا يمكن للمعلم المستقل البث حسب الدور.") which is contradictory on a
@@ -4726,6 +4739,16 @@ export function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
     sendParentNotifications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summary?.session_record_id]);
+
+  const handleResendReport = async () => {
+    if (resending) return;
+    setResending(true);
+    try {
+      await sendParentNotifications();
+    } finally {
+      setResending(false);
+    }
+  };
 
   const exportReport = async () => {
     setExporting(true);
@@ -4872,6 +4895,19 @@ export function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
               </div>
             ))}
           </div>
+        )}
+
+        {sendFailed && (
+          <button
+            onClick={handleResendReport}
+            disabled={resending}
+            className="w-full h-11 rounded-xl bg-brand-turquoise/10 border border-brand-turquoise text-brand-turquoise disabled:opacity-60 font-cairo font-bold text-sm flex items-center justify-center gap-2 transition-colors hover:bg-brand-turquoise/20"
+          >
+            {resending
+              ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              : <RotateCcw className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />}
+            {t('resendReport')}
+          </button>
         )}
 
         <div className="grid grid-cols-2 gap-3">
