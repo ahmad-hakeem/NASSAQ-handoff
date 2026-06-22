@@ -144,6 +144,7 @@ export const useTranslation = () => {
     let text = locales[language]?.[key] || locales.ar[key] || key;
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
+        text = text.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v);
         text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
       });
     }
