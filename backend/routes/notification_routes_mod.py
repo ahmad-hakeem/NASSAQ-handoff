@@ -177,6 +177,11 @@ class NotificationResponse(BaseModel):
     # Task #1006 — minimal student reference so the parent inbox can show
     # which child the notification is about without a second round-trip.
     student: Optional[StudentRef] = None
+    # Task #1049 — structured per-child lesson report attached to IT
+    # lesson-end summaries (attendance, participation, homework, teacher
+    # note). Present only on IT session-summary rows; null everywhere else
+    # so the existing response shape is unchanged for other flows.
+    lesson_report: Optional[Dict[str, Any]] = None
 
 class NotificationBulkCreate(BaseModel):
     title: str
@@ -519,12 +524,33 @@ async def _deliver_it_session_summary(
     if not pairs:
         return _it_summary_empty_result()
 
+    # Build the per-child structured lesson report (attendance,
+    # participation, homework, teacher note) keyed by student_id so each
+    # parent's notification carries only their own child's data. Resolved
+    # from the session id when the send is session-scoped; degrades to an
+    # empty map (generic notification) when the session can't be resolved
+    # (e.g. a purely class-scoped delivery). Never fail the send on a
+    # report build glitch — the notification itself is the source of truth.
+    lesson_reports: Dict[str, Any] = {}
+    if notification.related_entity == "session" and notification.related_entity_id:
+        try:
+            lesson_reports = await session_engine.build_parent_lesson_reports(
+                notification.related_entity_id,
+            )
+        except Exception:
+            logger.exception(
+                "IT lesson report build failed (session=%s, workspace=%s); "
+                "delivering generic summary",
+                notification.related_entity_id, workspace_id,
+            )
+            lesson_reports = {}
+
     created_ids: List[str] = []
     for sid, parent_uid in pairs:
         if not parent_uid:
             continue
         notification_id = str(uuid.uuid4())
-        await gd_insert(db.session, "notifications", {
+        notif_doc = {
             "id": notification_id,
             "user_id": parent_uid,
             "title": notification.title,
@@ -543,7 +569,11 @@ async def _deliver_it_session_summary(
             "is_read": False,
             "read_at": None,
             "created_at": datetime.now(timezone.utc),
-        })
+        }
+        child_report = lesson_reports.get(sid)
+        if child_report:
+            notif_doc["lesson_report"] = child_report
+        await gd_insert(db.session, "notifications", notif_doc)
         created_ids.append(notification_id)
 
     if not created_ids:
@@ -1067,6 +1097,7 @@ async def get_my_notifications(
             unavailability_id=n.get('unavailability_id'),
             alternative_location=n.get('alternative_location'),
             student=student_ref,
+            lesson_report=n.get('lesson_report') if isinstance(n.get('lesson_report'), dict) else None,
         ))
 
     return result

@@ -3285,6 +3285,64 @@ class TeacherSessionEngine:
             "notes": [{"text": n.get("text", ""), "type": n.get("note_type", ""), "is_closing": n.get("is_closing_note", False)} for n in notes],
         }
 
+    async def build_parent_lesson_reports(self, session_id: str) -> Dict[str, Dict[str, Any]]:
+        """Build a per-child lesson report keyed by ``student_id``.
+
+        Used by the IT lesson-end parent summary so each parent's inbox
+        notification can render a structured per-child report
+        (attendance, participation, homework, teacher note) instead of a
+        plain class-level line. Returns an empty dict when the session is
+        unknown so the caller degrades to the generic notification.
+
+        The returned per-student dict carries only that child's own
+        academic data plus the session-level closing note (the teacher's
+        message about the lesson). It contains no cross-child data.
+        """
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
+        if not session:
+            return {}
+
+        attendance = await gd_find(self.session, "session_attendance", {"session_id": session_id}, limit=500)
+        interactions = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=2000)
+        notes = await gd_find(self.session, "session_notes", {"session_id": session_id}, limit=100)
+        homework_statuses = await self.get_homework_statuses(session_id)
+
+        # The teacher's closing note (if any) is the lesson-level message
+        # surfaced to every parent; prefer the explicit closing note, else
+        # the most recent general note.
+        closing_note = ""
+        for n in notes:
+            if n.get("is_closing_note"):
+                closing_note = n.get("text", "") or ""
+                break
+
+        student_ids = list(set(
+            [a["student_id"] for a in attendance if a.get("student_id")] +
+            [i["student_id"] for i in interactions if i.get("student_id")] +
+            list(homework_statuses.keys())
+        ))
+
+        reports: Dict[str, Dict[str, Any]] = {}
+        for sid in student_ids:
+            att = next((a for a in attendance if a.get("student_id") == sid), {})
+            sis = [i for i in interactions if i.get("student_id") == sid]
+            correct = sum(1 for i in sis if i.get("answer_result") == "correct")
+            wrong = sum(1 for i in sis if i.get("answer_result") == "wrong")
+            participations = sum(1 for i in sis if i.get("interaction_type") == "participation")
+            pos = sum(1 for i in sis if i.get("behaviour_category") == "positive")
+            neg = sum(1 for i in sis if i.get("behaviour_category") == "negative")
+            reports[sid] = {
+                "attendance_status": att.get("status", "present"),
+                "participations": participations,
+                "correct_answers": correct,
+                "wrong_answers": wrong,
+                "positive_behaviours": pos,
+                "negative_behaviours": neg,
+                "homework_status": homework_statuses.get(sid),
+                "teacher_note": closing_note,
+            }
+        return reports
+
     # ---------- Score System ----------
     
     async def _update_student_score(

@@ -73,6 +73,90 @@ const priorityConfig = {
   critical: { label: { ar: 'حرجة', en: 'Critical' }, color: 'bg-red-600' },
 };
 
+// Task #1049 — attendance status → localized label + tone for the
+// per-child lesson report card surfaced on IT lesson-end summaries.
+const ATTENDANCE_STATUS_CONFIG = {
+  present: { ar: 'حاضر', en: 'Present', tone: 'text-green-600 dark:text-green-400' },
+  absent: { ar: 'غائب', en: 'Absent', tone: 'text-red-600 dark:text-red-400' },
+  late: { ar: 'متأخر', en: 'Late', tone: 'text-orange-600 dark:text-orange-400' },
+  excused: { ar: 'مستأذن', en: 'Excused', tone: 'text-blue-600 dark:text-blue-400' },
+};
+
+// Renders the structured per-child lesson report (attendance,
+// participation, homework, teacher note) attached to an IT lesson-end
+// summary notification. Returns null when the notification carries no
+// report so non-summary rows are unaffected.
+const LessonReportCard = ({ report, isRTL }) => {
+  if (!report || typeof report !== 'object') return null;
+  const att = ATTENDANCE_STATUS_CONFIG[report.attendance_status]
+    || { ar: report.attendance_status || '—', en: report.attendance_status || '—', tone: 'text-muted-foreground' };
+  const participations = Number(report.participations || 0);
+  const correct = Number(report.correct_answers || 0);
+  const wrong = Number(report.wrong_answers || 0);
+  const positive = Number(report.positive_behaviours || 0);
+  const negative = Number(report.negative_behaviours || 0);
+  const hwStatus = report.homework_status;
+  const hwDone = hwStatus === 'done' || hwStatus === 'submitted';
+  const hasHomework = hwStatus !== null && hwStatus !== undefined && hwStatus !== '';
+  const note = typeof report.teacher_note === 'string' ? report.teacher_note.trim() : '';
+
+  const Row = ({ icon: Icon, label, children }) => (
+    <div className="flex items-center justify-between gap-2 py-1.5 border-b border-brand-navy/5 dark:border-white/5 last:border-0">
+      <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" strokeWidth={1.5} />
+        {label}
+      </span>
+      <span className="text-[11px] font-semibold text-end">{children}</span>
+    </div>
+  );
+
+  return (
+    <div
+      className="mt-2.5 rounded-lg border border-brand-turquoise/20 bg-brand-turquoise/5 dark:bg-brand-turquoise/10 p-3"
+      data-testid="lesson-report-card"
+    >
+      <Row icon={CalendarCheck} label={isRTL ? 'الحضور' : 'Attendance'}>
+        <span className={att.tone}>{isRTL ? att.ar : att.en}</span>
+      </Row>
+      <Row icon={MessageSquare} label={isRTL ? 'المشاركة' : 'Participation'}>
+        <span className="text-brand-navy dark:text-brand-turquoise">
+          {participations}
+          {(correct > 0 || wrong > 0) && (
+            <span className="ms-1.5 font-normal text-muted-foreground">
+              ({isRTL ? 'صحيح' : 'correct'} {correct} · {isRTL ? 'خطأ' : 'wrong'} {wrong})
+            </span>
+          )}
+        </span>
+      </Row>
+      {(positive > 0 || negative > 0) && (
+        <Row icon={AlertTriangle} label={isRTL ? 'السلوك' : 'Behaviour'}>
+          <span>
+            {positive > 0 && <span className="text-green-600 dark:text-green-400">+{positive}</span>}
+            {positive > 0 && negative > 0 && <span className="mx-1 text-muted-foreground">·</span>}
+            {negative > 0 && <span className="text-red-600 dark:text-red-400">-{negative}</span>}
+          </span>
+        </Row>
+      )}
+      {hasHomework && (
+        <Row icon={ClipboardList} label={isRTL ? 'الواجب' : 'Homework'}>
+          <span className={hwDone ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}>
+            {hwDone ? (isRTL ? 'تم التسليم' : 'Submitted') : (isRTL ? 'لم يُسلَّم' : 'Not submitted')}
+          </span>
+        </Row>
+      )}
+      {note && (
+        <div className="flex items-start gap-1.5 pt-2 mt-1.5 border-t border-brand-navy/5 dark:border-white/5">
+          <FileText className="h-3.5 w-3.5 shrink-0 mt-0.5 text-muted-foreground" aria-hidden="true" strokeWidth={1.5} />
+          <p className="text-[11px] text-foreground/80 leading-relaxed">
+            <span className="font-semibold">{isRTL ? 'ملاحظة المعلم: ' : 'Teacher note: '}</span>
+            {note}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const NotificationsPage = ({ embedded = false }) => {
   const { t } = useTranslation();
   const { user, api, isPlatformAdmin, isSchoolPrincipal } = useAuth();
@@ -411,6 +495,9 @@ export const NotificationsPage = ({ embedded = false }) => {
                     <User className="h-2.5 w-2.5 shrink-0" aria-hidden="true" strokeWidth={1.5} />
                     {notification.student.name_ar || notification.student.code}
                   </span>
+                )}
+                {notification.lesson_report && (
+                  <LessonReportCard report={notification.lesson_report} isRTL={isRTL} />
                 )}
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
