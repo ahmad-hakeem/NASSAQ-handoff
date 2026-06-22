@@ -11,13 +11,12 @@
  *   skill panel UI.
  */
 import React from 'react';
-import { render, screen, waitFor, act } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 
 // ── Router ──────────────────────────────────────────────────────────────────
 jest.mock('react-router-dom', () => ({
   useNavigate: () => jest.fn(),
-  useLocation: () => ({ search: '', pathname: '/teacher/session/sess-1' }),
+  useLocation: () => ({ search: '', pathname: '/teacher/session/sess-1', state: { sessionId: 'sess-1' } }),
   useParams: () => ({ sessionId: 'sess-1' }),
 }), { virtual: true });
 
@@ -152,6 +151,12 @@ function setupDefaultMocks({ skillTypes = [SKILL_INITIAL] } = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   mockAlert.nassaqError.mockClear();
+  // Default-resolve all write verbs so fire-and-forget autosaves
+  // (e.g. the groups PATCH) don't throw on an undefined return value.
+  mockApiPost.mockResolvedValue({ data: {} });
+  mockApi.put.mockResolvedValue({ data: {} });
+  mockApi.patch.mockResolvedValue({ data: {} });
+  mockApi.delete.mockResolvedValue({ data: {} });
 });
 
 
@@ -166,7 +171,15 @@ test('loadSkillTypes is called on mount', async () => {
 });
 
 
-test('loadSkillTypes is called again when switching to the skill tab', async () => {
+// SKIPPED: this test targeted the central tabbed action panel, which has since
+// been deprecated and is gated with `false &&` in SessionTeachPage (replaced by
+// the right-sidebar contextual popovers). There is no longer a "skill tab" to
+// click — `getTabForMode` never returns 'skill', so the `actionTab === 'skill'`
+// re-fetch effect is unreachable in the live UI. The surviving skill-freshness
+// paths (fetch on mount, and the 404 safety-net re-fetch in recordSkill) are
+// covered by the other two tests in this file. Re-enable / rewrite this if a
+// skill tab is ever reintroduced.
+test.skip('loadSkillTypes is called again when switching to the skill tab', async () => {
   // Arrange: first call returns one skill; second call returns an additional
   // skill added by an admin while the teacher's session was open.
   let callCount = 0;
@@ -182,7 +195,7 @@ test('loadSkillTypes is called again when switching to the skill tab', async () 
     }
     if (url.startsWith('/session/sess-1/activity')) return Promise.resolve({ data: [] });
     if (url.startsWith('/session/sess-1/undo')) return Promise.resolve({ data: { can_undo: false } });
-    if (url.startsWith('/session/sess-1/settings')) return Promise.resolve({ data: {} });
+    if (url.startsWith('/session/sess-1/settings')) return Promise.resolve({ data: { skill_enabled: true } });
     if (url.startsWith('/subjects')) return Promise.resolve({ data: [] });
     if (url.startsWith('/session/sess-1/groups')) return Promise.resolve({ data: [] });
     if (url.startsWith('/session/sess-1')) return Promise.resolve({ data: {} });
@@ -202,7 +215,7 @@ test('loadSkillTypes is called again when switching to the skill tab', async () 
   // Find and click the skill tab button to trigger the re-fetch
   const skillTabBtn = await screen.findByRole('button', { name: /skill/i });
   await act(async () => {
-    await userEvent.click(skillTabBtn);
+    fireEvent.click(skillTabBtn);
   });
 
   // A new call to /skills-types should have been made after tab activation
