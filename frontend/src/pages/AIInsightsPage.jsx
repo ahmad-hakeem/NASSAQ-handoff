@@ -179,7 +179,9 @@ const AlertsTimeline = ({ alerts, isRTL, onNavigate, isTeacher = false }) => {
   };
 
   const alertRouteMap = {
-    attendance: '/admin/attendance',
+    // Teachers / independent teachers self-scope on /teacher/attendance;
+    // the admin attendance page would 403 its data call for them.
+    attendance: isTeacher ? '/teacher/attendance' : '/admin/attendance',
     academic: '/admin/students',
     behavior: '/admin/students',
     teacher: '/admin/teacher-attendance',

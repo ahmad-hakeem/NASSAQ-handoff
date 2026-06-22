@@ -2438,6 +2438,11 @@ async def get_ai_alerts(
     today_str = today.strftime("%Y-%m-%d")
     week_ago_str = (today - timedelta(days=7)).strftime("%Y-%m-%d")
 
+    # Teacher / independent-teacher callers must land on their own
+    # self-scoping attendance page; the admin attendance page would 403 its
+    # data call for them. Admin / principal / school-admin keep the admin path.
+    attendance_route = "/teacher/attendance" if teacher_scope else "/admin/attendance"
+
     consecutive_pipeline = [
         {"$match": {**attendance_q, "status": "absent", "date": {"$gte": week_ago_str}}},
         {"$group": {"_id": "$student_id", "days": {"$sum": 1}, "dates": {"$push": "$date"}}},
@@ -2454,7 +2459,7 @@ async def get_ai_alerts(
             "description": {"ar": f"يوجد {chronic_count} طالب تغيبوا 3 أيام أو أكثر هذا الأسبوع. يجب التواصل مع أولياء أمورهم", "en": f"{chronic_count} students absent 3+ days this week. Contact parents immediately"},
             "timestamp": today.isoformat(),
             "category": "attendance",
-            "route": "/admin/attendance"
+            "route": attendance_route
         })
 
     today_total = await gd_count(db.session, "attendance", {**attendance_q, "date": today_str})
@@ -2469,7 +2474,7 @@ async def get_ai_alerts(
                 "description": {"ar": f"نسبة الحضور اليوم {today_rate}% أقل من المعدل الطبيعي. تحقق من الأسباب", "en": f"Today's attendance {today_rate}% is below normal. Investigate causes"},
                 "timestamp": today.isoformat(),
                 "category": "attendance",
-                "route": "/admin/attendance"
+                "route": attendance_route
             })
         elif today_rate >= 95:
             alerts.append({
@@ -2479,7 +2484,7 @@ async def get_ai_alerts(
                 "description": {"ar": f"نسبة الحضور اليوم {today_rate}% ممتازة. استمروا في ذلك!", "en": f"Today's attendance {today_rate}% is excellent. Keep it up!"},
                 "timestamp": today.isoformat(),
                 "category": "attendance",
-                "route": "/admin/attendance"
+                "route": attendance_route
             })
 
     # Skip the "Unassigned Sessions" alert for teachers — assigning
