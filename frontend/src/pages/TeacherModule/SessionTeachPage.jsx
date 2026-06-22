@@ -4576,9 +4576,10 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
       }
       confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#34d399', '#6ee7b7'] });
     } catch (e) {
-      console.error('Error sending notifications:', e);
       clearGuardForRetry();
-      nassaqError(t('failedToSendNotifications'));
+      const data = e?.response?.data;
+      const backendMsg = data?.error?.message || data?.detail;
+      nassaqError(typeof backendMsg === 'string' && backendMsg ? backendMsg : t('failedToSendNotifications'));
     }
   };
 

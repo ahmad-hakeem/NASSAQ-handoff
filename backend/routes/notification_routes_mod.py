@@ -510,9 +510,23 @@ async def create_notification(
             recipient_id=resolved_user_id_from_student,
         )
 
+    # Task #1046 — the class-scoped parent session summary
+    # (`recipient_role == 'parent'`, no `recipient_id`, with
+    # `scope_class_id`) is a legitimate per-class delivery that stays
+    # entirely inside the teacher's own workspace. Let it fall through to
+    # the class-scoped parent branch below, which resolves the roster and
+    # parents within the IT's tenant and re-validates the resolved
+    # delivery targets against the §5.6 cohort. Every other
+    # `recipient_role` shape (true role broadcasts) is still rejected.
+    _it_class_scoped_parent_summary = (
+        notification.recipient_role == 'parent'
+        and not notification.recipient_id
+        and bool(notification.scope_class_id)
+    )
+
     # IT hardening — Task #198 §5.6.
     if current_user.get('role') == 'independent_teacher':
-        if notification.recipient_role:
+        if notification.recipient_role and not _it_class_scoped_parent_summary:
             raise HTTPException(status_code=403, detail=_IT_RECIPIENT_ROLE_BLOCKED_AR)
         target_id = resolved_user_id_from_student or notification.recipient_id
         if target_id:
@@ -543,6 +557,15 @@ async def create_notification(
         )
         roster_ids = [s["id"] for s in roster if s.get("id")]
         parent_uid_map = await resolve_students_parent_user_ids(roster_ids, tenant_id) if roster_ids else {}
+
+        # Task #1046 — re-enforce the §5.6 cohort on the actual resolved
+        # delivery targets so an IT class-scoped summary can never widen
+        # beyond the teacher's own workspace cohort. No-op for non-IT
+        # callers and for empty/unlinked rosters (success / created_count: 0).
+        if current_user.get('role') == 'independent_teacher':
+            target_uids = [uid for uid in parent_uid_map.values() if uid]
+            if target_uids:
+                await _it_validate_recipients_or_403(current_user, target_uids)
 
         created_ids = []
         for sid in roster_ids:

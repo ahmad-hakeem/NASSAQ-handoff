@@ -368,3 +368,93 @@ async def test_it_single_send_pins_tenant_id_to_workspace(client):
     )
     assert persisted is not None
     assert persisted.get("tenant_id") == ws["wsid"]
+
+
+# (m) ----------------------------------------------------------------
+# Task #1046: the IT end-of-lesson parent summary
+# (recipient_role='parent', no recipient_id, with scope_class_id) is a
+# legitimate per-class delivery that must NOT be rejected by the §5.6
+# recipient_role guard — it delivers to exactly the workspace parents.
+@pytest.mark.asyncio
+async def test_it_class_scoped_parent_summary_delivers(client):
+    ws = await _mk_workspace()
+    h = _headers(ws["uid"], ws["user"]["role"], ws["wsid"])
+    title = f"ملخص الحصة — {uuid.uuid4().hex[:6]}"
+    resp = await client.post(
+        "/notifications",
+        headers=h,
+        json={
+            "title": title,
+            "message": "اكتملت الحصة.",
+            "notification_type": "communication",
+            "priority": "medium",
+            "recipient_role": "parent",
+            "related_entity": "session",
+            "related_entity_id": str(uuid.uuid4()),
+            "scope_class_id": ws["class_id"],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body.get("created_count") == 1
+    persisted = await gd_find_one(
+        db.session, "notifications",
+        {"user_id": ws["parent_user_id"], "title": title},
+    )
+    assert persisted is not None
+    assert persisted.get("tenant_id") == ws["wsid"]
+    assert persisted.get("student_id") == ws["student_id"]
+
+
+# (n) ----------------------------------------------------------------
+# Task #1046: a true role broadcast (recipient_role with NO scope_class_id)
+# from an IT is still rejected — the §5.6 guard stays intact.
+@pytest.mark.asyncio
+async def test_it_parent_role_without_class_scope_still_rejected(client):
+    ws = await _mk_workspace()
+    h = _headers(ws["uid"], ws["user"]["role"], ws["wsid"])
+    resp = await client.post(
+        "/notifications",
+        headers=h,
+        json={
+            "title": "بث عام",
+            "message": "y",
+            "notification_type": "communication",
+            "priority": "medium",
+            "recipient_role": "parent",
+        },
+    )
+    assert resp.status_code == 403, resp.text
+    assert "البث حسب الدور" in (resp.json().get("error", {}) or {}).get("message", "")
+
+
+# (o) ----------------------------------------------------------------
+# Task #1046: an empty class (no students/parents) ends as a success
+# no-op (created_count 0) so the summary screen shows no error popup.
+@pytest.mark.asyncio
+async def test_it_class_scoped_parent_summary_empty_roster_is_noop(client):
+    ws = await _mk_workspace(with_parent=False)
+    h = _headers(ws["uid"], ws["user"]["role"], ws["wsid"])
+    empty_class_id = str(uuid.uuid4())
+    await gd_insert(db.session, "classes", {
+        "id": empty_class_id,
+        "name": "فصل فارغ",
+        "school_id": ws["wsid"],
+        "homeroom_teacher_id": ws["teacher_id"],
+        "is_active": True,
+    })
+    resp = await client.post(
+        "/notifications",
+        headers=h,
+        json={
+            "title": "ملخص الحصة الفارغة",
+            "message": "x",
+            "notification_type": "communication",
+            "priority": "medium",
+            "recipient_role": "parent",
+            "related_entity": "session",
+            "scope_class_id": empty_class_id,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json().get("created_count") == 0
