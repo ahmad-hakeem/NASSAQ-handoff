@@ -183,7 +183,10 @@ const AlertsTimeline = ({ alerts, isRTL, onNavigate, isTeacher = false }) => {
     // the admin attendance page would 403 its data call for them.
     attendance: isTeacher ? '/teacher/attendance' : '/admin/attendance',
     academic: '/admin/students',
-    behavior: '/admin/students',
+    // Teachers / independent teachers self-scope on /teacher/behavior;
+    // the admin behaviour page would 403 its data call for them.
+    behavior: isTeacher ? '/teacher/behavior' : '/admin/behaviour',
+    behaviour: isTeacher ? '/teacher/behavior' : '/admin/behaviour',
     teacher: '/admin/teacher-attendance',
     schedule: '/school/schedule',
     performance: '/principal/ai-insights',

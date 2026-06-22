@@ -2503,6 +2503,11 @@ async def get_ai_alerts(
                 "route": "/school/schedule"
             })
 
+    # Teacher / independent-teacher callers must land on their own
+    # self-scoping behaviour page; the admin behaviour page would 403 its
+    # data call for them. Admin / principal / school-admin keep the admin path.
+    behaviour_route = "/teacher/behavior" if teacher_scope else "/admin/behaviour"
+
     recent_behaviour = await gd_count(db.session, "behaviour_records", {
         **behaviour_q,
         "type": "negative",
@@ -2516,7 +2521,7 @@ async def get_ai_alerts(
             "description": {"ar": f"تم تسجيل {recent_behaviour} ملاحظة سلوكية سلبية هذا الأسبوع. يُنصح بمراجعة السلوك العام", "en": f"{recent_behaviour} negative behaviour notes this week. Review overall conduct"},
             "timestamp": today.isoformat(),
             "category": "behaviour",
-            "route": "/admin/behaviour"
+            "route": behaviour_route
         })
 
     if not alerts:
