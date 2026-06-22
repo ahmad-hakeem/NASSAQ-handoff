@@ -35,6 +35,8 @@ import {
   mergeFollowupAbsences,
   isFollowupNoOpFlush,
   runFollowupClose,
+  pickManualCells,
+  computeManualKeys,
 } from './followupPersistence';
 
 // Health condition badges (mirrors SessionStartPage)
@@ -339,6 +341,14 @@ export default function SessionTeachPage() {
   // Tracks "studentId:columnId" pairs the teacher has manually typed into,
   // so the live-refresh poll never overwrites an in-progress edit.
   const dirtyFollowupCells = useRef(new Set());
+  // Persistent set of "studentId:columnId" cells the teacher has taken MANUAL
+  // ownership of (typed a value into, or that came back as a stored override).
+  // Unlike dirtyFollowupCells (cleared per-cell on every successful flush), this
+  // survives flushes for the sheet's lifetime so each save sends the FULL manual
+  // set — never a session-derived echo, which would freeze the cell against
+  // later live scoring. Seeded from the GET `manual_keys` and restored from
+  // sessionStorage so a reload can't wipe stored overrides.
+  const manualFollowupCells = useRef(new Set());
   // Per-cell edit counter. A save snapshots each dirty cell's revision at send
   // time and, on success, clears ONLY the cells whose revision is unchanged —
   // so an edit made while a save is in flight keeps its dirty mark (and is not
@@ -719,6 +729,7 @@ export default function SessionTeachPage() {
       try {
         sessionStorage.setItem(`session_state_${sessionId}`, JSON.stringify({
           evalMode, groups, stats, mode: mode?.id, actionTab, followupData, followupColumns, followupAbsences,
+          manualFollowupCells: [...manualFollowupCells.current],
           customPositiveBehaviours, customNegativeBehaviours, customSkills, customEvaluationItems
         }));
         // Follow-up grade/absence persistence now flows exclusively through the
@@ -753,7 +764,13 @@ export default function SessionTeachPage() {
   const flushFollowupRecord = useCallback(({ silent = false } = {}) => {
     if (!sessionId) return Promise.resolve();
     const run = async () => {
-      const data = followupDataRef.current || {};
+      // Persist ONLY the cells the teacher has taken manual ownership of (and
+      // that hold a non-empty value). Everything else is session-derived and is
+      // re-hydrated live on read — re-posting a derived value as a manual
+      // override would freeze the cell against later sidebar scoring. An empty
+      // manual cell is an explicit "revert to derived": pickManualCells omits it
+      // so the replace-on-save drops the stored override.
+      const data = pickManualCells(followupDataRef.current || {}, manualFollowupCells.current);
       const absences = followupAbsencesRef.current || {};
       // Skip only when there is genuinely nothing to persist. An empty payload
       // WITH dirty cells/absences is meaningful — it's a deletion (e.g. the
@@ -840,6 +857,9 @@ export default function SessionTeachPage() {
         if (state.evalMode) setEvalMode(state.evalMode);
         if (state.groups?.length) setGroups(state.groups);
         if (state.followupData && Object.keys(state.followupData).length > 0) setFollowupData(state.followupData);
+        // Restore manual-override ownership so a flush before the first GET sends
+        // the real overrides instead of {} (which would wipe the server record).
+        if (Array.isArray(state.manualFollowupCells)) manualFollowupCells.current = new Set(state.manualFollowupCells);
         if (state.followupColumns?.length) setFollowupColumns(state.followupColumns.map(migrateColumn));
         if (state.followupAbsences && Object.keys(state.followupAbsences).length > 0) setFollowupAbsences(state.followupAbsences);
         // Migrate legacy string[] entries -> {id, name, points} objects
@@ -972,6 +992,9 @@ export default function SessionTeachPage() {
       // grade values and absence dates.
       setFollowupData(res.data?.data || {});
       setFollowupAbsences(res.data?.absences || {});
+      // Seed manual-override ownership from the server (authoritative) plus any
+      // still-unsaved local edit, so the next flush sends exactly the manual set.
+      manualFollowupCells.current = computeManualKeys(res.data?.manual_keys, dirtyFollowupCells.current);
     } catch (e) { /* ignore */ }
   }, [api, sessionId]);
 
@@ -983,6 +1006,10 @@ export default function SessionTeachPage() {
       const res = await api.get(`/session/${sessionId}/followup-record`);
       const fresh = res.data?.data || {};
       setFollowupData(prev => mergeFollowupData(fresh, prev, dirtyFollowupCells.current));
+      // Re-derive manual ownership: server truth ∪ unsaved-dirty. A cell the
+      // teacher cleared falls out of both, so its override is forgotten and the
+      // cell reverts to the live-derived value on the next flush.
+      manualFollowupCells.current = computeManualKeys(res.data?.manual_keys, dirtyFollowupCells.current);
       // Merge absences around any student whose absence list the teacher is
       // mid-editing (dirty), so the poll can't clobber an unsaved absence edit;
       // non-dirty students always sync to the fresh server values.
@@ -1117,6 +1144,10 @@ export default function SessionTeachPage() {
   const handleFollowupGradeChange = useCallback((sid, cid, value) => {
     const key = `${sid}:${cid}`;
     dirtyFollowupCells.current.add(key);
+    // The teacher took manual ownership of this cell — it must be sent on every
+    // future flush (not just until the next successful save) so it overrides the
+    // live-derived value instead of being treated as a derived echo and dropped.
+    manualFollowupCells.current.add(key);
     followupCellRev.current.set(key, (followupCellRev.current.get(key) || 0) + 1);
     setFollowupData(prev => ({
       ...prev,

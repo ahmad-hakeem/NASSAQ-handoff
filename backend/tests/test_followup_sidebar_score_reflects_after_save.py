@@ -1,26 +1,24 @@
 """Regression: a live participation score recorded from the session sidebar must
 keep flowing into كشف المتابعة *after* the sheet has been opened once and the
-lesson has been saved.
+lesson has been saved — and a value the teacher actually TYPED must win and
+survive, even when it happens to equal the current derived value.
 
-Realistic cycle this exercises (the exact app flow):
-  1. Teacher records a sidebar participation point  -> session-derived value D1.
-  2. Teacher OPENS كشف المتابعة (GET /followup-record) -> the row hydrates with
-     the derived D1 and the frontend holds that whole blob in ``followupData``.
-  3. Teacher saves the lesson / changes settings -> the frontend flushes the
-     ENTIRE ``followupData`` blob back (POST /followup-record). Before the fix
-     this persisted the *derived* D1 into ``followup_records.data`` as if it were
-     a manual edit; ``strip_derived_followup_echoes`` now drops that echo.
-  4. Teacher records ANOTHER sidebar participation point -> derived value D2 > D1.
-  5. Teacher REOPENS the sheet (GET /followup-record).
+This locks in the "Option B" contract for the follow-up sheet:
 
-Expected: the sheet shows the live derived value D2 (the new sidebar point is
-reflected). The pre-fix bug: the keep-manual guard in ``build_followup_hydration``
-treated the persisted-derived D1 as an immutable manual override, so the sheet
-froze at D1 and the second sidebar point never appeared.
+  * The frontend persists ONLY the cells the teacher took manual ownership of.
+    A session-derived value the teacher never edited is never POSTed, so it is
+    never stored as an override and always re-hydrates to the live score.
+  * GET exposes ``manual_keys`` (``"<student_id>:<column_id>"`` for each non-empty
+    stored override) so the frontend can seed its manual-ownership set.
+  * A stored manual cell wins over the live derived value on reopen — including a
+    manual value EQUAL to the derived one (the old value-equality echo-strip
+    would have wrongly dropped that and let the cell drift).
+  * An empty cell means "revert to derived": the backend prunes it, and a full
+    replace that omits a previously-stored cell drops that override.
 
-This is NOT about a genuine manual edit (that must still win — see
-``test_followup_nonzero_participation_editable``). Here the teacher never typed a
-value; only the sidebar drove the score, yet the sheet stopped tracking it.
+The pre-fix bug: the keep-manual guard in ``build_followup_hydration`` treated a
+persisted-derived value as an immutable manual override, so the sheet froze at the
+first derived value and later sidebar points never appeared.
 
 Runs against both a normal school tenant and an independent-teacher workspace,
 since the follow-up sheet is a shared surface.
@@ -148,9 +146,14 @@ async def _live_derived(engine, session_id, student_id, col):
     return hydrated.get(student_id, {}).get(col)
 
 
+# ---------------------------------------------------------------------------
+# Anti-freeze: a derived cell the teacher never edited is never persisted, so it
+# always tracks the live sidebar score — even after the sheet is opened + saved.
+# ---------------------------------------------------------------------------
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("school_type", ["real", "independent_teacher"])
-async def test_sidebar_score_reflects_after_sheet_opened_and_saved(client, school_type):
+async def test_unsent_derived_cell_keeps_tracking_live_score(client, school_type):
     ctx = await _setup(school_type)
     engine = ctx["engine"]
     sid = ctx["session_id"]
@@ -163,16 +166,19 @@ async def test_sidebar_score_reflects_after_sheet_opened_and_saved(client, schoo
     d1 = await _live_derived(engine, sid, student, col)
     assert d1 and d1 > 0, "first sidebar point should produce a derived value"
 
-    # 2. Teacher opens the sheet (hydrates with the derived value).
+    # 2. Teacher opens the sheet. It hydrates with D1, and because nothing was
+    #    manually edited there are no manual overrides to advertise.
     r_open = await client.get(f"/session/{sid}/followup-record", headers=headers)
     assert r_open.status_code == 200, r_open.text
-    opened = r_open.json()["data"]
-    assert opened.get(student, {}).get(col) == d1
+    assert r_open.json()["data"].get(student, {}).get(col) == d1
+    assert r_open.json().get("manual_keys") == []
 
-    # 3. Teacher saves the lesson -> frontend flushes the WHOLE hydrated blob.
+    # 3. Teacher saves the lesson WITHOUT having edited the participation cell.
+    #    The frontend filters to manual cells only, so the derived value is never
+    #    POSTed (here: an empty data map).
     r_save = await client.post(
         f"/session/{sid}/followup-record", headers=headers,
-        json={"data": opened, "absences": r_open.json().get("absences", {})},
+        json={"data": {}, "absences": {}},
     )
     assert r_save.status_code == 200, r_save.text
 
@@ -181,24 +187,26 @@ async def test_sidebar_score_reflects_after_sheet_opened_and_saved(client, schoo
     d2 = await _live_derived(engine, sid, student, col)
     assert d2 and d2 > d1, "second sidebar point must raise the live derived value"
 
-    # 5. Teacher reopens the sheet. It MUST reflect the new live derived value.
+    # 5. Reopen: the sheet MUST reflect the new live derived value (never frozen),
+    #    and there is still no stored override.
     r_reopen = await client.get(f"/session/{sid}/followup-record", headers=headers)
     assert r_reopen.status_code == 200, r_reopen.text
     shown = r_reopen.json()["data"].get(student, {}).get(col)
-
     assert shown == d2, (
-        f"follow-up sheet froze at the persisted-derived value {shown!r}; "
-        f"the live sidebar-driven score is now {d2!r}. The second participation "
-        f"point recorded from the sidebar never reached the sheet."
+        f"follow-up sheet froze at {shown!r}; the live sidebar-driven score is "
+        f"now {d2!r}. A derived cell the teacher never edited must never be "
+        f"persisted as a manual override."
     )
+    assert r_reopen.json().get("manual_keys") == []
 
+
+# ---------------------------------------------------------------------------
+# A genuine manual edit is stored, advertised via manual_keys, and wins on reopen.
+# ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("school_type", ["real", "independent_teacher"])
-async def test_genuine_manual_edit_still_wins_after_save(client, school_type):
-    """Guard the fix's other half: a value the teacher actually TYPED (one that
-    deviates from the derived value) must still be stored and survive a reopen —
-    the echo-drop must only discard derived echoes, never real manual edits."""
+async def test_manual_edit_stored_advertised_and_wins(client, school_type):
     ctx = await _setup(school_type)
     engine = ctx["engine"]
     sid = ctx["session_id"]
@@ -218,10 +226,128 @@ async def test_genuine_manual_edit_still_wins_after_save(client, school_type):
     )
     assert r_save.status_code == 200, r_save.text
 
+    # GET advertises the manual cell so the frontend can keep sending it.
     r_reopen = await client.get(f"/session/{sid}/followup-record", headers=headers)
     assert r_reopen.status_code == 200, r_reopen.text
-    shown = r_reopen.json()["data"].get(student, {}).get(col)
-    assert shown == typed, (
-        f"a genuine manual edit ({typed}) must survive the save/reopen cycle, "
-        f"got {shown!r}"
+    assert f"{student}:{col}" in r_reopen.json().get("manual_keys", [])
+    assert r_reopen.json()["data"].get(student, {}).get(col) == typed
+
+    # Even after more sidebar scoring, the manual edit wins (it was explicitly set).
+    await _record_active(engine, sid, student, ctx["user_id"])
+    r_after = await client.get(f"/session/{sid}/followup-record", headers=headers)
+    assert r_after.json()["data"].get(student, {}).get(col) == typed, (
+        "a genuine manual edit must survive later sidebar scoring"
     )
+
+
+# ---------------------------------------------------------------------------
+# The edge the old echo-strip broke: a manual value EQUAL to the current derived
+# value is a real override and must be pinned (it must NOT drift with later
+# sidebar scoring).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("school_type", ["real", "independent_teacher"])
+async def test_manual_value_equal_to_derived_is_pinned(client, school_type):
+    ctx = await _setup(school_type)
+    engine = ctx["engine"]
+    sid = ctx["session_id"]
+    student = ctx["student_id"]
+    col = ctx["part_col_id"]
+    headers = _auth(ctx["user_id"], ctx["tenant"])
+
+    await _record_active(engine, sid, student, ctx["user_id"])
+    d1 = await _live_derived(engine, sid, student, col)
+    assert d1 and d1 > 0
+
+    # Teacher deliberately types the SAME value the sidebar currently derives.
+    r_save = await client.post(
+        f"/session/{sid}/followup-record", headers=headers,
+        json={"data": {student: {col: d1}}, "absences": {}},
+    )
+    assert r_save.status_code == 200, r_save.text
+    # It is a genuine override and is advertised as such.
+    r_check = await client.get(f"/session/{sid}/followup-record", headers=headers)
+    assert f"{student}:{col}" in r_check.json().get("manual_keys", [])
+
+    # More sidebar scoring would raise the derived value...
+    await _record_active(engine, sid, student, ctx["user_id"])
+    d2 = await _live_derived(engine, sid, student, col)
+    assert d2 and d2 > d1
+
+    # ...but the manual pin holds at d1 (the old value-equality strip would have
+    # dropped it and let the cell drift to d2).
+    r_reopen = await client.get(f"/session/{sid}/followup-record", headers=headers)
+    shown = r_reopen.json()["data"].get(student, {}).get(col)
+    assert shown == d1, (
+        f"a manual value equal to the derived one must be pinned ({d1!r}); it "
+        f"must not drift to the later derived value {d2!r}."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Clearing a cell removes the override and reverts to the live derived value.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("school_type", ["real", "independent_teacher"])
+async def test_empty_cell_prunes_override_and_reverts_to_derived(client, school_type):
+    ctx = await _setup(school_type)
+    engine = ctx["engine"]
+    sid = ctx["session_id"]
+    student = ctx["student_id"]
+    col = ctx["part_col_id"]
+    headers = _auth(ctx["user_id"], ctx["tenant"])
+
+    await _record_active(engine, sid, student, ctx["user_id"])
+    d1 = await _live_derived(engine, sid, student, col)
+    assert d1 and d1 > 0
+
+    # Store a manual override, then clear it by sending an empty value.
+    assert (await client.post(
+        f"/session/{sid}/followup-record", headers=headers,
+        json={"data": {student: {col: d1 + 5}}, "absences": {}},
+    )).status_code == 200
+    assert (await client.post(
+        f"/session/{sid}/followup-record", headers=headers,
+        json={"data": {student: {col: ""}}, "absences": {}},
+    )).status_code == 200
+
+    r_reopen = await client.get(f"/session/{sid}/followup-record", headers=headers)
+    assert r_reopen.json().get("manual_keys") == [], (
+        "an emptied cell must be pruned, leaving no stored override"
+    )
+    assert r_reopen.json()["data"].get(student, {}).get(col) == d1, (
+        "after clearing the override the cell must revert to the live derived value"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("school_type", ["real", "independent_teacher"])
+async def test_replace_omitting_cell_drops_its_override(client, school_type):
+    """A full-replace save that no longer includes a previously-stored cell drops
+    that override (the frontend stops sending a cell the teacher cleared)."""
+    ctx = await _setup(school_type)
+    engine = ctx["engine"]
+    sid = ctx["session_id"]
+    student = ctx["student_id"]
+    col = ctx["part_col_id"]
+    headers = _auth(ctx["user_id"], ctx["tenant"])
+
+    await _record_active(engine, sid, student, ctx["user_id"])
+    d1 = await _live_derived(engine, sid, student, col)
+    assert d1 and d1 > 0
+
+    assert (await client.post(
+        f"/session/{sid}/followup-record", headers=headers,
+        json={"data": {student: {col: d1 + 5}}, "absences": {}},
+    )).status_code == 200
+    # Replace with an empty manual set (the cleared cell is simply omitted).
+    assert (await client.post(
+        f"/session/{sid}/followup-record", headers=headers,
+        json={"data": {}, "absences": {}},
+    )).status_code == 200
+
+    r_reopen = await client.get(f"/session/{sid}/followup-record", headers=headers)
+    assert r_reopen.json().get("manual_keys") == []
+    assert r_reopen.json()["data"].get(student, {}).get(col) == d1

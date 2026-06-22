@@ -3563,6 +3563,18 @@ async def get_followup_record(
     # that blob, so we must navigate one level deeper to retrieve it.
     data_blob = (record.get("data") or {}) if record else {}
     manual_data = data_blob.get("data") or {} if isinstance(data_blob, dict) else {}
+    # Expose which cells are genuine MANUAL overrides (non-empty stored values),
+    # keyed "<student_id>:<column_id>". The frontend seeds its manual-ownership
+    # set from this so a later save re-sends only the teacher's real edits and
+    # never a session-derived echo (which would freeze the cell). Empty cells are
+    # not overrides and are excluded.
+    manual_keys = [
+        f"{sid}:{cid}"
+        for sid, cols in (manual_data or {}).items()
+        if isinstance(cols, dict)
+        for cid, val in cols.items()
+        if val not in (None, "")
+    ]
     # Hydrate the coursework columns from the live session interactions so the
     # Follow-up Report reflects the teacher's in-session scoring without manual
     # re-entry. Manual teacher entries are preserved (never clobbered); exam
@@ -3584,12 +3596,14 @@ async def get_followup_record(
             ],
             "data": hydrated_data,
             "absences": {},
+            "manual_keys": manual_keys,
         }
     return {
         "session_id": session_id,
         "columns": record.get("columns", []),
         "data": hydrated_data,
         "absences": record.get("absences", {}),
+        "manual_keys": manual_keys,
     }
 
 
@@ -3614,14 +3628,17 @@ async def save_followup_record(
         # only stamps the owning workspace for future tenant filtering.
         "school_id": session.get("school_id") if session else None,
         "columns": payload.get("columns", []),
-        # Canonicalize so only the student->{column_id: value} map is stored, AND
-        # drop coursework cells that merely echo the live session-derived value.
-        # The Follow-up Report re-posts the WHOLE hydrated blob (derived values
-        # included) on every save; persisting those echoes as if they were manual
-        # overrides would make the keep-manual guard freeze the cell, so later
-        # sidebar scoring never reaches the sheet or the committed grade. Only
-        # genuine manual deviations are stored; exam/custom columns are untouched.
-        "data": await session_engine.strip_derived_followup_echoes(session_id, payload.get("data", {})),
+        # Store ONLY the teacher's genuine manual overrides. The Follow-up Report
+        # now sends just the cells the teacher actually edited (the frontend
+        # tracks manual ownership and filters before POSTing); every other cell
+        # stays session-derived and is re-hydrated live on read. Persisting a
+        # derived value as an override would freeze the cell against later sidebar
+        # scoring. We canonicalize to the student->{column_id: value} map and
+        # prune empty cells (an empty cell means "revert to derived"); this is a
+        # full replace, so a pruned-out cell drops its stored override.
+        "data": session_engine._prune_empty_followup_cells(
+            session_engine._canonical_followup_data(payload.get("data", {}))
+        ),
         "absences": payload.get("absences", {}),
         "updated_at": datetime.utcnow().isoformat(),
     }

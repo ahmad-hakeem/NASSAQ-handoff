@@ -68,3 +68,34 @@ export async function runFollowupClose({ needsFlush, flush, dismiss }) {
     // Save failed: do NOT dismiss — keep the sheet open with the edit intact.
   }
 }
+
+// Build the POST payload from the full local grid, keeping ONLY the cells the
+// teacher has taken manual ownership of (key in `manualKeys`) AND that hold a
+// non-empty value. Every other cell is session-derived and must NOT be sent:
+// persisting a derived value as a manual override freezes the cell so later
+// sidebar scoring never reaches the sheet or the committed grade. An empty
+// manual cell is an explicit "revert to derived" — it is omitted so the
+// replace-on-save drops the stored override. `manualKeys` is a Set of
+// `${studentId}:${columnId}`.
+export function pickManualCells(followupData, manualKeys) {
+  const keys = manualKeys || new Set();
+  const out = {};
+  for (const [sid, cols] of Object.entries(followupData || {})) {
+    for (const [cid, val] of Object.entries(cols || {})) {
+      if (!keys.has(`${sid}:${cid}`)) continue;
+      if (val === null || val === undefined || val === '') continue;
+      out[sid] = { ...(out[sid] || {}), [cid]: val };
+    }
+  }
+  return out;
+}
+
+// Recompute which cells are manual overrides after a server read. The server is
+// authoritative for what is persisted (`serverKeys` = non-empty stored override
+// cells); we additionally keep any cell edited locally but not yet saved
+// (`dirtyKeys`) so an in-flight edit during the 1.5s debounce / 30s poll isn't
+// dropped. A cell the teacher cleared falls out of BOTH sets, so its override is
+// correctly forgotten. Both are arrays/Sets of `${studentId}:${columnId}`.
+export function computeManualKeys(serverKeys, dirtyKeys) {
+  return new Set([...(serverKeys || []), ...(dirtyKeys || [])]);
+}

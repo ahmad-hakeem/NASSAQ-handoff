@@ -2576,78 +2576,21 @@ class TeacherSessionEngine:
         return clean
 
     @staticmethod
-    def _followup_values_equal(a: Any, b: Any) -> bool:
-        """Numeric-tolerant equality for follow-up cell values. None/"" are
-        treated as empty (equal only to each other)."""
-        a_empty = a in (None, "")
-        b_empty = b in (None, "")
-        if a_empty or b_empty:
-            return a_empty and b_empty
-        try:
-            return abs(float(a) - float(b)) < 1e-9
-        except (TypeError, ValueError):
-            return str(a) == str(b)
+    def _prune_empty_followup_cells(data: Dict[str, Any]) -> Dict[str, Any]:
+        """Drop empty (None/"") cell values and any row left with no cells.
 
-    async def strip_derived_followup_echoes(self, session_id: str, data: Any) -> Dict[str, Any]:
-        """Drop coursework cells that merely echo the live session-derived value.
-
-        The Follow-up Report re-posts the WHOLE hydrated blob on every save, and
-        that blob includes the session-derived participation/performance values
-        it last showed the teacher. Persisting those derived echoes as if they
-        were manual overrides makes the keep-manual guard in
-        ``build_followup_hydration`` (and the override branch in
-        ``commit_session_scores``) treat them as immutable — freezing the cell so
-        any later sidebar scoring never reaches the sheet or the committed grade.
-
-        We keep only cells that genuinely DEVIATE from the current derived value
-        (true manual edits). Exam/custom columns have no derived bucket, so they
-        are always kept. Fails open: if the live scores can't be computed we fall
-        back to the canonical blob (pre-fix behaviour), never dropping data.
+        The stored follow-up blob is the teacher's MANUAL-OVERRIDE set: an empty
+        cell means "no override — fall back to the live session-derived value",
+        so it must not be persisted (a stored "" would otherwise survive as a
+        meaningless row and could be mistaken for an override). Numeric zero is a
+        real score and is kept. Expects the already-canonicalized student->{col:
+        value} map (see ``_canonical_followup_data``).
         """
-        canonical = self._canonical_followup_data(data)
-        if not canonical:
-            return canonical
-        try:
-            computed = await self.compute_session_scores(session_id)
-            session = computed.get("session")
-            if not session:
-                return canonical
-            columns = await self._resolve_coursework_columns(session.get("class_id"))
-        except Exception as e:  # noqa: BLE001 - fail open, never lose the edit
-            logger.warning(
-                "strip_derived_followup_echoes: live-score compute failed for "
-                "session %s (%s); storing canonical blob unchanged", session_id, e,
-            )
-            return canonical
-        if not columns:
-            return canonical
-
-        col_meta: Dict[str, tuple] = {}
-        for bucket, col in columns.items():
-            col_id = col.get("id")
-            if col_id:
-                col_meta[col_id] = (bucket, col.get("max_grade", 0))
-
-        students = computed.get("students", {})
         pruned: Dict[str, Any] = {}
-        for sid, vals in canonical.items():
+        for sid, vals in (data or {}).items():
             if not isinstance(vals, dict):
                 continue
-            agg = students.get(sid, {})
-            kept: Dict[str, Any] = {}
-            for col_id, value in vals.items():
-                meta = col_meta.get(col_id)
-                if meta is None:
-                    # Exam/custom column — no derived value to echo; keep as-is.
-                    kept[col_id] = value
-                    continue
-                bucket, max_grade = meta
-                derived = self._coursework_value(bucket, agg, max_grade)
-                if self._followup_values_equal(value, derived):
-                    # Pure derived echo — drop it so the live sidebar-driven
-                    # value keeps flowing into the sheet on the next hydration.
-                    continue
-                kept[col_id] = value
+            kept = {cid: v for cid, v in vals.items() if v not in (None, "")}
             if kept:
                 pruned[sid] = kept
         return pruned

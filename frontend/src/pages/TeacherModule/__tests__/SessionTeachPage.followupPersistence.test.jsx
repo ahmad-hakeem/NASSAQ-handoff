@@ -29,6 +29,8 @@ import {
   mergeFollowupAbsences,
   isFollowupNoOpFlush,
   runFollowupClose,
+  pickManualCells,
+  computeManualKeys,
 } from '../followupPersistence';
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -128,6 +130,68 @@ describe('followupPersistence helpers', () => {
       await runFollowupClose({ needsFlush: true, flush, dismiss });
       expect(flush).toHaveBeenCalledTimes(1);
       expect(dismiss).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('pickManualCells (send only the teacher\'s real overrides)', () => {
+    test('keeps only cells whose key is in the manual set', () => {
+      const grid = { s1: { c1: 5, c2: 8 }, s2: { c1: 3 } };
+      // Only s1:c1 is a genuine manual edit; everything else is session-derived.
+      const out = pickManualCells(grid, new Set(['s1:c1']));
+      expect(out).toEqual({ s1: { c1: 5 } });
+    });
+
+    test('drops a derived echo even when it sits next to a manual edit', () => {
+      // The sheet shows derived c2=8 and a manual c1=5; only c1 must be sent so
+      // c2 keeps tracking the live score and never freezes.
+      const grid = { s1: { c1: 5, c2: 8 } };
+      expect(pickManualCells(grid, new Set(['s1:c1']))).toEqual({ s1: { c1: 5 } });
+    });
+
+    test('omits empty manual cells (cleared = revert to derived)', () => {
+      const grid = { s1: { c1: '', c2: null, c3: undefined, c4: 4 } };
+      const out = pickManualCells(grid, new Set(['s1:c1', 's1:c2', 's1:c3', 's1:c4']));
+      expect(out).toEqual({ s1: { c4: 4 } });
+    });
+
+    test('keeps a manual zero (0 is a real score, not empty)', () => {
+      expect(pickManualCells({ s1: { c1: 0 } }, new Set(['s1:c1']))).toEqual({ s1: { c1: 0 } });
+    });
+
+    test('a row with no surviving manual cells is omitted entirely', () => {
+      const grid = { s1: { c1: 5 }, s2: { c1: 9 } };
+      // s2:c1 is derived (not manual); s1:c1 is manual.
+      expect(pickManualCells(grid, new Set(['s1:c1']))).toEqual({ s1: { c1: 5 } });
+    });
+
+    test('handles a null grid / null manual set without throwing', () => {
+      expect(pickManualCells(null, new Set(['s1:c1']))).toEqual({});
+      expect(pickManualCells({ s1: { c1: 5 } }, null)).toEqual({});
+    });
+  });
+
+  describe('computeManualKeys (server truth ∪ unsaved-dirty)', () => {
+    test('unions the server manual_keys with the local dirty set', () => {
+      const out = computeManualKeys(['s1:c1'], new Set(['s2:c1']));
+      expect(out).toEqual(new Set(['s1:c1', 's2:c1']));
+    });
+
+    test('a cleared cell (absent server-side AND not dirty) is forgotten', () => {
+      // The teacher cleared s1:c1: it dropped out of the stored overrides and,
+      // after its flush, out of the dirty set too — so it must not linger.
+      const out = computeManualKeys(['s1:c2'], new Set());
+      expect(out.has('s1:c1')).toBe(false);
+      expect(out).toEqual(new Set(['s1:c2']));
+    });
+
+    test('an unsaved edit survives a poll that does not yet know about it', () => {
+      // Server hasn't seen s1:c9 yet (still in flight), but it is dirty -> keep it.
+      const out = computeManualKeys([], new Set(['s1:c9']));
+      expect(out).toEqual(new Set(['s1:c9']));
+    });
+
+    test('tolerates missing server keys / dirty set', () => {
+      expect(computeManualKeys(undefined, undefined)).toEqual(new Set());
     });
   });
 });
