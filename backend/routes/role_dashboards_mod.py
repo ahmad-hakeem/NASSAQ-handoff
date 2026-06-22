@@ -3579,8 +3579,15 @@ async def get_followup_record(
     # Follow-up Report reflects the teacher's in-session scoring without manual
     # re-entry. Manual teacher entries are preserved (never clobbered); exam
     # columns stay manual. Falls back to the manual data if hydration fails.
+    # Per-cell manual-edit timestamps (+ the record-level updated_at as a legacy
+    # fallback) let hydration apply latest-action-wins: a manual override gives
+    # way to the live derived value once a newer side-panel interaction lands.
+    manual_ts = data_blob.get("manual_ts") if isinstance(data_blob, dict) else None
+    fallback_ts = data_blob.get("updated_at") if isinstance(data_blob, dict) else None
     try:
-        hydrated_data = await session_engine.build_followup_hydration(session_id, manual_data)
+        hydrated_data = await session_engine.build_followup_hydration(
+            session_id, manual_data, manual_ts=manual_ts, fallback_ts=fallback_ts,
+        )
     except Exception as e:
         logger.warning(f"Follow-up hydration failed for session {session_id}: {e}")
         hydrated_data = manual_data
@@ -3619,6 +3626,25 @@ async def save_followup_record(
     s_id = session.get("subject_id") if session else None
     lookup = {"class_id": c_id, "subject_id": s_id} if c_id and s_id else {"session_id": session_id}
     existing = await gd_find_one(db.session, "followup_records", lookup)
+    # Store ONLY the teacher's genuine manual overrides. The Follow-up Report
+    # now sends just the cells the teacher actually edited (the frontend
+    # tracks manual ownership and filters before POSTing); every other cell
+    # stays session-derived and is re-hydrated live on read. Persisting a
+    # derived value as an override would freeze the cell against later sidebar
+    # scoring. We canonicalize to the student->{column_id: value} map and
+    # prune empty cells (an empty cell means "revert to derived"); this is a
+    # full replace, so a pruned-out cell drops its stored override.
+    new_manual = session_engine._prune_empty_followup_cells(
+        session_engine._canonical_followup_data(payload.get("data", {}))
+    )
+    # Per-cell manual-edit timestamps power latest-action-wins on read/commit:
+    # an unchanged cell keeps its prior timestamp while new/changed cells are
+    # stamped now, so editing one student never refreshes another's pin.
+    existing_blob = (existing.get("data") or {}) if existing else {}
+    existing_blob = existing_blob if isinstance(existing_blob, dict) else {}
+    existing_manual = existing_blob.get("data") if isinstance(existing_blob.get("data"), dict) else {}
+    existing_ts = existing_blob.get("manual_ts") if isinstance(existing_blob.get("manual_ts"), dict) else {}
+    now_iso = datetime.now(timezone.utc).isoformat()
     record_data = {
         "class_id": c_id,
         "subject_id": s_id,
@@ -3628,24 +3654,17 @@ async def save_followup_record(
         # only stamps the owning workspace for future tenant filtering.
         "school_id": session.get("school_id") if session else None,
         "columns": payload.get("columns", []),
-        # Store ONLY the teacher's genuine manual overrides. The Follow-up Report
-        # now sends just the cells the teacher actually edited (the frontend
-        # tracks manual ownership and filters before POSTing); every other cell
-        # stays session-derived and is re-hydrated live on read. Persisting a
-        # derived value as an override would freeze the cell against later sidebar
-        # scoring. We canonicalize to the student->{column_id: value} map and
-        # prune empty cells (an empty cell means "revert to derived"); this is a
-        # full replace, so a pruned-out cell drops its stored override.
-        "data": session_engine._prune_empty_followup_cells(
-            session_engine._canonical_followup_data(payload.get("data", {}))
+        "data": new_manual,
+        "manual_ts": session_engine._stamp_manual_ts(
+            new_manual, existing_manual, existing_ts, now_iso
         ),
         "absences": payload.get("absences", {}),
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": now_iso,
     }
     if existing:
         await gd_update_one(db.session, "followup_records", lookup, {"$set": record_data})
     else:
-        record_data["created_at"] = datetime.utcnow().isoformat()
+        record_data["created_at"] = now_iso
         await gd_insert(db.session, "followup_records", record_data)
     return {"success": True, "session_id": session_id}
 

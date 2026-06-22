@@ -3,16 +3,19 @@ keep flowing into كشف المتابعة *after* the sheet has been opened once
 lesson has been saved — and a value the teacher actually TYPED must win and
 survive, even when it happens to equal the current derived value.
 
-This locks in the "Option B" contract for the follow-up sheet:
+This locks in the follow-up sheet contract (latest-action-wins):
 
   * The frontend persists ONLY the cells the teacher took manual ownership of.
     A session-derived value the teacher never edited is never POSTed, so it is
     never stored as an override and always re-hydrates to the live score.
   * GET exposes ``manual_keys`` (``"<student_id>:<column_id>"`` for each non-empty
     stored override) so the frontend can seed its manual-ownership set.
-  * A stored manual cell wins over the live derived value on reopen — including a
-    manual value EQUAL to the derived one (the old value-equality echo-strip
-    would have wrongly dropped that and let the cell drift).
+  * A stored manual cell wins over the live derived value on reopen *while it is
+    the most recent action* — including a manual value EQUAL to the derived one
+    (the old value-equality echo-strip would have wrongly dropped that). But a
+    NEWER sidebar interaction supersedes the manual edit and the live derived
+    value resumes for that student (latest action wins): a manual edit holds only
+    until the next interaction for that student.
   * An empty cell means "revert to derived": the backend prunes it, and a full
     replace that omits a previously-stored cell drops that override.
 
@@ -232,23 +235,29 @@ async def test_manual_edit_stored_advertised_and_wins(client, school_type):
     assert f"{student}:{col}" in r_reopen.json().get("manual_keys", [])
     assert r_reopen.json()["data"].get(student, {}).get(col) == typed
 
-    # Even after more sidebar scoring, the manual edit wins (it was explicitly set).
+    # Latest-action-wins: a NEWER sidebar interaction supersedes the manual edit,
+    # so the live derived value resumes for that student. The manual edit only
+    # holds while it is the most recent action.
     await _record_active(engine, sid, student, ctx["user_id"])
+    d_after = await _live_derived(engine, sid, student, col)
+    assert d_after and d_after > d1
     r_after = await client.get(f"/session/{sid}/followup-record", headers=headers)
-    assert r_after.json()["data"].get(student, {}).get(col) == typed, (
-        "a genuine manual edit must survive later sidebar scoring"
+    assert r_after.json()["data"].get(student, {}).get(col) == d_after, (
+        "a newer sidebar interaction must resume the live derived value; the "
+        "earlier manual edit no longer holds (latest action wins)"
     )
 
 
 # ---------------------------------------------------------------------------
-# The edge the old echo-strip broke: a manual value EQUAL to the current derived
-# value is a real override and must be pinned (it must NOT drift with later
-# sidebar scoring).
+# A manual value EQUAL to the current derived value is still a genuine override
+# (advertised in manual_keys, never echo-stripped) and holds while it is the
+# latest action — but a NEWER sidebar interaction supersedes it and the live
+# derived value resumes (latest action wins).
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("school_type", ["real", "independent_teacher"])
-async def test_manual_value_equal_to_derived_is_pinned(client, school_type):
+async def test_manual_value_equal_to_derived_stored_then_superseded(client, school_type):
     ctx = await _setup(school_type)
     engine = ctx["engine"]
     sid = ctx["session_id"]
@@ -266,22 +275,24 @@ async def test_manual_value_equal_to_derived_is_pinned(client, school_type):
         json={"data": {student: {col: d1}}, "absences": {}},
     )
     assert r_save.status_code == 200, r_save.text
-    # It is a genuine override and is advertised as such.
+    # It is a genuine override (not echo-stripped), advertised in manual_keys, and
+    # holds at d1 while it is the most recent action.
     r_check = await client.get(f"/session/{sid}/followup-record", headers=headers)
     assert f"{student}:{col}" in r_check.json().get("manual_keys", [])
+    assert r_check.json()["data"].get(student, {}).get(col) == d1
 
-    # More sidebar scoring would raise the derived value...
+    # A newer sidebar interaction raises the derived value and supersedes the edit.
     await _record_active(engine, sid, student, ctx["user_id"])
     d2 = await _live_derived(engine, sid, student, col)
     assert d2 and d2 > d1
 
-    # ...but the manual pin holds at d1 (the old value-equality strip would have
-    # dropped it and let the cell drift to d2).
+    # Latest-action-wins: the live derived value resumes (the earlier manual edit,
+    # even one equal to the then-derived value, no longer holds).
     r_reopen = await client.get(f"/session/{sid}/followup-record", headers=headers)
     shown = r_reopen.json()["data"].get(student, {}).get(col)
-    assert shown == d1, (
-        f"a manual value equal to the derived one must be pinned ({d1!r}); it "
-        f"must not drift to the later derived value {d2!r}."
+    assert shown == d2, (
+        f"a newer sidebar interaction must resume the live derived value {d2!r}; "
+        f"the earlier manual edit {d1!r} no longer holds (latest action wins)."
     )
 
 

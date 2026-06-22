@@ -2351,11 +2351,21 @@ class TeacherSessionEngine:
         _CW_PERFORMANCE: ("المهام الأدائية", "performance", "مهم"),
     }
 
+    # For each derived coursework bucket, the per-student aggregate key that
+    # holds the timestamp of that student's most recent *scoring* interaction.
+    # Used by the follow-up sheet for latest-action-wins: a manual override is
+    # only respected while it is at least as new as this timestamp (homework is
+    # excluded — it stays toggle-authoritative).
+    _BUCKET_LAST_TS = {
+        _CW_PARTICIPATION: "participation_last_ts",
+        _CW_PERFORMANCE: "performance_last_ts",
+    }
+
     # Reserved keys that live alongside the student-scores map inside a
     # follow-up record's stored ``data`` blob. They are never student ids.
     _FOLLOWUP_META_KEYS = frozenset({
         "data", "columns", "absences", "class_id", "subject_id",
-        "session_id", "created_at", "updated_at",
+        "session_id", "created_at", "updated_at", "manual_ts",
     })
 
     # Default coursework/exam columns, mirrors the /class/{id}/grade-columns
@@ -2440,6 +2450,10 @@ class TeacherSessionEngine:
                     "performance_points": 0,
                     "homework_done": None,  # None=no homework row, True/False otherwise
                     "behaviour_events": [],
+                    # Timestamp of the most recent scoring interaction per bucket;
+                    # drives latest-action-wins in the follow-up sheet.
+                    "participation_last_ts": None,
+                    "performance_last_ts": None,
                 }
             return students[sid]
 
@@ -2505,6 +2519,50 @@ class TeacherSessionEngine:
                         "recorded_by": it.get("recorded_by"),
                         "recorded_at": it.get("recorded_at") or it.get("timestamp"),
                     })
+
+        # Second, isolated pass: record the most-recent SCORING interaction
+        # timestamp per derived bucket so the follow-up sheet can apply
+        # latest-action-wins. Mirrors the scoring conditions above exactly so a
+        # non-scoring interaction (e.g. an unanswered question) never supersedes
+        # a teacher's manual edit. This pass only reads/writes the *_last_ts keys
+        # and leaves all score arithmetic above untouched.
+        for it in interactions:
+            sid = it.get("student_id")
+            if not sid or sid not in students:
+                continue
+            it_ts = it.get("recorded_at") or it.get("timestamp")
+            if not it_ts:
+                continue
+            b = students[sid]
+            itype = it.get("interaction_type") or it.get("type")
+            if itype == InteractionType.QUESTION.value:
+                if it.get("answer_result") in (
+                    AnswerResult.CORRECT.value, AnswerResult.NO_ANSWER.value,
+                ):
+                    b["participation_last_ts"] = self._max_ts(b.get("participation_last_ts"), it_ts)
+            elif itype == InteractionType.PARTICIPATION.value:
+                if it.get("participation_type") in (
+                    ParticipationType.ACTIVE.value,
+                    ParticipationType.INITIATIVE.value,
+                    ParticipationType.REFUSED.value,
+                ):
+                    b["participation_last_ts"] = self._max_ts(b.get("participation_last_ts"), it_ts)
+            elif itype == InteractionType.EVALUATION.value:
+                # Mirror the scoring branch: only a non-zero evaluation actually
+                # moves the score, so only that may supersede a manual edit (a
+                # 0-point evaluation is a non-scoring event).
+                try:
+                    ev_pts = int(it.get("points", 0) or 0)
+                except (TypeError, ValueError):
+                    ev_pts = 0
+                if ev_pts != 0:
+                    b["participation_last_ts"] = self._max_ts(b.get("participation_last_ts"), it_ts)
+            elif itype == InteractionType.BEHAVIOUR.value:
+                cat = it.get("behaviour_category")
+                if cat == BehaviourCategory.SKILL.value:
+                    b["performance_last_ts"] = self._max_ts(b.get("performance_last_ts"), it_ts)
+                elif cat in (BehaviourCategory.POSITIVE.value, BehaviourCategory.NEGATIVE.value):
+                    b["participation_last_ts"] = self._max_ts(b.get("participation_last_ts"), it_ts)
 
         for hw in homework_rows:
             sid = hw.get("student_id")
@@ -2595,11 +2653,90 @@ class TeacherSessionEngine:
                 pruned[sid] = kept
         return pruned
 
-    async def build_followup_hydration(self, session_id: str, manual_data: Dict[str, Any]) -> Dict[str, Any]:
+    @staticmethod
+    def _parse_ts(val: Any) -> Optional[datetime]:
+        """Parse an ISO-8601 timestamp into a tz-aware datetime (UTC assumed when
+        naive). Returns None for anything unparseable. Used so timestamp
+        comparisons never rely on fragile lexicographic ordering across the
+        tz-aware (interaction ``recorded_at``) and naive (legacy record
+        ``updated_at``) formats stored in the system."""
+        if not isinstance(val, str) or not val:
+            return None
+        try:
+            dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+
+    @classmethod
+    def _max_ts(cls, a: Any, b: Any) -> Any:
+        """Return the later of two ISO timestamps (either may be None)."""
+        if not a:
+            return b
+        if not b:
+            return a
+        pa, pb = cls._parse_ts(a), cls._parse_ts(b)
+        if pa is None:
+            return b
+        if pb is None:
+            return a
+        return a if pa >= pb else b
+
+    @classmethod
+    def _manual_override_superseded(cls, manual_ts: Any, last_interaction_ts: Any) -> bool:
+        """Latest-action-wins: a stored manual override for a derived coursework
+        column is superseded once a NEWER scoring interaction lands for that
+        student. Returns True when the live derived value should resume. When
+        either timestamp is missing/unparseable, the manual value is kept
+        (conservative — never silently discard a teacher's edit)."""
+        m = cls._parse_ts(manual_ts)
+        last = cls._parse_ts(last_interaction_ts)
+        return bool(m and last and last > m)
+
+    @staticmethod
+    def _stamp_manual_ts(
+        new_manual: Dict[str, Any],
+        existing_manual: Optional[Dict[str, Any]],
+        existing_ts: Optional[Dict[str, Any]],
+        now_iso: str,
+    ) -> Dict[str, Any]:
+        """Build the per-cell manual-edit timestamp map for a follow-up save.
+
+        A cell keeps its previous timestamp when its value is unchanged from the
+        last save; new or value-changed cells are stamped ``now_iso``. Cells
+        absent from ``new_manual`` drop their timestamp. This per-cell stamping
+        (rather than one record-level ``updated_at``) is what lets editing one
+        student never resurrect a superseded pin on another student.
+        """
+        existing_manual = existing_manual or {}
+        existing_ts = existing_ts or {}
+        out: Dict[str, Any] = {}
+        for sid, cols in (new_manual or {}).items():
+            if not isinstance(cols, dict):
+                continue
+            for cid, val in cols.items():
+                prev_val = (existing_manual.get(sid) or {}).get(cid) if isinstance(existing_manual.get(sid), dict) else None
+                prev_ts = (existing_ts.get(sid) or {}).get(cid) if isinstance(existing_ts.get(sid), dict) else None
+                if prev_ts and prev_val is not None and str(prev_val) == str(val):
+                    out.setdefault(sid, {})[cid] = prev_ts
+                else:
+                    out.setdefault(sid, {})[cid] = now_iso
+        return out
+
+    async def build_followup_hydration(
+        self,
+        session_id: str,
+        manual_data: Dict[str, Any],
+        manual_ts: Optional[Dict[str, Any]] = None,
+        fallback_ts: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Overlay session-derived coursework values onto the Follow-up
         Report data map (keyed student_id -> {column_uuid: value}). Manual
         teacher entries are never clobbered; exam columns are untouched."""
         manual_data = self._canonical_followup_data(manual_data)
+        ts_map = manual_ts if isinstance(manual_ts, dict) else {}
         computed = await self.compute_session_scores(session_id)
         session = computed.get("session")
         if not session:
@@ -2625,7 +2762,16 @@ class TeacherSessionEngine:
                         row[col_id] = value
                     continue
                 if col_id in row and row[col_id] not in (None, ""):
-                    continue
+                    # Manual override present. Latest-action-wins: keep it unless a
+                    # NEWER scoring interaction has landed for this student, in
+                    # which case the live derived value resumes (only when it is
+                    # determinable — a None derived never blanks the cell). With no
+                    # timestamp at all the manual value is kept (conservative).
+                    sid_ts = ts_map.get(sid) if isinstance(ts_map.get(sid), dict) else {}
+                    cell_ts = sid_ts.get(col_id) or fallback_ts
+                    last_ts = agg.get(self._BUCKET_LAST_TS.get(bucket))
+                    if not self._manual_override_superseded(cell_ts, last_ts):
+                        continue
                 if value is not None:
                     row[col_id] = value
             if row:
@@ -2659,7 +2805,11 @@ class TeacherSessionEngine:
         # agree with what the teacher sees in the report.
         followup_lookup = {"class_id": class_id, "subject_id": subject_id} if class_id and subject_id else {"session_id": session_id}
         followup = await gd_find_one(self.session, "followup_records", followup_lookup)
-        manual_data = self._canonical_followup_data((followup or {}).get("data", {})) if followup else {}
+        followup_blob = (followup or {}).get("data", {}) if followup else {}
+        followup_blob = followup_blob if isinstance(followup_blob, dict) else {}
+        manual_data = self._canonical_followup_data(followup_blob) if followup else {}
+        manual_ts_map = followup_blob.get("manual_ts") if isinstance(followup_blob.get("manual_ts"), dict) else {}
+        followup_updated_at = followup_blob.get("updated_at")
 
         columns = await self._resolve_coursework_columns(class_id) if class_id else {}
 
@@ -2709,7 +2859,23 @@ class TeacherSessionEngine:
                     value = derived
                 else:
                     override = manual_data.get(sid, {}).get(col_id) if isinstance(manual_data.get(sid), dict) else None
-                    if override not in (None, ""):
+                    use_manual = override not in (None, "")
+                    if use_manual:
+                        # Latest-action-wins must mirror build_followup_hydration so
+                        # committed grades never diverge from the sheet the teacher
+                        # sees: a manual override older than the student's most
+                        # recent scoring interaction gives way to the derived value.
+                        sid_ts = manual_ts_map.get(sid) if isinstance(manual_ts_map.get(sid), dict) else {}
+                        cell_ts = sid_ts.get(col_id) or followup_updated_at
+                        last_ts = agg.get(self._BUCKET_LAST_TS.get(bucket))
+                        # Mirror build_followup_hydration exactly: only let a newer
+                        # interaction drop the manual value when there is a derived
+                        # value to resume to. A newer interaction that zeroes the
+                        # bucket (derived None) keeps the manual edit on BOTH read
+                        # and commit, so the sheet and committed grades never diverge.
+                        if derived is not None and self._manual_override_superseded(cell_ts, last_ts):
+                            use_manual = False
+                    if use_manual:
                         try:
                             value = float(override)
                         except (TypeError, ValueError):
