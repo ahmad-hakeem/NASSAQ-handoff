@@ -440,6 +440,48 @@ def _it_summary_empty_result() -> dict:
     }
 
 
+async def _it_validate_summary_recipients_or_403(
+    workspace_id: str, pairs: List[tuple],
+) -> None:
+    """Workspace-scoped re-validation for the IT lesson-end summary.
+
+    Unlike ``_it_validate_recipients_or_403`` (which narrows the allow-set
+    to the §5.6 homeroom-UNION-``teacher_assignments`` class cohort), this
+    check matches the delivery's OWN cohort: every resolved target must be
+    an active ``role == 'parent'`` user pinned to the caller's IT workspace
+    tenant. IT workspaces are synthetic single-teacher tenants, so any
+    parent pinned to ``workspace_id`` already belongs to that one teacher —
+    the homeroom/assignment narrowing is both wrong and over-strict here
+    (it 403s parents of classes created without a homeroom assignment).
+
+    Cross-workspace targets still fail: a foreign parent's ``tenant_id``
+    will never equal ``workspace_id``. 403 (not 404) — writes must surface
+    the rejection per spec §5.6.
+    """
+    target_uids = list({uid for _, uid in pairs if uid})
+    if not target_uids:
+        return
+    users = await gd_find(
+        db.session, "users",
+        {
+            "id": {"$in": target_uids},
+            "role": "parent",
+            "tenant_id": workspace_id,
+            "is_active": True,
+        },
+        limit=2000,
+    )
+    allowed = {
+        u["id"] for u in users
+        if u.get("id") and u.get("tenant_id") == workspace_id
+    }
+    for uid in target_uids:
+        if uid not in allowed:
+            raise HTTPException(
+                status_code=403, detail=_IT_RECIPIENT_OUT_OF_SCOPE_AR,
+            )
+
+
 async def _deliver_it_session_summary(
     notification: "NotificationCreate", current_user: dict,
 ) -> dict:
@@ -515,11 +557,14 @@ async def _deliver_it_session_summary(
             for r in recips if r.get("user_id")
         ]
 
-    # Re-validate every resolved delivery target against the §5.6 IT cohort
-    # so a summary can never widen beyond the teacher's own workspace.
-    target_uids = list({uid for _, uid in pairs if uid})
-    if target_uids:
-        await _it_validate_recipients_or_403(current_user, target_uids)
+    # Re-validate every resolved delivery target against the IT WORKSPACE
+    # cohort (active parent user pinned to this workspace tenant), matching
+    # the delivery's own roster-based cohort. This deliberately does NOT use
+    # the narrower §5.6 homeroom/teacher_assignments allow-set, which 403s
+    # parents of IT classes created without a homeroom assignment. A genuine
+    # cross-workspace target still fails (its tenant_id won't match).
+    if pairs:
+        await _it_validate_summary_recipients_or_403(workspace_id, pairs)
 
     if not pairs:
         return _it_summary_empty_result()

@@ -512,3 +512,156 @@ async def test_already_completed_session_still_delivers(client):
     assert len(rows) == 1
     assert rows[0]["lesson_report"] is not None
     assert rows[0]["lesson_report"]["attendance_status"] == "present"
+
+
+# ---------------------------------------------------------------------------
+# G. Class with NO homeroom_teacher_id and NO teacher_assignments row
+#    (Task #1064) — the reproduced "مقرر تجريبي" course case. Its students
+#    have active guardian_links, so delivery must reach those parents and
+#    NOT 403 on the §5.6 homeroom/assignment cohort re-validation.
+# ---------------------------------------------------------------------------
+
+async def _mk_class_no_teacher(wsid: str, name: str = "مقرر تجريبي") -> str:
+    """A workspace class with neither a homeroom teacher nor a
+    teacher_assignments row — the IT course-without-assignment case."""
+    cid = str(uuid.uuid4())
+    await gd_insert(db.session, "classes", {
+        "id": cid,
+        "school_id": wsid,
+        "name": name,
+        "grade_level": "1",
+        # NOTE: no homeroom_teacher_id.
+        "is_active": True,
+    })
+    return cid
+
+
+@pytest.mark.asyncio
+async def test_delivery_class_without_homeroom_or_assignment(client):
+    """The reproduced failure: an IT class created without a
+    homeroom_teacher_id and without a teacher_assignments row, whose
+    students have active guardian_links, must deliver the lesson report to
+    those parents — no 403, notification rows written."""
+    ws = await _mk_it_workspace()
+    wsid = ws["workspace_id"]
+    cid = await _mk_class_no_teacher(wsid)
+
+    sid = await _mk_student(wsid, cid, "طالب المقرر")
+    parent_uid = await _mk_parent_linked(wsid, sid, "ولي أمر المقرر")
+
+    session_id = await _mk_session(wsid, cid)
+    await _mk_attendance(session_id, sid, "present")
+    await _mk_interaction(session_id, sid, "participation")
+
+    it_headers = _headers(
+        ws["user_id"], UserRole.INDEPENDENT_TEACHER.value, tenant_id=wsid,
+    )
+    resp = await client.post(
+        "/notifications",
+        json=_summary_payload(session_id),
+        headers=it_headers,
+    )
+    # Must NOT 403 on the cohort re-validation.
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True
+    assert body["created_count"] == 1
+
+    r = await client.get(
+        "/notifications",
+        headers=_headers(parent_uid, "parent", tenant_id=wsid),
+    )
+    assert r.status_code == 200, r.text
+    rows = r.json()
+    assert len(rows) == 1
+    assert rows[0]["lesson_report"] is not None
+    assert rows[0]["lesson_report"]["attendance_status"] == "present"
+
+
+@pytest.mark.asyncio
+async def test_delivery_no_cross_workspace_leak_on_no_homeroom_class(client):
+    """Even on the no-homeroom class path, a parent that belongs to ANOTHER
+    workspace must never receive the report. Workspace B's parent is forged
+    onto workspace A's student via a guardian_link pinned to A's tenant; the
+    tenant-scoped roster resolver drops them, so they receive nothing and
+    the send stays a success-shaped no-op (never a leak)."""
+    ws_a = await _mk_it_workspace()
+    ws_b = await _mk_it_workspace()
+    wsid_a = ws_a["workspace_id"]
+    cid = await _mk_class_no_teacher(wsid_a)
+    sid = await _mk_student(wsid_a, cid, "طالب أ")
+
+    # A parent USER that lives in workspace B (cross-workspace target).
+    foreign_parent = str(uuid.uuid4())
+    await gd_insert(db.session, "users", {
+        "id": foreign_parent,
+        "role": "parent",
+        "tenant_id": ws_b["workspace_id"],
+        "email": f"foreign-{foreign_parent}@t.test",
+        "full_name": "ولي أمر خارجي",
+        "is_active": True,
+        "password_hash": "x",
+    })
+    # Forge a guardian_link (pinned to workspace A's tenant) so delivery
+    # would resolve this foreign parent into the roster pairs if the
+    # tenant scoping ever regressed.
+    await gd_insert(db.session, "guardian_links", {
+        "id": str(uuid.uuid4()),
+        "student_id": sid,
+        "tenant_id": wsid_a,
+        "parent_ref": foreign_parent,
+        "parent_user_id": foreign_parent,
+        "is_active": True,
+    })
+
+    session_id = await _mk_session(wsid_a, cid)
+    it_headers = _headers(
+        ws_a["user_id"], UserRole.INDEPENDENT_TEACHER.value, tenant_id=wsid_a,
+    )
+    resp = await client.post(
+        "/notifications",
+        json=_summary_payload(session_id),
+        headers=it_headers,
+    )
+    # Success-shaped no-op — the foreign parent is dropped, not delivered.
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["created_count"] == 0
+
+    # The foreign parent received nothing.
+    r = await client.get(
+        "/notifications",
+        headers=_headers(foreign_parent, "parent", tenant_id=ws_b["workspace_id"]),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == []
+
+
+@pytest.mark.asyncio
+async def test_validator_rejects_cross_workspace_target():
+    """Explicit defence-in-depth: the workspace-scoped re-validation 403s a
+    resolved target that is not an active parent user pinned to the caller's
+    workspace tenant, even if a roster pair somehow carried it."""
+    from fastapi import HTTPException
+    from routes.notification_routes_mod import (
+        _it_validate_summary_recipients_or_403,
+    )
+
+    ws_a = await _mk_it_workspace()
+    ws_b = await _mk_it_workspace()
+
+    # A real parent in workspace B.
+    foreign_parent = str(uuid.uuid4())
+    await gd_insert(db.session, "users", {
+        "id": foreign_parent,
+        "role": "parent",
+        "tenant_id": ws_b["workspace_id"],
+        "email": f"foreign-{foreign_parent}@t.test",
+        "full_name": "ولي أمر خارجي",
+        "is_active": True,
+        "password_hash": "x",
+    })
+
+    pairs = [(str(uuid.uuid4()), foreign_parent)]
+    with pytest.raises(HTTPException) as exc:
+        await _it_validate_summary_recipients_or_403(ws_a["workspace_id"], pairs)
+    assert exc.value.status_code == 403
