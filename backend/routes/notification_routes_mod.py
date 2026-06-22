@@ -16,6 +16,7 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 from utils.parent_resolution import (
     PARENT_NOT_FOUND_AR,
     resolve_student_parent_user_id,
+    resolve_students_parent_user_ids,
 )
 from utils.tenant_scope import resolve_school_id, _is_platform_admin
 from dependencies import (
@@ -122,6 +123,14 @@ class NotificationCreate(BaseModel):
     related_entity: Optional[str] = None  # e.g., "student", "class", "assessment"
     related_entity_id: Optional[str] = None
     action_url: Optional[str] = None  # URL to navigate when clicked
+    # Task #1038 — class-scoped parent broadcast. When the caller sends a
+    # parent-cohort notification about a specific class (e.g. the
+    # end-of-session "ملخص الحصة" summary), this carries the class id so
+    # the backend can deliver to exactly the parents whose child is in that
+    # class and stamp each row with that child's `student_id` for the
+    # parent inbox child-chip + per-child filter. Only honoured together
+    # with recipient_role == 'parent'.
+    scope_class_id: Optional[str] = None
     # Optional Communication-Center template id. When set and the
     # template is in TEMPLATE_RECIPIENT_RULES, the recipient role/cohort
     # is validated server-side so a tampered FE cannot widen the cohort
@@ -508,6 +517,67 @@ async def create_notification(
         target_id = resolved_user_id_from_student or notification.recipient_id
         if target_id:
             await _it_validate_recipients_or_403(current_user, [target_id])
+
+    # Task #1038 — class-scoped parent summary ("ملخص الحصة" and any other
+    # parent-cohort notification about a specific class). Deliver to exactly
+    # the parents whose child is in ``scope_class_id`` and stamp each row
+    # with that child's ``student_id`` so the parent inbox renders the child
+    # chip and the per-child filter stays traceable. Falls through to the
+    # generic role broadcast below when no class scope is supplied.
+    if (
+        notification.recipient_role == 'parent'
+        and not notification.recipient_id
+        and notification.scope_class_id
+    ):
+        tenant_id = current_user.get('tenant_id')
+        if not tenant_id:
+            raise HTTPException(status_code=400, detail="السياق المدرسي غير محدد")
+
+        # Resolve the class roster (tenant-scoped) → one notification per
+        # (parent, child) pair so a parent with two children in the same
+        # class gets one correctly-attributed summary per child.
+        roster = await gd_find(
+            db.session, "students",
+            {"class_id": notification.scope_class_id, "school_id": tenant_id, "is_active": True},
+            limit=1000,
+        )
+        roster_ids = [s["id"] for s in roster if s.get("id")]
+        parent_uid_map = await resolve_students_parent_user_ids(roster_ids, tenant_id) if roster_ids else {}
+
+        created_ids = []
+        for sid in roster_ids:
+            parent_uid = parent_uid_map.get(sid)
+            if not parent_uid:
+                continue
+            notification_id = str(uuid.uuid4())
+            await gd_insert(db.session, "notifications", {
+                "id": notification_id,
+                "user_id": parent_uid,
+                "title": notification.title,
+                "title_en": notification.title_en,
+                "message": notification.message,
+                "message_en": notification.message_en,
+                "type": notification.notification_type.value if notification.notification_type else None,
+                "priority": notification.priority.value if notification.priority else "normal",
+                "action_url": notification.action_url,
+                "related_entity": notification.related_entity,
+                "related_entity_id": notification.related_entity_id,
+                "sender_id": current_user['id'],
+                "sender_name": current_user.get('full_name', ''),
+                "tenant_id": tenant_id,
+                "student_id": sid,
+                "is_read": False,
+                "read_at": None,
+                "created_at": datetime.now(timezone.utc),
+            })
+            created_ids.append(notification_id)
+
+        return {
+            "success": True,
+            "notification_id": created_ids[0] if created_ids else None,
+            "created_count": len(created_ids),
+            "message": f"تم إرسال {len(created_ids)} إشعار بنجاح",
+        }
 
     if notification.recipient_role and not notification.recipient_id:
         tenant_id = current_user.get('tenant_id')

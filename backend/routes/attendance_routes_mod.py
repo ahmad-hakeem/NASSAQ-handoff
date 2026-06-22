@@ -386,6 +386,7 @@ async def create_bulk_attendance(
                         sender_id=current_user['id'],
                         related_entity="student",
                         related_entity_id=student_id,
+                        student_id=student_id,
                         action_url="/parent/attendance",
                         school_id=t_id,
                     )

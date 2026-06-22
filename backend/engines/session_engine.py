@@ -22,6 +22,7 @@ import random
 import logging
 
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, gd_delete_many
+from utils.parent_resolution import resolve_students_parent_user_ids
 
 logger = logging.getLogger("nassaq.session_engine")
 
@@ -3014,20 +3015,44 @@ class TeacherSessionEngine:
     async def _send_smart_end_session_notifications(self, session_id, school_id, attendance, neg_students, student_interactions, now):
         """Send automatic notifications on session end: absence, repeated negative behavior, improvement."""
         notifications_sent = 0
-        
+
         absent_students = [a for a in attendance if a["status"] == AttendanceStatus.ABSENT.value]
+
+        # Task #1038 — resolve the beneficiary parent for every student this
+        # pass might notify, in one bulk tenant-safe call (no N+1), via the
+        # canonical resolver. The legacy code read a non-existent
+        # ``students.parent_user_id`` field, so these student-specific parent
+        # alerts never actually reached a parent inbox; resolving the parent
+        # here both restores delivery and lets each row carry the child's
+        # ``student_id`` for the inbox chip + per-child filter.
+        candidate_sids = {a["student_id"] for a in absent_students if a.get("student_id")}
+        candidate_sids.update(sid for sid, neg_count in neg_students.items() if neg_count >= 3 and sid)
+        candidate_sids.update(
+            sid for sid, si in student_interactions.items()
+            if (si.get("correct", 0) >= 3 or si.get("participation", 0) >= 5) and sid
+        )
+        parent_uid_map = (
+            await resolve_students_parent_user_ids(list(candidate_sids), school_id)
+            if candidate_sids else {}
+        )
+
         for a_rec in absent_students:
             sid = a_rec["student_id"]
             student = await gd_find_one(self.session, "students", {"id": sid, "is_active": True})
             if not student:
                 continue
-            parent_user_id = student.get("parent_user_id")
+            parent_user_id = parent_uid_map.get(sid)
             if not parent_user_id:
                 continue
             await gd_insert(self.session, "notifications", {
                 "id": str(uuid.uuid4()),
                 "tenant_id": school_id,
-                "recipient_id": parent_user_id,
+                # Task #1038 — write the indexed ``user_id`` column (the
+                # parent inbox read query filters on it) instead of the
+                # legacy ``recipient_id``, and tag the beneficiary child so
+                # the parent inbox shows the child chip and per-child filter.
+                "user_id": parent_user_id,
+                "student_id": sid,
                 "title": f"⚠️ غياب الطالب {student.get('full_name', '')}",
                 "title_en": f"⚠️ Student {student.get('full_name', '')} was absent",
                 "message": f"تم تسجيل غياب {student.get('full_name', '')} في الحصة اليوم. يرجى المتابعة.",
@@ -3047,7 +3072,7 @@ class TeacherSessionEngine:
                 student = await gd_find_one(self.session, "students", {"id": sid, "is_active": True})
                 if not student:
                     continue
-                parent_user_id = student.get("parent_user_id")
+                parent_user_id = parent_uid_map.get(sid)
                 recipients = []
                 if parent_user_id:
                     recipients.append(parent_user_id)
@@ -3066,7 +3091,10 @@ class TeacherSessionEngine:
                     await gd_insert(self.session, "notifications", {
                         "id": str(uuid.uuid4()),
                         "tenant_id": school_id,
-                        "recipient_id": rid,
+                        # Task #1038 — indexed ``user_id`` column + beneficiary
+                        # child tag (was the legacy, unread ``recipient_id``).
+                        "user_id": rid,
+                        "student_id": sid,
                         "title": f"⚠️ سلوك سلبي متكرر — {student.get('full_name', '')}",
                         "title_en": f"⚠️ Repeated negative behavior — {student.get('full_name', '')}",
                         "message": f"سجّل الطالب {student.get('full_name', '')} {neg_count} سلوكيات سلبية في الحصة. يرجى المتابعة.",
@@ -3086,13 +3114,16 @@ class TeacherSessionEngine:
                 student = await gd_find_one(self.session, "students", {"id": sid, "is_active": True})
                 if not student:
                     continue
-                parent_user_id = student.get("parent_user_id")
+                parent_user_id = parent_uid_map.get(sid)
                 if not parent_user_id:
                     continue
                 await gd_insert(self.session, "notifications", {
                     "id": str(uuid.uuid4()),
                     "tenant_id": school_id,
-                    "recipient_id": parent_user_id,
+                    # Task #1038 — indexed ``user_id`` column + beneficiary
+                    # child tag (was the legacy, unread ``recipient_id``).
+                    "user_id": parent_user_id,
+                    "student_id": sid,
                     "title": f"⭐ أداء متميز — {student.get('full_name', '')}",
                     "title_en": f"⭐ Outstanding performance — {student.get('full_name', '')}",
                     "message": f"تميّز {student.get('full_name', '')} في حصة اليوم بمشاركة فعّالة وأداء ممتاز!",
