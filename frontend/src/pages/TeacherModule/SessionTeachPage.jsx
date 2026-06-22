@@ -30,6 +30,12 @@ import confetti from 'canvas-confetti';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 import { getApiErrorMessage } from '../../utils/apiError';
+import {
+  mergeFollowupData,
+  mergeFollowupAbsences,
+  isFollowupNoOpFlush,
+  runFollowupClose,
+} from './followupPersistence';
 
 // Health condition badges (mirrors SessionStartPage)
 const HEALTH_BADGES = {
@@ -753,12 +759,7 @@ export default function SessionTeachPage() {
       // WITH dirty cells/absences is meaningful — it's a deletion (e.g. the
       // teacher removed the last absence and there are no grades), so it must
       // still POST {} to clear the server record and release the dirty markers.
-      if (
-        Object.keys(data).length === 0 &&
-        Object.keys(absences).length === 0 &&
-        dirtyFollowupCells.current.size === 0 &&
-        dirtyFollowupAbsences.current.size === 0
-      ) {
+      if (isFollowupNoOpFlush(data, absences, dirtyFollowupCells.current, dirtyFollowupAbsences.current)) {
         return;
       }
       // Snapshot the revision of every dirty cell this POST is about to persist,
@@ -806,21 +807,28 @@ export default function SessionTeachPage() {
 
   // Persist pending edits whenever the sheet closes — the إغلاق button, the
   // Escape key, and click-outside all route through the dialog's onOpenChange.
-  // Cancel the debounce first so we don't double-post, then flush only when
-  // there is something unsaved (a pending debounce or dirty cells); the reopen
-  // effect awaits this flush so the reload reflects the just-saved values.
-  const handleFollowupOpenChange = useCallback((next) => {
-    if (!next) {
-      const hadPending = !!followupSaveTimer.current;
-      if (followupSaveTimer.current) {
-        clearTimeout(followupSaveTimer.current);
-        followupSaveTimer.current = null;
-      }
-      if (hadPending || dirtyFollowupCells.current.size > 0 || dirtyFollowupAbsences.current.size > 0) {
-        flushFollowupRecord().catch(() => {});
-      }
+  // We persist FIRST and dismiss only after the save resolves: cancel the
+  // debounce, flush non-silently, and close on success. On failure the sheet
+  // stays open with the edit intact — flushFollowupRecord already surfaced a
+  // safe Arabic NassaqAlertDialog — so the teacher can retry, never losing data.
+  const handleFollowupOpenChange = useCallback(async (next) => {
+    if (next) {
+      setShowFollowupRecord(true);
+      return;
     }
-    setShowFollowupRecord(next);
+    const hadPending = !!followupSaveTimer.current;
+    if (followupSaveTimer.current) {
+      clearTimeout(followupSaveTimer.current);
+      followupSaveTimer.current = null;
+    }
+    const needsFlush = hadPending
+      || dirtyFollowupCells.current.size > 0
+      || dirtyFollowupAbsences.current.size > 0;
+    await runFollowupClose({
+      needsFlush,
+      flush: () => flushFollowupRecord(),
+      dismiss: () => setShowFollowupRecord(false),
+    });
   }, [flushFollowupRecord]);
 
   useEffect(() => {
@@ -974,28 +982,11 @@ export default function SessionTeachPage() {
     try {
       const res = await api.get(`/session/${sessionId}/followup-record`);
       const fresh = res.data?.data || {};
-      setFollowupData(prev => {
-        const next = { ...prev };
-        for (const [sid, cols] of Object.entries(fresh)) {
-          for (const [cid, val] of Object.entries(cols)) {
-            if (!dirtyFollowupCells.current.has(`${sid}:${cid}`)) {
-              next[sid] = { ...(next[sid] || {}), [cid]: val };
-            }
-          }
-        }
-        return next;
-      });
+      setFollowupData(prev => mergeFollowupData(fresh, prev, dirtyFollowupCells.current));
       // Merge absences around any student whose absence list the teacher is
       // mid-editing (dirty), so the poll can't clobber an unsaved absence edit;
       // non-dirty students always sync to the fresh server values.
-      setFollowupAbsences(prev => {
-        const next = { ...(res.data?.absences || {}) };
-        dirtyFollowupAbsences.current.forEach((sid) => {
-          if (prev[sid] !== undefined) next[sid] = prev[sid];
-          else delete next[sid];
-        });
-        return next;
-      });
+      setFollowupAbsences(prev => mergeFollowupAbsences(res.data?.absences, prev, dirtyFollowupAbsences.current));
     } catch { /* silent — polling errors must not surface to the user */ }
   }, [api, sessionId]);
 
