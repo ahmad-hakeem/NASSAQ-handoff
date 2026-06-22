@@ -33,6 +33,7 @@ import SectionErrorBoundary from '../components/SectionErrorBoundary';
 import { CircularProgressRing } from '../components/ui/CircularProgressRing';
 import { CalendarCheck, FileText, XCircle, Download, Filter } from 'lucide-react';
 import { formatGregorianShort, formatGregorianFull } from '../utils/hijriDate';
+import { buildAlertRouteMap } from '../utils/alertRoutes';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -178,19 +179,7 @@ const AlertsTimeline = ({ alerts, isRTL, onNavigate, isTeacher = false }) => {
     success: { icon: CheckCircle, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-950/30', line: 'bg-emerald-300', accent: 'border-emerald-200' },
   };
 
-  const alertRouteMap = {
-    // Teachers / independent teachers self-scope on /teacher/attendance;
-    // the admin attendance page would 403 its data call for them.
-    attendance: isTeacher ? '/teacher/attendance' : '/admin/attendance',
-    academic: '/admin/students',
-    // Teachers / independent teachers self-scope on /teacher/behavior;
-    // the admin behaviour page would 403 its data call for them.
-    behavior: isTeacher ? '/teacher/behavior' : '/admin/behaviour',
-    behaviour: isTeacher ? '/teacher/behavior' : '/admin/behaviour',
-    teacher: '/admin/teacher-attendance',
-    schedule: '/school/schedule',
-    performance: '/principal/ai-insights',
-  };
+  const alertRouteMap = buildAlertRouteMap(isTeacher);
 
   // Strip admin-only alerts (e.g. "scheduling — assign teachers to
   // sessions") when the viewer is a teacher.
