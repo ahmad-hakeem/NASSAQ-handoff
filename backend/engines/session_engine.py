@@ -3069,6 +3069,45 @@ class TeacherSessionEngine:
             if candidate_sids else {}
         )
 
+        # Task #1040 — de-duplicate session-end alerts so a student who is
+        # absent (or repeatedly flagged) across several sessions on the same
+        # day produces at most one alert per (recipient, child, category) per
+        # day. The absence alert in particular fires once per session, so an
+        # all-day absence would otherwise spam a parent with one identical
+        # notification for every period. We collapse on the calendar day of
+        # ``now`` by pre-loading the recipients' existing session alerts for the
+        # day and skipping any insert whose key already exists. The repeated
+        # management cohort is resolved once here (was an N+1 per-student call
+        # in the negative-behavior loop below) and reused.
+        has_repeat_neg = any(neg_count >= 3 for neg_count in neg_students.values())
+        management_ids = (
+            await self._resolve_management_recipient_ids(school_id)
+            if has_repeat_neg else []
+        )
+        recipient_ids = {uid for uid in parent_uid_map.values() if uid}
+        recipient_ids.update(management_ids)
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        sent_keys: set = set()
+        if recipient_ids:
+            existing_today = await gd_find(self.session, "notifications", {
+                "user_id": {"$in": list(recipient_ids)},
+                "entity_type": "session",
+                "created_at": {"$gte": day_start.isoformat()},
+            }, limit=2000)
+            for row in existing_today:
+                rsid = row.get("student_id")
+                if rsid:
+                    sent_keys.add((row.get("user_id"), rsid, row.get("category")))
+
+        def _claim_alert(uid: str, sid: str, category: str) -> bool:
+            """Return True if this (recipient, child, category) alert may be
+            sent today, marking it claimed. Return False if already sent."""
+            key = (uid, sid, category)
+            if key in sent_keys:
+                return False
+            sent_keys.add(key)
+            return True
+
         for a_rec in absent_students:
             sid = a_rec["student_id"]
             student = await gd_find_one(self.session, "students", {"id": sid, "is_active": True})
@@ -3076,6 +3115,8 @@ class TeacherSessionEngine:
                 continue
             parent_user_id = parent_uid_map.get(sid)
             if not parent_user_id:
+                continue
+            if not _claim_alert(parent_user_id, sid, "attendance"):
                 continue
             if await _emit({
                 "id": str(uuid.uuid4()),
@@ -3116,11 +3157,13 @@ class TeacherSessionEngine:
                 # delivered nothing. Use the shared canonical resolver so
                 # the principal+sub-admin cohort is computed exactly the
                 # same way the end-of-session summary uses (and IT
-                # workspaces correctly resolve to an empty cohort).
-                mgmt_ids = await self._resolve_management_recipient_ids(school_id)
-                recipients.extend(mgmt_ids)
-                
+                # workspaces correctly resolve to an empty cohort). Task
+                # #1040 — resolved once above and reused here (was an N+1).
+                recipients.extend(management_ids)
+
                 for rid in recipients:
+                    if not _claim_alert(rid, sid, "behaviour"):
+                        continue
                     if await _emit({
                         "id": str(uuid.uuid4()),
                         "tenant_id": school_id,
@@ -3149,6 +3192,8 @@ class TeacherSessionEngine:
                     continue
                 parent_user_id = parent_uid_map.get(sid)
                 if not parent_user_id:
+                    continue
+                if not _claim_alert(parent_user_id, sid, "academic"):
                     continue
                 if await _emit({
                     "id": str(uuid.uuid4()),

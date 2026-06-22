@@ -371,3 +371,69 @@ async def test_end_session_completes_despite_notification_failure(tenant_a):
         "session_id": session_id, "event_type": "session_ended",
     }, limit=10)
     assert len(events) == 1
+
+
+@pytest.mark.asyncio
+async def test_smart_end_session_absence_dedups_across_sessions_same_day(tenant_a):
+    # Task #1040 — a student absent across several sessions on the same day
+    # must yield AT MOST ONE absence alert per (parent, child, category) per
+    # day, not one per period. (The absence branch fires once per session.)
+    parent_id = await _mk_user("parent", tenant_a)
+    class_id = await _mk_class(tenant_a)
+    sid = await _mk_student(tenant_a, class_id, parent_user_id=parent_id, name="Absent All Day")
+
+    now = datetime.now(timezone.utc)
+    engine = _engine()
+    for _ in range(3):  # three separate sessions, same day
+        await engine._send_smart_end_session_notifications(
+            session_id=str(uuid.uuid4()),
+            school_id=tenant_a,
+            attendance=[{"student_id": sid, "status": "absent"}],
+            neg_students={},
+            student_interactions={},
+            now=now,
+        )
+
+    rows = await gd_find(db.session, "notifications", {
+        "tenant_id": tenant_a, "user_id": parent_id, "category": "attendance",
+    }, limit=20)
+    assert len(rows) == 1
+    assert rows[0].get("student_id") == sid
+
+
+@pytest.mark.asyncio
+async def test_smart_end_session_dedup_is_per_child(tenant_a):
+    # Two different children each absent across two sessions: each parent
+    # still gets exactly one alert for THEIR child (dedup is per-child, it
+    # must not collapse distinct children into one).
+    parent1 = await _mk_user("parent", tenant_a)
+    parent2 = await _mk_user("parent", tenant_a)
+    class_id = await _mk_class(tenant_a)
+    s1 = await _mk_student(tenant_a, class_id, parent_user_id=parent1, name="Child One")
+    s2 = await _mk_student(tenant_a, class_id, parent_user_id=parent2, name="Child Two")
+
+    now = datetime.now(timezone.utc)
+    engine = _engine()
+    for _ in range(2):
+        await engine._send_smart_end_session_notifications(
+            session_id=str(uuid.uuid4()),
+            school_id=tenant_a,
+            attendance=[
+                {"student_id": s1, "status": "absent"},
+                {"student_id": s2, "status": "absent"},
+            ],
+            neg_students={},
+            student_interactions={},
+            now=now,
+        )
+
+    rows = await gd_find(db.session, "notifications", {
+        "tenant_id": tenant_a, "category": "attendance",
+    }, limit=20)
+    by_user = {}
+    for r in rows:
+        by_user.setdefault(r["user_id"], []).append(r)
+    assert len(by_user.get(parent1, [])) == 1
+    assert len(by_user.get(parent2, [])) == 1
+    assert by_user[parent1][0].get("student_id") == s1
+    assert by_user[parent2][0].get("student_id") == s2
