@@ -2439,6 +2439,16 @@ class TeacherSessionEngine:
         # Exclude reversed interactions so committed/persisted scores honor undo
         # the same way the live roster, live metrics, and end-session summary do.
         interactions = [it for it in all_interactions if not (it.get("data") or {}).get("reversed")]
+        # The participation (المشاركة) running-clamp below is ORDER-DEPENDENT, so
+        # fold interactions chronologically. gd_find gives no guaranteed order;
+        # parse timestamps (never lexicographic) and tie-break on id. Raw sums are
+        # order-independent, so this only fixes the clamp and makes behaviour_events
+        # deterministic.
+        _epoch = datetime.min.replace(tzinfo=timezone.utc)
+        interactions.sort(key=lambda it: (
+            self._parse_ts(it.get("recorded_at") or it.get("timestamp") or it.get("created_at")) or _epoch,
+            str(it.get("id") or ""),
+        ))
         homework_rows = await gd_find(self.session, "session_homework", {"session_id": session_id}, limit=2000)
 
         students: Dict[str, Dict[str, Any]] = {}
@@ -2448,6 +2458,12 @@ class TeacherSessionEngine:
                 students[sid] = {
                     "participation_points": 0,
                     "performance_points": 0,
+                    # Signed participation deltas in chronological order. The raw
+                    # sum above stays UNBOUNDED (a tested weighting contract); the
+                    # column cap is applied as a running clamp over THIS list in
+                    # _coursework_value, so a late negative lowers the bounded
+                    # value instead of being absorbed by a hidden overflow.
+                    "participation_deltas": [],
                     "homework_done": None,  # None=no homework row, True/False otherwise
                     "behaviour_events": [],
                     # Timestamp of the most recent scoring interaction per bucket;
@@ -2456,6 +2472,20 @@ class TeacherSessionEngine:
                     "performance_last_ts": None,
                 }
             return students[sid]
+
+        def _add_participation(b: Dict[str, Any], delta: Any) -> None:
+            """Apply a participation delta to BOTH the raw unbounded sum (the
+            tested aggregate contract) and the chronological delta list that
+            feeds the running clamp. Invalid deltas are ignored; zero is a
+            no-op (matches the legacy add-zero behaviour)."""
+            try:
+                d = int(delta)
+            except (TypeError, ValueError):
+                return
+            if d == 0:
+                return
+            b["participation_points"] += d
+            b["participation_deltas"].append(d)
 
         for it in interactions:
             sid = it.get("student_id")
@@ -2466,25 +2496,22 @@ class TeacherSessionEngine:
             if itype == InteractionType.QUESTION.value:
                 res = it.get("answer_result")
                 if res == AnswerResult.CORRECT.value:
-                    b["participation_points"] += int(rules.get("correct_answer", 5))
+                    _add_participation(b, rules.get("correct_answer", 5))
                 elif res == AnswerResult.NO_ANSWER.value:
-                    b["participation_points"] += int(rules.get("no_answer_after_selection", -1))
+                    _add_participation(b, rules.get("no_answer_after_selection", -1))
             elif itype == InteractionType.PARTICIPATION.value:
                 ptype = it.get("participation_type")
                 if ptype == ParticipationType.ACTIVE.value:
-                    b["participation_points"] += int(rules.get("active_participation", 2))
+                    _add_participation(b, rules.get("active_participation", 2))
                 elif ptype == ParticipationType.INITIATIVE.value:
-                    b["participation_points"] += int(rules.get("initiative", 2))
+                    _add_participation(b, rules.get("initiative", 2))
                 elif ptype == ParticipationType.REFUSED.value:
-                    b["participation_points"] += int(rules.get("refused", -1))
+                    _add_participation(b, rules.get("refused", -1))
             elif itype == InteractionType.EVALUATION.value:
                 # Configurable side-strip evaluation items carry their own
                 # explicit signed points (backend-owned mapping → participation
                 # bucket / المشاركة). Honor the configured magnitude and sign.
-                try:
-                    b["participation_points"] += int(it.get("points", 0) or 0)
-                except (TypeError, ValueError):
-                    pass
+                _add_participation(b, it.get("points", 0))
             elif itype == InteractionType.BEHAVIOUR.value:
                 cat = it.get("behaviour_category")
                 btype = it.get("behaviour_type") or ""
@@ -2497,7 +2524,7 @@ class TeacherSessionEngine:
                     # also stay in behaviour_events so commit still writes the
                     # individual behaviour_records rows. _coursework_value caps at
                     # the column max and never reports below 0.
-                    b["participation_points"] += pts
+                    _add_participation(b, pts)
                     b["behaviour_events"].append({
                         "interaction_id": it.get("id"),
                         "category": cat,
@@ -2509,7 +2536,7 @@ class TeacherSessionEngine:
                     })
                 elif cat == BehaviourCategory.NEGATIVE.value:
                     pts = int(rules.get(btype, -2)) if not str(btype).startswith("custom:") else -2
-                    b["participation_points"] += pts
+                    _add_participation(b, pts)
                     b["behaviour_events"].append({
                         "interaction_id": it.get("id"),
                         "category": cat,
@@ -2593,6 +2620,33 @@ class TeacherSessionEngine:
                 return None
             return round(mg) if done else 0
         if bucket == TeacherSessionEngine._CW_PARTICIPATION:
+            # Running clamp: fold the chronological signed deltas, bounding to
+            # [0, mg] at EVERY step. A positive only adds up to the column max,
+            # and a later negative subtracts from that SAME bounded value (never
+            # from a hidden overflow). Falls back to the legacy sum-then-cap only
+            # for hand-built aggregates without the delta list or a degenerate
+            # max. (Performance keeps sum-then-cap by design — only participation
+            # was reported.)
+            deltas = agg.get("participation_deltas")
+            if mg > 0 and isinstance(deltas, list):
+                acc = 0.0
+                peak = 0.0
+                for d in deltas:
+                    try:
+                        acc = max(0.0, min(acc + int(d), mg))
+                    except (TypeError, ValueError):
+                        continue
+                    if acc > peak:
+                        peak = acc
+                if acc > 0:
+                    return int(acc)
+                # acc == 0: distinguish "earned then driven back down to the 0
+                # floor" (peak > 0 -> a real, committable 0 that must OVERWRITE
+                # any positive grade an earlier commit persisted, so the sheet,
+                # the committed grade and the record never diverge) from "never
+                # had a positive value" (peak == 0 -> no determinable grade, so
+                # the cell stays blank and no phantom row is written).
+                return 0 if peak > 0 else None
             pts = agg.get("participation_points", 0)
         elif bucket == TeacherSessionEngine._CW_PERFORMANCE:
             pts = agg.get("performance_points", 0)
@@ -2942,9 +2996,22 @@ class TeacherSessionEngine:
                 grades_written += 1
 
             # ---- Participation -> participation_records ----
-            part_pts = agg.get("participation_points", 0)
-            if part_pts > 0:
-                part_id = f"sess:{session_id}:{sid}:participation:pr"
+            # Persist the BOUNDED participation value (the same running clamp the
+            # follow-up sheet and student_grades use) so the ledger never stores
+            # a value above the column max. Fall back to the raw positive sum
+            # only when no participation column resolves (malformed setup).
+            part_col = columns.get(self._CW_PARTICIPATION) if columns else None
+            part_capped = None
+            if part_col is not None:
+                part_capped = self._coursework_value(
+                    self._CW_PARTICIPATION, agg, part_col.get("max_grade", 0)
+                )
+                part_value = int(part_capped) if part_capped is not None else 0
+            else:
+                raw_pts = agg.get("participation_points", 0)
+                part_value = int(raw_pts) if raw_pts > 0 else 0
+            part_id = f"sess:{session_id}:{sid}:participation:pr"
+            if part_value > 0:
                 await _upsert("participation_records", part_id, {
                     "tenant_id": tenant_id,
                     "student_id": sid,
@@ -2954,7 +3021,7 @@ class TeacherSessionEngine:
                     "session_id": session_id,
                     "participation_type": "session",
                     "quality": "good",
-                    "points": int(part_pts),
+                    "points": int(part_value),
                     "notes": "تجميع تفاعل الحصة المباشرة",
                     "date": session_date,
                     "source": "live_session",
@@ -2962,6 +3029,14 @@ class TeacherSessionEngine:
                     "updated_at": now_iso,
                 })
                 participation_written += 1
+            elif part_capped == 0:
+                # Earned-then-lost: participation was positive but later negatives
+                # drove the bounded value back to the 0 floor. The committed grade
+                # is overwritten to 0 above; the ledger must not keep a stale
+                # positive entry from an earlier commit, so clear any row for this
+                # session/student. A never-positive student has part_capped None
+                # and is left untouched, preserving the no-phantom-row contract.
+                await gd_delete_one(self.session, "participation_records", {"id": part_id})
 
             # ---- Behaviour events -> behaviour_records ----
             for ev in agg.get("behaviour_events", []):
