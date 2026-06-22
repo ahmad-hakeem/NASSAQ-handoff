@@ -402,6 +402,161 @@ async def _it_validate_recipients_or_403(current_user: dict, recipient_ids: List
             raise HTTPException(status_code=403, detail=_IT_RECIPIENT_OUT_OF_SCOPE_AR)
 
 
+# --- IT lesson-end parent summary (Task #1048) -----------------------
+# When an Independent Teacher ends a lesson the frontend fires a single
+# parent-cohort notification about the just-finished session
+# (`recipient_role == 'parent'`, no explicit `recipient_id`,
+# `related_entity == 'session'` with the session id in
+# `related_entity_id`). Historically this was rejected as a forbidden IT
+# role broadcast whenever the FE had not hydrated `scope_class_id`.
+#
+# This is a legitimate, workspace-scoped delivery: it must reach ONLY the
+# parents of that teacher's own students, strictly inside the teacher's
+# resolved IT workspace, and never via any school-wide broadcast/cohort
+# path. We resolve the session's class from the session id when the FE
+# did not supply `scope_class_id`, pin every read to the workspace, build
+# the (student → parent-user) map via the canonical parent resolver, and
+# re-validate every resolved target against the §5.6 IT cohort before
+# writing. When no real linked parent recipients exist we return a
+# success-shaped, zero-delivery result with a precise safe Arabic message
+# (never a 403 broadcast error or a raw 500), so the summary screen shows
+# no error popup.
+_IT_SUMMARY_NO_PARENTS_AR = (
+    "لا يوجد أولياء أمور مرتبطون بطلابك لإرسال تقرير الحصة إليهم."
+)
+
+
+def _it_summary_empty_result() -> dict:
+    return {
+        "success": True,
+        "notification_id": None,
+        "created_count": 0,
+        "message": _IT_SUMMARY_NO_PARENTS_AR,
+    }
+
+
+async def _deliver_it_session_summary(
+    notification: "NotificationCreate", current_user: dict,
+) -> dict:
+    """Deliver an IT lesson-end summary to the parents of the teacher's own
+    students, strictly scoped to the caller's IT workspace.
+
+    Returns a success-shaped result in every non-malicious case. The only
+    failure that surfaces is the §5.6 cohort re-validation, which can only
+    trip on a genuine cross-workspace target and must block.
+    """
+    from auth_scope import independent_workspace_id as _itw
+    from routes.independent_teacher_communication_routes import (
+        _resolve_workspace_teacher_id,
+        _resolve_my_parents_recipients,
+    )
+
+    workspace_id = _itw(current_user)
+    teacher_id = None
+    if workspace_id:
+        try:
+            teacher_id = await _resolve_workspace_teacher_id(
+                current_user["id"], workspace_id,
+            )
+        except HTTPException:
+            teacher_id = None
+    if not workspace_id or not teacher_id:
+        # Workspace/teacher not resolvable — never broadcast; no-op safely.
+        return _it_summary_empty_result()
+
+    # Resolve the session's class (pinned to the workspace) so delivery is
+    # scoped to that class roster. The FE sends the session id in
+    # `related_entity_id`; trust it only after confirming the session row
+    # belongs to this workspace.
+    target_class_id = notification.scope_class_id
+    if not target_class_id and notification.related_entity_id:
+        sess = await gd_find_one(
+            db.session, "class_sessions",
+            {"id": notification.related_entity_id},
+        )
+        if sess and (
+            sess.get("school_id") == workspace_id
+            or sess.get("tenant_id") == workspace_id
+        ):
+            target_class_id = sess.get("class_id")
+
+    # Build the per-child (student_id → parent_user_id) map. Prefer the
+    # session's class roster; if the class cannot be resolved fall back to
+    # the teacher's whole §5.6 parent cohort (own classes → students →
+    # parents) so the report still reaches the right families.
+    pairs: List[tuple] = []  # (student_id, parent_user_id)
+    if target_class_id:
+        roster = await gd_find(
+            db.session, "students",
+            {
+                "class_id": target_class_id,
+                "school_id": workspace_id,
+                "is_active": True,
+            },
+            limit=1000,
+        )
+        roster_ids = [s["id"] for s in roster if s.get("id")]
+        parent_uid_by_student = (
+            await resolve_students_parent_user_ids(roster_ids, workspace_id)
+            if roster_ids else {}
+        )
+        pairs = [
+            (sid, uid) for sid, uid in parent_uid_by_student.items() if uid
+        ]
+    else:
+        recips = await _resolve_my_parents_recipients(workspace_id, teacher_id)
+        pairs = [
+            (r.get("student_id"), r.get("user_id"))
+            for r in recips if r.get("user_id")
+        ]
+
+    # Re-validate every resolved delivery target against the §5.6 IT cohort
+    # so a summary can never widen beyond the teacher's own workspace.
+    target_uids = list({uid for _, uid in pairs if uid})
+    if target_uids:
+        await _it_validate_recipients_or_403(current_user, target_uids)
+
+    if not pairs:
+        return _it_summary_empty_result()
+
+    created_ids: List[str] = []
+    for sid, parent_uid in pairs:
+        if not parent_uid:
+            continue
+        notification_id = str(uuid.uuid4())
+        await gd_insert(db.session, "notifications", {
+            "id": notification_id,
+            "user_id": parent_uid,
+            "title": notification.title,
+            "title_en": notification.title_en,
+            "message": notification.message,
+            "message_en": notification.message_en,
+            "type": notification.notification_type.value if notification.notification_type else None,
+            "priority": notification.priority.value if notification.priority else "normal",
+            "action_url": notification.action_url,
+            "related_entity": notification.related_entity,
+            "related_entity_id": notification.related_entity_id,
+            "sender_id": current_user["id"],
+            "sender_name": current_user.get("full_name", ""),
+            "tenant_id": workspace_id,
+            "student_id": sid,
+            "is_read": False,
+            "read_at": None,
+            "created_at": datetime.now(timezone.utc),
+        })
+        created_ids.append(notification_id)
+
+    if not created_ids:
+        return _it_summary_empty_result()
+
+    return {
+        "success": True,
+        "notification_id": created_ids[0],
+        "created_count": len(created_ids),
+        "message": f"تم إرسال {len(created_ids)} إشعار بنجاح",
+    }
+
+
 @router.post("/notifications")
 async def create_notification(
     notification: NotificationCreate,
@@ -509,6 +664,24 @@ async def create_notification(
             notification.template_id,
             recipient_id=resolved_user_id_from_student,
         )
+
+    # Task #1048 — IT lesson-end parent summary. An IT session-summary
+    # send (`recipient_role == 'parent'`, no `recipient_id`,
+    # `related_entity == 'session'` with a `related_entity_id`) is a
+    # legitimate, workspace-scoped delivery to the parents of the
+    # teacher's own students — NOT a role broadcast. It must work even
+    # when the FE failed to hydrate `scope_class_id`, because the session
+    # id alone lets the backend resolve the class/roster. Handle it here
+    # so it bypasses the §5.6 role-broadcast rejection below, while every
+    # other IT `recipient_role` shape stays blocked.
+    if (
+        current_user.get('role') == 'independent_teacher'
+        and notification.recipient_role == 'parent'
+        and not notification.recipient_id
+        and notification.related_entity == 'session'
+        and notification.related_entity_id
+    ):
+        return await _deliver_it_session_summary(notification, current_user)
 
     # Task #1046 — the class-scoped parent session summary
     # (`recipient_role == 'parent'`, no `recipient_id`, with

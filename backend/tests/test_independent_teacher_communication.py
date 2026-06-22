@@ -458,3 +458,184 @@ async def test_it_class_scoped_parent_summary_empty_roster_is_noop(client):
     )
     assert resp.status_code == 200, resp.text
     assert resp.json().get("created_count") == 0
+
+
+async def _mk_session(ws: dict) -> str:
+    """Insert a class_sessions row for ws and return its id."""
+    session_id = str(uuid.uuid4())
+    await gd_insert(db.session, "class_sessions", {
+        "id": session_id,
+        "class_id": ws["class_id"],
+        "school_id": ws["wsid"],
+        "teacher_id": ws["teacher_id"],
+        "status": "completed",
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return session_id
+
+
+# (p) ----------------------------------------------------------------
+# Task #1048: an IT end-session summary that carries the session id but
+# NO scope_class_id (the FE-drops-the-class-scope bug) must NOT 403 —
+# the backend resolves the class from the session and delivers to the
+# teacher's own linked parents.
+@pytest.mark.asyncio
+async def test_it_session_summary_without_class_scope_delivers(client):
+    ws = await _mk_workspace()
+    session_id = await _mk_session(ws)
+    h = _headers(ws["uid"], ws["user"]["role"], ws["wsid"])
+    title = f"ملخص الحصة — {uuid.uuid4().hex[:6]}"
+    resp = await client.post(
+        "/notifications",
+        headers=h,
+        json={
+            "title": title,
+            "message": "اكتملت الحصة.",
+            "notification_type": "communication",
+            "priority": "medium",
+            "recipient_role": "parent",
+            "related_entity": "session",
+            "related_entity_id": session_id,
+            # NOTE: no scope_class_id — this is the reported failure case.
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body.get("created_count") == 1, body
+    persisted = await gd_find_one(
+        db.session, "notifications",
+        {"user_id": ws["parent_user_id"], "title": title},
+    )
+    assert persisted is not None
+    assert persisted.get("tenant_id") == ws["wsid"]
+    assert persisted.get("student_id") == ws["student_id"]
+
+
+# (q) ----------------------------------------------------------------
+# Task #1048: cross-workspace isolation — IT-A's end-session summary can
+# only reach IT-A's linked parents, never IT-B's.
+@pytest.mark.asyncio
+async def test_it_session_summary_no_cross_workspace_leak(client):
+    ws_a = await _mk_workspace()
+    ws_b = await _mk_workspace()
+    session_id = await _mk_session(ws_a)
+    h_a = _headers(ws_a["uid"], ws_a["user"]["role"], ws_a["wsid"])
+    title = f"ملخص الحصة — {uuid.uuid4().hex[:6]}"
+    before_b = await gd_count(
+        db.session, "notifications", {"user_id": ws_b["parent_user_id"]},
+    )
+    resp = await client.post(
+        "/notifications",
+        headers=h_a,
+        json={
+            "title": title,
+            "message": "اكتملت الحصة.",
+            "notification_type": "communication",
+            "priority": "medium",
+            "recipient_role": "parent",
+            "related_entity": "session",
+            "related_entity_id": session_id,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    # IT-A's parent received it.
+    got_a = await gd_find_one(
+        db.session, "notifications",
+        {"user_id": ws_a["parent_user_id"], "title": title},
+    )
+    assert got_a is not None
+    # IT-B's parent received nothing new.
+    after_b = await gd_count(
+        db.session, "notifications", {"user_id": ws_b["parent_user_id"]},
+    )
+    assert after_b == before_b
+
+
+# (r) ----------------------------------------------------------------
+# Task #1048: when the teacher's own students have no real linked parent
+# recipients, the summary returns a success-shaped, zero-delivery result
+# with a safe Arabic message — never a 403 broadcast error.
+@pytest.mark.asyncio
+async def test_it_session_summary_empty_recipients_safe_result(client):
+    ws = await _mk_workspace(with_parent=False)
+    session_id = await _mk_session(ws)
+    h = _headers(ws["uid"], ws["user"]["role"], ws["wsid"])
+    resp = await client.post(
+        "/notifications",
+        headers=h,
+        json={
+            "title": "ملخص بلا أولياء",
+            "message": "x",
+            "notification_type": "communication",
+            "priority": "medium",
+            "recipient_role": "parent",
+            "related_entity": "session",
+            "related_entity_id": session_id,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body.get("created_count") == 0, body
+    # Precise, safe Arabic message — not the broadcast-block message.
+    assert "أولياء أمور" in (body.get("message") or "")
+    assert "البث حسب الدور" not in (body.get("message") or "")
+
+
+# (s) ----------------------------------------------------------------
+# Task #1048: a true IT role broadcast (session shape but no session id
+# AND no class scope) is still rejected — the §5.6 guard stays intact.
+@pytest.mark.asyncio
+async def test_it_session_summary_without_any_scope_still_rejected(client):
+    ws = await _mk_workspace()
+    h = _headers(ws["uid"], ws["user"]["role"], ws["wsid"])
+    resp = await client.post(
+        "/notifications",
+        headers=h,
+        json={
+            "title": "بث عام",
+            "message": "y",
+            "notification_type": "communication",
+            "priority": "medium",
+            "recipient_role": "parent",
+            "related_entity": "session",
+            # no related_entity_id, no scope_class_id → genuine broadcast.
+        },
+    )
+    assert resp.status_code == 403, resp.text
+    assert "البث حسب الدور" in (resp.json().get("error", {}) or {}).get("message", "")
+
+
+# (t) ----------------------------------------------------------------
+# Task #1048: school-teacher lesson-end delivery is unchanged. A
+# `teacher`-role class-scoped parent summary still delivers via the
+# existing Task #1038 branch and is NOT routed through the IT path.
+@pytest.mark.asyncio
+async def test_school_teacher_class_scoped_summary_unchanged(client):
+    ws = await _mk_workspace()
+    # Same tenant data, but caller is a plain school teacher.
+    h = _headers(ws["uid"], UserRole.TEACHER.value, ws["wsid"])
+    title = f"ملخص مدرسي — {uuid.uuid4().hex[:6]}"
+    resp = await client.post(
+        "/notifications",
+        headers=h,
+        json={
+            "title": title,
+            "message": "اكتملت الحصة.",
+            "notification_type": "communication",
+            "priority": "medium",
+            "recipient_role": "parent",
+            "related_entity": "session",
+            "related_entity_id": str(uuid.uuid4()),
+            "scope_class_id": ws["class_id"],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body.get("created_count") == 1, body
+    persisted = await gd_find_one(
+        db.session, "notifications",
+        {"user_id": ws["parent_user_id"], "title": title},
+    )
+    assert persisted is not None
+    assert persisted.get("student_id") == ws["student_id"]
