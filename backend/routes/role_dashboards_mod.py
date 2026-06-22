@@ -3614,11 +3614,14 @@ async def save_followup_record(
         # only stamps the owning workspace for future tenant filtering.
         "school_id": session.get("school_id") if session else None,
         "columns": payload.get("columns", []),
-        # Canonicalize so only the student->{column_id: value} map is stored.
-        # The Follow-up Report re-posts whatever it last received; without this
-        # any stray metadata key would get re-wrapped under "data" on every
-        # save, compounding into a nested blob that reads back as all zeros.
-        "data": session_engine._canonical_followup_data(payload.get("data", {})),
+        # Canonicalize so only the student->{column_id: value} map is stored, AND
+        # drop coursework cells that merely echo the live session-derived value.
+        # The Follow-up Report re-posts the WHOLE hydrated blob (derived values
+        # included) on every save; persisting those echoes as if they were manual
+        # overrides would make the keep-manual guard freeze the cell, so later
+        # sidebar scoring never reaches the sheet or the committed grade. Only
+        # genuine manual deviations are stored; exam/custom columns are untouched.
+        "data": await session_engine.strip_derived_followup_echoes(session_id, payload.get("data", {})),
         "absences": payload.get("absences", {}),
         "updated_at": datetime.utcnow().isoformat(),
     }
