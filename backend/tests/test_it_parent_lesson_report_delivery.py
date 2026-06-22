@@ -353,14 +353,17 @@ async def test_delivery_class_scoped_roster_path(client):
 
 
 # ---------------------------------------------------------------------------
-# C. Graceful degrade — unknown session → generic notification, send succeeds
+# C. Unknown session (no class scope) → distinct 404 "report missing",
+#    nothing delivered, and the failed attempt is audit-logged.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_unknown_session_degrades_to_generic_notification(client):
-    """An unknown session id still delivers (to the teacher's whole parent
-    cohort fallback) but with no lesson_report stamped — the send must not
-    fail."""
+async def test_unknown_session_returns_404_report_missing(client):
+    """A session-id-only summary whose session does not exist in the workspace
+    must NOT silently degrade to a whole-cohort broadcast. It returns a
+    distinct safe 404 (report/session missing) so the FE shows the
+    report-missing dialog, delivers nothing, and records the failed attempt in
+    the audit log with ``outcome == 'session_missing'``."""
     ws = await _mk_it_workspace()
     wsid = ws["workspace_id"]
     cid = await _mk_class(wsid, ws["teacher_id"])
@@ -374,20 +377,21 @@ async def test_unknown_session_degrades_to_generic_notification(client):
         json=_summary_payload(unknown_session),
         headers=it_headers,
     )
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["success"] is True
-    assert body["created_count"] == 1
+    assert resp.status_code == 404, resp.text
 
-    r = await client.get(
-        "/notifications",
-        headers=_headers(parent_uid, "parent", tenant_id=wsid),
-    )
-    assert r.status_code == 200, r.text
-    rows = r.json()
-    assert len(rows) == 1
-    # Generic notification — lesson_report must be absent (null).
-    assert rows[0]["lesson_report"] is None
+    # Nothing was delivered to the (real, active) parent.
+    cnt = await gd_count(db.session, "notifications", {"user_id": parent_uid})
+    assert cnt == 0
+
+    # The failed attempt is audit-logged with a precise outcome.
+    logs = await gd_find(db.session, "audit_logs", {
+        "action": "INDEPENDENT_TEACHER_LESSON_SUMMARY_SENT",
+        "entity_id": unknown_session,
+    })
+    assert logs, "expected an audit log row for the failed (missing-session) attempt"
+    assert logs[0]["school_id"] == wsid
+    assert logs[0]["details"]["outcome"] == "session_missing"
+    assert logs[0]["details"]["created_count"] == 0
 
 
 # ---------------------------------------------------------------------------

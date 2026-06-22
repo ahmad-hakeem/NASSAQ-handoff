@@ -435,8 +435,17 @@ _IT_SUMMARY_NO_PARENTS_AR = (
 _IT_SUMMARY_SERVICE_ERROR_AR = (
     "تعذّر إرسال تقرير الحصة حالياً. يرجى المحاولة مرة أخرى."
 )
-# Stable audit action for an IT lesson-end summary send (delivered OR
-# zero-delivery), so every attempt is traceable per the threat model.
+# Distinct, safe-Arabic outcome for "the report's source lesson/session could
+# not be found" (missing or foreign-workspace session id with no class scope).
+# Surfaced as HTTP 404 so the FE shows the report-missing dialog rather than a
+# false success or the generic service error.
+_IT_SUMMARY_REPORT_MISSING_AR = (
+    "تعذّر العثور على بيانات الحصة لإرسال التقرير."
+)
+# Stable audit action for an IT lesson-end summary send. Logged for EVERY
+# attempt — delivered, zero-delivery, and failed (permission-denied /
+# session-missing / service-error) — so every attempt is traceable per the
+# threat model and a "never got the report" claim can be reconciled.
 _IT_SUMMARY_AUDIT_ACTION = "INDEPENDENT_TEACHER_LESSON_SUMMARY_SENT"
 
 
@@ -458,13 +467,16 @@ async def _log_it_summary_send(
     session_id: Optional[str],
     created_count: int,
     recipient_count: int,
+    outcome: Optional[str] = None,
 ) -> None:
-    """Best-effort audit trail for an IT lesson-end summary send.
+    """Best-effort audit trail for an IT lesson-end summary send ATTEMPT.
 
-    Records both real deliveries and zero-delivery no-ops so a parent who
+    Records real deliveries, zero-delivery no-ops, AND failed attempts
+    (permission-denied / session-missing / service-error) so a parent who
     says "I never got the report" can be reconciled against an actual send
-    attempt. A logging glitch must never break delivery, so every failure is
-    swallowed (logged at warning).
+    attempt. ``outcome`` overrides the inferred delivered/no_recipients
+    classification for the failure cases. A logging glitch must never break
+    delivery, so every failure is swallowed (logged at warning).
     """
     try:
         await audit_engine.log(
@@ -476,7 +488,9 @@ async def _log_it_summary_send(
             details={
                 "created_count": created_count,
                 "recipient_count": recipient_count,
-                "outcome": "delivered" if created_count > 0 else "no_recipients",
+                "outcome": outcome or (
+                    "delivered" if created_count > 0 else "no_recipients"
+                ),
             },
             actor_name=current_user.get("full_name"),
             actor_role=current_user.get("role"),
@@ -587,7 +601,22 @@ async def _deliver_it_session_summary(
             sess.get("school_id") == workspace_id
             or sess.get("tenant_id") == workspace_id
         ):
+            # Session exists in this workspace. ``class_id`` may be None for a
+            # course / class-less session — fine; we fall through to the
+            # teacher's whole §5.6 parent cohort below.
             target_class_id = sess.get("class_id")
+        else:
+            # The report's source session does not exist in this workspace
+            # (missing, or a foreign-tenant row we must not confirm per the §8
+            # cross-workspace by-id 404 invariant). This is a DISTINCT
+            # "report/session missing" outcome, NOT a silent degrade to a
+            # whole-cohort broadcast: surface a safe 404 so the FE shows the
+            # report-missing dialog. The real FE flow also sends
+            # ``scope_class_id`` (so it never reaches here); this guards the
+            # session-id-only path.
+            raise HTTPException(
+                status_code=404, detail=_IT_SUMMARY_REPORT_MISSING_AR,
+            )
 
     # Build the per-child (student_id → parent_user_id) map. Prefer the
     # session's class roster; if the class cannot be resolved fall back to
@@ -833,16 +862,32 @@ async def create_notification(
         and notification.related_entity == 'session'
         and notification.related_entity_id
     ):
+        from auth_scope import independent_workspace_id as _itw_log
+        _it_ws = _itw_log(current_user)
         try:
             return await _deliver_it_session_summary(notification, current_user)
-        except HTTPException:
-            # Distinct, already-safe outcomes (e.g. 403 cross-workspace) must
-            # reach the FE unchanged so it can map them to the right dialog.
+        except HTTPException as he:
+            # Log the FAILED attempt with a precise outcome before re-raising,
+            # so a "never got the report" claim can be reconciled against the
+            # attempt. The safe Arabic detail already set on `he` must reach
+            # the FE unchanged so it maps to the right dialog.
+            _outcome = {
+                403: "permission_denied",
+                404: "session_missing",
+            }.get(he.status_code, "error")
+            await _log_it_summary_send(
+                current_user, _it_ws, notification.related_entity_id,
+                0, 0, outcome=_outcome,
+            )
             raise
         except Exception:
             logger.exception(
                 "IT lesson-end summary delivery failed (caller=%s, session=%s)",
                 current_user.get('id'), notification.related_entity_id,
+            )
+            await _log_it_summary_send(
+                current_user, _it_ws, notification.related_entity_id,
+                0, 0, outcome="service_error",
             )
             raise HTTPException(
                 status_code=500, detail=_IT_SUMMARY_SERVICE_ERROR_AR,
