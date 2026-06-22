@@ -4663,7 +4663,7 @@ function ActionButton({ color, icon, label, sub, onClick }) {
 export function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
   const { t } = useTranslation();
   const { api } = useAuth();
-  const { nassaqError } = useNassaqAlert();
+  const { nassaqError, nassaqInfo } = useNassaqAlert();
   const navigate = useNavigate();
   const [exporting, setExporting] = useState(false);
   const [sendFailed, setSendFailed] = useState(false);
@@ -4698,59 +4698,76 @@ export function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
     const absentCount = summary.absent_count || 0;
     const questionsCount = summary.questions_asked || 0;
     const correctCount = summary.correct_answers || 0;
+    const classId = sessionInfo?.class_id || sessionInfo?.classId;
+    const notifPayload = {
+      title: `${t('sessionSummary')} — ${subjectName}`,
+      title_en: `Session Summary — ${subjectName}`,
+      message: `${t('sessionSummaryMessage', {
+        subject: subjectName,
+        class: className,
+        duration: durationMin,
+        present: presentCount,
+        absent: absentCount,
+        questions: questionsCount,
+        correct: correctCount
+      })}`,
+      message_en: `Session for ${subjectName} (${className}) completed. Duration: ${durationMin} min. Present: ${presentCount}, Absent: ${absentCount}. Questions: ${questionsCount}, Correct: ${correctCount}.`,
+      notification_type: 'communication',
+      priority: 'medium',
+      recipient_role: 'parent',
+      related_entity: 'session',
+      related_entity_id: summary.session_record_id,
+      scope_class_id: classId,
+    };
+    // Task #486 — management delivery is now the backend's responsibility
+    // (`session_engine.end_session` persists a summary notification per
+    // resolved school_principal / school_sub_admin in the session's tenant)
+    // and reports back how many recipients were actually written via
+    // `summary.management_notifications_sent`. The FE fires only the
+    // parent-cohort POST here and picks a truthful toast.
+    let resp;
     try {
-      const classId = sessionInfo?.class_id || sessionInfo?.classId;
-      const notifPayload = {
-        title: `${t('sessionSummary')} — ${subjectName}`,
-        title_en: `Session Summary — ${subjectName}`,
-        message: `${t('sessionSummaryMessage', {
-          subject: subjectName,
-          class: className,
-          duration: durationMin,
-          present: presentCount,
-          absent: absentCount,
-          questions: questionsCount,
-          correct: correctCount
-        })}`,
-        message_en: `Session for ${subjectName} (${className}) completed. Duration: ${durationMin} min. Present: ${presentCount}, Absent: ${absentCount}. Questions: ${questionsCount}, Correct: ${correctCount}.`,
-        notification_type: 'communication',
-        priority: 'medium',
-        recipient_role: 'parent',
-        related_entity: 'session',
-        related_entity_id: summary.session_record_id,
-        scope_class_id: classId,
-      };
-      // Task #486 — management delivery is now the backend's
-      // responsibility (`session_engine.end_session` persists a
-      // summary notification per resolved school_principal /
-      // school_sub_admin in the session's tenant) and reports
-      // back how many recipients were actually written via
-      // `summary.management_notifications_sent`. The FE fires
-      // only the parent-cohort POST here and picks a truthful
-      // toast: parents+admin only when management actually
-      // received the summary, otherwise parents-only.
-      await api.post('/notifications', notifPayload);
-      // Re-arm the one-shot guard on success so a reload/re-mount (or a
-      // manual resend after an earlier failure) never double-sends.
-      setGuardSent();
-      setSendFailed(false);
-      const mgmtSent = Number(summary?.management_notifications_sent || 0);
-      if (mgmtSent > 0) {
-        toast.success(t('reportSentToParentsAndAdmin'));
-      } else {
-        toast.success(t('reportSentToParentsOnly'));
-      }
-      confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#34d399', '#6ee7b7'] });
+      resp = await api.post('/notifications', notifPayload);
     } catch (e) {
+      // A genuine delivery failure. Map the HTTP status to a DISTINCT, safe
+      // Arabic message via NassaqAlertDialog — never the raw backend string
+      // (it may carry the IT broadcast-deny wording) and never toast.error.
+      // Clear the one-shot guard so the teacher can retry.
       clearGuardForRetry();
       setSendFailed(true);
-      // Never surface the raw backend message here: a genuine delivery
-      // failure could carry the IT broadcast-deny wording
-      // ("لا يمكن للمعلم المستقل البث حسب الدور.") which is contradictory on a
-      // success summary screen. Always show a safe, localized message through
-      // NassaqAlertDialog (never the broadcast string, never toast.error).
-      nassaqError(t('failedToSendNotifications'));
+      const status = e?.response?.status;
+      if (status === 403) {
+        nassaqError(t('reportSendPermissionDenied'));
+      } else if (status === 404) {
+        nassaqError(t('reportSendReportMissing'));
+      } else {
+        nassaqError(t('reportSendServiceError'));
+      }
+      return;
     }
+    // The POST succeeded HTTP-wise, but a zero-delivery result (no active
+    // linked parents) must NOT be shown as success. Inform the teacher and
+    // keep the resend affordance so they can retry after linking a parent.
+    const createdCount = Number(resp?.data?.created_count || 0);
+    if (createdCount <= 0) {
+      setGuardSent();
+      setSendFailed(true);
+      nassaqInfo(t('reportNoLinkedParents'));
+      return;
+    }
+    // Real delivery — re-arm the one-shot guard so a reload/re-mount (or a
+    // manual resend after an earlier failure) never double-sends, clear the
+    // failed state, and pick a truthful toast: parents+admin only when
+    // management actually received the summary, otherwise parents-only.
+    setGuardSent();
+    setSendFailed(false);
+    const mgmtSent = Number(summary?.management_notifications_sent || 0);
+    if (mgmtSent > 0) {
+      toast.success(t('reportSentToParentsAndAdmin'));
+    } else {
+      toast.success(t('reportSentToParentsOnly'));
+    }
+    confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#34d399', '#6ee7b7'] });
   };
 
   useEffect(() => {

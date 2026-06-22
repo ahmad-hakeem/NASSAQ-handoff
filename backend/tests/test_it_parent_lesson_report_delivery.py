@@ -24,7 +24,7 @@ import pytest
 
 from auth_scope import independent_workspace_id
 from dependencies import db, UserRole, create_access_token, session_engine
-from engines.sql_utils import gd_insert
+from engines.sql_utils import gd_insert, gd_find, gd_count
 
 
 # ---------------------------------------------------------------------------
@@ -100,9 +100,17 @@ async def _mk_student(wsid: str, cid: str, full_name: str) -> str:
     return sid
 
 
-async def _mk_parent_linked(wsid: str, sid: str, full_name: str) -> str:
+async def _mk_parent_linked(
+    wsid: str, sid: str, full_name: str, is_active: bool = True,
+) -> str:
     """Create a parent USER inside the workspace tenant and an active
-    guardian_link binding them to ``sid``. Returns the parent user id."""
+    guardian_link binding them to ``sid``. Returns the parent user id.
+
+    ``is_active=False`` models a not-yet-activated / pending parent account:
+    the guardian_link itself stays valid (so the roster resolver still
+    surfaces the pair), but the parent USER is inactive — exactly the row the
+    delivery must SKIP without failing the whole send.
+    """
     pid = str(uuid.uuid4())
     await gd_insert(db.session, "users", {
         "id": pid,
@@ -110,7 +118,7 @@ async def _mk_parent_linked(wsid: str, sid: str, full_name: str) -> str:
         "tenant_id": wsid,
         "email": f"parent-{pid}@t.test",
         "full_name": full_name,
-        "is_active": True,
+        "is_active": is_active,
         "password_hash": "x",
     })
     await gd_insert(db.session, "guardian_links", {
@@ -665,3 +673,113 @@ async def test_validator_rejects_cross_workspace_target():
     with pytest.raises(HTTPException) as exc:
         await _it_validate_summary_recipients_or_403(ws_a["workspace_id"], pairs)
     assert exc.value.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# H. Task #1066 — an INACTIVE / pending parent must be SKIPPED, never fatal.
+#    The reported bug: a roster with one not-yet-activated parent made the
+#    whole send 403, so the active parents got nothing and the FE showed the
+#    generic "فشل إرسال الإشعارات". Inactive parents are now dropped and the
+#    active cohort still receives the report.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delivery_skips_inactive_parent_not_fatal(client):
+    """A class with one ACTIVE and one INACTIVE linked parent delivers to the
+    active parent and silently skips the inactive one — never a blanket 403
+    that drops the whole send."""
+    ws = await _mk_it_workspace()
+    wsid = ws["workspace_id"]
+    cid = await _mk_class(wsid, ws["teacher_id"])
+    sid_a = await _mk_student(wsid, cid, "طالب نشط")
+    sid_b = await _mk_student(wsid, cid, "طالب معلّق")
+    parent_a = await _mk_parent_linked(wsid, sid_a, "ولي أمر نشط")
+    parent_b = await _mk_parent_linked(
+        wsid, sid_b, "ولي أمر معلّق", is_active=False,
+    )
+
+    session_id = await _mk_session(wsid, cid)
+    await _mk_attendance(session_id, sid_a, "present")
+
+    it_headers = _headers(
+        ws["user_id"], UserRole.INDEPENDENT_TEACHER.value, tenant_id=wsid,
+    )
+    resp = await client.post(
+        "/notifications", json=_summary_payload(session_id), headers=it_headers,
+    )
+    # Must NOT 403 on the inactive parent.
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True
+    assert body["created_count"] == 1, body
+
+    # The active parent received it...
+    r_a = await client.get(
+        "/notifications", headers=_headers(parent_a, "parent", tenant_id=wsid),
+    )
+    assert r_a.status_code == 200, r_a.text
+    assert len(r_a.json()) == 1
+    # ...the inactive parent received nothing (verified at the DB, since an
+    # inactive account cannot authenticate to GET its own inbox).
+    cnt_b = await gd_count(db.session, "notifications", {"user_id": parent_b})
+    assert cnt_b == 0
+
+
+@pytest.mark.asyncio
+async def test_delivery_all_inactive_parents_zero_delivery(client):
+    """When every linked parent is inactive the summary is a success-shaped
+    zero-delivery no-op (created_count 0, reason ``no_recipients``) — never a
+    403 and never a false success."""
+    ws = await _mk_it_workspace()
+    wsid = ws["workspace_id"]
+    cid = await _mk_class(wsid, ws["teacher_id"])
+    sid = await _mk_student(wsid, cid, "طالب")
+    parent = await _mk_parent_linked(wsid, sid, "ولي أمر", is_active=False)
+
+    session_id = await _mk_session(wsid, cid)
+    it_headers = _headers(
+        ws["user_id"], UserRole.INDEPENDENT_TEACHER.value, tenant_id=wsid,
+    )
+    resp = await client.post(
+        "/notifications", json=_summary_payload(session_id), headers=it_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True
+    assert body["created_count"] == 0, body
+    assert body.get("reason") == "no_recipients", body
+
+    cnt = await gd_count(db.session, "notifications", {"user_id": parent})
+    assert cnt == 0
+
+
+@pytest.mark.asyncio
+async def test_delivery_writes_audit_log(client):
+    """A successful IT lesson-end summary send is recorded in the audit log,
+    tenant-scoped and tied to the session, so a 'never got the report' claim
+    can be reconciled against an actual send attempt."""
+    ws = await _mk_it_workspace()
+    wsid = ws["workspace_id"]
+    cid = await _mk_class(wsid, ws["teacher_id"])
+    sid = await _mk_student(wsid, cid, "طالب")
+    await _mk_parent_linked(wsid, sid, "ولي أمر")
+
+    session_id = await _mk_session(wsid, cid)
+    it_headers = _headers(
+        ws["user_id"], UserRole.INDEPENDENT_TEACHER.value, tenant_id=wsid,
+    )
+    resp = await client.post(
+        "/notifications", json=_summary_payload(session_id), headers=it_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["created_count"] == 1
+
+    logs = await gd_find(db.session, "audit_logs", {
+        "action": "INDEPENDENT_TEACHER_LESSON_SUMMARY_SENT",
+        "entity_id": session_id,
+    })
+    assert logs, "expected an audit log row for the IT lesson summary send"
+    assert logs[0]["school_id"] == wsid
+    assert logs[0]["details"]["created_count"] == 1
+    assert logs[0]["details"]["outcome"] == "delivered"

@@ -429,6 +429,15 @@ async def _it_validate_recipients_or_403(current_user: dict, recipient_ids: List
 _IT_SUMMARY_NO_PARENTS_AR = (
     "لا يوجد أولياء أمور مرتبطون بطلابك لإرسال تقرير الحصة إليهم."
 )
+# Generic, safe-Arabic failure for an unexpected delivery error. The raw
+# exception is logged server-side; the report screen only ever sees this
+# neutral message (never raw ``str(e)``).
+_IT_SUMMARY_SERVICE_ERROR_AR = (
+    "تعذّر إرسال تقرير الحصة حالياً. يرجى المحاولة مرة أخرى."
+)
+# Stable audit action for an IT lesson-end summary send (delivered OR
+# zero-delivery), so every attempt is traceable per the threat model.
+_IT_SUMMARY_AUDIT_ACTION = "INDEPENDENT_TEACHER_LESSON_SUMMARY_SENT"
 
 
 def _it_summary_empty_result() -> dict:
@@ -436,50 +445,103 @@ def _it_summary_empty_result() -> dict:
         "success": True,
         "notification_id": None,
         "created_count": 0,
+        # Machine-readable discriminator so the FE shows an informational
+        # "no linked parents" message instead of a false success toast.
+        "reason": "no_recipients",
         "message": _IT_SUMMARY_NO_PARENTS_AR,
     }
 
 
+async def _log_it_summary_send(
+    current_user: dict,
+    workspace_id: Optional[str],
+    session_id: Optional[str],
+    created_count: int,
+    recipient_count: int,
+) -> None:
+    """Best-effort audit trail for an IT lesson-end summary send.
+
+    Records both real deliveries and zero-delivery no-ops so a parent who
+    says "I never got the report" can be reconciled against an actual send
+    attempt. A logging glitch must never break delivery, so every failure is
+    swallowed (logged at warning).
+    """
+    try:
+        await audit_engine.log(
+            action=_IT_SUMMARY_AUDIT_ACTION,
+            performed_by=current_user.get("id"),
+            tenant_id=workspace_id,
+            entity_type="session",
+            entity_id=session_id,
+            details={
+                "created_count": created_count,
+                "recipient_count": recipient_count,
+                "outcome": "delivered" if created_count > 0 else "no_recipients",
+            },
+            actor_name=current_user.get("full_name"),
+            actor_role=current_user.get("role"),
+            actor_email=current_user.get("email"),
+        )
+    except Exception:
+        logger.warning(
+            "IT lesson summary audit log failed (caller=%s, session=%s)",
+            current_user.get("id"), session_id, exc_info=True,
+        )
+
+
 async def _it_validate_summary_recipients_or_403(
     workspace_id: str, pairs: List[tuple],
-) -> None:
-    """Workspace-scoped re-validation for the IT lesson-end summary.
+) -> List[tuple]:
+    """Filter ``pairs`` to the deliverable IT lesson-summary cohort and
+    return the eligible ``(student_id, parent_user_id)`` subset.
 
     Unlike ``_it_validate_recipients_or_403`` (which narrows the allow-set
     to the §5.6 homeroom-UNION-``teacher_assignments`` class cohort), this
-    check matches the delivery's OWN cohort: every resolved target must be
-    an active ``role == 'parent'`` user pinned to the caller's IT workspace
-    tenant. IT workspaces are synthetic single-teacher tenants, so any
-    parent pinned to ``workspace_id`` already belongs to that one teacher —
-    the homeroom/assignment narrowing is both wrong and over-strict here
-    (it 403s parents of classes created without a homeroom assignment).
+    matches the delivery's OWN cohort: an ACTIVE ``role == 'parent'`` user
+    pinned to the caller's IT workspace tenant. IT workspaces are synthetic
+    single-teacher tenants, so any parent pinned to ``workspace_id`` already
+    belongs to that one teacher — the homeroom/assignment narrowing is both
+    wrong and over-strict here (it 403s parents of classes created without a
+    homeroom assignment).
 
-    Cross-workspace targets still fail: a foreign parent's ``tenant_id``
-    will never equal ``workspace_id``. 403 (not 404) — writes must surface
-    the rejection per spec §5.6.
+    Per-target behaviour:
+      * active parent in this workspace  -> KEPT (delivered).
+      * inactive / pending parent in this workspace -> SKIPPED. A not-yet-
+        activated parent must NEVER make the whole send fail (the reported
+        bug); it is dropped and the rest of the cohort still receives the
+        report. If every target is skipped the caller returns the
+        zero-delivery success-shaped result instead of a 403.
+      * unresolvable / non-parent uid -> SKIPPED (never delivered).
+      * genuine CROSS-WORKSPACE parent (tenant != workspace) -> 403. Writes
+        must surface the rejection per spec §5.6. This can only trip on a
+        forged/foreign target because the roster resolver is tenant-scoped.
     """
     target_uids = list({uid for _, uid in pairs if uid})
     if not target_uids:
-        return
+        return []
+    # Deliberately NO tenant/is_active filter on the query: we must SEE the
+    # inactive and foreign rows to classify each target (skip vs. 403). An
+    # over-strict filtered query returns an empty set, and the old code
+    # turned that into a blanket 403 — the exact bug being fixed.
     users = await gd_find(
         db.session, "users",
-        {
-            "id": {"$in": target_uids},
-            "role": "parent",
-            "tenant_id": workspace_id,
-            "is_active": True,
-        },
+        {"id": {"$in": target_uids}, "role": "parent"},
         limit=2000,
     )
-    allowed = {
-        u["id"] for u in users
-        if u.get("id") and u.get("tenant_id") == workspace_id
-    }
+    by_id = {u["id"]: u for u in users if u.get("id")}
+    eligible = set()
     for uid in target_uids:
-        if uid not in allowed:
+        u = by_id.get(uid)
+        if u is None:
+            continue
+        if u.get("tenant_id") != workspace_id:
             raise HTTPException(
                 status_code=403, detail=_IT_RECIPIENT_OUT_OF_SCOPE_AR,
             )
+        if not u.get("is_active"):
+            continue
+        eligible.add(uid)
+    return [(sid, uid) for sid, uid in pairs if uid in eligible]
 
 
 async def _deliver_it_session_summary(
@@ -564,9 +626,15 @@ async def _deliver_it_session_summary(
     # parents of IT classes created without a homeroom assignment. A genuine
     # cross-workspace target still fails (its tenant_id won't match).
     if pairs:
-        await _it_validate_summary_recipients_or_403(workspace_id, pairs)
+        # Returns only the eligible (active, in-workspace) pairs; inactive /
+        # pending parents are dropped here (skipped, not fatal). A genuine
+        # cross-workspace target still raises 403.
+        pairs = await _it_validate_summary_recipients_or_403(workspace_id, pairs)
 
     if not pairs:
+        await _log_it_summary_send(
+            current_user, workspace_id, notification.related_entity_id, 0, 0,
+        )
         return _it_summary_empty_result()
 
     # Build the per-child structured lesson report (attendance,
@@ -622,12 +690,21 @@ async def _deliver_it_session_summary(
         created_ids.append(notification_id)
 
     if not created_ids:
+        await _log_it_summary_send(
+            current_user, workspace_id, notification.related_entity_id,
+            0, len(pairs),
+        )
         return _it_summary_empty_result()
 
+    await _log_it_summary_send(
+        current_user, workspace_id, notification.related_entity_id,
+        len(created_ids), len(pairs),
+    )
     return {
         "success": True,
         "notification_id": created_ids[0],
         "created_count": len(created_ids),
+        "reason": "delivered",
         "message": f"تم إرسال {len(created_ids)} إشعار بنجاح",
     }
 
@@ -756,7 +833,20 @@ async def create_notification(
         and notification.related_entity == 'session'
         and notification.related_entity_id
     ):
-        return await _deliver_it_session_summary(notification, current_user)
+        try:
+            return await _deliver_it_session_summary(notification, current_user)
+        except HTTPException:
+            # Distinct, already-safe outcomes (e.g. 403 cross-workspace) must
+            # reach the FE unchanged so it can map them to the right dialog.
+            raise
+        except Exception:
+            logger.exception(
+                "IT lesson-end summary delivery failed (caller=%s, session=%s)",
+                current_user.get('id'), notification.related_entity_id,
+            )
+            raise HTTPException(
+                status_code=500, detail=_IT_SUMMARY_SERVICE_ERROR_AR,
+            )
 
     # Task #1046 — the class-scoped parent session summary
     # (`recipient_role == 'parent'`, no `recipient_id`, with
@@ -811,9 +901,18 @@ async def create_notification(
         # beyond the teacher's own workspace cohort. No-op for non-IT
         # callers and for empty/unlinked rosters (success / created_count: 0).
         if current_user.get('role') == 'independent_teacher':
-            target_uids = [uid for uid in parent_uid_map.values() if uid]
-            if target_uids:
-                await _it_validate_recipients_or_403(current_user, target_uids)
+            # Task #1066 — route the IT class-scoped summary through the SAME
+            # workspace-roster eligibility check as the session path: inactive
+            # / pending parents are skipped (not a fatal 403) and a homeroom-
+            # less class still delivers. A genuine cross-workspace target
+            # still 403s. ``tenant_id`` here is the IT workspace id.
+            it_pairs = [
+                (sid, uid) for sid, uid in parent_uid_map.items() if uid
+            ]
+            eligible_pairs = await _it_validate_summary_recipients_or_403(
+                tenant_id, it_pairs,
+            )
+            parent_uid_map = dict(eligible_pairs)
 
         created_ids = []
         for sid in roster_ids:
