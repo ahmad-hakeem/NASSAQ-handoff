@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 import pytest
 
 from dependencies import db, create_access_token
-from engines.sql_utils import gd_find, gd_insert
+from engines.sql_utils import gd_find, gd_find_one, gd_insert
 from engines.session_engine import TeacherSessionEngine as SessionEngine
 
 
@@ -223,3 +223,151 @@ async def test_smart_end_session_absence_tags_child_on_user_id(tenant_a):
     }, limit=10)
     assert len(rows) == 1
     assert rows[0].get("student_id") == sid
+
+
+# ---------- Task #1042: end-lesson 500 crash regression ----------
+#
+# Ending a lesson runs parent/management notification side effects in the
+# SAME transaction as the core lesson-completion. A failing notification
+# insert used to poison that shared session, so the next (unguarded)
+# activity-log write crashed with PendingRollbackError and the whole "end
+# lesson" flow 500'd — rolling back the completion too. The fix isolates
+# each notification side effect in its own SAVEPOINT and never attempts a
+# NULL-recipient insert.
+
+
+@pytest.mark.asyncio
+async def test_smart_end_session_skips_null_recipient(tenant_a):
+    # A repeated-negative-behaviour student with NO linked parent. The
+    # management resolver is forced to yield falsy recipients alongside one
+    # valid id — the falsy entries must be skipped, never written as a
+    # NULL-user notification (which would violate NOT NULL and crash the end).
+    class_id = await _mk_class(tenant_a)
+    sid = await _mk_student(tenant_a, class_id, name="Neg One")
+    mgmt_id = await _mk_user("school_principal", tenant_a)
+
+    eng = _engine()
+
+    async def _fake_mgmt(school_id):
+        return [None, "", mgmt_id]
+
+    eng._resolve_management_recipient_ids = _fake_mgmt
+
+    session_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    # Must NOT raise even though two of the three recipients are falsy.
+    await eng._send_smart_end_session_notifications(
+        session_id=session_id,
+        school_id=tenant_a,
+        attendance=[],
+        neg_students={sid: 3},
+        student_interactions={},
+        now=now,
+    )
+
+    rows = await gd_find(db.session, "notifications", {
+        "tenant_id": tenant_a, "entity_id": session_id,
+    }, limit=10)
+    # Exactly one row — the valid recipient. No NULL-user row was inserted.
+    assert len(rows) == 1
+    assert rows[0]["user_id"] == mgmt_id
+    assert rows[0]["student_id"] == sid
+    assert all(r.get("user_id") for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_smart_end_session_neg_behaviour_notifies_parent(tenant_a):
+    # Happy path is unchanged: a linked parent still gets the repeated
+    # negative-behaviour alert, stamped with the child's student_id.
+    parent_id = await _mk_user("parent", tenant_a)
+    class_id = await _mk_class(tenant_a)
+    sid = await _mk_student(tenant_a, class_id, parent_user_id=parent_id, name="Neg Two")
+
+    eng = _engine()
+
+    async def _no_mgmt(school_id):
+        return []
+
+    eng._resolve_management_recipient_ids = _no_mgmt
+
+    session_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    await eng._send_smart_end_session_notifications(
+        session_id=session_id,
+        school_id=tenant_a,
+        attendance=[],
+        neg_students={sid: 3},
+        student_interactions={},
+        now=now,
+    )
+
+    rows = await gd_find(db.session, "notifications", {
+        "tenant_id": tenant_a, "entity_id": session_id, "user_id": parent_id,
+    }, limit=10)
+    assert len(rows) == 1
+    assert rows[0]["student_id"] == sid
+    assert rows[0]["category"] == "behaviour"
+
+
+@pytest.mark.asyncio
+async def test_end_session_completes_despite_notification_failure(tenant_a):
+    # The core Task #1042 regression: a notification side effect that does a
+    # poisoning failed flush must NOT abort the lesson completion. end_session
+    # returns a summary, the session is marked COMPLETED, and the SESSION_ENDED
+    # audit write (which used to crash with PendingRollbackError) succeeds.
+    teacher = await _mk_user("teacher", tenant_a)
+    class_id = await _mk_class(tenant_a)
+    session_id = str(uuid.uuid4())
+    start = datetime.now(timezone.utc)
+    await gd_insert(db.session, "class_sessions", {
+        "id": session_id,
+        "teacher_id": teacher,
+        "tenant_id": tenant_a,
+        "school_id": tenant_a,
+        "class_id": class_id,
+        "subject_id": str(uuid.uuid4()),
+        "status": "active",
+        "attendance_approved": True,
+        "start_time": start.isoformat(),
+    })
+
+    eng = _engine()
+
+    # Isolate the test to the notification side effect: the other
+    # post-completion side effects may make network/LLM calls.
+    async def _noop(*a, **k):
+        return None
+
+    eng._update_student_profiles_after_session = _noop
+    eng._trigger_session_analytics = _noop
+    eng._generate_ai_session_insights = _noop
+
+    # Simulate the original crash: a NULL-user_id notification insert that
+    # poisons the shared session if it isn't isolated in a SAVEPOINT.
+    async def _poison(*a, **k):
+        await gd_insert(db.session, "notifications", {
+            "id": str(uuid.uuid4()),
+            "tenant_id": tenant_a,
+            "user_id": None,
+            "title": "x",
+            "message": "y",
+            "type": "alert",
+            "category": "attendance",
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+    eng._send_smart_end_session_notifications = _poison
+
+    # Must NOT raise — the SAVEPOINT isolates the poisoning failure.
+    result = await eng.end_session(session_id=session_id, teacher_id=teacher)
+    assert result is not None
+
+    # Core completion is durable.
+    sess = await gd_find_one(db.session, "class_sessions", {"id": session_id})
+    assert sess["status"] == "completed"
+
+    events = await gd_find(db.session, "session_event_log", {
+        "session_id": session_id, "event_type": "session_ended",
+    }, limit=10)
+    assert len(events) == 1

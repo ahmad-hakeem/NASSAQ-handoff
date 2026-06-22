@@ -2053,10 +2053,18 @@ class TeacherSessionEngine:
         except Exception as e:
             logger.error(f"AI insights generation failed for session {session_id}: {e}")
 
+        # Task #1042 — run the parent/student notification side effect inside
+        # its own SAVEPOINT. A failure here (e.g. a failed flush) would
+        # otherwise leave the shared async session in a PendingRollback state
+        # and crash the SESSION_ENDED audit write below, taking down the whole
+        # "end lesson" flow with an unhandled 500. The savepoint rolls back
+        # only this side effect, so the core completion (scores, COMPLETED
+        # status) and the audit writes that follow stay durable.
         try:
-            await self._send_smart_end_session_notifications(
-                session_id, school_id, attendance, neg_students, student_interactions, now
-            )
+            async with self.session.begin_nested():
+                await self._send_smart_end_session_notifications(
+                    session_id, school_id, attendance, neg_students, student_interactions, now
+                )
         except Exception as e:
             logger.error(f"Smart notifications failed for session {session_id}: {e}")
 
@@ -2069,21 +2077,25 @@ class TeacherSessionEngine:
         # about whether administration actually received the summary.
         management_sent = 0
         try:
-            management_sent = await self._send_management_session_summary(
-                session_id=session_id,
-                tenant_id=session.get("tenant_id") or session.get("school_id") or "",
-                subject_id=subject_id,
-                class_id=class_id,
-                duration_minutes=round(duration),
-                present=present,
-                absent=absent,
-                total=total,
-                attendance_rate=attendance_rate,
-                questions_count=len(questions),
-                correct=correct,
-                engagement_rate=engagement_rate,
-                now=now,
-            )
+            # Task #1042 — same SAVEPOINT isolation as the notification block
+            # above: a management-summary failure must not poison the shared
+            # session and abort the SESSION_ENDED audit writes / lesson end.
+            async with self.session.begin_nested():
+                management_sent = await self._send_management_session_summary(
+                    session_id=session_id,
+                    tenant_id=session.get("tenant_id") or session.get("school_id") or "",
+                    subject_id=subject_id,
+                    class_id=class_id,
+                    duration_minutes=round(duration),
+                    present=present,
+                    absent=absent,
+                    total=total,
+                    attendance_rate=attendance_rate,
+                    questions_count=len(questions),
+                    correct=correct,
+                    engagement_rate=engagement_rate,
+                    now=now,
+                )
         except Exception as e:
             logger.error(f"Management session summary failed for session {session_id}: {e}")
             management_sent = 0
@@ -2993,6 +3005,11 @@ class TeacherSessionEngine:
 
         sent = 0
         for rid in recipient_ids:
+            # Task #1042 — defensive NULL-recipient guard. The resolver already
+            # filters falsy ids, but never risk a NOT-NULL violation that would
+            # poison the end-session transaction and crash "end lesson".
+            if not rid:
+                continue
             await gd_insert(self.session, "notifications", {
                 "id": str(uuid.uuid4()),
                 "tenant_id": tenant_id,
@@ -3015,6 +3032,22 @@ class TeacherSessionEngine:
     async def _send_smart_end_session_notifications(self, session_id, school_id, attendance, neg_students, student_interactions, now):
         """Send automatic notifications on session end: absence, repeated negative behavior, improvement."""
         notifications_sent = 0
+
+        async def _emit(payload: dict) -> bool:
+            # Task #1042 — never attempt a NULL-recipient insert. The
+            # ``notifications.user_id`` column is NOT NULL, so a row whose
+            # resolved recipient is missing would raise an IntegrityError that
+            # poisons the end-session transaction and crashes "end lesson".
+            # Skip + log instead; the lesson still completes.
+            if not payload.get("user_id"):
+                logger.warning(
+                    "Skipping session-end notification with no recipient "
+                    "(session=%s, student=%s, category=%s)",
+                    session_id, payload.get("student_id"), payload.get("category"),
+                )
+                return False
+            await gd_insert(self.session, "notifications", payload)
+            return True
 
         absent_students = [a for a in attendance if a["status"] == AttendanceStatus.ABSENT.value]
 
@@ -3044,7 +3077,7 @@ class TeacherSessionEngine:
             parent_user_id = parent_uid_map.get(sid)
             if not parent_user_id:
                 continue
-            await gd_insert(self.session, "notifications", {
+            if await _emit({
                 "id": str(uuid.uuid4()),
                 "tenant_id": school_id,
                 # Task #1038 — write the indexed ``user_id`` column (the
@@ -3064,8 +3097,8 @@ class TeacherSessionEngine:
                 "entity_type": "session",
                 "entity_id": session_id,
                 "created_at": now.isoformat(),
-            })
-            notifications_sent += 1
+            }):
+                notifications_sent += 1
 
         for sid, neg_count in neg_students.items():
             if neg_count >= 3:
@@ -3088,7 +3121,7 @@ class TeacherSessionEngine:
                 recipients.extend(mgmt_ids)
                 
                 for rid in recipients:
-                    await gd_insert(self.session, "notifications", {
+                    if await _emit({
                         "id": str(uuid.uuid4()),
                         "tenant_id": school_id,
                         # Task #1038 — indexed ``user_id`` column + beneficiary
@@ -3106,8 +3139,8 @@ class TeacherSessionEngine:
                         "entity_type": "session",
                         "entity_id": session_id,
                         "created_at": now.isoformat(),
-                    })
-                    notifications_sent += 1
+                    }):
+                        notifications_sent += 1
 
         for sid, si in student_interactions.items():
             if si.get("correct", 0) >= 3 or si.get("participation", 0) >= 5:
@@ -3117,7 +3150,7 @@ class TeacherSessionEngine:
                 parent_user_id = parent_uid_map.get(sid)
                 if not parent_user_id:
                     continue
-                await gd_insert(self.session, "notifications", {
+                if await _emit({
                     "id": str(uuid.uuid4()),
                     "tenant_id": school_id,
                     # Task #1038 — indexed ``user_id`` column + beneficiary
@@ -3135,8 +3168,8 @@ class TeacherSessionEngine:
                     "entity_type": "session",
                     "entity_id": session_id,
                     "created_at": now.isoformat(),
-                })
-                notifications_sent += 1
+                }):
+                    notifications_sent += 1
 
         if notifications_sent > 0:
             await self._log_event(
