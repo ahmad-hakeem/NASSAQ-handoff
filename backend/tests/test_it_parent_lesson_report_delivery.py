@@ -124,14 +124,15 @@ async def _mk_parent_linked(wsid: str, sid: str, full_name: str) -> str:
     return pid
 
 
-async def _mk_session(wsid: str, cid: str) -> str:
+async def _mk_session(wsid: str, cid, status: str = "ended") -> str:
     session_id = str(uuid.uuid4())
     await gd_insert(db.session, "class_sessions", {
         "id": session_id,
+        # `cid` may be None for a course / no-class session.
         "class_id": cid,
         "school_id": wsid,
         "tenant_id": wsid,
-        "status": "ended",
+        "status": status,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
     return session_id
@@ -427,3 +428,87 @@ async def test_get_notifications_lesson_report_only_on_summary_rows(client):
     # The summary row carries this child's own data.
     assert with_report[0]["lesson_report"]["attendance_status"] == "present"
     assert without_report[0]["title"] == "إشعار عام"
+
+
+# ---------------------------------------------------------------------------
+# E. Course / no-class session — delivery falls back to the teacher's own
+#    parent cohort with NO broadcast-deny error (Task #1057)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_course_no_class_session_falls_back_to_cohort(client):
+    """A course session that is not tied to any class (``class_id is None``)
+    still delivers the summary — the roster cannot be resolved from the
+    session, so delivery falls back to the teacher's whole §5.6 parent cohort.
+    Critically, the IT broadcast-deny rule must NOT fire (200, not 403)."""
+    ws = await _mk_it_workspace()
+    wsid = ws["workspace_id"]
+    # The teacher has a class with a linked parent — this is the cohort the
+    # fallback resolves — but the SESSION itself has no class.
+    cid = await _mk_class(wsid, ws["teacher_id"])
+    sid = await _mk_student(wsid, cid, "طالب")
+    parent_uid = await _mk_parent_linked(wsid, sid, "ولي أمر")
+
+    course_session = await _mk_session(wsid, None)
+
+    it_headers = _headers(ws["user_id"], UserRole.INDEPENDENT_TEACHER.value, tenant_id=wsid)
+    resp = await client.post(
+        "/notifications",
+        json=_summary_payload(course_session),
+        headers=it_headers,
+    )
+    # 200 (delivered) — never the §5.6 broadcast-deny 403.
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True
+    assert body["created_count"] == 1
+
+    r = await client.get(
+        "/notifications",
+        headers=_headers(parent_uid, "parent", tenant_id=wsid),
+    )
+    assert r.status_code == 200, r.text
+    rows = r.json()
+    assert len(rows) == 1
+
+
+# ---------------------------------------------------------------------------
+# F. Re-ended (already-completed) session — still delivers, no error
+#    (Task #1057)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_already_completed_session_still_delivers(client):
+    """A session that is already marked ``completed`` (the teacher re-opened a
+    finished lesson and ended it again) must still deliver the per-child
+    summary without raising the broadcast-deny error."""
+    ws = await _mk_it_workspace()
+    wsid = ws["workspace_id"]
+    cid = await _mk_class(wsid, ws["teacher_id"])
+    sid = await _mk_student(wsid, cid, "طالب")
+    parent_uid = await _mk_parent_linked(wsid, sid, "ولي أمر")
+
+    completed_session = await _mk_session(wsid, cid, status="completed")
+    await _mk_attendance(completed_session, sid, "present")
+    await _mk_interaction(completed_session, sid, "participation")
+
+    it_headers = _headers(ws["user_id"], UserRole.INDEPENDENT_TEACHER.value, tenant_id=wsid)
+    resp = await client.post(
+        "/notifications",
+        json=_summary_payload(completed_session),
+        headers=it_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True
+    assert body["created_count"] == 1
+
+    r = await client.get(
+        "/notifications",
+        headers=_headers(parent_uid, "parent", tenant_id=wsid),
+    )
+    assert r.status_code == 200, r.text
+    rows = r.json()
+    assert len(rows) == 1
+    assert rows[0]["lesson_report"] is not None
+    assert rows[0]["lesson_report"]["attendance_status"] == "present"

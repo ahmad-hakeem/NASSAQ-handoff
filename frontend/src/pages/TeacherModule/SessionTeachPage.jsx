@@ -4629,7 +4629,7 @@ function ActionButton({ color, icon, label, sub, onClick }) {
   );
 }
 
-function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
+export function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
   const { t } = useTranslation();
   const { api } = useAuth();
   const { nassaqError } = useNassaqAlert();
@@ -4700,9 +4700,12 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
       confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#34d399', '#6ee7b7'] });
     } catch (e) {
       clearGuardForRetry();
-      const data = e?.response?.data;
-      const backendMsg = data?.error?.message || data?.detail;
-      nassaqError(typeof backendMsg === 'string' && backendMsg ? backendMsg : t('failedToSendNotifications'));
+      // Never surface the raw backend message here: a genuine delivery
+      // failure could carry the IT broadcast-deny wording
+      // ("لا يمكن للمعلم المستقل البث حسب الدور.") which is contradictory on a
+      // success summary screen. Always show a safe, localized message through
+      // NassaqAlertDialog (never the broadcast string, never toast.error).
+      nassaqError(t('failedToSendNotifications'));
     }
   };
 
