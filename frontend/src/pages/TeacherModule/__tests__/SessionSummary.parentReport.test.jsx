@@ -24,6 +24,7 @@ import { render, waitFor, screen, fireEvent } from '@testing-library/react';
 const mockGet = jest.fn();
 const mockPost = jest.fn();
 const mockNassaqError = jest.fn();
+const mockNassaqInfo = jest.fn();
 
 jest.mock('canvas-confetti', () => ({ __esModule: true, default: jest.fn() }));
 
@@ -52,7 +53,7 @@ jest.mock('../../../contexts/ThemeContext', () => ({
 }));
 
 jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
-  useNassaqAlert: () => ({ nassaqError: mockNassaqError, nassaqConfirm: jest.fn() }),
+  useNassaqAlert: () => ({ nassaqError: mockNassaqError, nassaqInfo: mockNassaqInfo, nassaqConfirm: jest.fn() }),
   NassaqAlertDialog: () => null,
 }));
 
@@ -82,6 +83,7 @@ beforeEach(() => {
   mockGet.mockReset();
   mockPost.mockReset();
   mockNassaqError.mockReset();
+  mockNassaqInfo.mockReset();
   mockToast.success.mockClear();
   mockToast.error.mockClear();
   try { window.sessionStorage.clear(); } catch { /* ignore */ }
@@ -121,7 +123,7 @@ describe('SessionSummary — IT parent-report delivery UX', () => {
     render(<SessionSummary summary={SUMMARY} sessionInfo={SESSION_INFO} onHome={jest.fn()} isRTL />);
 
     await waitFor(() => {
-      expect(mockNassaqError).toHaveBeenCalledWith('failedToSendNotifications');
+      expect(mockNassaqError).toHaveBeenCalledWith('reportSendPermissionDenied');
     }, { timeout: 3000 });
 
     // The raw backend broadcast string must never be surfaced to the user.
@@ -140,7 +142,7 @@ describe('SessionSummary — IT parent-report delivery UX', () => {
     render(<SessionSummary summary={SUMMARY} sessionInfo={SESSION_INFO} onHome={jest.fn()} isRTL />);
 
     await waitFor(() => {
-      expect(mockNassaqError).toHaveBeenCalledWith('failedToSendNotifications');
+      expect(mockNassaqError).toHaveBeenCalledWith('reportSendServiceError');
     }, { timeout: 3000 });
 
     // The resend button is only rendered once a delivery failure is recorded.
@@ -148,7 +150,7 @@ describe('SessionSummary — IT parent-report delivery UX', () => {
     expect(mockPost).toHaveBeenCalledTimes(1);
 
     // Second attempt (manual resend) succeeds.
-    mockPost.mockResolvedValueOnce({ data: { success: true } });
+    mockPost.mockResolvedValueOnce({ data: { success: true, created_count: 1 } });
     fireEvent.click(resendBtn);
 
     await waitFor(() => {
@@ -160,7 +162,7 @@ describe('SessionSummary — IT parent-report delivery UX', () => {
   });
 
   test('a successful auto-send never renders the resend button (no accidental duplicate send)', async () => {
-    mockPost.mockResolvedValue({ data: { success: true } });
+    mockPost.mockResolvedValue({ data: { success: true, created_count: 1 } });
 
     render(<SessionSummary summary={SUMMARY} sessionInfo={SESSION_INFO} onHome={jest.fn()} isRTL />);
 
@@ -171,5 +173,70 @@ describe('SessionSummary — IT parent-report delivery UX', () => {
     // No failure → no resend affordance, and the send stays one-shot.
     expect(screen.queryByText('resendReport')).toBeNull();
     expect(mockPost).toHaveBeenCalledTimes(1);
+  });
+
+  test('zero-delivery (no linked parents) shows the info dialog AND the resend button', async () => {
+    mockPost.mockResolvedValue({ data: { success: true, created_count: 0, reason: 'no_recipients' } });
+
+    render(<SessionSummary summary={SUMMARY} sessionInfo={SESSION_INFO} onHome={jest.fn()} isRTL />);
+
+    await waitFor(() => {
+      expect(mockNassaqInfo).toHaveBeenCalledWith('reportNoLinkedParents');
+    }, { timeout: 3000 });
+
+    // Zero-delivery is NOT a success.
+    expect(mockToast.success).not.toHaveBeenCalled();
+    // The resend affordance stays so the teacher can retry after linking a parent.
+    expect(await screen.findByText('resendReport')).toBeTruthy();
+    expect(mockPost).toHaveBeenCalledTimes(1);
+  });
+
+  test('re-mount after a zero-delivery does NOT auto-send or re-pop the info dialog, but keeps resend reachable', async () => {
+    mockPost.mockResolvedValue({ data: { success: true, created_count: 0, reason: 'no_recipients' } });
+
+    // First mount → zero-delivery arms the distinct 'zero' guard.
+    const { unmount } = render(
+      <SessionSummary summary={SUMMARY} sessionInfo={SESSION_INFO} onHome={jest.fn()} isRTL />,
+    );
+    await waitFor(() => {
+      expect(mockNassaqInfo).toHaveBeenCalledWith('reportNoLinkedParents');
+    }, { timeout: 3000 });
+    expect(mockPost).toHaveBeenCalledTimes(1);
+
+    unmount();
+    mockNassaqInfo.mockClear();
+
+    // Re-mount (e.g. reload) with the guard still armed and still no parents.
+    render(<SessionSummary summary={SUMMARY} sessionInfo={SESSION_INFO} onHome={jest.fn()} isRTL />);
+
+    // The resend button is restored from the persisted zero-delivery state...
+    expect(await screen.findByText('resendReport')).toBeTruthy();
+    // ...but there is NO auto-send and the info dialog does NOT re-pop.
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(mockNassaqInfo).not.toHaveBeenCalled();
+  });
+
+  test('resend after a parent is linked succeeds and clears the resend affordance', async () => {
+    // First mount → zero-delivery.
+    mockPost.mockResolvedValueOnce({ data: { success: true, created_count: 0, reason: 'no_recipients' } });
+
+    render(<SessionSummary summary={SUMMARY} sessionInfo={SESSION_INFO} onHome={jest.fn()} isRTL />);
+
+    const resendBtn = await screen.findByText('resendReport');
+    expect(mockPost).toHaveBeenCalledTimes(1);
+
+    // A parent is now linked — manual resend delivers.
+    mockPost.mockResolvedValueOnce({ data: { success: true, created_count: 1 } });
+    fireEvent.click(resendBtn);
+
+    await waitFor(() => {
+      expect(mockToast.success).toHaveBeenCalledWith('reportSentToParentsOnly');
+    }, { timeout: 3000 });
+
+    // The resend affordance disappears once delivery succeeds.
+    await waitFor(() => {
+      expect(screen.queryByText('resendReport')).toBeNull();
+    }, { timeout: 3000 });
+    expect(mockPost).toHaveBeenCalledTimes(2);
   });
 });

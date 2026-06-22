@@ -4685,10 +4685,10 @@ export function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
         try { sessionStorage.removeItem(storageKey); } catch (_) { /* noop */ }
       }
     };
-    const setGuardSent = () => {
+    const setGuardSent = (value = '1') => {
       hasSentReport.current = true;
       if (storageKey) {
-        try { sessionStorage.setItem(storageKey, '1'); } catch (_) { /* noop */ }
+        try { sessionStorage.setItem(storageKey, value); } catch (_) { /* noop */ }
       }
     };
     const subjectName = sessionInfo?.subject_name || sessionInfo?.subjectName || '';
@@ -4750,7 +4750,11 @@ export function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
     // keep the resend affordance so they can retry after linking a parent.
     const createdCount = Number(resp?.data?.created_count || 0);
     if (createdCount <= 0) {
-      setGuardSent();
+      // Zero-delivery: no active linked parents yet. Arm the guard with a
+      // DISTINCT value so a later reload does NOT auto-send again (which would
+      // re-pop this info dialog), but instead re-surfaces the resend button so
+      // the teacher can retry after linking/activating a parent.
+      setGuardSent('zero');
       setSendFailed(true);
       nassaqInfo(t('reportNoLinkedParents'));
       return;
@@ -4774,11 +4778,26 @@ export function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
     if (hasSentReport.current) return;
     if (!summary || !summary.session_record_id) return;
     const storageKey = `nassaq:summarySent:${summary.session_record_id}`;
+    let prior = null;
     try {
-      if (sessionStorage.getItem(storageKey) === '1') {
-        hasSentReport.current = true;
-        return;
-      }
+      prior = sessionStorage.getItem(storageKey);
+    } catch (_) {
+      // sessionStorage unavailable — fall back to ref-only guard below.
+    }
+    if (prior === '1') {
+      // A real delivery already happened — never auto-send or prompt again.
+      hasSentReport.current = true;
+      return;
+    }
+    if (prior === 'zero') {
+      // The previous attempt reached no active parents. Do NOT auto-send (that
+      // would re-pop the info dialog on every reload); instead just re-surface
+      // the resend button so the teacher can retry after linking a parent.
+      hasSentReport.current = true;
+      setSendFailed(true);
+      return;
+    }
+    try {
       sessionStorage.setItem(storageKey, '1');
     } catch (_) {
       // sessionStorage unavailable — fall back to ref-only guard
