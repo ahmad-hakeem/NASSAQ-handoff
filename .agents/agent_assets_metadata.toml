@@ -126,3 +126,9 @@ id = "91c68PABBELcGi5VITHun"
 uri = "file://docs/HANDOVER_TECHNICAL_REPORT.md"
 type = "text"
 title = "NASSAQ — Engineering Handover Technical Report"
+
+[[outputs]]
+id = "MAutFx9i9-MiwtTgaEzqT"
+uri = "file://docs/platform-state-report.md"
+type = "text"
+title = "NASSAQ Platform State Report (2026-06-23)"
