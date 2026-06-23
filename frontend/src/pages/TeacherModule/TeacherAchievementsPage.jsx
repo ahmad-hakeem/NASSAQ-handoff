@@ -1330,12 +1330,12 @@ export default function TeacherAchievementsPage() {
 
       <Dialog open={evidenceDialog.open} onOpenChange={(open) => { if (!open) closeEvidenceDialog(); }}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col p-0 gap-0">
-          <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
+          <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b border-gray-100 dark:border-gray-800">
             <DialogTitle className="font-cairo">
               {evidenceDialog.mode === 'add' ? t('portfolioAddEvidence') : t('portfolioEditEvidence')}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2 px-6 overflow-y-auto flex-1 min-h-0">
+          <div className="space-y-4 px-6 py-4 overflow-y-auto flex-1 min-h-0">
             <div>
               <Label className="text-xs font-medium mb-1.5 block">{t('portfolioEvidenceType')}</Label>
               <Select value={evidenceForm.evidence_type} onValueChange={(v) => setEvidenceForm(prev => ({ ...prev, evidence_type: v }))}>
@@ -1600,7 +1600,7 @@ export default function TeacherAchievementsPage() {
               <Input type="date" value={evidenceForm.date} onChange={(e) => setEvidenceForm(prev => ({ ...prev, date: e.target.value }))} className="h-9" />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="px-6 py-4 shrink-0 border-t border-gray-100 dark:border-gray-800">
             <Button variant="outline" onClick={closeEvidenceDialog}>
               {t('cancel')}
             </Button>
@@ -1614,11 +1614,11 @@ export default function TeacherAchievementsPage() {
 
       {/* Manual evidence dialog (V2) */}
       <Dialog open={manualEvDialog.open} onOpenChange={(open) => { if (!open) { _clearManualEvPreview(); setManualEvDialog({ open: false }); } }}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b border-gray-100 dark:border-gray-800">
             <DialogTitle className="font-cairo text-right">إضافة شاهد يدوي</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 mt-2" dir="rtl">
+          <div className="space-y-3 px-6 py-4 overflow-y-auto flex-1 min-h-0" dir="rtl">
             <div>
               <Label className="text-xs font-medium mb-1 block">القسم</Label>
               <Select
@@ -1890,7 +1890,7 @@ export default function TeacherAchievementsPage() {
             </div>
           </div>
 
-          <DialogFooter className="mt-3">
+          <DialogFooter className="px-6 py-4 shrink-0 border-t border-gray-100 dark:border-gray-800">
             <Button variant="outline" onClick={() => { _clearManualEvPreview(); setManualEvDialog({ open: false }); }}>إلغاء</Button>
             <Button onClick={handleSaveManualEvidence} disabled={manualEvSaving || !manualEvForm.evidence_type || !(manualEvForm.title_ar || '').trim()} className="gap-1.5">
               {manualEvSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
@@ -1902,8 +1902,8 @@ export default function TeacherAchievementsPage() {
 
       {/* View evidence details dialog */}
       <Dialog open={viewEvDialog.open} onOpenChange={(open) => { if (!open) setViewEvDialog({ open: false, item: null }); }}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" dir="rtl">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col p-0 gap-0" dir="rtl">
+          <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b border-gray-100 dark:border-gray-800">
             <DialogTitle className="font-cairo text-right flex items-center gap-2">
               <Eye className="w-4 h-4 text-violet-600" /> تفاصيل الشاهد
             </DialogTitle>
@@ -1920,7 +1920,7 @@ export default function TeacherAchievementsPage() {
               || extraSubjectNames[it.subject_id]
               || (it.subject_id ? '—' : '—');
             return (
-              <div className="space-y-3 mt-2 text-right">
+              <div className="space-y-3 px-6 py-4 text-right overflow-y-auto flex-1 min-h-0">
                 <div>
                   <div className="text-[11px] text-gray-500 mb-0.5">العنوان</div>
                   <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 font-cairo">
@@ -1986,7 +1986,7 @@ export default function TeacherAchievementsPage() {
               </div>
             );
           })()}
-          <DialogFooter className="mt-4">
+          <DialogFooter className="px-6 py-4 shrink-0 border-t border-gray-100 dark:border-gray-800">
             <Button variant="outline" onClick={() => setViewEvDialog({ open: false, item: null })}>إغلاق</Button>
             {viewEvDialog.item && (
               <Button onClick={() => { const it = viewEvDialog.item; setViewEvDialog({ open: false, item: null }); openEditDialog(it); }} className="gap-1.5">
@@ -1999,8 +1999,8 @@ export default function TeacherAchievementsPage() {
 
       {/* CV manual-add dialog */}
       <Dialog open={cvDialog.open} onOpenChange={(open) => { if (!open) { _clearCvPreview(); setCvDialog({ open: false, kind: 'training_attended' }); } }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b border-gray-100 dark:border-gray-800">
             <DialogTitle className="font-cairo">
               {cvDialog.kind === 'training_attended' && 'إضافة دورة تدريبية مستفاد منها'}
               {cvDialog.kind === 'training_delivered' && 'إضافة دورة تدريبية منفذة'}
@@ -2008,7 +2008,7 @@ export default function TeacherAchievementsPage() {
               {cvDialog.kind === 'thank_letter' && 'إضافة خطاب شكر'}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-3 px-6 py-4 overflow-y-auto flex-1 min-h-0">
             <div>
               <Label className="text-xs font-medium mb-1.5 block">العنوان</Label>
               <Input value={cvForm.title} onChange={(e) => setCvForm(p => ({ ...p, title: e.target.value }))} placeholder="مثال: ورشة استراتيجيات التعليم النشط" dir={isRTL ? 'rtl' : 'ltr'} className="h-9" />
@@ -2136,7 +2136,7 @@ export default function TeacherAchievementsPage() {
               )}
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="px-6 py-4 shrink-0 border-t border-gray-100 dark:border-gray-800">
             <Button variant="outline" onClick={() => { _clearCvPreview(); setCvDialog({ open: false, kind: 'training_attended' }); }}>إلغاء</Button>
             <Button onClick={handleAddCVItem} disabled={cvSaving || cvFileUploading || !cvForm.title || cvForm.title.trim().length < 2}>
               {cvSaving && <Loader2 className={`w-4 h-4 animate-spin ${isRTL ? 'ml-2' : 'mr-2'}`} />}
