@@ -8,6 +8,7 @@ import { Button } from '../../ui/button';
 import { Skeleton } from '../../ui/skeleton';
 import { ScrollArea } from '../../ui/scroll-area';
 import { Calendar, BookOpen, User, Printer } from 'lucide-react';
+import { buildScheduleGrid, getScheduleCell } from '../../../utils/parentScheduleGrid';
 
 const DAY_NAMES = {
   sunday: { ar: 'الأحد', color: 'from-blue-500 to-blue-600' },
@@ -63,6 +64,7 @@ const SchedulePanel = ({ childId }) => {
 
   const days = schedule?.days || [];
   const scheduleData = schedule?.schedule || {};
+  const { periods: gridPeriods, lookup: gridLookup } = buildScheduleGrid(schedule);
 
   return (
     <div className="space-y-3">
@@ -176,38 +178,35 @@ const SchedulePanel = ({ childId }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {(() => {
-                      const maxPeriods = Math.max(...days.map(d => (scheduleData[d] || []).length), 0);
-                      return Array.from({ length: maxPeriods }, (_, i) => (
-                        <tr key={i}>
-                          <td className="p-1.5 text-center font-medium text-muted-foreground border-b">
-                            {i + 1}
-                          </td>
-                          {days.map(day => {
-                            const entry = (scheduleData[day] || [])[i];
-                            if (!entry) {
-                              return (
-                                <td key={day} className="p-1 border-b">
-                                  <div className="h-12 rounded-lg bg-muted/40 border border-dashed border-border" />
-                                </td>
-                              );
-                            }
+                    {gridPeriods.map(({ period, label }) => (
+                      <tr key={period}>
+                        <td className="p-1.5 text-center font-medium text-muted-foreground border-b">
+                          {label}
+                        </td>
+                        {days.map(day => {
+                          const entry = getScheduleCell(gridLookup, day, period);
+                          if (!entry) {
                             return (
-                              <td key={day} className="p-1 border-b" data-testid="parent-grid-cell">
-                                <div
-                                  className="h-12 rounded-lg bg-brand-navy/5 border border-brand-navy/10 flex items-center justify-center px-1.5 text-center"
-                                  title={entry.subject}
-                                >
-                                  <span className="text-[11px] font-semibold text-brand-navy leading-tight line-clamp-2 max-w-full">
-                                    {entry.subject}
-                                  </span>
-                                </div>
+                              <td key={day} className="p-1 border-b">
+                                <div className="h-12 rounded-lg bg-muted/40 border border-dashed border-border" />
                               </td>
                             );
-                          })}
-                        </tr>
-                      ));
-                    })()}
+                          }
+                          return (
+                            <td key={day} className="p-1 border-b" data-testid="parent-grid-cell">
+                              <div
+                                className="h-12 rounded-lg bg-brand-navy/5 border border-brand-navy/10 flex items-center justify-center px-1.5 text-center"
+                                title={entry.subject}
+                              >
+                                <span className="text-[11px] font-semibold text-brand-navy leading-tight line-clamp-2 max-w-full">
+                                  {entry.subject}
+                                </span>
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>

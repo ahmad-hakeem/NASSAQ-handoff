@@ -12,6 +12,7 @@ import { ScrollArea } from '../../components/ui/scroll-area';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import BackgroundRefreshChip from '../../components/parent/BackgroundRefreshChip';
+import { buildScheduleGrid, getScheduleCell } from '../../utils/parentScheduleGrid';
 import {
   Calendar, BookOpen, ChevronLeft, Clock, User, Printer, AlertCircle, RefreshCw
 } from 'lucide-react';
@@ -169,6 +170,7 @@ const ChildSchedulePage = () => {
 
   const days = schedule?.days || [];
   const scheduleData = schedule?.schedule || {};
+  const { periods: gridPeriods, lookup: gridLookup } = buildScheduleGrid(schedule);
 
   return (
     <PortalLayout portalType="parent">
@@ -304,38 +306,35 @@ const ChildSchedulePage = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {(() => {
-                        const maxPeriods = Math.max(...days.map(d => (scheduleData[d] || []).length), 0);
-                        return Array.from({ length: maxPeriods }, (_, i) => (
-                          <tr key={i} className="hover:bg-muted/40 dark:hover:bg-muted/30">
-                            <td className="p-1.5 text-center font-medium text-muted-foreground border-b">
-                              {i + 1}
-                            </td>
-                            {days.map(day => {
-                              const entry = (scheduleData[day] || [])[i];
-                              if (!entry) {
-                                return (
-                                  <td key={day} className="p-1 border-b">
-                                    <div className="h-12 rounded-lg bg-muted/40 border border-dashed border-border" />
-                                  </td>
-                                );
-                              }
+                      {gridPeriods.map(({ period, label }) => (
+                        <tr key={period} className="hover:bg-muted/40 dark:hover:bg-muted/30">
+                          <td className="p-1.5 text-center font-medium text-muted-foreground border-b">
+                            {label}
+                          </td>
+                          {days.map(day => {
+                            const entry = getScheduleCell(gridLookup, day, period);
+                            if (!entry) {
                               return (
                                 <td key={day} className="p-1 border-b">
-                                  <div className="h-12 rounded-lg bg-brand-navy/5 border border-brand-navy/10 flex flex-col items-center justify-center px-1">
-                                    <span className="text-[10px] font-semibold text-brand-navy truncate max-w-full">
-                                      {entry.subject}
-                                    </span>
-                                    <span className="text-[9px] text-muted-foreground truncate max-w-full">
-                                      {entry.teacher}
-                                    </span>
-                                  </div>
+                                  <div className="h-12 rounded-lg bg-muted/40 border border-dashed border-border" />
                                 </td>
                               );
-                            })}
-                          </tr>
-                        ));
-                      })()}
+                            }
+                            return (
+                              <td key={day} className="p-1 border-b">
+                                <div className="h-12 rounded-lg bg-brand-navy/5 border border-brand-navy/10 flex flex-col items-center justify-center px-1">
+                                  <span className="text-[10px] font-semibold text-brand-navy truncate max-w-full">
+                                    {entry.subject}
+                                  </span>
+                                  <span className="text-[9px] text-muted-foreground truncate max-w-full">
+                                    {entry.teacher}
+                                  </span>
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>

@@ -125,6 +125,158 @@ async def _att_find(session, filters: dict, order_by_date_desc: bool = False, li
 _LEGACY_LINKAGE_DB_ERRORS = (ProgrammingError, OperationalError)
 
 
+# ---------------------------------------------------------------------------
+# Parent schedule period normalization
+# ---------------------------------------------------------------------------
+# The parent timetable grid must render rows from a single canonical period
+# source, place each session on its TRUE teaching-period row, and never pack
+# sessions by array index. Sessions store `period_number`, but the encoding
+# differs per timetable:
+#   - GENERATOR timetables → contiguous period_number (1..N), slot_number null.
+#   - MANUAL timetables     → raw slot_number (gapped, e.g. 1,2,3,5,6,7,9 when
+#                             breaks occupy slots 4 and 8), start_time often "".
+# `_build_parent_period_model` resolves the canonical period list and returns a
+# mapper(raw_period) -> canonical 1..N index (or None to clamp out sessions
+# that are not part of the base timetable: break slots, orphans, nulls).
+# Resolution order: teaching time_slots → school_settings.periods_per_day →
+# distinct session periods (legacy fallback). It is a pure function so it can be
+# unit-tested without a DB.
+
+def _build_parent_period_model(teaching_slots, periods_per_day, session_periods,
+                               sessions_have_times=False):
+    """Return (periods, mapper) for the parent schedule grid.
+
+    ``periods``  -> ordered list of {period, label, start_time, end_time} where
+                    ``period`` is the canonical contiguous teaching index 1..N.
+    ``mapper``   -> callable(raw_period:int|None) -> canonical period int | None.
+                    Returns None for sessions that do not belong to the base
+                    timetable (break slots, orphans beyond N, null periods).
+
+    ``teaching_slots`` must already exclude breaks; it may be unordered.
+    ``sessions_have_times`` is the structural tie-breaker used only when the
+    session period values themselves give no raw-vs-contiguous evidence:
+    manual timetables store empty ``start_time`` (raw-slot encoding) while
+    generator timetables carry real slot times (contiguous encoding).
+    """
+    clean_periods = [p for p in (session_periods or []) if isinstance(p, int)]
+
+    # 1) Canonical teaching slots from time_slots.
+    slots = []
+    for s in (teaching_slots or []):
+        try:
+            sn = int(s.get("slot_number"))
+        except (TypeError, ValueError):
+            continue
+        slots.append((sn, s))
+    if slots:
+        slots.sort(key=lambda x: (x[0], str(x[1].get("start_time") or "")))
+        raw_numbers = [sn for sn, _ in slots]
+        n = len(slots)
+        contiguous = list(range(1, n + 1))
+        raw_to_index = {sn: i + 1 for i, (sn, _) in enumerate(slots)}
+        periods = [
+            {
+                "period": i + 1,
+                "label": str(i + 1),
+                "start_time": s.get("start_time") or "",
+                "end_time": s.get("end_time") or "",
+            }
+            for i, (_, s) in enumerate(slots)
+        ]
+
+        if raw_numbers == contiguous:
+            # No break gaps → slot numbers already are the teaching index.
+            def mapper(p):
+                return p if isinstance(p, int) and 1 <= p <= n else None
+            return periods, mapper
+
+        # Gapped slot numbers → decide whether sessions use the raw-slot
+        # (manual) or contiguous (generator) encoding. Prefer hard evidence
+        # from the period values themselves: a period that only exists in the
+        # raw-slot set (e.g. 9 when N=7) proves raw; one that only exists in the
+        # contiguous set (e.g. 4 when slot 4 is a break) proves contiguous.
+        raw_only = set(raw_numbers) - set(contiguous)
+        contig_only = set(contiguous) - set(raw_numbers)
+        n_raw = sum(1 for p in clean_periods if p in raw_only)
+        n_contig = sum(1 for p in clean_periods if p in contig_only)
+        if n_raw != n_contig:
+            use_raw = n_raw > n_contig
+        else:
+            # No distinguishing period-value evidence (every session falls in
+            # the set shared by both encodings). Fall back to the structural
+            # signal rather than blindly assuming raw: generator timetables
+            # carry slot times, manual ones do not. Choosing contiguous here
+            # also never drops a session (every value is <= N); it only changes
+            # which true row it lands on.
+            use_raw = not sessions_have_times
+        if use_raw:
+            def mapper(p):  # raw-slot encoding
+                return raw_to_index.get(p) if isinstance(p, int) else None
+        else:
+            def mapper(p):  # contiguous encoding
+                return p if isinstance(p, int) and 1 <= p <= n else None
+        return periods, mapper
+
+    # 2) school_settings.periods_per_day → contiguous 1..N (no times).
+    try:
+        ppd = int(periods_per_day) if periods_per_day is not None else 0
+    except (TypeError, ValueError):
+        ppd = 0
+    if ppd > 0:
+        periods = [
+            {"period": i + 1, "label": str(i + 1), "start_time": "", "end_time": ""}
+            for i in range(ppd)
+        ]
+
+        def mapper(p):
+            return p if isinstance(p, int) and 1 <= p <= ppd else None
+        return periods, mapper
+
+    # 3) Legacy fallback: re-index the distinct session periods to 1..N so
+    #    nothing is dropped when a school has no configured period structure.
+    distinct = sorted(set(clean_periods))
+    if distinct:
+        raw_to_index = {raw: i + 1 for i, raw in enumerate(distinct)}
+        periods = [
+            {"period": i + 1, "label": str(i + 1), "start_time": "", "end_time": ""}
+            for i in range(len(distinct))
+        ]
+
+        def mapper(p):
+            return raw_to_index.get(p) if isinstance(p, int) else None
+        return periods, mapper
+
+    return [], (lambda p: None)
+
+
+async def _resolve_parent_period_model(session, school_id, session_periods,
+                                       sessions_have_times=False):
+    """Async wrapper: fetch the period config for ``school_id`` then build the
+    canonical period model via :func:`_build_parent_period_model`."""
+    teaching_slots = []
+    periods_per_day = None
+    try:
+        slots = await gd_find(session, "time_slots", {"school_id": school_id}, limit=200)
+        for s in slots or []:
+            if s.get("is_break"):
+                continue
+            if s.get("is_active") is False:
+                continue
+            teaching_slots.append(s)
+    except Exception as err:  # pragma: no cover - defensive
+        logger.warning("parent schedule: time_slots resolve failed for %s: %s", school_id, err)
+    if not teaching_slots:
+        try:
+            settings = await gd_find_one(session, "school_settings", {"school_id": school_id})
+            if settings:
+                periods_per_day = settings.get("periods_per_day")
+        except Exception as err:  # pragma: no cover - defensive
+            logger.warning("parent schedule: settings resolve failed for %s: %s", school_id, err)
+    return _build_parent_period_model(
+        teaching_slots, periods_per_day, session_periods, sessions_have_times
+    )
+
+
 def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
     """Setup parent portal routes"""
 
@@ -741,6 +893,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         }
         days_order = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس"]
         schedule_by_day = {day: [] for day in days_order}
+        periods: list = []
 
         if child.get("class_id"):
             timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
@@ -758,16 +911,47 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 sub_map = {s["id"]: s.get("name_ar", "") for s in subs}
                 tch_map = {t["id"]: t.get("full_name", "") for t in tchs}
 
+                # Resolve the canonical teaching-period model once, then place
+                # every session on its TRUE period row (no array-index packing)
+                # and clamp out sessions that are not part of the base timetable
+                # (break slots, orphans beyond N, null periods).
+                raw_session_periods = []
+                for s in all_sessions:
+                    try:
+                        raw_session_periods.append(int(s.get("period_number")))
+                    except (TypeError, ValueError):
+                        continue
+                # Structural tie-breaker for gapped schools: manual timetables
+                # store empty start_time (raw-slot encoding) while generator
+                # timetables carry real slot times (contiguous encoding).
+                sessions_have_times = any(
+                    str(s.get("start_time") or "").strip() for s in all_sessions
+                )
+                periods, period_mapper = await _resolve_parent_period_model(
+                    db.session, school_id, raw_session_periods, sessions_have_times
+                )
+                period_times = {p["period"]: (p.get("start_time"), p.get("end_time")) for p in periods}
+
                 for session in all_sessions:
                     day_ar = day_en_to_ar.get(session.get("day_of_week", ""), "")
-                    if day_ar in schedule_by_day:
-                        schedule_by_day[day_ar].append({
-                            "period": session.get("period_number"),
-                            "subject": sub_map.get(session.get("subject_id"), "غير محدد"),
-                            "teacher": tch_map.get(session.get("teacher_id"), "غير محدد"),
-                            "start_time": session.get("start_time"),
-                            "end_time": session.get("end_time")
-                        })
+                    if day_ar not in schedule_by_day:
+                        continue
+                    try:
+                        raw_period = int(session.get("period_number"))
+                    except (TypeError, ValueError):
+                        raw_period = None
+                    canonical = period_mapper(raw_period) if raw_period is not None else None
+                    if canonical is None:
+                        continue
+                    slot_start, slot_end = period_times.get(canonical, ("", ""))
+                    schedule_by_day[day_ar].append({
+                        "period": canonical,
+                        "raw_period": raw_period,
+                        "subject": sub_map.get(session.get("subject_id"), "غير محدد"),
+                        "teacher": tch_map.get(session.get("teacher_id"), "غير محدد"),
+                        "start_time": session.get("start_time") or slot_start or "",
+                        "end_time": session.get("end_time") or slot_end or ""
+                    })
 
         for day in schedule_by_day:
             schedule_by_day[day] = sorted(schedule_by_day[day], key=lambda x: x.get("period", 0))
@@ -776,7 +960,8 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "child_name": child.get("full_name"),
             "class_name": child.get("class_name"),
             "schedule": schedule_by_day,
-            "days": days_order
+            "days": days_order,
+            "periods": periods
         }
 
     # ============= TODAY LIVE =============
