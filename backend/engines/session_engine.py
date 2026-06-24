@@ -1834,6 +1834,43 @@ class TeacherSessionEngine:
             needs_attention=needs_attention,
         )
 
+    async def _resolve_note_teacher_id(self, session: dict, acting_user_id: str) -> Optional[str]:
+        """Resolve a value that is safe to store in ``session_notes.teacher_id``
+        (a foreign key to ``teachers.id``).
+
+        ``class_sessions`` is a schemaless collection, so its stored
+        ``teacher_id`` — and the acting ``users.id`` the end-session route passes
+        in — may NOT be a real ``teachers.id`` (live-started sessions store the
+        ``users.id``). Writing such a value straight into the FK column triggers
+        a foreign-key violation. We try, in order: the session's stored
+        ``teacher_id``, then the acting user's linked ``teacher_id``; the first
+        that actually exists in ``teachers`` wins. If neither resolves we return
+        ``None`` (the column is nullable) rather than risk an FK violation, so
+        the note is still persisted against the session.
+        """
+        candidates: List[str] = []
+        session_tid = session.get("teacher_id")
+        if session_tid:
+            candidates.append(session_tid)
+        acting_user = await gd_find_one(self.session, "users", {"id": acting_user_id})
+        if acting_user and acting_user.get("teacher_id"):
+            candidates.append(acting_user["teacher_id"])
+        # Defense-in-depth: only accept a teacher row that belongs to the same
+        # tenant as the session, so a corrupted/stale link can never attribute
+        # the note to a foreign-tenant teacher.
+        school_id = session.get("school_id")
+        seen = set()
+        for cid in candidates:
+            if not cid or cid in seen:
+                continue
+            seen.add(cid)
+            teacher_filter = {"id": cid}
+            if school_id:
+                teacher_filter["school_id"] = school_id
+            if await gd_find_one(self.session, "teachers", teacher_filter):
+                return cid
+        return None
+
     async def end_session(self, session_id: str, teacher_id: str, closing_note: str = None) -> SessionSummaryResponse:
         """
         End the session and generate summary.
@@ -2015,17 +2052,29 @@ class TeacherSessionEngine:
         await gd_update_one(self.session, "class_sessions", {"id": session_id}, session_update)
 
         if closing_note:
-            # ``session_notes.teacher_id`` is an FK to ``teachers.id``. The
-            # route passes ``current_user["id"]`` (a ``users.id``), so attribute
-            # the note to the session's canonical ``teachers.id`` (already
-            # trusted elsewhere in this method) to avoid an FK violation.
+            # ``session_notes.teacher_id`` is an FK to ``teachers.id``. Neither
+            # the session's stored ``teacher_id`` nor the acting user id is
+            # guaranteed to BE a ``teachers.id``: ``class_sessions`` is a
+            # schemaless collection (live-started sessions store a ``users.id``)
+            # and the route passes ``current_user["id"]`` (also a ``users.id``).
+            # Writing either straight into the FK column raises a foreign-key
+            # violation surfaced to the teacher as
+            # "مرجع غير صالح في البيانات المُرسَلة". Resolve to a *verified*
+            # ``teachers.id`` and fall back to NULL so the closing note is always
+            # saved against the session, attributed correctly when resolvable.
+            note_teacher_id = await self._resolve_note_teacher_id(session, teacher_id)
+            # Write the actual columns of the ``session_notes`` table (``note`` /
+            # ``type``). The legacy payload used ``text``/``note_type``/
+            # ``is_closing_note`` keys that are NOT columns, so the generic
+            # writer silently dropped them — the row was stored empty. ``type``
+            # = "closing" marks the lesson-level closing note so readers can
+            # distinguish it from per-student notes.
             await gd_insert(self.session, "session_notes", {
                 "id": str(uuid.uuid4()),
                 "session_id": session_id,
-                "teacher_id": session.get("teacher_id") or None,
-                "note_type": "session",
-                "text": closing_note,
-                "is_closing_note": True,
+                "teacher_id": note_teacher_id,
+                "type": "closing",
+                "note": closing_note,
                 "created_at": now.isoformat(),
             })
 
@@ -3580,6 +3629,22 @@ class TeacherSessionEngine:
                 "negative_behaviors": neg,
             })
 
+        # Map persisted notes from their real column (``note``); the closing
+        # note is the ``type == "closing"`` row.
+        note_rows = [
+            {
+                "text": n.get("note", "") or "",
+                "type": n.get("type", ""),
+                "is_closing": n.get("type") == "closing",
+            }
+            for n in notes
+        ]
+        # Legacy sessions may have ``class_sessions.closing_note`` set without a
+        # typed note row — synthesize a closing entry so it is still visible.
+        session_closing = session.get("closing_note", "") or ""
+        if session_closing and not any(r["is_closing"] for r in note_rows):
+            note_rows.append({"text": session_closing, "type": "closing", "is_closing": True})
+
         try:
             await self._log_event(
                 session_id=session_id,
@@ -3598,7 +3663,10 @@ class TeacherSessionEngine:
             "duration_minutes": session.get("duration_minutes", 0),
             "summary": session.get("summary", {}),
             "students": student_rows,
-            "notes": [{"text": n.get("text", ""), "type": n.get("note_type", ""), "is_closing": n.get("is_closing_note", False)} for n in notes],
+            # ``session_notes`` stores content in the ``note`` column and the
+            # lesson-level closing note is marked ``type == "closing"``. The
+            # canonical closing-note text also lives on ``class_sessions``.
+            "notes": note_rows,
         }
 
     async def build_parent_lesson_reports(self, session_id: str) -> Dict[str, Dict[str, Any]]:
@@ -3624,13 +3692,15 @@ class TeacherSessionEngine:
         homework_statuses = await self.get_homework_statuses(session_id)
 
         # The teacher's closing note (if any) is the lesson-level message
-        # surfaced to every parent; prefer the explicit closing note, else
-        # the most recent general note.
-        closing_note = ""
-        for n in notes:
-            if n.get("is_closing_note"):
-                closing_note = n.get("text", "") or ""
-                break
+        # surfaced to every parent. Its canonical home is
+        # ``class_sessions.closing_note``; fall back to a ``type == "closing"``
+        # row in ``session_notes`` for older sessions.
+        closing_note = session.get("closing_note", "") or ""
+        if not closing_note:
+            for n in notes:
+                if n.get("type") == "closing":
+                    closing_note = n.get("note", "") or ""
+                    break
 
         student_ids = list(set(
             [a["student_id"] for a in attendance if a.get("student_id")] +
