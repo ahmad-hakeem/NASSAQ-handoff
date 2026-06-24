@@ -43,7 +43,7 @@ import StudentClassGrid from '../components/management/StudentClassGrid';
 import NoorImportPanel from '../components/management/NoorImportPanel';
 import { getApiErrorMessage } from '../utils/apiError';
 import { executeStudentTransfer } from '../utils/studentTransfer';
-import { getSchoolRolePrefix, getStudentDetailPath } from '../utils/studentNavigation';
+import { useSchoolNavigation } from '../utils/studentNavigation';
 
 // Visibility flag for the "Show them now" CTA inside the students-without-a-class
 // warning banner. The warning banner, its count, and the unassigned-students
@@ -883,6 +883,7 @@ const AddPickerDialog = ({ open, onClose, isRTL, onSelect }) => {
 export default function UsersClassesManagement() {
   const { t } = useTranslation();
   const { user, api, schoolContext, isImpersonating } = useAuth();
+  const { rolePrefix, getStudentDetailPath } = useSchoolNavigation();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const { nassaqConfirm, nassaqError, nassaqWarning, nassaqInfo } = useNassaqAlert();
   const navigate = useNavigate();
@@ -1319,21 +1320,20 @@ export default function UsersClassesManagement() {
   };
 
   const handleView = (item, type) => {
-    const prefix = getSchoolRolePrefix(user?.role);
     if (type === 'student') {
       const cls = classes.find(c => c.id === item.class_id);
-      navigate(getStudentDetailPath(user?.role, item.id), {
+      navigate(getStudentDetailPath(item.id), {
         state: {
           classId: item.class_id,
           className: cls?.name || item.class_name,
-          fromPath: `${prefix}/users-management?filter=students`
+          fromPath: `${rolePrefix}/users-management?filter=students`
         }
       });
     }
     else if (type === 'teacher') { setSelectedTeacher(item); setTeacherProfileOpen(true); }
     else if (type === 'parent') { setSelectedParent(item); setParentProfileOpen(true); }
     else if (type === 'class') {
-      navigate(`${prefix}/classes/${item.id}`);
+      navigate(`${rolePrefix}/classes/${item.id}`);
     }
     else { setSelectedItem(item); setSelectedItemType(type); setViewDialogOpen(true); }
   };

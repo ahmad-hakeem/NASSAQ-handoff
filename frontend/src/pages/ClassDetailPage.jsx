@@ -22,7 +22,7 @@ import {
 import { NotificationBell } from '../components/notifications/NotificationBell';
 import AddStudentWizard from '../components/wizards/AddStudentWizard';
 import { getApiErrorMessage } from '../utils/apiError';
-import { getSchoolRolePrefix, getStudentDetailPath } from '../utils/studentNavigation';
+import { useSchoolNavigation } from '../utils/studentNavigation';
 
 const CartoonMaleAvatar = ({ name, size = 'md' }) => {
   const { t } = useTranslation();
@@ -304,10 +304,10 @@ export default function ClassDetailPage() {
   // always shows all students (subject only to the search query).
   const displayedStudents = filteredStudents;
 
-  const rolePrefix = getSchoolRolePrefix(user?.role);
+  const { rolePrefix, getStudentDetailPath } = useSchoolNavigation();
 
   const navigateToStudent = (student) => {
-    navigate(getStudentDetailPath(user?.role, student.id), {
+    navigate(getStudentDetailPath(student.id), {
       state: { classId, className: classData?.name, fromPath: `${rolePrefix}/classes/${classId}` }
     });
   };

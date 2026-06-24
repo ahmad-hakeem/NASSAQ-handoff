@@ -34,7 +34,7 @@ import { CircularProgressRing } from '../components/ui/CircularProgressRing';
 import { CalendarCheck, FileText, XCircle, Download, Filter } from 'lucide-react';
 import { formatGregorianShort, formatGregorianFull } from '../utils/hijriDate';
 import { buildAlertRouteMap } from '../utils/alertRoutes';
-import { getStudentDetailPath } from '../utils/studentNavigation';
+import { useSchoolNavigation } from '../utils/studentNavigation';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -1139,6 +1139,7 @@ const AttendanceReportsSection = ({
 export const AIInsightsPage = () => {
   const { t } = useTranslation();
   const { api, user } = useAuth();
+  const { getStudentDetailPath } = useSchoolNavigation();
   const canSeeStudentPerf = STUDENT_PERF_ROLES.includes(user?.role);
   // 2026-05-19 — IT users see the embedded analytics tab. Gated on
   // role only (the panel's own backend calls re-check the
@@ -1336,9 +1337,10 @@ export const AIInsightsPage = () => {
 
   const handleStudentNavigate = (student) => {
     if (!student?.id) return;
-    // Role-aware destination: principals stay inside `/principal`, other
+    // Role-aware destination resolved from the EFFECTIVE role (handles
+    // preview/impersonation): principals stay inside `/principal`, other
     // school roles use `/admin`. Never fall back to a platform-admin list.
-    navigate(getStudentDetailPath(user?.role, student.id), {
+    navigate(getStudentDetailPath(student.id), {
       state: { studentName: student.name, fromPath: location.pathname },
     });
   };
