@@ -77,6 +77,16 @@ export default function TeacherAttendanceManagePage() {
   const navigate = useNavigate();
   const preselectedClass = searchParams.get('class');
 
+  // When opened from the AI Insights → Smart Alerts timeline, the register
+  // shows only present/absent per student card. The late/excused statuses stay
+  // available through every other entry path (dashboard, My Classes, Tasks,
+  // direct URL). Conditional render only — the canonical STATUS_KEYS set and the
+  // save payload are untouched.
+  const fromSmartAlert = searchParams.get('from') === 'smart-alert';
+  const visibleStatusKeys = fromSmartAlert
+    ? STATUS_KEYS.filter((k) => k === 'present' || k === 'absent')
+    : STATUS_KEYS;
+
   const handleBack = () => {
     if (window.history.length > 1) navigate(-1);
     else navigate('/teacher');
@@ -372,8 +382,8 @@ export default function TeacherAttendanceManagePage() {
                       {/* Mutually-exclusive status row. Selecting one writes
                           a single value to local state — the next save sends
                           exactly that value, no stale active styles. */}
-                      <div className="mt-3 grid grid-cols-4 gap-1.5" role="radiogroup" aria-label={t('attendance3')}>
-                        {STATUS_KEYS.map((key) => {
+                      <div className={`mt-3 grid ${fromSmartAlert ? 'grid-cols-2' : 'grid-cols-4'} gap-1.5`} role="radiogroup" aria-label={t('attendance3')}>
+                        {visibleStatusKeys.map((key) => {
                           const cfg = ATTENDANCE_STATUS[key];
                           const Icon = cfg.icon;
                           const active = current === key;

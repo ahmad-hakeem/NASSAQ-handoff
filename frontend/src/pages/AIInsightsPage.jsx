@@ -33,7 +33,7 @@ import SectionErrorBoundary from '../components/SectionErrorBoundary';
 import { CircularProgressRing } from '../components/ui/CircularProgressRing';
 import { CalendarCheck, FileText, XCircle, Download, Filter } from 'lucide-react';
 import { formatGregorianShort, formatGregorianFull } from '../utils/hijriDate';
-import { buildAlertRouteMap } from '../utils/alertRoutes';
+import { buildAlertRouteMap, withAlertAttendanceContext } from '../utils/alertRoutes';
 import { useSchoolNavigation } from '../utils/studentNavigation';
 import {
   ResponsiveContainer,
@@ -240,7 +240,7 @@ const AlertsTimeline = ({ alerts, isRTL, onNavigate, isTeacher = false }) => {
                         {new Date(alert.timestamp).toLocaleString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })}
                       </span>
                       {alertRoute && (
-                        <button onClick={() => onNavigate(alertRoute)}
+                        <button onClick={() => onNavigate(withAlertAttendanceContext(alertRoute, alert.category, isTeacher))}
                           className="flex items-center gap-1 text-[11px] font-cairo font-bold text-brand-turquoise hover:text-brand-purple transition-colors">
                           <ExternalLink className="h-3 w-3" />
                           {t('go')}
