@@ -2095,6 +2095,7 @@ class TeacherSessionEngine:
                     correct=correct,
                     engagement_rate=engagement_rate,
                     now=now,
+                    teacher_id=session.get("teacher_id") or "",
                 )
         except Exception as e:
             logger.error(f"Management session summary failed for session {session_id}: {e}")
@@ -3221,6 +3222,7 @@ class TeacherSessionEngine:
         correct: int,
         engagement_rate: float,
         now: datetime,
+        teacher_id: str = "",
     ) -> int:
         """Task #486 — deliver an end-of-session summary to school management.
 
@@ -3251,15 +3253,49 @@ class TeacherSessionEngine:
             if cls:
                 class_name = cls.get("name") or ""
 
+        # Resolve the conducting teacher's display name so the management card
+        # names who taught the session (principals need the teacher visible, not
+        # just subject/class/stats). We embed the NAME (a stable display value)
+        # directly in the message text so the FE needs no fragile late join, and
+        # keep it in ``data`` for structured use. A generic fallback is
+        # intentionally omitted rather than printing a meaningless "المعلم".
+        #
+        # The caller passes the session's canonical ``teacher_id`` (the session
+        # owner). Depending on the call site this id can be a ``teachers.id`` or
+        # a ``users.id``, so resolve in priority order — authoritative
+        # ``teachers`` row, then the actor's ``users`` row, then the ``users``
+        # row linked via ``teacher_id`` — and bind every lookup to the session's
+        # tenant (defense-in-depth: never embed a foreign-tenant teacher name).
+        teacher_name = ""
+        if teacher_id:
+            trow = await gd_find_one(
+                self.session, "teachers", {"id": teacher_id, "school_id": tenant_id}
+            )
+            if trow and (trow.get("full_name") or trow.get("name")):
+                teacher_name = (trow.get("full_name") or trow.get("name") or "").strip()
+            else:
+                urow = (
+                    await gd_find_one(
+                        self.session, "users", {"id": teacher_id, "tenant_id": tenant_id}
+                    )
+                    or await gd_find_one(
+                        self.session, "users", {"teacher_id": teacher_id, "tenant_id": tenant_id}
+                    )
+                )
+                if urow and urow.get("full_name"):
+                    teacher_name = (urow.get("full_name") or "").strip()
+
+        teacher_seg_ar = f" مع المعلم {teacher_name}" if teacher_name else ""
+        teacher_seg_en = f" with {teacher_name}" if teacher_name else ""
         title_ar = f"ملخص الحصة — {subject_name}" if subject_name else "ملخص الحصة"
         title_en = f"Session Summary — {subject_name}" if subject_name else "Session Summary"
         message_ar = (
-            f"اكتملت حصة {subject_name} للصف {class_name}. "
+            f"اكتملت حصة {subject_name} للصف {class_name}{teacher_seg_ar}. "
             f"المدة {duration_minutes} دقيقة، الحضور {present}/{total} ({attendance_rate}%)، "
             f"الأسئلة {questions_count} والإجابات الصحيحة {correct}."
         )
         message_en = (
-            f"Session for {subject_name} ({class_name}) completed. "
+            f"Session for {subject_name} ({class_name}){teacher_seg_en} completed. "
             f"Duration: {duration_minutes} min. Present: {present}/{total} ({attendance_rate}%). "
             f"Questions: {questions_count}, Correct: {correct}."
         )
@@ -3285,6 +3321,12 @@ class TeacherSessionEngine:
                 "is_read": False,
                 "entity_type": "session",
                 "entity_id": session_id,
+                "data": {
+                    "teacher_id": teacher_id or None,
+                    "teacher_name": teacher_name or None,
+                    "subject_name": subject_name or None,
+                    "class_name": class_name or None,
+                },
                 "created_at": now.isoformat(),
             })
             sent += 1

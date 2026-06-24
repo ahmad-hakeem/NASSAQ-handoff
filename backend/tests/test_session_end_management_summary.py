@@ -451,3 +451,172 @@ async def test_end_session_does_not_resolve_cross_tenant_principal(tenant_a, ten
         "entity_type": "session", "entity_id": session_id,
     }, limit=10)
     assert rows == []
+
+
+# ---------- teacher name embedded in the management summary ----------
+# The principal's "ملخص الحصة" card must name the teacher who conducted the
+# session (visible content), not just subject/class/stats.
+
+@pytest.mark.asyncio
+async def test_send_management_summary_includes_teacher_name(tenant_a):
+    admin_id = await _mk_user("school_admin", tenant_a)
+    teacher_id = str(uuid.uuid4())
+    await gd_insert(db.session, "teachers", {
+        "id": teacher_id, "school_id": tenant_a, "full_name": "أ. محمد الفارابي",
+    })
+
+    session_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+
+    sent = await _engine()._send_management_session_summary(
+        session_id=session_id, tenant_id=tenant_a, subject_id=None, class_id=None,
+        duration_minutes=30, present=10, absent=0, total=10, attendance_rate=100.0,
+        questions_count=3, correct=3, engagement_rate=80.0, now=now,
+        teacher_id=teacher_id,
+    )
+
+    assert sent == 1
+    rows = await gd_find(db.session, "notifications", {
+        "tenant_id": tenant_a, "entity_type": "session", "entity_id": session_id,
+    }, limit=10)
+    assert len(rows) == 1
+    row = rows[0]
+    # Visible content (both locales) names the teacher.
+    assert "أ. محمد الفارابي" in (row.get("message") or "")
+    assert "أ. محمد الفارابي" in (row.get("message_en") or "")
+    # Stable structured value for the FE / future use.
+    data = row.get("data") or {}
+    assert data.get("teacher_name") == "أ. محمد الفارابي"
+    assert data.get("teacher_id") == teacher_id
+
+
+@pytest.mark.asyncio
+async def test_send_management_summary_resolves_teacher_via_users_fallback(tenant_a):
+    # No authoritative ``teachers`` row — only a ``users`` row carrying the
+    # ``teacher_id`` (the canonical fallback path used by start_session).
+    await _mk_user("school_admin", tenant_a)
+    teacher_id = str(uuid.uuid4())
+    await gd_insert(db.session, "users", {
+        "id": str(uuid.uuid4()), "role": "teacher", "tenant_id": tenant_a,
+        "email": f"t-{teacher_id[:8]}@t.test", "full_name": "Mr Fallback Resolved",
+        "teacher_id": teacher_id, "is_active": True, "password_hash": "x",
+    })
+
+    session_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+
+    sent = await _engine()._send_management_session_summary(
+        session_id=session_id, tenant_id=tenant_a, subject_id=None, class_id=None,
+        duration_minutes=20, present=5, absent=0, total=5, attendance_rate=100.0,
+        questions_count=1, correct=1, engagement_rate=50.0, now=now,
+        teacher_id=teacher_id,
+    )
+
+    assert sent == 1
+    rows = await gd_find(db.session, "notifications", {
+        "tenant_id": tenant_a, "entity_type": "session", "entity_id": session_id,
+    }, limit=10)
+    assert "Mr Fallback Resolved" in (rows[0].get("message") or "")
+
+
+@pytest.mark.asyncio
+async def test_send_management_summary_omits_teacher_when_unresolved(tenant_a):
+    # Teacher cannot be resolved (no teachers/users row) — degrade gracefully:
+    # no crash, no dangling "مع المعلم" with an empty name, no teacher in data.
+    await _mk_user("school_admin", tenant_a)
+
+    session_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+
+    sent = await _engine()._send_management_session_summary(
+        session_id=session_id, tenant_id=tenant_a, subject_id=None, class_id=None,
+        duration_minutes=10, present=1, absent=0, total=1, attendance_rate=100.0,
+        questions_count=0, correct=0, engagement_rate=0.0, now=now,
+        teacher_id=str(uuid.uuid4()),
+    )
+
+    assert sent == 1
+    rows = await gd_find(db.session, "notifications", {
+        "tenant_id": tenant_a, "entity_type": "session", "entity_id": session_id,
+    }, limit=10)
+    msg = rows[0].get("message") or ""
+    assert "مع المعلم" not in msg
+    assert (rows[0].get("data") or {}).get("teacher_name") is None
+
+
+@pytest.mark.asyncio
+async def test_end_session_summary_message_names_teacher(tenant_a):
+    # Full integration: end_session must pass the conducting teacher through
+    # so the persisted management notification names them.
+    principal_id = await _mk_user("school_principal", tenant_a)
+    session_id, teacher_id, _ = await _seed_minimal_session(tenant_a)
+    await gd_insert(db.session, "teachers", {
+        "id": teacher_id, "school_id": tenant_a, "full_name": "أ. سارة المعلمة",
+    })
+
+    summary = await _engine().end_session(session_id=session_id, teacher_id=teacher_id)
+
+    assert summary.management_notifications_sent == 1
+    rows = await gd_find(db.session, "notifications", {
+        "tenant_id": tenant_a, "entity_type": "session", "entity_id": session_id,
+    }, limit=10)
+    prow = next(r for r in rows if r.get("user_id") == principal_id)
+    assert "أ. سارة المعلمة" in (prow.get("message") or "")
+
+
+@pytest.mark.asyncio
+async def test_end_session_names_teacher_when_actor_is_users_id(tenant_a):
+    # Route-realistic: the end-session route passes ``current_user["id"]`` (a
+    # ``users.id``), which differs from the session's canonical ``teachers.id``.
+    # The summary must still name the conducting teacher (resolved from the
+    # session owner), not the actor's login name and not a blank.
+    principal_id = await _mk_user("school_principal", tenant_a)
+    teacher_rec_id = str(uuid.uuid4())
+    user_id = str(uuid.uuid4())
+    await gd_insert(db.session, "teachers", {
+        "id": teacher_rec_id, "school_id": tenant_a, "full_name": "أ. خالد القائد",
+    })
+    await gd_insert(db.session, "users", {
+        "id": user_id, "role": "teacher", "tenant_id": tenant_a,
+        "email": f"t-{user_id[:8]}@t.test", "full_name": "Login Name Ignored",
+        "teacher_id": teacher_rec_id, "is_active": True, "password_hash": "x",
+    })
+
+    class_id = str(uuid.uuid4())
+    subject_id = str(uuid.uuid4())
+    session_id = str(uuid.uuid4())
+    student_id = str(uuid.uuid4())
+    await gd_insert(db.session, "classes", {
+        "id": class_id, "school_id": tenant_a, "tenant_id": tenant_a, "name": "2B",
+    })
+    await gd_insert(db.session, "subjects", {
+        "id": subject_id, "school_id": tenant_a, "tenant_id": tenant_a,
+        "name": "Science", "name_ar": "علوم", "name_en": "Science",
+    })
+    await gd_insert(db.session, "students", {
+        "id": student_id, "school_id": tenant_a, "tenant_id": tenant_a,
+        "full_name": "S2", "class_id": class_id, "is_active": True,
+    })
+    start_iso = datetime.now(timezone.utc).isoformat()
+    await gd_insert(db.session, "class_sessions", {
+        "id": session_id, "tenant_id": tenant_a, "school_id": tenant_a,
+        "class_id": class_id, "subject_id": subject_id, "teacher_id": teacher_rec_id,
+        "date": start_iso[:10], "start_time": start_iso, "status": "in_progress",
+        "attendance_approved": True,
+    })
+    await gd_insert(db.session, "session_attendance", {
+        "id": str(uuid.uuid4()), "session_id": session_id,
+        "student_id": student_id, "status": "present",
+    })
+
+    summary = await _engine().end_session(session_id=session_id, teacher_id=user_id)
+
+    assert summary.management_notifications_sent == 1
+    rows = await gd_find(db.session, "notifications", {
+        "tenant_id": tenant_a, "entity_type": "session", "entity_id": session_id,
+    }, limit=10)
+    prow = next(r for r in rows if r.get("user_id") == principal_id)
+    msg = prow.get("message") or ""
+    assert "أ. خالد القائد" in msg
+    assert "Login Name Ignored" not in msg
+    assert (prow.get("data") or {}).get("teacher_name") == "أ. خالد القائد"
