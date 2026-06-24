@@ -23,7 +23,12 @@ from pydantic import BaseModel, Field
 from typing import List
 
 from dependencies import db, get_current_user, require_roles, UserRole
-from engines.notification_engine import NotificationEngine
+from engines.notification_engine import (
+    NotificationCategory,
+    NotificationEngine,
+    NotificationPriority,
+    NotificationType,
+)
 from engines.sql_utils import gd_delete_many, gd_find, gd_find_one, gd_insert, gd_upsert
 from utils.tenant_scope import assert_school_access, resolve_school_id
 
@@ -110,6 +115,134 @@ async def get_standby_candidates(
             }
 
     return result
+
+
+class NotifyCoverageRequest(BaseModel):
+    original_session_id: str = Field(..., min_length=1, description="معرف الحصة الأصلية")
+    substitute_teacher_id: str = Field(..., min_length=1, description="معرف المعلم البديل")
+
+
+@router.post("/standby/notify-coverage", status_code=201)
+async def notify_coverage_candidate(
+    body: NotifyCoverageRequest,
+    school_id: Optional[str] = Query(None),
+    x_school_context: Optional[str] = Header(None),
+    current_user: dict = Depends(require_standby_roster_role),
+):
+    """يُشعِر معلماً متاحاً بتكليفه بتغطية حصة من جدول الانتظار.
+
+    تُشتقّ تفاصيل الحصة (اليوم/الحصة/الفصل/المادة) من السجل الأصلي على
+    الخادم — دون الثقة ببيانات العميل — مع التحقق من انتماء المعلم لنفس
+    المدرسة قبل إرسال الإشعار.
+    """
+    sid = resolve_school_id(current_user, school_id or x_school_context)
+    if not sid:
+        raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
+    assert_school_access(current_user, str(sid))
+
+    # الحصة الأصلية — تُعيد 404 إن لم توجد أو كانت لمدرسة أخرى حتى لا
+    # يكشف المسار وجود سجلات مستأجر آخر.
+    orig = await gd_find_one(
+        db.session, "timetable_sessions", {"id": body.original_session_id}
+    )
+    if not orig or str(orig.get("school_id")) != str(sid):
+        raise HTTPException(status_code=404, detail="الحصة غير موجودة")
+
+    # المعلم البديل — يجب أن ينتمي لنفس المدرسة وأن يكون نشطاً.
+    teacher = await gd_find_one(
+        db.session, "teachers", {"id": body.substitute_teacher_id}
+    )
+    if (
+        not teacher
+        or str(teacher.get("school_id")) != str(sid)
+        or teacher.get("is_active") is False
+    ):
+        raise HTTPException(status_code=404, detail="المعلم غير موجود")
+
+    sub_user_id = teacher.get("user_id")
+    if not sub_user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="تعذّر إشعار المعلم لعدم وجود حساب مستخدم مرتبط",
+        )
+
+    day_key = (orig.get("day_of_week") or orig.get("day") or "").lower()
+    try:
+        period = int(orig.get("period_number") or 0)
+    except (TypeError, ValueError):
+        period = 0
+    cls_name = orig.get("class_name") or "—"
+    subj_name = orig.get("subject_name") or ""
+    day_ar = _AR_DAY_LABEL.get(day_key, day_key or "—")
+
+    # التحقّق من توافر المعلم فعلياً في هذه الفترة باستخدام نفس مصدر القائمة
+    # المنسدلة، كي لا يُكلَّف معلم مشغول/غائب/خارج جدول الانتظار عبر طلب
+    # مُعدَّل يدوياً (الواجهة وحدها لا تكفي). نطلب حدّاً واسعاً لنفحص كامل
+    # مجموعة المؤهَّلين لا المرتبين فقط.
+    eligibility = await score_candidates_for_slot(
+        db.session,
+        school_id=str(sid),
+        day_of_week=day_key,
+        period_number=period,
+        absence_date=_today_iso(),
+        limit=500,
+    )
+    eligible_ids = {
+        c.get("teacher_id") for c in (eligibility.get("candidates") or [])
+    }
+    if body.substitute_teacher_id not in eligible_ids:
+        raise HTTPException(status_code=409, detail="المعلم غير متاح في هذه الفترة")
+
+    # توقيت الحصة تزييني فقط: نحلّه بأفضل جهد ولا نُفشل الإشعار عند غيابه.
+    time_str = ""
+    if period:
+        try:
+            from routes.schedule_master_grid_routes import _resolve_period_times
+
+            pt = await _resolve_period_times(str(sid), [period])
+            slot = pt.get(str(period)) or {}
+            start = slot.get("start") or slot.get("start_time") or ""
+            end = slot.get("end") or slot.get("end_time") or ""
+            time_str = f"{start} - {end}" if start and end else (start or end)
+        except Exception as _err:  # noqa: BLE001 — decorative, best-effort
+            logger.debug("period time resolution failed: %s", _err)
+            time_str = ""
+
+    segments = [f"الحصة {period}" if period else "", time_str, cls_name, subj_name]
+    detail_line = " · ".join(s for s in segments if s)
+    title = "تكليف بتغطية حصة"
+    message = f"تم تكليفك بتغطية حصة يوم {day_ar} — {detail_line}"
+
+    notif_engine = NotificationEngine(db)
+    notif = await notif_engine.create_notification(
+        tenant_id=str(sid),
+        recipient_id=str(sub_user_id),
+        title=title,
+        message=message,
+        notification_type=NotificationType.ALERT.value,
+        category=NotificationCategory.SCHEDULE.value,
+        priority=NotificationPriority.HIGH.value,
+        entity_type="timetable_session",
+        entity_id=str(body.original_session_id),
+        action_url="/schedule",
+        sender_id=(current_user or {}).get("id"),
+        metadata={
+            "kind": "coverage_assignment_notice",
+            "day_of_week": day_key,
+            "period_number": period,
+            "period_time": time_str,
+            "class_id": orig.get("class_id"),
+            "class_name": cls_name,
+            "subject_id": orig.get("subject_id"),
+            "subject_name": subj_name,
+        },
+    )
+
+    return {
+        "success": True,
+        "notification_id": (notif or {}).get("id"),
+        "teacher_name": teacher.get("full_name") or teacher.get("name") or "—",
+    }
 
 
 class CreateSubstitutionRequest(BaseModel):

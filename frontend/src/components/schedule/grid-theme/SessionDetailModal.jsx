@@ -15,6 +15,7 @@ import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { useTranslation } from '../../../contexts/ThemeContext';
 import { getDayBandClass, getDayTextOnBand } from './dayPalette';
+import CoverageNotifyControl from './CoverageNotifyControl';
 
 export default function SessionDetailModal({
   open,
@@ -24,6 +25,8 @@ export default function SessionDetailModal({
   onMove,
   onLockToggle,
   hideActions = false,
+  enableCoverage = false,
+  schoolId = null,
 }) {
   const { t } = useTranslation();
 
@@ -138,6 +141,10 @@ export default function SessionDetailModal({
                   </Badge>
                 )}
               </div>
+
+              {enableCoverage && schoolId && (
+                <CoverageNotifyControl session={session} schoolId={schoolId} />
+              )}
 
               {!hideActions && (
                 <div className="flex gap-2 pt-1">

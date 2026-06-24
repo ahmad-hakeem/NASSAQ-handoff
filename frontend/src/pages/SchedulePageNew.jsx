@@ -657,6 +657,10 @@ export default function SchedulePageNew() {
   const { user, api } = useAuth();
   const navigate = useNavigate();
   const schoolId = user?.tenant_id;
+  // تكليف التغطية متاح لقيادة المدرسة ومشرف المنصة فقط؛ الخادم يفرض الدور
+  // أيضاً عبر require_standby_roster_role.
+  const coverageEnabled = ['school_principal', 'school_admin', 'platform_admin']
+    .includes(user?.role);
   const tab = useScheduleTab();
   const { nassaqError, nassaqWarning, nassaqConfirm } = useNassaqAlert();
   const { t } = useTranslation();
@@ -2138,6 +2142,8 @@ export default function SchedulePageNew() {
             loading={loading}
             error={error}
             onRetry={() => loadGrid()}
+            enableCoverage={coverageEnabled}
+            schoolId={schoolId}
           />
         </div>
         <div className="relative hidden md:flex flex-col flex-grow min-h-0" data-testid="master-matrix-region">
@@ -2293,6 +2299,8 @@ export default function SchedulePageNew() {
                 setEditDrawerOpen(true);
               }}
               onDragMove={handleSessionDragMove}
+              enableCoverage={coverageEnabled}
+              schoolId={schoolId}
             />
           )}
 
@@ -2727,7 +2735,7 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
 // التصميم البصري الجديد: خلفية بيضاء، رؤوس فاتحة (slate-50)، حدود رفيعة
 // (slate-100)، وعمود المعلم على يمين الشاشة (RTL) مع ظل خفيف يفصل المنطقة
 // المثبَّتة عن منطقة التمرير.
-function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, onAcknowledgeRelocation, today, periodTimes = {}, unresolvedConflicts = [], viewMode = 'weekly', selectedDay = null, totalTeachers = null, canEdit = false, onEditSession, onCreateSession, onDragMove }) {
+function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, onBulkCoverClick, onAcknowledgeRelocation, today, periodTimes = {}, unresolvedConflicts = [], viewMode = 'weekly', selectedDay = null, totalTeachers = null, canEdit = false, onEditSession, onCreateSession, onDragMove, enableCoverage = false, schoolId = null }) {
   const { t, language } = useTranslation();
   const [selectedSession, setSelectedSession] = useState(null);
   // فهرس "رؤى حكيم" بمفتاح teacher_id|day|period → reason_ar. التحديد
@@ -3136,6 +3144,8 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
         session={selectedSession}
         onClose={() => setSelectedSession(null)}
         hideActions={!canEdit}
+        enableCoverage={enableCoverage}
+        schoolId={schoolId}
         onEdit={canEdit ? (s) => {
           setSelectedSession(null);
           onEditSession?.({ session: s, mode: 'edit' });

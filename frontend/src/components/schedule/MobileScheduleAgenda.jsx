@@ -312,6 +312,8 @@ export default function MobileScheduleAgenda({
   loading,
   error,
   onRetry,
+  enableCoverage = false,
+  schoolId = null,
 }) {
   // Build a Set of "teacher|day|period" conflict keys so the agenda
   // cards can render the orange conflict badge in parity with the
@@ -506,6 +508,8 @@ export default function MobileScheduleAgenda({
           session={detailSession}
           onClose={() => setDetailSession(null)}
           hideActions
+          enableCoverage={enableCoverage}
+          schoolId={schoolId}
         />
       </div>
     );
