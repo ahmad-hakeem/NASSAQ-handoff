@@ -16,8 +16,20 @@
 
 import { useAuth } from '../contexts/AuthContext';
 
+// School "leadership" roles. In this product a `school_admin` (and the read-only
+// `school_sub_admin`) is the account a school actually operates as its principal:
+// it is shown as "مدير المدرسة", `AuthContext.isSchoolPrincipal` is true for it,
+// and the sidebar gives ALL of these roles the same school menu rooted at
+// `/principal` (e.g. the AI-Insights entry is `/principal/ai-insights`, see
+// `components/layout/Sidebar.jsx`). The route tree also guards
+// `/principal/students/:id` with the same `SCHOOL_ROLES` set. They must therefore
+// stay inside the `/principal` scope for student navigation too, and must never
+// fall back to the platform `/admin` student route — otherwise clicking a student
+// (e.g. from the Risk Radar) jumps a leadership user out of `/principal`.
+const SCHOOL_LEADERSHIP_ROLES = ['school_principal', 'school_admin', 'school_sub_admin'];
+
 export function getSchoolRolePrefix(role) {
-  return role === 'school_principal' ? '/principal' : '/admin';
+  return SCHOOL_LEADERSHIP_ROLES.includes(role) ? '/principal' : '/admin';
 }
 
 export function getStudentDetailPath(role, studentId) {
