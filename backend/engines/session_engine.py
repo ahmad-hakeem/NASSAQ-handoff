@@ -2521,7 +2521,16 @@ class TeacherSessionEngine:
                 cat = it.get("behaviour_category")
                 btype = it.get("behaviour_type") or ""
                 if cat == BehaviourCategory.SKILL.value:
-                    b["performance_points"] += int(rules.get("special_skill", 3))
+                    # Honor the configured per-skill points the teacher set,
+                    # persisted on the interaction by record_skill. Legacy rows
+                    # recorded before points were stored (and behaviour-strip
+                    # skills with no configured value) fall back to the flat
+                    # ``special_skill`` default so historical sheets are unchanged.
+                    try:
+                        skill_pts = int(it.get("points"))
+                    except (TypeError, ValueError):
+                        skill_pts = int(rules.get("special_skill", 3))
+                    b["performance_points"] += skill_pts
                 elif cat == BehaviourCategory.POSITIVE.value:
                     pts = int(rules.get(btype, 2)) if not str(btype).startswith("custom:") else 2
                     # Behaviour (سلوك) folds into the participation (المشاركة)
@@ -3906,22 +3915,6 @@ class TeacherSessionEngine:
         }
         await gd_insert(self.session, "student_skills", skill_record)
 
-        interaction = {
-            "id": str(uuid.uuid4()),
-            "session_id": session_id,
-            "student_id": student_id,
-            "type": InteractionType.BEHAVIOUR.value,
-            "interaction_type": InteractionType.BEHAVIOUR.value,
-            "behaviour_category": BehaviourCategory.SKILL.value,
-            "behaviour_type": event_marker,
-            "behaviour_details": notes,
-            "recorded_by": teacher_id,
-            "recorded_at": now.isoformat(),
-            "timestamp": now.isoformat(),
-            "editable_until": (now + timedelta(hours=1)).isoformat()
-        }
-        await gd_insert(self.session, "session_interactions", interaction)
-
         # Score change resolution — the configured value is the single source
         # of truth, independent of any frontend id-prefix heuristic:
         #   * Registered skill types: the value saved on the skill type wins
@@ -3949,6 +3942,28 @@ class TeacherSessionEngine:
                 score_change = stored_pts
             else:
                 score_change = default_skill_points
+
+        # Persist the resolved configured points ON the interaction so the
+        # follow-up sheet (compute_session_scores → المهام الأدائية column)
+        # reflects the exact value awarded to the student score instead of
+        # re-deriving a flat ``special_skill`` default for every skill. Mirrors
+        # how EVALUATION interactions already carry their own ``points``.
+        interaction = {
+            "id": str(uuid.uuid4()),
+            "session_id": session_id,
+            "student_id": student_id,
+            "type": InteractionType.BEHAVIOUR.value,
+            "interaction_type": InteractionType.BEHAVIOUR.value,
+            "behaviour_category": BehaviourCategory.SKILL.value,
+            "behaviour_type": event_marker,
+            "behaviour_details": notes,
+            "points": score_change,
+            "recorded_by": teacher_id,
+            "recorded_at": now.isoformat(),
+            "timestamp": now.isoformat(),
+            "editable_until": (now + timedelta(hours=1)).isoformat()
+        }
+        await gd_insert(self.session, "session_interactions", interaction)
 
         if score_change != 0:
             await self._update_student_score(
