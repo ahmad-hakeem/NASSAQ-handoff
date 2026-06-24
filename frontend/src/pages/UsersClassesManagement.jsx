@@ -43,6 +43,7 @@ import StudentClassGrid from '../components/management/StudentClassGrid';
 import NoorImportPanel from '../components/management/NoorImportPanel';
 import { getApiErrorMessage } from '../utils/apiError';
 import { executeStudentTransfer } from '../utils/studentTransfer';
+import { getSchoolRolePrefix, getStudentDetailPath } from '../utils/studentNavigation';
 
 // Visibility flag for the "Show them now" CTA inside the students-without-a-class
 // warning banner. The warning banner, its count, and the unassigned-students
@@ -1318,10 +1319,10 @@ export default function UsersClassesManagement() {
   };
 
   const handleView = (item, type) => {
-    const prefix = user?.role === 'school_principal' ? '/principal' : '/admin';
+    const prefix = getSchoolRolePrefix(user?.role);
     if (type === 'student') {
       const cls = classes.find(c => c.id === item.class_id);
-      navigate(`${prefix}/students/${item.id}`, {
+      navigate(getStudentDetailPath(user?.role, item.id), {
         state: {
           classId: item.class_id,
           className: cls?.name || item.class_name,

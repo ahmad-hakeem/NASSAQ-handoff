@@ -9,7 +9,7 @@ const StudentPerformanceDashboard = lazy(() =>
 const TeacherAnalyticsPanel = lazy(() =>
   import('./TeacherModule/TeacherAnalyticsPanel'));
 const STUDENT_PERF_ROLES = ['school_admin', 'school_sub_admin', 'school_principal'];
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
@@ -34,6 +34,7 @@ import { CircularProgressRing } from '../components/ui/CircularProgressRing';
 import { CalendarCheck, FileText, XCircle, Download, Filter } from 'lucide-react';
 import { formatGregorianShort, formatGregorianFull } from '../utils/hijriDate';
 import { buildAlertRouteMap } from '../utils/alertRoutes';
+import { getStudentDetailPath } from '../utils/studentNavigation';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -1153,6 +1154,7 @@ export const AIInsightsPage = () => {
   const isTeacher = user?.role === 'teacher' || user?.role === 'independent_teacher';
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   // 2026-05-19 — Deep-link support: `?tab=analytics` (used by the
   // /teacher/analytics legacy redirect) opens the new analytics tab
   // directly so old bookmarks land in the right place.
@@ -1333,7 +1335,12 @@ export const AIInsightsPage = () => {
   };
 
   const handleStudentNavigate = (student) => {
-    navigate('/admin/users-management', { state: { openStudent: student.id, studentName: student.name } });
+    if (!student?.id) return;
+    // Role-aware destination: principals stay inside `/principal`, other
+    // school roles use `/admin`. Never fall back to a platform-admin list.
+    navigate(getStudentDetailPath(user?.role, student.id), {
+      state: { studentName: student.name, fromPath: location.pathname },
+    });
   };
 
   const handleAlertNavigate = (route) => {

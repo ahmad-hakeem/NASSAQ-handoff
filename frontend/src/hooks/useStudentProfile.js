@@ -5,6 +5,7 @@ import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { toast } from 'sonner';
 import { getApiErrorMessage } from '../utils/apiError';
+import { getSchoolRolePrefix } from '../utils/studentNavigation';
 
 export function useStudentProfile() {
   const { studentId } = useParams();
@@ -105,7 +106,7 @@ export function useStudentProfile() {
     return h;
   }, [user?.tenant_id]);
 
-  const rolePrefix = user?.role === 'school_principal' ? '/principal' : '/admin';
+  const rolePrefix = getSchoolRolePrefix(user?.role);
   const tenantId = useMemo(() => user?.tenant_id || localStorage.getItem('nassaq_tenant_id'), [user?.tenant_id]);
   const isTeacher = user?.role === 'teacher';
 
