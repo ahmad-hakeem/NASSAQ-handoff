@@ -2015,10 +2015,14 @@ class TeacherSessionEngine:
         await gd_update_one(self.session, "class_sessions", {"id": session_id}, session_update)
 
         if closing_note:
+            # ``session_notes.teacher_id`` is an FK to ``teachers.id``. The
+            # route passes ``current_user["id"]`` (a ``users.id``), so attribute
+            # the note to the session's canonical ``teachers.id`` (already
+            # trusted elsewhere in this method) to avoid an FK violation.
             await gd_insert(self.session, "session_notes", {
                 "id": str(uuid.uuid4()),
                 "session_id": session_id,
-                "teacher_id": teacher_id,
+                "teacher_id": session.get("teacher_id") or None,
                 "note_type": "session",
                 "text": closing_note,
                 "is_closing_note": True,

@@ -620,3 +620,65 @@ async def test_end_session_names_teacher_when_actor_is_users_id(tenant_a):
     assert "أ. خالد القائد" in msg
     assert "Login Name Ignored" not in msg
     assert (prow.get("data") or {}).get("teacher_name") == "أ. خالد القائد"
+
+
+@pytest.mark.asyncio
+async def test_end_session_with_closing_note_when_actor_is_users_id(tenant_a):
+    # Regression: ending a session WITH a closing note must not raise a
+    # foreign-key violation. The route passes ``current_user["id"]`` (a
+    # ``users.id``), but ``session_notes.teacher_id`` references
+    # ``teachers.id``. The closing-note row must be attributed to the
+    # session's canonical ``teachers.id``, never the actor's ``users.id``.
+    teacher_rec_id = str(uuid.uuid4())
+    user_id = str(uuid.uuid4())
+    await gd_insert(db.session, "teachers", {
+        "id": teacher_rec_id, "school_id": tenant_a, "full_name": "أ. منى",
+    })
+    await gd_insert(db.session, "users", {
+        "id": user_id, "role": "teacher", "tenant_id": tenant_a,
+        "email": f"t-{user_id[:8]}@t.test", "full_name": "Login Name",
+        "teacher_id": teacher_rec_id, "is_active": True, "password_hash": "x",
+    })
+
+    class_id = str(uuid.uuid4())
+    subject_id = str(uuid.uuid4())
+    session_id = str(uuid.uuid4())
+    student_id = str(uuid.uuid4())
+    await gd_insert(db.session, "classes", {
+        "id": class_id, "school_id": tenant_a, "tenant_id": tenant_a, "name": "3C",
+    })
+    await gd_insert(db.session, "subjects", {
+        "id": subject_id, "school_id": tenant_a, "tenant_id": tenant_a,
+        "name": "Arabic", "name_ar": "عربي", "name_en": "Arabic",
+    })
+    await gd_insert(db.session, "students", {
+        "id": student_id, "school_id": tenant_a, "tenant_id": tenant_a,
+        "full_name": "S3", "class_id": class_id, "is_active": True,
+    })
+    start_iso = datetime.now(timezone.utc).isoformat()
+    await gd_insert(db.session, "class_sessions", {
+        "id": session_id, "tenant_id": tenant_a, "school_id": tenant_a,
+        "class_id": class_id, "subject_id": subject_id, "teacher_id": teacher_rec_id,
+        "date": start_iso[:10], "start_time": start_iso, "status": "in_progress",
+        "attendance_approved": True,
+    })
+    await gd_insert(db.session, "session_attendance", {
+        "id": str(uuid.uuid4()), "session_id": session_id,
+        "student_id": student_id, "status": "present",
+    })
+
+    # Must not raise (previously: ForeignKeyViolation -> INVALID_REFERENCE).
+    summary = await _engine().end_session(
+        session_id=session_id, teacher_id=user_id,
+        closing_note="ملاحظة ختامية للحصة",
+    )
+    assert summary is not None
+
+    # The closing-note row exists and is attributed to the canonical
+    # teachers.id, never the actor's users.id.
+    notes = await gd_find(db.session, "session_notes", {
+        "session_id": session_id,
+    }, limit=10)
+    assert len(notes) == 1
+    assert notes[0].get("teacher_id") == teacher_rec_id
+    assert notes[0].get("teacher_id") != user_id
