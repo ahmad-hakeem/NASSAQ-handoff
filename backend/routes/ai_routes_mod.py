@@ -1723,6 +1723,13 @@ def _scope_query_for(scope: Optional[Dict[str, Any]], school_id: Optional[str], 
     invoke this helper with a falsy school_id.
     """
     base: Dict[str, Any] = {"school_id": school_id} if school_id else {}
+    # Roster collections (students/teachers) must use the same "active" filter
+    # as the operational attendance board (/school/dashboard) and the
+    # user-management page — archived/deactivated rows are NEVER counted. This
+    # applies to BOTH the principal/admin (no-scope) path and the
+    # teacher-scoped path so AI Insights counts reconcile with those surfaces.
+    if collection in {"students", "teachers"}:
+        base["is_active"] = True
     if not scope:
         return base
     cids = scope.get("class_ids") or []
@@ -1769,14 +1776,30 @@ async def get_ai_insights_overview(
     total_students = await gd_count(db.session, "students", students_q)
     total_teachers = await gd_count(db.session, "teachers", teachers_q)
 
-    # Get attendance data using the same scope as students/teachers
+    # Cumulative attendance signal — feeds the Smart Performance Index. Kept on
+    # the full history so the score stays stable and does NOT collapse to 0 each
+    # morning before today's attendance has been recorded.
     attendance_count = await gd_count(db.session, "attendance", {**attendance_q, "status": "present"})
     total_attendance = await gd_count(db.session, "attendance", attendance_q)
 
     has_attendance_data = total_attendance > 0
     has_any_data = total_students > 0 or total_teachers > 0 or has_attendance_data
 
-    attendance_rate = round((attendance_count / total_attendance) * 100, 1) if has_attendance_data else 0
+    cumulative_attendance_rate = round((attendance_count / total_attendance) * 100, 1) if has_attendance_data else 0
+
+    # Displayed "نسبة الحضور / اليوم" (today) card — TODAY's records only, using
+    # the exact same date scope and denominator as the operational attendance
+    # board (/school/dashboard) so the two surfaces always reconcile.
+    _today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Use the attendance board's canonical student predicate (school_id + today
+    # + type="student") byte-for-byte. On the current schema the `attendance`
+    # table has no `type` column, so the gd layer silently drops this key (it is
+    # a no-op today); it is kept only for parity with /school/dashboard so the
+    # two surfaces stay reconciled if a `type` discriminator is ever introduced.
+    _today_att_q = {**attendance_q, "date": _today_str, "type": "student"}
+    today_total = await gd_count(db.session, "attendance", _today_att_q)
+    today_present = await gd_count(db.session, "attendance", {**_today_att_q, "status": "present"})
+    attendance_rate = round((today_present / today_total) * 100, 1) if today_total > 0 else 0
     student_teacher_ratio = round(total_students / total_teachers, 1) if total_teachers > 0 else 0
 
     # Real engagement rate: % of students with at least one assessment grade in the last 30 days.
@@ -1817,14 +1840,14 @@ async def get_ai_insights_overview(
     score_available = total_students > 0 and has_attendance_data
 
     if score_available:
-        overall_score = _score_from(attendance_rate, student_teacher_ratio, engagement_rate)
+        overall_score = _score_from(cumulative_attendance_rate, student_teacher_ratio, engagement_rate)
 
         # Real month-over-month trend: recompute the same score using last month's data.
         prev_month_start = (now_utc - timedelta(days=60)).strftime("%Y-%m-%d")
         prev_month_end = (now_utc - timedelta(days=30)).strftime("%Y-%m-%d")
         prev_total = await gd_count(db.session, "attendance", {**attendance_q, "date": {"$gte": prev_month_start, "$lt": prev_month_end}})
         prev_present = await gd_count(db.session, "attendance", {**attendance_q, "date": {"$gte": prev_month_start, "$lt": prev_month_end}, "status": "present"})
-        prev_att_rate = round((prev_present / prev_total) * 100, 1) if prev_total > 0 else attendance_rate
+        prev_att_rate = round((prev_present / prev_total) * 100, 1) if prev_total > 0 else cumulative_attendance_rate
 
         prev_eng_rate = 0.0
         if total_students > 0:
@@ -2557,7 +2580,7 @@ async def get_students_overview(
     if not refresh and cached and now_ts - cached[0] < _OVERVIEW_TTL_SEC:
         return cached[1]
 
-    students = await gd_find(db.session, "students", {"school_id": school_id}, limit=500)
+    students = await gd_find(db.session, "students", {"school_id": school_id, "is_active": True}, limit=500)
     if not students:
         empty = {
             "summary": {
