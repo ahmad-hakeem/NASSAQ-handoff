@@ -91,13 +91,17 @@ export default function InlineAttendanceTable({
     try {
       if (sessionMode) {
         // Live-session register: persist to the canonical session-attendance
-        // store so the live roster, live metrics, end-session summary and the
-        // lesson report all read one source of truth. The approve/finalize +
-        // daily-table sync is handled by the parent when the register closes.
+        // store (live roster, live metrics, end-session summary, lesson report).
+        // The backend now also writes this status THROUGH to the canonical
+        // daily `attendance` table immediately, so the daily page and the
+        // class-detail inline table reflect it with no approval step.
         await api.put(`/session/${sessionId}/attendance/${studentId}`, {
           status: newStatus,
         });
         setSessionStatus((prev) => ({ ...prev, [studentId]: newStatus }));
+        // Re-read the canonical daily records so the present/absent counters in
+        // this register never show stale values after a toggle.
+        fetchAttendanceData();
       } else {
         await api.post('/attendance/bulk', {
           class_id: classId,

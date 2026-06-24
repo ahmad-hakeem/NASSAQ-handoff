@@ -317,6 +317,33 @@ async def load_tenant_student_levels(db: Any, tenant_id: str) -> dict:
 
 # ============== SESSION ENGINE CLASS ==============
 
+def _coerce_attendance_date(raw_date):
+    """Normalize a session ``date`` value to a date-only midnight UTC datetime.
+
+    The canonical ``attendance.date`` column is ``DateTime(timezone=True)``. The
+    daily-attendance page writes a bare ``YYYY-MM-DD`` (which Postgres casts to
+    midnight), while a live session may carry a full timestamp. Truncating to
+    midnight UTC here guarantees the canonical upsert dedupes per
+    class/date/student regardless of which entry path wrote the row.
+    """
+    if raw_date is None:
+        return None
+    if isinstance(raw_date, datetime):
+        dt = raw_date
+    elif isinstance(raw_date, str):
+        try:
+            dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+        except ValueError:
+            dt = datetime.strptime(raw_date[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    else:
+        # date object
+        dt = datetime(raw_date.year, raw_date.month, raw_date.day, tzinfo=timezone.utc)
+    dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 class TeacherSessionEngine:
     """
     Main engine for managing teacher class sessions.
@@ -780,6 +807,33 @@ class TeacherSessionEngine:
         # Get students
         students = await gd_find(self.session, "students", {"class_id": session["class_id"], "is_active": True}, limit=200)
 
+        # Seed each student's "today" status from the canonical daily
+        # `attendance` table for this class/date so a status set on the daily
+        # attendance page is reflected here, and re-opening a session shows the
+        # real saved statuses instead of defaulting everyone to "present". The
+        # session draft store is used only as a fallback when there is no
+        # canonical record yet.
+        canonical_status_map: Dict[str, str] = {}
+        att_date = _coerce_attendance_date(session.get("date"))
+        if att_date is not None and session.get("class_id") and session.get("school_id"):
+            student_ids = [s.get("id") for s in students if s.get("id")]
+            if student_ids:
+                canonical_rows = await gd_find(
+                    self.session, "attendance",
+                    {
+                        "school_id": session["school_id"],
+                        "class_id": session["class_id"],
+                        "date": att_date,
+                        "student_id": {"$in": student_ids},
+                    },
+                    limit=500,
+                )
+                canonical_status_map = {
+                    r["student_id"]: r["status"]
+                    for r in canonical_rows
+                    if r.get("student_id") and r.get("status")
+                }
+
         # Authoritative per-student in-session totals derived from
         # session_interactions. The backend — not optimistic frontend state —
         # is the source of truth so any roster refresh (including the one that
@@ -836,7 +890,9 @@ class TeacherSessionEngine:
                 "student_code": student.get("student_id") or student.get("code"),
                 "gender": student.get("gender", "male"),
                 "avatar_url": student.get("avatar_url"),
-                "attendance_status": attendance.get("status", AttendanceStatus.PRESENT.value),
+                "attendance_status": canonical_status_map.get(
+                    sid, attendance.get("status", AttendanceStatus.PRESENT.value)
+                ),
                 "attendance_id": attendance.get("id"),
                 "correct_answers": agg.get("correct_answers", 0),
                 "wrong_answers": agg.get("wrong_answers", 0),
@@ -881,9 +937,71 @@ class TeacherSessionEngine:
             student_id=student_id,
             new_value=status.value
         )
-        
+
+        # Write through to the canonical daily `attendance` table immediately so
+        # the daily attendance page and the class-detail inline table reflect the
+        # change with no separate approval step. The upsert dedupes per
+        # class/date/student, so no duplicate rows are created no matter how many
+        # times the teacher toggles.
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
+        await self._sync_canonical_attendance(
+            session,
+            [{"student_id": student_id, "status": status.value}],
+            teacher_id,
+        )
+
         return {"message": "تم تحديث الحضور", "student_id": student_id, "status": status.value}
-    
+
+    async def _sync_canonical_attendance(
+        self,
+        session: Optional[Dict[str, Any]],
+        records: List[Dict[str, Any]],
+        teacher_id: str,
+    ) -> None:
+        """Mirror live-session attendance into the canonical daily ``attendance``
+        table.
+
+        Reuses ``AttendanceEngine.record_bulk_attendance`` which upserts per
+        class/date/student, so calling this on every toggle *and* again on
+        approve never creates duplicate or conflicting rows. Runs inside a
+        SAVEPOINT and never raises, so a canonical-sync failure can never break
+        the live-session write/approve flow (the session store stays the live
+        source of truth either way).
+        """
+        if not (session and session.get("class_id") and session.get("school_id") and session.get("date")):
+            return
+        att_date = _coerce_attendance_date(session["date"])
+        if att_date is None:
+            return
+        bulk = [
+            {
+                "student_id": r["student_id"],
+                "status": r["status"],
+                "session_id": session.get("id"),
+            }
+            for r in records if r.get("student_id")
+        ]
+        if not bulk:
+            return
+        try:
+            from engines.attendance_engine import AttendanceEngine
+            from dependencies import db as _db
+            # SAVEPOINT so a failure here rolls back without aborting the outer
+            # request transaction (which still has response work to do).
+            async with self.session.begin_nested():
+                att_engine = AttendanceEngine(_db)
+                await att_engine.record_bulk_attendance(
+                    tenant_id=session["school_id"],
+                    section_id=session["class_id"],
+                    attendance_date=att_date,
+                    attendance_records=bulk,
+                    recorded_by=teacher_id,
+                )
+        except Exception as sync_err:  # pragma: no cover — never fail the caller
+            logging.getLogger("nassaq").warning(
+                f"Failed to sync session {session.get('id')} attendance into canonical table: {sync_err}"
+            )
+
     async def approve_attendance(self, session_id: str, teacher_id: str) -> Dict[str, Any]:
         """
         Approve and finalize attendance for a session.
@@ -966,54 +1084,18 @@ class TeacherSessionEngine:
         excused = sum(1 for r in records if r["status"] == AttendanceStatus.EXCUSED.value)
 
         # Sync approved attendance into the canonical `attendance` table so it
-        # is visible in class-level absence logs / dashboards. The session
-        # records remain the source of truth for the live lesson, but the
-        # canonical table is what TeacherClassDetailPage and reports query.
-        try:
-            session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
-            if session and session.get("class_id") and session.get("school_id") and session.get("date"):
-                from engines.attendance_engine import AttendanceEngine
-                from dependencies import db as _db
-                # Coerce session date into a datetime — the Attendance.date
-                # column is DateTime(timezone=True) and rejects bare strings.
-                _raw_date = session["date"]
-                if isinstance(_raw_date, str):
-                    try:
-                        _att_date = datetime.fromisoformat(_raw_date.replace("Z", "+00:00"))
-                    except ValueError:
-                        _att_date = datetime.strptime(_raw_date[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
-                elif isinstance(_raw_date, datetime):
-                    _att_date = _raw_date
-                else:
-                    # date object
-                    _att_date = datetime(_raw_date.year, _raw_date.month, _raw_date.day, tzinfo=timezone.utc)
-                if _att_date.tzinfo is None:
-                    _att_date = _att_date.replace(tzinfo=timezone.utc)
-                bulk = [
-                    {
-                        "student_id": r["student_id"],
-                        "status": r["status"],
-                        "session_id": session_id,
-                    }
-                    for r in records if r.get("student_id")
-                ]
-                if bulk:
-                    # Run inside a SAVEPOINT so a failure here can be rolled
-                    # back without aborting the outer request transaction
-                    # (which still has _log_event and response work to do).
-                    async with self.session.begin_nested():
-                        att_engine = AttendanceEngine(_db)
-                        await att_engine.record_bulk_attendance(
-                            tenant_id=session["school_id"],
-                            section_id=session["class_id"],
-                            attendance_date=_att_date,
-                            attendance_records=bulk,
-                            recorded_by=teacher_id,
-                        )
-        except Exception as sync_err:  # pragma: no cover — never fail approval
-            logging.getLogger("nassaq").warning(
-                f"Failed to sync session {session_id} attendance into canonical table: {sync_err}"
-            )
+        # is visible in class-level absence logs / dashboards. Each live toggle
+        # already writes through to the canonical table, so this re-runs the
+        # same idempotent upsert — it never creates duplicate rows; it only
+        # backstops sessions whose drafts were set before per-toggle sync (or
+        # if an individual toggle's canonical write failed). The session records
+        # remain the source of truth for the live lesson.
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
+        await self._sync_canonical_attendance(
+            session,
+            [{"student_id": r["student_id"], "status": r["status"]} for r in records],
+            teacher_id,
+        )
 
         await self._log_event(
             session_id=session_id,
