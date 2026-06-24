@@ -813,6 +813,10 @@ class LessonUpdate(BaseModel):
     is_completed: Optional[bool] = None
     is_skipped: Optional[bool] = None
     notes: Optional[str] = Field(default=None, max_length=500)
+    start_date: Optional[_date] = Field(default=None)
+    end_date: Optional[_date] = Field(default=None)
+    override_curriculum: bool = False
+    override_reason: Optional[str] = Field(default=None, max_length=1000)
 
 
 async def _verify_class_access(class_id: str, current_user: dict, *, write: bool = False):
@@ -1141,8 +1145,114 @@ async def update_lesson(
     if not existing:
         raise HTTPException(status_code=404, detail="Lesson not found")
     await _verify_class_access(existing["class_id"], current_user)
-    data = {k: v for k, v in update.model_dump().items() if v is not None}
-    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    cls = await gd_find_one(db.session, "classes", {"id": existing["class_id"]})
+    now_ts = datetime.now(timezone.utc).isoformat()
+
+    # Date-range validation + override flow — mirrors the create path, and
+    # only runs when the caller actually supplies a date.
+    out_of_range = False
+    curriculum_start = curriculum_end = None
+    if update.start_date or update.end_date:
+        date_range = await _get_curriculum_date_range(cls or {})
+        curriculum_start = date_range["curriculum_start_date"]
+        curriculum_end = date_range["curriculum_end_date"]
+        if curriculum_start and curriculum_end:
+            start_ok = _date_in_range(update.start_date, curriculum_start, curriculum_end) if update.start_date else True
+            end_ok = _date_in_range(update.end_date, curriculum_start, curriculum_end) if update.end_date else True
+            out_of_range = not (start_ok and end_ok)
+
+    if out_of_range:
+        if not update.override_curriculum:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "curriculum_date_conflict",
+                    "message": "الدرس خارج نطاق المنهج",
+                    "details": {
+                        "curriculum_start": curriculum_start,
+                        "curriculum_end": curriculum_end,
+                        "provided_start": update.start_date,
+                        "provided_end": update.end_date,
+                    },
+                },
+            )
+        if not (update.override_reason or "").strip():
+            raise HTTPException(status_code=422, detail="يجب كتابة مبرر للتجاوز")
+
+    # Build a partial update: only persist fields the caller actually provided,
+    # preserving the existing optimistic/partial-update behavior.
+    data: dict = {}
+    if update.title is not None:
+        data["title"] = update.title
+    if update.order is not None:
+        data["order"] = update.order
+    if update.is_completed is not None:
+        data["is_completed"] = update.is_completed
+    if update.is_skipped is not None:
+        data["is_skipped"] = update.is_skipped
+    if update.notes is not None:
+        data["notes"] = update.notes
+    if update.start_date is not None:
+        data["start_date"] = update.start_date.isoformat()
+    if update.end_date is not None:
+        data["end_date"] = update.end_date.isoformat()
+
+    # When the week changes, keep `order` consistent within the target week so
+    # sequencing / progress calculations don't break. If the caller didn't pass
+    # an explicit order, append the lesson to the end of its new week.
+    if update.week is not None:
+        data["week"] = update.week
+        if update.week != existing.get("week") and update.order is None:
+            week_lessons = await gd_find(
+                db.session,
+                "curriculum_lessons",
+                {"class_id": existing["class_id"], "week": update.week},
+                limit=500,
+            )
+            count = len([l for l in week_lessons if l.get("id") != lesson_id])
+            data["order"] = count + 1
+
+    # Override metadata + audit record (only on a genuine out-of-range override).
+    if out_of_range and update.override_curriculum:
+        start_iso = update.start_date.isoformat() if update.start_date else None
+        end_iso = update.end_date.isoformat() if update.end_date else None
+        data["override_curriculum"] = True
+        data["override_reason"] = update.override_reason.strip()
+        data["override_by_user_id"] = current_user.get("id")
+        data["override_time"] = now_ts
+
+        tenant_id = (cls or {}).get("school_id") or (cls or {}).get("tenant_id") or ""
+        audit_doc = {
+            "id": str(uuid.uuid4()),
+            "lesson_id": lesson_id,
+            "class_id": existing["class_id"],
+            "tenant_id": tenant_id,
+            "user_id": current_user.get("id"),
+            "override_reason": update.override_reason.strip(),
+            "provided_start": start_iso,
+            "provided_end": end_iso,
+            "curriculum_start": curriculum_start,
+            "curriculum_end": curriculum_end,
+            "created_at": now_ts,
+        }
+        await gd_insert(db.session, "curriculum_lesson_audit", audit_doc)
+        logger.info(
+            "curriculum_lesson_override",
+            extra={
+                "lesson_id": lesson_id,
+                "class_id": existing["class_id"],
+                "tenant_id": tenant_id,
+                "user_id": current_user.get("id"),
+                "override_reason": update.override_reason.strip(),
+                "provided_start": start_iso,
+                "provided_end": end_iso,
+                "curriculum_start": curriculum_start,
+                "curriculum_end": curriculum_end,
+            },
+        )
+
+    data["updated_at"] = now_ts
     await gd_update_one(db.session, "curriculum_lessons", {"id": lesson_id}, data)
     return {**existing, **data}
 

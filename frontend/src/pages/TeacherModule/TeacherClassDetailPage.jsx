@@ -82,10 +82,12 @@ export default function TeacherClassDetailPage() {
   const [showAddLesson, setShowAddLesson] = useState(false);
   const [newLessonTitle, setNewLessonTitle] = useState('');
   const [newLessonWeek, setNewLessonWeek] = useState(1);
-  const [editingLesson, setEditingLesson] = useState(null);
-  const [editingTitle, setEditingTitle] = useState('');
+  // Lesson dialog mode: 'add' creates a new lesson, 'edit' updates an existing one.
+  // Both modes share the same form fields/state below so create & edit stay in sync.
+  const [lessonDialogMode, setLessonDialogMode] = useState('add');
+  const [editingLessonId, setEditingLessonId] = useState(null);
 
-  // Add Lesson — date & override state
+  // Add/Edit Lesson — date & override state
   const [lessonMeta, setLessonMeta] = useState(null);
   const [lessonMetaLoading, setLessonMetaLoading] = useState(false);
   const [lessonStartDate, setLessonStartDate] = useState('');
@@ -300,6 +302,8 @@ export default function TeacherClassDetailPage() {
   };
 
   const resetAddLessonForm = () => {
+    setLessonDialogMode('add');
+    setEditingLessonId(null);
     setNewLessonTitle('');
     setNewLessonWeek(1);
     setLessonMeta(null);
@@ -320,6 +324,28 @@ export default function TeacherClassDetailPage() {
       setLessonMeta(meta);
       setLessonStartDate(meta.default_start_date || '');
       setLessonEndDate(meta.default_end_date || '');
+    } catch {
+      setLessonMeta({});
+    } finally {
+      setLessonMetaLoading(false);
+    }
+  };
+
+  const openEditLesson = async (lesson) => {
+    // Prefill the shared lesson form with the lesson's current saved values,
+    // then switch the dialog into edit mode.
+    resetAddLessonForm();
+    setLessonDialogMode('edit');
+    setEditingLessonId(lesson.id);
+    setNewLessonTitle(lesson.title || '');
+    setNewLessonWeek(lesson.week || 1);
+    setLessonStartDate((lesson.start_date || '').slice(0, 10));
+    setLessonEndDate((lesson.end_date || '').slice(0, 10));
+    setShowAddLesson(true);
+    setLessonMetaLoading(true);
+    try {
+      const res = await api.get(`/class/${classId}/curriculum-plan/lesson/new-metadata`);
+      setLessonMeta(res.data || {});
     } catch {
       setLessonMeta({});
     } finally {
@@ -372,18 +398,40 @@ export default function TeacherClassDetailPage() {
     }
   };
 
-  const handleEditLesson = async (lesson) => {
-    if (!editingTitle.trim()) return;
+  const handleEditLesson = async () => {
+    if (!newLessonTitle.trim() || !editingLessonId) return;
     try {
-      await api.put(`/curriculum-lesson/${lesson.id}`, { title: editingTitle.trim() });
+      const body = {
+        title: newLessonTitle.trim(),
+        week: newLessonWeek,
+      };
+      if (lessonStartDate) body.start_date = lessonStartDate;
+      if (lessonEndDate) body.end_date = lessonEndDate;
+      if (overrideChecked) {
+        body.override_curriculum = true;
+        body.override_reason = overrideReason.trim();
+      }
+      await api.put(`/curriculum-lesson/${editingLessonId}`, body);
       toast.success(t('lessonUpdated'));
-      setEditingLesson(null);
-      setEditingTitle('');
+      resetAddLessonForm();
+      setShowAddLesson(false);
       fetchCurriculum();
     } catch (err) {
-      nassaqError(t('errorEditingLesson'));
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail;
+      if (status === 409 && detail?.code === 'curriculum_date_conflict') {
+        setShowConflictDialog(true);
+        return;
+      }
+      const msg = getApiErrorMessage(err);
+      nassaqError(typeof msg === 'string' ? msg : t('errorEditingLesson'));
     }
   };
+
+  // Dispatches the lesson dialog's submit action based on the active mode.
+  const handleSubmitLesson = () => (
+    lessonDialogMode === 'edit' ? handleEditLesson() : handleAddLesson()
+  );
 
   const handleAddColumn = async () => {
     if (!newColName.trim()) {
@@ -645,70 +693,51 @@ export default function TeacherClassDetailPage() {
                           className="data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
                         />
                         <div className="flex-1 min-w-0">
-                          {editingLesson === lesson.id ? (
-                            <div className="flex items-center gap-2">
-                              <Input
-                                value={editingTitle}
-                                onChange={(e) => setEditingTitle(e.target.value)}
-                                className="h-7 text-sm"
-                                onKeyDown={(e) => e.key === 'Enter' && handleEditLesson(lesson)}
-                              />
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleEditLesson(lesson)}>
-                                <Check className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingLesson(null)}>
-                                <X className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <p className={`text-sm font-tajawal ${
-                                lesson.is_completed ? 'line-through text-muted-foreground' :
-                                lesson.is_skipped ? 'line-through text-red-400' : ''
-                              }`}>
-                                {lesson.title}
-                              </p>
-                              {isCurrent && (
-                                <Badge className="bg-brand-turquoise/20 text-brand-turquoise border-0 text-[10px] px-1.5 py-0">
-                                  {t('currentLesson')}
-                                </Badge>
-                              )}
-                              {isNext && !isCurrent && (
-                                <Badge variant="outline" className="text-blue-500 border-blue-200 text-[10px] px-1.5 py-0">
-                                  {t('nextLesson')}
-                                </Badge>
-                              )}
-                              {lesson.is_skipped && (
-                                <Badge className="bg-red-100 text-red-500 border-0 text-[10px] px-1.5 py-0">
-                                  {t('skipped')}
-                                </Badge>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        {!editingLesson && (
-                          <div className="flex items-center gap-0.5">
-                            <Button
-                              size="sm" variant="ghost" className="h-7 w-7 p-0"
-                              title={lesson.is_skipped ? t('markComplete') : t('skipped')}
-                              onClick={() => handleSkipLesson(lesson)}
-                            >
-                              <Minus className={`h-3 w-3 ${lesson.is_skipped ? 'text-red-400' : 'text-muted-foreground'}`} />
-                            </Button>
-                            <Button
-                              size="sm" variant="ghost" className="h-7 w-7 p-0"
-                              onClick={() => { setEditingLesson(lesson.id); setEditingTitle(lesson.title); }}
-                            >
-                              <Edit3 className="h-3 w-3 text-muted-foreground" />
-                            </Button>
-                            <Button
-                              size="sm" variant="ghost" className="h-7 w-7 p-0"
-                              onClick={() => handleDeleteLesson(lesson.id)}
-                            >
-                              <Trash2 className="h-3 w-3 text-red-400" />
-                            </Button>
+                          <div className="flex items-center gap-2">
+                            <p className={`text-sm font-tajawal ${
+                              lesson.is_completed ? 'line-through text-muted-foreground' :
+                              lesson.is_skipped ? 'line-through text-red-400' : ''
+                            }`}>
+                              {lesson.title}
+                            </p>
+                            {isCurrent && (
+                              <Badge className="bg-brand-turquoise/20 text-brand-turquoise border-0 text-[10px] px-1.5 py-0">
+                                {t('currentLesson')}
+                              </Badge>
+                            )}
+                            {isNext && !isCurrent && (
+                              <Badge variant="outline" className="text-blue-500 border-blue-200 text-[10px] px-1.5 py-0">
+                                {t('nextLesson')}
+                              </Badge>
+                            )}
+                            {lesson.is_skipped && (
+                              <Badge className="bg-red-100 text-red-500 border-0 text-[10px] px-1.5 py-0">
+                                {t('skipped')}
+                              </Badge>
+                            )}
                           </div>
-                        )}
+                        </div>
+                        <div className="flex items-center gap-0.5">
+                          <Button
+                            size="sm" variant="ghost" className="h-7 w-7 p-0"
+                            title={lesson.is_skipped ? t('markComplete') : t('skipped')}
+                            onClick={() => handleSkipLesson(lesson)}
+                          >
+                            <Minus className={`h-3 w-3 ${lesson.is_skipped ? 'text-red-400' : 'text-muted-foreground'}`} />
+                          </Button>
+                          <Button
+                            size="sm" variant="ghost" className="h-7 w-7 p-0"
+                            onClick={() => openEditLesson(lesson)}
+                          >
+                            <Edit3 className="h-3 w-3 text-muted-foreground" />
+                          </Button>
+                          <Button
+                            size="sm" variant="ghost" className="h-7 w-7 p-0"
+                            onClick={() => handleDeleteLesson(lesson.id)}
+                          >
+                            <Trash2 className="h-3 w-3 text-red-400" />
+                          </Button>
+                        </div>
                       </div>
                       );
                     })}
@@ -904,8 +933,12 @@ export default function TeacherClassDetailPage() {
           <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
             <DialogHeader>
               <DialogTitle className="font-cairo flex items-center gap-2">
-                <Plus className="h-5 w-5 text-brand-turquoise" aria-hidden="true" />
-                {t('addLesson')}
+                {lessonDialogMode === 'edit' ? (
+                  <Edit3 className="h-5 w-5 text-brand-turquoise" aria-hidden="true" />
+                ) : (
+                  <Plus className="h-5 w-5 text-brand-turquoise" aria-hidden="true" />
+                )}
+                {lessonDialogMode === 'edit' ? t('editLesson') : t('addLesson')}
               </DialogTitle>
             </DialogHeader>
 
@@ -921,7 +954,7 @@ export default function TeacherClassDetailPage() {
                     value={newLessonTitle}
                     onChange={(e) => setNewLessonTitle(e.target.value)}
                     placeholder={t('lessonTitle')}
-                    onKeyDown={(e) => e.key === 'Enter' && savable && handleAddLesson()}
+                    onKeyDown={(e) => e.key === 'Enter' && savable && handleSubmitLesson()}
                   />
                 </div>
 
@@ -1008,11 +1041,15 @@ export default function TeacherClassDetailPage() {
               <Button variant="outline" onClick={() => { resetAddLessonForm(); setShowAddLesson(false); }}>{t('cancel')}</Button>
               <Button
                 className="bg-brand-navy hover:bg-brand-navy-dark text-white"
-                onClick={handleAddLesson}
+                onClick={handleSubmitLesson}
                 disabled={!newLessonTitle.trim() || lessonMetaLoading || !savable}
               >
-                <Plus className="h-4 w-4 me-2" aria-hidden="true" />
-                {t('add')}
+                {lessonDialogMode === 'edit' ? (
+                  <Check className="h-4 w-4 me-2" aria-hidden="true" />
+                ) : (
+                  <Plus className="h-4 w-4 me-2" aria-hidden="true" />
+                )}
+                {lessonDialogMode === 'edit' ? t('save') : t('add')}
               </Button>
             </DialogFooter>
           </DialogContent>
