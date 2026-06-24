@@ -3922,18 +3922,33 @@ class TeacherSessionEngine:
         }
         await gd_insert(self.session, "session_interactions", interaction)
 
-        # Score change: prefer an explicit override (custom skills carry
-        # their own configured magnitude); otherwise fall back to the
-        # session's special_skill rule, mirroring positive-behaviour
-        # scoring semantics.
+        # Score change resolution — the configured value is the single source
+        # of truth, independent of any frontend id-prefix heuristic:
+        #   * Registered skill types: the value saved on the skill type wins
+        #     regardless of whether the client sent an override. Only when the
+        #     type carries no configured value do we fall back to the global
+        #     ``special_skill`` rule, so seed/default skills behave as before.
+        #   * Custom (ad-hoc) skills have no stored type, so their configured
+        #     magnitude arrives via ``points_override`` (the preserved custom
+        #     path); fall back to the default rule when it is absent/invalid.
         rules = await self._get_session_score_rules(session_id)
-        if points_override is not None:
+        default_skill_points = rules.get("special_skill", 3)
+
+        def _coerce_int(value):
             try:
-                score_change = int(points_override)
+                return int(value)
             except (TypeError, ValueError):
-                score_change = rules.get("special_skill", 3)
+                return None
+
+        if is_custom:
+            override_pts = _coerce_int(points_override)
+            score_change = override_pts if override_pts is not None else default_skill_points
         else:
-            score_change = rules.get("special_skill", 3)
+            stored_pts = _coerce_int((skill_type or {}).get("points"))
+            if stored_pts is not None and stored_pts > 0:
+                score_change = stored_pts
+            else:
+                score_change = default_skill_points
 
         if score_change != 0:
             await self._update_student_score(

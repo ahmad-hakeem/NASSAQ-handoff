@@ -1079,6 +1079,11 @@ class SkillType(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     # NULL = global/seed skill (visible to all schools); non-NULL = school-scoped.
     school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True, index=True)
+    # Configured per-skill point value. NULL = no configured value, so the
+    # scoring engine falls back to the global ``special_skill`` rule (keeps the
+    # seed/default skills behaving as before). A stored value is authoritative:
+    # the engine awards it instead of the default when the skill is recorded.
+    points = Column(Integer, nullable=True)
 
 
 class StudentSkill(Base):

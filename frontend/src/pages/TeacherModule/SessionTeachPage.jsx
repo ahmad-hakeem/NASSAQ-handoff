@@ -1546,23 +1546,29 @@ export default function SessionTeachPage() {
 
   const recordSkill = async (skill) => {
     if (!selectedStudent) return;
-    const isCustom = String(skill.id).startsWith('custom_') || String(skill.id).startsWith('skl_');
+    // `isCustom` is an explicit flag carried on the picker entry (see the
+    // skill list builders below) — never re-derived from an id prefix. It only
+    // routes whether the skill is an ad-hoc custom one (no stored skill type)
+    // vs. a registered type; it does NOT decide whether the configured value
+    // is honored. That value is always sent and is authoritative server-side.
+    const isCustom = !!skill.isCustom;
     try {
-      // Both predefined and custom skills now go through the same
-      // `/skill` endpoint so the student's score is updated in the
-      // backend (mirrors how positive behaviours work). Custom skills
-      // pass `custom_name` + `points_override` so the backend records
-      // the configured magnitude instead of the default special_skill
-      // rule.
+      // Both predefined and custom skills go through the same `/skill`
+      // endpoint so the student's score is updated in the backend (mirrors
+      // how positive behaviours work). The skill's configured magnitude is
+      // always carried through as `points_override` so the awarded points
+      // match the badge shown on the button. For registered skill types the
+      // backend treats its own stored value as authoritative; custom skills
+      // additionally pass `custom_name` so they are recorded without a type.
       const payload = {
         student_id: selectedStudent.id,
         skill_type_id: skill.id,
         notes: skillNote || null,
       };
+      const pts = Number(skill.points);
+      if (Number.isFinite(pts)) payload.points_override = Math.abs(pts);
       if (isCustom) {
         payload.custom_name = skill.name_ar || skill.name;
-        const pts = Number(skill.points);
-        if (Number.isFinite(pts)) payload.points_override = Math.abs(pts);
       }
       const res = await api.post(`/session/${sessionId}/skill`, payload);
       const change = res?.data?.score_change || 0;
@@ -2618,19 +2624,25 @@ export default function SessionTeachPage() {
                   <div className="space-y-2">
                     <div className="grid grid-cols-3 gap-1.5">
                       {[
-                        ...skillTypes,
+                        // Registered skill types carry an explicit isCustom flag
+                        // so the record action never re-derives "custom" from an
+                        // id prefix. Their configured `points` (if any) passes
+                        // through untouched; skills without one show/award the
+                        // global special_skill default.
+                        ...skillTypes.map(s => ({ ...s, isCustom: false })),
                         // Custom skills may be plain strings (legacy) or
                         // `{name, points}` objects since the settings UI
                         // now lets teachers configure a magnitude.
                         ...customSkills.map(s => {
                           if (typeof s === 'string') {
-                            return { id: `custom_${s}`, name: s, name_ar: s, points: 3 };
+                            return { id: `custom_${s}`, name: s, name_ar: s, points: null, isCustom: true };
                           }
                           const name = s?.name ?? '';
-                          const pts = Math.abs(Number(s?.points)) || 3;
+                          const rawPts = Number(s?.points);
+                          const points = Number.isFinite(rawPts) ? Math.abs(rawPts) : null;
                           const rawId = s?.id || `custom_${name}`;
                           const id = rawId.startsWith('custom_') ? rawId : `custom_${rawId}`;
-                          return { id, name, name_ar: name, points: pts };
+                          return { id, name, name_ar: name, points, isCustom: true };
                         })
                       ].map(skill => {
                         const pts = Number(skill.points);
@@ -2863,16 +2875,20 @@ export default function SessionTeachPage() {
             ) : (
               <div className="grid grid-cols-2 gap-1.5">
                 {[
-                  ...skillTypes,
+                  // Registered skill types carry an explicit isCustom flag so
+                  // the record action never re-derives "custom" from an id
+                  // prefix; their configured `points` (if any) pass through.
+                  ...skillTypes.map(s => ({ ...s, isCustom: false })),
                   ...customSkills.map(s => {
                     if (typeof s === 'string') {
-                      return { id: `custom_${s}`, name: s, name_ar: s, points: 3 };
+                      return { id: `custom_${s}`, name: s, name_ar: s, points: null, isCustom: true };
                     }
                     const name = s?.name ?? '';
-                    const pts = Math.abs(Number(s?.points)) || 3;
+                    const rawPts = Number(s?.points);
+                    const points = Number.isFinite(rawPts) ? Math.abs(rawPts) : null;
                     const rawId = s?.id || `custom_${name}`;
                     const id = rawId.startsWith('custom_') ? rawId : `custom_${rawId}`;
-                    return { id, name, name_ar: name, points: pts };
+                    return { id, name, name_ar: name, points, isCustom: true };
                   })
                 ].map(skill => {
                   const pts = Number(skill.points);

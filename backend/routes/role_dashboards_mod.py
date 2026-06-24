@@ -3044,6 +3044,18 @@ async def create_skill_type(
     }
     if caller_school_id:
         skill["school_id"] = caller_school_id
+    # Persist the configured per-skill point value so the scoring engine can
+    # award it authoritatively instead of falling back to the global
+    # special_skill rule. A missing/invalid/non-positive value is left unset
+    # (NULL) so the skill keeps the default behaviour.
+    raw_points = data.get("points", data.get("points_override"))
+    if raw_points is not None:
+        try:
+            pts = int(raw_points)
+            if pts > 0:
+                skill["points"] = pts
+        except (TypeError, ValueError):
+            pass
     await gd_insert(db.session, "skills_types", skill)
     if audit_engine:
         try:
