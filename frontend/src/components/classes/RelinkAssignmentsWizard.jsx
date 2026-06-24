@@ -21,6 +21,8 @@ import {
 import { useTranslation } from '../../contexts/ThemeContext';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../../utils/internalId';
 
 const GROUP_ORDER = [
   'teacher_assignments',
@@ -42,24 +44,24 @@ const GROUP_LABEL_KEY = {
 
 const dash = (v) => (v == null || v === '' ? '—' : v);
 
-const describeRow = (table, row, t) => {
+const describeRow = (table, row, t, canViewInternalIds) => {
   if (table === 'teacher_assignments') {
     return `${dash(row.teacher_name)} · ${dash(row.subject_name)}${
       row.weekly_sessions ? ` · ${row.weekly_sessions}/wk` : ''
     }`;
   }
   if (table === 'teacher_class_assignments') {
-    return dash(row.teacher_name || row.teacher_id);
+    return dash(row.teacher_name || maskInternalId(row.teacher_id, canViewInternalIds));
   }
   if (table === 'class_subjects') {
-    return `${dash(row.subject_name || row.subject_id)}${
+    return `${dash(row.subject_name || maskInternalId(row.subject_id, canViewInternalIds))}${
       row.weekly_periods ? ` · ${row.weekly_periods}/wk` : ''
     }`;
   }
   if (table === 'timetable_sessions') {
     const d = row.day_of_week != null ? `${t('day') || 'Day'} ${row.day_of_week}` : '';
     const p = row.period_number != null ? `${t('period') || 'Period'} ${row.period_number}` : '';
-    return [d, p].filter(Boolean).join(' · ') || dash(row.id);
+    return [d, p].filter(Boolean).join(' · ') || dash(maskInternalId(row.id, canViewInternalIds));
   }
   if (table === 'class_sessions') {
     return `${dash(row.date)}${row.status ? ` · ${row.status}` : ''}`;
@@ -67,11 +69,12 @@ const describeRow = (table, row, t) => {
   if (table === 'curriculum_lessons') {
     return `${dash(row.title)}${row.week ? ` · W${row.week}` : ''}`;
   }
-  return dash(row.id);
+  return dash(maskInternalId(row.id, canViewInternalIds));
 };
 
 export const RelinkAssignmentsWizard = ({ open, onOpenChange, classId, api, onDone }) => {
   const { t } = useTranslation();
+  const canViewInternalIds = useCanViewInternalIds();
   const { nassaqError } = useNassaqAlert();
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -268,7 +271,7 @@ export const RelinkAssignmentsWizard = ({ open, onOpenChange, classId, api, onDo
                                 htmlFor={`relink-${table}-${row.id}`}
                                 className="text-sm font-tajawal cursor-pointer flex-1"
                               >
-                                {describeRow(table, row, t)}
+                                {describeRow(table, row, t, canViewInternalIds)}
                               </label>
                             </li>
                           );

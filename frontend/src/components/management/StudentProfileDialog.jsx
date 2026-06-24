@@ -16,6 +16,7 @@ import {
 } from '../ui/dialog';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { getFormErrorMessage } from '../../utils/apiError';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
 import {
   User, BookOpen, Shield, TrendingUp, Brain, FileText, Edit, Save, X,
   Phone, Mail, Hash, Calendar, MapPin, AlertTriangle, CheckCircle, Loader2,
@@ -224,6 +225,7 @@ const HakimPlanCard = ({ type, plan, isRTL, loading, onGenerate, onExport }) => 
 export default function StudentProfileDialog({ open, onClose, student, classes = [], onRefresh }) {
   const { t } = useTranslation();
   const { api } = useAuth();
+  const canViewInternalIds = useCanViewInternalIds();
   const { isRTL } = useTheme();
   const { nassaqConfirm, nassaqError, nassaqWarning } = useNassaqAlert();
   const [activeTab, setActiveTab] = useState('info');
@@ -487,7 +489,7 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
               </div>
               <div>
                 <h2 className="text-xl font-bold">{student.full_name}</h2>
-                <p className="text-sm text-muted-foreground">{student.student_number || student.id?.slice(0, 8)}</p>
+                <p className="text-sm text-muted-foreground">{student.student_number || (canViewInternalIds ? student.id?.slice(0, 8) : '—')}</p>
                 <div className="flex items-center gap-2 mt-1">
                   <Badge variant={student.is_active !== false ? 'default' : 'destructive'} className="text-xs">
                     {student.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}

@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
+import { useCanViewInternalIds } from '../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../utils/internalId';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
@@ -115,6 +117,7 @@ function describeHistoryEntry(entry) {
 export const TeacherAttendancePage = () => {
   const { t } = useTranslation();
   const { api } = useAuth();
+  const canViewInternalIds = useCanViewInternalIds();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const { nassaqWarning, nassaqError } = useNassaqAlert();
 
@@ -378,7 +381,7 @@ export const TeacherAttendancePage = () => {
             <div className="flex-1 min-w-0">
               <h4 className="font-medium truncate">{member.full_name}</h4>
               <p className="text-xs text-muted-foreground truncate">
-                {member.specialization}
+                {maskInternalId(member.specialization, canViewInternalIds)}
               </p>
             </div>
             <div className="text-end">

@@ -23,6 +23,7 @@ import { NotificationBell } from '../components/notifications/NotificationBell';
 import AddStudentWizard from '../components/wizards/AddStudentWizard';
 import { getApiErrorMessage } from '../utils/apiError';
 import { useSchoolNavigation } from '../utils/studentNavigation';
+import { useCanViewInternalIds } from '../hooks/useCanViewInternalIds';
 
 const CartoonMaleAvatar = ({ name, size = 'md' }) => {
   const { t } = useTranslation();
@@ -104,6 +105,7 @@ const THEME_COLORS = {
 
 const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewMode = 'grid' }) => {
   const { t } = useTranslation();
+  const canViewInternalIds = useCanViewInternalIds();
   const tc = THEME_COLORS.student;
   if (viewMode === 'list') {
     return (
@@ -127,7 +129,7 @@ const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewM
               {student.is_gifted && <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />}
             </h3>
             <span className="text-xs text-muted-foreground truncate hidden sm:inline">{student.grade || '-'} • {student.section || student.class_name || '-'}</span>
-            <span className="text-[10px] text-muted-foreground font-mono hidden md:inline">{student.student_number || student.id?.slice(0, 8)}</span>
+            <span className="text-[10px] text-muted-foreground font-mono hidden md:inline">{student.student_number || (canViewInternalIds ? student.id?.slice(0, 8) : '—')}</span>
           </div>
           <Badge variant={student.is_active !== false ? 'default' : 'destructive'}
             className={`text-[10px] h-5 rounded-full border-0 ${student.is_active !== false ? tc.badge : ''}`}>
@@ -173,7 +175,7 @@ const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewM
                 {student.full_name}
                 {student.is_gifted && <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />}
               </h3>
-              <p className="text-[10px] text-muted-foreground font-mono">{student.student_number || student.id?.slice(0, 8)}</p>
+              <p className="text-[10px] text-muted-foreground font-mono">{student.student_number || (canViewInternalIds ? student.id?.slice(0, 8) : '—')}</p>
               {student.talents?.length > 0 && (
                 <div className="flex flex-wrap gap-0.5 mt-1">
                   {student.talents.slice(0, 2).map(talent => (

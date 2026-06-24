@@ -9,7 +9,7 @@ Object {
     "lg:top-[80px]": 1,
     "md:grid-cols-2": 1,
   },
-  "element_count": 167,
+  "element_count": 165,
   "inner_width": 360,
   "matched_breakpoints": Object {
     "2xl": false,
@@ -33,7 +33,7 @@ Object {
     "lg:top-[80px]": 1,
     "md:grid-cols-2": 1,
   },
-  "element_count": 167,
+  "element_count": 165,
   "inner_width": 414,
   "matched_breakpoints": Object {
     "2xl": false,
@@ -57,7 +57,7 @@ Object {
     "lg:top-[80px]": 1,
     "md:grid-cols-2": 1,
   },
-  "element_count": 167,
+  "element_count": 165,
   "inner_width": 768,
   "matched_breakpoints": Object {
     "2xl": false,
@@ -81,7 +81,7 @@ Object {
     "lg:top-[80px]": 1,
     "md:grid-cols-2": 1,
   },
-  "element_count": 167,
+  "element_count": 165,
   "inner_width": 1024,
   "matched_breakpoints": Object {
     "2xl": false,

@@ -19,6 +19,8 @@ import { Skeleton } from '../components/ui/skeleton';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { getApiErrorMessage } from '../utils/apiError';
+import { useCanViewInternalIds } from '../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../utils/internalId';
 import {
   Users, GraduationCap, Search, X, CheckCircle2, AlertCircle,
   ArrowLeft, Trash2, RefreshCw, UserPlus, BookOpen
@@ -28,6 +30,7 @@ import {
 // Draggable Teacher Card
 // ============================================
 const DraggableTeacher = ({ teacher, isDragging }) => {
+  const canViewInternalIds = useCanViewInternalIds();
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: `teacher-${teacher.id}`,
     data: { teacher }
@@ -57,7 +60,7 @@ const DraggableTeacher = ({ teacher, isDragging }) => {
         <div className="flex-1 min-w-0">
           <p className="font-medium text-sm truncate">{teacher.full_name || 'معلم'}</p>
           <p className="text-xs text-muted-foreground truncate">
-            {teacher.subjects?.join('، ') || teacher.specialization || 'غير محدد'}
+            {teacher.subjects?.join('، ') || maskInternalId(teacher.specialization, canViewInternalIds) || 'غير محدد'}
           </p>
         </div>
         <Badge variant="outline" className="text-xs">

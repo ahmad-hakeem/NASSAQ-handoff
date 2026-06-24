@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../../utils/internalId';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -46,6 +48,7 @@ const showMobileCards = false;
 export default function TeacherHomePage() {
   const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
+  const canViewInternalIds = useCanViewInternalIds();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -392,10 +395,10 @@ export default function TeacherHomePage() {
                         </span>
                       )}
                     </div>
-                    {teacherInfo?.specialization && (
+                    {maskInternalId(teacherInfo?.specialization, canViewInternalIds) && (
                       <div className="flex items-center gap-2 text-white/60 text-sm">
                         <BookOpen className="h-3.5 w-3.5 text-brand-turquoise/70 flex-shrink-0" />
-                        <span className="font-tajawal truncate">{teacherInfo.specialization}</span>
+                        <span className="font-tajawal truncate">{maskInternalId(teacherInfo.specialization, canViewInternalIds)}</span>
                       </div>
                     )}
                   </div>

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../../utils/internalId';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -27,6 +29,7 @@ export const LiveSessionsMonitor = ({ open, onClose, onOpenChange }) => {
   const { t } = useTranslation();
   const { isRTL } = useTheme();
   const { api } = useAuth();
+  const canViewInternalIds = useCanViewInternalIds();
   
   const [loading, setLoading] = useState(true);
   const [sessions, setSessions] = useState([]);
@@ -147,15 +150,15 @@ export const LiveSessionsMonitor = ({ open, onClose, onOpenChange }) => {
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
                           <BookOpen className="h-4 w-4 text-green-600" />
-                          <span className="font-medium">{session.subject_name || session.subject_id}</span>
+                          <span className="font-medium">{session.subject_name || maskInternalId(session.subject_id, canViewInternalIds)}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <User className="h-4 w-4 text-green-600" />
-                          <span className="text-sm">{session.teacher_name || session.teacher_id}</span>
+                          <span className="text-sm">{session.teacher_name || maskInternalId(session.teacher_id, canViewInternalIds)}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <Users className="h-4 w-4 text-green-600" />
-                          <span className="text-sm">{session.class_name || session.class_id}</span>
+                          <span className="text-sm">{session.class_name || maskInternalId(session.class_id, canViewInternalIds)}</span>
                         </div>
                       </div>
                     </CardContent>

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, Send, Users, UserPlus, MessageSquare } from 'lucide-react';
 
 import { useAuth } from '../../contexts/AuthContext';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../../utils/internalId';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
@@ -33,6 +35,7 @@ const DEFAULT_COHORT = VISIBLE_COHORTS[0]?.id || 'my_parents';
 // standalone shell intact for any direct importer.
 export function IndependentTeacherCommunicationPanel({ embedded = false } = {}) {
   const { api } = useAuth();
+  const canViewInternalIds = useCanViewInternalIds();
   const { isRTL } = useTheme();
   const { t } = useTranslation();
   const { nassaqError, nassaqSuccess } = useNassaqAlert();
@@ -203,7 +206,7 @@ export function IndependentTeacherCommunicationPanel({ embedded = false } = {}) 
                         data-testid={`it-recipient-${item.user_id}`}
                       >
                         <Checkbox checked={on} onCheckedChange={() => toggle(item.user_id)} />
-                        <span className="text-sm text-slate-800 flex-1">{item.full_name || item.user_id}</span>
+                        <span className="text-sm text-slate-800 flex-1">{item.full_name || maskInternalId(item.user_id, canViewInternalIds)}</span>
                       </label>
                     );
                   })}

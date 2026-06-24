@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../../utils/internalId';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -117,6 +119,7 @@ const getGradeColor = (grade) => GRADE_COLORS[String(grade)] || GRADE_COLORS['1'
 
 export default function TeacherClassesPage() {
   const { user, api, isRTL, token, fetchPermissions } = useAuth();
+  const canViewInternalIds = useCanViewInternalIds();
   // 2026-06-04 — `perms` is the backend-sourced RBAC slice set, used
   // ONLY to gate the sub-tabs inside the embedded BulkImportPanel. It
   // is fetched lazily; on a slow / failed / raced fetch we keep it
@@ -975,7 +978,7 @@ export default function TeacherClassesPage() {
                 <GraduationCap className="h-5 w-5 text-white" />
               </div>
               <div className="min-w-0">
-                <CardTitle className="text-base font-cairo truncate">{cls.name || cls.name_ar}</CardTitle>
+                <CardTitle className="text-base font-cairo truncate">{maskInternalId(cls.name, canViewInternalIds) || cls.name_ar}</CardTitle>
                 <p className={`text-xs ${gc.text} font-medium`}>{resolveGradeName(cls)}</p>
                 {renderNextSession(cls)}
               </div>
@@ -1116,7 +1119,7 @@ export default function TeacherClassesPage() {
               <GraduationCap className="h-4 w-4 text-white" />
             </div>
             <div className="min-w-0">
-              <p className="font-medium font-cairo text-sm truncate">{cls.name || cls.name_ar}</p>
+              <p className="font-medium font-cairo text-sm truncate">{maskInternalId(cls.name, canViewInternalIds) || cls.name_ar}</p>
               <p className={`text-xs ${gc.text}`}>{resolveGradeName(cls)}</p>
             </div>
           </div>

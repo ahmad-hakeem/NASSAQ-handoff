@@ -24,6 +24,7 @@ import { USER_ROLES } from './constants';
 import { APPROVAL_TYPE_CONFIG } from './approvalConfig';
 import { getApiErrorMessage } from '../../utils/apiError';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
 
 export function UserDetailsDialog({ user, onClose, onEdit, onSuspend, onNotify }) {
   if (!user) return null;
@@ -354,6 +355,7 @@ export function MoreInfoDialog({ request, message, setMessage, onClose, onConfir
 }
 
 export function RequestDetailsDialog({ request, onClose }) {
+  const canViewInternalIds = useCanViewInternalIds();
   if (!request) return null;
 
   return (
@@ -386,7 +388,9 @@ export function RequestDetailsDialog({ request, onClose }) {
                request.status === 'cancelled' ? 'ملغي' :
                'قيد الاعتماد'}
             </Badge>
-            <span className="text-xs text-muted-foreground">{request.id?.substring(0, 8)}…</span>
+            {canViewInternalIds && (
+              <span className="text-xs text-muted-foreground">{request.id?.substring(0, 8)}…</span>
+            )}
           </div>
 
           <RequestDetailsContent request={request} />

@@ -33,6 +33,8 @@ import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import ScheduleTabNav from '../components/schedule/ScheduleTabNav';
 import StandbyDayCentricTable from '../components/schedule/StandbyDayCentricTable';
 import { getApiErrorMessage } from '../utils/apiError';
+import { useCanViewInternalIds } from '../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../utils/internalId';
 
 const DAYS = [
   { key: 'sunday',    ar: 'الأحد' },
@@ -163,6 +165,7 @@ function LegendChip({ color, label }) {
 // ─── Standby content ──────────────────────────────────────────────────
 export function StandbyRosterContent() {
   const { user, api } = useAuth();
+  const canViewInternalIds = useCanViewInternalIds();
   const { nassaqConfirm, nassaqError, nassaqSuccess, nassaqInfo } = useNassaqAlert();
   const schoolId = user?.tenant_id;
 
@@ -530,7 +533,7 @@ export function StandbyRosterContent() {
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-slate-900 truncate">{t.full_name}</p>
                         <p className="text-[11px] text-slate-500 truncate">
-                          {t.subject || '—'} • {t.assigned_periods}/{t.weekly_quota || '—'} حصص
+                          {maskInternalId(t.subject, canViewInternalIds) || '—'} • {t.assigned_periods}/{t.weekly_quota || '—'} حصص
                         </p>
                       </div>
                       <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 text-[10px] shrink-0">
@@ -567,6 +570,7 @@ export default function StandbyRosterPage() {
 
 // ─── Matrix component (legacy teacher-centric view) ─────────────────────
 function RosterMatrix({ teachers, cells, days, periods, dayLabelMap, onCycle, busyCell }) {
+  const canViewInternalIds = useCanViewInternalIds();
   const totalDataCols = days.length * periods.length;
   const TEACHER_COL_WIDTH = 220;
   const PERIOD_COL_WIDTH = 56;
@@ -630,7 +634,7 @@ function RosterMatrix({ teachers, cells, days, periods, dayLabelMap, onCycle, bu
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-900 truncate">{teacher.full_name}</p>
                   <p className="text-[10px] text-slate-500 truncate">
-                    {teacher.subject || '—'}
+                    {maskInternalId(teacher.subject, canViewInternalIds) || '—'}
                     {' • '}
                     <span className="font-semibold text-slate-600">
                       {teacher.assigned_periods}

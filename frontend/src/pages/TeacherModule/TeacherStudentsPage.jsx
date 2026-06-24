@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../../utils/internalId';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -69,6 +71,7 @@ export function TeacherStudentsPanel(props) {
 export default function TeacherStudentsPage({ embedded = false } = {}) {
   const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
+  const canViewInternalIds = useCanViewInternalIds();
   const isIndependentTeacher = user?.role === 'independent_teacher';
   const [showAddStudent, setShowAddStudent] = useState(false);
   const [workspaceStudentCount, setWorkspaceStudentCount] = useState(null);
@@ -1290,7 +1293,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                   <div>
                     <p className="font-medium text-sm">{messageTarget.full_name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {t('parent')}: {messageTarget.parent_name || messageTarget.parent_id}
+                      {t('parent')}: {messageTarget.parent_name || maskInternalId(messageTarget.parent_id, canViewInternalIds)}
                     </p>
                   </div>
                 </div>

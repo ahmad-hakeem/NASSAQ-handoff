@@ -12,6 +12,8 @@
  */
 import React from 'react';
 import { Loader2, Sparkles, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../../utils/internalId';
 
 const DAY_AR = {
   sunday: 'يوم الأحد',
@@ -164,6 +166,7 @@ export default function StandbyDayCentricTable({
 }
 
 function Cell({ cell, onClick, busy }) {
+  const canViewInternalIds = useCanViewInternalIds();
   if (!cell) {
     return (
       <td className="border border-slate-300 p-0 align-middle">
@@ -203,9 +206,9 @@ function Cell({ cell, onClick, busy }) {
             {cell.teacher_name}
           </span>
         </span>
-        {cell.subject && (
+        {maskInternalId(cell.subject, canViewInternalIds) && (
           <span className="text-[9px] text-slate-400 truncate max-w-full leading-tight">
-            {cell.subject}
+            {maskInternalId(cell.subject, canViewInternalIds)}
           </span>
         )}
       </button>

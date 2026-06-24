@@ -47,7 +47,7 @@ const translateToast = (key, params) => {
   return text;
 };
 
-const AuthContext = createContext(null);
+export const AuthContext = createContext(null);
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 

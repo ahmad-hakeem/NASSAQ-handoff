@@ -20,6 +20,7 @@ import { StatCard } from '../components/student-profile/ProfileComponents';
 import { OverviewTab, AcademicTab, TalentsTab, BehaviourTab, ActivitiesTab, PlansTab, LongitudinalTab } from '../components/student-profile/StudentTabsContent';
 import { EditProfileModal, HealthModal, BehaviourModal, ExportPlanModal, ActivityModal, CertificateModal, FullProfileExportModal } from '../components/student-profile/StudentModals';
 import { useStudentProfile } from '../hooks/useStudentProfile';
+import { useCanViewInternalIds } from '../hooks/useCanViewInternalIds';
 
 import { useTranslation } from '../contexts/ThemeContext';
 const TABS = [
@@ -34,6 +35,7 @@ const TABS = [
 
 export default function StudentProfilePage() {
   const { t } = useTranslation();
+  const canViewInternalIds = useCanViewInternalIds();
   const hook = useStudentProfile();
   const {
     isRTL, isDark, toggleTheme, toggleLanguage, navigate,
@@ -179,7 +181,7 @@ export default function StudentProfilePage() {
                         {student.grade || '-'} {resolvedClassName ? `— ${resolvedClassName}` : student.section ? `— ${student.section}` : ''}
                       </p>
                       <p className="text-white/50 text-xs mt-1 font-mono tracking-wider">
-                        {student.student_number || student.national_id || `ID: ${student.id?.slice(0, 8)}`}
+                        {student.student_number || student.national_id || (canViewInternalIds ? `ID: ${student.id?.slice(0, 8)}` : '—')}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">

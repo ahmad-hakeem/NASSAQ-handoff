@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { formatHijriDate } from '../utils/hijriDate';
 import { useWorkspaceHubData } from '../hooks/useWorkspaceHubData';
+import { useCanViewInternalIds } from '../hooks/useCanViewInternalIds';
 import { ResponsiveTable } from '../components/ui/ResponsiveTable';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 import {
@@ -323,6 +324,7 @@ const PreviewModeAccountSettingsGuard = ({ schoolContext, onExit }) => {
 const AccountSettingsPageInner = () => {
   const { t } = useTranslation();
   const { user, api, logout, refreshUser, updateToken, enterSchoolContext } = useAuth();
+  const canViewInternalIds = useCanViewInternalIds();
   const navigate = useNavigate();
   const { isRTL, toggleTheme, toggleLanguage, isDark, language, setLanguage, theme, setTheme } = useTheme();
   const { nassaqError, nassaqInfo, nassaqSuccess, nassaqConfirm, showAlert } = useNassaqAlert();
@@ -1451,10 +1453,12 @@ const AccountSettingsPageInner = () => {
                     {user?.updated_at ? new Date(user.updated_at).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
                   </span>
                 </div>
-                <span className="flex items-center gap-1.5 text-brand-turquoise">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  ID: {user?.id?.slice(0, 8)}...
-                </span>
+                {canViewInternalIds && (
+                  <span className="flex items-center gap-1.5 text-brand-turquoise">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    ID: {user?.id?.slice(0, 8)}...
+                  </span>
+                )}
               </div>
             </CardContent>
           </Card>

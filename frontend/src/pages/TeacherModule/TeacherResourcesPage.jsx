@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../../utils/internalId';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -31,6 +33,7 @@ const RESOURCE_TYPES = [
 export default function TeacherResourcesPage() {
   const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
+  const canViewInternalIds = useCanViewInternalIds();
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
@@ -282,7 +285,7 @@ export default function TeacherResourcesPage() {
                         )}
                         {resource.subject_id && (
                           <Badge variant="secondary" className="text-xs">
-                            {subjects.find(s => s.id === resource.subject_id)?.name || resource.subject_id}
+                            {subjects.find(s => s.id === resource.subject_id)?.name || maskInternalId(resource.subject_id, canViewInternalIds)}
                           </Badge>
                         )}
                       </div>

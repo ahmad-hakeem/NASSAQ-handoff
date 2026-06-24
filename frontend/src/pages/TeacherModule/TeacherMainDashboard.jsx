@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../../utils/internalId';
 import { formatFullDate, formatHijriDate } from '../../utils/hijriDate';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
@@ -125,6 +127,7 @@ const PeriodTimeline = ({ upcomingLessons, totalPeriods, currentPeriod, isSchool
 export default function TeacherMainDashboard() {
   const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
+  const canViewInternalIds = useCanViewInternalIds();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -1039,7 +1042,7 @@ export default function TeacherMainDashboard() {
                               'border-red-200/50 bg-red-50/50 dark:bg-red-950/20'
                             }`}>
                               <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm font-medium font-cairo">{cls.class_name || cls.class_id}</span>
+                                <span className="text-sm font-medium font-cairo">{cls.class_name || maskInternalId(cls.class_id, canViewInternalIds)}</span>
                                 <Badge className={`text-xs font-cairo ${
                                   cls.health_score >= 80 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
                                   cls.health_score >= 65 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
@@ -1072,7 +1075,7 @@ export default function TeacherMainDashboard() {
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                   <AlertCircle className={`h-4 w-4 ${alert.risk_category === 'critical' ? 'text-red-500' : 'text-orange-500'}`} />
-                                  <span className="text-sm font-medium font-tajawal">{alert.student_name || alert.student_id}</span>
+                                  <span className="text-sm font-medium font-tajawal">{alert.student_name || maskInternalId(alert.student_id, canViewInternalIds)}</span>
                                 </div>
                                 <Badge variant="outline" className={`text-xs ${
                                   alert.risk_category === 'critical' ? 'border-red-400 text-red-600' : 'border-orange-400 text-orange-600'

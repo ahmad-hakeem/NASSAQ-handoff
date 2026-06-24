@@ -1,6 +1,8 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { Badge } from '../ui/badge';
 import { BookOpen, GraduationCap, RefreshCw, X } from 'lucide-react';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../../utils/internalId';
 
 export const DraggableClassItem = ({ classItem, isAssigned, assignedTeacher }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -50,6 +52,7 @@ export const DraggableClassItem = ({ classItem, isAssigned, assignedTeacher }) =
 };
 
 export const DroppableTeacherBox = ({ teacher, assignments, onRemoveAssignment }) => {
+  const canViewInternalIds = useCanViewInternalIds();
   const { isOver, setNodeRef } = useDroppable({
     id: `teacher-${teacher.id}`,
     data: { teacher }
@@ -73,7 +76,7 @@ export const DroppableTeacherBox = ({ teacher, assignments, onRemoveAssignment }
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-bold text-slate-800 text-sm truncate">{teacher.full_name || teacher.name || '-'}</p>
-          <p className="text-[10px] text-slate-500 truncate">{teacher.specialization || teacher.email || '-'}</p>
+          <p className="text-[10px] text-slate-500 truncate">{maskInternalId(teacher.specialization, canViewInternalIds) || teacher.email || '-'}</p>
         </div>
         <Badge className="bg-brand-navy/10 text-brand-navy text-[10px]">
           {assignments.length}
@@ -97,7 +100,7 @@ export const DroppableTeacherBox = ({ teacher, assignments, onRemoveAssignment }
                 className="flex items-center gap-1 px-2 py-1 rounded-md bg-brand-turquoise/10 border border-brand-turquoise/30 group"
               >
                 <span className="text-xs font-medium text-brand-turquoise-dark truncate max-w-[80px]">
-                  {assignment.class_name || `فصل ${assignment.class_id?.substring(0, 6)}`}
+                  {assignment.class_name || (canViewInternalIds ? `فصل ${assignment.class_id?.substring(0, 6)}` : 'فصل')}
                 </span>
                 <button
                   onClick={() => onRemoveAssignment(assignment.id)}
@@ -151,6 +154,7 @@ export const DraggableSubjectItem = ({ subject, assignedCount }) => {
 };
 
 export const DroppableTeacherSubjectBox = ({ teacher, assignments, onRemoveAssignment }) => {
+  const canViewInternalIds = useCanViewInternalIds();
   const { isOver, setNodeRef } = useDroppable({
     id: `teacher-subject-${teacher.id}`,
     data: { teacher }
@@ -171,7 +175,7 @@ export const DroppableTeacherSubjectBox = ({ teacher, assignments, onRemoveAssig
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-bold text-slate-800 text-sm truncate">{teacher.full_name || teacher.name || '-'}</p>
-          <p className="text-xs text-slate-500 truncate">{teacher.specialization || teacher.email || '-'}</p>
+          <p className="text-xs text-slate-500 truncate">{maskInternalId(teacher.specialization, canViewInternalIds) || teacher.email || '-'}</p>
         </div>
         <Badge className={`text-xs transition-colors ${isOver ? 'bg-brand-purple/20 text-brand-purple' : 'bg-brand-navy/10 text-brand-navy'}`}>
           {assignments.length} مادة
@@ -190,7 +194,7 @@ export const DroppableTeacherSubjectBox = ({ teacher, assignments, onRemoveAssig
               }`}>
                 {assignment._optimistic && <RefreshCw className="h-2.5 w-2.5 text-amber-500 animate-spin shrink-0" />}
                 <span className="text-xs font-medium text-brand-purple-dark truncate max-w-[90px]">
-                  {assignment.subject_name || assignment.subject_id}
+                  {maskInternalId(assignment.subject_name || assignment.subject_id, canViewInternalIds) || 'مادة'}
                 </span>
                 <button
                   onClick={() => onRemoveAssignment(assignment.id)}

@@ -42,6 +42,8 @@ import {
 import { toast } from 'sonner';
 
 import { useTranslation } from '../../contexts/ThemeContext';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../../utils/internalId';
 // Subject colors mapping
 const SUBJECT_COLORS = {
   'اللغة العربية': { bg: 'bg-emerald-100 dark:bg-emerald-900/30', border: 'border-emerald-300', text: 'text-emerald-700 dark:text-emerald-400' },
@@ -175,6 +177,7 @@ const TeacherRow = ({
   lockedSessions,
   dropTarget,
 }) => {
+  const canViewInternalIds = useCanViewInternalIds();
   // Calculate teacher stats
   const totalSessions = sessions.length;
   const maxLoad = 35; // Standard teaching load
@@ -207,7 +210,7 @@ const TeacherRow = ({
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium truncate">{teacher.full_name}</p>
             <div className="flex items-center gap-1">
-              <span className="text-[10px] text-muted-foreground truncate">{teacher.subject || teacher.specialization}</span>
+              <span className="text-[10px] text-muted-foreground truncate">{maskInternalId(teacher.subject, canViewInternalIds) || maskInternalId(teacher.specialization, canViewInternalIds)}</span>
             </div>
             {/* Workload indicator */}
             <div className="mt-1 flex items-center gap-1">

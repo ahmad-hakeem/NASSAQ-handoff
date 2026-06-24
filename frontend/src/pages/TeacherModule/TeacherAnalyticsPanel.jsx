@@ -35,6 +35,8 @@ import {
 } from '../../components/ui/select';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../../utils/internalId';
 import { useTranslation } from '../../contexts/ThemeContext';
 import { formatHijriDate, getHijriDate } from '../../utils/hijriDate';
 import { getApiErrorMessage } from '../../utils/apiError';
@@ -71,6 +73,7 @@ export default function TeacherAnalyticsPanel() {
   const { t } = useTranslation();
   const { nassaqError } = useNassaqAlert();
   const { api } = useAuth();
+  const canViewInternalIds = useCanViewInternalIds();
 
   const today = useMemo(() => new Date(), []);
   const defaultStart = useMemo(() => {
@@ -369,7 +372,7 @@ export default function TeacherAnalyticsPanel() {
                 <SelectItem value="all">{t('itReportsExportAllStudents')}</SelectItem>
                 {students.map((s) => (
                   <SelectItem key={s.student_id} value={s.student_id}>
-                    {s.full_name_ar || s.full_name_en || s.student_number || s.student_id}
+                    {s.full_name_ar || s.full_name_en || s.student_number || maskInternalId(s.student_id, canViewInternalIds)}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useStandbyCandidates } from '../../hooks/useScheduleCandidates';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../../utils/internalId';
 import { useTranslation, useTheme } from '../../contexts/ThemeContext';
 import { getApiErrorMessage } from '../../utils/apiError';
 
@@ -172,6 +174,7 @@ export default function CandidatesSidePanel({
 
 function CandidateCard({ cand, onAssign, loading, disabled }) {
   const { t } = useTranslation();
+  const canViewInternalIds = useCanViewInternalIds();
   const isBest = (cand.tags || []).includes('is_best_match');
   const ratio = cand.weekly_quota > 0
     ? Math.min(100, Math.round((cand.weekly_load / cand.weekly_quota) * 100))
@@ -198,7 +201,7 @@ function CandidateCard({ cand, onAssign, loading, disabled }) {
           <div className="flex items-center gap-2">
             <h4 className="font-bold text-sm text-slate-800 truncate">{cand.teacher_name}</h4>
           </div>
-          <p className="text-[11px] text-slate-500 mt-0.5">{cand.specialty}</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">{maskInternalId(cand.specialty, canViewInternalIds)}</p>
 
           {/* Tags */}
           <div className="mt-2 flex flex-wrap gap-1">

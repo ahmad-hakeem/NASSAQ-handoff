@@ -14,6 +14,7 @@ import {
 import { toast } from 'sonner';
 
 import { useTranslation } from '../../contexts/ThemeContext';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
 const MALE_AVATAR = (
   <svg viewBox="0 0 40 40" className="w-full h-full">
     <circle cx="20" cy="20" r="20" fill="#E8F4FD" />
@@ -43,6 +44,7 @@ const FEMALE_AVATAR = (
 
 const DraggableStudentChip = ({ student, isRTL, onView, onEdit, onDelete, onAction, canDrag }) => {
   const { t } = useTranslation();
+  const canViewInternalIds = useCanViewInternalIds();
   const [isDragging, setIsDragging] = useState(false);
 
   const handleDragStart = (e) => {
@@ -89,7 +91,7 @@ const DraggableStudentChip = ({ student, isRTL, onView, onEdit, onDelete, onActi
           )}
         </div>
         <div className="flex items-center gap-1 min-w-0">
-          <p className="text-[10px] text-muted-foreground font-mono truncate">{student.student_number || student.id?.slice(0, 8)}</p>
+          <p className="text-[10px] text-muted-foreground font-mono truncate">{student.student_number || (canViewInternalIds ? student.id?.slice(0, 8) : '—')}</p>
           {student.talents?.length > 0 && (
             <span className="text-[9px] text-amber-600 dark:text-amber-400 truncate">
               {student.talents.length > 1 ? `+${student.talents.length}` : ''}

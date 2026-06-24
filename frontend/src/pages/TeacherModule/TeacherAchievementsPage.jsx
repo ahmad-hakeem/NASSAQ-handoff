@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../../utils/internalId';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -2269,6 +2271,7 @@ function PortfolioV2Sections(props) {
     openCVDialog, handleDeleteCVItem, openEditDialog, handleDeleteEvidence,
   } = props;
 
+  const canViewInternalIds = useCanViewInternalIds();
   const cv = sectionsData?.cv;
   const profile = cv?.profile || {};
   const subsecData = sectionsData?.evidence_subsections || {};
@@ -2385,7 +2388,7 @@ function PortfolioV2Sections(props) {
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
           {[
             { icon: UserIcon, label: 'الاسم', value: profile.full_name },
-            { icon: BookMarked, label: 'التخصص', value: profile.specialization || profile.subject },
+            { icon: BookMarked, label: 'التخصص', value: maskInternalId(profile.specialization, canViewInternalIds) || maskInternalId(profile.subject, canViewInternalIds) },
             { icon: GraduationCap, label: 'المؤهل', value: profile.qualification },
             { icon: Phone, label: 'رقم الجوال', value: profile.phone },
             { icon: Mail, label: 'البريد الإلكتروني', value: profile.email },

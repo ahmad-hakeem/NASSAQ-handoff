@@ -12,6 +12,8 @@ import { toast } from 'sonner';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { getFormErrorMessage } from '../../utils/apiError';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../../utils/internalId';
 import {
   User, BookOpen, Shield, Edit, Save, X, Phone, Mail, Hash, Calendar,
   MapPin, Key, UserX, UserCheck, Loader2, Award, Clock, Briefcase,
@@ -21,6 +23,7 @@ import {
 
 export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh }) {
   const { api } = useAuth();
+  const canViewInternalIds = useCanViewInternalIds();
   const { nassaqConfirm, nassaqError } = useNassaqAlert();
   const { isRTL } = useTheme();
   const { t } = useTranslation();
@@ -198,7 +201,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
             </div>
             <div className="flex-1">
               <h2 className="text-xl font-bold">{p?.basic_info?.full_name || teacher.full_name}</h2>
-              <p className="text-emerald-100 text-sm">{p?.professional_info?.specialization || teacher.specialization || (t('teacher'))}</p>
+              <p className="text-emerald-100 text-sm">{maskInternalId(p?.professional_info?.specialization, canViewInternalIds) || maskInternalId(teacher.specialization, canViewInternalIds) || (t('teacher'))}</p>
               <div className="flex items-center gap-2 mt-1">
                 <Badge className={`text-[10px] ${statusColors[status]}`}>{statusLabels[status]}</Badge>
                 <Badge className="text-[10px] bg-white/20 text-white border-0">{rankLabels[p?.professional_info?.teacher_rank] || teacher.rank || (t('teacher'))}</Badge>
@@ -358,7 +361,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                 ) : (
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     {[
-                      { label: t('specialization'), value: p?.professional_info?.specialization, icon: BookOpen },
+                      { label: t('specialization'), value: maskInternalId(p?.professional_info?.specialization, canViewInternalIds), icon: BookOpen },
                       { label: t('degree2'), value: p?.professional_info?.academic_degree, icon: Award },
                       { label: t('rank'), value: rankLabels[p?.professional_info?.teacher_rank] || p?.professional_info?.teacher_rank, icon: Shield },
                       { label: t('experience2'), value: p?.professional_info?.years_of_experience ? `${p.professional_info.years_of_experience} ${t('yrs')}` : '-', icon: Clock },
@@ -487,8 +490,8 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                       <Card key={i} className="border-emerald-200/30">
                         <CardContent className="p-3 flex items-center justify-between">
                           <div>
-                            <p className="font-medium text-sm">{a.class_name || a.class_id}</p>
-                            <p className="text-xs text-muted-foreground">{a.subject_name || a.subject_id}</p>
+                            <p className="font-medium text-sm">{a.class_name || maskInternalId(a.class_id, canViewInternalIds)}</p>
+                            <p className="text-xs text-muted-foreground">{a.subject_name || maskInternalId(a.subject_id, canViewInternalIds)}</p>
                           </div>
                           <Badge variant="outline" className="text-[10px]">{a.periods_per_week || '-'} {t('periods')}</Badge>
                         </CardContent>

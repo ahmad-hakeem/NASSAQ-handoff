@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -116,6 +117,7 @@ export const CreateClassWizard = ({ open, onOpenChange, onSuccess }) => {
   const { t } = useTranslation();
   const { isRTL } = useTheme();
   const { token, api } = useAuth();
+  const canViewInternalIds = useCanViewInternalIds();
   const { nassaqError } = useNassaqAlert();
 
   const [currentStep, setCurrentStep] = useState(1);
@@ -478,7 +480,9 @@ export const CreateClassWizard = ({ open, onOpenChange, onSuccess }) => {
                     <CheckCircle2 className="h-8 w-8 text-white" />
                   </div>
                   <h2 className="text-xl font-bold text-purple-600 font-cairo mb-1">{t('classCreated2')}</h2>
-                  <p className="text-lg font-mono text-purple-700 mt-2">{result.class_id}</p>
+                  {canViewInternalIds && (
+                    <p className="text-lg font-mono text-purple-700 mt-2">{result.class_id}</p>
+                  )}
                 </div>
                 <div className="flex justify-center gap-3 pt-2">
                   <Button variant="outline" className="rounded-lg" onClick={() => handleCloseDialog(false)}>{t('close')}</Button>

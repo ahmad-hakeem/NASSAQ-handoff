@@ -43,6 +43,8 @@ import StudentClassGrid from '../components/management/StudentClassGrid';
 import NoorImportPanel from '../components/management/NoorImportPanel';
 import { getApiErrorMessage } from '../utils/apiError';
 import { executeStudentTransfer } from '../utils/studentTransfer';
+import { useCanViewInternalIds } from '../hooks/useCanViewInternalIds';
+import { maskInternalId } from '../utils/internalId';
 import { useSchoolNavigation } from '../utils/studentNavigation';
 
 // Visibility flag for the "Show them now" CTA inside the students-without-a-class
@@ -291,6 +293,7 @@ const ParentAvatar = ({ parent, size = 'md' }) => {
 
 const StudentCard = ({ student, isRTL, onEdit, onDelete, onView, onAction, viewMode = 'grid' }) => {
   const { t } = useTranslation();
+  const canViewInternalIds = useCanViewInternalIds();
   const tc = THEME_COLORS.student;
   if (viewMode === 'list') {
     return (
@@ -302,7 +305,7 @@ const StudentCard = ({ student, isRTL, onEdit, onDelete, onView, onAction, viewM
           <div className="flex-1 min-w-0 flex items-center gap-4">
             <h3 className="font-semibold text-sm truncate w-[140px]">{student.full_name}</h3>
             <span className="text-xs text-muted-foreground truncate hidden sm:inline">{student.grade || '-'} • {student.section || student.class_name || '-'}</span>
-            <span className="text-[10px] text-muted-foreground font-mono hidden md:inline">{student.student_number || student.id?.slice(0, 8)}</span>
+            <span className="text-[10px] text-muted-foreground font-mono hidden md:inline">{student.student_number || (canViewInternalIds ? student.id?.slice(0, 8) : '—')}</span>
           </div>
           <Badge variant={student.is_active !== false ? 'default' : 'destructive'}
             className={`text-[10px] h-5 rounded-full border-0 ${student.is_active !== false ? tc.badge : ''}`}>
@@ -336,7 +339,7 @@ const StudentCard = ({ student, isRTL, onEdit, onDelete, onView, onAction, viewM
             <StudentAvatar student={student} />
             <div className="min-w-0">
               <h3 className="font-semibold text-sm truncate max-w-[140px]">{student.full_name}</h3>
-              <p className="text-[10px] text-muted-foreground font-mono">{student.student_number || student.id?.slice(0, 8)}</p>
+              <p className="text-[10px] text-muted-foreground font-mono">{student.student_number || (canViewInternalIds ? student.id?.slice(0, 8) : '—')}</p>
             </div>
           </div>
           <DropdownMenu>
@@ -386,6 +389,7 @@ const StudentCard = ({ student, isRTL, onEdit, onDelete, onView, onAction, viewM
 
 const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewMode = 'grid' }) => {
   const { t } = useTranslation();
+  const canViewInternalIds = useCanViewInternalIds();
   const tc = THEME_COLORS.teacher;
   if (viewMode === 'list') {
     return (
@@ -396,7 +400,7 @@ const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewM
           <TeacherAvatar teacher={teacher} size="sm" />
           <div className="flex-1 min-w-0 flex items-center gap-4">
             <h3 className="font-semibold text-sm truncate w-[140px]">{teacher.full_name}</h3>
-            <span className="text-xs text-muted-foreground truncate hidden sm:inline">{teacher.specialization || (t('teacher'))}</span>
+            <span className="text-xs text-muted-foreground truncate hidden sm:inline">{maskInternalId(teacher.specialization, canViewInternalIds) || (t('teacher'))}</span>
             <span className="text-xs text-muted-foreground hidden md:inline">{teacher.weekly_periods || teacher.sessions_count || '-'} {t('sessionsPerWeek')}</span>
           </div>
           <Badge className={`text-[10px] h-5 rounded-full border-0 ${teacher.is_active !== false ? tc.badge : 'bg-red-100 text-red-700'}`}>
@@ -429,7 +433,7 @@ const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewM
             <TeacherAvatar teacher={teacher} />
             <div className="min-w-0">
               <h3 className="font-semibold text-sm truncate max-w-[140px]">{teacher.full_name}</h3>
-              <p className="text-[10px] text-muted-foreground truncate">{teacher.specialization || (t('teacher'))}</p>
+              <p className="text-[10px] text-muted-foreground truncate">{maskInternalId(teacher.specialization, canViewInternalIds) || (t('teacher'))}</p>
             </div>
           </div>
           <DropdownMenu>
@@ -883,6 +887,7 @@ const AddPickerDialog = ({ open, onClose, isRTL, onSelect }) => {
 export default function UsersClassesManagement() {
   const { t } = useTranslation();
   const { user, api, schoolContext, isImpersonating } = useAuth();
+  const canViewInternalIds = useCanViewInternalIds();
   const { rolePrefix, getStudentDetailPath } = useSchoolNavigation();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const { nassaqConfirm, nassaqError, nassaqWarning, nassaqInfo } = useNassaqAlert();
@@ -2140,7 +2145,7 @@ export default function UsersClassesManagement() {
                   <TeacherAvatar teacher={selectedItem} size="lg" />
                   <div>
                     <h3 className="font-bold text-lg">{selectedItem.full_name}</h3>
-                    <p className="text-sm text-muted-foreground">{selectedItem.specialization || (t('teacher'))}</p>
+                    <p className="text-sm text-muted-foreground">{maskInternalId(selectedItem.specialization, canViewInternalIds) || (t('teacher'))}</p>
                     <Badge className="mt-1">{selectedItem.rank || (t('teacher'))}</Badge>
                   </div>
                 </div>
