@@ -1002,21 +1002,118 @@ async def get_lesson_new_metadata(
     }
 
 
+def _curriculum_teacher_id(current_user: dict) -> Optional[str]:
+    """The teacher identity that owns a curriculum plan for the caller.
+
+    Mirrors the teacher resolution in ``_verify_class_access`` so the
+    ``teacher_id`` stored on create and the teacher filter applied on read
+    always agree.
+    """
+    return current_user.get("teacher_id") or current_user.get("id")
+
+
+def _is_curriculum_teacher_scope(role: str) -> bool:
+    """True for callers whose curriculum plan is private to themselves —
+    classroom teachers and independent teachers. School-leadership and
+    platform roles instead view across all teachers of a class.
+    """
+    return role in ("teacher", UserRole.INDEPENDENT_TEACHER.value)
+
+
+def _verify_curriculum_lesson_owner(existing: dict, current_user: dict) -> None:
+    """Fail closed when a teacher/IT caller targets a lesson that is not part
+    of their own plan. Plans are private per (class, subject, teacher), so a
+    teacher must never be able to edit or delete a colleague's lesson — even by
+    id. We 404 (not 403) so the API does not confirm the foreign lesson exists.
+    Leadership/platform callers are unaffected (they manage across teachers).
+    """
+    if not _is_curriculum_teacher_scope(current_user.get("role", "")):
+        return
+    if (existing.get("teacher_id") or "") != (_curriculum_teacher_id(current_user) or ""):
+        raise HTTPException(status_code=404, detail="Lesson not found")
+
+
+async def _resolve_curriculum_subjects(
+    class_id: str, current_user: dict, cls: Optional[dict]
+) -> List[Dict[str, str]]:
+    """Subjects the caller may pick a curriculum plan for, in this class.
+
+    Curriculum plans are private per (class, subject, teacher). A teacher/IT
+    caller may only choose among the subjects THEY teach in the class;
+    leadership/platform callers see every subject taught in the class.
+    Resolution order: ``teacher_assignments`` → ``schedule_sessions`` →
+    the class's own ``subject_id`` (IT single-subject classes).
+    """
+    role = current_user.get("role", "")
+    teacher_scoped = _is_curriculum_teacher_scope(role)
+    tid = _curriculum_teacher_id(current_user)
+
+    pairs: Dict[str, str] = {}
+
+    ta_filter: Dict[str, Any] = {"class_id": class_id}
+    if teacher_scoped and tid:
+        ta_filter["teacher_id"] = tid
+    for ta in await gd_find(db.session, "teacher_assignments", ta_filter, limit=500):
+        sid = ta.get("subject_id")
+        if sid:
+            pairs.setdefault(sid, ta.get("subject_name") or "")
+
+    if not pairs:
+        ss_filter: Dict[str, Any] = {"class_id": class_id}
+        if teacher_scoped and tid:
+            ss_filter["teacher_id"] = tid
+        for ss in await gd_find(db.session, "schedule_sessions", ss_filter, limit=1000):
+            sid = ss.get("subject_id")
+            if sid:
+                pairs.setdefault(sid, ss.get("subject_name") or "")
+
+    if not pairs and cls:
+        sid = cls.get("subject_id")
+        if sid:
+            pairs.setdefault(sid, cls.get("subject_name") or "")
+
+    out: List[Dict[str, str]] = []
+    for sid, name in pairs.items():
+        if not name:
+            subj = await gd_find_one(db.session, "subjects", {"id": sid})
+            name = (subj or {}).get("name") or (subj or {}).get("name_ar") or ""
+        out.append({"id": sid, "name": name})
+    out.sort(key=lambda x: (x.get("name") or ""))
+    return out
+
+
 @class_teaching_router.get("/class/{class_id}/curriculum-plan")
 async def get_curriculum_plan(
     class_id: str,
     subject_id: Optional[str] = None,
+    teacher_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
     await _verify_class_access(class_id, current_user)
-    query = {"class_id": class_id}
+    role = current_user.get("role", "")
+
+    # Curriculum plans are private per (class, subject, teacher). A teacher/IT
+    # caller may only ever read their OWN plan: the teacher filter is forced
+    # server-side and any client-supplied ``teacher_id`` is ignored, so one
+    # teacher can never see another teacher's plan for the same class.
+    # Leadership/platform callers may optionally narrow to one teacher.
+    if _is_curriculum_teacher_scope(role):
+        eff_teacher_id = _curriculum_teacher_id(current_user)
+    else:
+        eff_teacher_id = teacher_id or None
+
+    query: Dict[str, Any] = {"class_id": class_id}
     if subject_id:
         query["subject_id"] = subject_id
+    if eff_teacher_id:
+        query["teacher_id"] = eff_teacher_id
+
     lessons = await gd_find(db.session, "curriculum_lessons", query, order_by="week", limit=500)
     total = len(lessons)
     completed = len([l for l in lessons if l.get("is_completed")])
     class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
     date_range = await _get_curriculum_date_range(class_doc or {})
+    subjects = await _resolve_curriculum_subjects(class_id, current_user, class_doc)
     return {
         "lessons": lessons,
         "total": total,
@@ -1024,6 +1121,8 @@ async def get_curriculum_plan(
         "progress": round((completed / total * 100) if total > 0 else 0),
         "curriculum_start_date": date_range.get("curriculum_start_date"),
         "curriculum_end_date": date_range.get("curriculum_end_date"),
+        "subjects": subjects,
+        "selected_subject_id": subject_id or None,
     }
 
 
@@ -1039,6 +1138,28 @@ async def add_lesson(
     cls = await gd_find_one(db.session, "classes", {"id": class_id})
     if not cls:
         raise HTTPException(status_code=404, detail="Class not found")
+
+    role = current_user.get("role", "")
+    # Only a teacher/IT caller owns a private plan, so only they stamp their
+    # teacher_id onto the lesson. Leadership/platform creators stay class-wide
+    # (no owner) — exactly as before this change — instead of mis-filing the
+    # lesson under the admin's own user id, which would hide it from teachers.
+    eff_teacher_id = _curriculum_teacher_id(current_user) if _is_curriculum_teacher_scope(role) else None
+
+    # Curriculum plans are private per (class, subject, teacher). For a
+    # teacher/IT caller, validate that the chosen subject is one they actually
+    # teach in this class so a lesson can't be filed under a colleague's
+    # subject. Resolution is best-effort: when the caller's subjects can't be
+    # determined we still allow the write (the stored teacher_id keeps the plan
+    # isolated), but we never accept a known-foreign subject.
+    if _is_curriculum_teacher_scope(role) and subject_id:
+        allowed = await _resolve_curriculum_subjects(class_id, current_user, cls)
+        allowed_ids = {s["id"] for s in allowed}
+        if allowed_ids and subject_id not in allowed_ids:
+            raise HTTPException(
+                status_code=403,
+                detail="غير مصرّح بإضافة درس لهذه المادة في هذا الفصل",
+            )
 
     now_ts = datetime.now(timezone.utc).isoformat()
     doc_id = str(uuid.uuid4())
@@ -1077,6 +1198,7 @@ async def add_lesson(
         "id": doc_id,
         "class_id": class_id,
         "subject_id": subject_id or "",
+        "teacher_id": eff_teacher_id or "",
         "title": lesson.title,
         "week": lesson.week,
         "order": lesson.order,
@@ -1145,6 +1267,7 @@ async def update_lesson(
     if not existing:
         raise HTTPException(status_code=404, detail="Lesson not found")
     await _verify_class_access(existing["class_id"], current_user)
+    _verify_curriculum_lesson_owner(existing, current_user)
 
     cls = await gd_find_one(db.session, "classes", {"id": existing["class_id"]})
     now_ts = datetime.now(timezone.utc).isoformat()
@@ -1204,10 +1327,17 @@ async def update_lesson(
     if update.week is not None:
         data["week"] = update.week
         if update.week != existing.get("week") and update.order is None:
+            # Keep ordering within the same private plan bucket (class, subject,
+            # teacher) so one teacher's lessons don't shift another's sequence.
+            wk_filter: Dict[str, Any] = {"class_id": existing["class_id"], "week": update.week}
+            if existing.get("teacher_id"):
+                wk_filter["teacher_id"] = existing["teacher_id"]
+            if existing.get("subject_id"):
+                wk_filter["subject_id"] = existing["subject_id"]
             week_lessons = await gd_find(
                 db.session,
                 "curriculum_lessons",
-                {"class_id": existing["class_id"], "week": update.week},
+                wk_filter,
                 limit=500,
             )
             count = len([l for l in week_lessons if l.get("id") != lesson_id])
@@ -1266,6 +1396,7 @@ async def delete_lesson(
     if not existing:
         raise HTTPException(status_code=404, detail="Lesson not found")
     await _verify_class_access(existing["class_id"], current_user)
+    _verify_curriculum_lesson_owner(existing, current_user)
     await gd_delete_one(db.session, "curriculum_lessons", {"id": lesson_id})
     return {"success": True}
 

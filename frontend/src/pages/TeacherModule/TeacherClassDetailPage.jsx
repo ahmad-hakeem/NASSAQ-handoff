@@ -78,6 +78,11 @@ export default function TeacherClassDetailPage() {
   const [curriculumData, setCurriculumData] = useState({ lessons: [], total: 0, completed: 0, progress: 0, curriculum_start_date: null, curriculum_end_date: null });
   const [curriculumLoading, setCurriculumLoading] = useState(false);
   const [curriculumError, setCurriculumError] = useState(false);
+  // Curriculum plans are private per (class, subject, teacher). When the teacher
+  // teaches more than one subject in this class, they pick which subject's plan
+  // to view/edit; the backend always scopes by the signed-in teacher regardless.
+  const [curriculumSubjects, setCurriculumSubjects] = useState([]);
+  const [selectedSubjectId, setSelectedSubjectId] = useState(null);
   const [expandedWeeks, setExpandedWeeks] = useState({});
   const [showAddLesson, setShowAddLesson] = useState(false);
   const [newLessonTitle, setNewLessonTitle] = useState('');
@@ -235,22 +240,39 @@ export default function TeacherClassDetailPage() {
     fetchClassData();
   }, [fetchClassData]);
 
+  // Reset the subject scope when navigating between classes so a stale subject
+  // from a previous class can't leak into the new class's curriculum fetch.
+  useEffect(() => {
+    setSelectedSubjectId(null);
+    setCurriculumSubjects([]);
+  }, [classId]);
+
   const fetchCurriculum = useCallback(async () => {
     if (!classId) return;
     setCurriculumLoading(true);
     setCurriculumError(false);
     try {
-      const res = await api.get(`/class/${classId}/curriculum-plan`);
-      setCurriculumData(res.data || { lessons: [], total: 0, completed: 0, progress: 0 });
+      const params = selectedSubjectId ? { subject_id: selectedSubjectId } : {};
+      const res = await api.get(`/class/${classId}/curriculum-plan`, { params });
+      const data = res.data || { lessons: [], total: 0, completed: 0, progress: 0 };
+      setCurriculumData(data);
+      const subjects = Array.isArray(data.subjects) ? data.subjects : [];
+      setCurriculumSubjects(subjects);
+      // Auto-pick the first subject so the plan is scoped to a single
+      // (subject, teacher) bucket as soon as we learn the teacher's subjects.
+      // The forced re-fetch (selectedSubjectId dependency) then narrows it.
+      if (!selectedSubjectId && subjects.length > 0) {
+        setSelectedSubjectId(subjects[0].id);
+      }
       const weeks = {};
-      (res.data?.lessons || []).forEach(l => { weeks[l.week] = true; });
+      (data.lessons || []).forEach(l => { weeks[l.week] = true; });
       setExpandedWeeks(weeks);
     } catch (err) {
       setCurriculumError(true);
     } finally {
       setCurriculumLoading(false);
     }
-  }, [api, classId]);
+  }, [api, classId, selectedSubjectId]);
 
   const fetchGradeColumns = useCallback(async () => {
     if (!classId) return;
@@ -381,7 +403,11 @@ export default function TeacherClassDetailPage() {
         body.override_curriculum = true;
         body.override_reason = overrideReason.trim();
       }
-      await api.post(`/class/${classId}/curriculum-plan/lesson`, body);
+      await api.post(
+        `/class/${classId}/curriculum-plan/lesson`,
+        body,
+        selectedSubjectId ? { params: { subject_id: selectedSubjectId } } : undefined,
+      );
       toast.success(t('lessonAdded'));
       resetAddLessonForm();
       setShowAddLesson(false);
@@ -618,7 +644,20 @@ export default function TeacherClassDetailPage() {
       )}
 
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {curriculumSubjects.length > 1 && (
+            <Select value={selectedSubjectId || ''} onValueChange={(v) => setSelectedSubjectId(v)}>
+              <SelectTrigger className="h-9 w-[180px] gap-1.5">
+                <BookOpen className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                <SelectValue placeholder={t('selectSubject')} />
+              </SelectTrigger>
+              <SelectContent>
+                {curriculumSubjects.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.name || s.id}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Button size="sm" variant="outline" className="gap-1.5" onClick={openAddLesson}>
             <Plus className="h-3.5 w-3.5" />
             {t('addLesson')}
