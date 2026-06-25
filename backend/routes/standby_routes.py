@@ -171,9 +171,29 @@ async def notify_coverage_candidate(
         period = int(orig.get("period_number") or 0)
     except (TypeError, ValueError):
         period = 0
-    cls_name = orig.get("class_name") or "—"
+    cls_name = orig.get("class_name") or ""
     subj_name = orig.get("subject_name") or ""
     day_ar = _AR_DAY_LABEL.get(day_key, day_key or "—")
+
+    # اسم الفصل/المادة قد لا يكونان مخزّنين ضمن سجل الحصة (المخزن الحديث
+    # يحلّهما من جدولي الفصول/المواد عند العرض). نحلّهما هنا من المعرف ضمن
+    # نفس المدرسة كي يصل الإشعار للمعلم كاملاً مع اسم الفصل، دون كشف سجلات
+    # مستأجر آخر.
+    cls_id = orig.get("class_id")
+    if not cls_name and cls_id:
+        cls_row = await gd_find_one(
+            db.session, "classes", {"id": cls_id, "school_id": str(sid)}
+        )
+        if cls_row:
+            cls_name = cls_row.get("name") or cls_row.get("name_ar") or ""
+    subj_id = orig.get("subject_id")
+    if not subj_name and subj_id:
+        subj_row = await gd_find_one(
+            db.session, "subjects", {"id": subj_id, "school_id": str(sid)}
+        )
+        if subj_row:
+            subj_name = subj_row.get("name_ar") or subj_row.get("name") or ""
+    cls_name = cls_name or "—"
 
     # التحقّق من توافر المعلم فعلياً في هذه الفترة باستخدام نفس مصدر القائمة
     # المنسدلة، كي لا يُكلَّف معلم مشغول/غائب/خارج جدول الانتظار عبر طلب
