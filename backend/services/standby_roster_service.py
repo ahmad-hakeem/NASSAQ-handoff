@@ -105,6 +105,27 @@ def _safe_int(value, default: int = 0) -> int:
         return default
 
 
+def _detect_timetable_periods(sessions: Optional[List[dict]]) -> List[int]:
+    """Period universe = the distinct period numbers that actually occur in
+    the timetable's own sessions.
+
+    Standby slots are only ever eligible at these periods, so the generator
+    can never place a teacher on a period no class meets at (e.g. period 12
+    in a school whose day ends at period 9). Such a phantom slot can never
+    be covered and would surface to the teacher as a permanent
+    "بانتظار الإسناد" row.
+
+    Falls back to the full PERIODS range when there are no sessions to learn
+    from (e.g. no timetable yet) — preserving prior behaviour for that case.
+    """
+    seen: Set[int] = set()
+    for s in sessions or []:
+        p = _safe_int(s.get("period_number"), 0)
+        if p in PERIODS:
+            seen.add(p)
+    return sorted(seen) if seen else list(PERIODS)
+
+
 def _select_slots_for_teacher(
     *,
     eligible_days: List[str],
@@ -212,6 +233,11 @@ async def compute_standby_roster(
             )
         else:
             sessions = []
+
+    # Eligible-period universe: only the periods that actually exist in this
+    # timetable. Prevents the auto pass from generating standby slots at a
+    # period no class meets at (phantom slots that can never be covered).
+    timetable_periods = _detect_timetable_periods(sessions)
 
     # 1) Map: teacher_id -> set of (day, period) where they're already busy.
     busy: Dict[str, Set[Tuple[str, int]]] = {t["id"]: set() for t in teachers if t.get("id")}
@@ -347,7 +373,7 @@ async def compute_standby_roster(
         locked = busy[tid] | unavailable.get(tid, set())
         eligible_by_day: Dict[str, List[int]] = {}
         for day in eligible_days:
-            day_periods = [p for p in PERIODS if (day, p) not in locked]
+            day_periods = [p for p in timetable_periods if (day, p) not in locked]
             if day_periods:
                 eligible_by_day[day] = day_periods
         if not eligible_by_day:
