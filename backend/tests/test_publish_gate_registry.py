@@ -252,6 +252,93 @@ async def test_validate_before_publish_under_warns_over_blocks(school_a_id):
     )
 
 
+async def _mk_subject(school_id: str, *, is_active: bool = True) -> str:
+    """Insert a real subjects-table row for the school."""
+    sid = str(uuid.uuid4())
+    await gd_insert(db.session, "subjects", {
+        "id": sid,
+        "school_id": school_id,
+        "name": "مادة",
+        "is_active": is_active,
+    })
+    return sid
+
+
+def _flagged_subject_ids(result: dict) -> set:
+    """Subject ids flagged as orphan references by HC-16 (entity_integrity).
+    HC-16 refs carry {"field": "subject_id", "value": <id>}."""
+    return {
+        v["refs"].get("value")
+        for v in result["violations"]
+        if v["validation_key"] == "entity_integrity"
+        and v["refs"].get("field") == "subject_id"
+    }
+
+
+async def test_validate_before_publish_active_subject_without_demand_not_orphan(
+    school_a_id,
+):
+    """Regression: HC-16 (entity_integrity) must NOT flag a real, ACTIVE
+    school subject referenced by a manually-built timetable just because the
+    subject is absent from the academic-demand matrix (no curriculum row /
+    no class-scoped teacher assignment).
+
+    Previously ctx.resources['subjects'] was derived solely from demand, so
+    an active subject missing from demand produced a false
+    'مرجع غير صالح subject_id=...' that blocked publish. validate_before_publish
+    now seeds the subject universe from the subjects table. A subject id that
+    does NOT exist (deleted/never-created) must still be flagged."""
+    await _isolate_hc()
+    await _mk_hc("entity_integrity", "HC-16", severity="critical")
+    tt_id = await _mk_timetable(school_a_id)
+
+    good_subj = await _mk_subject(school_a_id, is_active=True)
+    bad_subj = str(uuid.uuid4())  # never inserted → genuinely orphan
+
+    # Active subject, not part of any demand → must NOT be flagged.
+    await _mk_session(school_a_id, tt_id, teacher_id=str(uuid.uuid4()),
+                      class_id=str(uuid.uuid4()), subject_id=good_subj,
+                      day_of_week="sunday", period_number=1)
+    # Nonexistent subject → must STILL be flagged.
+    await _mk_session(school_a_id, tt_id, teacher_id=str(uuid.uuid4()),
+                      class_id=str(uuid.uuid4()), subject_id=bad_subj,
+                      day_of_week="sunday", period_number=2)
+
+    engine = SmartSchedulingEngine(db)
+    result = await engine.validate_before_publish(
+        school_id=school_a_id, timetable_id=tt_id
+    )
+
+    flagged_subjects = _flagged_subject_ids(result)
+    assert good_subj not in flagged_subjects, (
+        "active subject without demand was wrongly flagged as orphan"
+    )
+    assert bad_subj in flagged_subjects, (
+        "nonexistent subject must still be flagged by HC-16"
+    )
+
+
+async def test_validate_before_publish_inactive_subject_still_orphan(school_a_id):
+    """An INACTIVE (soft-deleted) subject must remain an HC-16 orphan: the
+    publish-time seed loads active subjects only, so deactivated subjects are
+    correctly still blocked."""
+    await _isolate_hc()
+    await _mk_hc("entity_integrity", "HC-16", severity="critical")
+    tt_id = await _mk_timetable(school_a_id)
+
+    inactive_subj = await _mk_subject(school_a_id, is_active=False)
+    await _mk_session(school_a_id, tt_id, teacher_id=str(uuid.uuid4()),
+                      class_id=str(uuid.uuid4()), subject_id=inactive_subj,
+                      day_of_week="sunday", period_number=1)
+
+    engine = SmartSchedulingEngine(db)
+    result = await engine.validate_before_publish(
+        school_id=school_a_id, timetable_id=tt_id
+    )
+
+    assert inactive_subj in _flagged_subject_ids(result)
+
+
 # ---------------------------------------------------------------------------
 # 5b — assert_publishable helper + endpoint enforcement
 # ---------------------------------------------------------------------------

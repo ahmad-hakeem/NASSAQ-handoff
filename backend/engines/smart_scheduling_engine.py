@@ -3744,6 +3744,47 @@ class SmartSchedulingEngine:
             include_flat_demands=True,
         )
 
+        # HC-16 (entity_integrity) is a reference-existence check: it flags any
+        # session whose subject_id is not in ctx.resources["subjects"]. That map
+        # is derived ONLY from the academic-demand matrix (curriculum rows +
+        # class-scoped teacher assignments), so a REAL, ACTIVE school subject
+        # that a manually-built timetable references — but which has no
+        # curriculum row / teacher assignment yet — is wrongly reported as an
+        # "مرجع غير صالح" (orphan reference) and blocks publish. The correct
+        # universe for a subject *reference* is the subjects table, so seed the
+        # map with the active subjects this timetable actually references before
+        # validating. The lookup is scoped by school_id + active and bounded to
+        # the referenced ids (bulk $in), so it is tenant-safe and cannot miss
+        # rows for schools with very large subject catalogs. This is
+        # publish-only (generation keeps using the demand-derived map) and is
+        # consumed solely by HC-16. Truly deleted/deactivated/cross-tenant
+        # subjects remain absent and are still (correctly) blocked.
+        try:
+            referenced_subject_ids = {
+                s.get("subject_id") for s in sessions if s.get("subject_id")
+            }
+            if referenced_subject_ids:
+                active_subjects = await gd_find(
+                    self.session, "subjects",
+                    {
+                        "school_id": school_id,
+                        "id": {"$in": list(referenced_subject_ids)},
+                        "is_active": {"$ne": False},
+                    },
+                    limit=len(referenced_subject_ids),
+                )
+                subject_resources = ctx.resources.setdefault("subjects", {})
+                for subj in active_subjects:
+                    sid = subj.get("id")
+                    if sid:
+                        subject_resources.setdefault(sid, {"id": sid})
+        except Exception:
+            logger.warning(
+                "validate_before_publish: failed to seed active subjects for "
+                "school %s; falling back to demand-derived subject map",
+                school_id, exc_info=True,
+            )
+
         violations = list(validate_full(ctx)) + list(
             validate_placement(ctx, candidate=None)
         )
