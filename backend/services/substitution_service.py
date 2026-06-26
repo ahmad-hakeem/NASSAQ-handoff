@@ -279,6 +279,7 @@ async def assign_substitute(
     absence_date: str,
     notification_engine: NotificationEngine,
     actor_user_id: Optional[str] = None,
+    notify: bool = True,
 ) -> Dict[str, Any]:
     """يُسجّل بديلاً لحصة معيّنة ويُرسل إشعاراً للمعلم البديل.
 
@@ -313,7 +314,25 @@ async def assign_substitute(
         return {"success": False, "error": "teacher_busy",
                 "message_ar": "المعلم البديل لديه حصة في هذا الوقت"}
 
-    # And not already substituting another class at this slot for this date
+    # Idempotency FIRST: if a sub already exists for this exact (session, date),
+    # surface it as `already_assigned` together with the incumbent substitute
+    # id. This MUST run before the parallel-slot check below — otherwise a
+    # same-teacher repeat (e.g. a principal re-confirming coverage via
+    # /standby/notify-coverage) would match `parallel_sub` first and be
+    # misreported as `already_substituting`, blocking the idempotent path.
+    existing = await gd_find_one(session, "substitute_assignments", {
+        "school_id": school_id,
+        "original_session_id": original_session_id,
+        "absence_date": absence_date,
+    })
+    if existing:
+        return {"success": False, "error": "already_assigned",
+                "message_ar": "تم إسناد بديل لهذه الحصة مسبقاً",
+                "existing_id": existing.get("id"),
+                "existing_substitute_teacher_id": existing.get("substitute_teacher_id")}
+
+    # And not already substituting ANOTHER class at this slot for this date
+    # (one teacher cannot cover two different sessions in the same period).
     parallel_sub = await gd_find_one(session, "substitute_assignments", {
         "school_id": school_id,
         "substitute_teacher_id": substitute_teacher_id,
@@ -324,17 +343,6 @@ async def assign_substitute(
     if parallel_sub:
         return {"success": False, "error": "already_substituting",
                 "message_ar": "المعلم البديل يغطّي حصة أخرى في نفس الخانة"}
-
-    # Idempotency: if a sub already exists for this exact (session, date), reject
-    existing = await gd_find_one(session, "substitute_assignments", {
-        "school_id": school_id,
-        "original_session_id": original_session_id,
-        "absence_date": absence_date,
-    })
-    if existing:
-        return {"success": False, "error": "already_assigned",
-                "message_ar": "تم إسناد بديل لهذه الحصة مسبقاً",
-                "existing_id": existing.get("id")}
 
     sub_id = str(uuid.uuid4())
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -385,10 +393,12 @@ async def assign_substitute(
             "message_ar": "تم إسناد بديل لهذه الحصة من جلسة أخرى — حدّث الصفحة",
         }
 
-    # Send in-app notification to substitute teacher
+    # Send in-app notification to substitute teacher. Callers that compose
+    # their own richer notice (e.g. /standby/notify-coverage) pass notify=False
+    # to avoid double-notifying the substitute.
     notification_id = None
     sub_user_id = sub_teacher.get("user_id")
-    if sub_user_id:
+    if notify and sub_user_id:
         try:
             day_ar = DAY_LABEL_AR.get(day, day)
             cls_name = orig.get("class_name") or "—"

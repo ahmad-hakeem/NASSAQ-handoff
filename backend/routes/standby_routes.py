@@ -213,6 +213,50 @@ async def notify_coverage_candidate(
     if body.substitute_teacher_id not in eligible_ids:
         raise HTTPException(status_code=409, detail="المعلم غير متاح في هذه الفترة")
 
+    # ── ترسيخ التكليف كإسناد بديل فعلي ───────────────────────────────────
+    # لا تكتفِ بإرسال إشعار: قائمة انتظار المعلم (/standby/roster/me) وجدول
+    # المدير لا يعكسان تغطية الحصة إلا عند وجود صفّ في substitute_assignments
+    # ضمن الأسبوع الحالي. نُعيد استخدام مسار الإسناد المُحصّن (فحوص التعارض/
+    # عدم التكرار/سباق الكتابة) مع تعطيل إشعاره البسيط — فالإشعار الأغنى يُرسَل
+    # أدناه. هكذا يتحوّل عمود «الفصل» من «بانتظار الإسناد» إلى اسم الفصل تلقائياً.
+    notif_engine = NotificationEngine(db)
+    assign_result = await assign_substitute(
+        db.session,
+        school_id=str(sid),
+        original_session_id=str(body.original_session_id),
+        substitute_teacher_id=str(body.substitute_teacher_id),
+        absence_date=_today_iso(),
+        notification_engine=notif_engine,
+        actor_user_id=(current_user or {}).get("id"),
+        notify=False,
+    )
+    assignment_id = None
+    if assign_result.get("success"):
+        assignment_id = (assign_result.get("substitution") or {}).get("id")
+    elif assign_result.get("error") == "already_assigned":
+        # إعادة إسناد نفس المعلم → نعتبره ناجحاً ونُعيد إرسال الإشعار. أمّا إذا
+        # كان مُسنداً لمعلم آخر فنرفض (مصدر حقيقة واحد: بديل واحد لكل حصة/تاريخ).
+        existing_sub = str(
+            assign_result.get("existing_substitute_teacher_id") or ""
+        )
+        if existing_sub == str(body.substitute_teacher_id):
+            assignment_id = assign_result.get("existing_id")
+        else:
+            raise HTTPException(
+                status_code=409, detail="هذه الحصة مُسندة لمعلم آخر بالفعل"
+            )
+    else:
+        # نجح فحص الأهلية للتو، لذا أي تعارض هنا هو سباق فعلي (حُجز المعلم في
+        # مكان آخر بين اللحظتين). نُرجع رسالة عربية آمنة.
+        err = assign_result.get("error")
+        status = 409 if err in (
+            "teacher_busy", "already_substituting", "race_conflict",
+        ) else 400
+        raise HTTPException(
+            status_code=status,
+            detail=assign_result.get("message_ar") or "تعذّر إسناد التغطية",
+        )
+
     # توقيت الحصة تزييني فقط: نحلّه بأفضل جهد ولا نُفشل الإشعار عند غيابه.
     time_str = ""
     if period:
@@ -233,34 +277,56 @@ async def notify_coverage_candidate(
     title = "تكليف بتغطية حصة"
     message = f"تم تكليفك بتغطية حصة يوم {day_ar} — {detail_line}"
 
-    notif_engine = NotificationEngine(db)
-    notif = await notif_engine.create_notification(
-        tenant_id=str(sid),
-        recipient_id=str(sub_user_id),
-        title=title,
-        message=message,
-        notification_type=NotificationType.ALERT.value,
-        category=NotificationCategory.SCHEDULE.value,
-        priority=NotificationPriority.HIGH.value,
-        entity_type="timetable_session",
-        entity_id=str(body.original_session_id),
-        action_url="/schedule",
-        sender_id=(current_user or {}).get("id"),
-        metadata={
-            "kind": "coverage_assignment_notice",
-            "day_of_week": day_key,
-            "period_number": period,
-            "period_time": time_str,
-            "class_id": orig.get("class_id"),
-            "class_name": cls_name,
-            "subject_id": orig.get("subject_id"),
-            "subject_name": subj_name,
-        },
-    )
+    # الإسناد رُسّخ بالفعل وهو مصدر الحقيقة لجدول المعلم؛ لذا فشل الإشعار
+    # (نادر) يجب ألّا يُفشل الطلب — نُسجّله ونُكمل بنجاح كما يفعل assign_substitute.
+    try:
+        notif = await notif_engine.create_notification(
+            tenant_id=str(sid),
+            recipient_id=str(sub_user_id),
+            title=title,
+            message=message,
+            notification_type=NotificationType.ALERT.value,
+            category=NotificationCategory.SCHEDULE.value,
+            priority=NotificationPriority.HIGH.value,
+            entity_type="timetable_session",
+            entity_id=str(body.original_session_id),
+            action_url="/schedule",
+            sender_id=(current_user or {}).get("id"),
+            metadata={
+                "kind": "coverage_assignment_notice",
+                "day_of_week": day_key,
+                "period_number": period,
+                "period_time": time_str,
+                "class_id": orig.get("class_id"),
+                "class_name": cls_name,
+                "subject_id": orig.get("subject_id"),
+                "subject_name": subj_name,
+            },
+        )
+    except Exception as _err:  # noqa: BLE001 — الإشعار ثانوي مقابل ترسيخ الإسناد
+        logger.warning(
+            "coverage notification failed (assignment persisted): %s", _err
+        )
+        notif = None
+
+    notif_id = (notif or {}).get("id")
+    # ربط الإشعار بالإسناد المُرسّخ (أفضل جهد — لا يُفشل العملية عند تعذّره).
+    if assignment_id and notif_id:
+        try:
+            from engines.sql_utils import gd_update_one
+
+            await gd_update_one(
+                db.session, "substitute_assignments",
+                {"id": assignment_id, "school_id": str(sid)},
+                {"notification_id": notif_id},
+            )
+        except Exception as _err:  # noqa: BLE001 — الربط تجميلي فقط
+            logger.debug("failed to link coverage notification: %s", _err)
 
     return {
         "success": True,
-        "notification_id": (notif or {}).get("id"),
+        "notification_id": notif_id,
+        "assignment_id": assignment_id,
         "teacher_name": teacher.get("full_name") or teacher.get("name") or "—",
     }
 
