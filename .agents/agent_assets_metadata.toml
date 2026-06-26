@@ -132,3 +132,9 @@ id = "MAutFx9i9-MiwtTgaEzqT"
 uri = "file://docs/platform-state-report.md"
 type = "text"
 title = "NASSAQ Platform State Report (2026-06-23)"
+
+[[outputs]]
+id = "cUdmBTObIy5mWuWCzUhl2"
+uri = "file://reports/board-report-2026-05-20-to-2026-06-26.md"
+type = "text"
+title = "Board Report — Platform Progress (20 May – 26 June 2026)"
