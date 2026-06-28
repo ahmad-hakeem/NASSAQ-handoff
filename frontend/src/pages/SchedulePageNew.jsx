@@ -859,7 +859,7 @@ export default function SchedulePageNew() {
       };
       const dayParam = paginationOverride?.day ?? paginationStateRef.current.day;
       if (dayParam) params.day = dayParam;
-      const response = await api.get('/schedule/master-grid', {
+      const doGet = () => api.get('/schedule/master-grid', {
         params,
         headers: {
           'X-School-Context': schoolId,
@@ -867,6 +867,28 @@ export default function SchedulePageNew() {
           'Pragma': 'no-cache',
         },
       });
+      let response = await doGet();
+      // قاعدة المنتج: «المسودة» نسخةُ عملٍ قابلة للتعديل من آخر جدول منشور.
+      // بعد النشر لا يبقى صفُّ مسودة فتعود شبكة المسودة فارغة — نطلب من
+      // الخادم تهيئة مسودة (بنسخ الجدول المنشور) مرّة واحدة ثم نعيد الجلب.
+      // ننفّذ ذلك لعرض المسودة فقط وعندما تكون الشبكة فارغة فعلاً، فلا
+      // يتكرر بعد إنشاء المسودة (تصبح غير فارغة) ولا يحدث تكرار لا نهائي.
+      // يغطّي هذا العرضين اليومي والأسبوعي وإعادة التحميل لأنهما يمرّان
+      // عبر ``loadGrid`` نفسها.
+      if (effectiveView === 'draft' && response?.data?.is_empty === true) {
+        try {
+          const ensured = await api.post(
+            '/schedule/draft/ensure',
+            { school_id: schoolId },
+            { headers: { 'X-School-Context': schoolId } },
+          );
+          if (ensured?.data?.timetable_id) {
+            response = await doGet();
+          }
+        } catch (ensureErr) {
+          // غير حرج: نُبقي حالة الشبكة الفارغة إن تعذّرت التهيئة.
+        }
+      }
       setGrid(response.data);
       setError('');
       return response.data;

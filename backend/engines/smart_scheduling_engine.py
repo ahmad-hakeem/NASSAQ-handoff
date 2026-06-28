@@ -3923,6 +3923,109 @@ class SmartSchedulingEngine:
         })
         return result > 0
 
+    async def ensure_editable_draft(self, school_id: str, user_id: str) -> Optional[str]:
+        """يضمن وجود مسودة قابلة للتعديل للمدرسة ويعيد معرّفها.
+
+        قاعدة المنتج (راجع مواصفة "المنشور/المسودة"):
+        - إن وُجدت مسودة فعلاً (عمل قيد التنفيذ) نعيدها كما هي — لا ننشئ نسخة ثانية.
+        - وإلا، إن وُجد جدول منشور، ننشئ مسودة جديدة بنسخ الجدول المنشور
+          (صفّ الجدول + كل حصصه) كي يبدأ المدير التعديل من الجدول الحالي
+          بدلاً من شبكة فارغة.
+        - وإلا (لا مسودة ولا منشور) نعيد ``None`` — لا يوجد ما يُنسخ.
+
+        ملاحظة تزامن: يجب على المنادي الحصول على قفل استشاري لكل مدرسة قبل
+        الاستدعاء كي لا ينشئ طلبان متزامنان مسودتين. نعيد التحقق من وجود
+        مسودة هنا أيضاً بعد القفل (دفاعياً).
+        """
+        existing = await gd_find(
+            self.session,
+            "timetables",
+            {"school_id": school_id, "status": TimetableStatus.DRAFT.value},
+            order_by="updated_at",
+            desc_order=True,
+            limit=1,
+        )
+        if existing:
+            return existing[0].get("id")
+
+        published = await gd_find(
+            self.session,
+            "timetables",
+            {"school_id": school_id, "status": TimetableStatus.PUBLISHED.value},
+            order_by="updated_at",
+            desc_order=True,
+            limit=1,
+        )
+        if not published:
+            return None
+
+        return await self._clone_timetable_as_draft(published[0], user_id)
+
+    async def _clone_timetable_as_draft(self, source: dict, user_id: str) -> str:
+        """ينسخ جدولاً (صفّه + كل حصصه) إلى مسودة جديدة ويعيد معرّفها.
+
+        لا ننسخ صفوف التعارضات/المتطلبات غير المجدولة — فبوابة النشر
+        (``assert_publishable``) تعيد احتسابها من الحصص الحالية، ونسخ صفوف
+        تعارض قديمة قد يحجب النشر زوراً.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        new_id = str(uuid.uuid4())
+        source_id = source.get("id")
+        school_id = source.get("school_id")
+
+        new_timetable = {
+            "id": new_id,
+            "school_id": school_id,
+            "name": source.get("name") or "جدول",
+            "name_en": source.get("name_en"),
+            "academic_year": source.get("academic_year"),
+            "semester": source.get("semester"),
+            "effective_from": source.get("effective_from"),
+            "effective_to": source.get("effective_to"),
+            "working_days": source.get("working_days"),
+            "status": TimetableStatus.DRAFT.value,
+            "is_published": False,
+            "total_sessions": 0,
+            "version": (source.get("version") or 1) + 1,
+            "published_at": None,
+            "published_by": None,
+            "created_by": user_id,
+            "updated_by": user_id,
+            "created_at": now,
+            "updated_at": now,
+        }
+        await gd_insert(self.session, "timetables", new_timetable)
+
+        source_sessions = await gd_find(
+            self.session,
+            "timetable_sessions",
+            {"timetable_id": source_id},
+            limit=50000,
+        )
+        cloned_docs = []
+        for sess in source_sessions:
+            doc = {
+                k: v for k, v in sess.items()
+                if k not in ("id", "_id", "_collection")
+            }
+            doc["timetable_id"] = new_id
+            # نُثبّت school_id صراحةً: مسارات النقل/التبديل تقرؤه مباشرةً من
+            # الحصة، فنتفادى حالات بيانات قديمة قد تخلو منه.
+            doc["school_id"] = school_id
+            doc["created_at"] = now
+            doc["updated_at"] = now
+            cloned_docs.append(doc)
+        if cloned_docs:
+            await gd_insert_many(self.session, "timetable_sessions", cloned_docs)
+
+        await gd_update_one(
+            self.session,
+            "timetables",
+            {"id": new_id},
+            {"total_sessions": len(cloned_docs), "updated_at": now},
+        )
+        return new_id
+
 
 async def _build_infeasibility_report_impl(engine: "SmartSchedulingEngine", school_id: str) -> InfeasibilityReport:
     """Compute deterministic INF-01..INF-05 blockers + advisory items.

@@ -29,6 +29,7 @@ from engines.school_notification_engine import (
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
 from utils.tenant_scope import assert_school_access, resolve_school_id
 from routes._publish_gate import assert_publishable
+from sqlalchemy import text
 
 
 from shared_models import (
@@ -967,6 +968,48 @@ async def publish_schedule(
     }
 
 
+# --- Ensure Editable Draft API ---
+class EnsureDraftRequest(BaseModel):
+    school_id: Optional[str] = None
+
+
+@router.post("/schedule/draft/ensure")
+async def ensure_editable_draft_route(
+    payload: EnsureDraftRequest,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN])),
+    x_school_context: Optional[str] = Header(None),
+):
+    """يضمن وجود مسودة قابلة للتعديل للجدول المدرسي ويعيد معرّفها.
+
+    قاعدة المنتج: المسودة نسخةُ عملٍ قابلة للتعديل من آخر جدول منشور ما لم
+    توجد مسودة أحدث. تستدعيها الواجهة مرّة واحدة عندما تعود شبكة المسودة
+    فارغة بعد النشر، فتُنشئ الخدمة مسودة بنسخ الجدول المنشور (إن لم توجد
+    مسودة). تُعيد ``timetable_id=null`` عندما لا يوجد منشور ولا مسودة.
+    """
+    school_id = resolve_school_id(current_user, payload.school_id or x_school_context)
+    if not school_id:
+        raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
+    assert_school_access(current_user, school_id)
+
+    # قفل استشاري لكل مدرسة ضمن المعاملة الحالية كي لا ينشئ طلبان متزامنان
+    # مسودتين. يُحرَّر القفل تلقائياً عند إنهاء المعاملة (الوسيط يُنفِّذ commit
+    # لطلبات غير-GET).
+    await db.session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:k))"),
+        {"k": f"sched_draft_ensure:{school_id}"},
+    )
+
+    timetable_id = await smart_scheduling_engine.ensure_editable_draft(
+        school_id=school_id,
+        user_id=current_user.get("id", "system"),
+    )
+    return {
+        "ok": True,
+        "timetable_id": timetable_id,
+        "school_id": school_id,
+    }
+
+
 # --- Unpublish Timetable API ---
 @router.post("/smart-scheduling/timetable/{timetable_id}/unpublish")
 async def unpublish_timetable(
@@ -991,6 +1034,24 @@ async def unpublish_timetable(
                 "code": "NOT_PUBLISHED",
                 "message_ar": "لا يمكن إلغاء نشر جدول غير منشور.",
                 "message_en": "Only published timetables can be unpublished.",
+            },
+        )
+
+    # مع تفعيل التهيئة التلقائية للمسودة، قد توجد مسودة قابلة للتعديل فعلاً.
+    # السماح بإلغاء النشر حينئذٍ ينشئ مسودة ثانية ويكسر ثابت «مسودة واحدة
+    # على الأكثر» الذي يعتمد عليه النشر. نرفض ونوجّه المدير لتعديل المسودة.
+    existing_drafts = await gd_find(
+        db.session, "timetables",
+        {"school_id": school_id, "status": TimetableStatus.DRAFT.value},
+        limit=1,
+    )
+    if existing_drafts:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "DRAFT_ALREADY_EXISTS",
+                "message_ar": "توجد مسودة قابلة للتعديل بالفعل. عدِّل المسودة الحالية بدلاً من إلغاء نشر الجدول.",
+                "message_en": "An editable draft already exists. Edit the existing draft instead of unpublishing.",
             },
         )
 
