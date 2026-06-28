@@ -3348,14 +3348,79 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 "submission_date": sub.get("submitted_at") if sub else None,
             })
 
+        # ── Lesson-recorded homework (teacher follow-up sheet) ────────────────
+        # The الواجبات tab must ALSO reflect homework the teacher marks during a
+        # live lesson ("سلم"/"لم يسلم"), stored in `session_homework`
+        # (status "done"/"not_done"). That is a different data model from the
+        # digital `student_assignments` posts above, so without this merge the
+        # parent saw 0/0 even after the teacher recorded submissions. We add the
+        # lesson records to the same list (mapped to submitted/not_submitted) so
+        # the summary counters and the entries both reflect real teacher input.
+        lesson_hw = await gd_find(
+            db.session, "session_homework", {"student_id": child_id},
+            order_by="recorded_at", desc_order=True, limit=200
+        )
+        if lesson_hw:
+            sess_ids = list({h.get("session_id") for h in lesson_hw if h.get("session_id")})
+            sess_rows = await gd_find(
+                db.session, "class_sessions", {"id": {"$in": sess_ids}}, limit=len(sess_ids)
+            ) if sess_ids else []
+            sess_map = {s.get("id"): s for s in sess_rows}
+            subj_ids = list({
+                (sess_map.get(h.get("session_id")) or {}).get("subject_id")
+                for h in lesson_hw
+            } - {None, ""})
+            subj_rows = await gd_find(
+                db.session, "subjects", {"id": {"$in": subj_ids}}, limit=len(subj_ids)
+            ) if subj_ids else []
+            subj_map = {
+                s.get("id"): (s.get("name_ar") or s.get("name") or s.get("name_en") or "")
+                for s in subj_rows
+            }
+            for h in lesson_hw:
+                status = h.get("status")
+                # Only the two known lesson-homework states map to this view.
+                if status not in ("done", "not_done"):
+                    continue
+                sess = sess_map.get(h.get("session_id"))
+                # Skip rows whose session cannot be resolved: their tenant can't
+                # be proven, so they must not be surfaced to the parent.
+                if not sess:
+                    continue
+                # Defense-in-depth: never surface a session from another tenant.
+                sess_school = sess.get("school_id") or sess.get("tenant_id")
+                if sess_school and school_id and sess_school != school_id:
+                    continue
+                done = status == "done"
+                subj_id = sess.get("subject_id")
+                subj_name = subj_map.get(subj_id) or sess.get("subject_name") or ""
+                title = ("واجب " + subj_name).strip()
+                result.append({
+                    "id": h.get("id") or f"sess:{h.get('session_id')}:hw",
+                    "title": title,
+                    "subject_id": subj_id,
+                    "due_date": sess.get("date") or h.get("recorded_at") or "",
+                    "status": "submitted" if done else "not_submitted",
+                    "grade": None,
+                    "submission_date": h.get("recorded_at") if done else None,
+                    "source": "lesson",
+                })
+
+        # Newest homework first regardless of source (digital due_date or lesson date).
+        result.sort(key=lambda a: a.get("due_date") or "", reverse=True)
+
+        def _count(*statuses):
+            return len([a for a in result if a["status"] in statuses])
+
         return {
             "child_name": child.get("full_name"),
             "assignments": result,
             "statistics": {
-                "pending": len([a for a in result if a["status"] == "pending"]),
-                "submitted": len([a for a in result if a["status"] == "submitted"]),
-                "graded": len([a for a in result if a["status"] == "graded"]),
-                "late": len([a for a in result if a["status"] == "late"])
+                "pending": _count("pending"),
+                "submitted": _count("submitted"),
+                "graded": _count("graded"),
+                "late": _count("late"),
+                "not_submitted": _count("not_submitted"),
             }
         }
 
