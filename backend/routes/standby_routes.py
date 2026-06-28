@@ -59,6 +59,7 @@ from services.substitution_service import (
     assign_bulk_substitutes,
     assign_substitute,
     list_vacant_slots_for_absent_teacher,
+    resolve_coverage_lesson_context,
     revoke_substitute,
     revoke_substitute_batch,
     score_candidates_for_slot,
@@ -171,30 +172,6 @@ async def notify_coverage_candidate(
         period = int(orig.get("period_number") or 0)
     except (TypeError, ValueError):
         period = 0
-    cls_name = orig.get("class_name") or ""
-    subj_name = orig.get("subject_name") or ""
-    day_ar = _AR_DAY_LABEL.get(day_key, day_key or "—")
-
-    # اسم الفصل/المادة قد لا يكونان مخزّنين ضمن سجل الحصة (المخزن الحديث
-    # يحلّهما من جدولي الفصول/المواد عند العرض). نحلّهما هنا من المعرف ضمن
-    # نفس المدرسة كي يصل الإشعار للمعلم كاملاً مع اسم الفصل، دون كشف سجلات
-    # مستأجر آخر.
-    cls_id = orig.get("class_id")
-    if not cls_name and cls_id:
-        cls_row = await gd_find_one(
-            db.session, "classes", {"id": cls_id, "school_id": str(sid)}
-        )
-        if cls_row:
-            cls_name = cls_row.get("name") or cls_row.get("name_ar") or ""
-    subj_id = orig.get("subject_id")
-    if not subj_name and subj_id:
-        subj_row = await gd_find_one(
-            db.session, "subjects", {"id": subj_id, "school_id": str(sid)}
-        )
-        if subj_row:
-            subj_name = subj_row.get("name_ar") or subj_row.get("name") or ""
-    cls_name = cls_name or "—"
-
     # التحقّق من توافر المعلم فعلياً في هذه الفترة باستخدام نفس مصدر القائمة
     # المنسدلة، كي لا يُكلَّف معلم مشغول/غائب/خارج جدول الانتظار عبر طلب
     # مُعدَّل يدوياً (الواجهة وحدها لا تكفي). نطلب حدّاً واسعاً لنفحص كامل
@@ -257,25 +234,24 @@ async def notify_coverage_candidate(
             detail=assign_result.get("message_ar") or "تعذّر إسناد التغطية",
         )
 
-    # توقيت الحصة تزييني فقط: نحلّه بأفضل جهد ولا نُفشل الإشعار عند غيابه.
-    time_str = ""
-    if period:
-        try:
-            from routes.schedule_master_grid_routes import _resolve_period_times
-
-            pt = await _resolve_period_times(str(sid), [period])
-            slot = pt.get(str(period)) or {}
-            start = slot.get("start") or slot.get("start_time") or ""
-            end = slot.get("end") or slot.get("end_time") or ""
-            time_str = f"{start} - {end}" if start and end else (start or end)
-        except Exception as _err:  # noqa: BLE001 — decorative, best-effort
-            logger.debug("period time resolution failed: %s", _err)
-            time_str = ""
-
-    segments = [f"الحصة {period}" if period else "", time_str, cls_name, subj_name]
-    detail_line = " · ".join(s for s in segments if s)
+    # نبني سياق الحصة عبر المصدر الموحّد (نفس منطق إشعار «إسناد حصة انتظار»)
+    # كي تتطابق المعلومات في كلا الإشعارين: اليوم/رقم الحصة/التوقيت/اسم
+    # الفصل/المادة — مع حلّ الاسمين من جدوليهما القانونيين دون كشف مستأجر آخر.
+    ctx = await resolve_coverage_lesson_context(
+        db.session, str(sid),
+        day_of_week=day_key,
+        period_number=period,
+        class_id=orig.get("class_id"),
+        subject_id=orig.get("subject_id"),
+        class_name=orig.get("class_name"),
+        subject_name=orig.get("subject_name"),
+    )
+    day_ar = ctx["day_ar"]
+    time_str = ctx["time_str"]
+    cls_name = ctx["class_name"]
+    subj_name = ctx["subject_name"]
     title = "تكليف بتغطية حصة"
-    message = f"تم تكليفك بتغطية حصة يوم {day_ar} — {detail_line}"
+    message = f"تم تكليفك بتغطية حصة يوم {day_ar} — {ctx['detail_line']}"
 
     # الإسناد رُسّخ بالفعل وهو مصدر الحقيقة لجدول المعلم؛ لذا فشل الإشعار
     # (نادر) يجب ألّا يُفشل الطلب — نُسجّله ونُكمل بنجاح كما يفعل assign_substitute.

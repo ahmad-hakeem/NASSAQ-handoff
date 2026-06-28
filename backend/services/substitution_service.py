@@ -58,6 +58,91 @@ def _safe_int(v, default: int = 0) -> int:
         return default
 
 
+async def resolve_coverage_lesson_context(
+    session,
+    school_id: str,
+    *,
+    day_of_week: Optional[str],
+    period_number: Any,
+    class_id: Optional[str] = None,
+    subject_id: Optional[str] = None,
+    class_name: Optional[str] = None,
+    subject_name: Optional[str] = None,
+    include_time: bool = True,
+) -> Dict[str, Any]:
+    """يبني سياقاً موحّداً لإشعارات تكليف/إسناد تغطية الحصة.
+
+    مصدر الحقيقة الموحّد لكلا الإشعارين («تكليف بتغطية حصة» و«إسناد حصة
+    انتظار») حتى تتطابق المعلومات المرسلة للمعلم: اليوم، رقم الحصة، التوقيت،
+    اسم الفصل، اسم المادة.
+
+    اسم الفصل/المادة قد لا يكونان مخزّنين ضمن سجل الحصة (المخزن الحديث يحلّهما
+    من جدولي الفصول/المواد عند العرض)، لذا نحلّهما هنا من المعرف **ضمن نفس
+    المدرسة فقط** حمايةً لعزل المستأجرين (لا يُكشف اسم فصل مدرسة أخرى). توقيت
+    الحصة تزييني — يُحلّ بأفضل جهد ولا يُفشل بناء السياق عند غيابه.
+
+    يُعيد dict يحوي: ``day_key``، ``day_ar``، ``period``، ``time_str``،
+    ``class_id``، ``class_name``، ``subject_id``، ``subject_name``،
+    ``detail_line``.
+    """
+    day_key = (day_of_week or "").lower()
+    day_ar = DAY_LABEL_AR.get(day_key, day_key or "—")
+    period = _safe_int(period_number, 0)
+
+    cls_name = (class_name or "").strip()
+    if not cls_name and class_id:
+        cls_row = await gd_find_one(
+            session, "classes", {"id": class_id, "school_id": str(school_id)}
+        )
+        if cls_row:
+            cls_name = (cls_row.get("name") or cls_row.get("name_ar") or "").strip()
+
+    subj_name = (subject_name or "").strip()
+    if not subj_name and subject_id:
+        subj_row = await gd_find_one(
+            session, "subjects", {"id": subject_id, "school_id": str(school_id)}
+        )
+        if subj_row:
+            subj_name = (subj_row.get("name_ar") or subj_row.get("name") or "").strip()
+
+    # اسم الفصل إلزامي في الإشعار؛ نُثبّت "—" عند تعذّر حلّه (أو لمنع كشف فصل
+    # مدرسة أخرى). اسم المادة اختياري — يُحذف من السطر إن غاب.
+    cls_name = cls_name or "—"
+
+    time_str = ""
+    if include_time and period:
+        try:
+            from routes.schedule_master_grid_routes import _resolve_period_times
+
+            pt = await _resolve_period_times(str(school_id), [period])
+            slot = pt.get(str(period)) or {}
+            start = slot.get("start") or slot.get("start_time") or ""
+            end = slot.get("end") or slot.get("end_time") or ""
+            time_str = f"{start} - {end}" if start and end else (start or end)
+        except Exception:  # noqa: BLE001 — التوقيت تزييني، أفضل جهد
+            import logging
+
+            logging.getLogger("nassaq.substitution").debug(
+                "period time resolution failed for period=%s", period
+            )
+            time_str = ""
+
+    segments = [f"الحصة {period}" if period else "", time_str, cls_name, subj_name]
+    detail_line = " · ".join(s for s in segments if s)
+
+    return {
+        "day_key": day_key,
+        "day_ar": day_ar,
+        "period": period,
+        "time_str": time_str,
+        "class_id": class_id,
+        "class_name": cls_name,
+        "subject_id": subject_id,
+        "subject_name": subj_name,
+        "detail_line": detail_line,
+    }
+
+
 def _iso_week_start(d: datetime) -> str:
     """Returns the Sunday-anchored ISO date string for the current week.
 
@@ -400,13 +485,20 @@ async def assign_substitute(
     sub_user_id = sub_teacher.get("user_id")
     if notify and sub_user_id:
         try:
-            day_ar = DAY_LABEL_AR.get(day, day)
-            cls_name = orig.get("class_name") or "—"
-            subj_name = orig.get("subject_name") or "—"
-            title = "إسناد حصة انتظار جديدة"
-            message = (
-                f"تم إسنادك لتغطية حصة في {day_ar} — الحصة {period} · {cls_name} · {subj_name}."
+            ctx = await resolve_coverage_lesson_context(
+                session, school_id,
+                day_of_week=day,
+                period_number=period,
+                class_id=orig.get("class_id"),
+                subject_id=orig.get("subject_id"),
+                class_name=orig.get("class_name"),
+                subject_name=orig.get("subject_name"),
             )
+            day_ar = ctx["day_ar"]
+            cls_name = ctx["class_name"]
+            subj_name = ctx["subject_name"]
+            title = "إسناد حصة انتظار جديدة"
+            message = f"تم إسنادك لتغطية حصة في {day_ar} — {ctx['detail_line']}."
             notif = await notification_engine.create_notification(
                 tenant_id=school_id,
                 recipient_id=sub_user_id,
@@ -422,8 +514,11 @@ async def assign_substitute(
                     "absence_date": absence_date,
                     "day_of_week": day,
                     "period_number": period,
+                    "period_time": ctx["time_str"],
                     "class_id": orig.get("class_id"),
+                    "class_name": cls_name,
                     "subject_id": orig.get("subject_id"),
+                    "subject_name": subj_name,
                 },
             )
             notification_id = notif.get("id")
@@ -804,20 +899,58 @@ async def assign_bulk_substitutes(
             day_ar = DAY_LABEL_AR.get(day_key, day_key)
             count = len(docs)
             sorted_docs = sorted(docs, key=lambda x: x.get("period_number") or 0)
-            slot_lines = "\n".join(
-                f"• الحصة {d.get('period_number')} — {d.get('class_name') or '—'} ({d.get('subject_name') or '—'})"
-                for d in sorted_docs
-            )
-            if count == 1:
-                d = sorted_docs[0]
-                title = "إسناد حصة انتظار جديدة"
-                message = (
-                    f"تم إسنادك لتغطية حصة في {day_ar} — الحصة {d.get('period_number')} · "
-                    f"{d.get('class_name') or '—'} · {d.get('subject_name') or '—'}."
+            # نحلّ سياق كل حصة عبر المصدر الموحّد (اسم الفصل/المادة من جدوليهما
+            # القانونيين + التوقيت) كي يتطابق الإشعار المجمَّع مع إشعار التغطية
+            # المفرد ولا يظهر اسم الفصل ناقصاً.
+            ctxs = [
+                await resolve_coverage_lesson_context(
+                    session, school_id,
+                    day_of_week=d.get("day_of_week"),
+                    period_number=d.get("period_number"),
+                    class_id=d.get("class_id"),
+                    subject_id=d.get("subject_id"),
+                    class_name=d.get("class_name"),
+                    subject_name=d.get("subject_name"),
                 )
+                for d in sorted_docs
+            ]
+            slot_lines = "\n".join(f"• {c['detail_line']}" for c in ctxs)
+            if count == 1:
+                c0 = ctxs[0]
+                title = "إسناد حصة انتظار جديدة"
+                message = f"تم إسنادك لتغطية حصة في {day_ar} — {c0['detail_line']}."
             else:
                 title = f"إسناد {count} حصص انتظار"
                 message = f"تم إسنادك لتغطية {count} حصص في {day_ar}:\n{slot_lines}"
+
+            slots_meta = [
+                {
+                    "period_number": c["period"],
+                    "period_time": c["time_str"],
+                    "class_id": c["class_id"],
+                    "class_name": c["class_name"],
+                    "subject_id": c["subject_id"],
+                    "subject_name": c["subject_name"],
+                }
+                for c in ctxs
+            ]
+            batch_metadata = {
+                "absence_date": absence_date,
+                "day_of_week": day_key,
+                "batch_id": batch_id,
+                "count": count,
+                "substitution_ids": [d.get("id") for d in sorted_docs],
+                "slots": slots_meta,
+            }
+            if count == 1:
+                batch_metadata.update({
+                    "period_number": ctxs[0]["period"],
+                    "period_time": ctxs[0]["time_str"],
+                    "class_id": ctxs[0]["class_id"],
+                    "class_name": ctxs[0]["class_name"],
+                    "subject_id": ctxs[0]["subject_id"],
+                    "subject_name": ctxs[0]["subject_name"],
+                })
 
             notif = await notification_engine.create_notification(
                 tenant_id=school_id,
@@ -830,13 +963,7 @@ async def assign_bulk_substitutes(
                 entity_type="substitute_assignment_batch" if count > 1 else "substitute_assignment",
                 entity_id=batch_id if count > 1 else docs[0].get("id"),
                 action_url="/schedule",
-                metadata={
-                    "absence_date": absence_date,
-                    "day_of_week": day_key,
-                    "batch_id": batch_id,
-                    "count": count,
-                    "substitution_ids": [d.get("id") for d in sorted_docs],
-                },
+                metadata=batch_metadata,
             )
             notification_id = notif.get("id")
             if notification_id:
