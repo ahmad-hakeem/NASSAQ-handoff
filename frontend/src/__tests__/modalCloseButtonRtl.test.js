@@ -29,6 +29,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from '../components/ui/sheet';
+import { AlertDialogHeader } from '../components/ui/alert-dialog';
+import { DrawerHeader } from '../components/ui/drawer';
 
 const getCloseButton = () =>
   screen.getByRole('button', { name: /close/i });
@@ -93,5 +95,28 @@ describe('shared modal close button positioning standard', () => {
       </Sheet>
     );
     expect(screen.getByTestId('sheet-header').className).toMatch(/\bpe-10\b/);
+  });
+});
+
+describe('shared modal headers use logical (direction-aware) title alignment', () => {
+  /*
+   * Arabic-first app: shared headers must align titles to the logical START
+   * (right in RTL, left in LTR). They previously hardcoded physical
+   * `sm:text-left`, which forced Arabic titles to the LEFT on desktop — the
+   * same side as the trailing-corner close button — so the title collided with
+   * the X (e.g. the "ملف الطالب" student-profile dialog). Logical `sm:text-start`
+   * keeps the title opposite the close button in both directions.
+   */
+  test.each([
+    ['DialogHeader', DialogHeader],
+    ['SheetHeader', SheetHeader],
+    ['AlertDialogHeader', AlertDialogHeader],
+    ['DrawerHeader', DrawerHeader],
+  ])('%s aligns to logical start on sm+, not physical left/right', (_name, Header) => {
+    render(<Header data-testid="hdr" />);
+    const cls = screen.getByTestId('hdr').className;
+    expect(cls).toMatch(/\bsm:text-start\b/);
+    expect(cls).not.toMatch(/\bsm:text-left\b/);
+    expect(cls).not.toMatch(/\bsm:text-right\b/);
   });
 });

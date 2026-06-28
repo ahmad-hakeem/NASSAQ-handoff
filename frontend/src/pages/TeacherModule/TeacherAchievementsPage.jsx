@@ -1618,7 +1618,7 @@ export default function TeacherAchievementsPage() {
       <Dialog open={manualEvDialog.open} onOpenChange={(open) => { if (!open) { _clearManualEvPreview(); setManualEvDialog({ open: false }); } }}>
         <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col p-0 gap-0">
           <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b border-gray-100 dark:border-gray-800">
-            <DialogTitle className="font-cairo text-right">إضافة شاهد يدوي</DialogTitle>
+            <DialogTitle className="font-cairo text-start">إضافة شاهد يدوي</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 px-6 py-4 overflow-y-auto flex-1 min-h-0" dir="rtl">
             <div>
@@ -1906,7 +1906,7 @@ export default function TeacherAchievementsPage() {
       <Dialog open={viewEvDialog.open} onOpenChange={(open) => { if (!open) setViewEvDialog({ open: false, item: null }); }}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col p-0 gap-0" dir="rtl">
           <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b border-gray-100 dark:border-gray-800">
-            <DialogTitle className="font-cairo text-right flex items-center gap-2">
+            <DialogTitle className="font-cairo text-start flex items-center gap-2">
               <Eye className="w-4 h-4 text-violet-600" /> تفاصيل الشاهد
             </DialogTitle>
           </DialogHeader>
