@@ -1339,8 +1339,11 @@ export const AIInsightsPage = () => {
     if (!student?.id) return;
     // Role-aware destination resolved from the EFFECTIVE role (handles
     // preview/impersonation): principals stay inside `/principal`, other
-    // school roles use `/admin`. Never fall back to a platform-admin list.
-    navigate(getStudentDetailPath(student.id), {
+    // school roles use `/admin`, and teachers deep-link into their own
+    // Students page (no `/{scope}/students/:id` route exists for them). The
+    // student's `class_id` lets a multi-class teacher land on the right class
+    // so the profile actually opens instead of bouncing home.
+    navigate(getStudentDetailPath(student.id, { classId: student.class_id }), {
       state: { studentName: student.name, fromPath: location.pathname },
     });
   };

@@ -3006,6 +3006,12 @@ async def get_at_risk_students(
             risk_score = int(min(att_rate, grade_avg))
             at_risk.append({
                 "id": sid,
+                # class_id lets the teacher UI deep-link straight to the
+                # student's own class roster (FE TeacherStudentsPage opens the
+                # profile via ?class_id=&student_id=). Without it a teacher with
+                # multiple classes lands on the default class and the student
+                # (in another class) is never found.
+                "class_id": s.get("class_id"),
                 "name": s.get("full_name") or s.get("name") or "—",
                 "grade": cls_name_map.get(s.get("class_id"), s.get("grade") or ""),
                 "risk_level": risk_score,

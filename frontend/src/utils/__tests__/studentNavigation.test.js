@@ -31,7 +31,29 @@ describe('getStudentDetailPath', () => {
     expect(getStudentDetailPath('school_admin', 'abc-123')).toBe('/principal/students/abc-123');
   });
 
-  it('builds a /admin student path for a teacher', () => {
-    expect(getStudentDetailPath('teacher', 'abc-123')).toBe('/admin/students/abc-123');
+  it('routes teachers to their own students page via a student_id deep-link', () => {
+    // Teachers have no /{scope}/students/:id route; sending them to
+    // /admin/students/:id failed the role guard and bounced them home (the
+    // AI-Insights Risk Radar bug). They must land on /teacher/students.
+    expect(getStudentDetailPath('teacher', 'abc-123')).toBe('/teacher/students?student_id=abc-123');
+    expect(getStudentDetailPath('independent_teacher', 'abc-123')).toBe('/teacher/students?student_id=abc-123');
+  });
+
+  it('url-encodes the student id in the teacher deep-link', () => {
+    expect(getStudentDetailPath('teacher', 'a/b c')).toBe('/teacher/students?student_id=a%2Fb%20c');
+  });
+
+  it('appends class_id to the teacher deep-link when provided', () => {
+    expect(getStudentDetailPath('teacher', 'abc-123', { classId: 'cls-9' }))
+      .toBe('/teacher/students?student_id=abc-123&class_id=cls-9');
+    expect(getStudentDetailPath('independent_teacher', 'abc-123', { classId: 'cls-9' }))
+      .toBe('/teacher/students?student_id=abc-123&class_id=cls-9');
+  });
+
+  it('ignores classId for non-teacher (leadership/admin) roles', () => {
+    expect(getStudentDetailPath('school_admin', 'abc-123', { classId: 'cls-9' }))
+      .toBe('/principal/students/abc-123');
+    expect(getStudentDetailPath('platform_admin', 'abc-123', { classId: 'cls-9' }))
+      .toBe('/admin/students/abc-123');
   });
 });

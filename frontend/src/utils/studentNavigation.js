@@ -28,11 +28,31 @@ import { useAuth } from '../contexts/AuthContext';
 // (e.g. from the Risk Radar) jumps a leadership user out of `/principal`.
 const SCHOOL_LEADERSHIP_ROLES = ['school_principal', 'school_admin', 'school_sub_admin'];
 
+// Teacher-scoped roles (regular and independent teachers). Unlike leadership
+// roles, teachers have NO `/{scope}/students/:id` detail route — they view a
+// student's profile inside their own Teacher Students page, opened via a
+// `?student_id=` deep-link (see `TeacherModule/TeacherStudentsPage`). Routing a
+// teacher to the school-admin `/admin/students/:id` route fails the role guard
+// and bounces them to the home page (the AI-Insights Risk Radar bug). Keep this
+// mapping here so every shared surface (Risk Radar, etc.) resolves consistently.
+const TEACHER_SCOPED_ROLES = ['teacher', 'independent_teacher'];
+
 export function getSchoolRolePrefix(role) {
   return SCHOOL_LEADERSHIP_ROLES.includes(role) ? '/principal' : '/admin';
 }
 
-export function getStudentDetailPath(role, studentId) {
+export function getStudentDetailPath(role, studentId, opts = {}) {
+  if (TEACHER_SCOPED_ROLES.includes(role)) {
+    // A regular teacher's Students page loads one class at a time, so the
+    // caller may pass the student's `classId` to deep-link the right class
+    // (the page selects it before resolving the `student_id`). Independent
+    // teachers default to the whole-workspace pool, so the class hint is
+    // simply ignored there.
+    const cls = opts.classId
+      ? `&class_id=${encodeURIComponent(opts.classId)}`
+      : '';
+    return `/teacher/students?student_id=${encodeURIComponent(studentId)}${cls}`;
+  }
   return `${getSchoolRolePrefix(role)}/students/${studentId}`;
 }
 
@@ -46,6 +66,6 @@ export function useSchoolNavigation() {
   return {
     effectiveRole: role,
     rolePrefix: getSchoolRolePrefix(role),
-    getStudentDetailPath: (studentId) => getStudentDetailPath(role, studentId),
+    getStudentDetailPath: (studentId, opts) => getStudentDetailPath(role, studentId, opts),
   };
 }

@@ -237,7 +237,16 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
         && classesRes.data?.length > 0
         && !selectedClass
       ) {
-        setSelectedClass(classesRes.data[0].id);
+        // Deep-link support: a risk-radar / cross-page link can arrive as
+        // `?class_id=…&student_id=…`. Select the linked class (only when it is
+        // one of the teacher's own assigned classes) so its roster loads and
+        // the `student_id` effect below can open that student. Without this we
+        // would default to the first class and a student in another class
+        // would never be found. Falls back to the first class otherwise.
+        const deepLinkClassId = new URLSearchParams(_location.search).get('class_id');
+        const linkedClass = deepLinkClassId
+          && classesRes.data.find((c) => c.id === deepLinkClassId);
+        setSelectedClass(linkedClass ? deepLinkClassId : classesRes.data[0].id);
       }
     } catch (error) {
       const status = error?.response?.status;
@@ -251,7 +260,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [api, teacherId, isIndependentTeacher, selectedClass]);
+  }, [api, teacherId, isIndependentTeacher, selectedClass, _location.search]);
 
   const fetchStudents = useCallback(async () => {
     // 2026-05-19 — Non-IT teachers must stay on the class-scoped
