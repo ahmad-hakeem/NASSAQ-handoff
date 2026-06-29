@@ -107,6 +107,10 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [studentDetails, setStudentDetails] = useState(null);
+  // Settle signal for the `?student_id=` deep-link effect: flips true only
+  // once the class roster for the current selection has finished loading, so
+  // the in-roster fast path runs before we fall back to a direct fetch.
+  const [studentsFetched, setStudentsFetched] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [aiInsights, setAiInsights] = useState(null);
   const [loadingAI, setLoadingAI] = useState(false);
@@ -269,10 +273,12 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
     // class-assignment-scoped and would widen their view).
     if (!selectedClass) {
       setStudents([]);
+      setStudentsFetched(false);
       return;
     }
     setLoading(true);
     setError(false);
+    setStudentsFetched(false);
     try {
       // 2026-05-19 — Three filter modes (IT-only pool routes; non-IT
       // never reaches `isPool` because the sentinel values are not
@@ -324,6 +330,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
       setError(true);
     } finally {
       setLoading(false);
+      setStudentsFetched(true);
     }
   }, [api, selectedClass, isIndependentTeacher, nassaqError, t]);
 
@@ -428,25 +435,63 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
     }
   };
 
-  // Task #251 — auto-open details dialog when arriving with
-  // ?student_id=… (deep-link from the IT command palette).
+  // Task #251 — auto-open details dialog when arriving with ?student_id=…
+  // (deep-link from the IT command palette OR the AI-Insights student-risk
+  // radar). The radar's scope is wider than this page's class list
+  // (teacher_assignments ∪ teacher_class_assignments, or the whole IT
+  // workspace pool incl. unassigned students), so the deep-linked student may
+  // not be in the currently-loaded class roster — or may have no class at all.
   useEffect(() => {
-    if (!students || !students.length) return;
     const params = new URLSearchParams(_location.search);
     const sid = params.get('student_id');
     if (!sid || _deepLinkOpenedRef.current === sid) return;
-    const match = students.find((s) => s.id === sid);
-    if (!match) return;
-    _deepLinkOpenedRef.current = sid;
-    // eslint-disable-next-line no-use-before-define
-    viewStudentDetails(match);
+    // Wait until the roster for the current selection has settled so the
+    // in-roster fast path below gets a chance before the direct-fetch
+    // fallback (avoids racing fetchStudents, which briefly leaves the page
+    // with an empty roster between class selection and load completion).
+    if (!studentsFetched) return;
+
     // Strip the deep-link param so a refresh doesn't replay the dialog.
-    params.delete('student_id');
-    _navigate(
-      { pathname: _location.pathname, search: params.toString() ? `?${params.toString()}` : '' },
-      { replace: true },
-    );
-  }, [students, _location.pathname, _location.search, _navigate]);
+    const stripDeepLinkParam = () => {
+      params.delete('student_id');
+      _navigate(
+        { pathname: _location.pathname, search: params.toString() ? `?${params.toString()}` : '' },
+        { replace: true },
+      );
+    };
+
+    const match = (students || []).find((s) => s.id === sid);
+    if (match) {
+      _deepLinkOpenedRef.current = sid;
+      // eslint-disable-next-line no-use-before-define
+      viewStudentDetails(match);
+      stripDeepLinkParam();
+      return;
+    }
+
+    // Not in the loaded roster — resolve the EXACT student directly so we open
+    // that student's profile instead of stranding the teacher on an unrelated
+    // auto-selected class. Object-level authz on GET /students/{id} covers the
+    // students a teacher actually teaches (the common radar case); if the radar
+    // ever surfaces a student the teacher cannot view, we surface a safe Arabic
+    // error rather than the old wrong-roster behaviour.
+    _deepLinkOpenedRef.current = sid; // claim before await to avoid double-open
+    (async () => {
+      try {
+        const res = await api.get(`/students/${sid}`);
+        if (res?.data?.id) {
+          // eslint-disable-next-line no-use-before-define
+          viewStudentDetails(res.data);
+        } else {
+          nassaqError(isRTL ? 'تعذّر فتح ملف الطالب المحدد' : 'Could not open the selected student profile');
+        }
+      } catch (_err) {
+        nassaqError(isRTL ? 'تعذّر فتح ملف الطالب المحدد' : 'Could not open the selected student profile');
+      } finally {
+        stripDeepLinkParam();
+      }
+    })();
+  }, [students, studentsFetched, _location.pathname, _location.search, _navigate, api, isRTL, nassaqError]);
 
   const viewStudentDetails = async (student) => {
     setSelectedStudent(student);
