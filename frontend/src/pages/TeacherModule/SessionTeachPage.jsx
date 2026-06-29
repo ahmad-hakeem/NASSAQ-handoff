@@ -2111,9 +2111,9 @@ export default function SessionTeachPage() {
             )}
             <button
               onClick={() => setShowSidebarSettings(true)}
-              aria-label={t('sidebarSettings')}
+              aria-label={t('sessionSettings')}
               className="ms-1 p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
-              title={t('sidebarSettings')}
+              title={t('sessionSettings')}
             >
               <Settings className="h-4 w-4" />
             </button>
@@ -3281,10 +3281,10 @@ export default function SessionTeachPage() {
           <Button
             onClick={() => setShowSidebarSettings(true)}
             className="h-10 px-4 bg-gradient-to-b from-slate-500 to-slate-600 hover:from-slate-400 hover:to-slate-500 text-white font-cairo font-bold border border-slate-400/40 shadow-[0_4px_12px_-2px_rgba(100,116,139,0.35)] gap-2"
-            title={t('sidebarSettings')}
+            title={t('sessionSettings')}
           >
             <Settings className="h-4 w-4" />
-            <span className="hidden sm:inline">{t('sidebarSettings')}</span>
+            <span className="hidden sm:inline">{t('sessionSettings')}</span>
           </Button>
           <Button
             onClick={() => setShowEndDialog(true)}
