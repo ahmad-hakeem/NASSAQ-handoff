@@ -80,3 +80,20 @@ describe('withAlertAttendanceContext — Smart Alerts attendance marker', () => 
     expect(withAlertAttendanceContext('', 'attendance', true)).toBe('');
   });
 });
+
+describe('AI Insights attendance card — composed navigation', () => {
+  // The "نسبة الحضور" quick-stat card must reuse the same role-aware logic as
+  // the Smart Alerts "انتقل" action instead of hardcoding an admin route.
+  // Composition mirrors the card's onClick:
+  //   withAlertAttendanceContext(buildAlertRouteMap(isTeacher).attendance, 'attendance', isTeacher)
+  const cardRoute = (isTeacher) =>
+    withAlertAttendanceContext(buildAlertRouteMap(isTeacher).attendance, 'attendance', isTeacher);
+
+  test('teacher / independent teacher lands on the self-scoped attendance page with the smart-alert marker', () => {
+    expect(cardRoute(true)).toBe(`/teacher/attendance?${ALERT_CONTEXT_PARAM}=${ALERT_CONTEXT_VALUE}`);
+  });
+
+  test('admin / principal keeps the admin attendance route untouched', () => {
+    expect(cardRoute(false)).toBe('/admin/attendance');
+  });
+});

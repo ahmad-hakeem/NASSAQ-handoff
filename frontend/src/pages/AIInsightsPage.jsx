@@ -1541,7 +1541,7 @@ export const AIInsightsPage = () => {
               value={`${metrics.attendance_rate || 0}%`}
               subLabel={t('today2')}
               gradient="from-brand-navy-light to-brand-navy"
-              onClick={() => navigate('/admin/attendance')}
+              onClick={() => navigate(withAlertAttendanceContext(buildAlertRouteMap(isTeacher).attendance, 'attendance', isTeacher))}
               delay={300}
             />
             <VisualMetricCard
