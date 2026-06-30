@@ -315,11 +315,36 @@ async def startup_tasks():
     except Exception as e:
         logger.warning(f"Could not schedule erasure purge loop: {e}")
 
+    # Background task: sweep that finalises any lesson left open past the end
+    # of its school day (in the school's timezone), for both regular and IT
+    # workspaces. Closes via the normal end-of-lesson pipeline; see the
+    # ``_sweep_auto_close_sessions`` docstring for isolation/idempotency.
+    async def _auto_close_loop():
+        try:
+            await _asyncio.sleep(120)
+            while True:
+                try:
+                    await _sweep_auto_close_sessions()
+                except Exception as e:
+                    logger.warning(f"End-of-day auto-close loop: {e}")
+                await _asyncio.sleep(_AUTO_CLOSE_INTERVAL_SECONDS)
+        except _asyncio.CancelledError:
+            logger.info("End-of-day auto-close loop cancelled (shutdown)")
+            raise
+
+    try:
+        global _auto_close_task
+        _auto_close_task = _asyncio.create_task(_auto_close_loop())
+        logger.info("End-of-day lesson auto-close loop scheduled (every 30m)")
+    except Exception as e:
+        logger.warning(f"Could not schedule end-of-day auto-close loop: {e}")
+
 
 _revoked_token_cleanup_task = None
 _reactivation_reminder_task = None
 _auto_export_task = None
 _erasure_purge_task = None
+_auto_close_task = None
 _deferred_maintenance_task = None
 
 
@@ -335,6 +360,28 @@ _REMINDER_THRESHOLD_DAYS = 3
 # loop ticks twice within the same hour (e.g. because of a backend
 # restart) we never double-mint a token + double-email the teacher.
 _AUTO_EXPORT_MIN_INTERVAL = _td(hours=6)
+
+
+# --- End-of-school-day lesson auto-close -------------------------------------
+# A live lesson lives in ``class_sessions.status`` and only becomes
+# ``completed`` via the manual "End Lesson" action or the lazy on-next-start
+# cleanup. A teacher who opens a lesson and never ends it (and never starts
+# another) leaves the row open forever. This sweep finalises any still-open
+# lesson once its school day has ended, in the school's own timezone, for both
+# regular and Independent-Teacher (IT) workspaces (they share one engine).
+_AUTO_CLOSE_INTERVAL_SECONDS = 30 * 60
+# Grace after the computed day-end before a lesson is force-closed, so a lesson
+# legitimately running up to the final bell is never cut short.
+_AUTO_CLOSE_GRACE_MINUTES = 15
+# Fail-safe: a session this old is closed regardless of whether its tenant's
+# day-end could be resolved (covers malformed date/tz rows so nothing is ever
+# stuck open).
+_AUTO_CLOSE_STALE_FALLBACK_HOURS = 18
+_AUTO_CLOSE_SCAN_LIMIT = 5000
+# Fixed namespace for the per-session advisory lock that serialises finalize
+# across workers (pg_try_advisory_xact_lock(ns, hashtext(id))).
+_AUTO_CLOSE_LOCK_NS = 0x4E41  # "NA"
+_DEFAULT_SCHOOL_TZ = "Asia/Riyadh"
 
 
 async def _sweep_auto_exports():
@@ -717,6 +764,279 @@ async def _sweep_erasure_purges():
     return purged
 
 
+def _ac_parse_hhmm(value) -> "int | None":
+    """Parse ``"HH:MM"`` into minutes-since-midnight; ``None`` when unparseable."""
+    if not value or not isinstance(value, str) or ":" not in value:
+        return None
+    try:
+        parts = value.split(":")
+        return int(parts[0]) * 60 + int(parts[1])
+    except (ValueError, IndexError):
+        return None
+
+
+def _compute_day_end_minutes(settings, time_slots) -> "int | None":
+    """Resolve the end-of-school-day, as minutes-since-midnight, for one tenant.
+
+    Mirrors the resolution used by ``GET /school/day-status`` so the sweep and
+    the live banner agree: real period ``time_slots`` win (most accurate —
+    they include passing/prayer breaks); otherwise fall back to the timing
+    settings formula ``start + periods*period_duration + break``. Works for IT
+    workspaces too (they have no ``time_slots`` → formula path).
+    """
+    settings = settings or {}
+    nested = settings.get("settings") or {}
+    cs = settings.get("custom_settings") or {}
+
+    def _first(*candidates, default=None):
+        for c in candidates:
+            if c is not None and c != "":
+                return c
+        return default
+
+    day_start = _first(
+        cs.get("school_day_start"),
+        nested.get("school_day_start"),
+        settings.get("school_day_start"),
+        settings.get("start_time"),
+        default="07:00",
+    )
+    periods = int(_first(
+        cs.get("periods_per_day"),
+        nested.get("periods_per_day"),
+        settings.get("periods_per_day"),
+        default=7,
+    ) or 7)
+    period_duration = int(_first(
+        cs.get("period_duration_minutes"),
+        nested.get("period_duration_minutes"),
+        settings.get("period_duration_minutes"),
+        settings.get("period_duration"),
+        default=45,
+    ) or 45)
+    break_duration = int(_first(
+        cs.get("break_duration_minutes"),
+        nested.get("break_duration_minutes"),
+        settings.get("break_duration_minutes"),
+        settings.get("break_duration"),
+        default=20,
+    ) or 20)
+
+    period_slots = [
+        s for s in (time_slots or [])
+        if not s.get("is_break", False)
+        and _ac_parse_hhmm(s.get("start_time")) is not None
+        and _ac_parse_hhmm(s.get("end_time")) is not None
+    ]
+    start_min = _ac_parse_hhmm(day_start) or 420
+    formula_end = start_min + (periods * period_duration) + break_duration
+    if period_slots:
+        # ``time_slots`` arrive ordered by start_time → last slot is the
+        # latest period; trust its end_time, fall back to the formula.
+        return _ac_parse_hhmm(period_slots[-1].get("end_time")) or formula_end
+    return formula_end
+
+
+def _session_should_close(date_str, day_end_minutes, school_tz, now_local, grace_minutes) -> bool:
+    """True when ``now_local`` is past the day-end (+grace) for the session's
+    own calendar ``date``. Previous-day sessions are always past their day-end,
+    so they close immediately; an unparseable date returns False (the stale
+    fallback handles those)."""
+    if not date_str:
+        return False
+    try:
+        d = datetime.strptime(str(date_str)[:10], "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return False
+    day_end_dt = datetime(d.year, d.month, d.day, tzinfo=school_tz) + _td(
+        minutes=int(day_end_minutes) + int(grace_minutes)
+    )
+    return now_local >= day_end_dt
+
+
+def _ac_is_stale(session) -> bool:
+    """Fail-safe close trigger: the session started (or was created) more than
+    ``_AUTO_CLOSE_STALE_FALLBACK_HOURS`` ago. Used when the tenant's day-end
+    cannot be resolved so a lesson is never left open indefinitely."""
+    raw = session.get("start_time") or session.get("created_at")
+    if not raw:
+        return False
+    try:
+        if isinstance(raw, datetime):
+            dt = raw
+        else:
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - dt) >= _td(hours=_AUTO_CLOSE_STALE_FALLBACK_HOURS)
+
+
+async def _resolve_school_day_end(school_id):
+    """Return ``(school_tz, day_end_minutes)`` for a tenant, or ``None`` when it
+    cannot be resolved. Reads ``school_settings`` + ``time_slots`` on the active
+    ``db.session``."""
+    from zoneinfo import ZoneInfo
+    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
+    nested = (settings or {}).get("settings") or {}
+    tz_name = nested.get("timezone") or (settings or {}).get("timezone") or _DEFAULT_SCHOOL_TZ
+    try:
+        school_tz = ZoneInfo(tz_name)
+    except Exception:
+        school_tz = ZoneInfo(_DEFAULT_SCHOOL_TZ)
+    time_slots = await gd_find(
+        db.session, "time_slots", {"school_id": school_id},
+        order_by="start_time", desc_order=False, limit=30,
+    )
+    end_min = _compute_day_end_minutes(settings, time_slots)
+    if end_min is None:
+        return None
+    return (school_tz, end_min)
+
+
+async def _scan_auto_close_candidates():
+    """Read every still-open lesson and return the slim {id, teacher_id} of
+    those whose school day has ended (or that are stale). Runs read-only on the
+    active ``db.session``; day-end is cached per tenant for the scan."""
+    from engines.session_engine import TeacherSessionEngine
+    active = await gd_find(
+        db.session, "class_sessions",
+        {"status": {"$in": list(TeacherSessionEngine.ACTIVE_STATUSES)}},
+        limit=_AUTO_CLOSE_SCAN_LIMIT,
+    )
+    if not active:
+        return []
+    day_end_cache = {}
+    out = []
+    for s in active:
+        school_id = s.get("school_id") or s.get("tenant_id")
+        resolved = None
+        if school_id:
+            if school_id not in day_end_cache:
+                try:
+                    day_end_cache[school_id] = await _resolve_school_day_end(school_id)
+                except Exception as e:
+                    logger.debug(f"Auto-close: day-end resolve failed for {school_id}: {e}")
+                    day_end_cache[school_id] = None
+            resolved = day_end_cache[school_id]
+        should = False
+        if resolved is not None:
+            school_tz, end_min = resolved
+            should = _session_should_close(
+                s.get("date"), end_min, school_tz,
+                datetime.now(school_tz), _AUTO_CLOSE_GRACE_MINUTES,
+            )
+        if not should:
+            should = _ac_is_stale(s)
+        if should:
+            out.append({"id": s.get("id"), "teacher_id": s.get("teacher_id")})
+    return out
+
+
+async def _finalize_auto_close(candidate):
+    """Close one abandoned lesson on the active ``db.session``.
+
+    Per product decision: behave exactly as if the teacher tapped "End Lesson"
+    — ``end_session`` commits scores to student profiles and fires the normal
+    parent/management notifications.
+
+    Multi-instance safety: this sweep may run on every backend worker at once.
+    Before doing any finalize work we take a transaction-scoped Postgres
+    advisory lock keyed on the session id (``pg_try_advisory_xact_lock`` —
+    non-blocking, auto-released on commit/rollback). If another worker already
+    holds it we skip and let that worker finish, so the full-finalize side
+    effects (parent/management notifications) fire exactly once.
+
+    After winning the lock we re-read the row: if it is gone or already
+    ``completed`` (closed since the scan) we skip. Whether a *full* finalize is
+    possible is decided deterministically from attendance state — never by
+    catching an opaque HTTP 400 — so a future unrelated 400 in ``end_session``
+    can never silently mark a lesson done without committing scores. When
+    attendance was never recorded a full finalize is impossible, so we fall back
+    to a safe close (the lesson is never left open). ``auto_closed`` metadata is
+    stamped either way for auditability. Returns True when the row was closed."""
+    from sqlalchemy import text
+    from dependencies import session_engine
+    from engines.session_engine import SessionStatus, TeacherSessionEngine
+
+    sid = candidate.get("id")
+    tid = candidate.get("teacher_id")
+    if not sid:
+        return False
+
+    # Cross-worker claim. ns is a fixed namespace; the per-session key is
+    # hashtext(id). A hash collision only delays an unrelated close by one tick.
+    got_lock = (
+        await db.session.execute(
+            text("SELECT pg_try_advisory_xact_lock(:ns, hashtext(:sid))"),
+            {"ns": _AUTO_CLOSE_LOCK_NS, "sid": str(sid)},
+        )
+    ).scalar()
+    if not got_lock:
+        return False  # another worker owns this session this tick
+
+    # Re-read fresh under the lock — it may have closed since the scan.
+    session = await gd_find_one(db.session, "class_sessions", {"id": sid})
+    if not session:
+        return False
+    if session.get("status") == SessionStatus.COMPLETED.value:
+        return False
+    if session.get("status") not in TeacherSessionEngine.ACTIVE_STATUSES:
+        return False
+
+    now = datetime.now(timezone.utc)
+
+    # Decide finalize-ability deterministically (mirrors end_session's own
+    # attendance prerequisite) instead of relying on a caught 400.
+    attendance_approved = session.get("attendance_approved", False)
+    attendance_records = await gd_find(
+        db.session, "session_attendance", {"session_id": sid}, limit=1,
+    )
+    can_finalize = bool(attendance_approved) or len(attendance_records) > 0
+
+    if can_finalize:
+        # Full finalize: scores committed to profiles + normal notifications.
+        await session_engine.end_session(session_id=sid, teacher_id=tid)
+        update = {
+            "auto_closed": True,
+            "auto_closed_at": now.isoformat(),
+            "auto_closed_reason": "end_of_school_day",
+        }
+    else:
+        # Attendance never recorded — full finalize is impossible. Safe-close so
+        # the lesson is not left open forever; no scores/notifications to emit.
+        update = {
+            "auto_closed": True,
+            "auto_closed_at": now.isoformat(),
+            "auto_closed_reason": "end_of_school_day_no_attendance",
+            "status": SessionStatus.COMPLETED.value,
+            "end_time": now.isoformat(),
+        }
+    await gd_update_one(db.session, "class_sessions", {"id": sid}, update)
+    return True
+
+
+async def _sweep_auto_close_sessions():
+    """End-of-school-day sweep. Scans candidates in one short read transaction,
+    then closes each in its OWN transaction so a single failure can never
+    poison or roll back the others. Idempotent: a closed lesson leaves
+    ACTIVE_STATUSES and is skipped on the next tick."""
+    candidates = await _run_with_session("Auto-close scan", _scan_auto_close_candidates)
+    if not candidates:
+        return
+    closed = 0
+    for c in candidates:
+        res = await _run_with_session(
+            f"Auto-close lesson {c.get('id')}",
+            lambda c=c: _finalize_auto_close(c),
+        )
+        if res:
+            closed += 1
+    if closed:
+        logger.info(f"End-of-day auto-close: finalised {closed} abandoned lesson(s)")
+
+
 async def shutdown_tasks():
     # Cancel the revoked-token cleanup loop cleanly.
     try:
@@ -756,6 +1076,19 @@ async def shutdown_tasks():
             _erasure_purge_task = None
     except Exception as e:
         logger.debug(f"Erasure purge loop cancellation: {e}")
+
+    # Cancel the end-of-day auto-close loop cleanly.
+    try:
+        global _auto_close_task
+        if _auto_close_task is not None and not _auto_close_task.done():
+            _auto_close_task.cancel()
+            try:
+                await _auto_close_task
+            except Exception:
+                pass
+            _auto_close_task = None
+    except Exception as e:
+        logger.debug(f"Auto-close loop cancellation: {e}")
 
     # Cancel the deferred startup-maintenance task if it's still running.
     try:
