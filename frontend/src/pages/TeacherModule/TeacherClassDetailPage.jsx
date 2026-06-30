@@ -34,6 +34,7 @@ import FollowupGradesTable from '../../components/teacher/FollowupGradesTable';
 import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialog';
 import InlineAttendanceTable from '../../components/teacher/InlineAttendanceTable';
 import CollaboratorsTab from '../../components/teacher/CollaboratorsTab';
+import TeacherStudentProfileDialog from '../../components/teacher/TeacherStudentProfileDialog';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 import { getApiErrorMessage } from '../../utils/apiError';
@@ -59,6 +60,7 @@ export default function TeacherClassDetailPage() {
   const [classData, setClassData] = useState(null);
   const [students, setStudents] = useState([]);
   const [schedule, setSchedule] = useState([]);
+  const [profileStudent, setProfileStudent] = useState(null);
 
   // IT §6.7 host-only gate: the "collaborators" tab is only meaningful
   // for the workspace that *owns* the class. A collaborator viewing the
@@ -860,6 +862,7 @@ export default function TeacherClassDetailPage() {
                   columns={adaptedColumns}
                   gradesData={adaptedGrades}
                   onGradeChange={(sid, cid, value) => handleGradeChange(sid, cid, value)}
+                  onStudentClick={setProfileStudent}
                   emptyMessage={t('noStudents')}
                   t={t}
                 />
@@ -1377,6 +1380,13 @@ export default function TeacherClassDetailPage() {
       {renderAddLessonDialog()}
       {renderColumnSettings()}
       {renderQuickAddColumnDialog()}
+
+      <TeacherStudentProfileDialog
+        student={profileStudent}
+        open={!!profileStudent}
+        onClose={() => setProfileStudent(null)}
+        classLabel={classData?.grade_name}
+      />
 
       <input
         ref={fileInputRef}

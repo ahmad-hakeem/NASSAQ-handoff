@@ -5,11 +5,21 @@ export default function FollowupGradesTable({
   columns = [],
   gradesData = {},
   onGradeChange,
+  onStudentClick,
   emptyMessage,
   t: tProp,
 }) {
   const { t: tHook } = useTranslation();
   const t = tProp || tHook;
+
+  // Full-row click opens the student profile, but interactive controls inside
+  // the row (the grade number inputs) must keep working — so a click that
+  // originates from a form control / button is ignored here.
+  const handleRowClick = (student) => (e) => {
+    if (!onStudentClick) return;
+    if (e.target.closest('input, button, a, select, textarea, [role="button"], [contenteditable="true"]')) return;
+    onStudentClick(student);
+  };
 
   const visibleColumns = columns.filter(c => !c.hidden);
   const courseworkCols = visibleColumns.filter(c => c.group === 'coursework');
@@ -114,9 +124,26 @@ export default function FollowupGradesTable({
             const ratio = grandMax > 0 ? total / grandMax : 0;
             const totalColor = ratio >= 0.6 ? 'text-emerald-600' : ratio >= 0.3 ? 'text-amber-600' : 'text-red-500';
             return (
-              <tr key={student.id} className="hover:bg-muted/40 dark:hover:bg-card/40">
+              <tr
+                key={student.id}
+                className={`hover:bg-muted/40 dark:hover:bg-card/40 ${onStudentClick ? 'cursor-pointer' : ''}`}
+                onClick={onStudentClick ? handleRowClick(student) : undefined}
+              >
                 <td className="border px-2 py-1.5 text-center text-[11px] text-muted-foreground sticky end-0 bg-card dark:bg-background">{si + 1}</td>
-                <td className="border px-3 py-1.5 text-xs font-medium sticky end-12 bg-card dark:bg-background">{student.full_name}</td>
+                <td className="border px-3 py-1.5 text-xs font-medium sticky end-12 bg-card dark:bg-background">
+                  {onStudentClick ? (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onStudentClick(student); }}
+                      title={t('viewStudentProfile') || 'عرض ملف الطالب'}
+                      className="text-start text-brand-turquoise hover:underline font-medium rounded outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise/40"
+                    >
+                      {student.full_name}
+                    </button>
+                  ) : (
+                    student.full_name
+                  )}
+                </td>
                 {courseworkCols.map(col => renderGradeCell(student, col))}
                 {courseworkCols.length > 0 && (
                   <td className="border px-2 py-1.5 text-center text-xs font-bold bg-blue-50/40 dark:bg-blue-900/10">
