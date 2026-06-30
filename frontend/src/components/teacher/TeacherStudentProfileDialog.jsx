@@ -92,31 +92,36 @@ export default function TeacherStudentProfileDialog({ student, open, onClose, cl
         className="w-[95vw] max-w-2xl max-h-[85vh] overflow-y-auto"
         dir={isRTL ? 'rtl' : 'ltr'}
       >
-        <DialogHeader>
-          <DialogTitle className="font-cairo flex items-center gap-3 text-start">
-            <Avatar className="h-12 w-12 border border-border">
+        <DialogHeader className="pb-4 mb-1 border-b border-border">
+          <div className="flex items-center gap-4 text-start">
+            <Avatar className="h-14 w-14 shrink-0 border border-border shadow-sm">
               <AvatarImage src={student?.avatar || undefined} alt={student?.full_name || ''} />
-              <AvatarFallback className="bg-brand-turquoise/10 text-brand-turquoise font-bold">
+              <AvatarFallback className="bg-brand-turquoise/10 text-brand-turquoise text-lg font-bold">
                 {student?.full_name?.charAt(0) || '؟'}
               </AvatarFallback>
             </Avatar>
-            <div className="min-w-0">
-              <p className="truncate">{student?.full_name || (isRTL ? 'الطالب' : 'Student')}</p>
-              <div className="flex flex-wrap items-center gap-2 mt-1">
+            <div className="min-w-0 flex-1 space-y-2">
+              <DialogTitle className="font-cairo text-lg font-bold leading-snug tracking-normal truncate">
+                {student?.full_name || (isRTL ? 'الطالب' : 'Student')}
+              </DialogTitle>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
                 {student?.student_id && (
                   <span className="text-xs font-normal text-muted-foreground">
                     {student.student_id}
                   </span>
                 )}
                 {classLabel && (
-                  <Badge variant="outline" className="text-[10px] gap-1 font-normal">
-                    <GraduationCap className="h-3 w-3" aria-hidden="true" />
-                    {classLabel}
+                  <Badge
+                    variant="outline"
+                    className="max-w-full text-[11px] gap-1 font-normal py-0.5 text-brand-turquoise border-brand-turquoise/30 bg-brand-turquoise/5"
+                  >
+                    <GraduationCap className="h-3 w-3 shrink-0" aria-hidden="true" />
+                    <span className="min-w-0 truncate">{classLabel}</span>
                   </Badge>
                 )}
               </div>
             </div>
-          </DialogTitle>
+          </div>
         </DialogHeader>
 
         {loading || !details ? (
