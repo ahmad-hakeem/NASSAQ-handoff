@@ -442,11 +442,14 @@ const ParentPortalDashboard = () => {
                       </h1>
                       <div className="flex items-center gap-2 mt-2 flex-wrap">
                         {(liveData.student?.class_name || liveData.student?.grade_level) && (
-                          <span className="flex items-center gap-1.5 text-xs font-tajawal text-white/80 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1">
-                            <GraduationCap className="w-3.5 h-3.5 shrink-0 text-brand-turquoise" />
+                          <span
+                            className="flex items-center gap-1.5 text-xs font-tajawal text-white/80 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1"
+                            data-testid="hero-class-tag"
+                          >
+                            <GraduationCap className="w-3.5 h-3.5 shrink-0 text-brand-turquoise" aria-hidden="true" />
                             <span className="truncate max-w-[200px]">
-                              {liveData.student?.class_name}
-                              {liveData.student?.grade_level ? ` — ${liveData.student?.grade_level}` : ''}
+                              {liveData.student?.class_name
+                                || `${t('grade') || (isRTL ? 'الصف' : 'Grade')} ${liveData.student?.grade_level}`}
                             </span>
                           </span>
                         )}

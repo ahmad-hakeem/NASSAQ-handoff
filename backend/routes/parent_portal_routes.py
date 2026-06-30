@@ -1079,6 +1079,16 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
 
+        # Resolve the live class name from the classes table so the home-hero
+        # tag shows the student's real current class. The raw students row has
+        # no class_name column, so without this the hero would render a blank
+        # class and only the bare grade number. Mirrors the enrichment already
+        # applied by /child/{child_id} and the other parent-portal routes.
+        from utils.parent_children_resolution import enrich_children_with_class_names
+        [child] = await enrich_children_with_class_names(
+            [child], db.session, child.get("school_id") or school_id
+        )
+
         now = datetime.now(SAUDI_TZ)
         current_time = now.strftime("%H:%M")
         day_map = {6: "sunday", 0: "monday", 1: "tuesday", 2: "wednesday", 3: "thursday"}
