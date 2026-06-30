@@ -533,6 +533,7 @@ const ParentPortalDashboard = () => {
               <CurrentClassCard
                 currentClass={liveData.current_class}
                 studentName={liveData.student?.name?.split(' ')[0]}
+                dayStatus={liveData.school_day?.day_status}
               />
 
               {/* 2. Next class (default) + collapsible remaining classes */}

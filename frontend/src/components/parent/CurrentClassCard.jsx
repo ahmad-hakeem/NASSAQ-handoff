@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BookOpen, User, Clock, Timer, Hash } from 'lucide-react';
 import { useTranslation } from '../../contexts/ThemeContext';
 
-const CurrentClassCard = ({ currentClass, studentName }) => {
+const CurrentClassCard = ({ currentClass, studentName, dayStatus }) => {
   const { t } = useTranslation();
   const [countdown, setCountdown] = useState('');
   const [countdownPercent, setCountdownPercent] = useState(0);
@@ -42,6 +42,14 @@ const CurrentClassCard = ({ currentClass, studentName }) => {
   }, [currentClass?.end_time, currentClass?.start_time, t]);
 
   if (!currentClass) {
+    const statusMessageKey = {
+      before_school: 'schoolDayNotStartedYet',
+      after_school: 'schoolDayEnded',
+      break: 'currentlyOnBreak',
+      no_schedule: 'noScheduleToday',
+      unknown: 'scheduleTimesUnavailable',
+    }[dayStatus] || 'schoolDayEndedOrNotStarted';
+
     return (
       <div className="bg-muted rounded-2xl p-5 border border-border">
         <div className="flex items-center gap-3">
@@ -50,7 +58,7 @@ const CurrentClassCard = ({ currentClass, studentName }) => {
           </div>
           <div>
             <p className="text-sm font-medium text-foreground">{t('whereIsStudentNow', { name: studentName })}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{t('schoolDayEndedOrNotStarted')}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{t(statusMessageKey)}</p>
           </div>
         </div>
       </div>

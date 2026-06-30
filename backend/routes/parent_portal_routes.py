@@ -277,6 +277,106 @@ async def _resolve_parent_period_model(session, school_id, session_periods,
     )
 
 
+def _norm_hhmm(value) -> str:
+    """Normalize a clock string to zero-padded ``HH:MM``.
+
+    Manual timetable sessions can carry non-padded times (e.g. ``"9:00"``),
+    which break the lexicographic ``start <= now < end`` comparisons that drive
+    the live "where is my child now" widget. Returns ``""`` when the value is
+    missing or unparseable so callers fall back to the canonical slot time.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    parts = text.split(":")
+    if len(parts) < 2:
+        return ""
+    try:
+        hh = int(parts[0])
+        mm = int(parts[1])
+    except (TypeError, ValueError):
+        return ""
+    return f"{hh:02d}:{mm:02d}"
+
+
+async def _resolve_class_today_sessions(session, school_id, class_id, today_en):
+    """Resolve a class's sessions for ``today_en`` with canonical period times.
+
+    Single source of truth for the parent "where is my child now" widget. It
+    mirrors the weekly schedule grid's canonical resolution
+    (:func:`_resolve_parent_period_model`) so the home widget and the schedule
+    page never disagree about when a lesson runs.
+
+    Manual timetables store sessions with EMPTY ``start_time``/``end_time``
+    (raw-slot encoding). Reading those fields directly makes every session look
+    time-less, which collapsed the live widget into a perpetual "school day
+    ended / not started". Resolving times from the canonical period model — the
+    school's ``time_slots`` layout — fixes that.
+
+    Returns an ordered list of dicts:
+        {period, raw_period, subject_id, teacher_id, start_time, end_time}
+    """
+    if not class_id or not today_en:
+        return []
+
+    timetable = await gd_find_one(session, "timetables", {
+        "school_id": school_id,
+        "status": "published",
+    }) or await gd_find_one(session, "timetables", {
+        "school_id": school_id,
+    }, sort=[("created_at", -1)])
+    if not timetable:
+        return []
+
+    all_sessions = await gd_find(session, "timetable_sessions", {
+        "timetable_id": timetable.get("id"),
+        "class_id": class_id,
+    }, limit=500)
+    if not all_sessions:
+        return []
+
+    raw_session_periods = []
+    for s in all_sessions:
+        try:
+            raw_session_periods.append(int(s.get("period_number")))
+        except (TypeError, ValueError):
+            continue
+    sessions_have_times = any(
+        str(s.get("start_time") or "").strip() for s in all_sessions
+    )
+
+    periods, mapper = await _resolve_parent_period_model(
+        session, school_id, raw_session_periods, sessions_have_times
+    )
+    period_times = {
+        p["period"]: (p.get("start_time") or "", p.get("end_time") or "")
+        for p in periods
+    }
+
+    resolved = []
+    for s in all_sessions:
+        if s.get("day_of_week") != today_en:
+            continue
+        try:
+            raw_period = int(s.get("period_number"))
+        except (TypeError, ValueError):
+            raw_period = None
+        canonical = mapper(raw_period) if raw_period is not None else None
+        if canonical is None:
+            continue
+        slot_start, slot_end = period_times.get(canonical, ("", ""))
+        resolved.append({
+            "period": canonical,
+            "raw_period": raw_period,
+            "subject_id": s.get("subject_id"),
+            "teacher_id": s.get("teacher_id"),
+            "start_time": _norm_hhmm(s.get("start_time")) or _norm_hhmm(slot_start),
+            "end_time": _norm_hhmm(s.get("end_time")) or _norm_hhmm(slot_end),
+        })
+    resolved.sort(key=lambda x: (x.get("period") or 0))
+    return resolved
+
+
 def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
     """Setup parent portal routes"""
 
@@ -984,39 +1084,29 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         day_map = {6: "sunday", 0: "monday", 1: "tuesday", 2: "wednesday", 3: "thursday"}
         today_en = day_map.get(now.weekday(), "")
 
+        resolved_today = await _resolve_class_today_sessions(
+            db.session, child.get("school_id", school_id), child.get("class_id"), today_en
+        )
+
         today_sessions = []
-        if child.get("class_id") and today_en:
-            timetable = await gd_find_one(db.session, "timetables", {
-                "school_id": child.get("school_id", school_id),
-                "status": "published"
-            }) or await gd_find_one(db.session, "timetables", {
-                "school_id": child.get("school_id", school_id)
-            }, sort=[("created_at", -1)])
+        if resolved_today:
+            sub_ids = list({s.get("subject_id") for s in resolved_today if s.get("subject_id")})
+            tch_ids = list({s.get("teacher_id") for s in resolved_today if s.get("teacher_id")})
+            subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=50) if sub_ids else []
+            tchs = await gd_find(db.session, "teachers", {"id": {"$in": tch_ids}}, limit=50) if tch_ids else []
+            sub_map = {s["id"]: s.get("name_ar", s.get("name", "")) for s in subs}
+            tch_map = {t["id"]: t.get("full_name", "") for t in tchs}
 
-            if timetable:
-                sessions = await gd_find(db.session, "timetable_sessions", {
-                    "timetable_id": timetable.get("id"),
-                    "class_id": child.get("class_id"),
-                    "day_of_week": today_en
-                }, limit=20)
-
-                sub_ids = list(set(s.get("subject_id") for s in sessions if s.get("subject_id")))
-                tch_ids = list(set(s.get("teacher_id") for s in sessions if s.get("teacher_id")))
-                subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=50) if sub_ids else []
-                tchs = await gd_find(db.session, "teachers", {"id": {"$in": tch_ids}}, limit=50) if tch_ids else []
-                sub_map = {s["id"]: s.get("name_ar", s.get("name", "")) for s in subs}
-                tch_map = {t["id"]: t.get("full_name", "") for t in tchs}
-
-                for s in sorted(sessions, key=lambda x: x.get("period_number", 0)):
-                    today_sessions.append({
-                        "period": s.get("period_number"),
-                        "subject": sub_map.get(s.get("subject_id"), "غير محدد"),
-                        "subject_id": s.get("subject_id"),
-                        "teacher": tch_map.get(s.get("teacher_id"), "غير محدد"),
-                        "teacher_id": s.get("teacher_id"),
-                        "start_time": s.get("start_time"),
-                        "end_time": s.get("end_time"),
-                    })
+            for s in resolved_today:
+                today_sessions.append({
+                    "period": s.get("period"),
+                    "subject": sub_map.get(s.get("subject_id"), "غير محدد"),
+                    "subject_id": s.get("subject_id"),
+                    "teacher": tch_map.get(s.get("teacher_id"), "غير محدد"),
+                    "teacher_id": s.get("teacher_id"),
+                    "start_time": s.get("start_time"),
+                    "end_time": s.get("end_time"),
+                })
 
         current_class = None
         upcoming_classes = []
@@ -1031,6 +1121,28 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                     current_class = {**session, "is_current": True}
                 else:
                     upcoming_classes.append(session)
+
+        # Day status drives the home "where is my child now" message so the
+        # widget distinguishes before-school / in-class / break / after-school
+        # instead of collapsing every non-active moment into "day ended".
+        timed_sessions = [s for s in today_sessions if s.get("start_time") and s.get("end_time")]
+        if not today_sessions:
+            day_status = "no_schedule"
+        elif not timed_sessions:
+            # Sessions exist but the school has no resolvable period times — we
+            # cannot place "now", so let the UI fall back to a neutral message.
+            day_status = "unknown"
+        elif current_class:
+            day_status = "in_class"
+        else:
+            first_start = min(s["start_time"] for s in timed_sessions)
+            last_end = max(s["end_time"] for s in timed_sessions)
+            if current_time < first_start:
+                day_status = "before_school"
+            elif current_time >= last_end:
+                day_status = "after_school"
+            else:
+                day_status = "break"
 
         today_date = now.date()
         days_offset = today_date.weekday() + 1 if today_date.weekday() != 6 else 0
@@ -1106,6 +1218,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 "all_sessions": today_sessions,
                 "is_school_day": today_en in day_map.values(),
                 "server_time": current_time,
+                "day_status": day_status,
             },
             "current_class": current_class,
             "upcoming_classes": upcoming_classes,
