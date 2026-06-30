@@ -108,15 +108,42 @@ const PeriodTimeline = ({ upcomingLessons, totalPeriods, currentPeriod, isSchool
               )}
             </div>
 
-            {period.lesson && (
-              <div className="absolute bottom-full mb-2 start-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-20 w-36">
-                <div className="bg-popover border border-border rounded-lg shadow-lg p-2 text-xs font-tajawal">
-                  <p className="font-bold font-cairo text-foreground truncate">{period.lesson.subject}</p>
-                  <p className="text-muted-foreground truncate">{period.lesson.class}</p>
-                  <p className="text-muted-foreground">{period.lesson.time}</p>
+            {period.lesson && (() => {
+              const isFirst = period.number === 1;
+              const isLast = period.number === totalPeriods;
+              // Horizontal anchoring. Default: physically centered over the cell.
+              // We deliberately pair the PHYSICAL `left-1/2` anchor with the
+              // PHYSICAL `-translate-x-1/2` shift — CSS transforms are not
+              // RTL-flipped, so the old logical `start-1/2` anchor pushed the
+              // tooltip off to the side in RTL. Centering is direction-symmetric,
+              // so physical centering is correct in both LTR and RTL.
+              // First / last period: clamp to the cell's leading / trailing edge
+              // so the 144px (w-36) tooltip never overflows the card.
+              const posCls = isFirst
+                ? 'start-0'
+                : isLast
+                ? 'end-0'
+                : 'left-1/2 -translate-x-1/2';
+              // Caret tracks the anchoring so it always points back at the cell.
+              const caretCls = isFirst
+                ? 'start-5'
+                : isLast
+                ? 'end-5'
+                : 'left-1/2 -translate-x-1/2';
+              return (
+                <div
+                  role="tooltip"
+                  className={`absolute bottom-full mb-2 ${posCls} w-36 z-30 opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 pointer-events-none transition-all duration-200 ease-out motion-reduce:transition-none`}
+                >
+                  <div className="relative bg-popover border border-border rounded-lg shadow-lg p-2 text-xs font-tajawal text-start">
+                    <p className="font-bold font-cairo text-foreground truncate">{period.lesson.subject}</p>
+                    <p className="text-muted-foreground truncate">{period.lesson.class}</p>
+                    <p className="text-muted-foreground">{period.lesson.time}</p>
+                    <span className={`absolute top-full ${caretCls} -mt-1 w-2 h-2 rotate-45 bg-popover border-b border-r border-border`} aria-hidden="true" />
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         ))}
       </div>
