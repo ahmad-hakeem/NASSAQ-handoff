@@ -1082,6 +1082,58 @@ async def _resolve_curriculum_subjects(
     return out
 
 
+async def _sync_curriculum_portfolio(
+    current_user: dict,
+    class_id: str,
+    subject_id: Optional[str],
+    cls: Optional[dict] = None,
+) -> None:
+    """Mirror a teacher's curriculum plan into their portfolio's Planning
+    Evidence as a live "خطة توزيع المنهج" card (one per class + subject).
+
+    Fire-and-forget: a portfolio failure must never break the curriculum write.
+    Runs only for teacher/IT callers — their plan is private and maps to their
+    own portfolio; leadership/platform curriculum edits are class-wide and have
+    no per-teacher portfolio card. Awaited inline (not a background task) so the
+    upsert shares the request's DB session and commits with it.
+    """
+    if not _is_curriculum_teacher_scope(current_user.get("role", "")):
+        return
+    try:
+        plan_teacher_id = _curriculum_teacher_id(current_user)
+        portfolio_teacher_id = current_user.get("id")
+        if not plan_teacher_id or not portfolio_teacher_id:
+            return
+
+        if cls is None:
+            cls = await gd_find_one(db.session, "classes", {"id": class_id})
+        school_id = (
+            (cls or {}).get("school_id")
+            or (cls or {}).get("tenant_id")
+            or current_user.get("tenant_id")
+            or ""
+        )
+        class_name = (cls or {}).get("name") or (cls or {}).get("class_name") or ""
+
+        subject_name = ""
+        if subject_id:
+            subj = await gd_find_one(db.session, "subjects", {"id": subject_id})
+            subject_name = (subj or {}).get("name") or (subj or {}).get("name_ar") or ""
+
+        from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
+        await PortfolioEvidenceEngine(db).sync_curriculum_plan_evidence(
+            portfolio_teacher_id=portfolio_teacher_id,
+            plan_teacher_id=plan_teacher_id,
+            school_id=school_id,
+            class_id=class_id,
+            subject_id=subject_id or "",
+            class_name=class_name,
+            subject_name=subject_name,
+        )
+    except Exception as _sync_err:
+        logger.debug("curriculum portfolio sync failed: %s", _sync_err)
+
+
 @class_teaching_router.get("/class/{class_id}/curriculum-plan")
 async def get_curriculum_plan(
     class_id: str,
@@ -1254,6 +1306,7 @@ async def add_lesson(
         )
 
     await gd_insert(db.session, "curriculum_lessons", doc)
+    await _sync_curriculum_portfolio(current_user, class_id, subject_id, cls)
     return doc
 
 
@@ -1384,6 +1437,9 @@ async def update_lesson(
 
     data["updated_at"] = now_ts
     await gd_update_one(db.session, "curriculum_lessons", {"id": lesson_id}, data)
+    await _sync_curriculum_portfolio(
+        current_user, existing["class_id"], existing.get("subject_id") or "", cls
+    )
     return {**existing, **data}
 
 
@@ -1398,6 +1454,9 @@ async def delete_lesson(
     await _verify_class_access(existing["class_id"], current_user)
     _verify_curriculum_lesson_owner(existing, current_user)
     await gd_delete_one(db.session, "curriculum_lessons", {"id": lesson_id})
+    await _sync_curriculum_portfolio(
+        current_user, existing["class_id"], existing.get("subject_id") or ""
+    )
     return {"success": True}
 
 

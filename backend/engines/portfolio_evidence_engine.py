@@ -218,6 +218,107 @@ class PortfolioEvidenceEngine:
         logger.info("Evidence captured: %s / %s for teacher %s", evidence_type, evidence_id, teacher_id)
         return evidence_id
 
+    async def sync_curriculum_plan_evidence(
+        self,
+        portfolio_teacher_id: str,
+        plan_teacher_id: str,
+        school_id: str,
+        class_id: str,
+        subject_id: str,
+        class_name: str = "",
+        subject_name: str = "",
+    ) -> Optional[str]:
+        """Keep the auto "curriculum_distribution_plan" portfolio card in sync
+        with one teacher's curriculum plan for a single (class, subject).
+
+        Unlike ``capture_evidence`` (which dedups and never refreshes), this is a
+        true upsert so the card's lesson count always mirrors the live plan:
+        - counts the teacher's lessons for (class, subject) — ``plan_teacher_id``
+          is the id stored on ``curriculum_lessons`` (may be a ``teachers.id``);
+        - ``portfolio_teacher_id`` is the ``users.id`` the portfolio reads by, so
+          the card shows up under the teacher's own portfolio;
+        - deletes the auto card when the plan becomes empty so no stale total
+          lingers. A teacher's own manually-added planning cards are never
+          touched (they carry no ``source_entity_id`` and ``source == "manual"``).
+        Returns the evidence id, or ``None`` when the plan is empty.
+        """
+        source_entity_id = f"curriculum_plan:{class_id}:{subject_id or ''}"
+
+        lesson_query: Dict[str, Any] = {
+            "class_id": class_id,
+            "teacher_id": plan_teacher_id,
+            "subject_id": subject_id or "",
+        }
+        lessons = await gd_find(self.db.session, "curriculum_lessons", lesson_query, limit=500)
+        total = len(lessons)
+        completed = len([l for l in lessons if l.get("is_completed")])
+
+        existing = await gd_find_one(self.db.session, "portfolio_evidence", {
+            "teacher_id": portfolio_teacher_id,
+            "evidence_type": "curriculum_distribution_plan",
+            "source_entity_id": source_entity_id,
+        })
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        if total == 0:
+            if existing and existing.get("source") == "auto":
+                await gd_delete_one(self.db.session, "portfolio_evidence", {"id": existing["id"]})
+            return None
+
+        scope = " - ".join([p for p in [class_name, subject_name] if p])
+        title_ar = "خطة توزيع المنهج" + (f" - {scope}" if scope else "")
+        title_en = "Curriculum Distribution Plan" + (f" - {scope}" if scope else "")
+        desc_ar = f"عدد الدروس: {total} • الدروس المكتملة: {completed}"
+        desc_en = f"Lessons: {total} • Completed: {completed}"
+        metadata = {
+            "lesson_count": total,
+            "completed_count": completed,
+            "class_id": class_id,
+            "subject_id": subject_id or "",
+        }
+
+        if existing:
+            await gd_update_one(self.db.session, "portfolio_evidence", {"id": existing["id"]}, {
+                "title_ar": title_ar,
+                "title_en": title_en,
+                "description_ar": desc_ar,
+                "description_en": desc_en,
+                "metadata": metadata,
+                "class_id": class_id,
+                "subject_id": subject_id or "",
+                "updated_at": now,
+            })
+            return existing["id"]
+
+        evidence_id = str(uuid.uuid4())
+        doc = {
+            "id": evidence_id,
+            "teacher_id": portfolio_teacher_id,
+            "school_id": school_id,
+            "evidence_type": "curriculum_distribution_plan",
+            "section": SECTION_FOR_TYPE.get("curriculum_distribution_plan", "administrative"),
+            "title_ar": title_ar,
+            "title_en": title_en,
+            "description_ar": desc_ar,
+            "description_en": desc_en,
+            "source": "auto",
+            "source_entity_type": "curriculum_plan",
+            "source_entity_id": source_entity_id,
+            "class_id": class_id,
+            "subject_id": subject_id or "",
+            "date": now[:10],
+            "metadata": metadata,
+            "file_url": None,
+            "file_name": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+        await gd_insert(self.db.session, "portfolio_evidence", doc)
+        logger.info("Curriculum plan evidence synced: %s for teacher %s (%d lessons)",
+                    evidence_id, portfolio_teacher_id, total)
+        return evidence_id
+
     async def get_teacher_portfolio(self, teacher_id: str, school_id: Optional[str] = None) -> Dict[str, Any]:
         query: Dict[str, Any] = {"teacher_id": teacher_id}
         if school_id:
