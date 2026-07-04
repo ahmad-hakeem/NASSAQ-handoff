@@ -649,6 +649,9 @@ export default function SessionTeachPage() {
         // backend `question_count` counts question answers + evaluation items
         // only, never behaviour/skills/participation.
         questionCount: s.question_count || 0,
+        // Numerator of the "X/Y" counter: positive evaluation outcomes only
+        // (correct answers + mastered recitations + positive evaluation items).
+        evalPositive: s.eval_positive_count || 0,
         correctAnswers: s.correct_answers || 0,
         isFlashing: false,
       }));
@@ -663,9 +666,11 @@ export default function SessionTeachPage() {
           ...prev,
           interactionCount: fresh.interactionCount,
           questionCount: fresh.questionCount,
+          evalPositive: fresh.evalPositive,
           correctAnswers: fresh.correctAnswers,
           interaction_count: fresh.interaction_count,
           question_count: fresh.question_count,
+          eval_positive_count: fresh.eval_positive_count,
           correct_answers: fresh.correct_answers,
           participation_count: fresh.participation_count,
         };
@@ -1390,6 +1395,8 @@ export default function SessionTeachPage() {
         interaction_count: sel.interaction_count || 0,
         questionCount: sel.questionCount || sel.question_count || 0,
         question_count: sel.question_count || 0,
+        evalPositive: sel.evalPositive || sel.eval_positive_count || 0,
+        eval_positive_count: sel.eval_positive_count || 0,
       });
       confetti({ particleCount: 30, spread: 50, origin: { y: 0.6 }, colors: ['#0ea5e9', '#14b8a6'] });
       setActionTab(getTabForMode(mode?.id));
@@ -1445,8 +1452,11 @@ export default function SessionTeachPage() {
           points,
           item_id: item.id,
         });
+        // A positive item (points > 0) is a positive evaluation → +1 numerator
+        // and +1 denominator; a negative item counts toward the denominator only.
+        const positiveBump = points > 0 ? 1 : 0;
         setStudents(prev => prev.map(s =>
-          s.id === selectedStudent.id ? { ...s, interactionCount: (s.interactionCount || 0) + 1, questionCount: (s.questionCount || 0) + 1 } : s
+          s.id === selectedStudent.id ? { ...s, interactionCount: (s.interactionCount || 0) + 1, questionCount: (s.questionCount || 0) + 1, evalPositive: (s.evalPositive || 0) + positiveBump } : s
         ));
         setSelectedStudent(prev => prev ? {
           ...prev,
@@ -1454,6 +1464,8 @@ export default function SessionTeachPage() {
           interaction_count: (prev.interaction_count || 0) + 1,
           questionCount: (prev.questionCount || 0) + 1,
           question_count: (prev.question_count || 0) + 1,
+          evalPositive: (prev.evalPositive || 0) + positiveBump,
+          eval_positive_count: (prev.eval_positive_count || 0) + positiveBump,
         } : null);
       } else {
         // Genuinely non-scoring item stays a note.
@@ -1501,9 +1513,12 @@ export default function SessionTeachPage() {
       }
       setCanUndo(true);
       void peekUndoState();
+      // A correct answer is a positive evaluation (+1 numerator, +1
+      // denominator); wrong / no-answer count toward the denominator only.
+      const isCorrect = result === 'correct';
       setStudents(prev => prev.map(s =>
         s.id === selectedStudent.id
-          ? { ...s, interactionCount: s.interactionCount + 1, questionCount: (s.questionCount || 0) + 1, correctAnswers: result === 'correct' ? s.correctAnswers + 1 : s.correctAnswers }
+          ? { ...s, interactionCount: s.interactionCount + 1, questionCount: (s.questionCount || 0) + 1, correctAnswers: isCorrect ? s.correctAnswers + 1 : s.correctAnswers, evalPositive: isCorrect ? (s.evalPositive || 0) + 1 : (s.evalPositive || 0) }
           : s
       ));
       setSelectedStudent(prev => prev ? {
@@ -1512,8 +1527,10 @@ export default function SessionTeachPage() {
         interaction_count: (prev.interaction_count || 0) + 1,
         questionCount: (prev.questionCount || 0) + 1,
         question_count: (prev.question_count || 0) + 1,
-        correctAnswers: result === 'correct' ? (prev.correctAnswers || 0) + 1 : (prev.correctAnswers || 0),
-        correct_answers: result === 'correct' ? (prev.correct_answers || 0) + 1 : (prev.correct_answers || 0),
+        correctAnswers: isCorrect ? (prev.correctAnswers || 0) + 1 : (prev.correctAnswers || 0),
+        correct_answers: isCorrect ? (prev.correct_answers || 0) + 1 : (prev.correct_answers || 0),
+        evalPositive: isCorrect ? (prev.evalPositive || 0) + 1 : (prev.evalPositive || 0),
+        eval_positive_count: isCorrect ? (prev.eval_positive_count || 0) + 1 : (prev.eval_positive_count || 0),
         participation_count: (prev.participation_count || 0) + 1,
       } : null);
     } catch (e) {
@@ -1670,8 +1687,11 @@ export default function SessionTeachPage() {
       addLog('skill', `${selectedStudent.full_name?.split(' ')[0]} — ${t('recitation')} ${label} (${recitationAttempts})`, mastered ? 'text-emerald-700' : 'text-amber-700');
       setRecitationNote('');
       setRecitationAttempts(1);
+      // Mastered recitation is a POSITIVE evaluation (+1 numerator, +1
+      // denominator); not mastered counts toward the denominator only.
+      const positiveBump = mastered ? 1 : 0;
       setStudents(prev => prev.map(s =>
-        s.id === selectedStudent.id ? { ...s, interactionCount: (s.interactionCount || 0) + 1, questionCount: (s.questionCount || 0) + 1 } : s
+        s.id === selectedStudent.id ? { ...s, interactionCount: (s.interactionCount || 0) + 1, questionCount: (s.questionCount || 0) + 1, evalPositive: (s.evalPositive || 0) + positiveBump } : s
       ));
       setSelectedStudent(prev => prev ? {
         ...prev,
@@ -1679,6 +1699,8 @@ export default function SessionTeachPage() {
         interaction_count: (prev.interaction_count || 0) + 1,
         questionCount: (prev.questionCount || 0) + 1,
         question_count: (prev.question_count || 0) + 1,
+        evalPositive: (prev.evalPositive || 0) + positiveBump,
+        eval_positive_count: (prev.eval_positive_count || 0) + positiveBump,
       } : null);
     } catch (e) {
       console.error('Error recording recitation:', e);
@@ -4559,7 +4581,9 @@ function StudentRow({ student, isFlashing, isSelected, onClick, onMenu, onSendNo
   // items only. Behaviour, skills and participation must never move it, so it
   // reads the server's `question_count`, not the all-interactions total.
   const count = student.questionCount || 0;
-  const correct = student.correctAnswers || 0;
+  // Numerator = POSITIVE evaluation outcomes only (correct answers + mastered
+  // recitations + positive evaluation items); it can be smaller than count.
+  const positive = student.evalPositive || 0;
   const isFemale = student.gender === 'female';
   const isAbsent = student.attendance_status === 'absent';
   // Default state for the inline homework toggle is "أنجز" (done) — only the
@@ -4593,7 +4617,7 @@ function StudentRow({ student, isFlashing, isSelected, onClick, onMenu, onSendNo
         )}
         {count > 0 && (
           <span className={`absolute -top-1 -end-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center text-white shadow-sm ${
-            correct > 0 ? 'bg-emerald-500' : 'bg-amber-500'
+            positive > 0 ? 'bg-emerald-500' : 'bg-amber-500'
           }`}>
             {count}
           </span>
@@ -4623,7 +4647,7 @@ function StudentRow({ student, isFlashing, isSelected, onClick, onMenu, onSendNo
         })}
         {count > 0 && (
           <span className="ms-auto text-[10px] text-muted-foreground tabular-nums hidden sm:inline">
-            <span className="text-emerald-600 dark:text-emerald-400 font-bold">{correct}</span>/{count}
+            <span className="text-emerald-600 dark:text-emerald-400 font-bold">{positive}</span>/{count}
           </span>
         )}
       </div>
@@ -4675,7 +4699,9 @@ function StudentCard({ student, isFlashing, isSelected, onClick }) {
   // move the counter.
   const count = student.interactionCount || 0;
   const evalCount = student.questionCount || 0;
-  const correct = student.correctAnswers || 0;
+  // Numerator = POSITIVE evaluation outcomes only (correct answers + mastered
+  // recitations + positive evaluation items).
+  const positive = student.evalPositive || 0;
   const isFemale = student.gender === 'female';
   const avatarBg = isFlashing ? 'bg-foreground/20' : isFemale ? 'bg-gradient-to-br from-pink-500 to-rose-600' : 'bg-gradient-to-br from-sky-500 to-blue-600';
 
@@ -4706,7 +4732,7 @@ function StudentCard({ student, isFlashing, isSelected, onClick }) {
         )}
         {evalCount > 0 && (
           <span className={`absolute -top-1 -end-1 w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center text-foreground shadow-sm ${
-            correct > 0 ? 'bg-green-500' : 'bg-amber-500'
+            positive > 0 ? 'bg-green-500' : 'bg-amber-500'
           }`}>
             {evalCount}
           </span>
@@ -4717,7 +4743,7 @@ function StudentCard({ student, isFlashing, isSelected, onClick }) {
       </p>
       {evalCount > 0 && (
         <div className="mt-0.5 flex items-center justify-center gap-1">
-          <span className="text-green-600 dark:text-green-400 text-[9px] font-bold">{correct}</span>
+          <span className="text-green-600 dark:text-green-400 text-[9px] font-bold">{positive}</span>
           <span className="text-muted-foreground/70 text-[9px]">/</span>
           <span className="text-muted-foreground text-[9px]">{evalCount}</span>
         </div>

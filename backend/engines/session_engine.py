@@ -881,6 +881,13 @@ class TeacherSessionEngine:
                     # must never move the counter. `interaction_count` remains
                     # the all-interactions engagement total used elsewhere.
                     "question_count": 0,
+                    # `eval_positive_count` is the NUMERATOR of the same "X/Y"
+                    # counter: POSITIVE evaluation outcomes only — correct answers
+                    # plus positive evaluation items (points > 0). Wrong / no-answer
+                    # / negative or neutral items count toward the denominator
+                    # (`question_count`) only. Mastered recitations are added
+                    # optimistically on the client (recitation is stored as a note).
+                    "eval_positive_count": 0,
                 }
                 totals_map[sid] = agg
             agg["interaction_count"] += 1
@@ -890,10 +897,14 @@ class TeacherSessionEngine:
                 ans = i.get("answer_result")
                 if ans == AnswerResult.CORRECT.value:
                     agg["correct_answers"] += 1
+                    agg["eval_positive_count"] += 1
                 elif ans == AnswerResult.WRONG.value:
                     agg["wrong_answers"] += 1
             elif itype == InteractionType.EVALUATION.value:
                 agg["question_count"] += 1
+                pts = i.get("points")
+                if isinstance(pts, (int, float)) and not isinstance(pts, bool) and pts > 0:
+                    agg["eval_positive_count"] += 1
             elif itype == InteractionType.PARTICIPATION.value:
                 agg["participation_count"] += 1
             elif itype == InteractionType.BEHAVIOUR.value:
@@ -926,6 +937,7 @@ class TeacherSessionEngine:
                 "negative_behaviour": agg.get("negative_behaviour", 0),
                 "interaction_count": agg.get("interaction_count", 0),
                 "question_count": agg.get("question_count", 0),
+                "eval_positive_count": agg.get("eval_positive_count", 0),
             })
         
         # Sort by gender (males first based on RTL layout)
