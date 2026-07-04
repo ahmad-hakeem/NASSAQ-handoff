@@ -873,16 +873,27 @@ class TeacherSessionEngine:
                     "positive_behaviour": 0,
                     "negative_behaviour": 0,
                     "interaction_count": 0,
+                    # `question_count` is the denominator of the per-student
+                    # "X/Y" counter shown on the live roster. It is
+                    # EVALUATION-ONLY on purpose: it counts question answers
+                    # (correct/wrong/no_answer) and configurable evaluation
+                    # items, but NOT behaviour, skills, or participation — those
+                    # must never move the counter. `interaction_count` remains
+                    # the all-interactions engagement total used elsewhere.
+                    "question_count": 0,
                 }
                 totals_map[sid] = agg
             agg["interaction_count"] += 1
             itype = i.get("interaction_type") or i.get("type")
             if itype == InteractionType.QUESTION.value:
+                agg["question_count"] += 1
                 ans = i.get("answer_result")
                 if ans == AnswerResult.CORRECT.value:
                     agg["correct_answers"] += 1
                 elif ans == AnswerResult.WRONG.value:
                     agg["wrong_answers"] += 1
+            elif itype == InteractionType.EVALUATION.value:
+                agg["question_count"] += 1
             elif itype == InteractionType.PARTICIPATION.value:
                 agg["participation_count"] += 1
             elif itype == InteractionType.BEHAVIOUR.value:
@@ -914,6 +925,7 @@ class TeacherSessionEngine:
                 "positive_behaviour": agg.get("positive_behaviour", 0),
                 "negative_behaviour": agg.get("negative_behaviour", 0),
                 "interaction_count": agg.get("interaction_count", 0),
+                "question_count": agg.get("question_count", 0),
             })
         
         # Sort by gender (males first based on RTL layout)

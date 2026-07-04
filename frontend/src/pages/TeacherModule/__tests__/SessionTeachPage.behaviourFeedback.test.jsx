@@ -13,8 +13,10 @@
  *     'negative' category and the chosen behaviour_type.
  *   - The teacher gets an instant, sign-aware toast that INCLUDES the deduction
  *     (e.g. "(-2)") via toast.info (not a green success toast).
- *   - The selected student's live interaction tally bumps optimistically so the
- *     action is visibly reflected without waiting for the next poll.
+ *   - The per-student "X/Y" counter is EVALUATION-ONLY, so recording a
+ *     behaviour must NOT move it — only question answers (correct/wrong/no
+ *     answer), recitation, and evaluation items do. The deduction still lands
+ *     server-side and in the sign-aware toast.
  *
  * The live UI path exercised: select a student row -> open the negative
  * behaviour popover (right sidebar TriggerBtn) -> click a negative behaviour.
@@ -30,8 +32,9 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 // ---------------------------------------------------------------------------
 const SESSION_ID = 'sess-bhv-integ';
 const SUBJECT_ID = 'subj-bhv';
-// student_code intentionally digit-free so the optimistic "1" interaction
-// badge can be asserted uniquely within the student row.
+// student_code intentionally digit-free so the evaluation-counter badge (a
+// bare "1") can be uniquely detected within the row — here we assert it never
+// appears for a behaviour, which is not an evaluation event.
 const STUDENT = {
   id: 'stu-1',
   full_name: 'Ahmed Test',
@@ -227,14 +230,22 @@ describe('SessionTeachPage — live negative-behaviour feedback', () => {
     expect(mockToast.success).not.toHaveBeenCalledWith(expect.stringContaining('(-2)'));
   });
 
-  test('optimistically bumps the selected student interaction tally', async () => {
-    const nameEl = await recordNegativeBehaviour();
-    const row = nameEl.closest('[role="button"]');
-    expect(row).not.toBeNull();
+  test('does NOT move the evaluation-only per-student counter for a behaviour', async () => {
+    await recordNegativeBehaviour();
 
-    // The interaction badge (count > 0) appears only after the optimistic bump.
+    // Confirm the behaviour flow actually completed (sign-aware deduction toast).
     await waitFor(() => {
-      expect(within(row).getByText('1')).toBeInTheDocument();
+      expect(mockToast.info).toHaveBeenCalledWith(expect.stringContaining('(-2)'));
     }, { timeout: 3000 });
+
+    // The per-student "X/Y" counter / badge is EVALUATION-ONLY. A behaviour is
+    // not an evaluation event, so no counter badge (a bare "1") may appear in
+    // the student's row.
+    const row = screen
+      .getAllByText('Ahmed Test')
+      .map(el => el.closest('[role="button"]'))
+      .find(Boolean);
+    expect(row).toBeTruthy();
+    expect(within(row).queryByText('1')).toBeNull();
   });
 });

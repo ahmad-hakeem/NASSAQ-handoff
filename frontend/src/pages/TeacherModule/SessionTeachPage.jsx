@@ -645,6 +645,10 @@ export default function SessionTeachPage() {
         // post-undo refresh only changes the truly-reversed student's number
         // instead of zeroing the whole roster.
         interactionCount: s.interaction_count || 0,
+        // Evaluation-only denominator for the per-student "X/Y" counter. The
+        // backend `question_count` counts question answers + evaluation items
+        // only, never behaviour/skills/participation.
+        questionCount: s.question_count || 0,
         correctAnswers: s.correct_answers || 0,
         isFlashing: false,
       }));
@@ -658,8 +662,10 @@ export default function SessionTeachPage() {
         return {
           ...prev,
           interactionCount: fresh.interactionCount,
+          questionCount: fresh.questionCount,
           correctAnswers: fresh.correctAnswers,
           interaction_count: fresh.interaction_count,
+          question_count: fresh.question_count,
           correct_answers: fresh.correct_answers,
           participation_count: fresh.participation_count,
         };
@@ -1382,6 +1388,8 @@ export default function SessionTeachPage() {
         participation_count: sel.participation_count,
         correct_answers: sel.correct_answers || 0,
         interaction_count: sel.interaction_count || 0,
+        questionCount: sel.questionCount || sel.question_count || 0,
+        question_count: sel.question_count || 0,
       });
       confetti({ particleCount: 30, spread: 50, origin: { y: 0.6 }, colors: ['#0ea5e9', '#14b8a6'] });
       setActionTab(getTabForMode(mode?.id));
@@ -1438,12 +1446,14 @@ export default function SessionTeachPage() {
           item_id: item.id,
         });
         setStudents(prev => prev.map(s =>
-          s.id === selectedStudent.id ? { ...s, interactionCount: (s.interactionCount || 0) + 1 } : s
+          s.id === selectedStudent.id ? { ...s, interactionCount: (s.interactionCount || 0) + 1, questionCount: (s.questionCount || 0) + 1 } : s
         ));
         setSelectedStudent(prev => prev ? {
           ...prev,
           interactionCount: (prev.interactionCount || 0) + 1,
           interaction_count: (prev.interaction_count || 0) + 1,
+          questionCount: (prev.questionCount || 0) + 1,
+          question_count: (prev.question_count || 0) + 1,
         } : null);
       } else {
         // Genuinely non-scoring item stays a note.
@@ -1493,13 +1503,15 @@ export default function SessionTeachPage() {
       void peekUndoState();
       setStudents(prev => prev.map(s =>
         s.id === selectedStudent.id
-          ? { ...s, interactionCount: s.interactionCount + 1, correctAnswers: result === 'correct' ? s.correctAnswers + 1 : s.correctAnswers }
+          ? { ...s, interactionCount: s.interactionCount + 1, questionCount: (s.questionCount || 0) + 1, correctAnswers: result === 'correct' ? s.correctAnswers + 1 : s.correctAnswers }
           : s
       ));
       setSelectedStudent(prev => prev ? {
         ...prev,
         interactionCount: (prev.interactionCount || 0) + 1,
         interaction_count: (prev.interaction_count || 0) + 1,
+        questionCount: (prev.questionCount || 0) + 1,
+        question_count: (prev.question_count || 0) + 1,
         correctAnswers: result === 'correct' ? (prev.correctAnswers || 0) + 1 : (prev.correctAnswers || 0),
         correct_answers: result === 'correct' ? (prev.correct_answers || 0) + 1 : (prev.correct_answers || 0),
         participation_count: (prev.participation_count || 0) + 1,
@@ -1659,12 +1671,14 @@ export default function SessionTeachPage() {
       setRecitationNote('');
       setRecitationAttempts(1);
       setStudents(prev => prev.map(s =>
-        s.id === selectedStudent.id ? { ...s, interactionCount: (s.interactionCount || 0) + 1 } : s
+        s.id === selectedStudent.id ? { ...s, interactionCount: (s.interactionCount || 0) + 1, questionCount: (s.questionCount || 0) + 1 } : s
       ));
       setSelectedStudent(prev => prev ? {
         ...prev,
         interactionCount: (prev.interactionCount || 0) + 1,
         interaction_count: (prev.interaction_count || 0) + 1,
+        questionCount: (prev.questionCount || 0) + 1,
+        question_count: (prev.question_count || 0) + 1,
       } : null);
     } catch (e) {
       console.error('Error recording recitation:', e);
@@ -4541,7 +4555,10 @@ function StudentRow({ student, isFlashing, isSelected, onClick, onMenu, onSendNo
   const homeworkLabel = t('modeHomework');
   const noteLabel = t('note');
   const initials = student.full_name?.charAt(0) || '?';
-  const count = student.interactionCount || 0;
+  // Per-student counter is EVALUATION-ONLY: question answers + evaluation
+  // items only. Behaviour, skills and participation must never move it, so it
+  // reads the server's `question_count`, not the all-interactions total.
+  const count = student.questionCount || 0;
   const correct = student.correctAnswers || 0;
   const isFemale = student.gender === 'female';
   const isAbsent = student.attendance_status === 'absent';
@@ -4652,7 +4669,12 @@ function StudentRow({ student, isFlashing, isSelected, onClick, onMenu, onSendNo
 
 function StudentCard({ student, isFlashing, isSelected, onClick }) {
   const initials = student.full_name?.charAt(0) || '?';
+  // `count` (all interactions) drives the engagement ring; `evalCount` is the
+  // EVALUATION-ONLY total (question answers + evaluation items) that drives the
+  // visible "X/Y" counter and badge so behaviour/skills/participation never
+  // move the counter.
   const count = student.interactionCount || 0;
+  const evalCount = student.questionCount || 0;
   const correct = student.correctAnswers || 0;
   const isFemale = student.gender === 'female';
   const avatarBg = isFlashing ? 'bg-foreground/20' : isFemale ? 'bg-gradient-to-br from-pink-500 to-rose-600' : 'bg-gradient-to-br from-sky-500 to-blue-600';
@@ -4682,22 +4704,22 @@ function StudentCard({ student, isFlashing, isSelected, onClick }) {
         ) : (
           <span className="text-lg">{initials}</span>
         )}
-        {count > 0 && (
+        {evalCount > 0 && (
           <span className={`absolute -top-1 -end-1 w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center text-foreground shadow-sm ${
             correct > 0 ? 'bg-green-500' : 'bg-amber-500'
           }`}>
-            {count}
+            {evalCount}
           </span>
         )}
       </div>
       <p className="text-foreground text-[10px] font-medium leading-tight truncate">
         {student.full_name?.split(' ').slice(0, 2).join(' ')}
       </p>
-      {count > 0 && (
+      {evalCount > 0 && (
         <div className="mt-0.5 flex items-center justify-center gap-1">
           <span className="text-green-600 dark:text-green-400 text-[9px] font-bold">{correct}</span>
           <span className="text-muted-foreground/70 text-[9px]">/</span>
-          <span className="text-muted-foreground text-[9px]">{count}</span>
+          <span className="text-muted-foreground text-[9px]">{evalCount}</span>
         </div>
       )}
     </button>
