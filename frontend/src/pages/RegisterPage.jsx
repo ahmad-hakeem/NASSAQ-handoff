@@ -73,8 +73,13 @@ export const RegisterPage = () => {
   const [schoolNameDuplicate, setSchoolNameDuplicate] = useState(false);
   const [checkingSchoolName, setCheckingSchoolName] = useState(false);
 
+  const EMAIL_FIELDS = ['school_email', 'teacher_email'];
+
   const updateFormData = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    const nextValue = EMAIL_FIELDS.includes(field) && typeof value === 'string'
+      ? value.toLowerCase()
+      : value;
+    setFormData(prev => ({ ...prev, [field]: nextValue }));
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }

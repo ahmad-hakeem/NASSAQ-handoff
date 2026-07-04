@@ -46,6 +46,29 @@ def _iso(value):
     return str(value)
 
 
+async def _find_user_by_email_ci(email: Optional[str]) -> Optional[dict]:
+    """Case-insensitive lookup of a user by email.
+
+    Legacy rows may have been stored with mixed/upper case, so we match on
+    ``lower(email) = lower(input)`` rather than assuming stored values are
+    already normalized. Returns the same dict shape as ``gd_find_one`` so
+    callers can drop it in place (including the ``_id`` key)."""
+    if not email:
+        return None
+    from sqlalchemy import select as _sa_select, func as _sa_func
+    from pg_models import User as _UserModel
+    from engines.sql_utils import model_to_dict as _model_to_dict
+    normalized = email.strip().lower()
+    stmt = (
+        _sa_select(_UserModel)
+        .where(_sa_func.lower(_UserModel.email) == normalized)
+        .limit(1)
+    )
+    result = await db.session.execute(stmt)
+    obj = result.scalars().first()
+    return _model_to_dict(obj) if obj else None
+
+
 
 # ============== AUTH ROUTES ==============
 @router.post("/auth/register", response_model=TokenResponse)
@@ -63,7 +86,11 @@ async def register(user_data: UserCreate):
     except ValueError:
         raise HTTPException(status_code=400, detail="كلمة المرور لا تستوفي متطلبات التعقيد")
 
-    existing = await gd_find_one(db.session, "users", {"email": user_data.email})
+    # Normalize email to lowercase so registration, uniqueness, login and
+    # password-reset all agree on the same canonical form.
+    user_data.email = (user_data.email or "").strip().lower()
+
+    existing = await _find_user_by_email_ci(user_data.email)
     if existing:
         raise HTTPException(status_code=400, detail="البريد الإلكتروني مسجل مسبقاً")
     
@@ -214,7 +241,7 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
             detail="عدد محاولات تسجيل الدخول تجاوز الحد المسموح. يرجى المحاولة بعد دقيقة",
         )
 
-    user = await gd_find_one(db.session, "users", {"email": credentials.email})
+    user = await _find_user_by_email_ci(credentials.email)
     if not user:
         # Log failed login attempt
         await audit_engine.log_auth_event(
@@ -1420,7 +1447,7 @@ async def forgot_password(request: ForgotPasswordRequest):
     if limited:
         return {"message": "إذا كان البريد الإلكتروني مسجلاً، ستصلك رسالة لإعادة تعيين كلمة المرور"}
 
-    user = await gd_find_one(db.session, "users", {"email": request.email})
+    user = await _find_user_by_email_ci(request.email)
 
     if user and user.get("is_active", True):
         token = _create_reset_token(user["id"])

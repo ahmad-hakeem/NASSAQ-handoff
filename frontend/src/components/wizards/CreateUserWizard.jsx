@@ -1156,7 +1156,7 @@ ${loginUrl}
                     <Input
                       type="email"
                       value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value.toLowerCase() })}
                       placeholder="example@domain.com"
                       className="rounded-xl"
                       dir="ltr"

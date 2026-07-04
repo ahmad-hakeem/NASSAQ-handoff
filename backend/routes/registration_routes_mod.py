@@ -132,7 +132,8 @@ async def _create_school_instant(
     if not user_password or len(user_password) < 8:
         raise HTTPException(status_code=400, detail="يجب أن تتكون كلمة المرور من 8 أحرف على الأقل")
 
-    stmt = select(UserModel).where(UserModel.email == school_email).limit(1)
+    from sqlalchemy import func as _sa_func
+    stmt = select(UserModel).where(_sa_func.lower(UserModel.email) == school_email).limit(1)
     result = await session.execute(stmt)
     if result.scalars().first():
         raise HTTPException(status_code=400, detail="يوجد حساب مسجل مسبقًا بنفس البريد الإلكتروني")
@@ -364,7 +365,8 @@ async def _create_independent_teacher_instant(
     if not user_password or len(user_password) < 8:
         raise HTTPException(status_code=400, detail="يجب أن تتكون كلمة المرور من 8 أحرف على الأقل")
 
-    stmt = select(UserModel).where(UserModel.email == teacher_email).limit(1)
+    from sqlalchemy import func as _sa_func
+    stmt = select(UserModel).where(_sa_func.lower(UserModel.email) == teacher_email).limit(1)
     result = await session.execute(stmt)
     if result.scalars().first():
         raise HTTPException(status_code=400, detail="يوجد حساب مسجل مسبقًا بنفس البريد الإلكتروني")
@@ -571,7 +573,7 @@ async def create_registration_request(request_data: RegistrationRequest):
         "id": request_id,
         "type": account_type,
         "name": full_name,
-        "email": (request_data.email or "").strip() or None,
+        "email": (request_data.email or "").strip().lower() or None,
         "phone": phone_clean or raw_phone,
         "school_name": (request_data.school_name or "").strip() or None,
         "status": "pending_review",

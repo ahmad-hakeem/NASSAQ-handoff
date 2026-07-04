@@ -109,12 +109,17 @@ def create_teacher_registration_router(db, get_current_user, require_roles, User
             # Get IP and User Agent for tracking
             ip_address = request.client.host if request.client else None
             user_agent = request.headers.get("user-agent")
-            
+
+            # Normalize email to lowercase so the pending request — and the
+            # user account minted from it on approval — carry the same
+            # canonical form used by login and password-reset.
+            email_norm = (str(data.email) or "").strip().lower()
+
             result = await engine.create_registration_request(
                 full_name=data.full_name,
                 national_id=data.national_id,
                 phone=data.phone,
-                email=data.email,
+                email=email_norm,
                 subject=data.subject,
                 education_level=data.education_level,
                 years_of_experience=data.years_of_experience,
@@ -159,10 +164,16 @@ def create_teacher_registration_router(db, get_current_user, require_roles, User
 
         session = db.session
 
-        from sqlalchemy import select as sa_select
+        # Normalize email to lowercase so create, uniqueness, login and reset
+        # all agree on the same canonical form (mirrors /auth/register). The
+        # uniqueness check matches case-insensitively so legacy uppercase rows
+        # still block a differently-cased duplicate.
+        email_norm = (str(data.email) or "").strip().lower()
+
+        from sqlalchemy import select as sa_select, func as sa_func
         stmt = sa_select(User).where(
             or_(
-                User.email == data.email,
+                sa_func.lower(User.email) == email_norm,
                 User.phone == data.phone,
                 User.national_id == data.national_id,
             )
@@ -170,7 +181,7 @@ def create_teacher_registration_router(db, get_current_user, require_roles, User
         result = await session.execute(stmt)
         existing = result.scalars().first()
         if existing:
-            if existing.email == data.email:
+            if (existing.email or "").lower() == email_norm:
                 raise HTTPException(status_code=400, detail="البريد الإلكتروني مسجل مسبقاً")
             if existing.phone == data.phone:
                 raise HTTPException(status_code=400, detail="رقم الهاتف مسجل مسبقاً")
@@ -191,7 +202,7 @@ def create_teacher_registration_router(db, get_current_user, require_roles, User
 
         new_user = dict_to_model(User, {
             "id": user_id,
-            "email": data.email,
+            "email": email_norm,
             "password_hash": hash_password(data.password),
             "full_name": data.full_name,
             "role": "teacher",
@@ -218,7 +229,7 @@ def create_teacher_registration_router(db, get_current_user, require_roles, User
         teacher_record = dict_to_model(Teacher, {
             "id": str(_uuid.uuid4()),
             "full_name": data.full_name,
-            "email": data.email,
+            "email": email_norm,
             "phone": data.phone,
             "specialization": data.subject,
             "rank": data.teacher_rank,
@@ -250,7 +261,7 @@ def create_teacher_registration_router(db, get_current_user, require_roles, User
 
         user_response = UserResponse(
             id=user_id,
-            email=data.email,
+            email=email_norm,
             full_name=data.full_name,
             role="teacher",
             tenant_id=None,
@@ -264,7 +275,7 @@ def create_teacher_registration_router(db, get_current_user, require_roles, User
             teacher_id=teacher_id_code,
         )
 
-        logger.info(f"Direct teacher registration: {data.email} -> {teacher_id_code}")
+        logger.info(f"Direct teacher registration: {email_norm} -> {teacher_id_code}")
 
         return {
             "access_token": access_token,

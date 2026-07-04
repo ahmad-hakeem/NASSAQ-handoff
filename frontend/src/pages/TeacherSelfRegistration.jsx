@@ -168,7 +168,10 @@ export const TeacherSelfRegistration = () => {
 
   // Update form data
   const updateFormData = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    const nextValue = field === 'email' && typeof value === 'string'
+      ? value.toLowerCase()
+      : value;
+    setFormData(prev => ({ ...prev, [field]: nextValue }));
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }

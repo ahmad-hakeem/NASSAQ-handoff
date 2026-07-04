@@ -255,8 +255,13 @@ async def create_platform_user(
         user_data.school_name_ar = school.get("name")
         user_data.school_name_en = school.get("name_en")
     
-    # Check if email exists
-    existing_email = await gd_find_one(db.session, "users", {"email": user_data.email})
+    # Normalize email to lowercase so create, uniqueness, login and reset all
+    # agree on the same canonical form (mirrors /auth/register).
+    user_data.email = (user_data.email or "").strip().lower()
+
+    # Check if email exists (case-insensitive; legacy rows may be uppercase).
+    from routes.auth_routes_mod import _find_user_by_email_ci
+    existing_email = await _find_user_by_email_ci(user_data.email)
     if existing_email:
         raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم مسبقاً")
     
