@@ -1579,6 +1579,7 @@
   "homework2": "Homework",
   "homeworkCompletion": "Homework Completion",
   "homeworkMarkNotSubmitted": "Tap a student to mark as not submitted",
+  "homeworkMarkSubmitted": "Tap a student to mark as submitted",
   "homeworkModeDesc": "Homework Mode — Track homework completion (done / not done)",
   "homeworkReminder": "Homework Reminder",
   "homeworkReminderBody": "Reminder to follow up on your child's homework. Please ensure it is completed on time.",

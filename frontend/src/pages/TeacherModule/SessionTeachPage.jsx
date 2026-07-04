@@ -377,6 +377,13 @@ export default function SessionTeachPage() {
   const [participationEnabled, setParticipationEnabled] = useState(true);
   const [homeworkEnabled, setHomeworkEnabled] = useState(true);
   const [homeworkViewMode, setHomeworkViewMode] = useState('not_submitted');
+  // Tracks the homework view-mode as of the last load/save so a re-save only
+  // re-baselines the roster when the teacher actually switched modes.
+  const loadedHomeworkViewModeRef = useRef('not_submitted');
+  // Per-mode default homework status: "submitted" mode (النقر على الطالب الذي
+  // سلّم) starts everyone as "لم يسلّم" (not_done); the opposite mode starts
+  // everyone as "سلّم" (done).
+  const homeworkBaselineFor = (viewMode) => (viewMode === 'submitted' ? 'not_done' : 'done');
   const [recitationEnabled, setRecitationEnabled] = useState(false);
   const [recitationMaxAttempts, setRecitationMaxAttempts] = useState(1);
   const [skillEnabled, setSkillEnabled] = useState(false);
@@ -524,6 +531,7 @@ export default function SessionTeachPage() {
       setParticipationEnabled(s.participation_enabled !== false);
       setHomeworkEnabled(s.homework_enabled !== false);
       setHomeworkViewMode(s.homework_view_mode || 'not_submitted');
+      loadedHomeworkViewModeRef.current = s.homework_view_mode || 'not_submitted';
       setRecitationEnabled(!!s.recitation_enabled);
       setRecitationMaxAttempts(Number(s.recitation_max_attempts) || 1);
       setSkillEnabled(!!s.skill_enabled);
@@ -580,10 +588,41 @@ export default function SessionTeachPage() {
         settingsPayload.correct_answer_weight = correctAnswerWeight;
       }
       await api.post(`/session/${sessionId}/settings`, settingsPayload);
+      // When the homework submission view-mode changed, re-baseline every
+      // present student to the new mode's default so the icons flip instantly
+      // (no refresh) and the stored statuses/grades stay consistent: "submitted"
+      // mode => all "لم يسلّم" (not_done), "not_submitted" mode => all "سلّم"
+      // (done). Only runs on an actual mode change so a routine re-save never
+      // wipes marks the teacher already made this lesson.
+      let homeworkBaselineOk = true;
+      if (homeworkEnabled && homeworkViewMode !== loadedHomeworkViewModeRef.current) {
+        const baseline = homeworkBaselineFor(homeworkViewMode);
+        const presentStudents = students.filter((s) => s.attendance_status === 'present');
+        const nextStatuses = {};
+        presentStudents.forEach((s) => { nextStatuses[s.id] = baseline; });
+        setHomeworkStatuses(nextStatuses);
+        try {
+          await api.post(`/session/${sessionId}/homework/bulk`, {
+            records: presentStudents.map((s) => ({ student_id: s.id, status: baseline })),
+          });
+          // Advance the ref only after the server accepted the new baseline so
+          // that if the bulk write fails, pressing "حفظ النمط" again retries it.
+          loadedHomeworkViewModeRef.current = homeworkViewMode;
+        } catch (hwErr) {
+          homeworkBaselineOk = false;
+          nassaqError(t('errorUpdatingHomework'));
+          await loadHomeworkStatuses(students);
+        }
+      }
       // Persist grade values via the serialized flush so this settings-save
       // can never race another follow-up writer. Columns are owned by the
       // class-level grade-columns API (single source of truth shared with سجل الطلاب).
       await flushFollowupRecord({ silent: true }).catch(() => {});
+      if (!homeworkBaselineOk) {
+        // Keep the dialog open (do not advance ref, do not reload settings) so
+        // the teacher can retry the baseline write without toggling modes.
+        return;
+      }
       toast.success(t('saved') || t('saveSettings'));
       setCorrectAnswerWeightDirty(false);
       setShowSidebarSettings(false);
@@ -1254,13 +1293,15 @@ export default function SessionTeachPage() {
       const serverStatuses = res.data?.statuses || {};
       const presentIds = list.filter(s => s.attendance_status === 'present').map(s => s.id);
       const merged = {};
-      presentIds.forEach(id => { merged[id] = serverStatuses[id] || 'done'; });
+      const baseline = homeworkBaselineFor(homeworkViewMode);
+      presentIds.forEach(id => { merged[id] = serverStatuses[id] || baseline; });
       setHomeworkStatuses(merged);
     } catch (e) {
       console.error('Error loading homework statuses:', e);
       const presentIds = list.filter(s => s.attendance_status === 'present').map(s => s.id);
       const defaults = {};
-      presentIds.forEach(id => { defaults[id] = 'done'; });
+      const baseline = homeworkBaselineFor(homeworkViewMode);
+      presentIds.forEach(id => { defaults[id] = baseline; });
       setHomeworkStatuses(defaults);
     } finally {
       setHomeworkLoading(false);
@@ -2470,7 +2511,7 @@ export default function SessionTeachPage() {
                       </div>
                     ) : <>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-muted-foreground text-xs font-cairo">{t('homeworkMarkNotSubmitted')}</span>
+                      <span className="text-muted-foreground text-xs font-cairo">{homeworkViewMode === 'submitted' ? t('homeworkMarkSubmitted') : t('homeworkMarkNotSubmitted')}</span>
                       <span className="text-blue-600 dark:text-blue-400 text-xs font-bold font-cairo">
                         {Object.values(homeworkStatuses).filter(s => s === 'done').length}/{students.filter(s => s.attendance_status === 'present').length} {t('submitted')}
                       </span>
