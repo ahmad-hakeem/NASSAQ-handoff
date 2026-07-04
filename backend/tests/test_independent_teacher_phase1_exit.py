@@ -88,8 +88,9 @@ def test_5_9_1_phase0_b_marker_symbols_present():  # §5.9 #1
         Permission.NOTIFICATIONS_SEND.value,
     ):
         assert required in it_perms, required
-    # B-5 — quota constants exist with sane v1 values.
-    assert MAX_CLASSES > 0 and MAX_STUDENTS > 0
+    # B-5 — quota constants exist. Classes are now UNLIMITED (None); the
+    # student cap remains a positive v1 value.
+    assert MAX_CLASSES is None and MAX_STUDENTS > 0
 
 
 # ===========================================================================

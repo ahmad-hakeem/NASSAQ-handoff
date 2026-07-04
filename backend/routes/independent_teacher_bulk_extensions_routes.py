@@ -84,10 +84,6 @@ router = APIRouter()
 # -- Safe Arabic copy -----------------------------------------------------
 
 _MSG_INTERNAL = "تعذّر إكمال العملية — حاول مرة أخرى لاحقًا."
-_MSG_QUOTA_CLASSES = (
-    "بلغت الحد الأقصى لعدد الفصول في حسابك المستقل (٥). "
-    "احذف فصلًا قبل استيراد المزيد."
-)
 _MSG_QUOTA_SUBJECTS_PER_IMPORT = (
     "تجاوزت الحد الأعلى لعدد المواد في عملية استيراد واحدة (٥٠)."
 )
@@ -586,13 +582,7 @@ async def commit_classes_csv(
     if any(not r.is_valid for r in revalidated):
         raise HTTPException(status_code=422, detail=_MSG_NO_VALID_ROWS)
 
-    current_classes = await gd_count(
-        db.session, "classes",
-        {"school_id": workspace_id, "is_active": {"$ne": False}},
-    )
-    if current_classes + len(revalidated) > MAX_CLASSES:
-        raise HTTPException(status_code=409, detail=_MSG_QUOTA_CLASSES)
-
+    # Classes are unlimited for IT workspaces — no pre-commit class cap.
     session = db.session
     inserted = 0
     new_count = quota_view_pre["imports_today"]

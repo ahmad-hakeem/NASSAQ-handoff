@@ -14,7 +14,13 @@ from auth_scope import independent_workspace_id
 from engines.sql_utils import gd_count
 
 # v1 limits. Intentionally conservative — Phase 1 will revisit.
-MAX_CLASSES = 5
+# Classes are UNLIMITED for IT workspaces (product decision 2026-07):
+# MAX_CLASSES = None disables class enforcement AND signals "unlimited" to
+# the surfaced quota views (they emit max_classes: null). The
+# workspace_quota.max_classes DB column is NON-NULL, so seeds persist
+# DB_DEFAULT_MAX_CLASSES instead of the None policy value.
+MAX_CLASSES = None
+DB_DEFAULT_MAX_CLASSES = 5
 MAX_STUDENTS = 200
 MAX_ACADEMIC_YEARS = 1
 MAX_TERMS = 2
@@ -51,8 +57,8 @@ def _workspace_id(current_user: dict) -> Optional[str]:
 
 async def enforce_class_quota(session, current_user: dict) -> None:
     wsid = _workspace_id(current_user)
-    if not wsid:
-        return  # not an IT — quotas don't apply
+    if not wsid or MAX_CLASSES is None:
+        return  # not an IT, or classes are unlimited — quota doesn't apply
     count = await gd_count(session, "classes", {"school_id": wsid, "is_active": {"$ne": False}})
     if count >= MAX_CLASSES:
         raise HTTPException(status_code=409, detail=_MSG_CLASSES)
@@ -114,6 +120,7 @@ async def enforce_term_quota(session, current_user: dict) -> None:
 
 __all__ = [
     "MAX_CLASSES",
+    "DB_DEFAULT_MAX_CLASSES",
     "MAX_STUDENTS",
     "MAX_ACADEMIC_YEARS",
     "MAX_TERMS",

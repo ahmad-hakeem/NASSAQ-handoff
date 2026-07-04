@@ -23,7 +23,6 @@ from auth_scope import (
     INDEPENDENT_TEACHER_DENIED_AR,
     independent_workspace_id,
 )
-from quotas.independent_teacher import MAX_CLASSES
 
 
 def _headers(user_id: str, role: str, tenant_id=None) -> dict:
@@ -235,13 +234,13 @@ async def test_independent_teachers_cannot_see_each_others_attendance(client):
 # B-5 — quotas
 # ----------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_class_quota_blocks_sixth_class_with_arabic_409(client):
+async def test_class_quota_allows_class_beyond_old_cap(client):
     user = await _mk_independent_teacher()
     wsid = independent_workspace_id(user)
     h = _headers(user["id"], user["role"], wsid)
 
-    # Pre-seed MAX_CLASSES rows directly to keep the test fast.
-    for _ in range(MAX_CLASSES):
+    # Pre-seed beyond the old cap directly to keep the test fast.
+    for _ in range(6):
         await gd_insert(db.session, "classes", {
             "id": str(uuid.uuid4()),
             "name": "x",
@@ -253,16 +252,13 @@ async def test_class_quota_blocks_sixth_class_with_arabic_409(client):
         })
 
     payload = {
-        "name_ar": "فصل سادس",
+        "name_ar": "فصل إضافي",
         "grade_id": str(uuid.uuid4()),
         "class_type": "regular",
         "capacity": 10,
     }
     resp = await client.post("/classes/create", json=payload, headers=h)
-    assert resp.status_code == 409, resp.text
-    body = resp.json()
-    msg = (body.get("error") or {}).get("message") or ""
-    assert "الحد الأقصى" in msg
+    assert resp.status_code in (200, 201), resp.text
 
 
 @pytest.mark.asyncio

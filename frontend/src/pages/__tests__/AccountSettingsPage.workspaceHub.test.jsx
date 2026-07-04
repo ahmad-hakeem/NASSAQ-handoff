@@ -221,7 +221,7 @@ const _resetHubFixture = () => {
       quota: {
         max_students: 200,
         current_students: 12,
-        max_classes: 5,
+        max_classes: null,
         current_classes: 2,
         max_imports_per_day: 5,
         imports_today: 1,

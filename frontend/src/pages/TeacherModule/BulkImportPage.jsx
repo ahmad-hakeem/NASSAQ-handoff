@@ -247,16 +247,15 @@ function ClassesTab() {
       ]}
       intro={(
         <p className="text-sm text-gray-600">
-          الحد الأقصى ٥ فصول في حسابك المستقل. عمود «اسم الفصل» مطلوب،
-          والباقي اختياري.
+          عمود «اسم الفصل» مطلوب، والباقي اختياري.
         </p>
       )}
       successPrefix="تمت إضافة عدد فصول:"
       confirmPrefixFn={(n) => `سيتم إضافة ${n} فصلًا إلى مساحة عملك. هذه العملية نهائية.`}
       quotaBadgesFn={(quota, parsed) => (
-        quota?.max_classes != null && (
+        quota != null && (
           <Badge variant="outline">
-            الفصول: {(quota.current_classes ?? 0)} / {quota.max_classes}
+            الفصول: {(quota.current_classes ?? 0)}
             {parsed?.projected_classes != null
               ? ` → ${parsed.projected_classes}` : ''}
           </Badge>

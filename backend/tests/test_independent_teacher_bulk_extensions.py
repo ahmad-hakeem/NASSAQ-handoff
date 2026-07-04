@@ -4,7 +4,7 @@ Covers /classes/bulk, /subjects/bulk, and /schedule/duplicate-week:
   * parse rejects forbidden cross-tenant columns (422 + Arabic)
   * commit MFA step-up envelope (403 without recent MFA)
   * commit happy paths pin to itw_{user_id} and bump imports_today
-  * classes commit refuses when current+rows > MAX_CLASSES (409)
+  * classes commit succeeds beyond the old cap (classes are unlimited)
   * subjects parse refuses >50 rows (413)
   * duplicate-week validates the 7-day gap, copies rows, skips
     pre-existing target slots, and pins school_id to the workspace
@@ -21,7 +21,6 @@ import pytest
 from auth_scope import independent_workspace_id
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_count, gd_find, gd_find_one, gd_insert, gd_update_one
-from quotas.independent_teacher import MAX_CLASSES
 
 
 def _headers(uid: str, role: str, tenant_id=None, *, mfa_recent_at=None) -> dict:
@@ -156,7 +155,7 @@ async def test_classes_parse_returns_diagnostics(client):
     assert body["total_rows"] == 2
     assert body["valid_count"] == 1
     assert body["invalid_count"] == 1
-    assert body["quota"]["max_classes"] == MAX_CLASSES
+    assert body["quota"]["max_classes"] is None
     assert body["projected_classes"] == 1
 
 
@@ -202,10 +201,12 @@ async def test_classes_commit_happy_path_pins_workspace_and_bumps_counter(client
 
 
 @pytest.mark.asyncio
-async def test_classes_commit_refuses_when_quota_exceeded(client):
+async def test_classes_commit_beyond_old_cap_succeeds(client):
+    """Classes are unlimited for IT workspaces: committing rows that would
+    have exceeded the old v1 cap now succeeds and inserts them all."""
     user = await _mk_it_workspace()
     wsid = user["tenant_id"]
-    # pre-seed 4 existing classes
+    # pre-seed 4 existing classes (old cap was 5)
     for i in range(4):
         await gd_insert(db.session, "classes", {
             "id": str(uuid.uuid4()), "school_id": wsid,
@@ -220,11 +221,10 @@ async def test_classes_commit_refuses_when_quota_exceeded(client):
         "/independent-teacher/classes/bulk/commit",
         json={"rows": rows}, headers=h,
     )
-    assert resp.status_code == 409
-    msg = _err_message(resp.json())
-    assert "الحد" in msg or "بلغت" in msg
-    # No partial insert — the 4 pre-seeded rows are unchanged.
-    assert await gd_count(db.session, "classes", {"school_id": wsid}) == 4
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["inserted"] == 2
+    # Both rows inserted on top of the 4 pre-seeded → 6 total (beyond old cap).
+    assert await gd_count(db.session, "classes", {"school_id": wsid}) == 6
 
 
 @pytest.mark.asyncio

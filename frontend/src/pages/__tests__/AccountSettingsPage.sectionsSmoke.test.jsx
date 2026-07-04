@@ -233,7 +233,7 @@ const wireDefaultGetResponses = () => {
           reactivation_banner: null,
           quota: {
             max_students: 200, current_students: 12,
-            max_classes: 5, current_classes: 2,
+            max_classes: null, current_classes: 2,
             max_imports_per_day: 5, imports_today: 1,
             max_lesson_plans_per_day: 20, lesson_plans_today: 3,
           },

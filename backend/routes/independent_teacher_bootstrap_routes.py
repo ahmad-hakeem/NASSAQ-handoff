@@ -15,8 +15,8 @@ Atomically materialises the IT account's synthetic workspace:
   * `teachers`           — IT's teacher row (user_id = caller).
   * `users.tenant_id`    — set to the workspace id (this is the SOLE
                             place the IT lifecycle writes this column).
-  * `classes` (optional) — only when wizard step 3 was filled. Counts
-                            against `quotas.independent_teacher.MAX_CLASSES`.
+  * `classes` (optional) — only when wizard step 3 was filled. Classes
+                            are unlimited for IT workspaces (no cap).
 
 All-or-nothing: any failure inside the transaction triggers a rollback
 and a 500 with a safe Arabic message — no partial workspace ever leaks
@@ -61,7 +61,6 @@ from dependencies import (
 from engines.audit_engine import AuditLogEngine
 from engines.name_validation import is_generic_name
 from engines.sql_utils import gd_count, gd_find_one, gd_insert, gd_update_one
-from quotas.independent_teacher import MAX_CLASSES
 from repositories import Repos
 from shared_models import UserResponse
 
@@ -83,9 +82,6 @@ _MSG_MFA_ENROLLMENT_REQUIRED = (
 )
 _MSG_MFA_STEPUP_REQUIRED = (
     "يلزم التحقق المسبق عبر العامل الثاني قبل إنشاء مساحتك."
-)
-_MSG_QUOTA_CLASSES = (
-    f"بلغت الحد الأقصى لعدد الفصول في حسابك المستقل ({MAX_CLASSES})."
 )
 _MSG_NAME_REQUIRED = "اسم المساحة باللغة العربية مطلوب."
 _MSG_PERIODS_INVALID = "عدد الحصص اليومي يجب أن يكون بين ١ و١٢."
@@ -342,16 +338,7 @@ async def bootstrap_independent_teacher_workspace(
                 "user": user_resp.model_dump(),
             }
 
-    # 5. Quota — guard the optional first class BEFORE inserting anything.
-    if payload.first_class is not None:
-        # Brand-new workspace, but defense in depth: count existing classes
-        # against the IT v1 cap (5). A pre-bootstrap workspace has zero
-        # classes by construction, so this only fires if step 3 ever loops.
-        current_classes = await gd_count(
-            db.session, "classes", {"school_id": workspace_id, "is_active": {"$ne": False}}
-        )
-        if current_classes >= MAX_CLASSES:
-            raise HTTPException(status_code=409, detail=_MSG_QUOTA_CLASSES)
+    # 5. (Classes are unlimited for IT workspaces — no pre-insert class cap.)
 
     # 6. Atomic materialisation.
     session = db.session
@@ -498,12 +485,14 @@ async def bootstrap_independent_teacher_workspace(
         # change carries through transparently.
         from quotas.independent_teacher import (
             MAX_STUDENTS as _IT_MAX_STUDENTS,
-            MAX_CLASSES as _IT_MAX_CLASSES,
+            DB_DEFAULT_MAX_CLASSES as _IT_DB_MAX_CLASSES,
         )
         await gd_insert(session, "workspace_quota", {
             "workspace_school_id": school_id,
             "max_students": _IT_MAX_STUDENTS,
-            "max_classes": _IT_MAX_CLASSES,
+            # Nominal value for the NON-NULL DB column; classes are unlimited
+            # and the surfaced quota views emit max_classes: null.
+            "max_classes": _IT_DB_MAX_CLASSES,
             "max_imports_per_day": 5,
             "max_rows_per_import": 200,
             "imports_today": 0,

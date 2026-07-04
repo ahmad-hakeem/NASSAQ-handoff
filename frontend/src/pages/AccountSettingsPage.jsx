@@ -223,21 +223,25 @@ const QuotaSparkline = ({ history, max, tone, testid }) => {
 };
 
 const QuotaBar = ({ label, used, max, t, testid, history }) => {
+  // max == null/undefined signals an UNLIMITED quota (e.g. IT classes):
+  // render the running total only, no cap ratio or full-bar tone.
+  const isUnlimited = max === null || max === undefined;
   const safeMax = Math.max(0, Number(max) || 0);
   const safeUsed = Math.max(0, Number(used) || 0);
-  const pct = safeMax > 0 ? Math.min(100, Math.round((safeUsed / safeMax) * 100)) : 0;
-  const toneKey = pct >= 100 ? 'red' : pct >= 80 ? 'amber' : 'turquoise';
+  const pct = isUnlimited ? 0 : (safeMax > 0 ? Math.min(100, Math.round((safeUsed / safeMax) * 100)) : 0);
+  const toneKey = isUnlimited ? 'turquoise' : (pct >= 100 ? 'red' : pct >= 80 ? 'amber' : 'turquoise');
   const tone = toneKey === 'red' ? 'bg-red-500' : toneKey === 'amber' ? 'bg-amber-500' : 'bg-brand-turquoise';
+  const usageText = isUnlimited
+    ? (t('itHubQuotaUnlimitedUsage') || '{0} • Unlimited').replace('{0}', String(safeUsed))
+    : (t('itHubQuotaUsageOf') || '{0} of {1}').replace('{0}', String(safeUsed)).replace('{1}', String(safeMax));
   return (
     <div className="space-y-1.5" data-testid={testid}>
       <div className="flex items-center justify-between text-xs font-tajawal">
         <span className="text-foreground">{label}</span>
-        <span className="text-muted-foreground">
-          {(t('itHubQuotaUsageOf') || '{0} of {1}').replace('{0}', String(safeUsed)).replace('{1}', String(safeMax))}
-        </span>
+        <span className="text-muted-foreground">{usageText}</span>
       </div>
       <div className="h-2 w-full rounded-full bg-muted/40 overflow-hidden">
-        <div className={`h-full ${tone} transition-all`} style={{ width: `${pct}%` }} />
+        {!isUnlimited && <div className={`h-full ${tone} transition-all`} style={{ width: `${pct}%` }} />}
       </div>
       <QuotaSparkline history={history} max={safeMax} tone={toneKey} testid={testid ? `${testid}-spark` : undefined} />
     </div>

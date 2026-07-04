@@ -5,7 +5,7 @@ Covers the spec checklist:
   (a) Pre-bootstrap IT calling a non-allow-listed route → 409 Arabic.
   (b) Bootstrap creates schools + school_settings + academic_year +
       academic_term + teachers and sets users.tenant_id atomically.
-  (c) Optional first class is created and counts against the IT v1 cap.
+  (c) Optional first class is created (classes are unlimited for IT).
   (d) Replaying bootstrap is idempotent (no duplicate rows, 200 OK).
   (e) MFA enrolment and recent-assertion gates.
 """
@@ -21,7 +21,6 @@ from auth_scope import (
     WORKSPACE_NOT_MATERIALISED_AR,
 )
 from engines.sql_utils import gd_count, gd_find_one, gd_insert
-from quotas.independent_teacher import MAX_CLASSES
 
 
 def _headers(user_id: str, role: str, tenant_id=None, mfa_recent_at=None) -> dict:
@@ -262,33 +261,3 @@ async def test_bootstrap_rolls_back_on_mid_transaction_failure(client, monkeypat
     refreshed = await gd_find_one(db.session, "users", {"id": user["id"]})
     assert refreshed is not None
     assert refreshed.get("tenant_id") in (None, "")
-
-
-@pytest.mark.asyncio
-async def test_bootstrap_first_class_respects_quota(client):
-    """Pre-seeding the workspace with MAX_CLASSES classes must cause a 409
-    when the bootstrap call also tries to create the first class. The pre-
-    seed simulates a replay where someone hand-edited the DB; in practice
-    the workspace is empty before bootstrap runs."""
-    user = await _mk_pre_bootstrap_it()
-    wsid = independent_workspace_id(user)
-    # Pre-seed: workspace + MAX_CLASSES classes.
-    await gd_insert(db.session, "schools", {
-        "id": wsid, "name": "x", "code": wsid[:24], "status": "active",
-        "country": "SA", "language": "ar",
-    })
-    for i in range(MAX_CLASSES):
-        await gd_insert(db.session, "classes", {
-            "id": str(uuid.uuid4()),
-            "school_id": wsid,
-            "name": f"cls-{i}",
-            "is_active": True,
-        })
-
-    h = _headers(user["id"], user["role"], None, mfa_recent_at=int(time.time()))
-    resp = await client.post(
-        "/independent-teacher/bootstrap",
-        headers=h,
-        json=_bootstrap_payload(with_class=True),
-    )
-    assert resp.status_code == 409, resp.text

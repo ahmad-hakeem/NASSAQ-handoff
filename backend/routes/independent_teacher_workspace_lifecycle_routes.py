@@ -92,7 +92,6 @@ from sqlalchemy import select as _sa_select
 from sqlalchemy.exc import ProgrammingError as _PgProgrammingError
 from pg_models import School as _SchoolModel
 from quotas.independent_teacher import (
-    MAX_CLASSES as _Q_MAX_CLASSES,
     MAX_LESSON_PLANS_PER_DAY as _Q_MAX_LESSON_PLANS,
     MAX_STUDENTS as _Q_MAX_STUDENTS,
 )
@@ -294,7 +293,7 @@ async def _build_export_bundle(workspace_id: str) -> bytes:
     zip archive of one ``<table>.json`` file per table.
 
     Memory note: NASSAQ's IT workspaces are bounded by the per-user
-    quotas in ``backend.quotas.independent_teacher`` (≤ 10 classes,
+    quotas in ``backend.quotas.independent_teacher`` (unlimited classes,
     ≤ 200 students, etc.), so the entire workspace fits comfortably in
     memory. If a future tier raises those caps we'll switch to a
     streaming archive — for now in-memory keeps the route trivially
@@ -407,7 +406,7 @@ async def _load_quota_snapshot(workspace_id: str) -> Optional[Dict[str, Any]]:
 
         return {
             "max_students": int(quota.get("max_students") or _Q_MAX_STUDENTS),
-            "max_classes": int(quota.get("max_classes") or _Q_MAX_CLASSES),
+            "max_classes": None,  # classes are unlimited for IT workspaces
             "max_imports_per_day": int(quota.get("max_imports_per_day") or 5),
             "max_rows_per_import": int(quota.get("max_rows_per_import") or 200),
             "max_lesson_plans_per_day": _Q_MAX_LESSON_PLANS,

@@ -261,12 +261,6 @@ export default function TeacherClassesPage() {
   // already tenant-scoped server-side.
   const [subjectsForSettings, setSubjectsForSettings] = useState([]);
   const [subjectsLoading, setSubjectsLoading] = useState(false);
-  // Authoritative tenant-scoped class count for the "X من 5 فصول" chip
-  // (spec §5.3 step 4). Sourced from /classes (tenant-scoped server-side
-  // via require_request_school_id) rather than the teacher-assignment
-  // listing, so the chip never disagrees with the server-enforced quota.
-  const [workspaceClassCount, setWorkspaceClassCount] = useState(null);
-
   const [showImportDialog, setShowImportDialog] = useState(false);
   const fileInputRef = useRef(null);
   const [importType, setImportType] = useState('');
@@ -602,26 +596,12 @@ export default function TeacherClassesPage() {
     }
   }, [api]);
 
-  // Authoritative tenant-scoped class count from /classes for the IT
-  // usage chip. Independent of the per-teacher assignment listing.
-  const fetchWorkspaceClassCount = useCallback(async () => {
-    if (!isIndependentTeacher) return;
-    try {
-      const res = await api.get('/classes').catch(() => ({ data: [] }));
-      const list = Array.isArray(res.data) ? res.data : (res.data?.classes || []);
-      setWorkspaceClassCount(list.length);
-    } catch (err) {
-      console.error('Error fetching workspace class count:', err);
-    }
-  }, [api, isIndependentTeacher]);
-
   useEffect(() => {
     if (isIndependentTeacher) {
       fetchWorkspaceSubjects();
       fetchGradeOptions();
-      fetchWorkspaceClassCount();
     }
-  }, [isIndependentTeacher, fetchWorkspaceSubjects, fetchGradeOptions, fetchWorkspaceClassCount]);
+  }, [isIndependentTeacher, fetchWorkspaceSubjects, fetchGradeOptions]);
 
   // Fetch subjects for the Lesson Settings modal on page load so the
   // dropdown is ready immediately when the modal opens, then re-fetch
@@ -646,11 +626,6 @@ export default function TeacherClassesPage() {
     // non-IT teachers, classes are still provisioned by the school admin so
     // we keep the friendly toast explanation.
     if (isIndependentTeacher) {
-      const ownCount = workspaceClassCount ?? classes.filter(c => !c._collab).length;
-      if (ownCount >= 5) {
-        nassaqWarning('عذراً، لقد وصلت إلى الحد الأقصى (5 فصول). يرجى حذف فصل أولاً لإضافة فصل جديد.');
-        return;
-      }
       setWorkspaceClassForm({ name_ar: '', grade_label: '', subject_id: '', capacity: 30 });
       fetchWorkspaceSubjects();
       fetchGradeOptions();
@@ -719,7 +694,6 @@ export default function TeacherClassesPage() {
         } catch (_) {
           fetchClasses();
         }
-        fetchWorkspaceClassCount();
       } catch (err) {
         const status = err?.response?.status;
         const rawDetail = err?.response?.data;
@@ -917,7 +891,6 @@ export default function TeacherClassesPage() {
           await api.delete(`/classes/${cls.id}`);
           setClasses((prev) => prev.filter((c) => c.id !== cls.id));
           toast.success(isRTL ? `تم حذف الفصل "${cls.name}"` : `Class "${cls.name}" deleted`);
-          fetchWorkspaceClassCount();
         } catch (err) {
           const detail = err?.response?.data?.detail ?? getApiErrorMessage(err);
           nassaqError(typeof detail === 'string' ? detail : (isRTL ? 'تعذّر حذف الفصل' : 'Could not delete class'));
@@ -1541,16 +1514,14 @@ export default function TeacherClassesPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   {isIndependentTeacher && (
                     <>
-                      {/* Quota usage chip — informational; the authoritative
-                          limit is enforced server-side via the 409 returned by
-                          enforce_class_quota. (Spec §5.3 step 4.) */}
+                      {/* Class-count chip — dynamic total only. Classes are
+                          unlimited for IT workspaces (no server-side cap). */}
                       <Badge
                         variant="outline"
                         className="h-9 px-3 font-cairo text-xs flex items-center"
                       >
-                        {(t('workspaceClassesUsageChip') || '{0} / {1}')
-                          .replace('{0}', classes.length)
-                          .replace('{1}', 5)}
+                        {(t('workspaceClassesUsageChip') || 'Classes: {0}')
+                          .replace('{0}', classes.length)}
                       </Badge>
                       <Button
                         size="sm"

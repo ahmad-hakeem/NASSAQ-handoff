@@ -72,7 +72,7 @@ test('classes import preview at 360px renders ResponsiveTable mobile cards', asy
       total_rows: 2,
       valid_count: 1,
       invalid_count: 1,
-      quota: { max_classes: 5, current_classes: 1 },
+      quota: { max_classes: null, current_classes: 1 },
       projected_classes: 2,
       rows: [
         {
@@ -94,7 +94,7 @@ test('classes import preview at 360px renders ResponsiveTable mobile cards', asy
   const classesTab = screen.getByRole('tab', { name: /الفصول/ });
   activateRadixTab(classesTab);
   await waitFor(() => {
-    expect(screen.getByText(/الحد الأقصى ٥ فصول/)).toBeInTheDocument();
+    expect(screen.getByText(/اسم الفصل» مطلوب/)).toBeInTheDocument();
   });
 
   await uploadCsvAndAwaitMobile(container);

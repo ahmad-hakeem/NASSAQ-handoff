@@ -9,9 +9,10 @@ Covers the workspace-mode `POST /classes/create` flow:
   * Cross-workspace read isolation (IT-A cannot see IT-B's class).
   * Principal regression smoke — full-school create still works.
 
-The quota 409 (6th class) is already covered by
-`test_independent_teacher_phase0::test_class_quota_blocks_sixth_class_with_arabic_409`
-and is intentionally not duplicated here.
+Classes are UNLIMITED for IT workspaces (product decision 2026-07); the
+"beyond the old cap still succeeds" case is covered by
+`test_independent_teacher_phase0::test_class_quota_allows_class_beyond_old_cap`
+and by the local `..._beyond_old_cap_succeeds` test here.
 """
 import uuid
 from datetime import datetime, timezone
@@ -21,7 +22,6 @@ import pytest
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_insert, gd_find_one, gd_count
 from auth_scope import independent_workspace_id
-from quotas.independent_teacher import MAX_CLASSES
 
 
 def _headers(user_id: str, role: str, tenant_id=None) -> dict:
@@ -255,19 +255,18 @@ async def test_independent_teacher_get_class_by_id_isolation(client):
 
 
 # ----------------------------------------------------------------------
-# Quota boundary — 6th class blocked through the wired endpoint
+# Classes are unlimited — creating beyond the old cap still succeeds
 # ----------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_independent_teacher_create_class_quota_boundary(client):
-    """Boundary check at the create-class surface used by Task #188.
-    Complements (does not replace) the lower-level quota helper test in
-    test_independent_teacher_phase0."""
+async def test_independent_teacher_create_class_beyond_old_cap_succeeds(client):
+    """Classes are unlimited for IT workspaces: pre-seeding beyond the old
+    v1 cap must NOT block the next create through the wired endpoint."""
     user = await _mk_independent_teacher()
     wsid = independent_workspace_id(user)
     h = _headers(user["id"], user["role"], wsid)
 
-    # Pre-seed MAX_CLASSES rows directly to keep the test fast.
-    for _ in range(MAX_CLASSES):
+    # Pre-seed beyond the old cap directly to keep the test fast.
+    for _ in range(6):
         await gd_insert(db.session, "classes", {
             "id": str(uuid.uuid4()),
             "name": "x",
@@ -278,12 +277,9 @@ async def test_independent_teacher_create_class_quota_boundary(client):
             "is_active": True,
         })
 
-    payload = {"name_ar": "فصل زائد", "grade_id": "الصف الخامس", "capacity": 10}
+    payload = {"name_ar": "فصل إضافي", "grade_id": "الصف الخامس", "capacity": 10}
     resp = await client.post("/classes/create", json=payload, headers=h)
-    assert resp.status_code == 409, resp.text
-    body = resp.json()
-    msg = (body.get("error") or {}).get("message") or body.get("detail") or ""
-    assert "الحد الأقصى" in msg
+    assert resp.status_code in (200, 201), resp.text
 
 
 # ----------------------------------------------------------------------
