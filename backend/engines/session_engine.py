@@ -628,10 +628,13 @@ class TeacherSessionEngine:
             await gd_insert_many(self.session, "session_attendance", attendance_drafts)
 
         # Auto-initialize homework submission records for all students when
-        # homework is enabled (the default). All students start as "done"
-        # (= max grade); the teacher manually marks students who did not
-        # submit during the session. homework_view_mode is a UI display
-        # filter, not a grade-init gate.
+        # homework is enabled (the default). The baseline follows the saved
+        # homework_view_mode, which is persisted per class+subject and therefore
+        # carries across lessons:
+        #   - "submitted" ("tap the student who submitted") -> everyone starts
+        #     "not_done" (= score 0); the teacher taps those who DID submit.
+        #   - "not_submitted" (default) -> everyone starts "done" (= max grade);
+        #     the teacher taps those who did NOT submit.
         # The operation is idempotent — existing rows are left untouched.
         # No exception handler here: a DB failure must roll back the full
         # session-start transaction atomically rather than committing partial
@@ -645,6 +648,12 @@ class TeacherSessionEngine:
             "tenant_id": school_id,
         })
         hw_enabled = hw_settings.get("homework_enabled", True) if hw_settings else True
+        hw_view_mode = (
+            hw_settings.get("homework_view_mode", "not_submitted")
+            if hw_settings else "not_submitted"
+        )
+        # "submitted" mode inverts the baseline so everyone starts not_done.
+        init_status = "not_done" if hw_view_mode == "submitted" else "done"
         if hw_enabled:
             columns = await self._resolve_coursework_columns(class_id)
             hw_col = columns.get(self._CW_HOMEWORK)
@@ -669,9 +678,14 @@ class TeacherSessionEngine:
                     ),
                 )
             col_id = hw_col["id"]
-            # Provisional score is 0; commit_session_scores overwrites with
-            # max_grade when the session ends and the student is still "done".
             max_f = float(hw_col.get("max_grade") or 0)
+            # Provisional grade mirrors the baseline status: "done" -> full
+            # marks, "not_done" -> 0. commit_session_scores re-derives the final
+            # value from the session_homework status when the session ends.
+            init_submitted = init_status == "done"
+            init_score = max_f if init_submitted else 0.0
+            init_percentage = (100.0 if max_f > 0 else 0.0) if init_submitted else 0.0
+            init_passing = bool(max_f > 0) if init_submitted else False
 
             for student in students:
                 sid = student.get("id")
@@ -694,7 +708,7 @@ class TeacherSessionEngine:
                         "id": str(uuid.uuid4()),
                         "session_id": session_id,
                         "student_id": sid,
-                        "status": "done",
+                        "status": init_status,
                         "recorded_by": teacher_id,
                         "recorded_at": now.isoformat(),
                     })
@@ -716,10 +730,10 @@ class TeacherSessionEngine:
                     "assessment_id": f"session:{session_id}:{self._CW_HOMEWORK}",
                     "assessment_type": "coursework",
                     "column_id": col_id,
-                    "score": max_f,
+                    "score": init_score,
                     "max_score": max_f,
-                    "percentage": 100.0 if max_f > 0 else 0.0,
-                    "is_passing": max_f > 0,
+                    "percentage": init_percentage,
+                    "is_passing": init_passing,
                     "academic_year": "",
                     "session_id": session_id,
                     "source": "live_session",
@@ -749,7 +763,7 @@ class TeacherSessionEngine:
                     "student_id": sid,
                     "grade_entry": {
                         "column_id": col_id,
-                        "score": max_f,
+                        "score": init_score,
                         "max_score": max_f,
                     },
                 })
