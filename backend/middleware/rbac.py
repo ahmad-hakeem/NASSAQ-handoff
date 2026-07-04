@@ -238,6 +238,11 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
         Permission.BEHAVIOUR_RECORD.value,
         Permission.NOTIFICATIONS_VIEW.value,
         Permission.NOTIFICATIONS_SEND.value,
+        # Task #1089 — the light AI lesson-planning assistant, previously
+        # IT-only, is now available to regular school teachers. The route
+        # layer scopes them to their real school_id + own classes with a
+        # per-teacher daily quota; no MFA step-up (low-sensitivity content).
+        Permission.AI_LESSON_PLANS.value,
     ],
     
     "independent_teacher": [

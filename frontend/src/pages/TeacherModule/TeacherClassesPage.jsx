@@ -165,7 +165,13 @@ export default function TeacherClassesPage() {
   // or the deployed backend lagged the role table, the tabs disappeared
   // even though the user was entitled (observed in production). The
   // underlying AI / bulk-import routes stay RBAC-enforced server-side.
-  const canUseLessonPlanner = user?.role === 'independent_teacher';
+  // Task #1089 — the "مساعد خطط الدروس" (lesson planner) tab is now
+  // available to regular school teachers too, not just IT. The backend
+  // scopes school teachers to their real school_id + own classes with a
+  // per-teacher quota; the IT experience is unchanged. The sibling
+  // IT-only tabs (المواد / الطلاب / أولياء الأمور / استيراد البيانات)
+  // stay gated on the IT role alone via `_isITUser` below.
+  const canUseLessonPlanner = user?.role === 'independent_teacher' || user?.role === 'teacher';
   const canBulkImport = user?.role === 'independent_teacher';
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -188,7 +194,7 @@ export default function TeacherClassesPage() {
   // new hub instead of falling through to the classes default.
   const activeTab = _rawTab === 'sessions' ? 'sessions'
     : (_rawTab === 'standby' && !_isITUser) ? 'standby'
-    : (_rawTab === 'lesson-planner' && _isITUser && canUseLessonPlanner) ? 'lesson-planner'
+    : (_rawTab === 'lesson-planner' && canUseLessonPlanner) ? 'lesson-planner'
     // 2026-05-18 — IT-only "المواد" tab. Backend /subjects CRUD is
     // pinned to school_id == itw_{user_id}; non-IT users have no
     // workspace subjects to manage, so we silently coerce back.
@@ -309,7 +315,7 @@ export default function TeacherClassesPage() {
     // standby tab, fall through to the default "classes" view rather
     // than surfacing the "ميزة غير متاحة" modal.
     const safeTab = (tab === 'standby' && _isITUser) ? 'classes'
-      : (tab === 'lesson-planner' && (!_isITUser || !canUseLessonPlanner)) ? 'classes'
+      : (tab === 'lesson-planner' && !canUseLessonPlanner) ? 'classes'
       : (tab === 'subjects' && !_isITUser) ? 'classes'
       : (tab === 'import' && (!_isITUser || !canBulkImport)) ? 'classes'
       : (tab === 'students' && !_isITUser) ? 'classes'
@@ -1653,11 +1659,12 @@ export default function TeacherClassesPage() {
                 )}
               </button>
             )}
-            {/* 2026-05-18 — IT-only "مساعد خطط الدروس" tab. The
-                old sidebar entry was removed; this tab is the
-                primary entry point now. Sparkles icon mirrors the
-                spec's "with a sparkle icon if possible" hint. */}
-            {_isITUser && canUseLessonPlanner && (
+            {/* "مساعد خطط الدروس" tab. Task #1089 opened this to school
+                teachers as well as Independent Teachers (see
+                canUseLessonPlanner). The old sidebar entry was removed;
+                this tab is the primary entry point now. Sparkles icon
+                mirrors the spec's "with a sparkle icon if possible" hint. */}
+            {canUseLessonPlanner && (
               <button
                 onClick={() => handleTabChange('lesson-planner')}
                 className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative ${

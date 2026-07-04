@@ -132,7 +132,13 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
     try {
       const [list, cls] = await Promise.all([
         api.get('/independent-teacher/lesson-plans'),
-        api.get('/classes').catch(() => ({ data: { classes: [] } })),
+        // Task #1089 — request the assignment-scoped class list so a
+        // regular school teacher only sees their OWN classes in the
+        // picker. The backend ignores `assigned_only` for Independent
+        // Teachers (they own every workspace class), so the IT response
+        // is byte-for-byte unchanged.
+        api.get('/classes', { params: { assigned_only: true } })
+          .catch(() => ({ data: { classes: [] } })),
       ]);
       setSavedPlans(list?.data?.lesson_plans || []);
       if (list?.data?.quota) setQuota(list.data.quota);

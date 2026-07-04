@@ -42,7 +42,7 @@ from auth_scope import (
     is_independent_teacher,
     require_request_school_id,
 )
-from dependencies import db, get_current_user
+from dependencies import UserRole, db, get_current_user
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_update_one
 from middleware.rate_limiter import rate_store
 from quotas.independent_teacher import MAX_LESSON_PLANS_PER_DAY
@@ -154,12 +154,33 @@ class UpdateLessonPlanRequest(BaseModel):
 # -- Gates ---------------------------------------------------------------
 
 
-async def _require_independent_teacher(
+async def _require_lesson_plan_access(
     current_user: dict = Depends(get_current_user),
 ) -> dict:
-    if not is_independent_teacher(current_user):
-        raise HTTPException(status_code=403, detail=INDEPENDENT_TEACHER_DENIED_AR)
-    return current_user
+    """Gate for the lesson-plan assistant (Task #1089).
+
+    Accepts BOTH Independent Teachers and regular school teachers. The
+    IT code path stays functionally identical (same workspace scoping,
+    same quota-backed counter); school teachers resolve to their real
+    ``school_id`` tenant with a per-teacher quota and own-class scoping
+    layered on below. Any other role → 403.
+    """
+    if is_independent_teacher(current_user):
+        return current_user
+    if (current_user.get("role") or "").lower() == UserRole.TEACHER.value:
+        return current_user
+    raise HTTPException(status_code=403, detail=INDEPENDENT_TEACHER_DENIED_AR)
+
+
+def _is_school_teacher(current_user: dict) -> bool:
+    """True for a regular school teacher (NOT an Independent Teacher).
+
+    School teachers get the real-school tenant + per-teacher abuse
+    controls; IT keeps its workspace-pinned behavior untouched.
+    """
+    if is_independent_teacher(current_user):
+        return False
+    return (current_user.get("role") or "").lower() == UserRole.TEACHER.value
 
 
 def _workspace_id(current_user: dict) -> str:
@@ -193,6 +214,40 @@ async def _load_quota(workspace_id: str) -> Dict[str, Any]:
         await gd_insert(db.session, "workspace_quota", seed)
     except Exception as exc:  # noqa: BLE001
         logger.warning("workspace_quota lazy seed failed for %s: %s", workspace_id, exc)
+    return seed
+
+
+async def _load_teacher_quota(teacher_id: str, school_id: str) -> Dict[str, Any]:
+    """Per-teacher daily counter for regular school teachers (Task #1089).
+
+    Independent Teachers keep their workspace-shared ``workspace_quota``
+    row untouched. School teachers cannot share that (it is one row per
+    school), so their generation counter lives in a dedicated
+    ``teacher_lesson_plan_quota`` GenericDocument collection keyed by
+    ``teacher_id`` (the caller's users.id). Same ``lesson_plans_today`` /
+    ``lesson_plans_today_date`` field names so ``_lesson_plans_today``
+    reads either shape unchanged.
+    """
+    row = await gd_find_one(
+        db.session, "teacher_lesson_plan_quota", {"teacher_id": teacher_id},
+    )
+    if row:
+        return row
+    now_iso = datetime.now(timezone.utc).isoformat()
+    seed = {
+        "teacher_id": teacher_id,
+        "school_id": school_id,
+        "lesson_plans_today": 0,
+        "lesson_plans_today_date": None,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+    }
+    try:
+        await gd_insert(db.session, "teacher_lesson_plan_quota", seed)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "teacher_lesson_plan_quota lazy seed failed for %s: %s", teacher_id, exc,
+        )
     return seed
 
 
@@ -316,24 +371,31 @@ def _serialize(row: Dict[str, Any]) -> Dict[str, Any]:
 @router.post("/generate")
 async def generate_lesson_plan(
     payload: GenerateRequest,
-    current_user: dict = Depends(_require_independent_teacher),
+    current_user: dict = Depends(_require_lesson_plan_access),
 ):
     if not payload.topic:
         raise HTTPException(status_code=422, detail=_MSG_TOPIC_REQUIRED)
 
     workspace_id = _workspace_id(current_user)
+    is_school = _is_school_teacher(current_user)
 
-    # Short-window burst guard (Task #221). Keyed per workspace so a
-    # stolen IT token cannot drain the daily quota in seconds and spike
-    # OpenAI cost/latency for the rest of the platform. Two windows are
-    # checked: 1 req / 10s and 3 req / 60s. The longer window is checked
-    # first so its retry-after dominates when both fire.
+    # Short-window burst guard (Task #221 / #1089). Keyed per workspace
+    # for IT and PER-TEACHER for school teachers so a stolen token cannot
+    # drain the daily quota in seconds and spike OpenAI cost/latency for
+    # the rest of the platform. Two windows are checked: 1 req / 10s and
+    # 3 req / 60s. The longer window is checked first so its retry-after
+    # dominates when both fire. The IT key format is unchanged.
+    burst_key = (
+        f"it_lesson_plan_generate_teacher:{current_user['id']}"
+        if is_school
+        else f"it_lesson_plan_generate:{workspace_id}"
+    )
     for max_req, window in (
         (_BURST_LONG_MAX, _BURST_LONG_WINDOW),
         (_BURST_SHORT_MAX, _BURST_SHORT_WINDOW),
     ):
         limited, _, retry_after = await rate_store.is_rate_limited(
-            f"it_lesson_plan_generate:{workspace_id}:{window}",
+            f"{burst_key}:{window}",
             max_req,
             window,
         )
@@ -344,7 +406,10 @@ async def generate_lesson_plan(
                 headers={"Retry-After": str(retry_after)},
             )
 
-    quota = await _load_quota(workspace_id)
+    if is_school:
+        quota = await _load_teacher_quota(current_user["id"], workspace_id)
+    else:
+        quota = await _load_quota(workspace_id)
     used_today = _lesson_plans_today(quota)
     if used_today >= MAX_LESSON_PLANS_PER_DAY:
         raise HTTPException(status_code=429, detail=_MSG_QUOTA_DAILY)
@@ -402,16 +467,28 @@ async def generate_lesson_plan(
 
     today = _today_utc()
     new_count = _lesson_plans_today(quota) + 1
-    await gd_update_one(
-        db.session,
-        "workspace_quota",
-        {"workspace_school_id": workspace_id},
-        {
-            "lesson_plans_today": new_count,
-            "lesson_plans_today_date": today.isoformat(),
-            "updated_at": now.isoformat(),
-        },
-    )
+    if is_school:
+        await gd_update_one(
+            db.session,
+            "teacher_lesson_plan_quota",
+            {"teacher_id": current_user["id"]},
+            {
+                "lesson_plans_today": new_count,
+                "lesson_plans_today_date": today.isoformat(),
+                "updated_at": now.isoformat(),
+            },
+        )
+    else:
+        await gd_update_one(
+            db.session,
+            "workspace_quota",
+            {"workspace_school_id": workspace_id},
+            {
+                "lesson_plans_today": new_count,
+                "lesson_plans_today_date": today.isoformat(),
+                "updated_at": now.isoformat(),
+            },
+        )
 
     # Task #249 — surface the completion in the IT inbox so the user
     # sees a persistent record (and can deep-link to the saved plan).
@@ -468,7 +545,7 @@ async def generate_lesson_plan(
 
 @router.get("")
 async def list_lesson_plans(
-    current_user: dict = Depends(_require_independent_teacher),
+    current_user: dict = Depends(_require_lesson_plan_access),
 ):
     workspace_id = _workspace_id(current_user)
     rows = await gd_find(
@@ -482,7 +559,10 @@ async def list_lesson_plans(
         order_by="created_at",
         desc_order=True,
     )
-    quota = await _load_quota(workspace_id)
+    if _is_school_teacher(current_user):
+        quota = await _load_teacher_quota(current_user["id"], workspace_id)
+    else:
+        quota = await _load_quota(workspace_id)
     return {
         "lesson_plans": [_serialize(r) for r in (rows or [])],
         "quota": {
@@ -496,7 +576,7 @@ async def list_lesson_plans(
 async def save_to_class(
     plan_id: str,
     payload: SaveToClassRequest,
-    current_user: dict = Depends(_require_independent_teacher),
+    current_user: dict = Depends(_require_lesson_plan_access),
 ):
     workspace_id = _workspace_id(current_user)
 
@@ -519,6 +599,20 @@ async def save_to_class(
     })
     if not klass:
         raise HTTPException(status_code=404, detail=_MSG_CLASS_NOT_FOUND)
+
+    # School teachers may only pin a plan to one of their OWN assigned
+    # classes (Task #1089): same-tenant membership is NOT sufficient.
+    # Source of truth = ACTIVE teacher_assignments ∪ class_sessions via
+    # the canonical helper, matching /classes and roster authorization.
+    # A foreign / other-teacher class → 404 (never 403) so it stays
+    # indistinguishable from an unknown id (cross-tenant contract). IT
+    # owns every class in its workspace, so this check is IT-skipped.
+    if _is_school_teacher(current_user):
+        from utils.tenant_scope import get_teacher_allowed_class_ids
+        teacher_id = current_user.get("teacher_id") or current_user.get("id")
+        allowed = await get_teacher_allowed_class_ids(db.session, teacher_id)
+        if payload.class_id not in allowed:
+            raise HTTPException(status_code=404, detail=_MSG_CLASS_NOT_FOUND)
 
     now = datetime.now(timezone.utc)
     await gd_update_one(
@@ -543,7 +637,7 @@ async def save_to_class(
 async def update_lesson_plan(
     plan_id: str,
     payload: UpdateLessonPlanRequest,
-    current_user: dict = Depends(_require_independent_teacher),
+    current_user: dict = Depends(_require_lesson_plan_access),
 ):
     """Edit/rename a saved or draft lesson plan (Task #220).
 
@@ -599,7 +693,7 @@ async def update_lesson_plan(
 @router.delete("/{plan_id}")
 async def delete_lesson_plan(
     plan_id: str,
-    current_user: dict = Depends(_require_independent_teacher),
+    current_user: dict = Depends(_require_lesson_plan_access),
 ):
     """Delete a lesson plan owned by the calling IT (Task #220).
 

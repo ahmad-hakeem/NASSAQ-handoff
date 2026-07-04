@@ -497,7 +497,7 @@ export default function AppRoutes() {
             redirect fires (matches the audit-log relocation pattern). */}
         <Route path="/teacher/lesson-planner" element={
           <ProtectedRoute
-            allowedRoles={['independent_teacher']}
+            allowedRoles={['independent_teacher', 'teacher']}
             requiredPermission="ai.lesson_plans"
           ><Navigate to="/teacher/classes?tab=lesson-planner" replace /></ProtectedRoute>
         } />

@@ -141,10 +141,22 @@ class ClassManagementEngine:
         status: Optional[str] = None,
         search: Optional[str] = None,
         skip: int = 0,
-        limit: int = 50
+        limit: int = 50,
+        allowed_class_ids: Optional[set] = None,
     ) -> Dict[str, Any]:
-        """List classes with filters"""
+        """List classes with filters.
+
+        ``allowed_class_ids`` narrows the result to a caller-authorized set
+        (Task #1089): regular school teachers may only see their OWN
+        assigned classes, so callers pass the canonical
+        ``get_teacher_allowed_class_ids`` set. ``None`` = no narrowing
+        (default, tenant-scoped only). An EMPTY set means the caller owns
+        no classes and MUST get an empty page — never the whole tenant.
+        """
         conditions = [Class.school_id == tenant_id, Class.is_active == True]
+
+        if allowed_class_ids is not None:
+            conditions.append(Class.id.in_(list(allowed_class_ids)))
 
         if grade_id:
             conditions.append(Class.grade_id == grade_id)

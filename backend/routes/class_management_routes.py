@@ -102,15 +102,35 @@ def create_class_management_routes(db, get_current_user):
         search: Optional[str] = Query(None),
         skip: int = Query(0, ge=0),
         limit: int = Query(50, ge=1, le=100),
+        assigned_only: bool = Query(False),
         current_user: dict = Depends(get_current_user)
     ):
         tenant_id = require_request_school_id(current_user)
+        # Task #1089 — the lesson-plan assistant class picker must show a
+        # regular school teacher ONLY their own assigned classes (not the
+        # whole school). When ``assigned_only`` is requested by a school
+        # teacher, narrow to the canonical assignment set. Independent
+        # Teachers are intentionally NOT narrowed: they own every class in
+        # their workspace, so the IT experience stays byte-for-byte
+        # identical. Admin/leadership roles are likewise unaffected.
+        allowed_class_ids = None
+        if assigned_only:
+            from auth_scope import is_independent_teacher
+            from dependencies import UserRole
+            if (
+                not is_independent_teacher(current_user)
+                and (current_user.get("role") or "").lower() == UserRole.TEACHER.value
+            ):
+                from utils.tenant_scope import get_teacher_allowed_class_ids
+                teacher_id = current_user.get("teacher_id") or current_user.get("id")
+                allowed_class_ids = await get_teacher_allowed_class_ids(db.session, teacher_id)
         return await engine.list_classes(
             tenant_id,
             grade_id=grade_id,
             search=search,
             skip=skip,
             limit=limit,
+            allowed_class_ids=allowed_class_ids,
         )
 
     @router.get("/{class_id}")
