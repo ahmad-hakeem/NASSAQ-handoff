@@ -64,6 +64,7 @@ export default function TeacherHomePage() {
   });
   const [classMetrics, setClassMetrics] = useState(null);
   const [dayStatus, setDayStatus] = useState(null);
+  const [dayStatusError, setDayStatusError] = useState(false);
   const [portfolioProgress, setPortfolioProgress] = useState(0);
   // Task #310 — IT brand-new-workspace empty state (mobile dashboard).
   const isIndependentTeacher = user?.role === 'independent_teacher';
@@ -77,12 +78,14 @@ export default function TeacherHomePage() {
   }, []);
 
   const fetchDayStatus = useCallback(async () => {
-    if (isIndependentTeacher) return;
     try {
       const res = await api.get('/school/day-status');
       setDayStatus(res.data);
-    } catch (err) { /* silent */ }
-  }, [api, isIndependentTeacher]);
+      setDayStatusError(false);
+    } catch (err) {
+      setDayStatusError(true);
+    }
+  }, [api]);
 
   const fetchPortfolioProgress = useCallback(async () => {
     if (!teacherId) return;
@@ -437,7 +440,23 @@ export default function TeacherHomePage() {
           </Card>
 
           {/* Period Timeline (Mobile) — visual schedule with end markers + counts */}
-          {totalPeriods > 0 && (() => {
+          {dayStatusError && !dayStatus ? (
+            <div className="bg-background border border-border/50 rounded-xl p-3 shadow-sm flex items-center justify-between gap-3">
+              <span className="text-xs text-muted-foreground font-tajawal flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                {t('dayStatusUnavailable')}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={fetchDayStatus}
+                className="h-7 px-2 text-xs text-brand-turquoise gap-1 font-tajawal"
+              >
+                <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                {t('retry')}
+              </Button>
+            </div>
+          ) : totalPeriods > 0 && (() => {
             const periodList = Array.from({ length: totalPeriods }, (_, i) => i + 1).map((num) => {
               let status = 'upcoming';
               if (isSchoolTime) {

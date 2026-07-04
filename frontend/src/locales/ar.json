@@ -4576,6 +4576,7 @@
   "schoolDayStartLabel": "وقت بداية اليوم",
   "schoolDayStartHelp": "وقت بدء الحصة الأولى. يُستخدم لعرض أوقات الحصص في جدولك.",
   "dayStartInvalid": "أدخل وقت بداية يوم صحيحًا (ساعة:دقيقة).",
+  "dayStatusUnavailable": "غير متاح حالياً",
   "academicYearSectionTitle": "العام والفصل النشط",
   "academicYearSectionDesc": "إعادة تسمية العام الدراسي والفصل النشط فقط.",
   "academicYearNameLabel": "اسم العام الدراسي",

@@ -4576,6 +4576,7 @@
   "schoolDayStartLabel": "Day start time",
   "schoolDayStartHelp": "The time your first period begins. Used to display lesson times on your schedule.",
   "dayStartInvalid": "Enter a valid day start time (HH:MM).",
+  "dayStatusUnavailable": "Currently unavailable",
   "academicYearSectionTitle": "Active academic year & term",
   "academicYearSectionDesc": "Rename the active academic year and term only.",
   "academicYearNameLabel": "Academic year name",

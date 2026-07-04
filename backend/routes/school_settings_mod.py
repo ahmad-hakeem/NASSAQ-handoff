@@ -26,7 +26,7 @@ from dependencies import (
     REPORT_TYPES, generate_student_qr_code
 )
 
-from auth_scope import is_independent_workspace_id
+from auth_scope import is_independent_workspace_id, independent_workspace_id
 from utils.it_schedule import synthesize_it_time_slots
 from utils.teacher_assignment_sync import (
     materialize_default_class_assignments,
@@ -531,7 +531,11 @@ async def update_school_info_direct(
     school = await gd_find_one(db.session, "schools", {"id": school_id})
     return {"success": True, "school": school, "message": "تم تحديث بيانات المدرسة بنجاح"}
 
-@router.get("/school/day-status")
+# IT visibility — mounted on ``time_slots_router`` (no ``_full_tenant_dep``) so
+# Independent-Teacher callers reach the handler; ``router`` is behind the IT-deny
+# gate. The handler self-scopes by school_id and is read-only; full-tenant
+# callers get the identical response.
+@time_slots_router.get("/school/day-status")
 async def get_school_day_status(
     current_user: dict = Depends(get_current_user),
     x_school_context: str = Header(default=None, alias="X-School-Context")
@@ -549,13 +553,19 @@ async def get_school_day_status(
         "is_break": False,
     }
     caller_role = (current_user or {}).get("role", "")
-    caller_tenant = (current_user or {}).get("tenant_id") or (current_user or {}).get("school_id")
-    if caller_role == "independent_teacher" or not caller_tenant:
-        return _neutral_payload
-
-    school_id = await get_school_id_from_context(current_user, x_school_context)
+    if caller_role == "independent_teacher":
+        # IT workspaces keep their schedule in a synthetic per-user workspace
+        # (spec §5.4) and never persist school_settings/time_slots under a real
+        # tenant. Resolve the workspace id directly so the progress bar reflects
+        # the teacher's own configured day window instead of a static payload.
+        school_id = independent_workspace_id(current_user)
+    else:
+        caller_tenant = (current_user or {}).get("tenant_id") or (current_user or {}).get("school_id")
+        if not caller_tenant:
+            return _neutral_payload
+        school_id = await get_school_id_from_context(current_user, x_school_context)
     if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
+        return _neutral_payload
 
     settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     nested = (settings or {}).get("settings", {}) if settings else {}
@@ -597,6 +607,10 @@ async def get_school_day_status(
     ) or 20)
 
     time_slots_raw = await gd_find(db.session, "time_slots", {"school_id": school_id}, order_by="start_time", desc_order=False, limit=30)
+    if not time_slots_raw and is_independent_workspace_id(school_id):
+        # IT workspaces do not persist time_slots rows; build virtual slots from
+        # the teacher's own period configuration (mirrors the /time-slots route).
+        time_slots_raw = synthesize_it_time_slots(school_id, settings)
 
     def parse_time(t):
         if not t or not isinstance(t, str) or ":" not in t:

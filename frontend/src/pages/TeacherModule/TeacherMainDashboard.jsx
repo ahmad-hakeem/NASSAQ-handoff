@@ -176,6 +176,7 @@ export default function TeacherMainDashboard() {
   const [riskAlerts, setRiskAlerts] = useState([]);
   const [hakimLoading, setHakimLoading] = useState(false);
   const [dayStatus, setDayStatus] = useState(null);
+  const [dayStatusError, setDayStatusError] = useState(false);
   const [portfolioProgress, setPortfolioProgress] = useState(0);
   // Task #310 — IT brand-new-workspace empty state. We only fetch the IT
   // personal-calendar event count when the signed-in user is an Independent
@@ -194,12 +195,14 @@ export default function TeacherMainDashboard() {
   }, []);
 
   const fetchDayStatus = useCallback(async () => {
-    if (isIndependentTeacher) return;
     try {
       const res = await api.get('/school/day-status');
       setDayStatus(res.data);
-    } catch (err) { /* silent */ }
-  }, [api, isIndependentTeacher]);
+      setDayStatusError(false);
+    } catch (err) {
+      setDayStatusError(true);
+    }
+  }, [api]);
 
   useEffect(() => {
     fetchDayStatus();
@@ -607,6 +610,24 @@ export default function TeacherMainDashboard() {
 
               {/* Day Progress Bar */}
               <div className="mt-5">
+                {dayStatusError && !dayStatus ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-white/5 border border-white/10 px-3 py-2">
+                  <span className="text-xs text-white/60 font-tajawal flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-white/40" aria-hidden="true" />
+                    {t('dayStatusUnavailable')}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={fetchDayStatus}
+                    className="h-7 px-2 text-xs text-brand-turquoise hover:bg-white/10 gap-1 font-tajawal"
+                  >
+                    <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                    {t('retry')}
+                  </Button>
+                </div>
+                ) : (
+                <>
                 <div className="flex items-center justify-between mb-1.5 font-tajawal">
                   <span className="text-[10px] text-white/40">{formatTimeLabel(dayStart)}</span>
                   <div className="flex items-center gap-3">
@@ -638,9 +659,12 @@ export default function TeacherMainDashboard() {
                     )}
                   </div>
                 </div>
+                </>
+                )}
               </div>
 
               {/* School Day Path — integrated at the bottom of the welcome card */}
+              {(!dayStatusError || dayStatus) && (
               <div className="mt-5 pt-4 border-t border-white/10">
                 <PeriodTimeline
                   upcomingLessons={stats.upcomingLessons}
@@ -652,6 +676,7 @@ export default function TeacherMainDashboard() {
                   onDark
                 />
               </div>
+              )}
             </div>
           </div>
 
