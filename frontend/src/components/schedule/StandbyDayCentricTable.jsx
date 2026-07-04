@@ -117,18 +117,35 @@ export default function StandbyDayCentricTable({
         <tbody>
           {days.map((day) => {
             const slotCount = day.slot_count || 1;
-            return day.rows.map((row, rIdx) => (
+            // Always expose one trailing empty "add another" row so every
+            // period offers a "+" cell — even when every period already
+            // holds exactly one teacher (Task: multi-teacher standby).
+            // The trailing slot is the next slot_index after slot_count.
+            const trailingRow = {
+              slot_index: slotCount + 1,
+              cells: {},
+              is_trailing: true,
+            };
+            const rows = [...(day.rows || []), trailingRow];
+            const renderRowCount = rows.length;
+            return rows.map((row, rIdx) => (
               <tr key={`${day.day}-${row.slot_index}`} className="hover:bg-slate-50">
                 {rIdx === 0 && (
                   <td
-                    rowSpan={slotCount}
+                    rowSpan={renderRowCount}
                     className="border border-slate-300 bg-[#F4F7FB] text-center font-bold text-[#1C3D74] align-middle"
                   >
                     {DAY_AR[day.day] || day.day}
                   </td>
                 )}
                 <td className="border border-slate-300 bg-slate-50 text-center font-bold text-slate-600">
-                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-white border border-slate-300 text-[11px]">
+                  <span
+                    className={`inline-flex items-center justify-center w-6 h-6 rounded-md bg-white border text-[11px] ${
+                      row.is_trailing
+                        ? 'border-dashed border-emerald-300 text-emerald-500'
+                        : 'border-slate-300'
+                    }`}
+                  >
                     {row.slot_index}
                   </span>
                 </td>
@@ -143,6 +160,7 @@ export default function StandbyDayCentricTable({
                       key={cellKey}
                       cell={cell}
                       busy={isBusy}
+                      testId={`standby-cell-${day.day}-${p}-${row.slot_index}`}
                       onClick={
                         onCellClick
                           ? () => onCellClick({
@@ -165,7 +183,7 @@ export default function StandbyDayCentricTable({
   );
 }
 
-function Cell({ cell, onClick, busy }) {
+function Cell({ cell, onClick, busy, testId }) {
   const canViewInternalIds = useCanViewInternalIds();
   if (!cell) {
     return (
@@ -174,6 +192,7 @@ function Cell({ cell, onClick, busy }) {
           type="button"
           onClick={onClick}
           disabled={busy}
+          data-testid={testId}
           title="إضافة معلم لخانة الانتظار"
           className="w-full h-12 text-slate-300 hover:bg-emerald-50 hover:text-emerald-600 transition-colors disabled:opacity-50 text-lg leading-none"
         >
