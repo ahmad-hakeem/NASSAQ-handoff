@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nassaq
+      POSTGRES_USER: nassaq
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - nassaq_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nassaq -d nassaq"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  app:
+    image: nassaq-app:latest
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://nassaq:${POSTGRES_PASSWORD}@db:5432/nassaq
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY in .env}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?set MFA_ENCRYPTION_KEY in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS in .env (e.g. https://nassaq.example.com)}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+      AI_INTEGRATIONS_OPENAI_API_KEY: ${AI_INTEGRATIONS_OPENAI_API_KEY:-}
+      AI_INTEGRATIONS_OPENAI_BASE_URL: ${AI_INTEGRATIONS_OPENAI_BASE_URL:-}
+      ADMIN_SEED_PASSWORD_ZALAT: ${ADMIN_SEED_PASSWORD_ZALAT:-}
+      ADMIN_SEED_PASSWORD_HAKIM: ${ADMIN_SEED_PASSWORD_HAKIM:-}
+    ports:
+      - "${APP_PORT:-8000}:8000"
+
+volumes:
+  nassaq_pgdata:
