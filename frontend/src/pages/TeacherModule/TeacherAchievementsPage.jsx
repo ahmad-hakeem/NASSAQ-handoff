@@ -1206,6 +1206,7 @@ export default function TeacherAchievementsPage() {
             handleDeleteCVItem={handleDeleteCVItem}
             openEditDialog={openEditDialog}
             handleDeleteEvidence={handleDeleteEvidence}
+            openEvidenceFile={openEvidenceFile}
           />
         )}
 
@@ -2232,7 +2233,7 @@ function EvidenceRow({ item, isRTL, onView, onEdit, onDelete }) {
   );
 }
 
-function CVItemRow({ item, isRTL, onDelete }) {
+function CVItemRow({ item, isRTL, onDelete, onOpenFile }) {
   return (
     <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-750">
       <div className="flex-1 min-w-0">
@@ -2240,17 +2241,28 @@ function CVItemRow({ item, isRTL, onDelete }) {
           <span className="text-sm font-medium text-gray-800 dark:text-gray-100 font-tajawal">{item.title}</span>
           {item.source === 'auto' && (
             <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-600 dark:border-amber-700 dark:text-amber-400 gap-1">
-              <Zap className="w-2.5 h-2.5" /> تلقائي
+              <Zap className="w-2.5 h-2.5" aria-hidden="true" strokeWidth={1.5} /> تلقائي
             </Badge>
           )}
         </div>
         <div className="flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400 flex-wrap">
-          {item.organization && <span className="flex items-center gap-1"><Building2 className="w-3 h-3" />{item.organization}</span>}
-          {item.date && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{item.date}</span>}
+          {item.organization && <span className="flex items-center gap-1"><Building2 className="w-3 h-3" aria-hidden="true" strokeWidth={1.5} />{item.organization}</span>}
+          {item.date && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" aria-hidden="true" strokeWidth={1.5} />{item.date}</span>}
           {item.hours != null && <span>{item.hours} ساعة</span>}
         </div>
         {item.description && (
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{item.description}</p>
+        )}
+        {item.file_url && (
+          <div className="mt-2 flex items-center justify-between gap-2 p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <FileArchive className="w-3.5 h-3.5 text-violet-600 shrink-0" aria-hidden="true" strokeWidth={1.5} />
+              <span className="text-xs truncate text-start">{item.file_name || 'ملف مرفق'}</span>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => onOpenFile?.(item.file_url)} className="gap-1.5 h-7 text-xs shrink-0">
+              <Eye className="w-3.5 h-3.5" aria-hidden="true" strokeWidth={1.5} /> عرض الملف
+            </Button>
+          </div>
         )}
       </div>
       {item.source !== 'auto' && (
@@ -2269,6 +2281,7 @@ function PortfolioV2Sections(props) {
     introDraft, setIntroDraft, introBusy, introAIBusy, handleSaveIntro, handleGenerateIntro,
     vmvDraft, setVmvDraft, vmvBusy, vmvAIBusy, handleSaveVMV, handleGenerateVMV,
     openCVDialog, handleDeleteCVItem, openEditDialog, handleDeleteEvidence,
+    openEvidenceFile,
   } = props;
 
   const canViewInternalIds = useCanViewInternalIds();
@@ -2412,6 +2425,7 @@ function PortfolioV2Sections(props) {
           isRTL={isRTL}
           onAdd={() => openCVDialog('training_attended')}
           onDelete={handleDeleteCVItem}
+          onOpenFile={openEvidenceFile}
         />
         {/* Training delivered */}
         <CVCategorySection
@@ -2421,6 +2435,7 @@ function PortfolioV2Sections(props) {
           isRTL={isRTL}
           onAdd={() => openCVDialog('training_delivered')}
           onDelete={handleDeleteCVItem}
+          onOpenFile={openEvidenceFile}
         />
         {/* Awards */}
         <CVCategorySection
@@ -2430,6 +2445,7 @@ function PortfolioV2Sections(props) {
           isRTL={isRTL}
           onAdd={() => openCVDialog('award')}
           onDelete={handleDeleteCVItem}
+          onOpenFile={openEvidenceFile}
         />
         {/* Thank letters */}
         <CVCategorySection
@@ -2439,6 +2455,7 @@ function PortfolioV2Sections(props) {
           isRTL={isRTL}
           onAdd={() => openCVDialog('thank_letter')}
           onDelete={handleDeleteCVItem}
+          onOpenFile={openEvidenceFile}
         />
       </AccordionCard>
 
@@ -2535,7 +2552,7 @@ function PortfolioV2Sections(props) {
   );
 }
 
-function CVCategorySection({ title, icon: Icon, color, items, isRTL, onAdd, onDelete }) {
+function CVCategorySection({ title, icon: Icon, color, items, isRTL, onAdd, onDelete, onOpenFile }) {
   return (
     <div className="mb-4">
       <div className="flex items-center justify-between mb-2">
@@ -2555,7 +2572,7 @@ function CVCategorySection({ title, icon: Icon, color, items, isRTL, onAdd, onDe
       ) : (
         <div className="space-y-1.5">
           {items.map(it => (
-            <CVItemRow key={it.id} item={it} isRTL={isRTL} onDelete={onDelete} />
+            <CVItemRow key={it.id} item={it} isRTL={isRTL} onDelete={onDelete} onOpenFile={onOpenFile} />
           ))}
         </div>
       )}
