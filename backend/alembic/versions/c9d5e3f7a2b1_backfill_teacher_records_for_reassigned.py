@@ -96,6 +96,21 @@ def upgrade() -> None:
             )
         )
 
+    # Fresh-database resilience: every long-lived environment already has
+    # ``teachers.user_id`` (it predates migration coverage), but NO migration
+    # creates it — so a clean ``alembic upgrade head`` on an empty database
+    # fails on the query below with UndefinedColumn. Create it idempotently
+    # here, matching the ORM shape (pg_models.Teacher.user_id: VARCHAR,
+    # nullable, indexed). On existing databases both statements are no-ops.
+    conn.execute(
+        sa.text("ALTER TABLE teachers ADD COLUMN IF NOT EXISTS user_id VARCHAR")
+    )
+    conn.execute(
+        sa.text(
+            "CREATE INDEX IF NOT EXISTS ix_teachers_user_id ON teachers (user_id)"
+        )
+    )
+
     # Teacher-role users bound to a REAL school (never an Independent-Teacher
     # workspace) that have NO active, non-soft-deleted teachers row in that
     # school — i.e. invisible to the principal despite a correct profile.

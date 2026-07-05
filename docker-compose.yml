@@ -3,13 +3,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: nassaq
-      POSTGRES_USER: nassaq
+      POSTGRES_USER: ${POSTGRES_USER:-nassaq}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-nassaq}
     volumes:
       - nassaq_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nassaq -d nassaq"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nassaq} -d ${POSTGRES_DB:-nassaq}"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -22,12 +22,16 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://nassaq:${POSTGRES_PASSWORD}@db:5432/nassaq
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-nassaq}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-nassaq}
       ENVIRONMENT: ${ENVIRONMENT:-production}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY in .env}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?set MFA_ENCRYPTION_KEY in .env}
+      MFA_ENFORCEMENT_DISABLED: ${MFA_ENFORCEMENT_DISABLED:-}
       CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS in .env (e.g. https://nassaq.example.com)}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+      FRONTEND_URL: ${FRONTEND_URL:-}
+      APP_URL: ${APP_URL:-}
       AI_INTEGRATIONS_OPENAI_API_KEY: ${AI_INTEGRATIONS_OPENAI_API_KEY:-}
       AI_INTEGRATIONS_OPENAI_BASE_URL: ${AI_INTEGRATIONS_OPENAI_BASE_URL:-}
       ADMIN_SEED_PASSWORD_ZALAT: ${ADMIN_SEED_PASSWORD_ZALAT:-}

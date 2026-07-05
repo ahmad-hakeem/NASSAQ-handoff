@@ -1,6 +1,8 @@
-# --- caches / VCS / Replit workspace state ---
+# --- caches / VCS / workspace state ---
 .cache
+.config
 .git
+.gitignore
 .local
 .mongodb
 .upm
@@ -8,14 +10,16 @@ __pycache__
 *.pyc
 .venv
 .pythonlibs
+uv.lock
 
-# --- never ship to the client image ---
+# --- never ship in the delivered image ---
 .env
 .env.*
 !.env.example
 .replit
 replit.md
 replit.nix
+build.sh
 TEST_CREDENTIALS.md
 threat_model.md
 docs
@@ -24,11 +28,13 @@ artifacts
 test_reports
 memory
 .agents
+*.pem
+*.key
 
 # --- tests (not needed at runtime) ---
 backend/tests
 frontend/src/__tests__
 
-# --- frontend: built inside the image, node_modules never copied ---
+# --- frontend: built inside the image, never copied from the host ---
 frontend/node_modules
 frontend/build

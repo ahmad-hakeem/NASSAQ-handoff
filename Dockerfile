@@ -1,12 +1,17 @@
 # ---------- Stage 1: build the React frontend ----------
 FROM node:22-slim AS frontend-build
 WORKDIR /fe
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install --legacy-peer-deps
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --legacy-peer-deps
 COPY frontend/ ./
-# Never let dev-only flags leak into the production build
+# Same-origin deployment: the API serves the frontend, so all API URLs are
+# relative. CI=false so lint warnings do not fail the production build.
 RUN rm -f .env .env.local .env.development && \
-    GENERATE_SOURCEMAP=false DISABLE_ESLINT_PLUGIN=true npx craco build && \
+    CI=false \
+    REACT_APP_BACKEND_URL="" \
+    GENERATE_SOURCEMAP=false \
+    DISABLE_ESLINT_PLUGIN=true \
+    npm run build && \
     test -f build/index.html
 
 # ---------- Stage 2: Python runtime ----------
@@ -25,14 +30,14 @@ RUN pip install --no-cache-dir uv && \
 # Backend source
 COPY backend/ ./backend/
 
-# Built frontend (FastAPI serves it from frontend/build, same origin)
+# Built frontend — the API serves it from frontend/build (same origin)
 COPY --from=frontend-build /fe/build ./frontend/build
 
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh && \
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh && \
     useradd --create-home --uid 10001 nassaq && \
     chown -R nassaq:nassaq /app
 USER nassaq
 
 EXPOSE 8000
-ENTRYPOINT ["/docker-entrypoint.sh"]
+ENTRYPOINT ["/entrypoint.sh"]
