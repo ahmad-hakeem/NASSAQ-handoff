@@ -144,18 +144,24 @@ def create_teacher_registration_router(db, get_current_user, require_roles, User
         data: TeacherDirectRegistration,
         request: Request,
     ):
-        """تسجيل معلم مباشر بدون مراجعة — Direct teacher registration without approval"""
-        import uuid as _uuid
-        import base64, json
-        import random
+        """تسجيل معلم مستقل مباشر بدون مراجعة — Direct Independent-Teacher registration without approval.
 
-        from pg_models import User, Teacher
-        from engines.sql_utils import dict_to_model
-        from dependencies import (
-            hash_password, create_access_token, create_refresh_token,
-        )
-        from shared_models import validate_password_complexity, UserResponse
-        from sqlalchemy import or_
+        The public "Teacher Experience" (معلم نسق) landing CTA lands here. It mints a
+        pre-bootstrap **Independent Teacher** (role=independent_teacher, tenant_id=NULL,
+        auto-approved) by delegating to the single canonical IT instant-signup helper
+        `_create_independent_teacher_instant`, so there is exactly one IT account-creation
+        code path. The frontend then orchestrates MFA enrolment → onboarding wizard →
+        POST /independent-teacher/bootstrap (which materialises the IT workspace and stamps
+        tenant_type/school_type="independent_teacher"). No stray school-teacher `teachers`
+        row or school-teacher permission set is created here.
+        """
+        import re as _re
+
+        from pg_models import User
+        from dependencies import hash_password  # noqa: F401 (kept for parity/imports)
+        from shared_models import validate_password_complexity, RegistrationRequest as RegistrationRequestModel
+        from sqlalchemy import or_, select as sa_select, func as sa_func
+        from routes.registration_routes_mod import _create_independent_teacher_instant
 
         try:
             validate_password_complexity(data.password)
@@ -170,7 +176,6 @@ def create_teacher_registration_router(db, get_current_user, require_roles, User
         # still block a differently-cased duplicate.
         email_norm = (str(data.email) or "").strip().lower()
 
-        from sqlalchemy import select as sa_select, func as sa_func
         stmt = sa_select(User).where(
             or_(
                 sa_func.lower(User.email) == email_norm,
@@ -188,102 +193,34 @@ def create_teacher_registration_router(db, get_current_user, require_roles, User
             if existing.national_id == data.national_id:
                 raise HTTPException(status_code=400, detail="رقم الهوية مسجل مسبقاً")
 
-        from datetime import timezone as _tz
-        now = datetime.now(_tz.utc)
-        user_id = str(_uuid.uuid4())
-        teacher_id_code = f"TCH-{random.randint(100000, 999999)}"
-        qr_data = {
-            "type": "teacher",
-            "teacher_id": teacher_id_code,
-            "user_id": user_id,
-            "platform": "NASSAQ",
-        }
-        qr_code = base64.b64encode(json.dumps(qr_data).encode()).decode()
+        # Build the canonical registration payload and delegate to the single
+        # IT instant-signup helper. The professional/profile fields the teacher
+        # supplied are preserved on the auto-approved registration_requests doc.
+        raw_phone = data.phone or ""
+        phone_clean = _re.sub(r"[\s\-]", "", raw_phone)
 
-        new_user = dict_to_model(User, {
-            "id": user_id,
-            "email": email_norm,
-            "password_hash": hash_password(data.password),
-            "full_name": data.full_name,
-            "role": "teacher",
-            "phone": data.phone,
-            "national_id": data.national_id,
-            "is_active": True,
-            "must_change_password": False,
-            "preferred_language": "ar",
-            "preferred_theme": "light",
-            "teacher_id": teacher_id_code,
-            "created_at": now,
-            "updated_at": now,
-            "account_type": "independent_teacher",
-            "permissions": [
-                "view_own_profile",
-                "manage_own_classes",
-                "view_own_students",
-                "take_attendance",
-            ],
-        })
-        session.add(new_user)
-        await session.flush()
-
-        teacher_record = dict_to_model(Teacher, {
-            "id": str(_uuid.uuid4()),
-            "full_name": data.full_name,
-            "email": email_norm,
-            "phone": data.phone,
-            "specialization": data.subject,
-            "rank": data.teacher_rank,
-            "years_of_experience": data.years_of_experience,
-            "school_id": None,
-            "is_active": True,
-            "created_at": now,
-            "user_id": user_id,
-            "teacher_id": teacher_id_code,
-            "qr_code": qr_code,
-        })
-        session.add(teacher_record)
-        await session.flush()
-
-        from engines.sql_utils import gd_insert as _gd_insert
-        await _gd_insert(session, "teacher_qr_codes", {
-            "id": str(_uuid.uuid4()),
-            "user_id": user_id,
-            "teacher_id": teacher_id_code,
-            "qr_data": qr_code,
-            "created_at": now.isoformat(),
-        })
-
-        await session.commit()
-
-        token_payload = {"sub": user_id, "role": "teacher"}
-        access_token = create_access_token(token_payload)
-        refresh_token = create_refresh_token(token_payload)
-
-        user_response = UserResponse(
-            id=user_id,
-            email=email_norm,
+        reg_request = RegistrationRequestModel(
             full_name=data.full_name,
-            role="teacher",
-            tenant_id=None,
             phone=data.phone,
-            avatar_url=None,
-            is_active=True,
-            must_change_password=False,
-            preferred_language="ar",
-            preferred_theme="light",
-            created_at=now.isoformat(),
-            teacher_id=teacher_id_code,
+            account_type="independent_teacher",
+            email=email_norm,
+            national_id=data.national_id,
+            password=data.password,
+            subject=data.subject,
+            specialization=data.subject,
+            educational_level=data.education_level,
+            school_name=data.school_name,
+            school_city=data.school_city,
+            country=data.school_country,
+            years_of_experience=(str(data.years_of_experience) if data.years_of_experience is not None else None),
         )
 
-        logger.info(f"Direct teacher registration: {email_norm} -> {teacher_id_code}")
+        result = await _create_independent_teacher_instant(
+            reg_request, data.full_name, phone_clean, raw_phone,
+        )
 
-        return {
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "token_type": "bearer",
-            "user": user_response.model_dump(),
-            "teacher_id": teacher_id_code,
-        }
+        logger.info(f"Direct independent-teacher registration: {email_norm}")
+        return result
 
     @router.get("/status/{tracking_code}")
     async def get_request_status(

@@ -333,8 +333,25 @@ export const TeacherSelfRegistration = () => {
 
       toast.success(t('accountCreatedSuccessfullyLoggingIn'));
 
+      // This CTA mints an Independent Teacher (معلم مستقل) pre-bootstrap, so
+      // route through the canonical IT first-login orchestration instead of
+      // jumping straight to /teacher. Mirrors RegisterPage / LoginPage:
+      //   signup → MFA enrolment → onboarding wizard → workspace bootstrap.
+      const newUser = response.data?.user || {};
+      const role = newUser.role;
+      let target = '/teacher';
+      if (role === 'independent_teacher') {
+        if (!newUser.mfa_enrolled_at) {
+          target = '/auth/mfa/enroll';
+        } else if (!newUser.tenant_id) {
+          target = '/teacher/onboarding';
+        } else {
+          target = '/teacher';
+        }
+      }
+
       setTimeout(() => {
-        navigate('/teacher', { replace: true });
+        navigate(target, { replace: true });
       }, 800);
     } catch (error) {
       console.error('Submission error:', error);
