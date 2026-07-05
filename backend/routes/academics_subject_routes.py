@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Bo
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import Response
 from starlette.responses import StreamingResponse
-from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator, AliasChoices
 from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
 import uuid, os, logging, json, random, re, io, base64
@@ -71,12 +71,18 @@ class SchoolSubjectCreate(BaseModel):
 # legacy /school/subjects `SubjectCreate` model so the IT FE can send
 # `name`/`weekly_hours` without breaking the older school-admin schema.
 class SubjectMutate(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
     name: str
     name_en: Optional[str] = None
     code: Optional[str] = None
     description: Optional[str] = None
-    weekly_hours: Optional[int] = None
+    # Accept both `weekly_hours` and the `weekly_periods` alias the FE/response
+    # use, since the two names have drifted before. Either key persists onto
+    # the real `default_periods_per_week` column.
+    weekly_hours: Optional[int] = Field(
+        default=None,
+        validation_alias=AliasChoices("weekly_hours", "weekly_periods"),
+    )
     grade_levels: Optional[List[str]] = None
     school_id: Optional[str] = None  # ignored for IT callers
     category: Optional[str] = None

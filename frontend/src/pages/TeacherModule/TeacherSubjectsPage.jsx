@@ -103,7 +103,7 @@ export function TeacherSubjectsPanel({ embedded = false }) {
       name,
       name_en: (form.name_en || '').trim() || null,
       code: (form.code || '').trim() || null,
-      weekly_periods: Number.isFinite(periods) && periods > 0 ? periods : 4,
+      weekly_hours: Number.isFinite(periods) && periods > 0 ? periods : 4,
     };
     setSaving(true);
     try {
