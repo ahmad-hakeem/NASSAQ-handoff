@@ -1300,12 +1300,16 @@ class TeacherSessionEngine:
         
         rules = await self._get_session_score_rules(session_id)
         score_change = 0
+        base_points = 0
+        streak_bonus = 0
         if result == AnswerResult.CORRECT:
-            score_change = rules["correct_answer"]
+            base_points = rules["correct_answer"]
+            score_change = base_points
 
             streak = await self._check_answer_streak(session_id, student_id)
             if streak >= 3:
-                score_change += rules["three_correct_streak"]
+                streak_bonus = rules["three_correct_streak"]
+                score_change += streak_bonus
 
         elif result == AnswerResult.NO_ANSWER:
             score_change = rules["no_answer_after_selection"]
@@ -1330,7 +1334,9 @@ class TeacherSessionEngine:
         return {
             "message": "تم تسجيل الإجابة",
             "result": result.value,
-            "score_change": score_change
+            "score_change": score_change,
+            "base_points": base_points,
+            "streak_bonus": streak_bonus
         }
     
     async def record_participation(

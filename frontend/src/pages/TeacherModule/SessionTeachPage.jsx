@@ -338,6 +338,12 @@ export default function SessionTeachPage() {
   const [followupData, setFollowupData] = useState({});
   const [followupColumns, setFollowupColumns] = useState([]);
   const [followupAbsences, setFollowupAbsences] = useState({});
+  // Click-protection lock for the answer (correct/wrong/no_answer) actions.
+  // A burst of accidental rapid taps for the same student must not fire multiple
+  // separate submissions (which would spuriously cross the 3-in-a-row streak
+  // threshold). The lock is held while a submission is in flight and released
+  // after a short cooldown, so deliberate, normally-spaced taps still register.
+  const answerLockRef = useRef(false);
   // Tracks "studentId:columnId" pairs the teacher has manually typed into,
   // so the live-refresh poll never overwrites an in-progress edit.
   const dirtyFollowupCells = useRef(new Set());
@@ -1489,18 +1495,34 @@ export default function SessionTeachPage() {
 
   const recordAnswer = async (result) => {
     if (!selectedStudent) return;
+    // Ignore repeat triggers while a submission is in flight (or during the
+    // short cooldown after it) so a burst of accidental taps can't fire several
+    // separate answers and spuriously cross the 3-in-a-row streak threshold.
+    if (answerLockRef.current) return;
+    answerLockRef.current = true;
     try {
       const res = await api.post(`/session/${sessionId}/answer`, {
         student_id: selectedStudent.id,
         result,
       });
       const change = res.data?.score_change || 0;
+      // Backend is the single source of truth for the point breakdown: base
+      // reward plus any 3-in-a-row streak bonus (both default to the total when
+      // an older backend omits them, so the shown number always matches change).
+      const streakBonus = res.data?.streak_bonus || 0;
+      const basePoints = res.data?.base_points ?? change;
       if (result === 'correct') {
         confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#10b981', '#fbbf24', '#6366f1'] });
         setTimeout(() => confetti({ particleCount: 40, angle: 60, spread: 55, origin: { x: 0 } }), 200);
         setTimeout(() => confetti({ particleCount: 40, angle: 120, spread: 55, origin: { x: 1 } }), 400);
-        toast.success(`${selectedStudent.full_name?.split(' ')[0]} ${t('answeredCorrectly')} +${change}`);
-        addLog('correct', `${selectedStudent.full_name?.split(' ')[0]} — ${t('correctAnswer')} (+${change})`, 'text-green-700');
+        const firstName = selectedStudent.full_name?.split(' ')[0];
+        if (streakBonus > 0) {
+          toast.success(`${firstName} ${t('answeredCorrectly')} +${basePoints} · ${t('streakBonus')} +${streakBonus}`);
+          addLog('correct', `${firstName} — ${t('correctAnswer')} (+${basePoints} · ${t('streakBonus')} +${streakBonus})`, 'text-green-700');
+        } else {
+          toast.success(`${firstName} ${t('answeredCorrectly')} +${change}`);
+          addLog('correct', `${firstName} — ${t('correctAnswer')} (+${change})`, 'text-green-700');
+        }
         setStats(p => ({ ...p, questions: p.questions + 1, correct: p.correct + 1 }));
       } else if (result === 'wrong') {
         toast.info(`${selectedStudent.full_name?.split(' ')[0]} — ${t('wrongAnswer')}`);
@@ -1536,6 +1558,11 @@ export default function SessionTeachPage() {
     } catch (e) {
       console.error('Error recording answer:', e);
       nassaqError(t('errorRecordingAnswer'));
+    } finally {
+      // Release after a short cooldown so an accidental double/triple tap in
+      // quick succession is swallowed, while deliberate, normally-spaced taps
+      // (seconds apart) still register.
+      setTimeout(() => { answerLockRef.current = false; }, 600);
     }
   };
 

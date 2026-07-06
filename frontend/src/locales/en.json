@@ -817,6 +817,7 @@
   "copyWelcomeMessageWithCredentials": "Copy Welcome Message with Credentials",
   "correct": "Correct",
   "correctAnswer": "Correct answer",
+  "streakBonus": "Streak bonus",
   "correctAnswers": "Correct Answers",
   "correctAnswerWeight": "Correct Answer Weight",
   "correctAnswerWeightHintDefault": "Using the school default weight (5 points)",

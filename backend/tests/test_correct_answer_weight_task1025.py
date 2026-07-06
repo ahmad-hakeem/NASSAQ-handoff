@@ -345,6 +345,52 @@ async def test_record_answer_score_change_uses_saved_weight(tenant_a):
 
 
 @pytest.mark.asyncio
+async def test_record_answer_returns_breakdown_no_streak(tenant_a):
+    """A single correct answer returns base_points == score_change and a zero
+    streak_bonus, so the notification can render the plain reward."""
+    class_id = await _mk_class(tenant_a)
+    subject_id = await _mk_subject(tenant_a)
+    teacher_id = await _mk_user(tenant_a)
+    session_id = await _mk_session(tenant_a, class_id, subject_id, teacher_id)
+    student_id = await _mk_student(tenant_a, class_id)
+
+    eng = _engine()
+    result = await _record_answer(eng, session_id, student_id, teacher_id, AnswerResult.CORRECT)
+    assert result["base_points"] == 5
+    assert result["streak_bonus"] == 0
+    assert result["score_change"] == 5
+    assert result["base_points"] + result["streak_bonus"] == result["score_change"]
+
+
+@pytest.mark.asyncio
+async def test_record_answer_breakdown_includes_streak_bonus(tenant_a):
+    """Three correct answers in a row fire the streak bonus: the third answer's
+    breakdown exposes base_points (5) and streak_bonus (5) separately, and their
+    sum equals score_change (10) — the value actually awarded."""
+    class_id = await _mk_class(tenant_a)
+    subject_id = await _mk_subject(tenant_a)
+    teacher_id = await _mk_user(tenant_a)
+    session_id = await _mk_session(tenant_a, class_id, subject_id, teacher_id)
+    student_id = await _mk_student(tenant_a, class_id)
+
+    eng = _engine()
+    first = await _record_answer(eng, session_id, student_id, teacher_id, AnswerResult.CORRECT)
+    second = await _record_answer(eng, session_id, student_id, teacher_id, AnswerResult.CORRECT)
+    third = await _record_answer(eng, session_id, student_id, teacher_id, AnswerResult.CORRECT)
+
+    # First two answers: no bonus yet.
+    for r in (first, second):
+        assert r["streak_bonus"] == 0
+        assert r["score_change"] == r["base_points"] == 5
+
+    # Third (3-in-a-row) answer: base reward + streak bonus.
+    assert third["base_points"] == 5
+    assert third["streak_bonus"] == 5
+    assert third["score_change"] == 10
+    assert third["base_points"] + third["streak_bonus"] == third["score_change"]
+
+
+@pytest.mark.asyncio
 async def test_record_answer_wrong_result_unaffected_by_weight(tenant_a):
     """Saving a custom correct_answer_weight must NOT change the score for
     wrong answers (wrong answer score_change is 0 by default)."""
