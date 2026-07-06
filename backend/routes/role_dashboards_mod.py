@@ -3603,6 +3603,14 @@ async def get_followup_record(
     except Exception as e:
         logger.warning(f"Follow-up hydration failed for session {session_id}: {e}")
         hydrated_data = manual_data
+    # Per-student 3-in-a-row streak-bonus annotation (display-only). Surfaced so
+    # the follow-up sheet can show the SAME base + streak breakdown the teacher
+    # saw live in the toast/activity log. Never affects the grade totals.
+    try:
+        streak_bonus = await session_engine.get_streak_bonus_summary(session_id)
+    except Exception as e:
+        logger.warning(f"Streak-bonus summary failed for session {session_id}: {e}")
+        streak_bonus = {}
     if not record:
         return {
             "session_id": session_id,
@@ -3616,6 +3624,7 @@ async def get_followup_record(
             "data": hydrated_data,
             "absences": {},
             "manual_keys": manual_keys,
+            "streak_bonus": streak_bonus,
         }
     return {
         "session_id": session_id,
@@ -3623,6 +3632,7 @@ async def get_followup_record(
         "data": hydrated_data,
         "absences": record.get("absences", {}),
         "manual_keys": manual_keys,
+        "streak_bonus": streak_bonus,
     }
 
 

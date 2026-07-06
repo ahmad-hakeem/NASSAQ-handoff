@@ -16,7 +16,7 @@ import {
   Users, GraduationCap, Calendar, MessageSquare,
   Building, RefreshCw, AlertCircle,
   Clock, CheckCircle2, Star, Sparkles, CalendarDays,
-  ArrowLeft, ArrowRight, Award, UserCheck, X,
+  ArrowLeft, ArrowRight, Award, UserCheck, X, Zap,
 } from 'lucide-react';
 import { formatFullDate } from '../../utils/hijriDate';
 
@@ -210,6 +210,9 @@ const StarOfTheWeek = ({ weeklyStory, studentName, t }) => {
   const positive = weeklyStory?.positive_behaviors || 0;
   const skills = weeklyStory?.acquired_skills || [];
   const topSubject = weeklyStory?.strong_subjects?.[0];
+  // Display-only 3-in-a-row streak bonus this week (base reward + streak bonus,
+  // matching what the teacher saw live). Not added to any total here.
+  const streakBonusPoints = weeklyStory?.streak_bonus_points || 0;
   const totalPoints = participation + positive;
   const hasHighlight = totalPoints > 0 || skills.length > 0 || !!topSubject;
 
@@ -256,6 +259,17 @@ const StarOfTheWeek = ({ weeklyStory, studentName, t }) => {
                 <p className="text-lg font-bold font-cairo text-emerald-300 tabular-nums leading-tight">{positive}</p>
               </div>
             </div>
+            {streakBonusPoints > 0 && (
+              <div className="mt-2 flex items-center gap-2 rounded-xl bg-amber-400/10 border border-amber-400/25 px-3 py-2">
+                <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+                <span className="text-[11px] font-tajawal text-white/85">
+                  {t('streakBonus')}
+                </span>
+                <span className="ms-auto text-[11px] font-bold font-cairo text-amber-300 tabular-nums">
+                  +{streakBonusPoints}
+                </span>
+              </div>
+            )}
             {(topSubject || skills[0]) && (
               <div className="mt-3 flex items-center gap-2 rounded-xl bg-white/5 border border-white/10 px-3 py-2">
                 <Award className="w-3.5 h-3.5 text-brand-turquoise shrink-0" />

@@ -338,6 +338,10 @@ export default function SessionTeachPage() {
   const [followupData, setFollowupData] = useState({});
   const [followupColumns, setFollowupColumns] = useState([]);
   const [followupAbsences, setFollowupAbsences] = useState({});
+  // Display-only per-student 3-in-a-row streak-bonus annotation
+  // ({ [studentId]: { points, count } }) surfaced next to المشاركة in the
+  // follow-up sheet so it matches the base + streak split shown live.
+  const [followupStreakBonus, setFollowupStreakBonus] = useState({});
   // Click-protection lock for the answer (correct/wrong/no_answer) actions.
   // A burst of accidental rapid taps for the same student must not fire multiple
   // separate submissions (which would spuriously cross the 3-in-a-row streak
@@ -1048,6 +1052,7 @@ export default function SessionTeachPage() {
       // grade values and absence dates.
       setFollowupData(res.data?.data || {});
       setFollowupAbsences(res.data?.absences || {});
+      setFollowupStreakBonus(res.data?.streak_bonus || {});
       // Seed manual-override ownership from the server (authoritative) plus any
       // still-unsaved local edit, so the next flush sends exactly the manual set.
       manualFollowupCells.current = computeManualKeys(res.data?.manual_keys, dirtyFollowupCells.current);
@@ -1062,6 +1067,7 @@ export default function SessionTeachPage() {
       const res = await api.get(`/session/${sessionId}/followup-record`);
       const fresh = res.data?.data || {};
       setFollowupData(prev => mergeFollowupData(fresh, prev, dirtyFollowupCells.current));
+      setFollowupStreakBonus(res.data?.streak_bonus || {});
       // Re-derive manual ownership: server truth ∪ unsaved-dirty. A cell the
       // teacher cleared falls out of both, so its override is forgotten and the
       // cell reverts to the live-derived value on the next flush.
@@ -3655,6 +3661,7 @@ export default function SessionTeachPage() {
         setFollowupColumns={setFollowupColumns}
         followupData={followupData}
         setFollowupData={setFollowupData}
+        followupStreakBonus={followupStreakBonus}
         followupAbsences={followupAbsences}
         onAbsenceAdd={handleFollowupAbsenceAdd}
         onAbsenceRemove={handleFollowupAbsenceRemove}
@@ -3966,6 +3973,7 @@ function FollowupRecordDialog({
   open, onOpenChange, isRTL, students,
   followupColumns, setFollowupColumns,
   followupData, setFollowupData,
+  followupStreakBonus,
   followupAbsences, onAbsenceAdd, onAbsenceRemove,
   followupTab, setFollowupTab,
   showAddColumnModal, setShowAddColumnModal,
@@ -4165,6 +4173,7 @@ function FollowupRecordDialog({
                 students={allStudents}
                 columns={followupColumns}
                 gradesData={followupData}
+                streakBonus={followupStreakBonus}
                 onGradeChange={onGradeChange}
                 t={t}
               />

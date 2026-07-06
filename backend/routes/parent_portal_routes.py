@@ -1631,6 +1631,17 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "created_at": {"$gte": week_start.isoformat(), "$lte": (week_end + timedelta(days=1)).isoformat()}
         }, limit=200)
         participation_count = len(participation)
+        # Display-only annotation: how much of this week's participation came from
+        # 3-in-a-row streak bonuses, so the parent view can explain the same
+        # base + streak split the teacher saw live. Never changes any grade total.
+        streak_bonus_points = 0
+        streak_bonus_count = 0
+        for p in participation:
+            try:
+                streak_bonus_points += int(p.get("streak_bonus_points") or 0)
+                streak_bonus_count += int(p.get("streak_bonus_count") or 0)
+            except (TypeError, ValueError):
+                continue
 
         positive_behaviors = await gd_count(db.session, "behaviour_records", {
             "student_id": child_id,
@@ -1794,6 +1805,10 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "advice": advice,
             # ---- Back-compat: keep legacy fields so older clients don't break
             "participation_count": participation_count,
+            # Display-only: this week's streak-bonus total + how many answers
+            # earned one, so the parent view explains the base + streak split.
+            "streak_bonus_points": streak_bonus_points,
+            "streak_bonus_count": streak_bonus_count,
             "positive_behaviors": positive_behaviors,
             "acquired_skills": acquired_skills,
             "strong_subjects": strong_subjects,

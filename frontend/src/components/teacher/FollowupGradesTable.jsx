@@ -1,9 +1,11 @@
+import { Zap } from 'lucide-react';
 import { useTranslation } from '../../contexts/ThemeContext';
 
 export default function FollowupGradesTable({
   students = [],
   columns = [],
   gradesData = {},
+  streakBonus = {},
   onGradeChange,
   onStudentClick,
   emptyMessage,
@@ -131,18 +133,35 @@ export default function FollowupGradesTable({
               >
                 <td className="border px-2 py-1.5 text-center text-[11px] text-muted-foreground sticky end-0 bg-card dark:bg-background">{si + 1}</td>
                 <td className="border px-3 py-1.5 text-xs font-medium sticky end-12 bg-card dark:bg-background">
-                  {onStudentClick ? (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); onStudentClick(student); }}
-                      title={t('viewStudentProfile') || 'عرض ملف الطالب'}
-                      className="text-start text-brand-turquoise hover:underline font-medium rounded outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise/40"
-                    >
-                      {student.full_name}
-                    </button>
-                  ) : (
-                    student.full_name
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {onStudentClick ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onStudentClick(student); }}
+                        title={t('viewStudentProfile') || 'عرض ملف الطالب'}
+                        className="text-start text-brand-turquoise hover:underline font-medium rounded outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise/40"
+                      >
+                        {student.full_name}
+                      </button>
+                    ) : (
+                      student.full_name
+                    )}
+                    {(() => {
+                      const sb = streakBonus[student.id];
+                      const pts = Number(sb?.points) || 0;
+                      if (pts <= 0) return null;
+                      const label = `${t('streakBonus') || 'مكافأة تتابع'} +${pts}`;
+                      return (
+                        <span
+                          title={label}
+                          className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap"
+                        >
+                          <Zap className="w-3 h-3" strokeWidth={1.5} aria-hidden="true" />
+                          +{pts}
+                        </span>
+                      );
+                    })()}
+                  </div>
                 </td>
                 {courseworkCols.map(col => renderGradeCell(student, col))}
                 {courseworkCols.length > 0 && (

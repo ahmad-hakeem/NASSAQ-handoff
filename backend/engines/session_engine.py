@@ -1311,6 +1311,18 @@ class TeacherSessionEngine:
                 streak_bonus = rules["three_correct_streak"]
                 score_change += streak_bonus
 
+            # Persist the base / streak-bonus split onto the interaction so the
+            # downstream read paths (follow-up sheet + parent view) can surface
+            # the SAME breakdown the teacher saw live. Display-only: the streak
+            # bonus is annotated everywhere, never re-added — compute_session_scores
+            # keeps deriving participation from base points alone, so no awarded
+            # total changes.
+            await gd_update_one(
+                self.session, "session_interactions",
+                {"id": interaction["id"]},
+                {"base_points": base_points, "streak_bonus": streak_bonus},
+            )
+
         elif result == AnswerResult.NO_ANSWER:
             score_change = rules["no_answer_after_selection"]
         
@@ -2644,6 +2656,14 @@ class TeacherSessionEngine:
                     # _coursework_value, so a late negative lowers the bounded
                     # value instead of being absorbed by a hidden overflow.
                     "participation_deltas": [],
+                    # Display-only annotation: total 3-in-a-row streak bonus this
+                    # session and how many answers earned one. Persisted on the
+                    # correct-answer interactions by record_answer; summed here but
+                    # NEVER folded into participation_points, so awarded totals are
+                    # untouched. Lets the follow-up sheet + parent view show the same
+                    # base + streak breakdown the teacher saw live.
+                    "streak_bonus_points": 0,
+                    "streak_bonus_count": 0,
                     "homework_done": None,  # None=no homework row, True/False otherwise
                     "behaviour_events": [],
                     # Timestamp of the most recent scoring interaction per bucket;
@@ -2677,6 +2697,15 @@ class TeacherSessionEngine:
                 res = it.get("answer_result")
                 if res == AnswerResult.CORRECT.value:
                     _add_participation(b, rules.get("correct_answer", 5))
+                    # Annotate (never re-award) the persisted 3-in-a-row streak
+                    # bonus so downstream surfaces can show base vs. streak split.
+                    try:
+                        sb = int(it.get("streak_bonus") or 0)
+                    except (TypeError, ValueError):
+                        sb = 0
+                    if sb > 0:
+                        b["streak_bonus_points"] += sb
+                        b["streak_bonus_count"] += 1
                 elif res == AnswerResult.NO_ANSWER.value:
                     _add_participation(b, rules.get("no_answer_after_selection", -1))
             elif itype == InteractionType.PARTICIPATION.value:
@@ -2968,6 +2997,27 @@ class TeacherSessionEngine:
                     out.setdefault(sid, {})[cid] = now_iso
         return out
 
+    async def get_streak_bonus_summary(self, session_id: str) -> Dict[str, Dict[str, int]]:
+        """Per-student 3-in-a-row streak-bonus annotation for a session.
+
+        Pure read, display-only: sums the streak bonus persisted on each
+        correct-answer interaction (honoring undo, since compute_session_scores
+        excludes reversed interactions) so the follow-up sheet can show the same
+        base + streak breakdown the teacher saw live. Never alters awarded
+        scores. Returns ``{student_id: {"points": int, "count": int}}`` and
+        omits students who earned no bonus."""
+        computed = await self.compute_session_scores(session_id)
+        out: Dict[str, Dict[str, int]] = {}
+        for sid, agg in (computed.get("students") or {}).items():
+            try:
+                pts = int(agg.get("streak_bonus_points", 0) or 0)
+                cnt = int(agg.get("streak_bonus_count", 0) or 0)
+            except (TypeError, ValueError):
+                pts, cnt = 0, 0
+            if pts > 0 or cnt > 0:
+                out[sid] = {"points": pts, "count": cnt}
+        return out
+
     async def build_followup_hydration(
         self,
         session_id: str,
@@ -3211,6 +3261,11 @@ class TeacherSessionEngine:
                     "participation_type": "session",
                     "quality": "good",
                     "points": int(part_value),
+                    # Display-only annotation carried through to the parent view so
+                    # the streak bonus the teacher saw live is explained downstream.
+                    # NOT part of ``points`` — the awarded total is unchanged.
+                    "streak_bonus_points": int(agg.get("streak_bonus_points", 0) or 0),
+                    "streak_bonus_count": int(agg.get("streak_bonus_count", 0) or 0),
                     "notes": "تجميع تفاعل الحصة المباشرة",
                     "date": session_date,
                     "source": "live_session",
