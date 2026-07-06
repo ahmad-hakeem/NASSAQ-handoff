@@ -417,3 +417,151 @@ async def test_commit_emits_quota_warning_when_crossing_80pct_once(client):
         {"user_id": user["id"], "category": "quota"},
     )
     assert len(notes_after or []) == 1, notes_after
+
+
+# ----------------------------------------------------------------------
+# (l) Per-row verdict model — repeated identifier no longer hard-blocks
+#     the whole file. First occurrence inserts; later repeats are routed
+#     to duplicate_in_file and skipped (School-Admin parity, Task #1106).
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_parse_repeated_student_number_is_per_row_not_blocked(client):
+    from engines.noor_import.parser import STUDENT_REPORT  # noqa: F401
+    user = await _mk_it_workspace()
+    h = _headers(user["id"], user["role"], user["tenant_id"], mfa_recent_at=_now_ts())
+    # Two rows share the same national_id (the CSV identity slot).
+    csv = _csv_bytes(
+        ("أحمد محمد العتيبي", "1098765432", "ذكر", "", "الثالث الابتدائي"),
+        ("سارة عبدالله القحطاني", "1098765432", "أنثى", "", "الرابع الابتدائي"),
+    )
+    resp = await client.post(
+        "/independent-teacher/students/bulk/parse",
+        headers=h,
+        files={"file": ("dup.csv", io.BytesIO(csv), "text/csv")},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # Both rows are field-VALID (the old code flipped them invalid).
+    assert body["valid_count"] == 2
+    assert body["invalid_count"] == 0
+    # Only one is importable; the second is a per-row duplicate.
+    assert body["importable_count"] == 1
+    assert body["verdict_counts"]["insert"] == 1
+    assert body["verdict_counts"]["duplicate_in_file"] == 1
+    verdicts = [r["verdict"] for r in body["rows"]]
+    assert verdicts == ["insert", "duplicate_in_file"]
+
+
+@pytest.mark.asyncio
+async def test_commit_repeated_identifier_inserts_one_skips_dup(client):
+    from engines.sql_utils import gd_find
+    user = await _mk_it_workspace()
+    h = _headers(user["id"], user["role"], user["tenant_id"], mfa_recent_at=_now_ts())
+    payload = {"rows": [
+        {"row_number": 1, "full_name": "أحمد محمد العتيبي",
+         "national_id": "1098765432", "gender": "male",
+         "is_valid": True, "errors": []},
+        {"row_number": 2, "full_name": "سارة عبدالله القحطاني",
+         "national_id": "1098765432", "gender": "female",
+         "is_valid": True, "errors": []},
+    ]}
+    resp = await client.post(
+        "/independent-teacher/students/bulk/commit",
+        headers=h, json=payload,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["inserted"] == 1
+    assert body["duplicates"] == 1
+    assert body["updated"] == 0
+    assert body["restored"] == 0
+    rows = await gd_find(
+        db.session, "students",
+        {"school_id": user["tenant_id"], "is_active": {"$ne": False}},
+    )
+    assert len(rows) == 1
+    # Noor identity stored in the canonical national_id slot (CSV path).
+    assert rows[0].get("national_id") == "1098765432"
+
+
+# ----------------------------------------------------------------------
+# (m) Re-import of an existing student → UPDATE (not a duplicate error).
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_commit_reimport_existing_updates_in_place(client):
+    from engines.sql_utils import gd_find
+    user = await _mk_it_workspace()
+    sid = str(uuid.uuid4())
+    await gd_insert(db.session, "students", {
+        "id": sid,
+        "school_id": user["tenant_id"],
+        "tenant_id": user["tenant_id"],
+        "full_name": "أحمد الاسم القديم",
+        "student_number": "S-1001",
+        "gender": "male",
+        "is_active": True,
+    })
+    h = _headers(user["id"], user["role"], user["tenant_id"], mfa_recent_at=_now_ts())
+    payload = {"rows": [{
+        "row_number": 1,
+        "full_name": "أحمد الاسم الجديد",
+        "student_number": "S-1001",
+        "gender": "male",
+        "is_valid": True, "errors": [],
+    }]}
+    resp = await client.post(
+        "/independent-teacher/students/bulk/commit",
+        headers=h, json=payload,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["inserted"] == 0
+    assert body["updated"] == 1
+    # No new active-student row was created — the existing row is patched.
+    rows = await gd_find(
+        db.session, "students",
+        {"school_id": user["tenant_id"], "is_active": {"$ne": False}},
+    )
+    assert len(rows) == 1
+    assert rows[0]["id"] == sid
+    assert rows[0]["full_name"] == "أحمد الاسم الجديد"
+
+
+# ----------------------------------------------------------------------
+# (n) Re-import of a SOFT-DELETED student → RESTORE (reactivate + patch).
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_commit_reimport_soft_deleted_restores(client):
+    from engines.sql_utils import gd_find
+    user = await _mk_it_workspace()
+    sid = str(uuid.uuid4())
+    await gd_insert(db.session, "students", {
+        "id": sid,
+        "school_id": user["tenant_id"],
+        "tenant_id": user["tenant_id"],
+        "full_name": "طالب مؤرشف",
+        "student_number": "S-2002",
+        "is_active": False,
+    })
+    h = _headers(user["id"], user["role"], user["tenant_id"], mfa_recent_at=_now_ts())
+    payload = {"rows": [{
+        "row_number": 1,
+        "full_name": "طالب مُستعاد",
+        "student_number": "S-2002",
+        "is_valid": True, "errors": [],
+    }]}
+    resp = await client.post(
+        "/independent-teacher/students/bulk/commit",
+        headers=h, json=payload,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["restored"] == 1
+    assert body["inserted"] == 0
+    active = await gd_find(
+        db.session, "students",
+        {"school_id": user["tenant_id"], "is_active": {"$ne": False}},
+    )
+    assert len(active) == 1
+    assert active[0]["id"] == sid
+    assert active[0]["full_name"] == "طالب مُستعاد"

@@ -23,30 +23,64 @@ trust boundaries; this file holds the per-route, per-table specifics.
     so a future cap change carries through.
 
 **Routes** (`backend/routes/independent_teacher_bulk_import_routes.py`,
-Task #207)
-- `POST /independent-teacher/students/bulk/parse` — Arabic-only CSV
-  upload, returns per-row diagnostics, NO writes.
+Task #207; per-row verdict model added Task #1106)
+- `POST /independent-teacher/students/bulk/parse` — Arabic-only CSV **or**
+  Noor `.xls/.xlsx` upload, returns per-row diagnostics, NO writes.
+  Response adds `importable_count` and `verdict_counts` alongside the
+  legacy field-validation `valid_count` / `invalid_count` (those keep
+  their original meaning). `projected_students` = current active students
+  + net-new (insert + restore only).
 - `POST /independent-teacher/students/bulk/commit` — gated by
   `require_recent_mfa_403` so the FE axios interceptor replays after
-  passkey assertion; all-or-nothing insert pinned to `itw_{user_id}`;
-  bumps daily import counter.
+  passkey assertion; pinned to `itw_{user_id}`; bumps daily import
+  counter. Request stays the `{rows: [...]}` envelope (NOT a draft id).
+  Response is `inserted` / `updated` / `restored` / `duplicates` /
+  `skipped` + `quota`.
+- **Per-row verdict model** (mirrors School-Admin Noor import, replaces
+  the old whole-file hard-block on repeated identifiers). Each row is
+  routed to exactly one action against a FRESH workspace student index
+  (`_load_student_index` → `by_num` / `by_nid`, both active AND
+  soft-deleted rows), re-derived server-side at commit — the client's
+  advisory verdict is never trusted:
+  - `insert` — no existing match.
+  - `update` — matches an ACTIVE student on the same identity slot.
+  - `restore` — matches a SOFT-DELETED student → reactivate + patch
+    (avoids colliding with the surviving `uq_students_number_school` /
+    `uq_students_national_id_school` unique constraints).
+  - `duplicate_in_file` — identity already consumed by an earlier row.
+  - `skip` — field validation failed.
+  Dedup identity precedence is **`student_number` (Noor) then
+  `national_id` (CSV)** — the two slots are mutually exclusive per source
+  shape. Only `insert` + `restore` count against `MAX_STUDENTS` (updates
+  patch an existing row). A repeated identifier no longer flips the whole
+  file to invalid; commit 422s only when there is nothing importable.
+- **Noor number storage**: the Noor `رقم الطالب` maps to the canonical
+  `students.student_number` column (School-Admin's dedup key), NOT the
+  `national_id` slot it used to be overloaded into. *Migration gap*: IT
+  workspaces that imported Noor before Task #1106 have the number in
+  `national_id`; a re-import will not match `by_num` and inserts a fresh
+  row (acceptable — no data loss, IT has no class/parent links).
 - CSV headers: `الاسم الكامل` (required), `رقم الهوية`, `الجنس`
   (`ذكر`/`أنثى`), `تاريخ الميلاد` (yyyy-mm-dd), `الصف` — **no
-  classroom column** per spec.
+  classroom column** per spec. (`grade_level` is accepted but not a real
+  `students` column, so it is not persisted — pre-existing.)
 - Cross-tenant payload columns (`school_id` / `tenant_id` / `class_id`
   / etc.) are rejected with the safe Arabic message.
-- Names are re-validated server-side via
-  `engines.name_validation.validate_personal_name` so a tampered
-  preview cannot smuggle past parse.
+- Names + all fields are re-validated server-side via `_validate_row`
+  (`engines.name_validation.validate_personal_name`) so a tampered
+  preview cannot smuggle past parse; field-invalid rows are `skip`ped
+  per-row, never a whole-file 422.
 - RBAC permission `students.bulk_import_workspace` is granted to
   `independent_teacher` only.
 
 **FE**: `/teacher/import-students`
-(`frontend/src/pages/TeacherModule/ImportStudentsPage.jsx`) — IT-only
-`ProtectedRoute`, sidebar entry under workspace-schedule (Upload icon,
-label `استيراد الطلاب`), uses `NassaqAlertDialog`'s `nassaqConfirm` /
-`nassaqError` / `nassaqInfo` (signature is `(message, [callback,]
-options)`); ships an Arabic CSV template download.
+(`frontend/src/pages/TeacherModule/ImportStudentsPage.jsx`,
+`ImportStudentsPanel`) — IT-only, embedded as the import sub-tab; uses
+`NassaqAlertDialog`'s `nassaqConfirm` / `nassaqError` / `nassaqInfo`
+(signature is `(message, [callback,] options)`); ships an Arabic CSV
+template download. Sends **all** parsed rows to commit (server
+re-derives verdicts); shows per-verdict badges and counts; the confirm
+button and dialog use `importable_count` (insert+update+restore).
 
 ## §6.2 / §6.2b / §6.2c — Parent invitations
 

@@ -86,8 +86,6 @@ _MSG_QUOTA_STUDENTS = (
 _MSG_NO_VALID_ROWS = "لا توجد صفوف صحيحة للاستيراد."
 _MSG_CROSS_TENANT = "لا يمكن تعيين مدرسة خارج مساحة عملك."
 _MSG_NEED_PARSE = "الرجاء التحقق من الملف أولًا قبل التأكيد."
-_MSG_DUPLICATE_NATIONAL_ID_IN_CSV = "رقم الهوية مكرر داخل الملف"
-_MSG_DUPLICATE_NATIONAL_ID_IN_DB = "طالب بهذا رقم الهوية موجود مسبقًا في مساحتك"
 
 _AUDIT_ACTION = "INDEPENDENT_TEACHER_BULK_IMPORT_STUDENTS"
 
@@ -113,24 +111,49 @@ _MAX_FILE_BYTES = 2 * 1024 * 1024  # 2 MiB hard cap on the upload itself.
 # -- Models ---------------------------------------------------------------
 
 
+# Per-row verdicts — mirror the School-Admin Noor import so a repeated
+# identifier no longer hard-blocks the whole file. A row is routed to
+# exactly one action against the FRESH workspace student index:
+#   insert            — no existing match; a brand-new student row
+#   update            — matches an ACTIVE student (same identity) → patch
+#   restore           — matches a SOFT-DELETED student → reactivate + patch
+#   duplicate_in_file — identity already consumed by an earlier row here
+#   skip              — field validation failed (bad name / gender / dob)
+_VERDICT_INSERT = "insert"
+_VERDICT_UPDATE = "update"
+_VERDICT_RESTORE = "restore"
+_VERDICT_DUP_IN_FILE = "duplicate_in_file"
+_VERDICT_SKIP = "skip"
+_IMPORTABLE_VERDICTS = {_VERDICT_INSERT, _VERDICT_UPDATE, _VERDICT_RESTORE}
+
+
 class ParsedRow(BaseModel):
     row_number: int
     full_name: Optional[str] = None
+    # Noor student number — the School-Admin dedupe key. Stored in the
+    # canonical `students.student_number` column, never overloaded into
+    # the `national_id` slot where it used to collide.
+    student_number: Optional[str] = None
     national_id: Optional[str] = None
     gender: Optional[str] = None  # canonical "male"/"female" or None
     date_of_birth: Optional[str] = None  # ISO yyyy-mm-dd or None
     grade_level: Optional[str] = None
     is_valid: bool = True
     errors: List[str] = Field(default_factory=list)
+    # Advisory at parse-time (display only). The commit path re-derives it
+    # against a fresh index — the client value is never trusted.
+    verdict: Optional[str] = None
 
 
 class ParseResponse(BaseModel):
     total_rows: int
     valid_count: int
     invalid_count: int
+    importable_count: int  # rows that will insert / update / restore
+    verdict_counts: Dict[str, int]
     rows: List[ParsedRow]
     quota: Dict[str, Any]
-    projected_students: int  # current_students + valid_count, post-commit projection
+    projected_students: int  # current active students after commit
 
 
 class CommitRequest(BaseModel):
@@ -146,6 +169,9 @@ class CommitRequest(BaseModel):
 
 class CommitResponse(BaseModel):
     inserted: int
+    updated: int
+    restored: int
+    duplicates: int
     skipped: int
     quota: Dict[str, Any]
 
@@ -274,6 +300,7 @@ def _validate_row(idx: int, raw: Dict[str, str]) -> ParsedRow:
             errors.append(_MSG_CROSS_TENANT)
 
     full_name = (raw.get("full_name") or "").strip() or None
+    student_number = (raw.get("student_number") or "").strip() or None
     national_id = (raw.get("national_id") or "").strip() or None
     gender_raw = (raw.get("gender") or "").strip()
     dob_raw = (raw.get("date_of_birth") or "").strip()
@@ -304,6 +331,7 @@ def _validate_row(idx: int, raw: Dict[str, str]) -> ParsedRow:
     return ParsedRow(
         row_number=idx,
         full_name=full_name,
+        student_number=student_number,
         national_id=national_id,
         gender=gender,
         date_of_birth=dob,
@@ -313,59 +341,115 @@ def _validate_row(idx: int, raw: Dict[str, str]) -> ParsedRow:
     )
 
 
-async def _flag_duplicate_national_ids(
-    parsed: List[ParsedRow], workspace_id: str,
-) -> None:
-    """Mark rows whose national_id is duplicated within the upload OR
-    already present on an active student in the same workspace.
+async def _load_student_index(workspace_id: str) -> Dict[str, Dict[str, Any]]:
+    """Load ALL students in the workspace (active AND soft-deleted) keyed by
+    both identity slots.
 
-    Mutates ``parsed`` in place — appending a localized error and
-    flipping ``is_valid`` to False so commit cannot smuggle them in.
+    Soft-deleted rows are included on purpose so a re-import of a previously
+    archived student is routed to RESTORE (reactivate the row) rather than a
+    blind INSERT — which would otherwise collide with the surviving
+    `uq_students_number_school` / `uq_students_national_id_school` unique
+    constraints. Mirrors the School-Admin `load_school_student_index`
+    authority model.
     """
-    seen: Dict[str, int] = {}
-    candidates: List[str] = []
-    for r in parsed:
-        if not r.national_id:
-            continue
-        nid = r.national_id
-        if nid in seen:
-            # Mark BOTH the prior occurrence and this one.
-            prior = parsed[seen[nid] - 1] if 0 < seen[nid] <= len(parsed) else None
-            if prior is not None and _MSG_DUPLICATE_NATIONAL_ID_IN_CSV not in prior.errors:
-                prior.errors.append(_MSG_DUPLICATE_NATIONAL_ID_IN_CSV)
-                prior.is_valid = False
-            r.errors.append(_MSG_DUPLICATE_NATIONAL_ID_IN_CSV)
-            r.is_valid = False
-        else:
-            seen[nid] = r.row_number
-            candidates.append(nid)
+    from engines.sql_utils import gd_find
+    rows = await gd_find(db.session, "students", {"school_id": workspace_id})
+    by_num: Dict[str, Dict[str, Any]] = {}
+    by_nid: Dict[str, Dict[str, Any]] = {}
 
-    if not candidates:
-        return
+    def _prefer(bucket: Dict[str, Dict[str, Any]], key: str, row: Dict[str, Any]) -> None:
+        prev = bucket.get(key)
+        # Prefer an active row over a soft-deleted one (the unique
+        # constraints make this collision impossible in practice, but the
+        # tie-break keeps the routing deterministic if it ever occurs).
+        if prev is None or (
+            prev.get("is_active") is False and row.get("is_active") is not False
+        ):
+            bucket[key] = row
 
-    # Detect collisions against existing active students in the workspace.
-    try:
-        from engines.sql_utils import gd_find
-        existing = await gd_find(
-            db.session, "students",
-            {
-                "school_id": workspace_id,
-                "is_active": {"$ne": False},
-                "national_id": {"$in": candidates},
-            },
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("national_id collision lookup failed: %s", exc)
-        return
+    for row in rows or []:
+        num = (row.get("student_number") or "").strip()
+        nid = (row.get("national_id") or "").strip()
+        if num:
+            _prefer(by_num, num, row)
+        if nid:
+            _prefer(by_nid, nid, row)
+    return {"by_num": by_num, "by_nid": by_nid}
 
-    db_hits = {(row.get("national_id") or "") for row in (existing or [])}
-    if not db_hits:
-        return
-    for r in parsed:
-        if r.national_id and r.national_id in db_hits:
-            if _MSG_DUPLICATE_NATIONAL_ID_IN_DB not in r.errors:
-                r.errors.append(_MSG_DUPLICATE_NATIONAL_ID_IN_DB)
-            r.is_valid = False
+
+def _plan_rows(
+    rows: List[ParsedRow], index: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Assign a per-row verdict against the FRESH student index and return a
+    parallel plan of ``{row, verdict, existing_id}``.
+
+    Also mutates each ``row.verdict`` so the parse response and the FE can
+    surface the badge. Identity precedence is student_number (Noor) then
+    national_id (CSV) — the two are mutually exclusive per source shape.
+    Deduping is per-file (first occurrence wins; later repeats →
+    ``duplicate_in_file``) and per-DB (existing active → update, existing
+    soft-deleted → restore).
+    """
+    by_num = index.get("by_num") or {}
+    by_nid = index.get("by_nid") or {}
+    seen_num: set = set()
+    seen_nid: set = set()
+    plan: List[Dict[str, Any]] = []
+    for r in rows:
+        verdict = _VERDICT_SKIP
+        existing_id: Optional[str] = None
+        if r.is_valid and (r.full_name or "").strip():
+            num = (r.student_number or "").strip()
+            nid = (r.national_id or "").strip()
+            if num:
+                if num in seen_num:
+                    verdict = _VERDICT_DUP_IN_FILE
+                else:
+                    seen_num.add(num)
+                    ex = by_num.get(num)
+                    if ex:
+                        existing_id = ex.get("id")
+                        verdict = (
+                            _VERDICT_RESTORE if ex.get("is_active") is False
+                            else _VERDICT_UPDATE
+                        )
+                    else:
+                        verdict = _VERDICT_INSERT
+            elif nid:
+                if nid in seen_nid:
+                    verdict = _VERDICT_DUP_IN_FILE
+                else:
+                    seen_nid.add(nid)
+                    ex = by_nid.get(nid)
+                    if ex:
+                        existing_id = ex.get("id")
+                        verdict = (
+                            _VERDICT_RESTORE if ex.get("is_active") is False
+                            else _VERDICT_UPDATE
+                        )
+                    else:
+                        verdict = _VERDICT_INSERT
+            else:
+                # No identity slot at all — can never dedupe; always insert.
+                verdict = _VERDICT_INSERT
+        r.verdict = verdict
+        plan.append({"row": r, "verdict": verdict, "existing_id": existing_id})
+    return plan
+
+
+def _verdict_counts(plan: List[Dict[str, Any]]) -> Dict[str, int]:
+    counts = {
+        _VERDICT_INSERT: 0,
+        _VERDICT_UPDATE: 0,
+        _VERDICT_RESTORE: 0,
+        _VERDICT_DUP_IN_FILE: 0,
+        _VERDICT_SKIP: 0,
+    }
+    for item in plan:
+        v = item["verdict"]
+        if v in counts:
+            counts[v] += 1
+    return counts
 
 
 def _read_csv(content: bytes) -> List[Dict[str, str]]:
@@ -415,12 +499,13 @@ def _read_csv(content: bytes) -> List[Dict[str, str]]:
 
 def _read_noor_workbook(content: bytes, filename: str) -> List[Dict[str, str]]:
     """Parse a Noor .xls/.xlsx student-report workbook and map each row to
-    the IT bulk-import shape (full_name / national_id / grade_level).
+    the IT bulk-import shape (full_name / student_number / grade_level).
 
     Noor reports have no gender or date-of-birth columns; those fields are
-    left blank. Noor `رقم الطالب` (school student number) is mapped into
-    the `national_id` slot — IT has only one student-id slot in its schema
-    and the validator only requires the value to be digits.
+    left blank. Noor `رقم الطالب` (school student number) is mapped into the
+    canonical `student_number` slot — the same field School Admin dedupes on
+    — so a repeated placeholder number is skipped per-row instead of
+    hard-blocking the whole file, and `national_id` is left free.
     """
     from engines.noor_import.parser import (  # local import — cold path
         NoorParseError,
@@ -455,7 +540,8 @@ def _read_noor_workbook(content: bytes, filename: str) -> List[Dict[str, str]]:
             grade_label = grade_code or section_code or ""
         bulk_rows.append({
             "full_name": full_name,
-            "national_id": student_number,
+            "student_number": student_number,
+            "national_id": "",
             "gender": "",
             "date_of_birth": "",
             "grade_level": grade_label,
@@ -499,21 +585,34 @@ async def parse_csv(
         raise HTTPException(status_code=413, detail=_MSG_FILE_TOO_LARGE)
 
     parsed = [_validate_row(i + 1, r) for i, r in enumerate(rows)]
-    await _flag_duplicate_national_ids(parsed, workspace_id)
     valid_count = sum(1 for p in parsed if p.is_valid)
+
+    # Per-row verdicts against a fresh workspace index (advisory preview —
+    # commit re-derives them). A repeated identifier no longer flips
+    # `is_valid` to False; it is routed to `duplicate_in_file` and skipped.
+    index = await _load_student_index(workspace_id)
+    plan = _plan_rows(parsed, index)
+    counts = _verdict_counts(plan)
+    importable_count = (
+        counts[_VERDICT_INSERT] + counts[_VERDICT_UPDATE] + counts[_VERDICT_RESTORE]
+    )
 
     current_students = await gd_count(
         db.session, "students",
         {"school_id": workspace_id, "is_active": {"$ne": False}},
     )
+    # Only inserts and restores grow the active-student count.
+    net_new = counts[_VERDICT_INSERT] + counts[_VERDICT_RESTORE]
 
     return ParseResponse(
         total_rows=len(parsed),
         valid_count=valid_count,
         invalid_count=len(parsed) - valid_count,
+        importable_count=importable_count,
+        verdict_counts=counts,
         rows=parsed,
         quota=_quota_view(quota, current_students),
-        projected_students=current_students + valid_count,
+        projected_students=current_students + net_new,
     )
 
 
@@ -542,20 +641,15 @@ async def commit_csv(
     if quota_view_pre["imports_today"] >= quota_view_pre["max_imports_per_day"]:
         raise HTTPException(status_code=429, detail=_MSG_QUOTA_DAILY)
 
-    candidate_rows = [r for r in payload.rows if r.is_valid and r.full_name]
-    skipped = len(payload.rows) - len(candidate_rows)
-    if not candidate_rows:
-        raise HTTPException(status_code=422, detail=_MSG_NO_VALID_ROWS)
-
-    if len(candidate_rows) > quota_view_pre["max_rows_per_import"]:
-        raise HTTPException(status_code=413, detail=_MSG_FILE_TOO_LARGE)
-
     # Full server-side re-validation of every field — a tampered preview
-    # cannot smuggle bad gender / dob / national_id values past parse.
+    # cannot smuggle bad gender / dob / identity values past parse. Rows
+    # that fail field validation are SKIPPED per-row (School-Admin model),
+    # never a 422 for the whole file.
     revalidated: List[ParsedRow] = []
-    for r in candidate_rows:
+    for r in payload.rows:
         v = _validate_row(r.row_number, {
             "full_name": r.full_name,
+            "student_number": r.student_number,
             "national_id": r.national_id,
             # Map canonical genders back to the Arabic the validator accepts.
             "gender": (
@@ -566,48 +660,86 @@ async def commit_csv(
             "date_of_birth": r.date_of_birth or "",
             "grade_level": r.grade_level or "",
         })
-        if not v.is_valid:
-            raise HTTPException(status_code=422, detail=_MSG_NO_VALID_ROWS)
         revalidated.append(v)
 
-    # Duplicate-national-id checks (within payload + against active DB rows)
-    # mirror the parse contract; a tampered preview that flipped is_valid
-    # cannot bypass them.
-    await _flag_duplicate_national_ids(revalidated, workspace_id)
-    if any(not r.is_valid for r in revalidated):
+    # Re-derive verdicts against a FRESH workspace index — the client's
+    # advisory verdict is never trusted. Dedupe is on the canonical
+    # student_number (Noor) / national_id (CSV) slots.
+    index = await _load_student_index(workspace_id)
+    plan = _plan_rows(revalidated, index)
+    counts = _verdict_counts(plan)
+    importable = (
+        counts[_VERDICT_INSERT] + counts[_VERDICT_UPDATE] + counts[_VERDICT_RESTORE]
+    )
+    duplicates = counts[_VERDICT_DUP_IN_FILE]
+    skipped = counts[_VERDICT_SKIP]
+    if importable == 0:
         raise HTTPException(status_code=422, detail=_MSG_NO_VALID_ROWS)
-    valid_rows = revalidated
+
+    field_valid = sum(1 for r in revalidated if r.is_valid and r.full_name)
+    if field_valid > quota_view_pre["max_rows_per_import"]:
+        raise HTTPException(status_code=413, detail=_MSG_FILE_TOO_LARGE)
 
     current_students = await gd_count(
         db.session, "students",
         {"school_id": workspace_id, "is_active": {"$ne": False}},
     )
+    # Only inserts and restores grow the active-student count; updates
+    # patch a row that already counts against the cap.
+    net_new = counts[_VERDICT_INSERT] + counts[_VERDICT_RESTORE]
     max_students = quota_view_pre["max_students"]
-    if current_students + len(valid_rows) > max_students:
+    if current_students + net_new > max_students:
         raise HTTPException(status_code=409, detail=_MSG_QUOTA_STUDENTS)
 
     session = db.session
     inserted = 0
+    updated = 0
+    restored = 0
     try:
         async with session.begin_nested():
             now_iso = _utcnow_iso()
-            for r in valid_rows:
-                student_doc = {
-                    "id": str(uuid.uuid4()),
-                    "school_id": workspace_id,
-                    "tenant_id": workspace_id,
-                    "full_name": r.full_name,
-                    "national_id": r.national_id,
-                    "gender": r.gender,
-                    "date_of_birth": r.date_of_birth,
-                    "grade_level": r.grade_level,
-                    "is_active": True,
-                    "created_by": current_user.get("id"),
-                    "created_at": now_iso,
-                    "updated_at": now_iso,
-                }
-                await gd_insert(session, "students", student_doc)
-                inserted += 1
+            for item in plan:
+                verdict = item["verdict"]
+                r = item["row"]
+                existing_id = item["existing_id"]
+                if verdict == _VERDICT_INSERT:
+                    student_doc = {
+                        "id": str(uuid.uuid4()),
+                        "school_id": workspace_id,
+                        "tenant_id": workspace_id,
+                        "full_name": r.full_name,
+                        "student_number": r.student_number,
+                        "national_id": r.national_id,
+                        "gender": r.gender,
+                        "date_of_birth": r.date_of_birth,
+                        "grade_level": r.grade_level,
+                        "is_active": True,
+                        "created_by": current_user.get("id"),
+                        "created_at": now_iso,
+                        "updated_at": now_iso,
+                    }
+                    await gd_insert(session, "students", student_doc)
+                    inserted += 1
+                elif verdict in (_VERDICT_UPDATE, _VERDICT_RESTORE):
+                    updates = {
+                        "full_name": r.full_name,
+                        "gender": r.gender,
+                        "date_of_birth": r.date_of_birth,
+                        "grade_level": r.grade_level,
+                        "updated_at": now_iso,
+                    }
+                    if verdict == _VERDICT_RESTORE:
+                        updates["is_active"] = True
+                    await gd_update_one(
+                        session, "students",
+                        {"id": existing_id, "school_id": workspace_id},
+                        updates,
+                    )
+                    if verdict == _VERDICT_RESTORE:
+                        restored += 1
+                    else:
+                        updated += 1
+                # duplicate_in_file / skip → no write.
 
             today = _today_utc()
             last = quota.get("imports_today_date")
@@ -643,6 +775,9 @@ async def commit_csv(
                     user_agent=request.headers.get("user-agent"),
                     details={
                         "inserted": inserted,
+                        "updated": updated,
+                        "restored": restored,
+                        "duplicates": duplicates,
                         "skipped": skipped,
                         "imports_today": new_count,
                     },
@@ -708,6 +843,9 @@ async def commit_csv(
     )
     return CommitResponse(
         inserted=inserted,
+        updated=updated,
+        restored=restored,
+        duplicates=duplicates,
         skipped=skipped,
         quota=_quota_view(refreshed, new_current),
     )

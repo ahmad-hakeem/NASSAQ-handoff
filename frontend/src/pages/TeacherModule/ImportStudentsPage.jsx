@@ -23,6 +23,18 @@ import { getApiErrorMessage } from '../../utils/apiError';
 
 const SAMPLE_HEADERS = ['الاسم الكامل', 'رقم الهوية', 'الجنس', 'تاريخ الميلاد', 'الصف'];
 
+// Per-row verdicts — mirror the School-Admin Noor import (NoorImportPanel).
+// A repeated identifier is now skipped per-row instead of blocking the file.
+const VERDICT_LABELS = {
+  insert: { ar: 'إضافة', cls: 'bg-green-50 text-green-700' },
+  update: { ar: 'تحديث', cls: 'bg-blue-50 text-blue-700' },
+  restore: { ar: 'استعادة', cls: 'bg-teal-50 text-teal-700' },
+  duplicate_in_file: { ar: 'مكرر في الملف', cls: 'bg-red-50 text-red-700' },
+  skip: { ar: 'تخطي', cls: 'bg-amber-50 text-amber-700' },
+};
+
+const IMPORTABLE_VERDICTS = new Set(['insert', 'update', 'restore']);
+
 function downloadSampleCsv() {
   const sample = [
     SAMPLE_HEADERS.join(','),
@@ -74,23 +86,31 @@ export function ImportStudentsPanel() {
     }
   }, [api, nassaqError]);
 
-  const validRows = useMemo(
-    () => (parseResult?.rows || []).filter((r) => r.is_valid),
-    [parseResult],
-  );
+  // Send ALL parsed rows to commit — the server re-derives every verdict
+  // against a fresh index, so a stale client value cannot be trusted.
+  const allRows = useMemo(() => parseResult?.rows || [], [parseResult]);
+  // How many rows the server will actually import (insert/update/restore).
+  const importableCount = useMemo(() => {
+    if (parseResult?.importable_count != null) return parseResult.importable_count;
+    return allRows.filter((r) => IMPORTABLE_VERDICTS.has(r.verdict)).length;
+  }, [parseResult, allRows]);
 
   const doCommit = useCallback(async () => {
     setCommitting(true);
     try {
       const res = await api.post(
         '/independent-teacher/students/bulk/commit',
-        { rows: validRows },
+        { rows: allRows },
       );
       const data = res.data || {};
-      nassaqInfo(
-        `تمت إضافة ${data.inserted ?? 0} طالبًا. (${data.skipped ?? 0} صف مُتجاهَل)`,
-        { title: 'اكتمل الاستيراد' },
-      );
+      const parts = [];
+      if (data.inserted) parts.push(`${data.inserted} إضافة`);
+      if (data.updated) parts.push(`${data.updated} تحديث`);
+      if (data.restored) parts.push(`${data.restored} استعادة`);
+      if (data.duplicates) parts.push(`${data.duplicates} مكرر`);
+      if (data.skipped) parts.push(`${data.skipped} متجاهَل`);
+      const summary = parts.length ? parts.join('، ') : 'لا تغييرات';
+      nassaqInfo(summary, { title: 'اكتمل الاستيراد' });
       setParseResult(null);
       setFileName('');
     } catch (err) {
@@ -100,12 +120,12 @@ export function ImportStudentsPanel() {
     } finally {
       setCommitting(false);
     }
-  }, [api, validRows, nassaqInfo, nassaqError]);
+  }, [api, allRows, nassaqInfo, nassaqError]);
 
   const onCommit = useCallback(() => {
-    if (!validRows.length) return;
+    if (!importableCount) return;
     nassaqConfirm(
-      `سيتم إضافة ${validRows.length} طالبًا إلى مساحة عملك. هذه العملية نهائية.`,
+      `سيتم استيراد ${importableCount} طالبًا (إضافة/تحديث/استعادة) إلى مساحة عملك. هذه العملية نهائية.`,
       doCommit,
       {
         title: 'تأكيد استيراد الطلاب',
@@ -113,7 +133,7 @@ export function ImportStudentsPanel() {
         cancelText: 'إلغاء',
       },
     );
-  }, [validRows, nassaqConfirm, doCommit]);
+  }, [importableCount, nassaqConfirm, doCommit]);
 
   const quota = parseResult?.quota || {};
 
@@ -173,8 +193,22 @@ export function ImportStudentsPanel() {
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-2">
               <Badge variant="secondary">إجمالي الصفوف: {parseResult.total_rows}</Badge>
-              <Badge className="bg-green-100 text-green-800">صحيحة: {parseResult.valid_count}</Badge>
-              <Badge className="bg-red-100 text-red-800">غير صحيحة: {parseResult.invalid_count}</Badge>
+              <Badge className="bg-green-100 text-green-800">قابلة للاستيراد: {importableCount}</Badge>
+              {(parseResult.verdict_counts?.insert ?? 0) > 0 && (
+                <Badge className="bg-green-50 text-green-700">إضافة: {parseResult.verdict_counts.insert}</Badge>
+              )}
+              {(parseResult.verdict_counts?.update ?? 0) > 0 && (
+                <Badge className="bg-blue-50 text-blue-700">تحديث: {parseResult.verdict_counts.update}</Badge>
+              )}
+              {(parseResult.verdict_counts?.restore ?? 0) > 0 && (
+                <Badge className="bg-teal-50 text-teal-700">استعادة: {parseResult.verdict_counts.restore}</Badge>
+              )}
+              {(parseResult.verdict_counts?.duplicate_in_file ?? 0) > 0 && (
+                <Badge className="bg-red-50 text-red-700">مكرر في الملف: {parseResult.verdict_counts.duplicate_in_file}</Badge>
+              )}
+              {parseResult.invalid_count > 0 && (
+                <Badge className="bg-amber-100 text-amber-800">غير صحيحة: {parseResult.invalid_count}</Badge>
+              )}
               {quota?.max_students != null && (
                 <Badge variant="outline">
                   الطلاب الحاليون: {quota.current_students ?? 0} / {quota.max_students}
@@ -204,7 +238,11 @@ export function ImportStudentsPanel() {
                       </span>
                     ),
                   },
-                  { key: 'national_id', header: 'رقم الهوية', render: (r) => r.national_id || '—' },
+                  {
+                    key: 'identifier',
+                    header: 'المعرّف',
+                    render: (r) => r.student_number || r.national_id || '—',
+                  },
                   {
                     key: 'gender',
                     header: 'الجنس',
@@ -215,20 +253,22 @@ export function ImportStudentsPanel() {
                   {
                     key: 'status',
                     header: 'الحالة',
-                    render: (r) => (
-                      r.is_valid ? (
-                        <span className="inline-flex items-center gap-1 text-green-700">
-                          <CheckCircle className="w-4 h-4" /> جاهز
-                        </span>
-                      ) : (
-                        <span
-                          className="inline-flex items-center gap-1 text-red-700"
-                          title={(r.errors || []).join('، ')}
-                        >
-                          <AlertTriangle className="w-4 h-4" /> {(r.errors || [])[0] || 'غير صالح'}
-                        </span>
-                      )
-                    ),
+                    render: (r) => {
+                      if (!r.is_valid) {
+                        return (
+                          <span
+                            className="inline-flex items-center gap-1 text-red-700"
+                            title={(r.errors || []).join('، ')}
+                          >
+                            <AlertTriangle className="w-4 h-4" /> {(r.errors || [])[0] || 'غير صالح'}
+                          </span>
+                        );
+                      }
+                      const label = VERDICT_LABELS[r.verdict] || VERDICT_LABELS.insert;
+                      return (
+                        <Badge className={label.cls}>{label.ar}</Badge>
+                      );
+                    },
                   },
                 ]}
               />
@@ -240,10 +280,10 @@ export function ImportStudentsPanel() {
               </Button>
               <Button
                 onClick={onCommit}
-                disabled={committing || !validRows.length}
+                disabled={committing || !importableCount}
               >
                 {committing && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
-                تأكيد الاستيراد ({validRows.length})
+                تأكيد الاستيراد ({importableCount})
               </Button>
             </div>
           </CardContent>
