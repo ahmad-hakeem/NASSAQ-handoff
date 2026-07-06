@@ -717,6 +717,76 @@ export default function SidebarSettingsDialog({
           </div>
         )}
 
+        {/* Excellence (التميز) bonus value — per-session override, mirrors the
+            correct-answer weight control but bounded 1–5. Awarded on every 5th
+            consecutive correct answer. */}
+        {sc.streakBonusValue !== undefined && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-amber-500" aria-hidden="true" strokeWidth={1.5} />
+              <span className="text-sm font-medium font-cairo">{t('streakBonusValue') || 'قيمة مكافأة التميز'}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                max="5"
+                step="1"
+                inputMode="numeric"
+                value={sc.streakBonusValue ?? ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    sc.onStreakBonusValueChange?.(null);
+                    return;
+                  }
+                  // Reject floats/non-integers/out-of-range — matches the backend's
+                  // strict 422 rule (integer 1–5) so the FE never sends a value the
+                  // API will reject.
+                  const n = Number(raw);
+                  if (Number.isFinite(n) && Number.isInteger(n) && n >= 1 && n <= 5) {
+                    sc.onStreakBonusValueChange?.(n);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') e.preventDefault();
+                }}
+                placeholder="5"
+                dir="ltr"
+                className="w-20 text-sm bg-card dark:bg-muted border border-border rounded-full px-3 py-2 outline-none focus:border-brand-turquoise font-cairo text-center placeholder:text-muted-foreground/50 tabular-nums"
+              />
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[1, 2, 3, 5].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => sc.onStreakBonusValueChange?.(v)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold font-cairo border transition-colors ${
+                      sc.streakBonusValue === v
+                        ? 'bg-amber-500 text-white border-amber-500'
+                        : 'bg-card dark:bg-muted border-border text-muted-foreground hover:border-amber-400 hover:text-amber-600'
+                    }`}
+                  >
+                    {v}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => sc.onStreakBonusValueChange?.(null)}
+                  className="px-2.5 py-1 rounded-full text-xs font-cairo border border-dashed border-border text-muted-foreground hover:text-brand-turquoise hover:border-brand-turquoise transition-colors"
+                >
+                  {t('restoreDefault') || 'استعادة الافتراضي'}
+                </button>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground font-cairo">
+              {sc.streakBonusValue == null
+                ? `يُستخدم المقدار الافتراضي (${sc.effectiveStreakBonusValue ?? 5} نقاط) عند كل 5 إجابات صحيحة متتالية`
+                : `كل 5 إجابات صحيحة متتالية = مكافأة ${sc.streakBonusValue} ${sc.streakBonusValue === 1 ? 'نقطة' : 'نقاط'} في هذه الحصة`}
+            </p>
+          </div>
+        )}
+
         {/* Participation type score overrides */}
         {sc.participationScores !== undefined && (
           <div className="space-y-2">

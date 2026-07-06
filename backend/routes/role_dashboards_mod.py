@@ -3773,15 +3773,20 @@ async def get_session_settings(
     # always reflects the value actually used by the scoring engine, even
     # when the session was started before settings were persisted.
     session_doc_weight = session.get("correct_answer_weight") if session else None
+    # Same live-document read for the per-session excellence (التميز) bonus value
+    # so the UI reflects the magnitude the scoring engine actually awards.
+    session_doc_bonus = session.get("streak_bonus_value") if session else None
 
-    # Resolve the *effective* weight via the engine waterfall so the UI can
+    # Resolve the *effective* values via the engine waterfall so the UI can
     # display the true active value (session override → tenant default → 5)
     # rather than a hardcoded "5" when no per-session override is set.
     try:
         resolved_rules = await session_engine._get_session_score_rules(session_id)
         effective_correct_answer_weight = resolved_rules.get("correct_answer", 5)
+        effective_streak_bonus_value = resolved_rules.get("three_correct_streak", 5)
     except Exception:
         effective_correct_answer_weight = 5
+        effective_streak_bonus_value = 5
 
     if not record:
         logger.warning(
@@ -3793,6 +3798,8 @@ async def get_session_settings(
             **default,
             "correct_answer_weight": session_doc_weight,
             "effective_correct_answer_weight": effective_correct_answer_weight,
+            "streak_bonus_value": session_doc_bonus,
+            "effective_streak_bonus_value": effective_streak_bonus_value,
         }
     return {
         "session_id": session_id,
@@ -3807,6 +3814,8 @@ async def get_session_settings(
         "participation_scores": record.get("participation_scores", {}),
         "correct_answer_weight": session_doc_weight,
         "effective_correct_answer_weight": effective_correct_answer_weight,
+        "streak_bonus_value": session_doc_bonus,
+        "effective_streak_bonus_value": effective_streak_bonus_value,
     }
 
 
@@ -3928,6 +3937,53 @@ async def save_session_settings(
             "class_sessions",
             {"id": session_id},
             {"correct_answer_weight": None},
+        )
+
+    # Validate and persist streak_bonus_value (excellence/التميز bonus magnitude)
+    # on the live session document, mirroring correct_answer_weight exactly but
+    # bounded to 1–5. Only ever written to class_sessions (never into the
+    # session_settings record_data below), so a partial settings POST from the
+    # pre-teach weight control can never clobber it. The key-presence check keeps
+    # "absent key = don't touch" vs "explicit null/empty = restore default".
+    raw_sbv = payload.get("streak_bonus_value")
+    if raw_sbv is not None and raw_sbv != "":
+        # Require a JSON integer: reject strings, booleans, and non-integer floats.
+        if isinstance(raw_sbv, bool) or isinstance(raw_sbv, str):
+            raise HTTPException(
+                status_code=422,
+                detail="قيمة مكافأة التميز يجب أن تكون عدداً صحيحاً بين 1 و5",
+            )
+        if isinstance(raw_sbv, float) and not raw_sbv.is_integer():
+            raise HTTPException(
+                status_code=422,
+                detail="قيمة مكافأة التميز يجب أن تكون عدداً صحيحاً (بدون كسور عشرية)",
+            )
+        try:
+            sbv = int(raw_sbv)
+            if not (1 <= sbv <= 5):
+                raise HTTPException(
+                    status_code=422,
+                    detail="قيمة مكافأة التميز يجب أن تكون بين 1 و5",
+                )
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=422,
+                detail="قيمة مكافأة التميز يجب أن تكون عدداً صحيحاً بين 1 و5",
+            ) from exc
+        await gd_update_one(
+            db.session,
+            "class_sessions",
+            {"id": session_id},
+            {"streak_bonus_value": sbv},
+        )
+    elif raw_sbv == "" or (raw_sbv is None and "streak_bonus_value" in payload):
+        # Explicit None/empty → "Restore default": remove the per-session override
+        # so the engine falls back to the tenant/system bonus magnitude.
+        await gd_update_one(
+            db.session,
+            "class_sessions",
+            {"id": session_id},
+            {"streak_bonus_value": None},
         )
 
     record_data = {

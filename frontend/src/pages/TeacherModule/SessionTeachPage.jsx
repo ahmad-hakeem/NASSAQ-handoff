@@ -402,6 +402,9 @@ export default function SessionTeachPage() {
   const [correctAnswerWeight, setCorrectAnswerWeight] = useState(null);
   const [correctAnswerWeightDirty, setCorrectAnswerWeightDirty] = useState(false);
   const [effectiveCorrectAnswerWeight, setEffectiveCorrectAnswerWeight] = useState(5);
+  const [streakBonusValue, setStreakBonusValue] = useState(null);
+  const [streakBonusValueDirty, setStreakBonusValueDirty] = useState(false);
+  const [effectiveStreakBonusValue, setEffectiveStreakBonusValue] = useState(5);
   const [savingSettings, setSavingSettings] = useState(false);
   // If the active action tab gets disabled by settings, switch to a safe default
   useEffect(() => {
@@ -560,6 +563,13 @@ export default function SessionTeachPage() {
       // session-override → tenant-default → system-default (5) waterfall.
       const ecaw = s.effective_correct_answer_weight;
       setEffectiveCorrectAnswerWeight(ecaw != null ? Number(ecaw) : 5);
+      // Excellence (التميز) bonus magnitude — same session-override → tenant →
+      // system (5) waterfall as the correct-answer weight above.
+      const sbv = s.streak_bonus_value;
+      setStreakBonusValue(sbv != null ? Number(sbv) : null);
+      setStreakBonusValueDirty(false);
+      const esbv = s.effective_streak_bonus_value;
+      setEffectiveStreakBonusValue(esbv != null ? Number(esbv) : 5);
     } catch (e) {
       console.error('Error loading session settings:', e);
     }
@@ -596,6 +606,11 @@ export default function SessionTeachPage() {
       // on the backend, preventing an accidental clear of a previously saved weight.
       if (correctAnswerWeightDirty) {
         settingsPayload.correct_answer_weight = correctAnswerWeight;
+      }
+      // Same "only when dirty" rule for the excellence-bonus value so a routine
+      // save never clobbers a previously saved bonus override.
+      if (streakBonusValueDirty) {
+        settingsPayload.streak_bonus_value = streakBonusValue;
       }
       await api.post(`/session/${sessionId}/settings`, settingsPayload);
       // When the homework submission view-mode changed, re-baseline every
@@ -635,6 +650,7 @@ export default function SessionTeachPage() {
       }
       toast.success(t('saved') || t('saveSettings'));
       setCorrectAnswerWeightDirty(false);
+      setStreakBonusValueDirty(false);
       setShowSidebarSettings(false);
       loadSessionSettings();
     } catch (e) {
@@ -3644,6 +3660,9 @@ export default function SessionTeachPage() {
           correctAnswerWeight,
           effectiveCorrectAnswerWeight,
           onCorrectAnswerWeightChange: (v) => { setCorrectAnswerWeight(v); setCorrectAnswerWeightDirty(true); },
+          streakBonusValue,
+          effectiveStreakBonusValue,
+          onStreakBonusValueChange: (v) => { setStreakBonusValue(v); setStreakBonusValueDirty(true); },
           onSave: saveSessionSettings,
           saving: savingSettings,
         }}

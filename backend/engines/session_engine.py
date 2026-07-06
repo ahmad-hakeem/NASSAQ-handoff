@@ -387,16 +387,23 @@ class TeacherSessionEngine:
 
     async def _get_session_score_rules(self, session_id: str) -> dict:
         """Resolve score rules for a session using the waterfall:
-        system defaults → tenant overrides → per-session correct_answer_weight.
+        system defaults → tenant overrides → per-session overrides.
 
-        The per-session weight (stored on class_sessions.correct_answer_weight)
-        overrides only the ``correct_answer`` key; all other rule keys come from
-        the tenant/default waterfall unchanged.  This keeps existing scoring
-        behaviour for every event type except correct answers intact.
+        Two per-session overrides (both stored on the class_sessions doc and
+        written only by the session-owning teacher's request) are applied on top
+        of the tenant/default waterfall, each touching a single rule key:
+          - ``correct_answer_weight`` overrides ``correct_answer`` (1–1000);
+          - ``streak_bonus_value`` overrides ``three_correct_streak`` (1–5), the
+            excellence (التميز) bonus magnitude awarded on every 5th consecutive
+            correct answer.
+        All other rule keys come from the tenant/default waterfall unchanged, so
+        existing scoring behaviour for every other event type stays intact. An
+        out-of-range stored value is silently ignored (falls back to the
+        tenant/system value) exactly like ``correct_answer_weight``.
 
-        Security: correct_answer_weight is written only by the session-owning
-        teacher's request (gated by _verify_session_owner in the routes), so no
-        cross-tenant write can reach this field.
+        Security: both fields are written only by the session-owning teacher's
+        request (gated by _verify_session_owner in the routes), so no
+        cross-tenant write can reach them.
         """
         session_doc = await gd_find_one(self.session, "class_sessions", {"id": session_id})
         tid = (session_doc or {}).get("tenant_id") or (session_doc or {}).get("school_id") or ""
@@ -407,6 +414,14 @@ class TeacherSessionEngine:
                 w = int(weight)
                 if 1 <= w <= 1000:
                     rules["correct_answer"] = w
+            except (TypeError, ValueError):
+                pass
+        bonus = (session_doc or {}).get("streak_bonus_value")
+        if bonus is not None:
+            try:
+                b = int(bonus)
+                if 1 <= b <= 5:
+                    rules["three_correct_streak"] = b
             except (TypeError, ValueError):
                 pass
         return rules
