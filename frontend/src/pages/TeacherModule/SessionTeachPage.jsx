@@ -1503,7 +1503,7 @@ export default function SessionTeachPage() {
     if (!selectedStudent) return;
     // Ignore repeat triggers while a submission is in flight (or during the
     // short cooldown after it) so a burst of accidental taps can't fire several
-    // separate answers and spuriously cross the 3-in-a-row streak threshold.
+    // separate answers and spuriously advance the consecutive-correct streak.
     if (answerLockRef.current) return;
     answerLockRef.current = true;
     try {
@@ -1513,8 +1513,9 @@ export default function SessionTeachPage() {
       });
       const change = res.data?.score_change || 0;
       // Backend is the single source of truth for the point breakdown: base
-      // reward plus any 3-in-a-row streak bonus (both default to the total when
-      // an older backend omits them, so the shown number always matches change).
+      // reward plus any excellence (التميز) bonus earned on every 5th consecutive
+      // correct answer (both default to the total when an older backend omits
+      // them, so the shown number always matches change).
       const streakBonus = res.data?.streak_bonus || 0;
       const basePoints = res.data?.base_points ?? change;
       if (result === 'correct') {
@@ -4174,6 +4175,7 @@ function FollowupRecordDialog({
                 columns={followupColumns}
                 gradesData={followupData}
                 streakBonus={followupStreakBonus}
+                showStreakColumn
                 onGradeChange={onGradeChange}
                 t={t}
               />

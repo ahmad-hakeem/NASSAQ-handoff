@@ -210,8 +210,9 @@ const StarOfTheWeek = ({ weeklyStory, studentName, t }) => {
   const positive = weeklyStory?.positive_behaviors || 0;
   const skills = weeklyStory?.acquired_skills || [];
   const topSubject = weeklyStory?.strong_subjects?.[0];
-  // Display-only 3-in-a-row streak bonus this week (base reward + streak bonus,
-  // matching what the teacher saw live). Not added to any total here.
+  // Display-only excellence (التميز) bonus this week — awarded once per run of
+  // 5 consecutive correct answers, matching what the teacher saw live. Not added
+  // to any total here.
   const streakBonusPoints = weeklyStory?.streak_bonus_points || 0;
   const totalPoints = participation + positive;
   const hasHighlight = totalPoints > 0 || skills.length > 0 || !!topSubject;

@@ -273,6 +273,18 @@ DEFAULT_SCORE_RULES = {
 
 SCORE_RULES = DEFAULT_SCORE_RULES
 
+# Excellence (التميز) bonus cadence: a bonus is awarded once for every completed
+# run of this many CONSECUTIVE correct answers by the same student (the 5th,
+# 10th, 15th… correct answer), never on every correct answer once the threshold
+# is passed. The bonus MAGNITUDE stays in the legacy rule key
+# "three_correct_streak" (default 5) so existing tenant overrides keep working —
+# only the trigger cadence lives here.
+STREAK_BONUS_THRESHOLD = 5
+# Upper bound on the consecutive-correct run counted in a single session. Far
+# beyond any realistic lesson; if a run somehow saturates this window we fail
+# closed (award nothing more) rather than let the modulo re-fire on every answer.
+STREAK_FETCH_WINDOW = 200
+
 DEFAULT_STUDENT_LEVELS = {
     "needs_attention": (0, 19),
     "acceptable": (20, 39),
@@ -1306,17 +1318,24 @@ class TeacherSessionEngine:
             base_points = rules["correct_answer"]
             score_change = base_points
 
+            # Excellence (التميز) bonus: awarded once for every completed run of
+            # STREAK_BONUS_THRESHOLD consecutive correct answers by this student
+            # (the 5th, 10th, 15th… correct answer), NOT on every correct answer
+            # once the threshold is crossed. A burst of rapid/accidental taps can
+            # therefore never fabricate a bonus (the FE answer lock stops most of
+            # them; the modulo stops the rest). Fail closed if the run saturates
+            # the fetch window so the modulo can't re-fire past it.
             streak = await self._check_answer_streak(session_id, student_id)
-            if streak >= 3:
+            if 0 < streak < STREAK_FETCH_WINDOW and streak % STREAK_BONUS_THRESHOLD == 0:
                 streak_bonus = rules["three_correct_streak"]
                 score_change += streak_bonus
 
-            # Persist the base / streak-bonus split onto the interaction so the
-            # downstream read paths (follow-up sheet + parent view) can surface
-            # the SAME breakdown the teacher saw live. Display-only: the streak
-            # bonus is annotated everywhere, never re-added — compute_session_scores
-            # keeps deriving participation from base points alone, so no awarded
-            # total changes.
+            # Persist the base / excellence-bonus split onto the interaction so the
+            # downstream read paths (follow-up sheet + parent view) can surface the
+            # SAME breakdown the teacher saw live. The bonus is annotated for
+            # display and added to the live gamification score here, but
+            # compute_session_scores keeps deriving the participation GRADE from
+            # base points alone — it is never folded into the /50 grade total.
             await gd_update_one(
                 self.session, "session_interactions",
                 {"id": interaction["id"]},
@@ -2656,7 +2675,7 @@ class TeacherSessionEngine:
                     # _coursework_value, so a late negative lowers the bounded
                     # value instead of being absorbed by a hidden overflow.
                     "participation_deltas": [],
-                    # Display-only annotation: total 3-in-a-row streak bonus this
+                    # Display-only annotation: total excellence (التميز) bonus this
                     # session and how many answers earned one. Persisted on the
                     # correct-answer interactions by record_answer; summed here but
                     # NEVER folded into participation_points, so awarded totals are
@@ -2697,8 +2716,8 @@ class TeacherSessionEngine:
                 res = it.get("answer_result")
                 if res == AnswerResult.CORRECT.value:
                     _add_participation(b, rules.get("correct_answer", 5))
-                    # Annotate (never re-award) the persisted 3-in-a-row streak
-                    # bonus so downstream surfaces can show base vs. streak split.
+                    # Annotate (never re-award) the persisted excellence (التميز)
+                    # bonus so downstream surfaces can show base vs. bonus split.
                     try:
                         sb = int(it.get("streak_bonus") or 0)
                     except (TypeError, ValueError):
@@ -2998,7 +3017,7 @@ class TeacherSessionEngine:
         return out
 
     async def get_streak_bonus_summary(self, session_id: str) -> Dict[str, Dict[str, int]]:
-        """Per-student 3-in-a-row streak-bonus annotation for a session.
+        """Per-student excellence (التميز) streak-bonus annotation for a session.
 
         Pure read, display-only: sums the streak bonus persisted on each
         correct-answer interaction (honoring undo, since compute_session_scores
@@ -3962,21 +3981,26 @@ class TeacherSessionEngine:
             })
     
     async def _check_answer_streak(self, session_id: str, student_id: str) -> int:
-        """Check consecutive correct answers for a student in current session"""
+        """Count the student's current run of consecutive correct answers in this
+        session (most-recent-first). Reversed (undone) interactions are skipped so
+        undoing the last correct answer breaks the streak in lockstep with
+        compute_session_scores, which also excludes reversed rows."""
         interactions = await gd_find(self.session, "session_interactions",
             {
                 "session_id": session_id,
                 "student_id": student_id,
                 "interaction_type": InteractionType.QUESTION.value
-            }, order_by="recorded_at", desc_order=True, limit=10)
-        
+            }, order_by="recorded_at", desc_order=True, limit=STREAK_FETCH_WINDOW)
+
         streak = 0
         for i in interactions:
+            if (i.get("data") or {}).get("reversed"):
+                continue
             if i.get("answer_result") == AnswerResult.CORRECT.value:
                 streak += 1
             else:
                 break
-        
+
         return streak
     
     async def get_student_score(self, student_id: str) -> StudentScoreResponse:

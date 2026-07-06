@@ -364,9 +364,10 @@ async def test_record_answer_returns_breakdown_no_streak(tenant_a):
 
 @pytest.mark.asyncio
 async def test_record_answer_breakdown_includes_streak_bonus(tenant_a):
-    """Three correct answers in a row fire the streak bonus: the third answer's
-    breakdown exposes base_points (5) and streak_bonus (5) separately, and their
-    sum equals score_change (10) — the value actually awarded."""
+    """The excellence (التميز) bonus fires once for every run of 5 consecutive
+    correct answers — on the 5th and again on the 10th, never on the answers
+    in between. The bonus answer's breakdown exposes base_points (5) and
+    streak_bonus (5) separately, summing to score_change (10)."""
     class_id = await _mk_class(tenant_a)
     subject_id = await _mk_subject(tenant_a)
     teacher_id = await _mk_user(tenant_a)
@@ -374,20 +375,74 @@ async def test_record_answer_breakdown_includes_streak_bonus(tenant_a):
     student_id = await _mk_student(tenant_a, class_id)
 
     eng = _engine()
-    first = await _record_answer(eng, session_id, student_id, teacher_id, AnswerResult.CORRECT)
-    second = await _record_answer(eng, session_id, student_id, teacher_id, AnswerResult.CORRECT)
-    third = await _record_answer(eng, session_id, student_id, teacher_id, AnswerResult.CORRECT)
+    results = []
+    for _ in range(10):
+        results.append(
+            await _record_answer(eng, session_id, student_id, teacher_id, AnswerResult.CORRECT)
+        )
 
-    # First two answers: no bonus yet.
-    for r in (first, second):
+    # 1-indexed: bonus only on the 5th and 10th consecutive correct answer.
+    for n, r in enumerate(results, start=1):
+        if n in (5, 10):
+            assert r["base_points"] == 5, f"answer #{n} base"
+            assert r["streak_bonus"] == 5, f"answer #{n} should carry the bonus"
+            assert r["score_change"] == 10, f"answer #{n} total"
+        else:
+            assert r["streak_bonus"] == 0, f"answer #{n} must NOT carry a bonus"
+            assert r["score_change"] == r["base_points"] == 5, f"answer #{n} plain"
+
+
+@pytest.mark.asyncio
+async def test_three_rapid_correct_answers_award_no_bonus(tenant_a):
+    """Regression for the reported bug: three correct answers in a row must NOT
+    show +10 — the excellence bonus now needs 5 consecutive, so all three stay
+    at the plain base reward."""
+    class_id = await _mk_class(tenant_a)
+    subject_id = await _mk_subject(tenant_a)
+    teacher_id = await _mk_user(tenant_a)
+    session_id = await _mk_session(tenant_a, class_id, subject_id, teacher_id)
+    student_id = await _mk_student(tenant_a, class_id)
+
+    eng = _engine()
+    for _ in range(3):
+        r = await _record_answer(eng, session_id, student_id, teacher_id, AnswerResult.CORRECT)
         assert r["streak_bonus"] == 0
-        assert r["score_change"] == r["base_points"] == 5
+        assert r["score_change"] == 5
 
-    # Third (3-in-a-row) answer: base reward + streak bonus.
-    assert third["base_points"] == 5
-    assert third["streak_bonus"] == 5
-    assert third["score_change"] == 10
-    assert third["base_points"] + third["streak_bonus"] == third["score_change"]
+
+@pytest.mark.asyncio
+async def test_streak_skips_reversed_interactions(tenant_a):
+    """A reversed (undone) correct answer must not count toward the consecutive
+    streak, so the count stays in lockstep with compute_session_scores."""
+    from engines.sql_utils import gd_find
+
+    class_id = await _mk_class(tenant_a)
+    subject_id = await _mk_subject(tenant_a)
+    teacher_id = await _mk_user(tenant_a)
+    session_id = await _mk_session(tenant_a, class_id, subject_id, teacher_id)
+    student_id = await _mk_student(tenant_a, class_id)
+
+    eng = _engine()
+    for _ in range(4):
+        await _record_answer(eng, session_id, student_id, teacher_id, AnswerResult.CORRECT)
+
+    assert await eng._check_answer_streak(session_id, student_id) == 4
+
+    # Simulate an undo of the most recent correct answer (the same data.reversed
+    # flag the undo path writes).
+    rows = await gd_find(
+        db.session, "session_interactions",
+        {"session_id": session_id, "student_id": student_id,
+         "interaction_type": InteractionType.QUESTION.value},
+        order_by="recorded_at", desc_order=True, limit=1,
+    )
+    await gd_update_one(
+        db.session, "session_interactions", {"id": rows[0]["id"]},
+        {"data": {"reversed": True}},
+    )
+
+    # The reversed row is skipped → the remaining 3 correct answers still count.
+    assert await eng._check_answer_streak(session_id, student_id) == 3
 
 
 @pytest.mark.asyncio
