@@ -2253,8 +2253,8 @@ const AccountSettingsPageInner = () => {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {[0,1,2,3,4,5,6].map((d) => (
-                                <SelectItem key={d} value={String(d)}>{t(`weekday_${d}`)}</SelectItem>
+                              {['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].map((dayKey, d) => (
+                                <SelectItem key={d} value={String(d)}>{t(dayKey)}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
