@@ -4467,10 +4467,12 @@ async def export_student_full_profile_docx(
     doc.save(buf)
     buf.seek(0)
     filename = f"NASSAQ_Profile_{student.get('full_name', 'student')}_{export_date}.docx"
+    from urllib.parse import quote
+    encoded_filename = quote(filename)
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"},
     )
 
 
@@ -4655,8 +4657,10 @@ async def export_student_full_profile_pdf(
     buf.seek(0)
 
     filename = f"NASSAQ_Profile_{student.get('full_name', 'student')}_{export_date}.pdf"
+    from urllib.parse import quote
+    encoded_filename = quote(filename)
     return StreamingResponse(
         buf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"},
     )

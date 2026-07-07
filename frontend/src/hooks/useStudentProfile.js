@@ -319,9 +319,9 @@ export function useStudentProfile() {
     setExportingProfile(true);
     try {
       const isPdf = profileExportFormat === 'pdf';
-      const url = isPdf ? `/hakim/export/student-profile/${studentId}/pdf` : `/hakim/export/student-profile/${studentId}`;
+      const url = isPdf ? `/export/student-profile/${studentId}/pdf` : `/export/student-profile/${studentId}`;
       const response = await fetch(`${api.defaults.baseURL}${url}`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ sections: profileExportSections }) });
-      if (!response.ok) { const errData = await response.json().catch(() => ({})); throw new Error(errData.detail || 'Export failed'); }
+      if (!response.ok) { const errData = await response.json().catch(() => ({})); throw new Error(errData.detail || errData?.error?.message_ar || errData?.error?.message || (isRTL ? 'فشل التصدير' : 'Export failed')); }
       const blob = await response.blob();
       const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
       const ext = isPdf ? 'pdf' : 'docx';
