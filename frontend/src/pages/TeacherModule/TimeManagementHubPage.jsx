@@ -37,6 +37,14 @@ const IT_SETTINGS_TIMEZONES = [
   'Asia/Amman', 'Africa/Cairo', 'UTC',
 ];
 
+// Canonical Saudi academic terms. `value` is the stored label (kept in
+// Arabic to match backend defaults); `labelKey` localizes the display.
+const IT_TERM_OPTIONS = [
+  { value: 'الفصل الأول', labelKey: 'termNameFirst' },
+  { value: 'الفصل الثاني', labelKey: 'termNameSecond' },
+  { value: 'الفصل الثالث', labelKey: 'termNameThird' },
+];
+
 const VALID_TABS = new Set(['schedule', 'calendar', 'settings']);
 
 /**
@@ -179,6 +187,15 @@ export default function TimeManagementHubPage() {
   };
 
   if (!isIndependentTeacher) return null;
+
+  // Localized options, plus any previously-saved custom term so the closed
+  // state always reflects the persisted value.
+  const itTermOptions = [
+    ...IT_TERM_OPTIONS.map(o => ({ value: o.value, label: t(o.labelKey) })),
+    ...(itTermLabel && !IT_TERM_OPTIONS.some(o => o.value === itTermLabel)
+      ? [{ value: itTermLabel, label: itTermLabel }]
+      : []),
+  ];
 
   const tabBtnCls = (tab) => `px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative whitespace-nowrap ${
     activeTab === tab
@@ -405,15 +422,23 @@ export default function TimeManagementHubPage() {
                   </div>
                   <div>
                     <Label className="mb-2 block font-cairo text-sm">{t('academicTermNameLabel')}</Label>
-                    <Input
-                      dir={isRTL ? 'rtl' : 'ltr'}
-                      value={itTermLabel}
-                      onChange={e => setItTermLabel(e.target.value)}
-                      className="h-11 rounded-xl"
-                      placeholder={t('academicTermNamePlaceholder')}
-                      data-testid="it-workspace-term-label-input"
+                    <Select
+                      value={itTermLabel || undefined}
+                      onValueChange={setItTermLabel}
                       disabled={!itSettingsLoaded}
-                    />
+                    >
+                      <SelectTrigger
+                        className="h-11 rounded-xl"
+                        data-testid="it-workspace-term-label-select"
+                      >
+                        <SelectValue placeholder={t('academicTermNamePlaceholder')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {itTermOptions.map(opt => (
+                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </CardContent>
               </Card>
