@@ -509,6 +509,7 @@
   "behaviorTitle": "عنوان السلوك...",
   "behaviorTracking": "المتابعة السلوكية",
   "behaviorType": "نوع السلوك",
+  "noBehaviorTypesAvailable": "لا توجد أنواع سلوك متاحة",
   "behaviorTypes": "أنواع السلوكيات",
   "behaviorWatchList": "طلاب يحتاجون متابعة سلوكية",
   "behaviour": "سلوك",

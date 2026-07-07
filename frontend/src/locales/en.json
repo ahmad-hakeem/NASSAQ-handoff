@@ -509,6 +509,7 @@
   "behaviorTitle": "Behavior title...",
   "behaviorTracking": "Behavior Tracking",
   "behaviorType": "Behavior Type",
+  "noBehaviorTypesAvailable": "No behavior types available",
   "behaviorTypes": "Behavior Types",
   "behaviorWatchList": "Behavior Watch List",
   "behaviour": "Behaviour",

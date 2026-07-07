@@ -242,17 +242,24 @@ export function BehaviourModal({ hook }) {
             }}>
               <SelectTrigger className="mt-1"><SelectValue placeholder={t('selectType')} /></SelectTrigger>
               <SelectContent>
-                {behaviourTypes.map(bt => {
-                  const pts = bt.default_points ?? bt.points;
-                  return (
-                    <SelectItem key={bt.id} value={bt.id}>
-                      <span className="font-cairo">{bt.name_ar || bt.name_en}</span>
-                      {pts != null && <span className={`mr-2 text-xs ${pts > 0 ? 'text-green-600' : pts < 0 ? 'text-red-600' : ''}`}> ({pts > 0 ? '+' : ''}{pts})</span>}
-                    </SelectItem>
-                  );
-                })}
+                {behaviourTypes.length === 0 ? (
+                  <div className="px-3 py-4 text-center text-sm text-muted-foreground font-cairo">{t('noBehaviorTypesAvailable')}</div>
+                ) : (
+                  behaviourTypes.map(bt => {
+                    const pts = bt.default_points ?? bt.points;
+                    return (
+                      <SelectItem key={bt.id} value={bt.id}>
+                        <span className="font-cairo">{bt.name_ar || bt.name_en}</span>
+                        {pts != null && <span className={`mr-2 text-xs ${pts > 0 ? 'text-green-600' : pts < 0 ? 'text-red-600' : ''}`}> ({pts > 0 ? '+' : ''}{pts})</span>}
+                      </SelectItem>
+                    );
+                  })
+                )}
               </SelectContent>
             </Select>
+            {behaviourTypes.length === 0 && (
+              <p className="mt-1 text-xs text-muted-foreground font-cairo">{t('noBehaviorTypesAvailable')}</p>
+            )}
           </div>
           <div>
             <Label className="font-cairo text-sm">{t('category')}</Label>
