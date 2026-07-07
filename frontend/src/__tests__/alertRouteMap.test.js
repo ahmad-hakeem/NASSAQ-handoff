@@ -12,6 +12,7 @@
  */
 import {
   buildAlertRouteMap,
+  buildKpiCardRoute,
   withAlertAttendanceContext,
   ALERT_CONTEXT_PARAM,
   ALERT_CONTEXT_VALUE,
@@ -95,5 +96,40 @@ describe('AI Insights attendance card — composed navigation', () => {
 
   test('admin / principal keeps the admin attendance route untouched', () => {
     expect(cardRoute(false)).toBe('/admin/attendance');
+  });
+});
+
+describe('buildKpiCardRoute — role-aware AI Insights Quick Stats cards', () => {
+  // Regression guard: a genuine platform admin has no school context, so the
+  // school-scoped drill-downs (/admin/users-management, /admin/attendance)
+  // would fail their route guards and bounce the admin to /admin (Command
+  // Center). These cards must be non-clickable (null) for a platform admin.
+  test('platform admin gets no destination for any card (non-clickable)', () => {
+    for (const key of ['students', 'teachers', 'attendance']) {
+      expect(buildKpiCardRoute(key, { isPlatformAdmin: true })).toBeNull();
+      // isPlatformAdmin wins even if a stale isTeacher flag is passed too.
+      expect(buildKpiCardRoute(key, { isTeacher: true, isPlatformAdmin: true })).toBeNull();
+    }
+  });
+
+  test('school leadership drills into the users/attendance management pages', () => {
+    const opts = { isTeacher: false, isPlatformAdmin: false };
+    expect(buildKpiCardRoute('students', opts)).toBe('/admin/users-management');
+    expect(buildKpiCardRoute('teachers', opts)).toBe('/admin/users-management?filter=teachers');
+    expect(buildKpiCardRoute('attendance', opts)).toBe('/admin/attendance');
+  });
+
+  test('teacher self-scopes attendance and has no roster drill-down', () => {
+    const opts = { isTeacher: true, isPlatformAdmin: false };
+    expect(buildKpiCardRoute('students', opts)).toBeNull();
+    expect(buildKpiCardRoute('teachers', opts)).toBeNull();
+    expect(buildKpiCardRoute('attendance', opts)).toBe(
+      `/teacher/attendance?${ALERT_CONTEXT_PARAM}=${ALERT_CONTEXT_VALUE}`,
+    );
+  });
+
+  test('unknown card keys and missing options resolve to null', () => {
+    expect(buildKpiCardRoute('mystery', { isTeacher: false, isPlatformAdmin: false })).toBeNull();
+    expect(buildKpiCardRoute('students')).toBe('/admin/users-management');
   });
 });

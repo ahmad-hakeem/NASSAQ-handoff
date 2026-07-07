@@ -33,7 +33,7 @@ import SectionErrorBoundary from '../components/SectionErrorBoundary';
 import { CircularProgressRing } from '../components/ui/CircularProgressRing';
 import { CalendarCheck, FileText, XCircle, Download, Filter } from 'lucide-react';
 import { formatGregorianShort, formatGregorianFull } from '../utils/hijriDate';
-import { buildAlertRouteMap, withAlertAttendanceContext } from '../utils/alertRoutes';
+import { buildAlertRouteMap, buildKpiCardRoute, withAlertAttendanceContext } from '../utils/alertRoutes';
 import { useSchoolNavigation } from '../utils/studentNavigation';
 import {
   ResponsiveContainer,
@@ -151,10 +151,16 @@ const VisualMetricCard = ({ icon: Icon, value, label, subLabel, gradient, accent
     return () => clearTimeout(timer);
   }, [delay]);
 
+  // Only render the interactive (button) affordance when a real handler is
+  // supplied. Cards without a destination (e.g. a platform admin's KPIs, which
+  // have no school-scoped drill-down) render as a plain div — no hover lift,
+  // no pointer cursor, no navigation — so they are not misleadingly clickable.
+  const clickable = typeof onClick === 'function';
+  const Wrapper = clickable ? 'button' : 'div';
   return (
-    <button
-      onClick={onClick}
-      className={`group relative overflow-hidden rounded-2xl border border-border/40 bg-card p-5 hover:shadow-xl hover:shadow-brand-turquoise/8 hover:-translate-y-0.5 transition-all duration-500 text-start w-full ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'}`}
+    <Wrapper
+      {...(clickable ? { onClick, type: 'button' } : {})}
+      className={`group relative overflow-hidden rounded-2xl border border-border/40 bg-card p-5 transition-all duration-500 text-start w-full ${clickable ? 'cursor-pointer hover:shadow-xl hover:shadow-brand-turquoise/8 hover:-translate-y-0.5' : 'cursor-default'} ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'}`}
       style={{ transitionDelay: `${delay}ms` }}
     >
       <div className={`absolute top-0 ${document.dir === 'rtl' ? 'right-0' : 'left-0'} w-1 h-full bg-gradient-to-b ${gradient} rounded-full opacity-60 group-hover:opacity-100 transition-opacity`} />
@@ -168,7 +174,7 @@ const VisualMetricCard = ({ icon: Icon, value, label, subLabel, gradient, accent
           <Icon className="h-5 w-5 text-white" />
         </div>
       </div>
-    </button>
+    </Wrapper>
   );
 };
 
@@ -1138,7 +1144,7 @@ const AttendanceReportsSection = ({
 
 export const AIInsightsPage = () => {
   const { t } = useTranslation();
-  const { api, user } = useAuth();
+  const { api, user, getEffectiveRole } = useAuth();
   const { getStudentDetailPath } = useSchoolNavigation();
   const canSeeStudentPerf = STUDENT_PERF_ROLES.includes(user?.role);
   // 2026-05-19 — IT users see the embedded analytics tab. Gated on
@@ -1153,6 +1159,11 @@ export const AIInsightsPage = () => {
   // that don't apply to a single-workspace teacher. The dedicated
   // analytics tab below remains the only IT-specific surface.
   const isTeacher = user?.role === 'teacher' || user?.role === 'independent_teacher';
+  // Use the EFFECTIVE role so a platform admin previewing/impersonating a
+  // school (effective role = principal) keeps the working school-scoped KPI
+  // routes, while a genuine platform admin (no school context) gets
+  // non-clickable cards instead of a silent bounce to Command Center.
+  const isPlatformAdmin = (getEffectiveRole ? getEffectiveRole() : user?.role) === 'platform_admin';
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -1354,6 +1365,12 @@ export const AIInsightsPage = () => {
 
   const { metrics } = insights;
 
+  // Role-aware KPI drill-down targets. `null` → card is not clickable.
+  const kpiCardOpts = { isTeacher, isPlatformAdmin };
+  const studentsCardRoute = buildKpiCardRoute('students', kpiCardOpts);
+  const teachersCardRoute = buildKpiCardRoute('teachers', kpiCardOpts);
+  const attendanceCardRoute = buildKpiCardRoute('attendance', kpiCardOpts);
+
   const totalIssues = alerts.length + studentRisks.filter(s => s.risk_level >= 70).length;
   const highRiskCount = studentRisks.filter(s => s.risk_level >= 70).length;
 
@@ -1521,7 +1538,7 @@ export const AIInsightsPage = () => {
               value={metrics.total_students || 0}
               subLabel={isTeacher ? t('enrolledInYourClasses') : t('enrolled')}
               gradient="from-brand-turquoise to-teal-600"
-              onClick={() => !isTeacher && navigate('/admin/users-management')}
+              onClick={studentsCardRoute ? () => navigate(studentsCardRoute) : undefined}
               delay={100}
             />
             {!isTeacher && (
@@ -1531,7 +1548,7 @@ export const AIInsightsPage = () => {
                 value={metrics.total_teachers || 0}
                 subLabel={`${metrics.student_teacher_ratio || 0}:1 ${t('ratio')}`}
                 gradient="from-brand-purple to-violet-600"
-                onClick={() => navigate('/admin/users-management?filter=teachers')}
+                onClick={teachersCardRoute ? () => navigate(teachersCardRoute) : undefined}
                 delay={200}
               />
             )}
@@ -1541,7 +1558,7 @@ export const AIInsightsPage = () => {
               value={`${metrics.attendance_rate || 0}%`}
               subLabel={t('today2')}
               gradient="from-brand-navy-light to-brand-navy"
-              onClick={() => navigate(withAlertAttendanceContext(buildAlertRouteMap(isTeacher).attendance, 'attendance', isTeacher))}
+              onClick={attendanceCardRoute ? () => navigate(attendanceCardRoute) : undefined}
               delay={300}
             />
             <VisualMetricCard
