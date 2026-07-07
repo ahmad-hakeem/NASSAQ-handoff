@@ -233,6 +233,7 @@ export default function TeacherAchievementsPage() {
   const { t } = useTranslation();
   const { api, isRTL, user } = useAuth();
   const teacherId = user?.id;
+  const isIndependentTeacher = user?.role === 'independent_teacher';
   const { showAlert, nassaqError } = useNassaqAlert();
   const [loading, setLoading] = useState(true);
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -503,14 +504,25 @@ export default function TeacherAchievementsPage() {
     if (!teacherId) return;
     let cancelled = false;
     (async () => {
+      // IT workspace classes are created via /classes/create and may not have
+      // corresponding teacher_assignments rows, so /teacher/classes/{id}
+      // returns [] for Independent-Teacher users. Use the tenant-scoped
+      // /classes endpoint as the class source for IT accounts (same source
+      // TeacherClassesPage uses); real-school teachers keep /teacher/classes.
+      const classesPromise = isIndependentTeacher
+        ? api.get('/classes')
+        : api.get(`/teacher/classes/${teacherId}`);
       const [classesRes, subjectsRes] = await Promise.allSettled([
-        api.get(`/teacher/classes/${teacherId}`),
+        classesPromise,
         api.get('/subjects'),
       ]);
       if (cancelled) return;
       if (classesRes.status === 'fulfilled') {
         const data = classesRes.value?.data;
-        setTeacherClasses(Array.isArray(data) ? data : (data?.classes || []));
+        const list = Array.isArray(data)
+          ? data
+          : (data?.classes || data?.data || data?.items || []);
+        setTeacherClasses(Array.isArray(list) ? list.filter(c => c?.is_active !== false) : []);
       }
       if (subjectsRes.status === 'fulfilled') {
         const data = subjectsRes.value?.data;
@@ -518,7 +530,7 @@ export default function TeacherAchievementsPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [api, teacherId]);
+  }, [api, teacherId, isIndependentTeacher]);
 
   const openManualEvDialog = (sectionKey) => {
     const sub = SUBSECTION_CONFIG_V2.find(s => s.key === sectionKey);
