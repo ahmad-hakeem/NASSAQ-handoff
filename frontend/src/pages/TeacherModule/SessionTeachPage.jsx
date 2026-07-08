@@ -511,6 +511,21 @@ export default function SessionTeachPage() {
     }
   };
 
+  // Persist a new score weight (وزن الدرجة) for an already-saved registered
+  // skill. The write is durable and school-scoped server-side (copy-on-edit
+  // for global predefined skills), so the value sticks across all future
+  // lessons for this school. Refetch afterwards so the chip, the live picker,
+  // and scoring all pick up the effective (possibly school-copy) id/points.
+  const updateSkillType = async (skillId, points) => {
+    try {
+      await api.put(`/skills-types/${skillId}`, { points });
+      await loadSkillTypes();
+      toast.success(t('scoreWeightUpdated') || 'تم تحديث وزن الدرجة');
+    } catch (e) {
+      nassaqError(getApiErrorMessage(e) || t('errorUpdatingSkillWeight') || 'تعذّر تحديث وزن الدرجة');
+    }
+  };
+
   const loadSubjectsList = useCallback(async () => {
     try {
       const res = await api.get('/subjects');
@@ -2784,7 +2799,7 @@ export default function SessionTeachPage() {
                         })
                       ].map(skill => {
                         const pts = Number(skill.points);
-                        const display = Number.isFinite(pts) ? Math.abs(pts) : 3;
+                        const display = Number.isFinite(pts) && pts > 0 ? Math.abs(pts) : 3;
                         return (
                           <button
                             key={skill.id}
@@ -3030,7 +3045,7 @@ export default function SessionTeachPage() {
                   })
                 ].map(skill => {
                   const pts = Number(skill.points);
-                  const display = Number.isFinite(pts) ? Math.abs(pts) : 3;
+                  const display = Number.isFinite(pts) && pts > 0 ? Math.abs(pts) : 3;
                   return (
                     <button
                       key={skill.id}
@@ -3648,6 +3663,12 @@ export default function SessionTeachPage() {
         customSkills={customSkills}
         onAddCustomSkill={(name) => setCustomSkills((prev) => [...prev, name])}
         onRemoveCustomSkill={(idx) => setCustomSkills((prev) => prev.filter((_, j) => j !== idx))}
+        onUpdateSkillType={updateSkillType}
+        onUpdateCustomSkill={(idx, points) => setCustomSkills((prev) => prev.map((s, j) => {
+          if (j !== idx) return s;
+          if (typeof s === 'string') return { name: s, points };
+          return { ...s, points };
+        }))}
         sessionConfig={{
           subjectsList,
           subjectId: settingsSubjectId,

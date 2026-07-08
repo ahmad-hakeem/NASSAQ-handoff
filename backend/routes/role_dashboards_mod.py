@@ -20,6 +20,7 @@ from dependencies import (
     db, get_current_user, require_roles, UserRole, logger,
     audit_engine, AuditAction,
     session_engine,
+    require_recent_mfa_403_if_independent_teacher,
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, _gd_aggregate
 from auth_scope import is_independent_workspace_id
@@ -31,6 +32,12 @@ from shared_models import (
 )
 
 router = APIRouter()
+
+# IT-conditional step-up: durable config writes on shared routes must emit the
+# canonical §5.7 step-up envelope as HTTP 403 for Independent-Teacher callers so
+# the FE axios interceptor replays after passkey assertion. Non-IT callers pass
+# through untouched. Built once at module load (mirrors academics_subject_routes).
+_REQUIRE_RECENT_MFA_403_IT = require_recent_mfa_403_if_independent_teacher()
 
 
 # ----- Task #145 — shared teacher-schedule resolver --------------------------
@@ -3027,6 +3034,26 @@ async def get_skills_types(
             s for s in (all_skills or [])
             if not s.get("school_id") or s.get("school_id") == caller_school_id
         ]
+        # Dedup so a school's edited copy shadows the global original: when the
+        # caller has customised a predefined skill's weight (PUT /skills-types),
+        # a school-scoped copy is created with the same name. Keep only the
+        # school-scoped row for each name so the UI shows one chip (with the
+        # edited weight) instead of the global + copy pair. Keyed by the
+        # trimmed name_ar (fallback name_en); rows without a name stay by id.
+        # Only applied for school-scoped callers — platform admins (no school)
+        # legitimately see every school's rows and must not have them collapsed.
+        def _name_key(s):
+            name = (s.get("name_ar") or s.get("name_en") or "").strip()
+            return name or None
+
+        school_names = {
+            _name_key(s) for s in skills
+            if s.get("school_id") == caller_school_id and _name_key(s)
+        }
+        skills = [
+            s for s in skills
+            if not (not s.get("school_id") and _name_key(s) in school_names)
+        ]
     else:
         # Platform admin or no school context: return all skills
         skills = all_skills or []
@@ -3079,6 +3106,127 @@ async def create_skill_type(
         except Exception as audit_err:
             logger.debug("Skipped audit log for skill_type_created: %s", audit_err)
     return {"message": "تم إنشاء نوع المهارة", "skill": {k: v for k, v in skill.items() if k != "_id"}}
+
+
+@router.put("/skills-types/{skill_id}")
+async def update_skill_type_points(
+    skill_id: str,
+    data: dict = Body(...),
+    current_user: dict = Depends(require_roles([
+        UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_PRINCIPAL,
+        UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER,
+    ])),
+    _mfa: dict = Depends(_REQUIRE_RECENT_MFA_403_IT),
+):
+    """
+    تعديل وزن درجة نوع مهارة
+    Update a skill type's score weight (وزن الدرجة).
+
+    Copy-on-edit, tenant-safe:
+      * A school-owned skill (school_id == caller's tenant) is updated in place.
+      * A *global* predefined skill (school_id NULL) is never mutated for a
+        single school — instead the caller's school gets its own copy carrying
+        the new weight, so the change stays scoped to that school. Editing the
+        same global skill again updates that existing copy (matched by name).
+      * Only PLATFORM_ADMIN may edit a global row in place (they own the global
+        scope). A school-scoped caller with no resolvable school never reaches
+        the global-edit branch.
+    The scoring engine (record_skill) reads the stored ``points`` on the skill
+    type authoritatively, so the edited weight is used the next time the skill
+    is recorded. NOTE: a stale client tab holding the pre-edit *global* id will
+    keep awarding the default until it refetches /skills-types and picks up the
+    new school copy's id.
+    """
+    # Validate the weight: positive integer magnitude, capped to a sane range.
+    raw_points = data.get("points", data.get("points_override"))
+    try:
+        pts = int(raw_points)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="قيمة وزن الدرجة غير صالحة")
+    if pts <= 0 or pts > 100:
+        raise HTTPException(status_code=400, detail="يجب أن يكون وزن الدرجة رقماً بين 1 و 100")
+
+    caller_school_id = current_user.get("tenant_id") or current_user.get("school_id") or None
+    is_platform_admin = current_user.get("role") == UserRole.PLATFORM_ADMIN.value
+
+    target = await gd_find_one(db.session, "skills_types", {"id": skill_id})
+    # Fail closed and never confirm the existence of a foreign-tenant row:
+    # a caller may only touch a global skill or one owned by their own school.
+    if not target or (
+        target.get("school_id")
+        and not is_platform_admin
+        and target.get("school_id") != caller_school_id
+    ):
+        raise HTTPException(status_code=404, detail="نوع المهارة غير موجود")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Case 1 — the caller's own school already owns this skill: update in place.
+    if target.get("school_id") and target.get("school_id") == caller_school_id:
+        await gd_update_one(db.session, "skills_types", {"id": skill_id}, {"points": pts})
+        effective = {**target, "points": pts}
+    # Case 2 — a global skill edited by a platform admin: they own global scope.
+    elif not target.get("school_id") and is_platform_admin:
+        await gd_update_one(db.session, "skills_types", {"id": skill_id}, {"points": pts})
+        effective = {**target, "points": pts}
+    # Case 3 — a global skill edited by a school-scoped caller: copy-on-edit.
+    else:
+        if not caller_school_id:
+            # Non-platform caller with no resolvable school must never fall
+            # through to editing a globally-shared row.
+            raise HTTPException(status_code=403, detail="لا يمكن تعديل هذه المهارة")
+        name_ar = (target.get("name_ar") or "").strip()
+        name_en = (target.get("name_en") or "").strip()
+        existing_copy = None
+        if name_ar:
+            existing_copy = await gd_find_one(
+                db.session, "skills_types", {"name_ar": name_ar, "school_id": caller_school_id}
+            )
+        if not existing_copy and name_en:
+            existing_copy = await gd_find_one(
+                db.session, "skills_types", {"name_en": name_en, "school_id": caller_school_id}
+            )
+        if existing_copy:
+            await gd_update_one(
+                db.session, "skills_types", {"id": existing_copy["id"]}, {"points": pts}
+            )
+            effective = {**existing_copy, "points": pts}
+        else:
+            # New school-scoped copy. Only real columns are persisted (gd_*
+            # silently drops unknown keys); the table has no ``name`` column.
+            effective = {
+                "id": f"skill-{str(uuid.uuid4())[:8]}",
+                "name_ar": target.get("name_ar"),
+                "name_en": target.get("name_en"),
+                "category": target.get("category"),
+                "description": target.get("description"),
+                "is_active": True,
+                "school_id": caller_school_id,
+                "points": pts,
+                "created_at": now_iso,
+            }
+            await gd_insert(db.session, "skills_types", effective)
+
+    if audit_engine:
+        try:
+            await audit_engine.log(
+                action=AuditAction.SYSTEM_CONFIG,
+                performed_by=current_user.get("id"),
+                details={
+                    "event": "skill_type_points_updated",
+                    "source_skill_id": skill_id,
+                    "effective_skill_id": effective.get("id"),
+                    "points": pts,
+                    "school_id": caller_school_id,
+                },
+            )
+        except Exception as audit_err:
+            logger.debug("Skipped audit log for skill_type_points_updated: %s", audit_err)
+
+    return {
+        "message": "تم تحديث وزن الدرجة",
+        "skill": {k: v for k, v in effective.items() if k != "_id"},
+    }
 
 
 @router.post("/session/{session_id}/skill")

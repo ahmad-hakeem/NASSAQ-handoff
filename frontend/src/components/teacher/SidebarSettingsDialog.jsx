@@ -4,8 +4,13 @@ import { Button } from '../ui/button';
 import {
   Settings, Trash2, Plus, Star, ThumbsUp, ThumbsDown,
   CheckCircle2, XCircle, ClipboardCheck, Mic, Hand, Sparkles,
-  BookOpen, FileSpreadsheet, GripVertical, Loader2,
+  BookOpen, FileSpreadsheet, GripVertical, Loader2, Pencil, Check,
 } from 'lucide-react';
+
+// Default score weight (وزن الدرجة) awarded for a skill that carries no
+// configured value — mirrors the backend `special_skill` rule so the chip
+// badge and the live picker show what is actually awarded when recorded.
+const DEFAULT_SKILL_POINTS = 3;
 
 /**
  * Color palette for evaluation items. Each entry maps a color key to
@@ -137,6 +142,12 @@ export default function SidebarSettingsDialog({
   customSkills = [],
   onAddCustomSkill,
   onRemoveCustomSkill,
+  // Edit the score weight (وزن الدرجة) of an already-saved skill. Registered
+  // skill types persist server-side (durable, school-scoped); custom skills
+  // update local session config. Both are optional so callers that haven't
+  // wired editing keep the legacy add/remove-only behaviour.
+  onUpdateSkillType,
+  onUpdateCustomSkill,
 
   // ── Group B: session configuration (optional) ─────────────────
   // When this object is provided, the dialog renders the second
@@ -157,6 +168,22 @@ export default function SidebarSettingsDialog({
   // Skills now carry both a display name and a teacher-defined point
   // magnitude (the same shape as custom behaviours/evaluation items).
   const [skillDraft, setSkillDraft] = useState({ name: '', points: 3 });
+  // Inline weight-edit state for an already-saved skill. `key` identifies the
+  // chip being edited (`reg-<id>` or `cus-<index>`); `value` is the draft
+  // magnitude as a string so the number field can be cleared while typing.
+  const [skillEdit, setSkillEdit] = useState(null);
+
+  const startSkillEdit = (key, current) => setSkillEdit({ key, value: String(current ?? '') });
+  const cancelSkillEdit = () => setSkillEdit(null);
+  const commitSkillEdit = (entry) => {
+    const n = Math.abs(Number(skillEdit?.value));
+    // Reject empty/zero/non-numeric magnitudes; keep the field open so the
+    // teacher can correct it instead of silently discarding the edit.
+    if (!Number.isFinite(n) || n <= 0) return;
+    if (entry.isCustom) onUpdateCustomSkill?.(entry.customIndex, n);
+    else onUpdateSkillType?.(entry.id, n);
+    setSkillEdit(null);
+  };
 
   // Coerce a free-form number input to its absolute integer value as a
   // string. Used by the points fields so a teacher cannot type "-" or
@@ -505,45 +532,105 @@ export default function SidebarSettingsDialog({
         <p className="text-[11px] text-muted-foreground font-cairo">{t('currentSkills') || 'المهارات الحالية'}</p>
         <div className="flex flex-wrap gap-1.5">
           {[
-            // Predefined skills surfaced from the backend as objects;
-            // their points come from the session score rules so we
-            // don't show a magnitude here.
-            ...skillTypes.map((s) => ({
-              label: typeof s === 'string' ? s : (s?.name_ar || s?.name_en || s?.name || s?.label || ''),
-              points: null,
-              isCustom: false,
-            })),
+            // Registered skill types surfaced from the backend. Their configured
+            // weight (وزن الدرجة) is editable in place — a missing/zero value
+            // falls back to the default skill weight so the chip matches what is
+            // actually awarded when the skill is recorded.
+            ...skillTypes.map((s) => {
+              const raw = Number(typeof s === 'string' ? NaN : s?.points);
+              return {
+                key: `reg-${(typeof s === 'string' ? s : s?.id) ?? ''}`,
+                id: typeof s === 'string' ? s : s?.id,
+                label: typeof s === 'string' ? s : (s?.name_ar || s?.name_en || s?.name || s?.label || ''),
+                weight: Number.isFinite(raw) && raw > 0 ? Math.abs(raw) : DEFAULT_SKILL_POINTS,
+                isCustom: false,
+              };
+            }),
             // Custom skills may be plain strings (legacy state) or
             // `{name, points}` objects produced by the new add form.
-            ...customSkills.map((s) => {
-              if (typeof s === 'string') return { label: s, points: null, isCustom: true };
+            ...customSkills.map((s, ci) => {
+              const raw = Number(typeof s === 'string' ? NaN : s?.points);
               return {
-                label: s?.name || s?.label || '',
-                points: Number.isFinite(Number(s?.points)) ? Math.abs(Number(s.points)) : null,
+                key: `cus-${ci}`,
+                customIndex: ci,
+                label: typeof s === 'string' ? s : (s?.name || s?.label || ''),
+                weight: Number.isFinite(raw) && raw > 0 ? Math.abs(raw) : DEFAULT_SKILL_POINTS,
                 isCustom: true,
               };
             }),
-          ].map((entry, i) => {
+          ].map((entry) => {
             if (!entry.label) return null;
+            const editing = skillEdit?.key === entry.key;
+            const canEdit = entry.isCustom
+              ? typeof onUpdateCustomSkill === 'function'
+              : (typeof onUpdateSkillType === 'function' && !!entry.id);
             return (
               <span
-                key={`${i}-${entry.label}`}
+                key={entry.key}
                 className="inline-flex items-center gap-1 bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded-lg text-[11px] text-purple-700 dark:text-purple-300"
               >
                 <Star className="h-2.5 w-2.5" />
                 {entry.label}
-                {entry.points !== null && (
-                  <span className="font-bold tabular-nums">+{entry.points}</span>
-                )}
-                {entry.isCustom && (
-                  <button
-                    type="button"
-                    onClick={() => onRemoveCustomSkill?.(i - skillTypes.length)}
-                    className="text-red-600 dark:text-red-400 hover:text-red-500"
-                    aria-label={t('delete') || 'حذف'}
-                  >
-                    <XCircle className="h-2.5 w-2.5" />
-                  </button>
+                {editing ? (
+                  <>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      inputMode="numeric"
+                      autoFocus
+                      value={skillEdit.value}
+                      onChange={(e) => setSkillEdit((s) => ({ ...s, value: sanitizePoints(e.target.value) }))}
+                      onKeyDown={(e) => {
+                        if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') e.preventDefault();
+                        if (e.key === 'Enter') commitSkillEdit(entry);
+                        if (e.key === 'Escape') cancelSkillEdit();
+                      }}
+                      className="w-10 text-[11px] text-center bg-card dark:bg-muted rounded border px-1 py-0.5 outline-none focus:border-purple-500 tabular-nums"
+                      aria-label={t('scoreWeight') || 'وزن الدرجة'}
+                      dir="ltr"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => commitSkillEdit(entry)}
+                      className="text-green-600 dark:text-green-400 hover:text-green-500"
+                      aria-label={t('save') || 'حفظ'}
+                    >
+                      <Check className="h-2.5 w-2.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelSkillEdit}
+                      className="text-muted-foreground hover:text-foreground"
+                      aria-label={t('cancel') || 'إلغاء'}
+                    >
+                      <XCircle className="h-2.5 w-2.5" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="font-bold tabular-nums">+{entry.weight}</span>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => startSkillEdit(entry.key, entry.weight)}
+                        className="text-purple-500 dark:text-purple-300 hover:text-purple-700 dark:hover:text-purple-100"
+                        aria-label={t('editWeight') || 'تعديل وزن الدرجة'}
+                      >
+                        <Pencil className="h-2.5 w-2.5" />
+                      </button>
+                    )}
+                    {entry.isCustom && (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveCustomSkill?.(entry.customIndex)}
+                        className="text-red-600 dark:text-red-400 hover:text-red-500"
+                        aria-label={t('delete') || 'حذف'}
+                      >
+                        <Trash2 className="h-2.5 w-2.5" />
+                      </button>
+                    )}
+                  </>
                 )}
               </span>
             );
