@@ -3925,6 +3925,7 @@ async def get_session_settings(
         "homework_view_mode": "not_submitted",
         "recitation_enabled": False,
         "recitation_max_attempts": 1,
+        "streak_bonus_enabled": True,
         "skill_enabled": False,
         "extra_columns": [],
         "participation_scores": {},
@@ -3969,6 +3970,7 @@ async def get_session_settings(
         "homework_view_mode": record.get("homework_view_mode", "not_submitted"),
         "recitation_enabled": record.get("recitation_enabled", False),
         "recitation_max_attempts": record.get("recitation_max_attempts", 1),
+        "streak_bonus_enabled": record.get("streak_bonus_enabled", True),
         "skill_enabled": record.get("skill_enabled", False),
         "extra_columns": record.get("extra_columns", []),
         "participation_scores": record.get("participation_scores", {}),
@@ -4146,6 +4148,20 @@ async def save_session_settings(
             {"streak_bonus_value": None},
         )
 
+    # Excellence (التميز) bonus enable flag — "absent key = don't touch" so a
+    # partial settings POST (e.g. the pre-teach correct-answer-weight control,
+    # which sends only {subject_id, correct_answer_weight}) can never silently
+    # re-enable a bonus the teacher disabled. Only overwrite when the caller
+    # explicitly sends the key; otherwise keep the previously saved value (or the
+    # default True when there is no existing record). Mirrors the durable contract
+    # used for correct_answer_weight / streak_bonus_value above.
+    if "streak_bonus_enabled" in payload:
+        streak_bonus_enabled = bool(payload.get("streak_bonus_enabled"))
+    elif existing is not None:
+        streak_bonus_enabled = bool(existing.get("streak_bonus_enabled", True))
+    else:
+        streak_bonus_enabled = True
+
     record_data = {
         "class_id": c_id,
         "subject_id": s_id,
@@ -4156,6 +4172,7 @@ async def save_session_settings(
         "homework_view_mode": hv_mode,
         "recitation_enabled": bool(payload.get("recitation_enabled", False)),
         "recitation_max_attempts": attempts,
+        "streak_bonus_enabled": streak_bonus_enabled,
         "skill_enabled": bool(payload.get("skill_enabled", False)),
         "extra_columns": extra_columns,
         "participation_scores": participation_scores,

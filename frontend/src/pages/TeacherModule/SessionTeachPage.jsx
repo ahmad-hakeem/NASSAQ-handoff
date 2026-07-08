@@ -405,6 +405,10 @@ export default function SessionTeachPage() {
   const [streakBonusValue, setStreakBonusValue] = useState(null);
   const [streakBonusValueDirty, setStreakBonusValueDirty] = useState(false);
   const [effectiveStreakBonusValue, setEffectiveStreakBonusValue] = useState(5);
+  // Durable per class+subject excellence (التميز) bonus enable toggle. Defaults
+  // to true so existing lessons keep awarding the bonus until a teacher turns it
+  // off. When off, only base correct-answer points count.
+  const [streakBonusEnabled, setStreakBonusEnabled] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   // If the active action tab gets disabled by settings, switch to a safe default
   useEffect(() => {
@@ -585,6 +589,7 @@ export default function SessionTeachPage() {
       setStreakBonusValueDirty(false);
       const esbv = s.effective_streak_bonus_value;
       setEffectiveStreakBonusValue(esbv != null ? Number(esbv) : 5);
+      setStreakBonusEnabled(s.streak_bonus_enabled !== false);
     } catch (e) {
       console.error('Error loading session settings:', e);
     }
@@ -612,6 +617,7 @@ export default function SessionTeachPage() {
         homework_view_mode: homeworkViewMode,
         recitation_enabled: recitationEnabled,
         recitation_max_attempts: recitationMaxAttempts,
+        streak_bonus_enabled: streakBonusEnabled,
         skill_enabled: skillEnabled,
         extra_columns: followupColumns,
         participation_scores: participationScores,
@@ -3695,6 +3701,8 @@ export default function SessionTeachPage() {
           streakBonusValue,
           effectiveStreakBonusValue,
           onStreakBonusValueChange: (v) => { setStreakBonusValue(v); setStreakBonusValueDirty(true); },
+          streakBonusEnabled,
+          onStreakBonusEnabledChange: setStreakBonusEnabled,
           onSave: saveSessionSettings,
           saving: savingSettings,
         }}

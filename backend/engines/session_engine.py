@@ -426,6 +426,29 @@ class TeacherSessionEngine:
                 pass
         return rules
 
+    async def _is_streak_bonus_enabled(self, session_id: str) -> bool:
+        """Whether the excellence (التميز) streak bonus is active for this session.
+
+        Mirrors the durable feature toggles (``homework_enabled`` /
+        ``recitation_enabled``): the flag lives on the ``session_settings`` record
+        keyed by class_id + subject_id + tenant_id and defaults to ``True`` so the
+        legacy "always award the bonus" behaviour is preserved for any session
+        whose teacher never touched the toggle. Loaded lazily (only when a bonus
+        would otherwise fire) so the hot answer path pays for it at most once per
+        completed run of ``STREAK_BONUS_THRESHOLD`` consecutive correct answers.
+        """
+        session_doc = await gd_find_one(self.session, "class_sessions", {"id": session_id})
+        if not session_doc:
+            return True
+        settings = await gd_find_one(self.session, "session_settings", {
+            "class_id": session_doc.get("class_id"),
+            "subject_id": session_doc.get("subject_id"),
+            "tenant_id": session_doc.get("tenant_id") or session_doc.get("school_id") or "",
+        })
+        if not settings:
+            return True
+        return bool(settings.get("streak_bonus_enabled", True))
+
     # ---------- Session Management ----------
     
     ACTIVE_STATUSES = [
@@ -1340,8 +1363,17 @@ class TeacherSessionEngine:
             # therefore never fabricate a bonus (the FE answer lock stops most of
             # them; the modulo stops the rest). Fail closed if the run saturates
             # the fetch window so the modulo can't re-fire past it.
+            # The excellence bonus can be disabled per class+subject via the
+            # durable ``streak_bonus_enabled`` lesson setting (default on). When
+            # off, only the base correct-answer points count — no bonus is added.
+            # The flag is checked lazily inside the modulo branch so it is loaded
+            # at most once per completed run, never on every correct answer.
             streak = await self._check_answer_streak(session_id, student_id)
-            if 0 < streak < STREAK_FETCH_WINDOW and streak % STREAK_BONUS_THRESHOLD == 0:
+            if (
+                0 < streak < STREAK_FETCH_WINDOW
+                and streak % STREAK_BONUS_THRESHOLD == 0
+                and await self._is_streak_bonus_enabled(session_id)
+            ):
                 streak_bonus = rules["three_correct_streak"]
                 score_change += streak_bonus
 
