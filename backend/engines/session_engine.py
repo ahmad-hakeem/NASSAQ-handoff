@@ -1461,11 +1461,36 @@ class TeacherSessionEngine:
         behaviour_type: str,
         details: Optional[str],
         teacher_id: str,
-        actor_id: Optional[str] = None
+        actor_id: Optional[str] = None,
+        points_override: Optional[int] = None
     ) -> Dict[str, Any]:
         """Record student behaviour (positive/negative/skill)"""
         now = datetime.now(timezone.utc)
-        
+
+        # Resolve the awarded points BEFORE inserting so a custom behaviour can
+        # snapshot its configured magnitude on the interaction row. When the
+        # teacher configured an explicit value (points_override, e.g. a custom
+        # ``bhv_*`` behaviour) honor it — magnitude only, sign derived from the
+        # category. Otherwise resolve predefined behaviours from the score rules
+        # exactly as before.
+        rules = await self._get_session_score_rules(session_id)
+        score_change = 0
+        if points_override is not None:
+            magnitude = abs(int(points_override))
+            if category == BehaviourCategory.POSITIVE:
+                score_change = magnitude
+            elif category == BehaviourCategory.NEGATIVE:
+                score_change = -magnitude
+            elif category == BehaviourCategory.SKILL:
+                score_change = magnitude
+        else:
+            if category == BehaviourCategory.POSITIVE:
+                score_change = rules.get(behaviour_type, 2)
+            elif category == BehaviourCategory.NEGATIVE:
+                score_change = rules.get(behaviour_type, -2)
+            elif category == BehaviourCategory.SKILL:
+                score_change = rules.get("special_skill", 3)
+
         # Create interaction record
         interaction = {
             "id": str(uuid.uuid4()),
@@ -1481,17 +1506,15 @@ class TeacherSessionEngine:
             "timestamp": now.isoformat(),
             "editable_until": (now + timedelta(hours=1)).isoformat()
         }
-        
+        # Snapshot the awarded points on the interaction only when the teacher
+        # configured an explicit value (custom behaviour). Predefined behaviours
+        # carry no snapshot so compute_session_scores keeps re-deriving them from
+        # the (tenant-configurable) score rules — no regression, and legacy rows
+        # recorded before this change fall back to the same rules path.
+        if points_override is not None:
+            interaction["points"] = score_change
+
         await gd_insert(self.session, "session_interactions", interaction)
-        
-        rules = await self._get_session_score_rules(session_id)
-        score_change = 0
-        if category == BehaviourCategory.POSITIVE:
-            score_change = rules.get(behaviour_type, 2)
-        elif category == BehaviourCategory.NEGATIVE:
-            score_change = rules.get(behaviour_type, -2)
-        elif category == BehaviourCategory.SKILL:
-            score_change = rules.get("special_skill", 3)
         
         # Update student score
         if score_change != 0:
@@ -2770,7 +2793,14 @@ class TeacherSessionEngine:
                         skill_pts = int(rules.get("special_skill", 3))
                     b["performance_points"] += skill_pts
                 elif cat == BehaviourCategory.POSITIVE.value:
-                    pts = int(rules.get(btype, 2)) if not str(btype).startswith("custom:") else 2
+                    # Honor the configured points snapshotted on the interaction
+                    # by record_behaviour (custom bhv_* behaviours). Predefined
+                    # behaviours and legacy rows carry no snapshot and fall back
+                    # to the (tenant-configurable) score rules.
+                    try:
+                        pts = int(it.get("points"))
+                    except (TypeError, ValueError):
+                        pts = int(rules.get(btype, 2)) if not str(btype).startswith("custom:") else 2
                     # Behaviour (سلوك) folds into the participation (المشاركة)
                     # column: positive raises it, negative lowers it. The points
                     # also stay in behaviour_events so commit still writes the
@@ -2787,7 +2817,14 @@ class TeacherSessionEngine:
                         "recorded_at": it.get("recorded_at") or it.get("timestamp"),
                     })
                 elif cat == BehaviourCategory.NEGATIVE.value:
-                    pts = int(rules.get(btype, -2)) if not str(btype).startswith("custom:") else -2
+                    # Honor the configured points snapshotted on the interaction
+                    # by record_behaviour (custom bhv_* behaviours). Predefined
+                    # behaviours and legacy rows carry no snapshot and fall back
+                    # to the (tenant-configurable) score rules.
+                    try:
+                        pts = int(it.get("points"))
+                    except (TypeError, ValueError):
+                        pts = int(rules.get(btype, -2)) if not str(btype).startswith("custom:") else -2
                     _add_participation(b, pts)
                     b["behaviour_events"].append({
                         "interaction_id": it.get("id"),

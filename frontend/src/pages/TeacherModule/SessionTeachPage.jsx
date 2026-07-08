@@ -1625,12 +1625,23 @@ export default function SessionTeachPage() {
   const recordBehaviour = async (bType) => {
     if (!selectedStudent) return;
     try {
-      const res = await api.post(`/session/${sessionId}/behaviour`, {
+      const payload = {
         student_id: selectedStudent.id,
         category: behaviourCategory,
         behaviour_type: bType.id,
         details: behaviourNote || null,
-      });
+      };
+      // Custom behaviours (added via the sidebar) carry a teacher-configured
+      // value; predefined ones always carry a labelKey and resolve their points
+      // server-side from the score rules. Send the configured magnitude so the
+      // backend applies the real value instead of the ±2 default; the sign is
+      // derived from the category on the server.
+      const isCustom = !bType.labelKey;
+      const magnitude = Math.abs(parseInt(String(bType.points), 10));
+      if (isCustom && Number.isFinite(magnitude) && magnitude > 0 && magnitude <= 100) {
+        payload.points_override = magnitude;
+      }
+      const res = await api.post(`/session/${sessionId}/behaviour`, payload);
       const change = res.data?.score_change || 0;
       const signed = change > 0 ? `+${change}` : String(change);
       const bLabel = bType.labelKey ? t(bType.labelKey) : bType.label;

@@ -2757,6 +2757,17 @@ async def record_student_behaviour(
     """
     await _verify_session_owner(session_id, current_user)
     from engines.session_engine import BehaviourCategory
+    # A custom behaviour carries its teacher-configured magnitude; validate it
+    # the same way participation does (1..100, safe Arabic errors) and let the
+    # engine derive the sign from the category.
+    points_override = data.get("points_override")
+    if points_override is not None:
+        try:
+            points_override = int(points_override)
+            if points_override <= 0 or points_override > 100:
+                raise HTTPException(status_code=422, detail="points_override يجب أن يكون بين 1 و100")
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=422, detail="points_override يجب أن يكون رقماً صحيحاً")
     result = await session_engine.record_behaviour(
         session_id=session_id,
         student_id=data.get("student_id"),
@@ -2764,7 +2775,8 @@ async def record_student_behaviour(
         behaviour_type=data.get("behaviour_type"),
         details=data.get("details"),
         teacher_id=current_user["id"],
-        actor_id=current_user.get("teacher_id") or current_user["id"]
+        actor_id=current_user.get("teacher_id") or current_user["id"],
+        points_override=points_override
     )
     return result
 
