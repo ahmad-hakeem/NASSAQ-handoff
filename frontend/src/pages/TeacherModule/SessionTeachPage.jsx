@@ -3657,8 +3657,27 @@ export default function SessionTeachPage() {
         evaluationItems={customEvaluationItems}
         onAddEvaluationItem={(item) => setCustomEvaluationItems((prev) => [...prev, item])}
         onRemoveEvaluationItem={(id) => setCustomEvaluationItems((prev) => prev.filter((x) => x.id !== id))}
-        positiveBehaviours={customPositiveBehaviours}
-        negativeBehaviours={customNegativeBehaviours}
+        positiveBehaviours={[
+          // Built-in defaults are shown (read-only) alongside custom entries so
+          // the Settings behaviours tab mirrors the live sidebar, which renders
+          // the same `defaults ∪ custom` union.
+          ...BEHAVIOURS.positive.map((b) => ({
+            id: b.id,
+            name: b.labelKey ? (t(b.labelKey) || b.label) : b.label,
+            points: Math.abs(Number(b.points)) || 0,
+            removable: false,
+          })),
+          ...customPositiveBehaviours,
+        ]}
+        negativeBehaviours={[
+          ...BEHAVIOURS.negative.map((b) => ({
+            id: b.id,
+            name: b.labelKey ? (t(b.labelKey) || b.label) : b.label,
+            points: Math.abs(Number(b.points)) || 0,
+            removable: false,
+          })),
+          ...customNegativeBehaviours,
+        ]}
         onAddPositiveBehaviour={(item) => setCustomPositiveBehaviours((prev) => [...prev, item])}
         onAddNegativeBehaviour={(item) => setCustomNegativeBehaviours((prev) => [...prev, item])}
         onRemovePositiveBehaviour={(id) => setCustomPositiveBehaviours((prev) => prev.filter((x) => (typeof x === 'string' ? `custom_${x}` !== id : x.id !== id)))}

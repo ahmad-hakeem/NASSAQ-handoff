@@ -419,19 +419,28 @@ export default function SidebarSettingsDialog({
         ) : (
           items.map((raw, idx) => {
             const item = normalizeBehaviour(raw, idx, isPositive ? 2 : -2);
+            // Built-in default behaviours are shared constants (not stored in
+            // the teacher's custom list), so they can't be removed here. They
+            // arrive with `removable === false`; a spacer keeps their row
+            // aligned with the removable custom rows below.
+            const removable = item.removable !== false;
             return (
             <div
               key={item.id}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border ${rowBg}`}
             >
-              <button
-                type="button"
-                onClick={() => onRemove?.(item.id)}
-                className="text-red-500 hover:text-red-600 transition-colors shrink-0"
-                aria-label={t('delete') || 'حذف'}
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              {removable ? (
+                <button
+                  type="button"
+                  onClick={() => onRemove?.(item.id)}
+                  className="text-red-500 hover:text-red-600 transition-colors shrink-0"
+                  aria-label={t('delete') || 'حذف'}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              ) : (
+                <span className="h-4 w-4 shrink-0" aria-hidden="true" />
+              )}
               <span className={`text-xs font-bold tabular-nums font-cairo flex-none w-8 text-center ${pointsColor}`}>
                 {/* Force the badge sign to match the category list this
                     item lives in, regardless of how the underlying value
