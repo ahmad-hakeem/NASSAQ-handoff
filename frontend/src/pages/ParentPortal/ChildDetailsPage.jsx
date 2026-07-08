@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import CumulativeAnalytics from '../../components/parent/CumulativeAnalytics';
 import BackgroundRefreshChip from '../../components/parent/BackgroundRefreshChip';
+import { formatAttendanceDate } from '../../utils/hijriDate';
 import {
   User,
   Calendar,
@@ -410,7 +411,7 @@ const ChildDetailsPage = () => {
                         <div key={idx} className="flex items-center justify-between p-3 bg-muted/40 rounded-lg">
                           <div className="flex items-center gap-2">
                             {getStatusIcon(record.status)}
-                            <span className="text-sm">{record.date}</span>
+                            <span className="text-sm">{formatAttendanceDate(record.date, isRTL ? 'ar' : 'en')}</span>
                           </div>
                           <Badge variant="outline" className="text-xs">
                             {record.status === 'present' && (t('present'))}

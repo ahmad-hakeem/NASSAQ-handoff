@@ -135,3 +135,30 @@ export function formatFullDate(date = new Date(), locale = 'ar') {
   const greg = `${h.gregorianDay} ${months[h.gregorianMonth - 1]} ${h.gregorianYear}`;
   return { weekday: h.weekdayEn, hijri, gregorian: greg, full: `${hijri}  —  ${greg}` };
 }
+
+// Resolve a whole-day calendar date from an API value that may be a date-only
+// string ("2026-06-30"), a timestamptz ("2026-06-30T00:00:00+00:00"), or a Date.
+// The Y-M-D is read straight from the ISO date part and rebuilt as a local date
+// so the calendar day never shifts across runtime timezones.
+function toCalendarDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  const s = String(value);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Platform-standard display for an attendance record date. Attendance is a
+// whole-day record, so this shows the date (Hijri + Gregorian) via the shared
+// formatHijriDate — never a raw ISO/server timestamp.
+export function formatAttendanceDate(value, locale = 'ar') {
+  const d = toCalendarDate(value);
+  if (!d) return '—';
+  return formatHijriDate(d, { locale, includeWeekday: false });
+}
