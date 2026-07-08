@@ -491,10 +491,12 @@ export default function SidebarSettingsDialog({
           <button
             type="button"
             onClick={() => onToggleSkillEnabled(!skillEnabled)}
-            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${skillEnabled ? 'bg-purple-500' : 'bg-muted-foreground/30'}`}
-            aria-pressed={skillEnabled}
+            role="switch"
+            aria-checked={skillEnabled}
+            className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 ${skillEnabled ? 'bg-purple-500' : 'bg-muted-foreground/30'}`}
+            title={skillEnabled ? (t ? t('enabled') : 'On') : (t ? t('disabled') : 'Off')}
           >
-            <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${skillEnabled ? 'translate-x-0.5' : 'translate-x-[18px]'}`} />
+            <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${skillEnabled ? 'translate-x-5 rtl:-translate-x-5' : 'translate-x-0.5 rtl:-translate-x-0.5'}`} />
           </button>
         </div>
       )}
