@@ -24,6 +24,7 @@ import {
   UserCheck, CheckCircle2, XCircle, Clock, Shield, Eye, EyeOff,
   ChevronRight, School, LayoutDashboard, RefreshCw, Key, Copy,
   Lock, Unlock, Sparkles, UserPlus, RotateCcw,
+  LogIn, LogOut, Download, Upload, Settings, Archive, Trash2, Send,
 } from 'lucide-react';
 
 const STATUS_CONFIG = {
@@ -33,15 +34,143 @@ const STATUS_CONFIG = {
   pending:   { label: 'معلقة',       label_en: 'Pending',    color: 'bg-slate-400',   badge: 'bg-slate-100 text-slate-700 border-slate-200' },
 };
 
+// Bilingual, human-readable labels for the school Activity Log. Keys are the raw
+// backend `action` codes emitted by `audit_engine.AuditAction` and the
+// Independent-Teacher lifecycle routes. Lookups are case-insensitive; any code
+// not listed here falls back to a humanised label via `resolveActivity` so a raw
+// internal key (e.g. `auth.logout`, `INDEPENDENT_TEACHER_BOOTSTRAP`) is NEVER
+// shown to the user. Mirrors the localized audit surfaces elsewhere in the
+// platform (see frontend/src/pages/TeacherModule/TeacherAuditLogPage.jsx).
 const ACTION_LABELS = {
-  'tenant.suspended': { ar: 'تعليق المدرسة', icon: Pause, color: 'text-red-600' },
-  'tenant.activated': { ar: 'تفعيل المدرسة', icon: Play, color: 'text-emerald-600' },
-  'tenant.created':   { ar: 'إنشاء المدرسة', icon: Building2, color: 'text-blue-600' },
-  'tenant.updated':   { ar: 'تعديل المدرسة', icon: Edit, color: 'text-amber-600' },
-  'user.created':     { ar: 'إنشاء مستخدم',  icon: Users, color: 'text-purple-600' },
-  'user.suspended':   { ar: 'تعليق مستخدم',  icon: XCircle, color: 'text-red-600' },
-  'user.activated':   { ar: 'تفعيل مستخدم',  icon: CheckCircle2, color: 'text-emerald-600' },
+  // ── Tenant / school ──────────────────────────────────────────────
+  'tenant.suspended': { ar: 'تعليق المدرسة', en: 'School suspended', icon: Pause, color: 'text-red-600' },
+  'tenant.activated': { ar: 'تفعيل المدرسة', en: 'School activated', icon: Play, color: 'text-emerald-600' },
+  'tenant.created':   { ar: 'إنشاء المدرسة', en: 'School created', icon: Building2, color: 'text-blue-600' },
+  'tenant.updated':   { ar: 'تعديل المدرسة', en: 'School updated', icon: Edit, color: 'text-amber-600' },
+  // ── Users ────────────────────────────────────────────────────────
+  'user.created':       { ar: 'إنشاء مستخدم', en: 'User created', icon: Users, color: 'text-purple-600' },
+  'user.updated':       { ar: 'تعديل مستخدم', en: 'User updated', icon: Edit, color: 'text-amber-600' },
+  'user.deleted':       { ar: 'حذف مستخدم', en: 'User deleted', icon: Trash2, color: 'text-red-600' },
+  'user.activated':     { ar: 'تفعيل مستخدم', en: 'User activated', icon: CheckCircle2, color: 'text-emerald-600' },
+  'user.suspended':     { ar: 'تعليق مستخدم', en: 'User suspended', icon: XCircle, color: 'text-red-600' },
+  'user.role_assigned': { ar: 'إسناد دور', en: 'Role assigned', icon: Shield, color: 'text-purple-600' },
+  'user.role_removed':  { ar: 'إزالة دور', en: 'Role removed', icon: Shield, color: 'text-slate-500' },
+  // ── Authentication ───────────────────────────────────────────────
+  'auth.login':            { ar: 'تسجيل دخول', en: 'Login', icon: LogIn, color: 'text-blue-600' },
+  'auth.logout':           { ar: 'تسجيل خروج', en: 'Logout', icon: LogOut, color: 'text-slate-500' },
+  'auth.login_failed':     { ar: 'محاولة دخول فاشلة', en: 'Failed login attempt', icon: AlertTriangle, color: 'text-red-600' },
+  'auth.password_changed': { ar: 'تغيير كلمة المرور', en: 'Password changed', icon: Key, color: 'text-amber-600' },
+  'auth.password_reset':   { ar: 'إعادة تعيين كلمة المرور', en: 'Password reset', icon: Key, color: 'text-amber-600' },
+  // ── Academic ─────────────────────────────────────────────────────
+  'academic.grade_recorded':       { ar: 'تسجيل درجة', en: 'Grade recorded', icon: GraduationCap, color: 'text-blue-600' },
+  'academic.grade_updated':        { ar: 'تعديل درجة', en: 'Grade updated', icon: GraduationCap, color: 'text-amber-600' },
+  'academic.grades_bulk_recorded': { ar: 'تسجيل درجات بالجملة', en: 'Grades recorded (bulk)', icon: GraduationCap, color: 'text-blue-600' },
+  'academic.assessment_created':   { ar: 'إنشاء تقييم', en: 'Assessment created', icon: BookOpen, color: 'text-blue-600' },
+  'academic.assessment_published': { ar: 'نشر تقييم', en: 'Assessment published', icon: BookOpen, color: 'text-emerald-600' },
+  'academic.report_card_generated':{ ar: 'إصدار بطاقة تقرير', en: 'Report card generated', icon: BookOpen, color: 'text-blue-600' },
+  // ── Attendance ───────────────────────────────────────────────────
+  'attendance.recorded':        { ar: 'تسجيل حضور', en: 'Attendance recorded', icon: UserCheck, color: 'text-blue-600' },
+  'attendance.bulk_recorded':   { ar: 'تسجيل حضور بالجملة', en: 'Attendance recorded (bulk)', icon: UserCheck, color: 'text-blue-600' },
+  'attendance.excuse_submitted':{ ar: 'تقديم عذر غياب', en: 'Excuse submitted', icon: UserCheck, color: 'text-amber-600' },
+  'attendance.excuse_approved': { ar: 'اعتماد عذر غياب', en: 'Excuse approved', icon: CheckCircle2, color: 'text-emerald-600' },
+  // ── Behaviour ────────────────────────────────────────────────────
+  'behaviour.note_created':   { ar: 'ملاحظة سلوكية', en: 'Behaviour note created', icon: AlertTriangle, color: 'text-amber-600' },
+  'behaviour.action_created': { ar: 'إجراء انضباطي', en: 'Disciplinary action created', icon: AlertTriangle, color: 'text-red-600' },
+  'behaviour.action_updated': { ar: 'تعديل إجراء انضباطي', en: 'Disciplinary action updated', icon: AlertTriangle, color: 'text-amber-600' },
+  'behaviour.recorded':       { ar: 'تسجيل سلوك', en: 'Behaviour recorded', icon: AlertTriangle, color: 'text-amber-600' },
+  'behaviour.reviewed':       { ar: 'مراجعة سلوك', en: 'Behaviour reviewed', icon: CheckCircle2, color: 'text-emerald-600' },
+  // ── Schedule ─────────────────────────────────────────────────────
+  'schedule.created':   { ar: 'إنشاء الجدول', en: 'Schedule created', icon: Calendar, color: 'text-blue-600' },
+  'schedule.published': { ar: 'نشر الجدول', en: 'Schedule published', icon: Calendar, color: 'text-emerald-600' },
+  'schedule.modified':  { ar: 'تعديل الجدول', en: 'Schedule modified', icon: Calendar, color: 'text-amber-600' },
+  // ── Settings / system / data ─────────────────────────────────────
+  'settings.updated':     { ar: 'تعديل الإعدادات', en: 'Settings updated', icon: Settings, color: 'text-amber-600' },
+  'system.configuration': { ar: 'إعداد النظام', en: 'System configuration', icon: Settings, color: 'text-slate-500' },
+  'system.config':        { ar: 'إعداد النظام', en: 'System configuration', icon: Settings, color: 'text-slate-500' },
+  'data.exported':        { ar: 'تصدير بيانات', en: 'Data exported', icon: Download, color: 'text-blue-600' },
+  'data.imported':        { ar: 'استيراد بيانات', en: 'Data imported', icon: Upload, color: 'text-blue-600' },
+  'data.modify':          { ar: 'تعديل بيانات', en: 'Data modified', icon: Edit, color: 'text-amber-600' },
+  'session.skill_recorded': { ar: 'تسجيل مهارة', en: 'Skill recorded', icon: Sparkles, color: 'text-purple-600' },
+  // ── Two-factor (MFA) ─────────────────────────────────────────────
+  'mfa.disabled':        { ar: 'تعطيل التحقق بخطوتين', en: 'Two-factor disabled', icon: Lock, color: 'text-red-600' },
+  'mfa.disable.denied':  { ar: 'رفض تعطيل التحقق بخطوتين', en: 'Two-factor disable denied', icon: Lock, color: 'text-amber-600' },
+  'mfa.reset.success':   { ar: 'إعادة ضبط التحقق بخطوتين', en: 'Two-factor reset', icon: Shield, color: 'text-amber-600' },
+  'mfa.reset.failure':   { ar: 'فشل إعادة ضبط التحقق بخطوتين', en: 'Two-factor reset failed', icon: Shield, color: 'text-red-600' },
+  'mfa.login.success':   { ar: 'نجاح تسجيل الدخول عبر التحقق بخطوتين', en: 'Two-factor login success', icon: Shield, color: 'text-emerald-600' },
+  'mfa.login.failure':   { ar: 'فشل تسجيل الدخول عبر التحقق بخطوتين', en: 'Two-factor login failed', icon: Shield, color: 'text-red-600' },
+  'mfa.stepup.success':  { ar: 'نجاح تحقق إضافي', en: 'Step-up verification success', icon: Shield, color: 'text-emerald-600' },
+  'mfa.stepup.failure':  { ar: 'فشل تحقق إضافي', en: 'Step-up verification failed', icon: Shield, color: 'text-red-600' },
+  'mfa.stepup.challenge_issued': { ar: 'إصدار تحدّي تحقق إضافي', en: 'Step-up challenge issued', icon: Shield, color: 'text-slate-500' },
+  'mfa.email_otp.sent':  { ar: 'إرسال رمز التحقق بالبريد', en: 'Email OTP sent', icon: Shield, color: 'text-slate-500' },
+  'mfa.totp.enroll_begin':        { ar: 'بدء تسجيل تطبيق المصادقة', en: 'Authenticator enrollment started', icon: Shield, color: 'text-slate-500' },
+  'mfa.totp.enroll_success':      { ar: 'تسجيل تطبيق المصادقة', en: 'Authenticator app enrolled', icon: Shield, color: 'text-emerald-600' },
+  'mfa.totp.enroll_failure':      { ar: 'فشل تسجيل تطبيق المصادقة', en: 'Authenticator enrollment failed', icon: Shield, color: 'text-red-600' },
+  'mfa.webauthn.register_begin':  { ar: 'بدء تسجيل مفتاح أمان', en: 'Security key registration started', icon: Key, color: 'text-slate-500' },
+  'mfa.webauthn.register_success':{ ar: 'تسجيل مفتاح أمان', en: 'Security key registered', icon: Key, color: 'text-emerald-600' },
+  'mfa.webauthn.register_failure':{ ar: 'فشل تسجيل مفتاح أمان', en: 'Security key registration failed', icon: Key, color: 'text-red-600' },
+  'mfa.recovery.regenerated':        { ar: 'إنشاء رموز استرداد جديدة', en: 'Recovery codes regenerated', icon: Key, color: 'text-amber-600' },
+  'mfa.recovery.regenerate.denied':  { ar: 'رفض إنشاء رموز استرداد', en: 'Recovery code regeneration denied', icon: Key, color: 'text-amber-600' },
+  'mfa.recovery.acknowledged':       { ar: 'حفظ رموز الاسترداد', en: 'Recovery codes acknowledged', icon: Key, color: 'text-emerald-600' },
+  // ── Independent-Teacher workspace lifecycle ──────────────────────
+  'INDEPENDENT_TEACHER_BOOTSTRAP':            { ar: 'تهيئة مساحة العمل', en: 'Workspace initialized', icon: Sparkles, color: 'text-purple-600' },
+  'INDEPENDENT_TEACHER_EXPORT':               { ar: 'تصدير بيانات مساحة العمل', en: 'Workspace data exported', icon: Download, color: 'text-blue-600' },
+  'INDEPENDENT_TEACHER_EXPORT_EXCEL':         { ar: 'تصدير بيانات المعلم إلى إكسيل', en: 'Data exported to Excel', icon: Download, color: 'text-blue-600' },
+  'INDEPENDENT_TEACHER_EXPORT_CSV':           { ar: 'تصدير بيانات المعلم إلى CSV', en: 'Data exported to CSV', icon: Download, color: 'text-blue-600' },
+  'INDEPENDENT_TEACHER_EXPORT_DOWNLOADED':    { ar: 'تنزيل ملف التصدير', en: 'Export file downloaded', icon: Download, color: 'text-blue-600' },
+  'INDEPENDENT_TEACHER_SOFT_DELETE':          { ar: 'أرشفة مساحة العمل', en: 'Workspace archived', icon: Archive, color: 'text-amber-600' },
+  'INDEPENDENT_TEACHER_WORKSPACE_ARCHIVE':    { ar: 'أرشفة مساحة العمل', en: 'Workspace archived', icon: Archive, color: 'text-amber-600' },
+  'INDEPENDENT_TEACHER_REACTIVATE':           { ar: 'إعادة تفعيل مساحة العمل', en: 'Workspace reactivated', icon: RotateCcw, color: 'text-emerald-600' },
+  'INDEPENDENT_TEACHER_WORKSPACE_REACTIVATE': { ar: 'إعادة تنشيط مساحة العمل', en: 'Workspace reactivated', icon: RotateCcw, color: 'text-emerald-600' },
+  'INDEPENDENT_TEACHER_PENDING_HARD_DELETE':  { ar: 'انتهاء مهلة استرجاع المساحة', en: 'Workspace recovery window ended', icon: Trash2, color: 'text-red-600' },
+  'INDEPENDENT_TEACHER_HARD_DELETED':         { ar: 'حذف نهائي لمساحة العمل', en: 'Workspace permanently deleted', icon: Trash2, color: 'text-red-600' },
+  'INDEPENDENT_TEACHER_COLLAB_INVITED':       { ar: 'دعوة معلم متعاون', en: 'Collaborator invited', icon: UserPlus, color: 'text-purple-600' },
+  'INDEPENDENT_TEACHER_COLLAB_CANCELLED':     { ar: 'إلغاء دعوة متعاون', en: 'Collaborator invite cancelled', icon: XCircle, color: 'text-slate-500' },
+  'INDEPENDENT_TEACHER_COLLAB_ACCEPTED':      { ar: 'قبول دعوة متعاون', en: 'Collaborator invite accepted', icon: CheckCircle2, color: 'text-emerald-600' },
+  'INDEPENDENT_TEACHER_COLLAB_REVOKED':       { ar: 'إلغاء وصول متعاون', en: 'Collaborator access revoked', icon: XCircle, color: 'text-red-600' },
+  'INDEPENDENT_TEACHER_INVITE_PARENT':        { ar: 'دعوة وليّ أمر', en: 'Parent invited', icon: UserPlus, color: 'text-purple-600' },
+  'INDEPENDENT_TEACHER_INVITE_COLLABORATOR':  { ar: 'دعوة معلم متعاون', en: 'Collaborator invited', icon: UserPlus, color: 'text-purple-600' },
+  'INDEPENDENT_TEACHER_BULK_IMPORT_STUDENTS': { ar: 'استيراد طلاب بالجملة', en: 'Students imported (bulk)', icon: Upload, color: 'text-blue-600' },
+  'INDEPENDENT_TEACHER_BULK_IMPORT_CLASSES':  { ar: 'استيراد فصول بالجملة', en: 'Classes imported (bulk)', icon: Upload, color: 'text-blue-600' },
+  'INDEPENDENT_TEACHER_BULK_IMPORT_SUBJECTS': { ar: 'استيراد مواد بالجملة', en: 'Subjects imported (bulk)', icon: Upload, color: 'text-blue-600' },
+  'INDEPENDENT_TEACHER_LESSON_SUMMARY_SENT':  { ar: 'إرسال ملخص الحصة لأولياء الأمور', en: 'Lesson summary sent to parents', icon: Send, color: 'text-blue-600' },
+  'INDEPENDENT_TEACHER_INVITATION_CREATED':   { ar: 'إنشاء دعوة', en: 'Invitation created', icon: UserPlus, color: 'text-purple-600' },
+  'INDEPENDENT_TEACHER_INVITATION_CANCELLED': { ar: 'إلغاء دعوة', en: 'Invitation cancelled', icon: XCircle, color: 'text-slate-500' },
+  'INDEPENDENT_TEACHER_INVITATION_ACCEPTED':  { ar: 'قبول دعوة', en: 'Invitation accepted', icon: CheckCircle2, color: 'text-emerald-600' },
+  'INDEPENDENT_TEACHER_PARENT_LINK':          { ar: 'ربط وليّ أمر', en: 'Parent linked', icon: UserPlus, color: 'text-purple-600' },
+  'INDEPENDENT_TEACHER_PARENT_CREDENTIALS':   { ar: 'بيانات دخول وليّ الأمر', en: 'Parent credentials issued', icon: Key, color: 'text-amber-600' },
+  'INDEPENDENT_TEACHER_SCHEDULE_OVERWRITE':      { ar: 'استبدال الجدول', en: 'Schedule overwritten', icon: Calendar, color: 'text-amber-600' },
+  'INDEPENDENT_TEACHER_SCHEDULE_DUPLICATE_WEEK': { ar: 'تكرار أسبوع في الجدول', en: 'Schedule week duplicated', icon: Calendar, color: 'text-blue-600' },
+  'INDEPENDENT_TEACHER_ERASURE_REQUESTED':    { ar: 'طلب حذف البيانات', en: 'Data erasure requested', icon: Trash2, color: 'text-amber-600' },
+  'INDEPENDENT_TEACHER_ERASURE_COMPLETED':    { ar: 'اكتمال حذف البيانات', en: 'Data erasure completed', icon: Trash2, color: 'text-red-600' },
 };
+
+// Case-insensitive index so a backend casing tweak never regresses a lookup.
+const ACTION_LABELS_LOWER = Object.fromEntries(
+  Object.entries(ACTION_LABELS).map(([k, v]) => [k.toLowerCase(), v]),
+);
+
+// Last-resort readable fallback: turn a raw code (`auth.logout`,
+// `INDEPENDENT_TEACHER_BOOTSTRAP`) into Title-Cased words so an unmapped event
+// is never displayed as a raw internal key.
+function humaniseActivity(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  return raw
+    .toLowerCase()
+    .split(/[_.\s]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+// Resolve a raw audit `action` to a localized label + icon for the active
+// language. Falls back to a humanised label (never the raw key) when unknown.
+function resolveActivity(raw, isRTL) {
+  const cfg = raw ? ACTION_LABELS_LOWER[String(raw).toLowerCase()] : null;
+  if (cfg) {
+    return { label: isRTL ? cfg.ar : cfg.en, icon: cfg.icon, color: cfg.color };
+  }
+  return { label: humaniseActivity(raw), icon: Activity, color: 'text-slate-500' };
+}
 
 const ROLE_LABELS = {
   school_principal: { ar: 'مدير المدرسة', color: 'bg-brand-navy/10 text-brand-navy' },
@@ -810,16 +939,16 @@ export default function PlatformSchoolDetailPage() {
                   ) : (
                     <div className="space-y-2">
                       {detail.audit_logs.map((log, idx) => {
-                        const actionCfg = ACTION_LABELS[log.action] || { ar: log.action, icon: Activity, color: 'text-slate-500' };
+                        const actionCfg = resolveActivity(log.action, isRTL);
                         const ActionIcon = actionCfg.icon;
                         return (
                           <div key={idx} className="flex items-start gap-3 p-3 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                             <div className={`mt-0.5 p-2 rounded-lg bg-slate-100 dark:bg-slate-800 ${actionCfg.color}`}>
-                              <ActionIcon className="h-4 w-4" />
+                              <ActionIcon className="h-4 w-4" aria-hidden="true" strokeWidth={1.5} />
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-2 flex-wrap">
-                                <p className="text-sm font-medium text-slate-800 dark:text-white">{actionCfg.ar}</p>
+                                <p className="text-sm font-medium text-slate-800 dark:text-white">{actionCfg.label}</p>
                                 <span className="text-xs text-slate-400 flex-shrink-0">
                                   {log.timestamp ? new Date(log.timestamp).toLocaleString(isRTL ? 'ar-SA' : 'en-GB') : ''}
                                 </span>
