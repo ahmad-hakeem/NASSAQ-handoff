@@ -299,6 +299,7 @@ _ACTION_LABELS_AR: Dict[str, str] = {
     "INDEPENDENT_TEACHER_COLLAB_ACCEPTED": "قبول دعوة متعاون",
     "INDEPENDENT_TEACHER_COLLAB_REVOKED": "إلغاء وصول متعاون",
     "INDEPENDENT_TEACHER_BULK_IMPORT_STUDENTS": "استيراد طلاب",
+    "INDEPENDENT_TEACHER_LESSON_SUMMARY_SENT": "إرسال ملخص الحصة لأولياء الأمور",
     "academic.grade_recorded": "تسجيل درجة",
     "academic.grade_updated": "تعديل درجة",
     "academic.grades_bulk_recorded": "تسجيل درجات بالجملة",

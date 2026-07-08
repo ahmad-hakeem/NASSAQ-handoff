@@ -204,6 +204,7 @@ const AUDIT_EVENT_FALLBACKS_AR = {
   INDEPENDENT_TEACHER_INVITE_PARENT: 'دعوة وليّ أمر',
   INDEPENDENT_TEACHER_INVITE_COLLABORATOR: 'دعوة معلم متعاون',
   INDEPENDENT_TEACHER_BULK_IMPORT_STUDENTS: 'استيراد طلاب بالجملة',
+  INDEPENDENT_TEACHER_LESSON_SUMMARY_SENT: 'إرسال ملخص الحصة لأولياء الأمور',
   // -- Auth (engines/audit_engine.py::AuditAction) ------------------
   'auth.login': 'تسجيل دخول',
   'auth.logout': 'تسجيل خروج',
