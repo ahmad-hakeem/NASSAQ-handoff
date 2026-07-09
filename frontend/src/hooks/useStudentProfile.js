@@ -6,6 +6,7 @@ import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { toast } from 'sonner';
 import { getApiErrorMessage } from '../utils/apiError';
 import { useSchoolNavigation } from '../utils/studentNavigation';
+import { computeAttendanceRate } from '../utils/attendanceRate';
 
 export function useStudentProfile() {
   const { studentId } = useParams();
@@ -246,7 +247,7 @@ export function useStudentProfile() {
 
   useEffect(() => {
     if (activeTab === 'overview' && !overviewLoaded && student) {
-      fetchAttendance(); fetchHomeworkRate(); fetchBehaviourRecords(); fetchClassDetail(); setOverviewLoaded(true);
+      fetchAttendance(); fetchHomeworkRate(); fetchBehaviourRecords(); fetchClassDetail(); fetchActivities(); setOverviewLoaded(true);
     } else if (activeTab === 'academic') {
       fetchAttendance(); fetchAttendanceHistory(); fetchRiskData(); fetchHomeworkRate(); fetchGradesDetail();
     } else if (activeTab === 'behaviour') { fetchBehaviourRecords(); fetchBehaviourTypes(); }
@@ -604,12 +605,7 @@ export function useStudentProfile() {
   const getRiskLabel = (c) => { const map = { critical: t('critical'), high: t('high'), medium: t('medium'), low: t('low') }; return map[c] || c; };
   const getRiskBarColor = (c) => { const map = { critical: '[&>div]:bg-red-500', high: '[&>div]:bg-orange-500', medium: '[&>div]:bg-yellow-500', low: '[&>div]:bg-green-500' }; return map[c] || '[&>div]:bg-gray-400'; };
 
-  const attendanceRate = useMemo(() => {
-    if (!attendanceSummary) return null;
-    const present = attendanceSummary.present_count ?? attendanceSummary.present ?? 0;
-    const total = (attendanceSummary.total_days ?? attendanceSummary.total ?? 0);
-    return total > 0 ? Math.round((present / total) * 100) : 0;
-  }, [attendanceSummary]);
+  const attendanceRate = useMemo(() => computeAttendanceRate(attendanceSummary), [attendanceSummary]);
 
   const positiveBehaviourCount = behaviourSummary?.positive_count || 0;
 

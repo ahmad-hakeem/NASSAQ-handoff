@@ -4009,7 +4009,7 @@ async def hakim_periodic_scan_by_school(
     return await hakim_engine.run_periodic_scan(school_id, days)
 
 
-@router.get("/student/{student_id}/longitudinal")
+@router.get("/hakim/student/{student_id}/longitudinal")
 async def get_student_longitudinal(
     student_id: str,
     current_user: dict = Depends(get_current_user),

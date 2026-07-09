@@ -44,6 +44,7 @@ export default function StudentProfilePage() {
     resolvedClassName, resolvedClassId,
     attendanceRate, loadingAttendance, homeworkRate, loadingHomework,
     positiveBehaviourCount, loadingBehaviour,
+    activities, certificates, loadingActivities,
     remedialPlan, enrichmentPlan,
     setFormData, setEditProfileOpen, setProfileExportModalOpen,
     openExportModal, handleAction, handleBack,
@@ -246,7 +247,7 @@ export default function StudentProfilePage() {
                 <StatCard icon={Calendar} value={attendanceRate != null ? `${attendanceRate}%` : null} label={isRTL ? 'نسبة الحضور' : 'Attendance'} color="text-emerald-300" bg="bg-white/10 backdrop-blur-sm" loading={loadingAttendance} />
                 <StatCard icon={CheckCircle} value={homeworkRate ? `${homeworkRate.rate}%` : null} label={t('performance2')} color="text-blue-300" bg="bg-white/10 backdrop-blur-sm" loading={loadingHomework} />
                 <StatCard icon={Sparkles} value={student.talents?.length || 0} label={t('talents')} color="text-purple-300" bg="bg-white/10 backdrop-blur-sm" loading={false} />
-                <StatCard icon={Trophy} value={0} label={t('activities')} color="text-amber-300" bg="bg-white/10 backdrop-blur-sm" loading={false} />
+                <StatCard icon={Trophy} value={(activities?.length || 0) + (certificates?.length || 0)} label={t('activities')} color="text-amber-300" bg="bg-white/10 backdrop-blur-sm" loading={loadingActivities} />
                 <StatCard icon={ThumbsUp} value={positiveBehaviourCount} label={t('positive2')} color="text-green-300" bg="bg-white/10 backdrop-blur-sm" loading={loadingBehaviour} />
               </div>
             </div>
