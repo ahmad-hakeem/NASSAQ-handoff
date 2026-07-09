@@ -437,3 +437,184 @@ async def test_smart_end_session_dedup_is_per_child(tenant_a):
     assert len(by_user.get(parent2, [])) == 1
     assert by_user[parent1][0].get("student_id") == s1
     assert by_user[parent2][0].get("student_id") == s2
+
+
+# ---------- student-targeted single send (Homework Reminder path) ----------
+#
+# The Teacher Communication Center "Homework Reminder" (Task #463 shape:
+# `related_entity='student'` + `related_entity_id`, no recipient_id / no
+# recipient_role) resolves the parent canonically but used to persist the
+# row WITHOUT `student_id` — so the parent inbox could not render the child
+# chip nor match the per-child filter for exactly these teacher-to-parent
+# messages.
+
+
+@pytest.mark.asyncio
+async def test_student_targeted_send_stamps_student_id(client, tenant_a):
+    teacher_id = await _mk_user("teacher", tenant_a)
+    class_id = await _mk_class(tenant_a)
+    parent_id = await _mk_user("parent", tenant_a)
+    sid = await _mk_student(tenant_a, class_id, parent_user_id=parent_id, name="ولد الواجب")
+
+    title = f"تذكير بالواجب — {uuid.uuid4().hex[:6]}"
+    resp = await client.post(
+        "/notifications",
+        json={
+            "title": title,
+            "message": "نود تذكيركم بضرورة متابعة أداء الواجبات المنزلية لابنكم.",
+            "notification_type": "communication",
+            "priority": "medium",
+            "related_entity": "student",
+            "related_entity_id": sid,
+            "template_id": "homework",
+        },
+        headers=_headers(teacher_id, "teacher", tenant_a),
+    )
+    assert resp.status_code == 200, resp.text
+
+    rows = await gd_find(db.session, "notifications", {
+        "tenant_id": tenant_a, "title": title,
+    }, limit=10)
+    assert len(rows) == 1
+    assert rows[0]["user_id"] == parent_id
+    # The chip / per-child-filter source must be stamped at creation.
+    assert rows[0].get("student_id") == sid
+
+
+@pytest.mark.asyncio
+async def test_student_targeted_send_get_returns_student_ref(client, tenant_a):
+    teacher_id = await _mk_user("teacher", tenant_a)
+    class_id = await _mk_class(tenant_a)
+    parent_id = await _mk_user("parent", tenant_a)
+    sid = await _mk_student(tenant_a, class_id, parent_user_id=parent_id, name="بنت الواجب")
+
+    title = f"تذكير بالواجب — {uuid.uuid4().hex[:6]}"
+    resp = await client.post(
+        "/notifications",
+        json={
+            "title": title,
+            "message": "متابعة الواجبات.",
+            "notification_type": "communication",
+            "priority": "medium",
+            "related_entity": "student",
+            "related_entity_id": sid,
+        },
+        headers=_headers(teacher_id, "teacher", tenant_a),
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await client.get(
+        "/notifications?limit=50",
+        headers=_headers(parent_id, "parent", tenant_a),
+    )
+    assert resp.status_code == 200, resp.text
+    mine = [n for n in resp.json() if n["title"] == title]
+    assert len(mine) == 1
+    assert mine[0]["student"] is not None
+    assert mine[0]["student"]["id"] == sid
+    assert mine[0]["student"]["name_ar"] == "بنت الواجب"
+
+
+@pytest.mark.asyncio
+async def test_legacy_student_row_enriches_from_related_entity(client, tenant_a):
+    # Rows written BEFORE the stamp fix have student_id=NULL but still carry
+    # related_entity='student' + related_entity_id. The parent read path must
+    # fall back to that pair so historical inboxes get the child chip too —
+    # no backfill migration needed.
+    class_id = await _mk_class(tenant_a)
+    parent_id = await _mk_user("parent", tenant_a)
+    sid = await _mk_student(tenant_a, class_id, parent_user_id=parent_id, name="طفل قديم")
+
+    title = f"تذكير قديم — {uuid.uuid4().hex[:6]}"
+    await gd_insert(db.session, "notifications", {
+        "id": str(uuid.uuid4()),
+        "user_id": parent_id,
+        "title": title,
+        "message": "رسالة قديمة بدون ختم الطالب.",
+        "type": "communication",
+        "priority": "medium",
+        "related_entity": "student",
+        "related_entity_id": sid,
+        "tenant_id": tenant_a,
+        "is_read": False,
+        "created_at": datetime.now(timezone.utc),
+    })
+
+    resp = await client.get(
+        "/notifications?limit=50",
+        headers=_headers(parent_id, "parent", tenant_a),
+    )
+    assert resp.status_code == 200, resp.text
+    mine = [n for n in resp.json() if n["title"] == title]
+    assert len(mine) == 1
+    assert mine[0]["student"] is not None
+    assert mine[0]["student"]["id"] == sid
+    assert mine[0]["student"]["name_ar"] == "طفل قديم"
+
+
+@pytest.mark.asyncio
+async def test_non_student_related_entity_yields_no_student_ref(client, tenant_a):
+    # A row whose related_entity is NOT 'student' (e.g. 'session') must never
+    # be misread as a child reference by the read-path fallback.
+    parent_id = await _mk_user("parent", tenant_a)
+
+    title = f"ملخص — {uuid.uuid4().hex[:6]}"
+    await gd_insert(db.session, "notifications", {
+        "id": str(uuid.uuid4()),
+        "user_id": parent_id,
+        "title": title,
+        "message": "x",
+        "type": "communication",
+        "priority": "medium",
+        "related_entity": "session",
+        "related_entity_id": str(uuid.uuid4()),
+        "tenant_id": tenant_a,
+        "is_read": False,
+        "created_at": datetime.now(timezone.utc),
+    })
+
+    resp = await client.get(
+        "/notifications?limit=50",
+        headers=_headers(parent_id, "parent", tenant_a),
+    )
+    assert resp.status_code == 200, resp.text
+    mine = [n for n in resp.json() if n["title"] == title]
+    assert len(mine) == 1
+    assert mine[0]["student"] is None
+
+
+@pytest.mark.asyncio
+async def test_fallback_never_resolves_cross_tenant_student(client, tenant_a, tenant_b):
+    # The read-path fallback consumes related_entity_id, which is
+    # caller-writable at creation time. Even if a row points at a student
+    # from ANOTHER tenant, the enrichment lookup must be scoped to the
+    # parent's own school and return student=None — never the foreign
+    # child's name (tenant-isolation invariant).
+    class_b = await _mk_class(tenant_b)
+    foreign_sid = await _mk_student(tenant_b, class_b, name="طالب مدرسة أخرى")
+
+    parent_id = await _mk_user("parent", tenant_a)
+    title = f"اختراق — {uuid.uuid4().hex[:6]}"
+    await gd_insert(db.session, "notifications", {
+        "id": str(uuid.uuid4()),
+        "user_id": parent_id,
+        "title": title,
+        "message": "صف مزروع يشير إلى طالب خارج المدرسة.",
+        "type": "communication",
+        "priority": "medium",
+        "related_entity": "student",
+        "related_entity_id": foreign_sid,
+        "tenant_id": tenant_a,
+        "is_read": False,
+        "created_at": datetime.now(timezone.utc),
+    })
+
+    resp = await client.get(
+        "/notifications?limit=50",
+        headers=_headers(parent_id, "parent", tenant_a),
+    )
+    assert resp.status_code == 200, resp.text
+    mine = [n for n in resp.json() if n["title"] == title]
+    assert len(mine) == 1
+    assert mine[0]["student"] is None
+    assert "طالب مدرسة أخرى" not in resp.text

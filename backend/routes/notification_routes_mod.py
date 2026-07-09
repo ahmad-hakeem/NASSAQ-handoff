@@ -1078,6 +1078,16 @@ async def create_notification(
         "sender_id": current_user['id'],
         "sender_name": current_user.get('full_name', ''),
         "tenant_id": current_user.get('tenant_id'),
+        # Student-targeted sends (Task #463 shape: the parent was resolved
+        # canonically FROM this student) stamp the child on the row so the
+        # parent inbox renders the child chip and the per-child filter
+        # matches — same contract as the class-scoped summary path above
+        # (Task #1038). Never invented for other shapes.
+        "student_id": (
+            notification.related_entity_id
+            if resolved_user_id_from_student
+            else None
+        ),
         "is_read": False,
         "read_at": None,
         "created_at": datetime.now(timezone.utc),
@@ -1239,14 +1249,38 @@ async def get_my_notifications(
     # their own dashboards and must receive student=null here to keep
     # the existing response shape unchanged.
     is_parent_caller = current_user.get('role') == 'parent'
+
+    # Chip source per row: the stamped ``student_id`` (canonical), with a
+    # read-time fallback to ``related_entity == 'student'`` +
+    # ``related_entity_id`` for legacy student-targeted rows written before
+    # the creation-time stamp existed. Display-only — the DB-level per-child
+    # filter above still matches the stamped column only.
+    def _chip_student_id(n: Dict[str, Any]) -> Optional[str]:
+        sid = n.get('student_id')
+        if sid:
+            return sid
+        if n.get('related_entity') == 'student' and n.get('related_entity_id'):
+            return n['related_entity_id']
+        return None
+
     student_map: Dict[str, Any] = {}
     if is_parent_caller:
-        unique_student_ids = list({n['student_id'] for n in notifications if n.get('student_id')})
+        unique_student_ids = list({
+            sid for sid in (_chip_student_id(n) for n in notifications) if sid
+        })
         if unique_student_ids:
             try:
+                # Tenant-scoped: the fallback chip id can come from the
+                # caller-writable ``related_entity_id`` field, so the lookup
+                # must never resolve a student outside the parent's own
+                # school. Legacy stamped rows are unaffected — parent and
+                # child always share a tenant.
                 student_docs = await gd_find(
                     db.session, "students",
-                    {"id": {"$in": unique_student_ids}},
+                    {
+                        "id": {"$in": unique_student_ids},
+                        "school_id": current_user.get('tenant_id'),
+                    },
                     limit=len(unique_student_ids) + 1,
                 )
                 for s in student_docs:
@@ -1258,7 +1292,7 @@ async def get_my_notifications(
     for n in notifications:
         student_ref: Optional[StudentRef] = None
         if is_parent_caller:
-            sid = n.get('student_id')
+            sid = _chip_student_id(n)
             if sid and sid in student_map:
                 s = student_map[sid]
                 student_ref = StudentRef(

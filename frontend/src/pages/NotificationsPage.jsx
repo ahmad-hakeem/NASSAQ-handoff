@@ -16,11 +16,14 @@ import {
   Bell, BellOff, Check, CheckCheck, Trash2, Filter, RefreshCw,
   Calendar, CalendarCheck, ClipboardList, AlertTriangle, Info,
   MessageSquare, Megaphone, Eye, Clock, Search, Settings,
-  Inbox, AlertCircle, Loader2, FileText, User
+  Inbox, AlertCircle, Loader2, FileText, User, ExternalLink
 } from 'lucide-react';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../components/ui/select';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from '../components/ui/dialog';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { getApiErrorMessage } from '../utils/apiError';
 
@@ -188,6 +191,10 @@ export const NotificationsPage = ({ embedded = false }) => {
   // Task #1006 — per-child filter for parent inbox
   const [linkedChildren, setLinkedChildren] = useState([]);
   const [selectedChildId, setSelectedChildId] = useState('all');
+  // Full-message detail view: clicking a card opens the complete body in a
+  // dialog (long teacher→parent messages were only readable as a 2-line
+  // clamp before). Null = closed.
+  const [detailNotification, setDetailNotification] = useState(null);
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -270,7 +277,10 @@ export const NotificationsPage = ({ embedded = false }) => {
 
   const handleNotificationClick = (notification) => {
     if (!notification.read_status) handleMarkAsRead(notification.id);
-    if (notification.action_url) navigate(notification.action_url);
+    // Open the full-message detail dialog instead of navigating away —
+    // when the notification carries an action_url the dialog surfaces it
+    // as an explicit button so deep-link navigation is still one tap away.
+    setDetailNotification(notification);
   };
 
   // Acknowledge a class-relocation alert. Mirrors the circular ack flow:
@@ -802,6 +812,97 @@ export const NotificationsPage = ({ embedded = false }) => {
             </TabsContent>
           </Tabs>
         </div>
+
+        {/* Full-message detail view. The card body is clamped to two lines,
+            so this dialog is the only place long teacher→parent messages can
+            be read in full. dir is set explicitly because the Radix portal
+            renders outside the page's dir container. */}
+        <Dialog open={!!detailNotification} onOpenChange={(open) => { if (!open) setDetailNotification(null); }}>
+          <DialogContent dir={isRTL ? 'rtl' : 'ltr'} className="max-w-lg max-h-[85vh] flex flex-col" data-testid="notification-detail-dialog">
+            {detailNotification && (() => {
+              const dTypeConf = notificationTypeConfig[detailNotification.notification_type] || notificationTypeConfig.system;
+              const dPriorityConf = priorityConfig[detailNotification.priority] || priorityConfig.medium;
+              const DetailIcon = dTypeConf.icon;
+              return (
+                <>
+                  <DialogHeader className="text-start space-y-0">
+                    <div className="flex items-start gap-3 pe-6">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${detailNotification.priority === 'critical' || detailNotification.priority === 'high' ? 'bg-red-100 dark:bg-red-900/30' : `${dTypeConf.color}/10`}`}>
+                        <DetailIcon className={`h-5 w-5 ${detailNotification.priority === 'critical' ? 'text-red-500' : dTypeConf.iconColor}`} aria-hidden="true" strokeWidth={1.5} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <DialogTitle className="font-cairo text-base leading-snug break-words text-start">
+                          {prettifyText(isRTL ? detailNotification.title : (detailNotification.title_en || detailNotification.title), isRTL)}
+                        </DialogTitle>
+                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                          <Badge className={`${dTypeConf.color} text-white text-[10px] border-0`}>
+                            {isRTL ? dTypeConf.label.ar : dTypeConf.label.en}
+                          </Badge>
+                          {detailNotification.priority && detailNotification.priority !== 'medium' && (
+                            <Badge className={`${dPriorityConf.color} text-white text-[10px] border-0`}>
+                              {isRTL ? dPriorityConf.label.ar : dPriorityConf.label.en}
+                            </Badge>
+                          )}
+                          {detailNotification.student && (detailNotification.student.name_ar || detailNotification.student.code) && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-navy/80 dark:text-brand-turquoise/80 bg-brand-navy/5 dark:bg-brand-turquoise/10 rounded-full px-2 py-0.5" data-testid="detail-student-chip">
+                              <User className="h-3 w-3 shrink-0" aria-hidden="true" strokeWidth={1.5} />
+                              {isRTL ? 'بخصوص الطالب: ' : 'Regarding: '}
+                              {detailNotification.student.name_ar || detailNotification.student.code}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <DialogDescription className="sr-only">
+                      {isRTL ? 'تفاصيل الإشعار الكاملة' : 'Full notification details'}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="overflow-y-auto flex-1 min-h-0 mt-1">
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words text-foreground/90" data-testid="detail-message-body">
+                      {prettifyText(isRTL ? detailNotification.message : (detailNotification.message_en || detailNotification.message), isRTL)}
+                    </p>
+                    {detailNotification.lesson_report && (
+                      <LessonReportCard report={detailNotification.lesson_report} isRTL={isRTL} />
+                    )}
+                    {detailNotification.alternative_location && (
+                      <p className="mt-3 text-xs text-orange-700 font-semibold">
+                        {isRTL ? 'الموقع البديل: ' : 'Relocated to: '}
+                        {detailNotification.alternative_location}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between gap-2 pt-3 border-t flex-wrap">
+                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground min-w-0">
+                      <Clock className="h-3 w-3 shrink-0" aria-hidden="true" strokeWidth={1.5} />
+                      <span className="truncate">
+                        {detailNotification.created_at
+                          ? new Date(detailNotification.created_at).toLocaleString(isRTL ? 'ar' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' })
+                          : formatTimeAgo(detailNotification.created_at)}
+                      </span>
+                      {detailNotification.sender_name && (
+                        <>
+                          <span>•</span>
+                          <span className="truncate">{detailNotification.sender_name}</span>
+                        </>
+                      )}
+                    </div>
+                    {detailNotification.action_url && (
+                      <Button
+                        size="sm"
+                        className="h-8 gap-1.5 bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
+                        onClick={() => { const url = detailNotification.action_url; setDetailNotification(null); navigate(url); }}
+                        data-testid="detail-action-btn"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" strokeWidth={1.5} />
+                        {isRTL ? 'الانتقال إلى الصفحة' : 'Open page'}
+                      </Button>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </DialogContent>
+        </Dialog>
       </div>
   );
 
