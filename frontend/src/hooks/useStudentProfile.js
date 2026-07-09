@@ -158,10 +158,13 @@ export function useStudentProfile() {
       const data = res.data;
       const grades = data?.grades || [];
       const stats = data?.statistics;
-      if (grades.length > 0) {
-        const graded = grades.filter(g => g.score !== null && g.score !== undefined).length;
-        const avgScore = stats?.overall_average ? Math.round(stats.overall_average) : (graded > 0 ? Math.round(grades.reduce((sum, g) => sum + (g.percentage || g.score || 0), 0) / graded) : 0);
-        setHomeworkRate({ completed: graded, total: grades.length, rate: avgScore });
+      const total = stats?.total_assessments ?? grades.length;
+      if (total > 0) {
+        const graded = stats?.graded_count ?? grades.filter(g => g.score !== null && g.score !== undefined).length;
+        const avgScore = stats?.overall_average != null
+          ? Math.round(stats.overall_average)
+          : (graded > 0 ? Math.round(grades.reduce((sum, g) => sum + (g.percentage || g.score || 0), 0) / graded) : 0);
+        setHomeworkRate({ completed: graded, total, rate: avgScore });
       } else { setHomeworkRate(null); }
     } catch (e) { console.error('Error fetching homework rate:', e); setHomeworkRate(null); }
     finally { setLoadingHomework(false); }

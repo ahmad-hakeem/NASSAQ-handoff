@@ -257,9 +257,9 @@ export function AcademicTab({ hook }) {
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  { label: t('present'), value: attendanceSummary.present_count ?? attendanceSummary.present ?? 0, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/20' },
-                  { label: t('absent'), value: attendanceSummary.absent_count ?? attendanceSummary.absent ?? 0, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/20' },
-                  { label: t('excused2'), value: attendanceSummary.excused_count ?? attendanceSummary.excused ?? 0, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/20' },
+                  { label: t('present'), value: attendanceSummary.present_days ?? attendanceSummary.present_count ?? attendanceSummary.present ?? 0, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/20' },
+                  { label: t('absent'), value: attendanceSummary.absent_days ?? attendanceSummary.absent_count ?? attendanceSummary.absent ?? 0, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/20' },
+                  { label: t('excused2'), value: attendanceSummary.excused_days ?? attendanceSummary.excused_count ?? attendanceSummary.excused ?? 0, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/20' },
                 ].map((item, i) => (
                   <div key={i} className={`text-center p-4 rounded-xl ${item.bg}`}>
                     <p className={`text-2xl font-bold font-cairo ${item.color}`}>{item.value}</p>

@@ -598,94 +598,151 @@ async def get_student_grade_history(
         query['subject_id'] = subject_id
     
     grades = await gd_find(db.session, "grades", query, order_by="recorded_at", desc_order=True, limit=500)
-    
-    # Calculate statistics
+
+    # Grade documents are self-contained: they carry subject/score/percentage/
+    # type inline. Build the response from the grade doc itself and only
+    # *enrich* from the assessments collection when a real assessment row can be
+    # resolved. "Live session" grades use a synthetic assessment_id
+    # ("session:<id>:homework") that has no assessments row — and some legacy
+    # docs omit the key entirely — so they must be surfaced, not skipped.
     grades_by_subject = {}
     grades_by_type = {}
+    flat_grades = []
     total_percentage = 0
-    
+    graded_count = 0
+    subject_name_cache = {}
+
     for g in grades:
-        # Get assessment details
-        assessment = await gd_find_one(db.session, "assessments", {"id": g['assessment_id']})
-        if not assessment:
-            continue
-        
-        a_type = assessment.get('assessment_type') or assessment.get('type')
+        assessment_id = g.get('assessment_id')
+        # Only look up real assessment rows; synthetic session ids never resolve.
+        assessment = None
+        if assessment_id and ':' not in str(assessment_id):
+            assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
+
+        a_type = None
+        if assessment:
+            a_type = assessment.get('assessment_type') or assessment.get('type')
+        a_type = a_type or g.get('assessment_type') or 'other'
         if assessment_type and a_type != assessment_type:
             continue
-        
-        # Get subject name
-        subject = await gd_find_one(db.session, "subjects", {"id": g['subject_id']})
-        subject_name = subject.get('name') if subject else "Unknown"
-        
+
+        # Prefer the subject name stored on the grade doc; fall back to lookup.
+        subject_name = g.get('subject_name') or g.get('subject')
+        subj_id = g.get('subject_id')
+        if not subject_name:
+            if subj_id in subject_name_cache:
+                subject_name = subject_name_cache[subj_id]
+            else:
+                subject = await gd_find_one(db.session, "subjects", {"id": subj_id})
+                subject_name = subject.get('name') if subject else "غير محدد"
+                subject_name_cache[subj_id] = subject_name
+
+        score = g.get('score')
+        max_score = g.get('max_score')
+        percentage = g.get('percentage')
+        if percentage is None:
+            percentage = round((score / max_score) * 100, 2) if (score is not None and max_score) else 0
+
+        title = None
+        if assessment:
+            title = assessment.get('title') or assessment.get('name')
+        title = title or g.get('title') or a_type
+
+        grade_date = None
+        if assessment:
+            grade_date = assessment.get('date') or assessment.get('due_date')
+        grade_date = grade_date or g.get('date')
+
+        recorded_at = g.get('recorded_at') or g.get('graded_at') or g.get('updated_at')
+
+        flat_grades.append({
+            "assessment_id": assessment_id,
+            "subject_id": subj_id,
+            "subject_name": subject_name,
+            "subject": subject_name,
+            "title": title,
+            "type": a_type,
+            "assessment_type": a_type,
+            "score": score,
+            "max_score": max_score,
+            "percentage": percentage,
+            "date": grade_date,
+            "recorded_at": recorded_at,
+        })
+
         # Aggregate by subject
         if subject_name not in grades_by_subject:
             grades_by_subject[subject_name] = {
-                "subject_id": g['subject_id'],
+                "subject_id": subj_id,
                 "grades": [],
                 "average": 0
             }
         grades_by_subject[subject_name]['grades'].append({
-            "assessment_id": g['assessment_id'],
-            "title": assessment.get('title') or assessment.get('name'),
+            "assessment_id": assessment_id,
+            "title": title,
             "type": a_type,
-            "score": g['score'],
-            "max_score": g['max_score'],
-            "percentage": g.get('percentage', 0),
-            "date": assessment.get('date') or assessment.get('due_date')
+            "score": score,
+            "max_score": max_score,
+            "percentage": percentage,
+            "date": grade_date
         })
-        
+
         # Aggregate by type
-        assessment_type_key = a_type
-        if assessment_type_key not in grades_by_type:
-            grades_by_type[assessment_type_key] = {
-                "count": 0,
-                "total_percentage": 0,
-                "average": 0
-            }
-        grades_by_type[assessment_type_key]['count'] += 1
-        grades_by_type[assessment_type_key]['total_percentage'] += g.get('percentage', 0)
-        
-        total_percentage += g.get('percentage', 0)
-    
+        if a_type not in grades_by_type:
+            grades_by_type[a_type] = {"count": 0, "total_percentage": 0, "average": 0}
+        grades_by_type[a_type]['count'] += 1
+        grades_by_type[a_type]['total_percentage'] += percentage
+
+        total_percentage += percentage
+        if score is not None:
+            graded_count += 1
+
     # Calculate averages
     for subj in grades_by_subject.values():
         if subj['grades']:
-            subj['average'] = round(sum(g['percentage'] for g in subj['grades']) / len(subj['grades']), 2)
-    
+            subj['average'] = round(sum(x['percentage'] for x in subj['grades']) / len(subj['grades']), 2)
+
     for type_data in grades_by_type.values():
         if type_data['count'] > 0:
             type_data['average'] = round(type_data['total_percentage'] / type_data['count'], 2)
-    
-    average_percentage = round(total_percentage / len(grades), 2) if grades else 0
-    
-    # Get recent grades (last 10)
-    recent_grades = []
-    for g in grades[:10]:
-        assessment = await gd_find_one(db.session, "assessments", {"id": g['assessment_id']})
-        subject = await gd_find_one(db.session, "subjects", {"id": g['subject_id']})
-        if assessment:
-            recent_grades.append({
-                "assessment_id": g['assessment_id'],
-                "title": assessment.get('title') or assessment.get('name'),
-                "type": assessment.get('assessment_type') or assessment.get('type'),
-                "subject_name": subject.get('name') if subject else None,
-                "score": g['score'],
-                "max_score": g['max_score'],
-                "percentage": g.get('percentage', 0),
-                "date": assessment.get('date') or assessment.get('due_date'),
-                "recorded_at": g['recorded_at']
-            })
-    
+
+    counted = len(flat_grades)
+    average_percentage = round(total_percentage / counted, 2) if counted else 0
+
+    # Per-subject summary consumed by the student-profile "grades by subject"
+    # table. score/max_score are set so the frontend's score/total*100 math
+    # reproduces the subject's average percentage.
+    subjects_summary = [
+        {
+            "subject_name": name,
+            "subject_id": subj['subject_id'],
+            "score": subj['average'],
+            "max_score": 100,
+            "percentage": subj['average'],
+            "average": subj['average'],
+            "count": len(subj['grades']),
+        }
+        for name, subj in grades_by_subject.items()
+    ]
+
+    # Recent grades (last 10) — grades are already ordered newest-first.
+    recent_grades = flat_grades[:10]
+
     return {
         "student_id": student_id,
         "student_name": student.get('full_name'),
         "class_id": student.get('class_id'),
         "class_name": class_info.get('name') if class_info else None,
-        "total_assessments": len(grades),
+        "total_assessments": counted,
         "average_percentage": average_percentage,
+        "statistics": {
+            "overall_average": average_percentage,
+            "total_assessments": counted,
+            "graded_count": graded_count,
+        },
         "grades_by_subject": grades_by_subject,
         "grades_by_type": grades_by_type,
+        "subjects": subjects_summary,
         "recent_grades": recent_grades
     }
 
