@@ -166,7 +166,7 @@ export const StatCard = ({ icon: Icon, value, label, color, bg, loading }) => (
       <>
         <Icon className={`h-4 w-4 mb-1 ${color}`} />
         <p className={`text-lg font-bold font-cairo tabular-nums ${color}`}>{value ?? '-'}</p>
-        <p className="text-[10px] text-muted-foreground font-cairo leading-tight text-center">{label}</p>
+        <p className="text-[10px] font-medium text-white/80 font-cairo leading-tight text-center">{label}</p>
       </>
     )}
   </div>
