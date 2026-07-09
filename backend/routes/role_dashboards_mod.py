@@ -3305,6 +3305,48 @@ async def record_session_evaluation(
     return result
 
 
+@router.post("/session/{session_id}/recitation")
+async def record_session_recitation(
+    session_id: str,
+    data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    تسجيل نتيجة تسميع لطالب خلال الحصة
+    Record a recitation (التسميع) mastery check for a student.
+
+    Recitation is a grade-NEUTRAL evaluation: it moves the live per-student
+    "X/Y" counter (denominator always, numerator when mastered) but is
+    deliberately kept out of the scoring pipeline, so it never affects the
+    participation/performance grades, the Follow-up Report, or the committed
+    school / parent ledgers. It is recorded as a reversible session
+    interaction so a mis-tap can be undone.
+    """
+    await _verify_session_owner(session_id, current_user)
+    teacher_id = current_user.get("teacher_id") or current_user["id"]
+    result = await session_engine.record_recitation(
+        session_id=session_id,
+        student_id=data.get("student_id"),
+        mastered=bool(data.get("mastered")),
+        teacher_id=teacher_id,
+        attempts=data.get("attempts", 1),
+        note=data.get("note"),
+        actor_id=current_user.get("teacher_id") or current_user["id"],
+    )
+    if audit_engine:
+        await audit_engine.log(
+            action=AuditAction.DATA_MODIFY,
+            performed_by=current_user["id"],
+            details={
+                "event": "recitation_recorded",
+                "session_id": session_id,
+                "student_id": data.get("student_id"),
+                "mastered": bool(data.get("mastered")),
+            }
+        )
+    return result
+
+
 @router.post("/session/{session_id}/note")
 async def add_session_note(
     session_id: str,

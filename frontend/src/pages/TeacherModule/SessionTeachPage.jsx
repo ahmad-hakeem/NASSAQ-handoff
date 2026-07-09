@@ -1756,11 +1756,15 @@ export default function SessionTeachPage() {
     if (!selectedStudent) return;
     try {
       const label = mastered ? t('recitationMastered') : t('recitationNotMastered');
-      const noteSuffix = recitationNote ? ` - ${recitationNote}` : '';
-      await api.post(`/session/${sessionId}/note`, {
+      // Recitation is a grade-NEUTRAL evaluation: the backend records it as a
+      // session interaction so the "X/Y" counter survives تحديث (refresh), but
+      // it never touches grades. (Previously stored as a note the counter
+      // couldn't see, so the optimistic bump vanished on refresh.)
+      await api.post(`/session/${sessionId}/recitation`, {
         student_id: selectedStudent.id,
-        text: `${t('recitation')}: ${label} (${t('attempts')}: ${recitationAttempts})${noteSuffix}`,
-        note_type: 'recitation',
+        mastered,
+        attempts: recitationAttempts,
+        note: recitationNote || null,
       });
       if (mastered) {
         confetti({ particleCount: 40, spread: 60, origin: { y: 0.6 }, colors: ['#10b981', '#34d399', '#6ee7b7'] });
@@ -1796,6 +1800,7 @@ export default function SessionTeachPage() {
     behaviour_recorded: t('undoEventBehaviour') || 'سلوك',
     skill_recorded: t('undoEventSkill') || 'مهارة / تلاوة',
     evaluation_recorded: t('undoEventEvaluation') || 'تقييم',
+    recitation_recorded: t('undoEventRecitation') || 'تسميع',
   };
 
   const undoLastAction = () => {

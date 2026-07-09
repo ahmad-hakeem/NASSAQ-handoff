@@ -75,6 +75,7 @@ class EventType(str, Enum):
     SKILL_RECORDED = "skill_recorded"
     HOMEWORK_RECORDED = "homework_recorded"
     EVALUATION_RECORDED = "evaluation_recorded"
+    RECITATION_RECORDED = "recitation_recorded"
     NOTE_ADDED = "note_added"
     SEATING_UPDATED = "seating_updated"
     GROUPS_UPDATED = "groups_updated"
@@ -92,6 +93,13 @@ class InteractionType(str, Enum):
     PARTICIPATION = "participation"
     BEHAVIOUR = "behaviour"
     EVALUATION = "evaluation"
+    # التسميع — Qur'an/recitation mastery check. A grade-NEUTRAL evaluation:
+    # it moves the live per-student "X/Y" counter (question_count denominator,
+    # eval_positive_count numerator when mastered) exactly like an evaluation,
+    # but it is deliberately absent from every scoring branch in
+    # compute_session_scores, so it never touches participation/performance
+    # grades, the follow-up sheet, or the committed school/parent ledgers.
+    RECITATION = "recitation"
 
 
 class AnswerResult(str, Enum):
@@ -935,8 +943,10 @@ class TeacherSessionEngine:
                     # counter: POSITIVE evaluation outcomes only — correct answers
                     # plus positive evaluation items (points > 0). Wrong / no-answer
                     # / negative or neutral items count toward the denominator
-                    # (`question_count`) only. Mastered recitations are added
-                    # optimistically on the client (recitation is stored as a note).
+                    # (`question_count`) only. Recitation (التسميع) also moves
+                    # this counter: every recitation is a denominator hit and a
+                    # mastered one is a numerator hit (grade-neutral — see the
+                    # RECITATION branch below and record_recitation()).
                     "eval_positive_count": 0,
                 }
                 totals_map[sid] = agg
@@ -954,6 +964,13 @@ class TeacherSessionEngine:
                 agg["question_count"] += 1
                 pts = i.get("points")
                 if isinstance(pts, (int, float)) and not isinstance(pts, bool) and pts > 0:
+                    agg["eval_positive_count"] += 1
+            elif itype == InteractionType.RECITATION.value:
+                # Grade-neutral: mirrors the client's optimistic bump so the
+                # "X/Y" badge survives a refresh. Denominator always; numerator
+                # only when the recitation was mastered (متقن).
+                agg["question_count"] += 1
+                if i.get("recitation_mastered"):
                     agg["eval_positive_count"] += 1
             elif itype == InteractionType.PARTICIPATION.value:
                 agg["participation_count"] += 1
@@ -4455,6 +4472,106 @@ class TeacherSessionEngine:
             "score_change": score_change,
         }
 
+    async def record_recitation(
+        self,
+        session_id: str,
+        student_id: str,
+        mastered: bool,
+        teacher_id: str,
+        attempts: int = 1,
+        note: Optional[str] = None,
+        actor_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Record a recitation (التسميع) mastery check as a grade-NEUTRAL
+        interaction.
+
+        Recitation used to be stored only as a cosmetic ``session_notes`` row,
+        so the live per-student "X/Y" counter — which is aggregated purely from
+        ``session_interactions`` in ``get_session_students`` — never saw it: the
+        frontend bumped the badge optimistically and the next refresh wiped it.
+
+        This records recitation as a real ``session_interactions`` row of type
+        ``RECITATION`` so the counter survives a refresh (denominator += 1
+        always; numerator += 1 only when ``mastered``), and as a reversible
+        event so a mis-tap can be undone. Unlike ``record_evaluation`` it is
+        deliberately grade-neutral: it never calls ``_update_student_score`` and
+        ``RECITATION`` matches no branch in ``compute_session_scores``, so it
+        stays out of the participation/performance grades, the Follow-up Report,
+        and the committed school / parent ledgers.
+
+        Tenant / class membership is enforced exactly as ``record_evaluation``
+        does: the session row is the only source of class scope, and a
+        foreign-class student is rejected unless present in this session's
+        attendance.
+        """
+        now = datetime.now(timezone.utc)
+
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
+        if not session:
+            raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
+
+        student = await gd_find_one(self.session, "students", {"id": student_id, "is_active": True})
+        if not student:
+            raise HTTPException(status_code=404, detail="الطالب غير موجود")
+
+        if student.get("class_id") != session.get("class_id"):
+            attendance = await gd_find_one(
+                self.session,
+                "session_attendance",
+                {"session_id": session_id, "student_id": student_id},
+            )
+            if not attendance:
+                logger.warning(
+                    "Recitation record rejected: student %s (class=%s) not in session %s (class=%s) and no attendance row",
+                    student_id, student.get("class_id"), session_id, session.get("class_id"),
+                )
+                raise HTTPException(status_code=400, detail="الطالب لا ينتمي لهذا الفصل")
+
+        is_mastered = bool(mastered)
+        try:
+            attempt_count = int(attempts)
+        except (TypeError, ValueError):
+            attempt_count = 1
+        if attempt_count < 1:
+            attempt_count = 1
+        note_text = (note or "").strip() or None
+
+        interaction = {
+            "id": str(uuid.uuid4()),
+            "session_id": session_id,
+            "student_id": student_id,
+            "type": InteractionType.RECITATION.value,
+            "interaction_type": InteractionType.RECITATION.value,
+            "recitation_mastered": is_mastered,
+            "recitation_attempts": attempt_count,
+            "note": note_text,
+            "recorded_by": teacher_id,
+            "recorded_at": now.isoformat(),
+            "timestamp": now.isoformat(),
+            "editable_until": (now + timedelta(hours=1)).isoformat(),
+        }
+        await gd_insert(self.session, "session_interactions", interaction)
+
+        await self._log_event(
+            session_id=session_id,
+            event_type=EventType.RECITATION_RECORDED.value,
+            actor_id=actor_id or teacher_id,
+            student_id=student_id,
+            new_value="mastered" if is_mastered else "not_mastered",
+            metadata={
+                "score_change": 0,
+                "recitation_mastered": is_mastered,
+                "recitation_attempts": attempt_count,
+                "interaction_id": interaction["id"],
+            },
+        )
+
+        return {
+            "message": "تم تسجيل التسميع",
+            "mastered": is_mastered,
+            "attempts": attempt_count,
+        }
+
     # ---------- Activity Log ----------
 
     async def get_activity_log(self, session_id: str, limit: int = 50) -> list:
@@ -4567,6 +4684,19 @@ class TeacherSessionEngine:
                 emoji = "📝"
                 text = f"{first_name} — {label} ({sign})"
                 color = "text-blue-700" if change >= 0 else "text-amber-700"
+            elif itype == "recitation":
+                # Grade-neutral recitation (التسميع): no score, so no (±N) suffix.
+                mastered = bool(i.get("recitation_mastered"))
+                try:
+                    attempts = int(i.get("recitation_attempts", 1) or 1)
+                except (TypeError, ValueError):
+                    attempts = 1
+                outcome = "متقن" if mastered else "لم يتقن"
+                note_txt = (i.get("note") or "").strip()
+                suffix = f" - {note_txt}" if note_txt else ""
+                emoji = "📖"
+                text = f"{first_name} — تسميع: {outcome} (محاولات: {attempts}){suffix}"
+                color = "text-emerald-700" if mastered else "text-amber-700"
             else:
                 continue
 
@@ -4979,6 +5109,7 @@ class TeacherSessionEngine:
         EventType.BEHAVIOUR_RECORDED.value,
         EventType.SKILL_RECORDED.value,
         EventType.EVALUATION_RECORDED.value,
+        EventType.RECITATION_RECORDED.value,
     }
 
     @staticmethod
@@ -5151,6 +5282,7 @@ class TeacherSessionEngine:
             EventType.BEHAVIOUR_RECORDED.value: InteractionType.BEHAVIOUR.value,
             EventType.SKILL_RECORDED.value: InteractionType.BEHAVIOUR.value,
             EventType.EVALUATION_RECORDED.value: InteractionType.EVALUATION.value,
+            EventType.RECITATION_RECORDED.value: InteractionType.RECITATION.value,
         }
         itype = interaction_type_map.get(event_type)
 
