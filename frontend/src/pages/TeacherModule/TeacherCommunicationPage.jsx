@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
 import { Sidebar } from '../../components/layout/Sidebar';
@@ -31,6 +31,8 @@ import IndependentTeacherCommunicationPage from './IndependentTeacherCommunicati
 // tab so the IT composer code path is unchanged.
 import UnifiedCommunicationsHub from './UnifiedCommunicationsHub';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { NotificationDetailDialog } from '../../components/notifications/NotificationDetailDialog';
+import { normalizeStandardNotification } from '../../components/notifications/notificationDisplay';
 
 // Each template explicitly declares which recipient cohorts it can
 // target. The "Choose Recipients" step (Step 2) renders only these
@@ -89,6 +91,7 @@ function TeacherCommunicationPageInner() {
   const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
@@ -114,6 +117,9 @@ function TeacherCommunicationPageInner() {
   const [messageSubject, setMessageSubject] = useState('');
 
   const [schoolNotifFilter, setSchoolNotifFilter] = useState('all');
+  // Quick-preview dialog (parent pattern): clicking any notification
+  // card opens the full content in place instead of only marking read.
+  const [detailNotification, setDetailNotification] = useState(null);
 
   const step1Ref = useRef(null);
   const step2Ref = useRef(null);
@@ -346,6 +352,13 @@ function TeacherCommunicationPageInner() {
     }
   };
 
+  // Opens the quick-preview dialog for ANY card (read or unread) and
+  // marks unread ones as read — same contract as the parent pattern.
+  const openNotification = (notif) => {
+    if (!notif.read_status && !notif.is_read) markNotificationRead(notif.id);
+    setDetailNotification(notif);
+  };
+
   const filteredStudents = students.filter(s =>
     s.full_name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -455,7 +468,7 @@ function TeacherCommunicationPageInner() {
                   key={notif.id}
                   notif={notif}
                   isRTL={isRTL}
-                  onRead={markNotificationRead}
+                  onOpen={openNotification}
                   t={t}
                 />
               ))}
@@ -1052,7 +1065,7 @@ function TeacherCommunicationPageInner() {
               key={notif.id}
               notif={notif}
               isRTL={isRTL}
-              onRead={markNotificationRead}
+              onOpen={openNotification}
               t={t}
               variant="school"
             />
@@ -1093,7 +1106,7 @@ function TeacherCommunicationPageInner() {
               key={notif.id}
               notif={notif}
               isRTL={isRTL}
-              onRead={markNotificationRead}
+              onOpen={openNotification}
               t={t}
               variant="system"
             />
@@ -1153,12 +1166,19 @@ function TeacherCommunicationPageInner() {
             renderActiveView()
           )}
         </div>
+
+        <NotificationDetailDialog
+          notification={normalizeStandardNotification(detailNotification)}
+          isRTL={isRTL}
+          onClose={() => setDetailNotification(null)}
+          onNavigate={navigate}
+        />
       </div>
     </Sidebar>
   );
 }
 
-function NotificationCard({ notif, isRTL, onRead, t, variant }) {
+function NotificationCard({ notif, isRTL, onOpen, t, variant }) {
   const isUnread = !notif.read_status && !notif.is_read;
   const priorityColors = {
     critical: 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-300',
@@ -1193,7 +1213,8 @@ function NotificationCard({ notif, isRTL, onRead, t, variant }) {
           ? 'bg-brand-turquoise/5 border-brand-turquoise/20 hover:shadow-sm'
           : 'bg-card hover:bg-muted/30'
       }`}
-      onClick={() => isUnread && onRead(notif.id)}
+      onClick={() => onOpen(notif)}
+      data-testid={`notification-card-${notif.id}`}
     >
       <div className="flex items-start gap-3">
         <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${iconBg}`}>

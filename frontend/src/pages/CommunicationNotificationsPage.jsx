@@ -49,6 +49,8 @@ import {
 } from '../components/ui/select';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { NotificationDetailDialog } from '../components/notifications/NotificationDetailDialog';
+import { normalizeStandardNotification } from '../components/notifications/notificationDisplay';
 
 const notificationTypeConfig = {
   system: { 
@@ -154,6 +156,9 @@ export const CommunicationNotificationsPage = () => {
     all: 0, schools: 0, teachers: 0, students: 0, principals: 0, parents: 0
   });
   const [sendingMessage, setSendingMessage] = useState(false);
+  // Quick-preview dialog (parent pattern): clicking a notification row
+  // opens the full content in place instead of navigating away.
+  const [detailNotification, setDetailNotification] = useState(null);
 
   const messageStats = {
     sent: commStats.sent_messages || 0,
@@ -285,9 +290,9 @@ export const CommunicationNotificationsPage = () => {
     if (!notification.read_status) {
       handleMarkAsRead(notification.id);
     }
-    if (notification.action_url) {
-      navigate(notification.action_url);
-    }
+    // Open the in-place preview dialog; any action_url is surfaced as
+    // an explicit button inside the dialog instead of auto-navigating.
+    setDetailNotification(notification);
   };
 
   const handleSendMessage = async () => {
@@ -564,6 +569,7 @@ export const CommunicationNotificationsPage = () => {
                                   : 'bg-background'
                               }`}
                               onClick={() => handleNotificationClick(notification)}
+                              data-testid={`comm-notification-card-${notification.id}`}
                             >
                               <CardContent className="p-4">
                                 <div className="flex items-start gap-4">
@@ -803,6 +809,12 @@ export const CommunicationNotificationsPage = () => {
           </Tabs>
         </div>
       </div>
+      <NotificationDetailDialog
+        notification={normalizeStandardNotification(detailNotification)}
+        isRTL={isRTL}
+        onClose={() => setDetailNotification(null)}
+        onNavigate={navigate}
+      />
       <HakimAssistant />
     </Sidebar>
   );

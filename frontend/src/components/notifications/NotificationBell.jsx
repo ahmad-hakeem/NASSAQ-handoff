@@ -28,6 +28,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '../ui/popover';
+import { NotificationDetailDialog } from './NotificationDetailDialog';
+import { normalizeStandardNotification } from './notificationDisplay';
 
 const notificationTypeConfig = {
   system: { icon: Info, color: 'text-gray-500' },
@@ -53,6 +55,10 @@ export const NotificationBell = () => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [ackingId, setAckingId] = useState(null);
+  // Quick-preview dialog (parent pattern). Rendered as a SIBLING of
+  // the Popover — never inside PopoverContent, which unmounts when
+  // the popover closes and would take the dialog down with it.
+  const [detailNotification, setDetailNotification] = useState(null);
 
   const fetchUnreadCount = useCallback(async () => {
     if (!user) return;
@@ -158,21 +164,20 @@ export const NotificationBell = () => {
   };
 
   const handleNotificationClick = async (notification) => {
+    // Close the popover and open the in-place preview dialog first so
+    // the UI responds immediately; mark-read runs after.
+    setOpen(false);
+    setDetailNotification(notification);
     if (!notification.read_status) {
       try {
         await api.put(`/notifications/${notification.id}/read`);
+        setNotifications(prev =>
+          prev.map(n => n.id === notification.id ? { ...n, read_status: true } : n)
+        );
         setUnreadCount(prev => Math.max(0, prev - 1));
       } catch (error) {
         console.error('Failed to mark as read:', error);
       }
-    }
-    setOpen(false);
-    
-    if (notification.action_url) {
-      navigate(notification.action_url);
-    } else {
-      const schoolRoles = ['school_principal', 'school_admin', 'school_sub_admin'];
-      navigate(schoolRoles.includes(user?.role) ? '/principal/communication/notifications' : '/notifications');
     }
   };
 
@@ -192,6 +197,7 @@ export const NotificationBell = () => {
   };
 
   return (
+    <>
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button 
@@ -344,5 +350,13 @@ export const NotificationBell = () => {
         </div>
       </PopoverContent>
     </Popover>
+
+    <NotificationDetailDialog
+      notification={normalizeStandardNotification(detailNotification)}
+      isRTL={isRTL}
+      onClose={() => setDetailNotification(null)}
+      onNavigate={navigate}
+    />
+    </>
   );
 };

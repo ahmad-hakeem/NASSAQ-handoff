@@ -11,6 +11,8 @@ import { Loader2, Bell, CheckCheck, ExternalLink, Inbox, Users, GraduationCap, B
 import { formatHijriDate } from '../../utils/hijriDate';
 import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { NotificationDetailDialog } from '../../components/notifications/NotificationDetailDialog';
+import { normalizeItNotification } from '../../components/notifications/notificationDisplay';
 
 // Task #249 — IT Notifications Inbox.
 // Backend pins user_id + tenant_id == itw_{user_id}; this page is
@@ -72,6 +74,9 @@ export function TeacherNotificationsPanel({ embedded = false } = {}) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [unread, setUnread] = useState(0);
   const [marking, setMarking] = useState(false);
+  // Quick-preview dialog (parent pattern): opening a row shows the
+  // full content in place; any cta_url becomes an explicit button.
+  const [detailNotification, setDetailNotification] = useState(null);
 
   const fetchList = useCallback(async ({ readMode, category, cursor } = {}) => {
     const append = Boolean(cursor);
@@ -125,9 +130,9 @@ export function TeacherNotificationsPanel({ embedded = false } = {}) {
   }, [api]);
 
   const handleOpen = useCallback(async (notif) => {
+    setDetailNotification(notif);
     await handleMarkRead(notif);
-    if (notif.cta_url) navigate(notif.cta_url);
-  }, [handleMarkRead, navigate]);
+  }, [handleMarkRead]);
 
   const handleMarkAll = useCallback(async () => {
     setMarking(true);
@@ -335,6 +340,13 @@ export function TeacherNotificationsPanel({ embedded = false } = {}) {
               )}
             </CardContent>
           </Card>
+
+          <NotificationDetailDialog
+            notification={normalizeItNotification(detailNotification)}
+            isRTL={isAr}
+            onClose={() => setDetailNotification(null)}
+            onNavigate={navigate}
+          />
         </div>
   );
 
