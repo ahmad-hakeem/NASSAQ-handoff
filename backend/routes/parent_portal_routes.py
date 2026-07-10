@@ -2967,10 +2967,14 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "status": {"$in": ["pending", "submitted"]}
         })
         total_open = open_messages + open_excuses + open_meetings
+        # The hard 3-open-request cap was removed (messages stayed "sent"
+        # forever, permanently locking parents out). Counts are still
+        # returned for display; ``limit``/``can_submit`` are kept for
+        # backwards compatibility with older clients.
         return {
             "total_open": total_open,
-            "limit": 3,
-            "can_submit": total_open < 3,
+            "limit": None,
+            "can_submit": True,
             "breakdown": {
                 "messages": open_messages,
                 "excuses": open_excuses,
@@ -2989,13 +2993,21 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         {recipient_user_id, teacher_name, child_labels: [..]}. Never includes
         cross-tenant users; on resolution ambiguity, omits the entry.
 
-        NOTE: the recipient set is derived from ``schedule_sessions`` (scoped
-        by both class and tenant), NOT the legacy ``timetable_sessions``
-        document store. ``timetable_sessions`` accumulates a separate set of
-        rows per historical timetable run and is no longer anchored to any
-        ``timetables`` record, so querying it by class alone returned every
-        teacher ever associated with the class (over-disclosure). Tenants whose
-        live schedule lives only in ``schedule_sessions`` returned nothing.
+        NOTE: the recipient set is the union of two schedule sources:
+
+        1. ``schedule_sessions`` (legacy live timetable table), scoped by
+           both class and tenant.
+        2. ``timetable_sessions`` rows anchored to the school's LATEST
+           PUBLISHED ``timetables`` row (the modern smart-engine store).
+           Classes scheduled by the modern engine have NO
+           ``schedule_sessions`` rows at all, so without this source their
+           parents saw an empty recipient list.
+
+        ``timetable_sessions`` must NEVER be queried by class alone — it
+        accumulates rows per historical timetable run, so an unanchored
+        query returns every teacher ever associated with the class
+        (over-disclosure). Anchoring to the single latest published
+        timetable keeps the set equal to the child's current schedule.
         See docs/qa/2026-05-31-parent-dropdowns-audit.md (Finding 1)."""
         school_id = current_user.get("tenant_id")
         if not school_id:
@@ -3014,9 +3026,8 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if not class_to_children:
             return []
         class_ids = list(class_to_children.keys())
-        # Source of truth is ``schedule_sessions`` (the live timetable table),
-        # scoped by BOTH class and tenant. See the function docstring / Finding
-        # 1 for why ``timetable_sessions`` must not be used here.
+        # Source 1: ``schedule_sessions`` (legacy live timetable table),
+        # scoped by BOTH class and tenant.
         sessions = await gd_find(db.session, "schedule_sessions",
                                  {"class_id": {"$in": class_ids},
                                   "school_id": school_id}, limit=2000)
@@ -3027,6 +3038,36 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             if not tid or not cid:
                 continue
             teacher_to_classes.setdefault(tid, set()).add(cid)
+        # Source 2: the modern smart-engine store. Classes scheduled by the
+        # modern engine have no ``schedule_sessions`` rows; their current
+        # teachers live in ``timetable_sessions`` anchored to the school's
+        # latest PUBLISHED timetable. Anchoring to that single timetable (and
+        # never querying by class alone) preserves the anti-over-disclosure
+        # decision in the docstring / audit Finding 1.
+        published = await gd_find(
+            db.session, "timetables",
+            {"school_id": school_id, "status": "published"},
+            order_by="published_at", desc_order=True, limit=10,
+        )
+        if published:
+            published.sort(
+                key=lambda r: (str(r.get("published_at") or ""),
+                               str(r.get("updated_at") or "")),
+                reverse=True,
+            )
+            tt_id = published[0].get("id")
+            if tt_id:
+                tt_sessions = await gd_find(
+                    db.session, "timetable_sessions",
+                    {"timetable_id": tt_id, "class_id": {"$in": class_ids}},
+                    limit=2000,
+                )
+                for s in tt_sessions:
+                    tid = s.get("teacher_id")
+                    cid = s.get("class_id")
+                    if not tid or not cid:
+                        continue
+                    teacher_to_classes.setdefault(tid, set()).add(cid)
         if not teacher_to_classes:
             return []
         teacher_ids = list(teacher_to_classes.keys())
@@ -3118,21 +3159,6 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
         if not content:
             raise HTTPException(status_code=400, detail="محتوى الرسالة مطلوب")
-
-        open_messages = await gd_count(db.session, "messages", {
-            "sender_id": parent_id,
-            "status": {"$in": ["open", "pending", "sent"]}
-        })
-        open_excuses = await gd_count(db.session, "absence_excuses", {
-            "parent_id": parent_id,
-            "status": {"$in": ["pending", "submitted"]}
-        })
-        open_meetings = await gd_count(db.session, "meeting_requests", {
-            "parent_id": parent_id,
-            "status": {"$in": ["pending", "submitted"]}
-        })
-        if (open_messages + open_excuses + open_meetings) >= 3:
-            raise HTTPException(status_code=429, detail="لقد وصلت للحد الأقصى من الطلبات المفتوحة (3)")
 
         receiver = None
         if recipient_type == "admin":
@@ -3690,14 +3716,6 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if not child_id or not absence_date or not reason:
             raise HTTPException(status_code=400, detail="child_id, absence_date, and reason are required")
 
-        open_total = (
-            await gd_count(db.session, "messages", {"sender_id": parent_id, "status": {"$in": ["open", "pending", "sent"]}})
-            + await gd_count(db.session, "absence_excuses", {"parent_id": parent_id, "status": {"$in": ["pending", "submitted"]}})
-            + await gd_count(db.session, "meeting_requests", {"parent_id": parent_id, "status": {"$in": ["pending", "submitted"]}})
-        )
-        if open_total >= 3:
-            raise HTTPException(status_code=429, detail="لقد وصلت للحد الأقصى من الطلبات المفتوحة (3)")
-
         children = await _find_children(current_user, current_user.get("phone"), school_id)
         child_ids = [c.get("id") for c in children]
         if child_id not in child_ids:
@@ -3779,14 +3797,6 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
         if not preferred_date or not topic:
             raise HTTPException(status_code=400, detail="preferred_date and topic are required")
-
-        open_total = (
-            await gd_count(db.session, "messages", {"sender_id": parent_id, "status": {"$in": ["open", "pending", "sent"]}})
-            + await gd_count(db.session, "absence_excuses", {"parent_id": parent_id, "status": {"$in": ["pending", "submitted"]}})
-            + await gd_count(db.session, "meeting_requests", {"parent_id": parent_id, "status": {"$in": ["pending", "submitted"]}})
-        )
-        if open_total >= 3:
-            raise HTTPException(status_code=429, detail="لقد وصلت للحد الأقصى من الطلبات المفتوحة (3)")
 
         meeting = {
             "id": str(uuid.uuid4()),

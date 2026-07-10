@@ -12,7 +12,7 @@ import { NotificationsPage } from '../NotificationsPage';
 import ParentAbsenceExcusePage from './ParentAbsenceExcusePage';
 import {
   MessageSquare, FileText, Inbox, Send, AlertCircle,
-  CheckCircle, Clock, Lock, ArrowUpRight, ArrowDownLeft, Loader2,
+  CheckCircle, Clock, ArrowUpRight, ArrowDownLeft, Loader2,
   Bell
 } from 'lucide-react';
 
@@ -94,8 +94,6 @@ const ParentCommunicationCenter = () => {
     }
   }, [recipient]);
 
-  const canSubmit = requestsCount?.can_submit !== false;
-
   const refreshRequestCount = async () => {
     try {
       const countRes = await api.get('/parent-portal/open-requests-count');
@@ -112,10 +110,6 @@ const ParentCommunicationCenter = () => {
 
   const handleSendMessage = async () => {
     if (!msgText.trim()) return;
-    if (!canSubmit) {
-      nassaqError(t('maxOpenRequestsError'));
-      return;
-    }
     if (recipient === 'teacher' && !selectedTeacherUserId) {
       nassaqError(t('selectTeacherRecipient'));
       return;
@@ -136,12 +130,7 @@ const ParentCommunicationCenter = () => {
       setTimeout(() => setShowSuccess(false), 5000);
       await Promise.all([refreshRequestCount(), refreshInbox()]);
     } catch (err) {
-      if (err.response?.status === 429) {
-        nassaqError(t('maxOpenRequestsError'));
-        await refreshRequestCount();
-      } else {
-        nassaqError(t('errorSendingMessage'));
-      }
+      nassaqError(t('errorSendingMessage'));
     } finally {
       setSending(false);
     }
@@ -227,16 +216,7 @@ const ParentCommunicationCenter = () => {
 
         {outerTab === 'messages' && (
         <div className="space-y-4 max-w-lg mx-auto">
-        {!canSubmit && (
-          <div className="flex items-start gap-3 p-3.5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm">
-            <Lock className="w-5 h-5 shrink-0 mt-0.5" />
-            <p className="font-cairo leading-relaxed">
-              {t('maxOpenRequestsReached').replace('{count}', requestsCount?.total_open || 3)}
-            </p>
-          </div>
-        )}
-
-        {requestsCount && canSubmit && (
+        {requestsCount && (
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-brand-navy/5 dark:bg-brand-navy/20 border border-brand-navy/10 dark:border-brand-navy/30">
             <AlertCircle className="w-4 h-4 text-brand-navy shrink-0" />
             <p className="text-xs text-brand-navy dark:text-brand-navy/80">
@@ -370,7 +350,7 @@ const ParentCommunicationCenter = () => {
                 <button
                   onClick={handleSendMessage}
                   disabled={
-                    !msgText.trim() || sending || !canSubmit ||
+                    !msgText.trim() || sending ||
                     (recipient === 'teacher' && (teacherRecipients.length === 0 || !selectedTeacherUserId))
                   }
                   className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-brand-navy to-brand-purple hover:from-brand-navy-dark hover:to-brand-purple text-white text-sm font-medium font-cairo disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-brand-navy/15 dark:shadow-brand-navy/30"

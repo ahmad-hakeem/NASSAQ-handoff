@@ -84,6 +84,15 @@ RATE_LIMITS = {
     # handlers (mirrors the `login_account:` pattern).
     "/api/auth/forgot-password": {"max": 20, "window": 3600},
     "/api/auth/reset-password": {"max": 20, "window": 3600},
+    # Parent Communication Center write surfaces. The old hard
+    # "3 open requests" cap was removed (it permanently locked parents
+    # out when messages never closed); these per-IP burst limits replace
+    # it as an anti-abuse throttle, NOT a request quota. POST-only so the
+    # sibling GET list endpoints (/absence-excuses, /meeting-requests)
+    # that share the prefix are not throttled.
+    "/api/parent-portal/quick-message": {"max": 10, "window": 60, "methods": {"POST"}},
+    "/api/parent-portal/absence-excuse": {"max": 10, "window": 60, "methods": {"POST"}},
+    "/api/parent-portal/meeting-request": {"max": 10, "window": 60, "methods": {"POST"}},
     # ----- Task #169 Step 8 — MFA brute-force / abuse limits ----------
     # These are PER-IP outer limits. Per-identity (per-user, per-challenge)
     # caps are enforced inside the handlers (challenge attempts counter,
@@ -172,6 +181,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         matched_limits = None
         for pattern, limits in RATE_LIMITS.items():
             if path.startswith(pattern):
+                # Optional method scoping: e.g. throttle POST writes without
+                # catching sibling GET reads that share the path prefix
+                # (/absence-excuse vs GET /absence-excuses).
+                allowed_methods = limits.get("methods")
+                if allowed_methods and request.method not in allowed_methods:
+                    break
                 matched_limits = limits
                 key = f"{client_ip}:{pattern}"
                 limited, remaining, retry_after = await rate_store.is_rate_limited(
