@@ -1184,7 +1184,13 @@ function NotificationCard({ notif, isRTL, onOpen, t, variant }) {
     critical: 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-300',
     high: 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300',
     medium: 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300',
+    normal: 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300',
     low: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300',
+  };
+
+  const priorityLabels = {
+    ar: { critical: 'حرج', high: 'مرتفع', medium: 'متوسط', normal: 'عادي', low: 'منخفض' },
+    en: { critical: 'Critical', high: 'High', medium: 'Medium', normal: 'Normal', low: 'Low' },
   };
 
   const typeIcons = {
@@ -1229,9 +1235,9 @@ function NotificationCard({ notif, isRTL, onOpen, t, variant }) {
             {isRTL ? notif.message : (notif.message_en || notif.message)}
           </p>
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-            {notif.priority && (
+            {notif.priority && notif.priority !== 'normal' && notif.priority !== 'medium' && (
               <Badge className={`text-[10px] border-0 ${priorityColors[notif.priority] || priorityColors.medium}`}>
-                {t(`priority${notif.priority.charAt(0).toUpperCase()}${notif.priority.slice(1)}`)}
+                {(isRTL ? priorityLabels.ar : priorityLabels.en)[notif.priority] || notif.priority}
               </Badge>
             )}
             {notif.sender_name && (
