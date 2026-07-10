@@ -11,7 +11,7 @@ import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { NotificationsPage } from '../NotificationsPage';
 import ParentAbsenceExcusePage from './ParentAbsenceExcusePage';
 import {
-  MessageSquare, FileText, Inbox, Send, AlertCircle,
+  MessageSquare, FileText, Inbox, Send,
   CheckCircle, Clock, ArrowUpRight, ArrowDownLeft, Loader2,
   Bell
 } from 'lucide-react';
@@ -34,7 +34,6 @@ const ParentCommunicationCenter = () => {
   };
 
   const [activeTab, setActiveTab] = useState('send');
-  const [requestsCount, setRequestsCount] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -73,12 +72,10 @@ const ParentCommunicationCenter = () => {
   useEffect(() => {
     const init = async () => {
       try {
-        const [countRes, msgRes, teachersRes] = await Promise.all([
-          api.get('/parent-portal/open-requests-count'),
+        const [msgRes, teachersRes] = await Promise.all([
           api.get('/parent-portal/messages'),
           api.get('/parent-portal/message-recipients/teachers').catch(() => ({ data: { teachers: [], children: [] } })),
         ]);
-        setRequestsCount(countRes.data);
         setMessages(msgRes.data?.messages || []);
         setTeacherRecipients(teachersRes.data?.teachers || []);
         const kids = teachersRes.data?.children || [];
@@ -114,13 +111,6 @@ const ParentCommunicationCenter = () => {
     [teacherRecipients, selectedStudentId]
   );
 
-  const refreshRequestCount = async () => {
-    try {
-      const countRes = await api.get('/parent-portal/open-requests-count');
-      setRequestsCount(countRes.data);
-    } catch {}
-  };
-
   const refreshInbox = async () => {
     try {
       const msgRes = await api.get('/parent-portal/messages');
@@ -153,7 +143,7 @@ const ParentCommunicationCenter = () => {
       setMsgText('');
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 5000);
-      await Promise.all([refreshRequestCount(), refreshInbox()]);
+      await refreshInbox();
     } catch (err) {
       nassaqError(t('errorSendingMessage'));
     } finally {
@@ -241,15 +231,6 @@ const ParentCommunicationCenter = () => {
 
         {outerTab === 'messages' && (
         <div className="space-y-4 max-w-lg mx-auto">
-        {requestsCount && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-brand-navy/5 dark:bg-brand-navy/20 border border-brand-navy/10 dark:border-brand-navy/30">
-            <AlertCircle className="w-4 h-4 text-brand-navy shrink-0" />
-            <p className="text-xs text-brand-navy dark:text-brand-navy/80">
-              {t('openRequestsCount').replace('{count}', requestsCount.total_open)}
-            </p>
-          </div>
-        )}
-
         <div className="flex gap-2 overflow-x-auto pb-1">
           {TABS.map(tab => {
             const Icon = tab.icon;
