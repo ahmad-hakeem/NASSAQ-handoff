@@ -11,6 +11,7 @@ import StudentInsightsPanel from '../StudentInsightsPanel';
 import {
   BookOpen, CheckCircle, XCircle, AlertCircle, Clock, Award, Calendar,
 } from 'lucide-react';
+import { formatAttendanceDate } from '../../../utils/hijriDate';
 
 const DetailsPanel = ({ childId, grades: gradesProp, attendance: attendanceProp }) => {
   const { t } = useTranslation();
@@ -213,7 +214,7 @@ const DetailsPanel = ({ childId, grades: gradesProp, attendance: attendanceProp 
                     <div key={idx} className="flex items-center justify-between p-3 bg-muted/40 rounded-lg">
                       <div className="flex items-center gap-2">
                         {getStatusIcon(record.status)}
-                        <span className="text-sm">{record.date}</span>
+                        <span className="text-sm">{formatAttendanceDate(record.date, isRTL ? 'ar' : 'en')}</span>
                       </div>
                       <Badge variant="outline" className="text-xs">
                         {record.status === 'present' && t('present')}
