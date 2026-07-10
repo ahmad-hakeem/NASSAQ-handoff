@@ -219,11 +219,14 @@ async def test_cross_tenant_timetable_not_disclosed(client, tenant_a, tenant_b):
 async def test_quick_message_not_blocked_after_three_open(client, tenant_a):
     parent = await _mk_user("parent", tenant_a)
     await _mk_user("school_admin", tenant_a)  # receiver for admin messages
+    class_id = await _mk_class(tenant_a)
+    child = await _mk_student(tenant_a, class_id, parent_user_id=parent)
     for _ in range(3):
         await _mk_open_excuse(tenant_a, parent)
 
     resp = await client.post("/parent-portal/quick-message",
-                             json={"content": "رسالة رابعة", "recipient_type": "admin"},
+                             json={"content": "رسالة رابعة", "recipient_type": "admin",
+                                   "student_id": child},
                              headers=_headers(parent, "parent", tenant_a))
     assert resp.status_code == 200, f"limit must be removed, got {resp.status_code}: {resp.text}"
 

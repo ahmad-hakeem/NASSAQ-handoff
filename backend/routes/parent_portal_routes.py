@@ -2984,14 +2984,16 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
     # ============= MESSAGE RECIPIENTS (teachers of parent's children) =============
 
-    async def _resolve_parent_teacher_recipients(current_user: dict) -> list:
+    async def _resolve_parent_teacher_recipients(current_user: dict) -> dict:
         """Resolve the set of teacher *user* accounts that the authenticated
         parent is allowed to message. Walks parent → children → the child's
         current class schedule (``schedule_sessions``, the canonical live
         timetable table) → teachers.user_id → users(role=teacher,
-        tenant_id=school_id, is_active=true). Returns a list of dicts:
-        {recipient_user_id, teacher_name, child_labels: [..]}. Never includes
-        cross-tenant users; on resolution ambiguity, omits the entry.
+        tenant_id=school_id, is_active=true). Returns a dict:
+        {"teachers": [{recipient_user_id, teacher_name, child_ids: [..],
+        child_labels: [..]}], "children": [{student_id, name}]}. Never
+        includes cross-tenant users; on resolution ambiguity, omits the
+        entry.
 
         NOTE: the recipient set is the union of two schedule sources:
 
@@ -3011,20 +3013,28 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         See docs/qa/2026-05-31-parent-dropdowns-audit.md (Finding 1)."""
         school_id = current_user.get("tenant_id")
         if not school_id:
-            return []
+            return {"teachers": [], "children": []}
         children = await _find_children(current_user, current_user.get("phone"), school_id)
-        # Keep only children in this tenant and build class -> child label map
-        class_to_children: dict = {}
+        # Keep only children in this tenant. ALL tenant-scoped children are
+        # returned (even without a class) so the admin flow can attach any
+        # child; only classed children feed the teacher mapping.
+        children_out: list = []
+        seen_child_ids: set = set()
+        class_to_children: dict = {}  # class_id -> [(student_id, label), ...]
         for child in children:
             if child.get("school_id") and child.get("school_id") != school_id:
                 continue
+            sid = child.get("id")
+            label = child.get("full_name") or child.get("name") or ""
+            if sid and sid not in seen_child_ids:
+                seen_child_ids.add(sid)
+                children_out.append({"student_id": sid, "name": label})
             cid = child.get("class_id")
             if not cid:
                 continue
-            label = child.get("full_name") or child.get("name") or ""
-            class_to_children.setdefault(cid, []).append(label)
+            class_to_children.setdefault(cid, []).append((sid, label))
         if not class_to_children:
-            return []
+            return {"teachers": [], "children": children_out}
         class_ids = list(class_to_children.keys())
         # Source 1: ``schedule_sessions`` (legacy live timetable table),
         # scoped by BOTH class and tenant.
@@ -3069,7 +3079,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                         continue
                     teacher_to_classes.setdefault(tid, set()).add(cid)
         if not teacher_to_classes:
-            return []
+            return {"teachers": [], "children": children_out}
         teacher_ids = list(teacher_to_classes.keys())
         # Bulk-resolve teachers -> user_id in this tenant
         teacher_rows = await gd_find(db.session, "teachers",
@@ -3079,7 +3089,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                                      limit=1000)
         user_ids = [t.get("user_id") for t in teacher_rows if t.get("user_id")]
         if not user_ids:
-            return []
+            return {"teachers": [], "children": children_out}
         users = await gd_find(db.session, "users",
                               {"id": {"$in": user_ids},
                                "tenant_id": school_id,
@@ -3096,33 +3106,39 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             user = users_by_id.get(uid)
             if not user:
                 continue
-            child_labels = []
+            child_pairs = []
             for cid in teacher_to_classes.get(t.get("id"), set()):
-                child_labels.extend(class_to_children.get(cid, []))
-            # Dedupe child labels preserving order
+                child_pairs.extend(class_to_children.get(cid, []))
+            # Dedupe child ids/labels preserving order
+            seen_ids_local = set()
             seen_labels = set()
+            uniq_ids = []
             uniq_labels = []
-            for lbl in child_labels:
+            for sid, lbl in child_pairs:
+                if sid and sid not in seen_ids_local:
+                    seen_ids_local.add(sid)
+                    uniq_ids.append(sid)
                 if lbl and lbl not in seen_labels:
                     seen_labels.add(lbl)
                     uniq_labels.append(lbl)
             recipients.append({
                 "recipient_user_id": uid,
                 "teacher_name": user.get("full_name") or t.get("full_name") or "",
+                "child_ids": uniq_ids,
                 "child_labels": uniq_labels,
             })
             seen.add(uid)
         recipients.sort(key=lambda r: r.get("teacher_name") or "")
-        return recipients
+        return {"teachers": recipients, "children": children_out}
 
     @router.get("/message-recipients/teachers")
     async def list_message_recipient_teachers(
         current_user: dict = Depends(require_roles([UserRole.PARENT]))
     ):
         """Return the teachers a parent is allowed to message (teachers of
-        the parent's children's classes, in the same tenant)."""
-        teachers = await _resolve_parent_teacher_recipients(current_user)
-        return {"teachers": teachers}
+        the parent's children's classes, in the same tenant) plus the
+        parent's children so the UI can run the child-first flow."""
+        return await _resolve_parent_teacher_recipients(current_user)
 
     async def _resolve_admin_recipient(school_id: str) -> Optional[dict]:
         """Deterministically resolve the principal user for a tenant. Prefers
@@ -3153,12 +3169,23 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
     ):
         parent_id = current_user.get("id")
         school_id = current_user.get("tenant_id")
-        content = data.get("content", "").strip()
+        content = (data.get("content") or "").strip()
         message_type = data.get("message_type", "note")
         recipient_type = data.get("recipient_type", "admin")
+        student_id = (data.get("student_id") or "").strip()
 
         if not content:
             raise HTTPException(status_code=400, detail="محتوى الرسالة مطلوب")
+        if not student_id:
+            raise HTTPException(status_code=400, detail="يرجى تحديد الطالب المعني بالرسالة")
+
+        # Child-first flow (spec 2026-07-10): the message must reference one
+        # of the caller's own tenant-scoped children — fail closed.
+        resolved = await _resolve_parent_teacher_recipients(current_user)
+        child_names = {c["student_id"]: c["name"] for c in resolved["children"]}
+        if student_id not in child_names:
+            raise HTTPException(status_code=400, detail="الطالب المحدد غير متاح")
+        student_name = child_names[student_id]
 
         receiver = None
         if recipient_type == "admin":
@@ -3172,9 +3199,14 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             requested_uid = (data.get("recipient_user_id") or "").strip()
             if not requested_uid:
                 raise HTTPException(status_code=400, detail="المعلم المحدد غير متاح للمراسلة")
-            allowed = await _resolve_parent_teacher_recipients(current_user)
-            allowed_ids = {r["recipient_user_id"] for r in allowed}
-            if requested_uid not in allowed_ids:
+            allowed_row = next(
+                (r for r in resolved["teachers"]
+                 if r["recipient_user_id"] == requested_uid),
+                None,
+            )
+            # The chosen teacher must actually teach THE selected child, not
+            # just any of the parent's children.
+            if not allowed_row or student_id not in (allowed_row.get("child_ids") or []):
                 raise HTTPException(status_code=400, detail="المعلم المحدد غير متاح للمراسلة")
             receiver = await gd_find_one(db.session, "users", {
                 "id": requested_uid,
@@ -3191,12 +3223,19 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         receiver_name = receiver.get("full_name") or receiver.get("name", "") or ""
 
         type_labels = {"note": "ملاحظة", "suggestion": "اقتراح", "inquiry": "استفسار"}
-        subject = type_labels.get(message_type, "رسالة") + f" من ولي الأمر {current_user.get('full_name', '')}"
+        subject = (
+            type_labels.get(message_type, "رسالة")
+            + f" من ولي الأمر {current_user.get('full_name', '')}"
+            + f" بخصوص الطالب {student_name}"
+        )
 
         now_iso = datetime.now(timezone.utc).isoformat()
         message = {
             "id": str(uuid.uuid4()),
             "subject": subject,
+            # ``title`` mirrors the subject: the Communication Center inbox
+            # renders ``msg.title``.
+            "title": subject,
             "body": content,
             "content": content,
             "sender_id": parent_id,
@@ -3205,10 +3244,18 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "recipient_id": receiver_id,
             "receiver_id": receiver_id,
             "receiver_name": receiver_name,
+            "student_id": student_id,
+            "student_name": student_name,
             "message_type": message_type,
             "is_read": False,
             "read_status": False,
             "status": "sent",
+            # audience="custom" + audience_ids + sent_at make the row appear
+            # in the recipient's /communication/received inbox (previously
+            # the body was unreachable — only a subject-line notification).
+            "audience": "custom",
+            "audience_ids": [receiver_id],
+            "sent_at": now_iso,
             "school_id": school_id,
             "created_at": now_iso,
         }
@@ -3222,8 +3269,8 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 "tenant_id": school_id,
                 "type": "message",
                 "notification_type": "message",
-                "title": f"رسالة جديدة من ولي أمر: {current_user.get('full_name')}",
-                "message": subject,
+                "title": f"رسالة جديدة من ولي أمر: {current_user.get('full_name')} بخصوص الطالب {student_name}",
+                "message": content,
                 "is_read": False,
                 "read_status": False,
                 "created_at": now_iso,

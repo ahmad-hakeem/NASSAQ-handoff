@@ -45,6 +45,8 @@ const ParentCommunicationCenter = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [teacherRecipients, setTeacherRecipients] = useState([]);
   const [selectedTeacherUserId, setSelectedTeacherUserId] = useState('');
+  const [children, setChildren] = useState([]);
+  const [selectedStudentId, setSelectedStudentId] = useState('');
 
   const TABS = [
     { id: 'send', label: t('sendMessage'), icon: Send },
@@ -74,11 +76,16 @@ const ParentCommunicationCenter = () => {
         const [countRes, msgRes, teachersRes] = await Promise.all([
           api.get('/parent-portal/open-requests-count'),
           api.get('/parent-portal/messages'),
-          api.get('/parent-portal/message-recipients/teachers').catch(() => ({ data: { teachers: [] } })),
+          api.get('/parent-portal/message-recipients/teachers').catch(() => ({ data: { teachers: [], children: [] } })),
         ]);
         setRequestsCount(countRes.data);
         setMessages(msgRes.data?.messages || []);
         setTeacherRecipients(teachersRes.data?.teachers || []);
+        const kids = teachersRes.data?.children || [];
+        setChildren(kids);
+        if (kids.length === 1) {
+          setSelectedStudentId(kids[0].student_id);
+        }
       } catch {
         nassaqError(t('errorFetchingData'));
       } finally {
@@ -93,6 +100,19 @@ const ParentCommunicationCenter = () => {
       setSelectedTeacherUserId('');
     }
   }, [recipient]);
+
+  // The teacher list is child-specific: changing the child invalidates the
+  // previously selected teacher.
+  useEffect(() => {
+    setSelectedTeacherUserId('');
+  }, [selectedStudentId]);
+
+  const childTeachers = useMemo(
+    () => teacherRecipients.filter(
+      tr => (tr.child_ids || []).includes(selectedStudentId)
+    ),
+    [teacherRecipients, selectedStudentId]
+  );
 
   const refreshRequestCount = async () => {
     try {
@@ -110,6 +130,10 @@ const ParentCommunicationCenter = () => {
 
   const handleSendMessage = async () => {
     if (!msgText.trim()) return;
+    if (!selectedStudentId) {
+      nassaqError(t('selectChildLabel'));
+      return;
+    }
     if (recipient === 'teacher' && !selectedTeacherUserId) {
       nassaqError(t('selectTeacherRecipient'));
       return;
@@ -120,6 +144,7 @@ const ParentCommunicationCenter = () => {
         message_type: msgType,
         recipient_type: recipient,
         content: msgText.trim(),
+        student_id: selectedStudentId,
       };
       if (recipient === 'teacher') {
         body.recipient_user_id = selectedTeacherUserId;
@@ -268,6 +293,33 @@ const ParentCommunicationCenter = () => {
               <CardContent className="p-4 space-y-4">
                 <div>
                   <p className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-2 font-cairo">
+                    {t('selectChildLabel')}
+                  </p>
+                  {children.length === 0 ? (
+                    <p className="text-xs text-muted-foreground font-cairo px-1">
+                      {t('noChildrenLinked')}
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {children.map(child => (
+                        <button
+                          key={child.student_id}
+                          onClick={() => setSelectedStudentId(child.student_id)}
+                          className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                            selectedStudentId === child.student_id
+                              ? 'bg-brand-navy/15 dark:bg-brand-navy/20 text-brand-navy dark:text-brand-navy/80 border border-brand-navy/30 dark:border-brand-navy/40 shadow-sm'
+                              : 'bg-muted/40 dark:bg-gray-800 text-muted-foreground dark:text-muted-foreground border border-transparent hover:border-border dark:hover:border-gray-600'
+                          }`}
+                        >
+                          {child.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-foreground dark:text-muted-foreground/50 mb-2 font-cairo">
                     {t('messageTypeLabel')}
                   </p>
                   <div className="flex gap-2">
@@ -307,7 +359,11 @@ const ParentCommunicationCenter = () => {
                     ))}
                   </div>
                   {recipient === 'teacher' && (
-                    teacherRecipients.length === 0 ? (
+                    !selectedStudentId ? (
+                      <p className="mt-2 text-xs text-muted-foreground font-cairo px-1">
+                        {t('selectChildFirstHint')}
+                      </p>
+                    ) : childTeachers.length === 0 ? (
                       <p className="mt-2 text-xs text-muted-foreground font-cairo px-1">
                         {t('noTeacherRecipientsAvailable')}
                       </p>
@@ -322,14 +378,9 @@ const ParentCommunicationCenter = () => {
                             <SelectValue placeholder={t('selectTeacherRecipient')} />
                           </SelectTrigger>
                           <SelectContent>
-                            {teacherRecipients.map(tr => (
+                            {childTeachers.map(tr => (
                               <SelectItem key={tr.recipient_user_id} value={tr.recipient_user_id}>
                                 <span className="font-medium">{tr.teacher_name}</span>
-                                {tr.child_labels && tr.child_labels.length > 0 && (
-                                  <span className="ms-2 text-xs text-muted-foreground">
-                                    — {tr.child_labels.join('، ')}
-                                  </span>
-                                )}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -350,8 +401,8 @@ const ParentCommunicationCenter = () => {
                 <button
                   onClick={handleSendMessage}
                   disabled={
-                    !msgText.trim() || sending ||
-                    (recipient === 'teacher' && (teacherRecipients.length === 0 || !selectedTeacherUserId))
+                    !msgText.trim() || sending || !selectedStudentId ||
+                    (recipient === 'teacher' && (childTeachers.length === 0 || !selectedTeacherUserId))
                   }
                   className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-brand-navy to-brand-purple hover:from-brand-navy-dark hover:to-brand-purple text-white text-sm font-medium font-cairo disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-brand-navy/15 dark:shadow-brand-navy/30"
                 >
@@ -419,6 +470,11 @@ const ParentCommunicationCenter = () => {
                                 )}
                               </div>
                             </div>
+                            {msg.student_name && (
+                              <Badge className="mb-1 bg-brand-navy/10 dark:bg-brand-navy/25 text-brand-navy dark:text-brand-turquoise border-0 text-[10px] px-1.5">
+                                {t('regardingStudent').replace('{name}', msg.student_name)}
+                              </Badge>
+                            )}
                             <p className="text-sm text-foreground dark:text-muted-foreground/50 line-clamp-2 mb-1.5">
                               {msg.content || msg.message || msg.subject}
                             </p>
