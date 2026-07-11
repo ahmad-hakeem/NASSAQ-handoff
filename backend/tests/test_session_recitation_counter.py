@@ -25,8 +25,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from dependencies import db
-from engines.sql_utils import gd_insert
+from dependencies import db, create_access_token
+from engines.sql_utils import gd_insert, gd_find, gd_find_one
 from engines.session_engine import (
     TeacherSessionEngine as SessionEngine,
     InteractionType,
@@ -216,6 +216,78 @@ async def test_reversed_recitation_excluded_from_counter(tenant_a):
     agg = _by_id(await _engine().get_session_students(session_id), sid)
     assert agg["question_count"] == 1
     assert agg["eval_positive_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# HTTP-level regression: POST /session/{id}/recitation must succeed for a
+# teacher whose ``teacher_id`` claim (Teachers.id) differs from Users.id.
+#
+# The bug: the route resolved ``teacher_id = current_user.get("teacher_id")
+# or current_user["id"]`` and the engine wrote that value into
+# ``session_interactions.recorded_by``, which has a FOREIGN KEY to users(id).
+# Every school teacher and Independent Teacher carries a Teachers.id in the
+# ``teacher_id`` claim, so the insert hit
+# ``session_interactions_recorded_by_fkey`` -> 409 -> the generic
+# "خطأ في تسجيل المهارة" popup. Sibling routes (answer/participation/
+# behaviour/skill/evaluation) all pass ``current_user["id"]``.
+# ---------------------------------------------------------------------------
+
+async def _mk_linked_teacher_user(tenant_id: str):
+    """Create a users row whose ``teacher_id`` column points at a distinct
+    teachers row — the shape every real school/IT teacher account has."""
+    teachers_id = str(uuid.uuid4())
+    await gd_insert(db.session, "teachers", {
+        "id": teachers_id, "school_id": tenant_id, "full_name": "معلم مرتبط",
+    })
+    user_id = str(uuid.uuid4())
+    await gd_insert(db.session, "users", {
+        "id": user_id, "role": "teacher", "tenant_id": tenant_id,
+        "email": f"u-{user_id}@t.test", "full_name": "معلم مرتبط",
+        "is_active": True, "password_hash": "x", "teacher_id": teachers_id,
+    })
+    token = create_access_token({
+        "sub": user_id, "role": "teacher", "tenant_id": tenant_id,
+    })
+    return user_id, teachers_id, {"Authorization": f"Bearer {token}"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mastered", [True, False])
+async def test_recitation_route_succeeds_with_distinct_teacher_id_claim(
+    client, tenant_a, mastered
+):
+    """Both outcomes (متقن / لم يتقن) must persist via HTTP when the caller's
+    teacher_id claim is a Teachers.id, and recorded_by must be the Users.id
+    (the FK target), matching every sibling interaction route."""
+    user_id, teachers_id, headers = await _mk_linked_teacher_user(tenant_a)
+    class_id = await _mk_class(tenant_a)
+    # Production shape: start_class_session stamps the caller's teacher
+    # identity (the teacher_id claim when present) onto the session row.
+    session_id = await _mk_session(tenant_a, class_id, teachers_id)
+    sid = await _mk_student(tenant_a, class_id, "أحمد")
+    await _present(session_id, sid)
+
+    resp = await client.post(
+        f"/session/{session_id}/recitation",
+        json={"student_id": sid, "mastered": mastered, "attempts": 2, "note": None},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    rows = await gd_find(db.session, "session_interactions", {
+        "session_id": session_id, "student_id": sid,
+    })
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.get("interaction_type") == InteractionType.RECITATION.value
+    assert bool(row.get("recitation_mastered")) is mastered
+    # recorded_by must satisfy the users(id) FK — the Users.id, never Teachers.id.
+    assert row.get("recorded_by") == user_id
+
+    # And it must survive a roster refresh (the counter reads interactions).
+    agg = _by_id(await _engine().get_session_students(session_id), sid)
+    assert agg["question_count"] == 1
+    assert agg["eval_positive_count"] == (1 if mastered else 0)
 
 
 @pytest.mark.asyncio

@@ -3323,12 +3323,17 @@ async def record_session_recitation(
     interaction so a mis-tap can be undone.
     """
     await _verify_session_owner(session_id, current_user)
-    teacher_id = current_user.get("teacher_id") or current_user["id"]
+    # recorded_by (session_interactions) has a FK to users(id): pass the
+    # Users.id like every sibling interaction route (answer/participation/
+    # behaviour/skill/evaluation). Passing the Teachers.id claim here broke
+    # ALL recitation saves with a ForeignKeyViolation -> 409 -> the generic
+    # "خطأ في تسجيل المهارة" popup. actor_id (event log, no FK) keeps the
+    # teacher identity for undo's actor-union lookup.
     result = await session_engine.record_recitation(
         session_id=session_id,
         student_id=data.get("student_id"),
         mastered=bool(data.get("mastered")),
-        teacher_id=teacher_id,
+        teacher_id=current_user["id"],
         attempts=data.get("attempts", 1),
         note=data.get("note"),
         actor_id=current_user.get("teacher_id") or current_user["id"],
