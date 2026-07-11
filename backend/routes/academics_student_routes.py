@@ -38,6 +38,10 @@ from shared_models import (
 
 router = APIRouter()
 
+# Arabic-Indic (٠-٩) and Extended Arabic-Indic (۰-۹) digits -> ASCII 0-9,
+# so parent-search phone queries typed with Arabic digits match stored numbers.
+_ARABIC_DIGIT_TRANS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+
 
 def _dispatch_parent_invitation_email(
     *,
@@ -1056,20 +1060,25 @@ async def search_parents(
     q: str = "",
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
-    """Search for existing parents by name or phone"""
+    """Search for existing parents by name, phone, or email"""
     school_id = current_user.get("tenant_id")
-    
-    if not q or len(q) < 2:
+
+    # Normalize: trim whitespace and map Arabic-Indic digits to ASCII so
+    # phone queries typed with ٠١٢٣ still match stored 0123 numbers.
+    q = (q or "").strip().translate(_ARABIC_DIGIT_TRANS)
+    if len(q) < 2 or len(q) > 100:
         return {"parents": []}
-    
-    import re as _re
-    safe_q = _re.escape(q)
-    # Search by name or phone
+
+    # NOTE: pass the RAW query — gd_find's _sanitize_regex already applies
+    # re.escape(). Pre-escaping here double-escapes, producing patterns
+    # with literal backslashes that never match anything containing a
+    # regex-special character (".", "@", even a space).
     query = {
         "school_id": school_id,
         "$or": [
-            {"full_name": {"$regex": safe_q, "$options": "i"}},
-            {"phone": {"$regex": safe_q, "$options": "i"}},
+            {"full_name": {"$regex": q, "$options": "i"}},
+            {"phone": {"$regex": q, "$options": "i"}},
+            {"email": {"$regex": q, "$options": "i"}},
         ]
     }
     

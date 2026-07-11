@@ -302,25 +302,39 @@ export default function AddStudentWizard({
     }
   }, [api, parentData.phone, parentData.email, parentData.national_id]);
 
+  const parentSearchTimeoutRef = useRef(null);
+  const parentSearchSeqRef = useRef(0);
+
   const searchParents = useCallback(async (query) => {
-    if (!query || query.length < 2) { setParentSearchResults([]); return; }
+    const seq = ++parentSearchSeqRef.current;
+    if (!query || query.trim().length < 2) {
+      setParentSearchResults([]);
+      setSearchingParents(false);
+      return;
+    }
     setSearchingParents(true);
     try {
-      const response = await api.get(`/student-wizard/search-parents?q=${encodeURIComponent(query)}`);
+      const response = await api.get(`/student-wizard/search-parents?q=${encodeURIComponent(query.trim())}`);
+      if (seq !== parentSearchSeqRef.current) return; // stale response — a newer search superseded it
       setParentSearchResults(response.data?.parents || []);
     } catch (error) {
+      if (seq !== parentSearchSeqRef.current) return;
       console.error('Error searching parents:', error);
       setParentSearchResults([]);
     } finally {
-      setSearchingParents(false);
+      if (seq === parentSearchSeqRef.current) setSearchingParents(false);
     }
   }, [api]);
 
   const handleParentSearch = (value) => {
     setParentSearchQuery(value);
-    const timeoutId = setTimeout(() => { searchParents(value); }, 300);
-    return () => clearTimeout(timeoutId);
+    if (parentSearchTimeoutRef.current) clearTimeout(parentSearchTimeoutRef.current);
+    parentSearchTimeoutRef.current = setTimeout(() => { searchParents(value); }, 300);
   };
+
+  useEffect(() => () => {
+    if (parentSearchTimeoutRef.current) clearTimeout(parentSearchTimeoutRef.current);
+  }, []);
 
   const selectParentFromSearch = (parent) => {
     setSelectedExistingParent(parent);
