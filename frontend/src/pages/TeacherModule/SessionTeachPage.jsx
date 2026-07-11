@@ -1788,6 +1788,10 @@ export default function SessionTeachPage() {
         evalPositive: (prev.evalPositive || 0) + positiveBump,
         eval_positive_count: (prev.eval_positive_count || 0) + positiveBump,
       } : null);
+      // Recitation is a reversible event on the backend (RECITATION_RECORDED),
+      // so activate undo and re-sync the stack — same as every sibling handler.
+      setCanUndo(true);
+      void peekUndoState();
     } catch (e) {
       console.error('Error recording recitation:', e);
       nassaqError(t('errorRecordingSkill'));
