@@ -14,8 +14,8 @@ import { Switch } from '../components/ui/switch';
 import { Label } from '../components/ui/label';
 import {
   Bell, BellOff, Check, CheckCheck, Trash2, Filter, RefreshCw,
-  Calendar, CalendarCheck, ClipboardList, AlertTriangle, Info,
-  MessageSquare, Megaphone, Eye, Clock, Search, Settings,
+  Calendar, CalendarCheck, ClipboardList, AlertTriangle,
+  MessageSquare, Eye, Clock, Search, Settings,
   Inbox, AlertCircle, Loader2, FileText, User, ExternalLink
 } from 'lucide-react';
 import {
@@ -26,55 +26,17 @@ import {
 } from '../components/ui/dialog';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { getApiErrorMessage } from '../utils/apiError';
-
-const notificationTypeConfig = {
-  system: { icon: Info, label: { ar: 'النظام', en: 'System' }, color: 'bg-gray-500', iconColor: 'text-gray-500' },
-  attendance: { icon: CalendarCheck, label: { ar: 'الحضور', en: 'Attendance' }, color: 'bg-blue-500', iconColor: 'text-blue-500' },
-  schedule: { icon: Calendar, label: { ar: 'الجدول', en: 'Schedule' }, color: 'bg-purple-500', iconColor: 'text-purple-500' },
-  assessment: { icon: ClipboardList, label: { ar: 'التقييمات', en: 'Assessments' }, color: 'bg-green-500', iconColor: 'text-green-500' },
-  behaviour: { icon: AlertTriangle, label: { ar: 'السلوك', en: 'Behaviour' }, color: 'bg-yellow-500', iconColor: 'text-yellow-500' },
-  communication: { icon: MessageSquare, label: { ar: 'التواصل', en: 'Communication' }, color: 'bg-teal-500', iconColor: 'text-teal-500' },
-  announcement: { icon: Megaphone, label: { ar: 'الإعلانات', en: 'Announcements' }, color: 'bg-orange-500', iconColor: 'text-orange-500' },
-  circular: { icon: FileText, label: { ar: 'تعميم', en: 'Circular' }, color: 'bg-indigo-500', iconColor: 'text-indigo-500' },
-  other: { icon: Info, label: { ar: 'أخرى', en: 'Other' }, color: 'bg-slate-500', iconColor: 'text-slate-500' },
-  circular_ack: { icon: CheckCheck, label: { ar: 'تأكيد استلام تعميم', en: 'Circular Ack' }, color: 'bg-green-500', iconColor: 'text-green-600' },
-};
-
-const ACCOUNT_TYPE_LABEL_AR = {
-  student: 'طالب',
-  parent: 'ولي أمر',
-  teacher: 'معلم',
-  school: 'مدرسة',
-  principal: 'مدير مدرسة',
-  supervisor: 'مشرف',
-  staff: 'موظف',
-};
-const ACCOUNT_TYPE_LABEL_EN = {
-  student: 'Student',
-  parent: 'Parent',
-  teacher: 'Teacher',
-  school: 'School',
-  principal: 'Principal',
-  supervisor: 'Supervisor',
-  staff: 'Staff',
-};
-
-// Prettify any legacy notification text that contains raw "(student)" / "(parent)" codes
-const prettifyText = (text, isRTL) => {
-  if (!text || typeof text !== 'string') return text;
-  const map = isRTL ? ACCOUNT_TYPE_LABEL_AR : ACCOUNT_TYPE_LABEL_EN;
-  return text.replace(/\(([a-z_]+)\)/gi, (full, code) => {
-    const key = code.toLowerCase();
-    return map[key] ? `— ${map[key]}` : full;
-  });
-};
-
-const priorityConfig = {
-  low: { label: { ar: 'منخفضة', en: 'Low' }, color: 'bg-gray-400' },
-  medium: { label: { ar: 'متوسطة', en: 'Medium' }, color: 'bg-blue-400' },
-  high: { label: { ar: 'مرتفعة', en: 'High' }, color: 'bg-orange-500' },
-  critical: { label: { ar: 'حرجة', en: 'Critical' }, color: 'bg-red-600' },
-};
+// Display metadata + canonical normalizers shared with the bell/preview
+// dialog. The normalizers are the single source of truth for the effective
+// type/priority of a row — display AND filtering must both go through them
+// so a row labeled "النظام" is always matched by the النظام filter.
+import {
+  notificationTypeConfig,
+  priorityConfig,
+  normalizeNotificationType,
+  normalizeNotificationPriority,
+  prettifyText,
+} from '../components/notifications/notificationDisplay';
 
 // Task #1049 — attendance status → localized label + tone for the
 // per-child lesson report card surfaced on IT lesson-end summaries.
@@ -196,12 +158,18 @@ export const NotificationsPage = ({ embedded = false }) => {
   // clamp before). Null = closed.
   const [detailNotification, setDetailNotification] = useState(null);
 
+  // Fetch the FULL inbox once (no notification_type / read_status params).
+  // Type, read, priority, period and search are all applied client-side
+  // against the same normalized values the cards display — server-side
+  // type filtering matched raw stored values (e.g. `warning`, `message`)
+  // and returned empty for rows visibly labeled "النظام". Fetching
+  // unfiltered also keeps the top counter cards stable while filtering.
+  // Only the parent per-child filter stays server-side (it is validated
+  // against the guardian linkage on the backend).
   const fetchNotifications = useCallback(async () => {
     try {
       setLoading(true);
       let url = '/notifications?limit=200';
-      if (filterType && filterType !== 'all') url += `&notification_type=${filterType}`;
-      if (filterRead !== 'all') url += `&read_status=${filterRead === 'read'}`;
       if (isParent && selectedChildId && selectedChildId !== 'all') url += `&student_id=${encodeURIComponent(selectedChildId)}`;
       const response = await api.get(url);
       setNotifications(response.data);
@@ -210,7 +178,7 @@ export const NotificationsPage = ({ embedded = false }) => {
     } finally {
       setLoading(false);
     }
-  }, [api, filterType, filterRead, isParent, selectedChildId]);
+  }, [api, isParent, selectedChildId]);
 
   const fetchAnalytics = async () => {
     try {
@@ -383,7 +351,9 @@ export const NotificationsPage = ({ embedded = false }) => {
       const q = searchQuery.toLowerCase();
       result = result.filter(n => n.title?.toLowerCase().includes(q) || n.message?.toLowerCase().includes(q) || n.title_en?.toLowerCase().includes(q) || n.message_en?.toLowerCase().includes(q));
     }
-    if (filterPriority !== 'all') result = result.filter(n => n.priority === filterPriority);
+    if (filterType !== 'all') result = result.filter(n => normalizeNotificationType(n.notification_type) === filterType);
+    if (filterRead !== 'all') result = result.filter(n => (filterRead === 'read' ? n.read_status : !n.read_status));
+    if (filterPriority !== 'all') result = result.filter(n => normalizeNotificationPriority(n.priority) === filterPriority);
     if (timePeriod !== 'all') {
       const now = new Date();
       const cutoff = new Date();
@@ -393,7 +363,7 @@ export const NotificationsPage = ({ embedded = false }) => {
       result = result.filter(n => n.created_at && new Date(n.created_at) >= cutoff);
     }
     return result;
-  }, [notifications, searchQuery, filterPriority, timePeriod]);
+  }, [notifications, searchQuery, filterType, filterRead, filterPriority, timePeriod]);
 
   const groupedByDate = useMemo(() => {
     const groups = {};
@@ -408,13 +378,14 @@ export const NotificationsPage = ({ embedded = false }) => {
   const unreadCount = notifications.filter(n => !n.read_status).length;
   const typeBreakdown = useMemo(() => {
     const counts = {};
-    notifications.forEach(n => { const nType = n.notification_type || 'system'; counts[nType] = (counts[nType] || 0) + 1; });
+    notifications.forEach(n => { const nType = normalizeNotificationType(n.notification_type); counts[nType] = (counts[nType] || 0) + 1; });
     return counts;
   }, [notifications]);
 
   const renderNotificationCard = (notification) => {
-    const typeConf = notificationTypeConfig[notification.notification_type] || notificationTypeConfig.system;
-    const priorityConf = priorityConfig[notification.priority] || priorityConfig.medium;
+    const effectivePriority = normalizeNotificationPriority(notification.priority);
+    const typeConf = notificationTypeConfig[normalizeNotificationType(notification.notification_type)];
+    const priorityConf = priorityConfig[effectivePriority];
     const IconComponent = typeConf.icon;
     const isCircular = notification.notification_type === 'circular';
     const isCircularAck = notification.notification_type === 'circular_ack';
@@ -485,8 +456,8 @@ export const NotificationsPage = ({ embedded = false }) => {
         onClick={() => handleNotificationClick(notification)}
       >
         <div className="flex items-start gap-3">
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${notification.priority === 'critical' || notification.priority === 'high' ? 'bg-red-100 dark:bg-red-900/30' : `${typeConf.color}/10`}`}>
-            <IconComponent className={`h-4 w-4 ${notification.priority === 'critical' ? 'text-red-500' : typeConf.iconColor}`} />
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${effectivePriority === 'critical' || effectivePriority === 'high' ? 'bg-red-100 dark:bg-red-900/30' : `${typeConf.color}/10`}`}>
+            <IconComponent className={`h-4 w-4 ${effectivePriority === 'critical' ? 'text-red-500' : typeConf.iconColor}`} />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
@@ -514,7 +485,7 @@ export const NotificationsPage = ({ embedded = false }) => {
                 <Badge className={`${typeConf.color} text-white text-[10px] border-0`}>
                   {isRTL ? typeConf.label.ar : typeConf.label.en}
                 </Badge>
-                {notification.priority && notification.priority !== 'medium' && (
+                {effectivePriority !== 'medium' && (
                   <Badge className={`${priorityConf.color} text-white text-[10px] border-0`}>
                     {isRTL ? priorityConf.label.ar : priorityConf.label.en}
                   </Badge>
@@ -752,7 +723,7 @@ export const NotificationsPage = ({ embedded = false }) => {
             <TabsContent value="types">
               <div className="grid md:grid-cols-2 gap-4">
                 {Object.entries(notificationTypeConfig).map(([typeKey, typeConf]) => {
-                  const typeNotifs = notifications.filter(n => n.notification_type === typeKey);
+                  const typeNotifs = notifications.filter(n => normalizeNotificationType(n.notification_type) === typeKey);
                   const TypeIcon = typeConf.icon;
                   return (
                     <Card key={typeKey}>
@@ -820,15 +791,16 @@ export const NotificationsPage = ({ embedded = false }) => {
         <Dialog open={!!detailNotification} onOpenChange={(open) => { if (!open) setDetailNotification(null); }}>
           <DialogContent dir={isRTL ? 'rtl' : 'ltr'} className="max-w-lg max-h-[85vh] flex flex-col" data-testid="notification-detail-dialog">
             {detailNotification && (() => {
-              const dTypeConf = notificationTypeConfig[detailNotification.notification_type] || notificationTypeConfig.system;
-              const dPriorityConf = priorityConfig[detailNotification.priority] || priorityConfig.medium;
+              const dTypeConf = notificationTypeConfig[normalizeNotificationType(detailNotification.notification_type)];
+              const dPriority = normalizeNotificationPriority(detailNotification.priority);
+              const dPriorityConf = priorityConfig[dPriority];
               const DetailIcon = dTypeConf.icon;
               return (
                 <>
                   <DialogHeader className="text-start space-y-0">
                     <div className="flex items-start gap-3 pe-6">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${detailNotification.priority === 'critical' || detailNotification.priority === 'high' ? 'bg-red-100 dark:bg-red-900/30' : `${dTypeConf.color}/10`}`}>
-                        <DetailIcon className={`h-5 w-5 ${detailNotification.priority === 'critical' ? 'text-red-500' : dTypeConf.iconColor}`} aria-hidden="true" strokeWidth={1.5} />
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${dPriority === 'critical' || dPriority === 'high' ? 'bg-red-100 dark:bg-red-900/30' : `${dTypeConf.color}/10`}`}>
+                        <DetailIcon className={`h-5 w-5 ${dPriority === 'critical' ? 'text-red-500' : dTypeConf.iconColor}`} aria-hidden="true" strokeWidth={1.5} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <DialogTitle className="font-cairo text-base leading-snug break-words text-start">
@@ -838,7 +810,7 @@ export const NotificationsPage = ({ embedded = false }) => {
                           <Badge className={`${dTypeConf.color} text-white text-[10px] border-0`}>
                             {isRTL ? dTypeConf.label.ar : dTypeConf.label.en}
                           </Badge>
-                          {detailNotification.priority && detailNotification.priority !== 'medium' && (
+                          {dPriority !== 'medium' && (
                             <Badge className={`${dPriorityConf.color} text-white text-[10px] border-0`}>
                               {isRTL ? dPriorityConf.label.ar : dPriorityConf.label.en}
                             </Badge>

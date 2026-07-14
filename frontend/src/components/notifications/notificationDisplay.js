@@ -1,9 +1,7 @@
-// Shared notification display metadata + adapters for the cross-role
-// quick-preview dialog (NotificationDetailDialog). The type/priority
-// maps and prettifyText are deliberate COPIES of the ones inside
-// pages/NotificationsPage.jsx — the parent notifications page is
-// stable and must stay untouched (replit.md user preference: no
-// changes to stable logic unless strictly necessary).
+// Shared notification display metadata + adapters used by BOTH the
+// cross-role quick-preview dialog (NotificationDetailDialog) and
+// pages/NotificationsPage.jsx (which imports these configs directly
+// since the 2026-07 filter-audit fix — no local copies remain).
 import {
   Info, CalendarCheck, Calendar, ClipboardList, AlertTriangle,
   MessageSquare, Megaphone, FileText, CheckCheck,
@@ -29,6 +27,29 @@ export const priorityConfig = {
   high: { label: { ar: 'مرتفعة', en: 'High' }, color: 'bg-orange-500' },
   critical: { label: { ar: 'حرجة', en: 'Critical' }, color: 'bg-red-600' },
 };
+
+// Canonical normalizers — the SINGLE source of truth for both display AND
+// filtering. Historic writer paths stamped non-canonical values (`warning`,
+// `broadcast`, `message`, `info`, `normal`, `urgent`, …) onto notification
+// rows; the cards have always rendered those through a fallback (unknown
+// type → "system" badge, unknown priority → "medium" badge) while the
+// filters compared raw stored values — so rows visibly labeled "النظام"
+// were unreachable through the النظام filter. Any surface that filters or
+// groups notifications by type/priority MUST go through these so the value
+// it matches on is exactly the value the card displays.
+export function normalizeNotificationType(rawType) {
+  return notificationTypeConfig[rawType] ? rawType : 'system';
+}
+
+const PRIORITY_ALIASES = {
+  normal: 'medium',
+  urgent: 'critical',
+};
+
+export function normalizeNotificationPriority(rawPriority) {
+  if (priorityConfig[rawPriority]) return rawPriority;
+  return PRIORITY_ALIASES[rawPriority] || 'medium';
+}
 
 // IT inbox rows carry `category` (collab_invite, parent_accept, …),
 // not `notification_type` — a separate taxonomy mapped here so the

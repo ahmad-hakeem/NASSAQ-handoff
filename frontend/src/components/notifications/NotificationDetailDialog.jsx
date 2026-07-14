@@ -10,7 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../ui/dialog';
 import { Clock, ExternalLink, User } from 'lucide-react';
-import { priorityConfig, prettifyText } from './notificationDisplay';
+import { priorityConfig, prettifyText, normalizeNotificationPriority } from './notificationDisplay';
 
 export function NotificationDetailDialog({ notification, isRTL, onClose, onNavigate }) {
   // Render nothing when closed so host pages (and their viewport
@@ -19,8 +19,9 @@ export function NotificationDetailDialog({ notification, isRTL, onClose, onNavig
 
   const typeMeta = notification.typeMeta || {};
   const TypeIcon = typeMeta.icon;
-  const dPriorityConf = priorityConfig[notification.priority] || priorityConfig.medium;
-  const isUrgent = notification.priority === 'critical' || notification.priority === 'high';
+  const dPriority = normalizeNotificationPriority(notification.priority);
+  const dPriorityConf = priorityConfig[dPriority];
+  const isUrgent = dPriority === 'critical' || dPriority === 'high';
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose?.(); }}>
@@ -36,7 +37,7 @@ export function NotificationDetailDialog({ notification, isRTL, onClose, onNavig
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isUrgent ? 'bg-red-100 dark:bg-red-900/30' : `${typeMeta.color || 'bg-gray-500'}/10`}`}>
               {TypeIcon && (
                 <TypeIcon
-                  className={`h-5 w-5 ${notification.priority === 'critical' ? 'text-red-500' : (typeMeta.iconColor || 'text-gray-500')}`}
+                  className={`h-5 w-5 ${dPriority === 'critical' ? 'text-red-500' : (typeMeta.iconColor || 'text-gray-500')}`}
                   aria-hidden="true"
                   strokeWidth={1.5}
                 />
@@ -52,7 +53,7 @@ export function NotificationDetailDialog({ notification, isRTL, onClose, onNavig
                     {isRTL ? typeMeta.label.ar : typeMeta.label.en}
                   </Badge>
                 )}
-                {notification.priority && notification.priority !== 'medium' && (
+                {dPriority !== 'medium' && (
                   <Badge className={`${dPriorityConf.color} text-white text-[10px] border-0`}>
                     {isRTL ? dPriorityConf.label.ar : dPriorityConf.label.en}
                   </Badge>
