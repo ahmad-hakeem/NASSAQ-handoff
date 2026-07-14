@@ -5,7 +5,7 @@ import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
-import { Skeleton } from '../../components/ui/skeleton';
+import { LoadingState } from '../../components/ui/LoadingState';
 import {
   Trophy, Star, TrendingUp, CheckCircle, ClipboardCheck,
   Award, Heart, Lock, AlertCircle
@@ -111,10 +111,7 @@ const StudentAchievementsPage = () => {
   if (loading) {
     return (
       <PortalLayout portalType="student">
-        <div className="p-4 space-y-4">
-          <Skeleton className="h-24 rounded-2xl" />
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-20 rounded-2xl" />)}
-        </div>
+        <LoadingState variant="fullpage" />
       </PortalLayout>
     );
   }

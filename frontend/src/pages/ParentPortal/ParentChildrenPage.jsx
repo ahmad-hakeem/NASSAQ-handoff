@@ -7,7 +7,7 @@ import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent } from '../../components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { Button } from '../../components/ui/button';
-import { Skeleton } from '../../components/ui/skeleton';
+import { LoadingState } from '../../components/ui/LoadingState';
 import StudentProfileDialog from '../../components/parent/StudentProfileDialog';
 import {
   User as UserIcon, GraduationCap, CheckCircle, TrendingUp, Calendar,
@@ -139,10 +139,7 @@ const ParentChildrenPage = () => {
   if (loading) {
     return (
       <PortalLayout portalType="parent">
-        <div className="p-4 space-y-4">
-          <Skeleton className="h-48 rounded-2xl" />
-          <Skeleton className="h-64 rounded-2xl" />
-        </div>
+        <LoadingState variant="fullpage" />
       </PortalLayout>
     );
   }
@@ -266,7 +263,7 @@ const ParentChildrenPage = () => {
                       drops stale responses), so the previous payload
                       remains visible until fresh data arrives instead of
                       flashing a skeleton on every switch. */}
-                  <Suspense fallback={<Skeleton className="h-40 w-full rounded-2xl" />}>
+                  <Suspense fallback={<LoadingState variant="section" />}>
                     <WeeklyAnalysisPanel childId={activeChild.id} />
                   </Suspense>
 
@@ -314,7 +311,7 @@ const ParentChildrenPage = () => {
                     aria-labelledby={`tab-${activeTab}`}
                     className="pt-1"
                   >
-                    <Suspense fallback={<Skeleton className="h-48 w-full rounded-2xl" />}>
+                    <Suspense fallback={<LoadingState variant="section" />}>
                       {activeTab === 'details' && (
                         <DetailsPanel
                           key={`details-${activeChild.id}`}

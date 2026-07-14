@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Card, CardContent } from '../ui/card';
-import { Skeleton } from '../ui/skeleton';
+import { LoadingState } from '../ui/LoadingState';
 import {
   CalendarDays, CheckCircle, XCircle, Clock, AlertCircle,
   TrendingUp, TrendingDown, Minus, Sparkles, BookOpen, Heart, ClipboardList,
@@ -175,14 +175,8 @@ const WeeklyAnalysisPanel = ({ childId }) => {
   if (loading && !data) {
     return (
       <Card className="rounded-2xl border border-border shadow-sm bg-card">
-        <CardContent className="p-4 space-y-3">
-          <Skeleton className="h-5 w-48 rounded" />
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-24 rounded-xl" />
-            ))}
-          </div>
-          <Skeleton className="h-12 rounded-xl" />
+        <CardContent className="p-4">
+          <LoadingState variant="section" />
         </CardContent>
       </Card>
     );

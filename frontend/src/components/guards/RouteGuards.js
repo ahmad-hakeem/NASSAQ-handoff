@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import ParentCharterModal from "../parent/ParentCharterModal";
+import { LoadingState } from "../ui/LoadingState";
 
 export const ROLE_DASHBOARDS = {
   platform_admin: "/admin",
@@ -22,9 +23,7 @@ export const ROLE_DASHBOARDS = {
 };
 
 const LoadingSpinner = () => (
-  <div className="min-h-screen flex items-center justify-center">
-    <div className="animate-pulse text-brand-navy">جاري التحميل...</div>
-  </div>
+  <LoadingState variant="fullpage" className="min-h-screen" />
 );
 
 // Walk a permissions payload and return true if `key` (e.g.

@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation, useTheme } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent } from '../../components/ui/card';
-import { Skeleton } from '../../components/ui/skeleton';
+import { LoadingState } from '../../components/ui/LoadingState';
 import { Button } from '../../components/ui/button';
 import { ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 
@@ -79,13 +79,7 @@ const ParentLegalDocumentPage = ({ docType: docTypeProp }) => {
         <Card className="rounded-2xl border-0 shadow-sm bg-card">
           <CardContent className="p-5">
             {loading ? (
-              <div className="space-y-3">
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-5/6" />
-                <Skeleton className="h-4 w-2/3" />
-                <Skeleton className="h-4 w-full" />
-              </div>
+              <LoadingState variant="section" />
             ) : content ? (
               <article
                 className="prose prose-sm max-w-none whitespace-pre-wrap font-tajawal text-foreground leading-7"

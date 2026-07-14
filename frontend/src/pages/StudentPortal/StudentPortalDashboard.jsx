@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Badge } from '../../components/ui/badge';
 import { Progress } from '../../components/ui/progress';
 import { ScrollArea } from '../../components/ui/scroll-area';
-import { Skeleton } from '../../components/ui/skeleton';
+import { LoadingState } from '../../components/ui/LoadingState';
 import { Button } from '../../components/ui/button';
 import {
   GraduationCap, Calendar, Clock, CheckCircle,
@@ -58,14 +58,7 @@ const StudentPortalDashboard = () => {
   if (loading) {
     return (
       <PortalLayout portalType="student">
-        <div className="p-4 space-y-4">
-          <Skeleton className="h-32 w-full rounded-2xl" />
-          <Skeleton className="h-24 w-full rounded-2xl" />
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Skeleton className="h-64 rounded-2xl" />
-            <Skeleton className="h-64 rounded-2xl" />
-          </div>
-        </div>
+        <LoadingState variant="fullpage" />
       </PortalLayout>
     );
   }

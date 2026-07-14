@@ -3,7 +3,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useTranslation } from '../../../contexts/ThemeContext';
 import { Card, CardContent } from '../../ui/card';
 import { Badge } from '../../ui/badge';
-import { Skeleton } from '../../ui/skeleton';
+import { LoadingState } from '../../ui/LoadingState';
 import { ClipboardList, CheckCircle, AlertCircle, Calendar } from 'lucide-react';
 
 const SUBMITTED_STATUSES = new Set(['submitted', 'graded', 'corrected']);
@@ -57,10 +57,7 @@ const HomeworkPanel = ({ childId }) => {
 
   if (loading) {
     return (
-      <div className="space-y-3">
-        <Skeleton className="h-20 rounded-2xl" />
-        {[1, 2, 3].map(i => <Skeleton key={i} className="h-20 rounded-2xl" />)}
-      </div>
+      <LoadingState variant="section" />
     );
   }
 

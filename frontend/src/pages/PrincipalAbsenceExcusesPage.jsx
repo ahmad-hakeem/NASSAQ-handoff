@@ -6,7 +6,7 @@ import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { Skeleton } from '../components/ui/skeleton';
+import { LoadingState } from '../components/ui/LoadingState';
 import { toast } from 'sonner';
 import { getApiErrorMessage } from '../utils/apiError';
 import {
@@ -189,9 +189,7 @@ export const AbsenceExcusesPanel = ({ embedded = false } = {}) => {
 
         <div className="p-4 sm:p-6 space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
           {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-28 rounded-2xl" />)}
-            </div>
+            <LoadingState variant="section" />
           ) : excuses.length === 0 ? (
             <Card className="card-nassaq">
               <CardContent className="py-16 text-center">

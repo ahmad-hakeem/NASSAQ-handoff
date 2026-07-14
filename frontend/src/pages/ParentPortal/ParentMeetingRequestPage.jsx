@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Input } from '../../components/ui/input';
-import { Skeleton } from '../../components/ui/skeleton';
+import { LoadingState } from '../../components/ui/LoadingState';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { toast } from 'sonner';
@@ -126,9 +126,7 @@ const ParentMeetingRequestPage = () => {
   if (loading) {
     return (
       <PortalLayout portalType="parent">
-        <div className="p-4 space-y-4">
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 rounded-2xl" />)}
-        </div>
+        <LoadingState variant="fullpage" />
       </PortalLayout>
     );
   }

@@ -5,7 +5,7 @@ import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
-import { Skeleton } from '../../components/ui/skeleton';
+import { LoadingState } from '../../components/ui/LoadingState';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 import {
   MessageSquare, Send, ArrowUpRight, ArrowDownLeft, Clock, AlertCircle
@@ -36,9 +36,7 @@ const ParentMessagesPage = () => {
   if (loading) {
     return (
       <PortalLayout portalType="parent">
-        <div className="p-4 space-y-4">
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-20 rounded-2xl" />)}
-        </div>
+        <LoadingState variant="fullpage" />
       </PortalLayout>
     );
   }

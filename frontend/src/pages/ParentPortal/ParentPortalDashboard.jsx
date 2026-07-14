@@ -10,7 +10,7 @@ import HakimChatWidget from '../../components/parent/HakimChatWidget';
 import BackgroundRefreshChip from '../../components/parent/BackgroundRefreshChip';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
-import { Skeleton } from '../../components/ui/skeleton';
+import { LoadingState } from '../../components/ui/LoadingState';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import {
   Users, GraduationCap, Calendar, MessageSquare,
@@ -336,13 +336,7 @@ const ParentPortalDashboard = () => {
   if (loading) {
     return (
       <PortalLayout portalType="parent">
-        <div className="p-4 md:p-6 space-y-5 max-w-[1400px] mx-auto">
-          <Skeleton className="h-12 w-full max-w-md rounded-xl" />
-          <Skeleton className="h-72 w-full rounded-3xl" />
-          <Skeleton className="h-32 w-full rounded-2xl" />
-          <Skeleton className="h-44 w-full rounded-2xl" />
-          <Skeleton className="h-64 w-full rounded-2xl" />
-        </div>
+        <LoadingState variant="fullpage" />
       </PortalLayout>
     );
   }

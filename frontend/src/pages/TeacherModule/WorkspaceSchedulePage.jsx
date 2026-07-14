@@ -7,6 +7,7 @@ import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
+import { LoadingState } from '../../components/ui/LoadingState';
 import { getApiErrorMessage } from '../../utils/apiError';
 
 const DAY_LABELS = {
@@ -257,9 +258,7 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-24">
-          <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
-        </div>
+        <LoadingState variant="section" className="py-24" />
       ) : (grid.sessions.length === 0) ? (
         <Card
           className="border-dashed border-workspace-accent-border bg-workspace-accent-light/30"

@@ -30,6 +30,7 @@ import {
   Users,
 } from 'lucide-react';
 import { Button } from '../ui/button';
+import { LoadingState } from '../ui/LoadingState';
 import { useTranslation } from '../../contexts/ThemeContext';
 import { SessionDetailModal } from './grid-theme';
 
@@ -265,33 +266,12 @@ function DayAgenda({
 }
 
 function MobileScheduleSkeleton() {
-  const { t } = useTranslation();
   return (
-    <div
-      role="status"
-      aria-label={t('loading')}
+    <LoadingState
+      variant="section"
       data-testid="mobile-schedule-skeleton"
-      className="flex flex-col gap-2.5"
-    >
-      {Array.from({ length: 5 }).map((_, i) => (
-        <div
-          key={i}
-          className="rounded-xl border border-slate-200 bg-white overflow-hidden"
-        >
-          <div className="flex items-center gap-2 bg-slate-50 border-b border-slate-200 px-3 py-2">
-            <div className="h-7 w-7 rounded-md bg-slate-200 animate-pulse" />
-            <div className="flex-1 space-y-1">
-              <div className="h-3 w-20 bg-slate-200 rounded animate-pulse" />
-              <div className="h-2 w-14 bg-slate-100 rounded animate-pulse" />
-            </div>
-          </div>
-          <div className="p-3 space-y-2">
-            <div className="h-3 w-3/4 bg-slate-100 rounded animate-pulse" />
-            <div className="h-2 w-1/2 bg-slate-100 rounded animate-pulse" />
-          </div>
-        </div>
-      ))}
-    </div>
+      className="py-16"
+    />
   );
 }
 

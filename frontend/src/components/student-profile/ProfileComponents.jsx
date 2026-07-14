@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
-import { Skeleton } from '../ui/skeleton';
+import { LoadingState } from '../ui/LoadingState';
 import {
   Clock, Download, Sparkles, Loader2, Target, User,
   ChevronUp, ChevronDown, Plus, Stethoscope, Rocket
@@ -157,11 +157,7 @@ export const HakimPlanCard = ({ type, plan, isRTL, loading, onGenerate, onExport
 export const StatCard = ({ icon: Icon, value, label, color, bg, loading }) => (
   <div className={`flex flex-col items-center justify-center p-3 rounded-xl ${bg} min-w-[100px]`}>
     {loading ? (
-      <>
-        <Skeleton className="h-4 w-4 mb-1.5 rounded-full" />
-        <Skeleton className="h-6 w-10 mb-1" />
-        <Skeleton className="h-3 w-16" />
-      </>
+      <LoadingState variant="inline" />
     ) : (
       <>
         <Icon className={`h-4 w-4 mb-1 ${color}`} />

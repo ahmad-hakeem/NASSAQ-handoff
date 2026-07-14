@@ -5,7 +5,7 @@ import { useNassaqAlert } from '../../ui/NassaqAlertDialog';
 import { Card, CardContent } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
-import { Skeleton } from '../../ui/skeleton';
+import { LoadingState } from '../../ui/LoadingState';
 import { ScrollArea } from '../../ui/scroll-area';
 import { Calendar, BookOpen, User, Printer } from 'lucide-react';
 import { buildScheduleGrid, getScheduleCell } from '../../../utils/parentScheduleGrid';
@@ -55,10 +55,7 @@ const SchedulePanel = ({ childId }) => {
 
   if (loading) {
     return (
-      <div className="space-y-3">
-        <Skeleton className="h-12 w-full rounded-xl" />
-        <Skeleton className="h-64 w-full rounded-2xl" />
-      </div>
+      <LoadingState variant="section" />
     );
   }
 

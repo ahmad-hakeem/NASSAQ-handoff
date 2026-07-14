@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/button';
+import { LoadingState } from '../components/ui/LoadingState';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
@@ -470,7 +471,7 @@ ${API_URL}/login
     return (
       <Sidebar>
         <div className="min-h-screen bg-background flex items-center justify-center" dir="rtl">
-          <div className="animate-spin h-12 w-12 border-4 border-brand-navy border-t-transparent rounded-full"></div>
+          <LoadingState variant="fullpage" className="min-h-0" />
         </div>
       </Sidebar>
     );

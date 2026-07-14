@@ -6,7 +6,7 @@ import { Card, CardContent } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Progress } from '../../components/ui/progress';
-import { Skeleton } from '../../components/ui/skeleton';
+import { LoadingState } from '../../components/ui/LoadingState';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import CumulativeAnalytics from '../../components/parent/CumulativeAnalytics';
 import {
@@ -48,11 +48,7 @@ const StudentProfilePage = () => {
   if (loading) {
     return (
       <PortalLayout portalType="student">
-        <div className="p-4 space-y-4">
-          <Skeleton className="h-48 w-full rounded-2xl" />
-          <Skeleton className="h-32 w-full rounded-2xl" />
-          <Skeleton className="h-32 w-full rounded-2xl" />
-        </div>
+        <LoadingState variant="fullpage" />
       </PortalLayout>
     );
   }

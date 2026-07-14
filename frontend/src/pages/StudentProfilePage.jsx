@@ -3,7 +3,7 @@ import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Skeleton } from '../components/ui/skeleton';
+import { LoadingState } from '../components/ui/LoadingState';
 import { ScrollArea, ScrollBar } from '../components/ui/scroll-area';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger
@@ -59,33 +59,7 @@ export default function StudentProfilePage() {
       <div className="flex min-h-screen bg-background">
         <Sidebar />
         <main className="flex-1 overflow-auto">
-          <div className="p-6 max-w-6xl mx-auto space-y-6">
-            <div className="flex items-center gap-4 mb-4">
-              <Skeleton className="h-9 w-9 rounded-full" />
-              <div className="space-y-2 flex-1">
-                <Skeleton className="h-5 w-48" />
-                <Skeleton className="h-3 w-72" />
-              </div>
-            </div>
-            <div className="rounded-2xl border bg-gradient-to-r from-brand-turquoise/5 to-brand-purple/5 p-6">
-              <div className="flex items-start gap-5">
-                <Skeleton className="h-24 w-24 rounded-full" />
-                <div className="flex-1 space-y-3">
-                  <Skeleton className="h-7 w-56" />
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-3 w-24" />
-                </div>
-              </div>
-              <div className="grid grid-cols-5 gap-3 mt-6">
-                {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
-              </div>
-            </div>
-            <Skeleton className="h-10 w-full rounded-lg" />
-            <div className="grid grid-cols-2 gap-4">
-              <Skeleton className="h-40 rounded-xl" />
-              <Skeleton className="h-40 rounded-xl" />
-            </div>
-          </div>
+          <LoadingState variant="fullpage" />
         </main>
       </div>
     );

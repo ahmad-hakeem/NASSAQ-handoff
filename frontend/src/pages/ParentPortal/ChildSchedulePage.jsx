@@ -7,7 +7,7 @@ import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
-import { Skeleton } from '../../components/ui/skeleton';
+import { LoadingState } from '../../components/ui/LoadingState';
 import { ScrollArea } from '../../components/ui/scroll-area';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
@@ -131,10 +131,7 @@ const ChildSchedulePage = () => {
   if (loading) {
     return (
       <PortalLayout portalType="parent">
-        <div className="p-4 space-y-4">
-          <Skeleton className="h-12 w-full rounded-xl" />
-          <Skeleton className="h-64 w-full rounded-2xl" />
-        </div>
+        <LoadingState variant="fullpage" />
       </PortalLayout>
     );
   }

@@ -5,7 +5,7 @@ import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
-import { Skeleton } from '../../components/ui/skeleton';
+import { LoadingState } from '../../components/ui/LoadingState';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { NotificationsPage } from '../NotificationsPage';
@@ -167,11 +167,7 @@ const ParentCommunicationCenter = () => {
   if (loading) {
     return (
       <PortalLayout portalType="parent">
-        <div className="p-4 space-y-4 max-w-lg mx-auto">
-          <Skeleton className="h-12 w-full rounded-xl" />
-          <Skeleton className="h-12 w-full rounded-xl" />
-          <Skeleton className="h-64 w-full rounded-2xl" />
-        </div>
+        <LoadingState variant="fullpage" />
       </PortalLayout>
     );
   }

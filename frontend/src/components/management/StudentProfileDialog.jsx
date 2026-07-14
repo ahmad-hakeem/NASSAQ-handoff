@@ -9,6 +9,7 @@ import { Label } from '../ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Progress } from '../ui/progress';
+import { LoadingState } from '../ui/LoadingState';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import {
@@ -658,9 +659,7 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
 
           <TabsContent value="academic" className="space-y-4">
             {loadingRisk ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-brand-turquoise" />
-              </div>
+              <LoadingState variant="section" />
             ) : riskData ? (
               <>
                 <Card className="border overflow-hidden">

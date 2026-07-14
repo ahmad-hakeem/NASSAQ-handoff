@@ -7,7 +7,7 @@ import PortalLayout from '../../components/portal/PortalLayout';
 import { GaugeChart, PerformanceLine, SubjectRadar } from '../../components/parent/AnalyticsCharts';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
-import { Skeleton } from '../../components/ui/skeleton';
+import { LoadingState } from '../../components/ui/LoadingState';
 import BackgroundRefreshChip from '../../components/parent/BackgroundRefreshChip';
 import { ChevronLeft, TrendingUp, TrendingDown, Activity, CheckCircle, AlertTriangle, ShieldAlert, RefreshCw } from 'lucide-react';
 
@@ -95,12 +95,7 @@ const StudentAnalyticsPage = () => {
   if (loading) {
     return (
       <PortalLayout portalType="parent">
-        <div className="p-4 space-y-4">
-          <Skeleton className="h-10 w-48 rounded-xl" />
-          <Skeleton className="h-40 w-full rounded-2xl" />
-          <Skeleton className="h-60 w-full rounded-2xl" />
-          <Skeleton className="h-64 w-full rounded-2xl" />
-        </div>
+        <LoadingState variant="fullpage" />
       </PortalLayout>
     );
   }

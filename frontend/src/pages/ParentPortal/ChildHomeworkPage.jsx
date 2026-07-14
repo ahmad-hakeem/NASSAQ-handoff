@@ -7,7 +7,7 @@ import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
-import { Skeleton } from '../../components/ui/skeleton';
+import { LoadingState } from '../../components/ui/LoadingState';
 import BackgroundRefreshChip from '../../components/parent/BackgroundRefreshChip';
 import {
   ClipboardList, Clock, CheckCircle, AlertCircle, BookOpen, Calendar, RefreshCw
@@ -98,10 +98,7 @@ const ChildHomeworkPage = () => {
   if (loading) {
     return (
       <PortalLayout portalType="parent">
-        <div className="p-4 space-y-4">
-          <Skeleton className="h-24 rounded-2xl" />
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-20 rounded-2xl" />)}
-        </div>
+        <LoadingState variant="fullpage" />
       </PortalLayout>
     );
   }

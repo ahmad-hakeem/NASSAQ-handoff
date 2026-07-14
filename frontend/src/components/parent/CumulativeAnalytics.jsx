@@ -4,7 +4,7 @@ import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Progress } from '../ui/progress';
-import { Skeleton } from '../ui/skeleton';
+import { LoadingState } from '../ui/LoadingState';
 import { GaugeChart, PerformanceLine, SubjectRadar } from './AnalyticsCharts';
 import {
   TrendingUp, Award, Target, AlertTriangle,
@@ -43,12 +43,7 @@ const CumulativeAnalytics = ({ childId, viewerRole = 'parent' }) => {
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-32 rounded-2xl" />
-        <Skeleton className="h-48 rounded-2xl" />
-        <Skeleton className="h-64 rounded-2xl" />
-        <Skeleton className="h-48 rounded-2xl" />
-      </div>
+      <LoadingState variant="section" />
     );
   }
 

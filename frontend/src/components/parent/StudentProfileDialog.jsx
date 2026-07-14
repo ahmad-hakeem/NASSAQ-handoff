@@ -9,7 +9,7 @@ import {
   DialogDescription,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
-import { Skeleton } from '../ui/skeleton';
+import { LoadingState } from '../ui/LoadingState';
 import ProfileEditor from './ProfileEditor';
 import {
   Edit3,
@@ -144,12 +144,7 @@ const StudentProfileDialog = ({ childId, open, onOpenChange }) => {
 
             <div className="px-6 pb-4 overflow-y-auto flex-1">
               {loading ? (
-                <div className="space-y-3">
-                  <Skeleton className="h-6 w-32" />
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-6 w-32" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
+                <LoadingState variant="section" />
               ) : !profile ? (
                 <p className="text-center text-sm text-muted-foreground py-8">
                   {isRTL ? 'لا يمكن عرض ملف الطالب حالياً' : 'Unable to display student profile'}

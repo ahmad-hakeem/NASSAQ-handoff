@@ -4,7 +4,7 @@ import { useTheme, useTranslation } from '../../../contexts/ThemeContext';
 import { Card, CardContent } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Progress } from '../../ui/progress';
-import { Skeleton } from '../../ui/skeleton';
+import { LoadingState } from '../../ui/LoadingState';
 import { ScrollArea } from '../../ui/scroll-area';
 import CumulativeAnalytics from '../CumulativeAnalytics';
 import StudentInsightsPanel from '../StudentInsightsPanel';
@@ -67,10 +67,7 @@ const DetailsPanel = ({ childId, grades: gradesProp, attendance: attendanceProp 
 
   if (loading) {
     return (
-      <div className="space-y-3">
-        <Skeleton className="h-20 w-full rounded-2xl" />
-        <Skeleton className="h-48 w-full rounded-2xl" />
-      </div>
+      <LoadingState variant="section" />
     );
   }
 

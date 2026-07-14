@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { LoadingState } from '../components/ui/LoadingState';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -414,10 +415,7 @@ export function AcademicStructureContent() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96" dir={direction}>
-        <Loader2 className="h-8 w-8 animate-spin text-[#1B3A5C]" />
-        <span className="ms-3 text-lg text-gray-600">{t('loadingDots')}</span>
-      </div>
+      <LoadingState variant="section" className="h-96" label={t('loadingDots')} dir={direction} />
     );
   }
 

@@ -16,7 +16,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useTranslation } from '../../../contexts/ThemeContext';
 import { Card, CardContent } from '../../ui/card';
 import { Progress } from '../../ui/progress';
-import { Skeleton } from '../../ui/skeleton';
+import { LoadingState } from '../../ui/LoadingState';
 import { CheckCircle, TrendingUp, Heart, Star, FileText } from 'lucide-react';
 
 const ReportsPanel = ({ childId }) => {
@@ -57,11 +57,7 @@ const ReportsPanel = ({ childId }) => {
 
   if (loading) {
     return (
-      <div className="space-y-3">
-        <Skeleton className="h-20 rounded-2xl" />
-        <Skeleton className="h-24 rounded-2xl" />
-        <Skeleton className="h-32 rounded-2xl" />
-      </div>
+      <LoadingState variant="section" />
     );
   }
 

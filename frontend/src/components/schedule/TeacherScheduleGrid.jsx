@@ -22,6 +22,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
+import { LoadingState } from '../../components/ui/LoadingState';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { 
@@ -381,36 +382,14 @@ export const TeacherScheduleGrid = ({
   // الواجهة عند وصول البيانات لاحقاً.
   if (isLoading && (!effectiveTimeSlots || effectiveTimeSlots.length === 0)) {
     return (
-      <div
-        className="relative overflow-hidden rounded-xl border border-border bg-background"
+      <LoadingState
+        variant="section"
         data-testid="teacher-schedule-grid-loading"
-        role="status"
         aria-busy="true"
         aria-live="polite"
-      >
-        <div className="flex items-center gap-2 p-3 border-b border-border bg-muted/30">
-          <Clock className="h-4 w-4 text-muted-foreground/60 animate-pulse" />
-          <span className="text-xs font-tajawal text-muted-foreground">
-            {t('loadingScheduleSettings') || 'جارٍ تحميل إعدادات الجدول…'}
-          </span>
-        </div>
-        <div className="p-4 space-y-3">
-          {[0, 1, 2, 3].map((row) => (
-            <div key={row} className="flex items-center gap-3">
-              <div className="h-8 w-44 rounded bg-muted animate-pulse" />
-              <div className="flex-1 grid grid-cols-6 gap-2">
-                {[0, 1, 2, 3, 4, 5].map((col) => (
-                  <div
-                    key={col}
-                    className="h-8 rounded bg-muted/70 animate-pulse"
-                    style={{ animationDelay: `${(row + col) * 60}ms` }}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+        label={t('loadingScheduleSettings') || 'جارٍ تحميل إعدادات الجدول…'}
+        className="rounded-xl border border-border bg-background"
+      />
     );
   }
 

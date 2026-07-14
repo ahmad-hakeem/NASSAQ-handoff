@@ -5,7 +5,7 @@ import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Progress } from '../../components/ui/progress';
-import { Skeleton } from '../../components/ui/skeleton';
+import { LoadingState } from '../../components/ui/LoadingState';
 import {
   CheckCircle, BookOpen, Users, Heart, TrendingUp,
   BarChart3, AlertCircle
@@ -73,9 +73,7 @@ const StudentProgressPage = () => {
   if (loading) {
     return (
       <PortalLayout portalType="student">
-        <div className="p-4 space-y-4">
-          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-28 rounded-2xl" />)}
-        </div>
+        <LoadingState variant="fullpage" />
       </PortalLayout>
     );
   }

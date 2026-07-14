@@ -327,7 +327,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
         {currentStep < 6 && <StepProgress currentStep={currentStep} steps={steps} isRTL={isRTL} />}
 
         {loading ? (
-          <div className="flex-1 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>
+          <LoadingState variant="section" className="flex-1" />
         ) : (
           <div className="flex-1 overflow-y-auto px-6 py-4">
             {currentStep === 1 && (

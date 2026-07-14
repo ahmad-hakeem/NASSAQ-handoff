@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
+import { LoadingState } from '../ui/LoadingState';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
@@ -275,12 +276,7 @@ export default function IssuesTableView({ issues, loading, total, page, totalPag
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center py-20">
-        <div className="flex flex-col items-center gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-turquoise border-t-transparent" />
-          <p className="text-sm text-muted-foreground">جاري التحميل...</p>
-        </div>
-      </div>
+      <LoadingState variant="section" label="جاري التحميل..." />
     );
   }
 

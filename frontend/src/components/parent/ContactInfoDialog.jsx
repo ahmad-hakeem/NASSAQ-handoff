@@ -3,7 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Button } from '../ui/button';
-import { Skeleton } from '../ui/skeleton';
+import { LoadingState } from '../ui/LoadingState';
 import { Mail, Phone, MapPin, Globe, MessageCircle, AlertCircle, RefreshCw } from 'lucide-react';
 
 let _cache = null;
@@ -91,9 +91,7 @@ const ContactInfoDialog = ({ open, onOpenChange }) => {
         </DialogHeader>
 
         {loading ? (
-          <div className="space-y-2 py-2">
-            {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}
-          </div>
+          <LoadingState variant="section" />
         ) : error || !info ? (
           <div className="py-8 text-center space-y-3" data-testid="contact-info-error">
             <AlertCircle className="h-10 w-10 mx-auto text-muted-foreground/50" />

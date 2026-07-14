@@ -3,7 +3,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useTheme, useTranslation } from '../../../contexts/ThemeContext';
 import { Card, CardContent } from '../../ui/card';
 import { Badge } from '../../ui/badge';
-import { Skeleton } from '../../ui/skeleton';
+import { LoadingState } from '../../ui/LoadingState';
 import { Heart, ThumbsUp, ThumbsDown, Calendar } from 'lucide-react';
 import { formatBehaviorDate, localizeBehaviorEnum } from '../../../utils/behaviorFormat';
 
@@ -32,10 +32,7 @@ const BehaviorPanel = ({ childId }) => {
 
   if (loading) {
     return (
-      <div className="space-y-3">
-        <Skeleton className="h-20 rounded-2xl" />
-        {[1, 2, 3].map(i => <Skeleton key={i} className="h-20 rounded-2xl" />)}
-      </div>
+      <LoadingState variant="section" />
     );
   }
 

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Card, CardContent } from '../ui/card';
-import { Skeleton } from '../ui/skeleton';
+import { LoadingState } from '../ui/LoadingState';
 import {
   Sparkles, Zap, Target, ChevronDown, TrendingUp, TrendingDown,
   Minus, Lightbulb, Heart, BookOpen, GraduationCap,
@@ -301,15 +301,7 @@ const StudentInsightsPanel = ({ childId }) => {
 
   if (loading && !data) {
     return (
-      <div className="space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Skeleton className="h-32 rounded-2xl" />
-          <Skeleton className="h-32 rounded-2xl" />
-        </div>
-        <Skeleton className="h-24 rounded-2xl" />
-        <Skeleton className="h-16 rounded-2xl" />
-        <Skeleton className="h-16 rounded-2xl" />
-      </div>
+      <LoadingState variant="section" />
     );
   }
 

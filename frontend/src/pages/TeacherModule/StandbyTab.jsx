@@ -12,6 +12,7 @@ import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Input } from '../../components/ui/input';
+import { LoadingState } from '../../components/ui/LoadingState';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { getApiErrorMessage } from '../../utils/apiError';
 import {
@@ -29,17 +30,6 @@ function periodLabel(p) {
   const ar = ['', 'الأولى', 'الثانية', 'الثالثة', 'الرابعة', 'الخامسة',
     'السادسة', 'السابعة', 'الثامنة', 'التاسعة', 'العاشرة'];
   return ar[p] ? `الحصة ${ar[p]}` : `الحصة ${p}`;
-}
-
-function TableSkeleton() {
-  return (
-    <div className="animate-pulse space-y-2 p-3">
-      <div className="h-9 bg-slate-100 dark:bg-slate-800 rounded" />
-      {Array.from({ length: 5 }).map((_, i) => (
-        <div key={i} className="h-12 bg-slate-100 dark:bg-slate-800 rounded" />
-      ))}
-    </div>
-  );
 }
 
 // 3-state sort: asc → desc → default (no sort)
@@ -226,7 +216,7 @@ export default function StandbyTab() {
       <Card className="overflow-hidden">
         <CardContent className="p-0">
           {loading ? (
-            <TableSkeleton />
+            <LoadingState variant="section" />
           ) : total === 0 ? (
             <div className="py-16 text-center text-slate-500 text-sm flex flex-col items-center gap-2">
               <Calendar className="h-8 w-8 text-slate-300" aria-hidden="true" strokeWidth={1.5} />

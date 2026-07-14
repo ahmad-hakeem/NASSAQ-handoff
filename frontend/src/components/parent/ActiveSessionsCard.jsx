@@ -4,7 +4,7 @@ import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { Skeleton } from '../ui/skeleton';
+import { LoadingState } from '../ui/LoadingState';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { toast } from 'sonner';
 import { History, Monitor, Loader2, LogOut } from 'lucide-react';
@@ -137,9 +137,7 @@ const ActiveSessionsCard = () => {
         </div>
 
         {loading ? (
-          <div className="space-y-2">
-            {[0, 1].map((i) => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}
-          </div>
+          <LoadingState variant="section" />
         ) : sessions.length === 0 ? (
           <p className="text-xs text-muted-foreground font-cairo py-3 text-center">
             {t('noActiveSessions') || 'No active sessions'}

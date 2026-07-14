@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
-import { Skeleton } from '../components/ui/skeleton';
+import { LoadingState } from '../components/ui/LoadingState';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -305,11 +305,7 @@ const TeacherClassAssignmentPage = () => {
       <Sidebar>
         <div className="min-h-screen bg-muted/30" dir="rtl">
           <div className="p-4 sm:p-6 max-w-7xl mx-auto">
-            <Skeleton className="h-10 w-64 mb-6" />
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Skeleton className="h-[600px]" />
-              <Skeleton className="h-[600px]" />
-            </div>
+            <LoadingState variant="fullpage" />
           </div>
         </div>
       </Sidebar>

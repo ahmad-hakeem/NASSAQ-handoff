@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
+import { LoadingState } from '../ui/LoadingState';
 import {
   PriorityBadge, EmptyState,
   PRIORITY_CONFIG,
@@ -66,12 +67,7 @@ export default function DashboardView({ data, loading, isAdmin, navigate }) {
 
   if (loading || !data) {
     return (
-      <div className="flex justify-center items-center py-20">
-        <div className="flex flex-col items-center gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-turquoise border-t-transparent" />
-          <p className="text-sm text-muted-foreground">جاري تحميل التحليلات...</p>
-        </div>
-      </div>
+      <LoadingState variant="section" label="جاري تحميل التحليلات..." />
     );
   }
 

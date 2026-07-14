@@ -5,7 +5,7 @@ import { Label } from '../ui/label';
 import { Input } from '../ui/input';
 import { Progress } from '../ui/progress';
 import { TabsContent } from '../ui/tabs';
-import { Skeleton } from '../ui/skeleton';
+import { LoadingState } from '../ui/LoadingState';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, Cell, RadarChart, PolarGrid,
@@ -252,7 +252,7 @@ export function AcademicTab({ hook }) {
             {t('attendanceSummary')}
           </h3>
           {loadingAttendance ? (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
+            <LoadingState variant="section" />
           ) : attendanceSummary ? (
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-3">
@@ -268,7 +268,7 @@ export function AcademicTab({ hook }) {
                 ))}
               </div>
               {loadingAttendanceHistory ? (
-                <div className="space-y-2 pt-2"><Skeleton className="h-4 w-32" /><Skeleton className="h-48 w-full rounded-xl" /></div>
+                <LoadingState variant="section" />
               ) : attendanceChartData.length > 0 ? (
                 <div>
                   <h4 className="text-sm font-medium font-cairo mb-2">{t('monthlyAttendance')}</h4>
@@ -301,11 +301,7 @@ export function AcademicTab({ hook }) {
             {t('gradesAcademicPerformance')}
           </h3>
           {loadingHomework || loadingGrades ? (
-            <div className="space-y-3">
-              <Skeleton className="h-4 w-full rounded" />
-              <div className="grid grid-cols-2 gap-3"><Skeleton className="h-20 rounded-xl" /><Skeleton className="h-20 rounded-xl" /></div>
-              <Skeleton className="h-48 rounded-xl" />
-            </div>
+            <LoadingState variant="section" />
           ) : (
             <div className="space-y-4">
               {homeworkRate && (
@@ -409,10 +405,7 @@ export function AcademicTab({ hook }) {
             </Button>
           </div>
           {loadingRisk ? (
-            <div className="space-y-3">
-              <Skeleton className="h-24 rounded-xl" />
-              <div className="grid grid-cols-4 gap-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
-            </div>
+            <LoadingState variant="section" />
           ) : riskData ? (
             <>
               <div className="bg-gradient-to-br from-brand-navy/5 to-brand-purple/5 dark:from-brand-navy/20 dark:to-brand-purple/10 p-4 rounded-xl">
@@ -686,7 +679,7 @@ export function BehaviourTab({ hook }) {
           </div>
 
           {loadingBehaviour ? (
-            <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
+            <LoadingState variant="section" />
           ) : behaviourRecords.length === 0 ? (
             <EmptyState icon={Activity} message={t('noBehaviorRecordsYet')} actionLabel={t('addRecord')} onAction={() => openBehaviourModal()} />
           ) : (
@@ -852,7 +845,7 @@ export function ActivitiesTab({ hook }) {
             )}
           </div>
           {loadingActivities ? (
-            <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
+            <LoadingState variant="section" />
           ) : activities.length === 0 ? (
             <EmptyState icon={Medal} message={t('noActivitiesRecordedYet')} actionLabel={t('addActivity')} onAction={() => openActivityModal()} />
           ) : (
@@ -900,7 +893,7 @@ export function ActivitiesTab({ hook }) {
             )}
           </div>
           {loadingActivities ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)}</div>
+            <LoadingState variant="section" />
           ) : certificates.length === 0 ? (
             <EmptyState icon={Trophy} message={t('noCertificatesOrAwardsYet')} actionLabel={t('addCertificate')} onAction={() => openCertificateModal()} />
           ) : (
@@ -976,7 +969,7 @@ export function PlansTab({ hook }) {
             {t('planHistoryLog')}
           </h3>
           {loadingPlanHistory ? (
-            <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
+            <LoadingState variant="section" />
           ) : planHistory.length === 0 ? (
             <EmptyState icon={Clock} message={t('noPlanHistoryYet')} />
           ) : (
@@ -1018,7 +1011,7 @@ export function LongitudinalTab({ hook }) {
   return (
     <TabsContent value="longitudinal" className="mt-6 space-y-6">
       {loadingLongitudinal ? (
-        <div className="space-y-4">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)}</div>
+        <LoadingState variant="section" />
       ) : !longitudinalData ? (
         <Card><CardContent className="p-6"><EmptyState icon={ScrollText} message={t('noLongitudinalDataAvailable')} /></CardContent></Card>
       ) : (

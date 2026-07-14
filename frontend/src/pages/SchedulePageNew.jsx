@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { LoadingState } from '../components/ui/LoadingState';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '../components/ui/dialog';
@@ -178,86 +179,24 @@ function KpiCard({ icon: Icon, label, value, suffix, accent }) {
   );
 }
 
-// ─── Master matrix structural skeleton (Task #142) ─────────────────────────
-// يحلّ محل المنبثق المركزي القديم (Loader2) داخل حاوية المصفوفة. يرسم
-// شبكة هيكلية بنفس عدد صفوف الصفحة (`pageSize`) وعدد الأعمدة المطابق
-// لوضع العرض الحالي، فيبقى المستخدم على نفس الخريطة البصرية أثناء
-// التحميل بدلاً من أن يرى دوّاراً وسط منطقة فارغة.
-function MasterMatrixSkeleton({ rows = 10, days = 5, periods = 7, isDaily = false }) {
+// ─── Master matrix loading state ────────────────────────────────────────────
+// المؤشر الموحّد للتحميل قبل وصول البيانات (LoadingState). يحافظ على ارتفاع
+// يقارب ارتفاع المصفوفة الفعلية (بحسب عدد صفوف الصفحة ووضع العرض) حتى لا
+// تقفز الواجهة عند وصول البيانات. يحتفظ بنفس معرف الاختبار ودور الحالة.
+function MasterMatrixSkeleton({ rows = 10, isDaily = false }) {
   const { t } = useTranslation();
-  const totalDataCols = Math.max(1, days * periods);
-  const teacherCol = isDaily
-    ? 'clamp(220px, 22vw, 280px)'
-    : 'clamp(160px, 14vw, 200px)';
-  const dataCol = isDaily ? 'minmax(0, 1fr)' : 'minmax(76px, 1fr)';
-  const gridTemplate = `${teacherCol} repeat(${totalDataCols}, ${dataCol})`;
   const rowH = isDaily ? 96 : 88;
-  const dayBandH = 36;
-  const periodHeadH = isDaily ? 44 : 38;
+  const headerH = 36 + (isDaily ? 44 : 38);
+  const minHeight = Math.min(headerH + rows * rowH, 640);
 
   return (
-    <div
+    <LoadingState
+      variant="section"
       data-testid="master-matrix-skeleton"
-      role="status"
-      aria-label={t('preparingMatrixAria')}
-      className="grid w-full text-[11px] animate-in fade-in-0 duration-200"
-      style={{ gridTemplateColumns: gridTemplate }}
-    >
-      {/* Day-band header row */}
-      <div
-        className="sticky bg-slate-100 border-b border-slate-200 z-10"
-        style={{ top: 0, insetInlineStart: 0, height: dayBandH }}
-      />
-      {Array.from({ length: days }).map((_, d) => (
-        <div
-          key={`sk-day-${d}`}
-          className={`bg-slate-200/70 border-b border-white/40 animate-pulse ${d > 0 ? 'border-s-2 border-s-slate-300/70' : ''}`}
-          style={{ gridColumn: `span ${periods}`, height: dayBandH }}
-        />
-      ))}
-      {/* Period sub-header row */}
-      <div
-        className="bg-slate-50 border-b border-slate-200"
-        style={{ height: periodHeadH }}
-      />
-      {Array.from({ length: totalDataCols }).map((_, i) => {
-        const isDayStart = !isDaily && i % periods === 0 && i > 0;
-        return (
-          <div
-            key={`sk-ph-${i}`}
-            className={`bg-slate-100/80 border-b border-l border-slate-100 animate-pulse ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
-            style={{ height: periodHeadH }}
-          />
-        );
-      })}
-      {/* Body rows */}
-      {Array.from({ length: rows }).map((_, r) => (
-        <React.Fragment key={`sk-row-${r}`}>
-          <div
-            className="px-3 py-2 border-b border-l border-slate-200 bg-white flex flex-col justify-center gap-1.5"
-            style={{ minHeight: rowH }}
-          >
-            <div className="h-3 w-28 bg-slate-200 rounded animate-pulse" />
-            <div className="h-2 w-20 bg-slate-100 rounded animate-pulse" />
-          </div>
-          {Array.from({ length: totalDataCols }).map((_, c) => {
-            const isDayStart = !isDaily && c % periods === 0 && c > 0;
-            return (
-              <div
-                key={`sk-cell-${r}-${c}`}
-                className={`border-b border-l border-slate-100 p-1 ${isDayStart ? 'border-s-2 border-s-slate-300/70' : ''}`}
-                style={{ height: rowH }}
-              >
-                <div
-                  className="h-full w-full rounded-md bg-slate-100/80 animate-pulse"
-                  style={{ animationDelay: `${(r * 31 + c * 17) % 600}ms` }}
-                />
-              </div>
-            );
-          })}
-        </React.Fragment>
-      ))}
-    </div>
+      label={t('preparingMatrixAria')}
+      className="animate-in fade-in-0 duration-200"
+      style={{ minHeight }}
+    />
   );
 }
 

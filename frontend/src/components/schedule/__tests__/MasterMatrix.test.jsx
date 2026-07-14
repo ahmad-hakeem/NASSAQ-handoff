@@ -362,8 +362,8 @@ describe('MasterMatrix — page-level skeleton swap during live refetches (Task 
   });
 });
 
-describe('MasterMatrixSkeleton — structural loading state (Task #142)', () => {
-  test('exposes an accessible status role and matches the weekly column count', () => {
+describe('MasterMatrixSkeleton — standardized loading state', () => {
+  test('exposes an accessible status role with a localized label', () => {
     render(
       <ThemeProvider>
         <MasterMatrixSkeleton rows={4} days={5} periods={7} isDaily={false} />
@@ -373,22 +373,15 @@ describe('MasterMatrixSkeleton — structural loading state (Task #142)', () => 
     expect(root).toBeInTheDocument();
     expect(root).toHaveAttribute('role', 'status');
     expect(root).toHaveAttribute('aria-label');
-    // 5 × 7 = 35 data columns + the teacher column.
-    expect(root.style.gridTemplateColumns).toMatch(
-      /repeat\(35,\s*minmax\(76px,\s*1fr\)\)/,
-    );
   });
 
-  test('switches to the daily column template when isDaily is true', () => {
+  test('reserves matrix-sized vertical space so the layout does not jump', () => {
     render(
       <ThemeProvider>
         <MasterMatrixSkeleton rows={2} days={1} periods={7} isDaily={true} />
       </ThemeProvider>,
     );
     const root = screen.getByTestId('master-matrix-skeleton');
-    expect(root.style.gridTemplateColumns).toMatch(/clamp\(220px/);
-    expect(root.style.gridTemplateColumns).toMatch(
-      /repeat\(7,\s*minmax\(0,\s*1fr\)\)/,
-    );
+    expect(parseInt(root.style.minHeight, 10)).toBeGreaterThan(0);
   });
 });

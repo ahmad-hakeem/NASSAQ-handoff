@@ -7,6 +7,7 @@ import {
 import { useTranslation } from '../../contexts/ThemeContext';
 import { getPose } from '../../components/hakim/hakimPoses';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
+import { LoadingState } from '../ui/LoadingState';
 
 /* -------------------------------------------------------------------------- */
 /* Task #324 — Parent home Weekly Story redesign                              */
@@ -166,15 +167,7 @@ const WeeklyStory = ({ data, loading, error, onRetry }) => {
     return (
       <HakimShell>
         <HakimHeader subtitle={t('hakimIsAnalyzingData')} subtitleAnimated pose="ai-thinking" />
-        <div className="p-5 space-y-4 bg-card animate-pulse" data-testid="weekly-story-skeleton">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="h-20 rounded-2xl bg-brand-navy/[0.04] dark:bg-brand-turquoise/[0.06] border border-border" />
-            <div className="h-20 rounded-2xl bg-brand-navy/[0.04] dark:bg-brand-turquoise/[0.06] border border-border" />
-            <div className="h-20 rounded-2xl bg-brand-navy/[0.04] dark:bg-brand-turquoise/[0.06] border border-border" />
-            <div className="h-20 rounded-2xl bg-brand-navy/[0.04] dark:bg-brand-turquoise/[0.06] border border-border" />
-          </div>
-          <div className="h-20 rounded-2xl bg-brand-purple/[0.06] dark:bg-brand-purple/[0.10] border border-brand-purple/20" />
-        </div>
+        <LoadingState variant="section" data-testid="weekly-story-skeleton" />
       </HakimShell>
     );
   }

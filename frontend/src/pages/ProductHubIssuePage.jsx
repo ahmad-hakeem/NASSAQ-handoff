@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { LoadingState } from '../components/ui/LoadingState';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
@@ -296,10 +297,7 @@ export function ProductHubIssuePage() {
     return (
       <Sidebar>
         <div className="flex justify-center items-center min-h-screen">
-          <div className="flex flex-col items-center gap-3">
-            <div className="animate-spin rounded-full h-10 w-10 border-2 border-brand-turquoise border-t-transparent" />
-            <p className="text-sm text-muted-foreground">جاري تحميل التحدي...</p>
-          </div>
+          <LoadingState variant="fullpage" className="min-h-0" label="جاري تحميل التحدي..." />
         </div>
       </Sidebar>
     );
