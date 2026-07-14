@@ -672,7 +672,7 @@ export const NotificationsPage = ({ embedded = false }) => {
                           </SelectContent>
                         </Select>
                       )}
-                      <Select value={filterType} onValueChange={val => { setFilterType(val); setTimeout(() => fetchNotifications(), 0); }}>
+                      <Select value={filterType} onValueChange={setFilterType}>
                         <SelectTrigger className="w-[130px] h-9"><SelectValue placeholder={t('type4')} /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">{t('allTypes2')}</SelectItem>
@@ -681,7 +681,7 @@ export const NotificationsPage = ({ embedded = false }) => {
                           ))}
                         </SelectContent>
                       </Select>
-                      <Select value={filterRead} onValueChange={val => { setFilterRead(val); setTimeout(() => fetchNotifications(), 0); }}>
+                      <Select value={filterRead} onValueChange={setFilterRead}>
                         <SelectTrigger className="w-[110px] h-9"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">{t('all')}</SelectItem>

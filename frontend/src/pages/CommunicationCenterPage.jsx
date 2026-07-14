@@ -84,6 +84,13 @@ const iconMap = {
   megaphone: Megaphone,
 };
 
+// Temporary product decision (2026-07-14): hide the Inbox (صندوق الوارد) tab in
+// the school-leadership Communication Center. Parent messages already surface
+// in the Notifications (الإشعارات) tab, which has richer filters. All inbox
+// code, state, and backend support below are intentionally kept intact —
+// to restore the tab, flip this flag to false.
+const INBOX_TAB_HIDDEN = true;
+
 export const CommunicationCenterPage = () => {
   const { t } = useTranslation();
   const { isRTL, isDark } = useTheme();
@@ -105,7 +112,7 @@ export const CommunicationCenterPage = () => {
       if (activeTab !== 'excuses') setActiveTab('excuses');
     } else if (isNotificationsRoute) {
       if (activeTab !== 'notifications') setActiveTab('notifications');
-    } else if (activeTab === 'notifications' || activeTab === 'excuses') {
+    } else if (activeTab === 'notifications' || activeTab === 'excuses' || (INBOX_TAB_HIDDEN && activeTab === 'inbox')) {
       setActiveTab('compose');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -524,7 +531,8 @@ export const CommunicationCenterPage = () => {
       : receivedMessages.filter(m => m.is_read);
 
   const tabs = [
-    { id: 'inbox', label: t('inbox'), icon: Inbox, badge: unreadCount },
+    // Inbox tab hidden behind INBOX_TAB_HIDDEN (see flag above) — restore by flipping the flag.
+    ...(INBOX_TAB_HIDDEN ? [] : [{ id: 'inbox', label: t('inbox'), icon: Inbox, badge: unreadCount }]),
     { id: 'compose', label: t('compose'), icon: MessageSquare },
     { id: 'sent', label: t('sent'), icon: Send, badge: sentMessages.length },
     { id: 'scheduled', label: t('scheduled'), icon: Clock, badge: scheduledMessages.length },
@@ -585,7 +593,7 @@ export const CommunicationCenterPage = () => {
 
         <div className="p-4 sm:p-6 space-y-6">
 
-          {activeTab === 'inbox' && (
+          {activeTab === 'inbox' && !INBOX_TAB_HIDDEN && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -696,7 +704,7 @@ export const CommunicationCenterPage = () => {
 
           {activeTab === 'compose' && (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className={`grid grid-cols-1 ${INBOX_TAB_HIDDEN ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-4`}>
                 <Card className="card-nassaq cursor-pointer hover:ring-2 hover:ring-brand-navy/50 transition-all"
                   onClick={() => setActiveTab('sent')} data-testid="sent-messages-card">
                   <CardContent className="p-4 flex items-center gap-4">
@@ -709,6 +717,8 @@ export const CommunicationCenterPage = () => {
                     </div>
                   </CardContent>
                 </Card>
+                {/* Inbox stat card hidden with the inbox tab (INBOX_TAB_HIDDEN) — restore by flipping the flag. */}
+                {!INBOX_TAB_HIDDEN && (
                 <Card className="card-nassaq cursor-pointer hover:ring-2 hover:ring-green-500/50 transition-all"
                   onClick={() => setActiveTab('inbox')} data-testid="received-messages-card">
                   <CardContent className="p-4 flex items-center gap-4">
@@ -721,6 +731,7 @@ export const CommunicationCenterPage = () => {
                     </div>
                   </CardContent>
                 </Card>
+                )}
                 <Card className="card-nassaq cursor-pointer hover:ring-2 hover:ring-yellow-500/50 transition-all"
                   onClick={() => setActiveTab('scheduled')} data-testid="scheduled-messages-card">
                   <CardContent className="p-4 flex items-center gap-4">
