@@ -328,6 +328,28 @@ export default function SessionTeachPage() {
   const [showFollowupRecord, setShowFollowupRecord] = useState(false);
   const [customPositiveBehaviours, setCustomPositiveBehaviours] = useState([]);
   const [customNegativeBehaviours, setCustomNegativeBehaviours] = useState([]);
+  // Per-lesson score overrides for the BUILT-IN behaviours (id → positive
+  // magnitude 1–100). Lives only in this lesson's sessionStorage snapshot —
+  // the next lesson starts back at the shared defaults. Custom behaviours
+  // store their edited score directly on the array entry instead.
+  const [behaviourScoreOverrides, setBehaviourScoreOverrides] = useState({});
+  // Edit the score of an already-listed behaviour from the settings dialog.
+  // Built-in ids go into the override map; custom ids update the matching
+  // array entry, keeping the sign convention (+ for positive, - for negative).
+  const updateBehaviourScore = (category, id, magnitude) => {
+    const mag = Math.round(Math.abs(Number(magnitude)));
+    if (!Number.isFinite(mag) || mag <= 0 || mag > 100) return;
+    const isBuiltIn = (BEHAVIOURS[category] || []).some((b) => b.id === id);
+    if (isBuiltIn) {
+      setBehaviourScoreOverrides((prev) => ({ ...prev, [id]: mag }));
+      return;
+    }
+    const signed = category === 'positive' ? mag : -mag;
+    const setter = category === 'positive' ? setCustomPositiveBehaviours : setCustomNegativeBehaviours;
+    setter((prev) => prev.map((x) => (
+      typeof x === 'object' && x !== null && x.id === id ? { ...x, points: signed } : x
+    )));
+  };
   const [customSkills, setCustomSkills] = useState([]);
   const [customEvaluationItems, setCustomEvaluationItems] = useState([
     { id: 'eval_default_correct',  name: 'إجابة صحيحة',     color: 'emerald', icon: 'CheckCircle2',    points: 1  },
@@ -827,7 +849,8 @@ export default function SessionTeachPage() {
         sessionStorage.setItem(`session_state_${sessionId}`, JSON.stringify({
           evalMode, groups, stats, mode: mode?.id, actionTab, followupData, followupColumns, followupAbsences,
           manualFollowupCells: [...manualFollowupCells.current],
-          customPositiveBehaviours, customNegativeBehaviours, customSkills, customEvaluationItems
+          customPositiveBehaviours, customNegativeBehaviours, customSkills, customEvaluationItems,
+          behaviourScoreOverrides
         }));
         // Follow-up grade/absence persistence now flows exclusively through the
         // serialized flush (debounce while typing + flush on close + Save Class).
@@ -837,7 +860,7 @@ export default function SessionTeachPage() {
     };
     autoSaveRef.current = setInterval(saveState, 10000);
     return () => { if (autoSaveRef.current) clearInterval(autoSaveRef.current); };
-  }, [sessionId, evalMode, groups, stats, mode, actionTab, followupData, followupColumns, followupAbsences, api, customPositiveBehaviours, customNegativeBehaviours, customSkills, customEvaluationItems]);
+  }, [sessionId, evalMode, groups, stats, mode, actionTab, followupData, followupColumns, followupAbsences, api, customPositiveBehaviours, customNegativeBehaviours, customSkills, customEvaluationItems, behaviourScoreOverrides]);
 
   // ---- Follow-up record persistence (كشف المتابعة) -------------------------
   // The follow-up grade/absence state lives in this parent component so it
@@ -967,6 +990,9 @@ export default function SessionTeachPage() {
         ));
         if (state.customPositiveBehaviours?.length) setCustomPositiveBehaviours(migrateBhv(state.customPositiveBehaviours, 2));
         if (state.customNegativeBehaviours?.length) setCustomNegativeBehaviours(migrateBhv(state.customNegativeBehaviours, -2));
+        if (state.behaviourScoreOverrides && typeof state.behaviourScoreOverrides === 'object') {
+          setBehaviourScoreOverrides(state.behaviourScoreOverrides);
+        }
         if (state.customSkills?.length) setCustomSkills(state.customSkills);
         if (state.customEvaluationItems?.length) setCustomEvaluationItems(state.customEvaluationItems);
       }
@@ -1653,13 +1679,17 @@ export default function SessionTeachPage() {
         details: behaviourNote || null,
       };
       // Custom behaviours (added via the sidebar) carry a teacher-configured
-      // value; predefined ones always carry a labelKey and resolve their points
-      // server-side from the score rules. Send the configured magnitude so the
-      // backend applies the real value instead of the ±2 default; the sign is
-      // derived from the category on the server.
+      // value; predefined ones normally resolve their points server-side from
+      // the score rules — UNLESS the teacher edited the score in Lesson
+      // Settings this lesson, in which case the override map is authoritative.
+      // Send the configured magnitude so the backend applies the real value
+      // instead of the ±2 default; the sign is derived from the category on
+      // the server.
       const isCustom = !bType.labelKey;
-      const magnitude = Math.abs(parseInt(String(bType.points), 10));
-      if (isCustom && Number.isFinite(magnitude) && magnitude > 0 && magnitude <= 100) {
+      const overrideMag = Math.round(Math.abs(Number(behaviourScoreOverrides[bType.id])));
+      const hasOverride = !isCustom && Number.isFinite(overrideMag) && overrideMag > 0 && overrideMag <= 100;
+      const magnitude = hasOverride ? overrideMag : Math.abs(parseInt(String(bType.points), 10));
+      if ((isCustom || hasOverride) && Number.isFinite(magnitude) && magnitude > 0 && magnitude <= 100) {
         payload.points_override = magnitude;
       }
       const res = await api.post(`/session/${sessionId}/behaviour`, payload);
@@ -2968,7 +2998,13 @@ export default function SessionTeachPage() {
           >
             <div className="grid grid-cols-2 gap-1.5">
               {[
-                ...(BEHAVIOURS.positive || []),
+                // Built-in chips show the lesson's edited score (override map)
+                // when the teacher changed it in Lesson Settings, so the badge
+                // always matches the points actually awarded on tap.
+                ...(BEHAVIOURS.positive || []).map(b => {
+                  const ov = Number(behaviourScoreOverrides[b.id]);
+                  return Number.isFinite(ov) && ov > 0 ? { ...b, points: `+${ov}` } : b;
+                }),
                 ...customPositiveBehaviours.map(b => {
                   if (typeof b === 'string') return { id: `custom_${b}`, label: b, points: '+2' };
                   const abs = Math.abs(Number(b.points) || 0);
@@ -3004,7 +3040,11 @@ export default function SessionTeachPage() {
           >
             <div className="grid grid-cols-2 gap-1.5">
               {[
-                ...(BEHAVIOURS.negative || []),
+                // Same override-aware badge as the positive popover above.
+                ...(BEHAVIOURS.negative || []).map(b => {
+                  const ov = Number(behaviourScoreOverrides[b.id]);
+                  return Number.isFinite(ov) && ov > 0 ? { ...b, points: `-${ov}` } : b;
+                }),
                 ...customNegativeBehaviours.map(b => {
                   if (typeof b === 'string') return { id: `custom_${b}`, label: b, points: '-2' };
                   const abs = Math.abs(Number(b.points) || 0);
@@ -3673,7 +3713,9 @@ export default function SessionTeachPage() {
           ...BEHAVIOURS.positive.map((b) => ({
             id: b.id,
             name: b.labelKey ? (t(b.labelKey) || b.label) : b.label,
-            points: Math.abs(Number(b.points)) || 0,
+            points: Number(behaviourScoreOverrides[b.id]) > 0
+              ? Number(behaviourScoreOverrides[b.id])
+              : (Math.abs(Number(b.points)) || 0),
             removable: false,
           })),
           ...customPositiveBehaviours,
@@ -3682,7 +3724,9 @@ export default function SessionTeachPage() {
           ...BEHAVIOURS.negative.map((b) => ({
             id: b.id,
             name: b.labelKey ? (t(b.labelKey) || b.label) : b.label,
-            points: Math.abs(Number(b.points)) || 0,
+            points: Number(behaviourScoreOverrides[b.id]) > 0
+              ? Number(behaviourScoreOverrides[b.id])
+              : (Math.abs(Number(b.points)) || 0),
             removable: false,
           })),
           ...customNegativeBehaviours,
@@ -3691,6 +3735,7 @@ export default function SessionTeachPage() {
         onAddNegativeBehaviour={(item) => setCustomNegativeBehaviours((prev) => [...prev, item])}
         onRemovePositiveBehaviour={(id) => setCustomPositiveBehaviours((prev) => prev.filter((x) => (typeof x === 'string' ? `custom_${x}` !== id : x.id !== id)))}
         onRemoveNegativeBehaviour={(id) => setCustomNegativeBehaviours((prev) => prev.filter((x) => (typeof x === 'string' ? `custom_${x}` !== id : x.id !== id)))}
+        onUpdateBehaviourScore={updateBehaviourScore}
         skillEnabled={skillEnabled}
         onToggleSkillEnabled={setSkillEnabled}
         skillTypes={skillTypes}

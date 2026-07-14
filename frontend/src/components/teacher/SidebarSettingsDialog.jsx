@@ -134,6 +134,12 @@ export default function SidebarSettingsDialog({
   onAddNegativeBehaviour,
   onRemovePositiveBehaviour,
   onRemoveNegativeBehaviour,
+  // Edit the score of an already-listed behaviour (built-in defaults AND
+  // custom entries). Called as (category, id, magnitude) where category is
+  // 'positive' | 'negative' and magnitude is a positive integer 1–100 — the
+  // sign is always derived from the category. Optional so callers that
+  // haven't wired editing keep the legacy read-only badge.
+  onUpdateBehaviourScore,
 
   // ── Skills tab (legacy UI preserved) ──────────────────────────
   skillEnabled = true,
@@ -175,6 +181,21 @@ export default function SidebarSettingsDialog({
 
   const startSkillEdit = (key, current) => setSkillEdit({ key, value: String(current ?? '') });
   const cancelSkillEdit = () => setSkillEdit(null);
+  // Inline score-edit state for an already-listed behaviour, mirroring
+  // `skillEdit`. `key` is `p-<id>` / `n-<id>`; `value` is the draft magnitude
+  // kept as a string so the field can be cleared while typing.
+  const [behaviourEdit, setBehaviourEdit] = useState(null);
+  const startBehaviourEdit = (key, current) => setBehaviourEdit({ key, value: String(current ?? '') });
+  const cancelBehaviourEdit = () => setBehaviourEdit(null);
+  const commitBehaviourEdit = (category, item) => {
+    const n = Math.round(Math.abs(Number(behaviourEdit?.value)));
+    // Reject empty/zero/non-numeric/out-of-range magnitudes; keep the field
+    // open so the teacher can correct it instead of silently discarding the
+    // edit. The 1–100 bound mirrors the backend points_override validation.
+    if (!Number.isFinite(n) || n <= 0 || n > 100) return;
+    onUpdateBehaviourScore?.(category, item.id, n);
+    setBehaviourEdit(null);
+  };
   const commitSkillEdit = (entry) => {
     const n = Math.abs(Number(skillEdit?.value));
     // Reject empty/zero/non-numeric magnitudes; keep the field open so the
@@ -424,6 +445,10 @@ export default function SidebarSettingsDialog({
             // arrive with `removable === false`; a spacer keeps their row
             // aligned with the removable custom rows below.
             const removable = item.removable !== false;
+            const category = isPositive ? 'positive' : 'negative';
+            const editKey = `${isPositive ? 'p' : 'n'}-${item.id}`;
+            const editing = behaviourEdit?.key === editKey;
+            const canEditScore = typeof onUpdateBehaviourScore === 'function';
             return (
             <div
               key={item.id}
@@ -441,12 +466,63 @@ export default function SidebarSettingsDialog({
               ) : (
                 <span className="h-4 w-4 shrink-0" aria-hidden="true" />
               )}
-              <span className={`text-xs font-bold tabular-nums font-cairo flex-none w-8 text-center ${pointsColor}`}>
-                {/* Force the badge sign to match the category list this
-                    item lives in, regardless of how the underlying value
-                    was stored. */}
-                {formatPoints(item.points, isPositive ? 'positive' : 'negative')}
-              </span>
+              {editing ? (
+                <span className="flex items-center gap-1 flex-none">
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    inputMode="numeric"
+                    autoFocus
+                    value={behaviourEdit.value}
+                    onChange={(e) => setBehaviourEdit((s) => ({ ...s, value: sanitizePoints(e.target.value) }))}
+                    onKeyDown={(e) => {
+                      if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') e.preventDefault();
+                      if (e.key === 'Enter') commitBehaviourEdit(category, item);
+                      if (e.key === 'Escape') cancelBehaviourEdit();
+                    }}
+                    className="w-12 text-xs text-center bg-card dark:bg-muted rounded border border-border px-1 py-0.5 outline-none focus:border-brand-turquoise tabular-nums"
+                    aria-label={t('editBehaviourScore') || 'تعديل النقاط'}
+                    dir="ltr"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => commitBehaviourEdit(category, item)}
+                    className="text-green-600 dark:text-green-400 hover:text-green-500"
+                    aria-label={t('save') || 'حفظ'}
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelBehaviourEdit}
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label={t('cancel') || 'إلغاء'}
+                  >
+                    <XCircle className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 flex-none">
+                  <span className={`text-xs font-bold tabular-nums font-cairo w-8 text-center ${pointsColor}`}>
+                    {/* Force the badge sign to match the category list this
+                        item lives in, regardless of how the underlying value
+                        was stored. */}
+                    {formatPoints(item.points, isPositive ? 'positive' : 'negative')}
+                  </span>
+                  {canEditScore && (
+                    <button
+                      type="button"
+                      onClick={() => startBehaviourEdit(editKey, Math.abs(Number(item.points) || 0))}
+                      className={`${pointsColor} opacity-70 hover:opacity-100 transition-opacity`}
+                      aria-label={t('editBehaviourScore') || 'تعديل النقاط'}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </span>
+              )}
               <div className="flex-1 flex items-center justify-end gap-2">
                 <span className="text-sm font-cairo text-foreground">{item.name}</span>
                 <Icon className={`h-4 w-4 shrink-0 ${iconColor}`} />

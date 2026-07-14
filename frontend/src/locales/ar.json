@@ -2880,6 +2880,7 @@
   "currentSkills": "المهارات الحالية",
   "scoreWeight": "وزن الدرجة",
   "editWeight": "تعديل وزن الدرجة",
+  "editBehaviourScore": "تعديل النقاط",
   "scoreWeightUpdated": "تم تحديث وزن الدرجة",
   "errorUpdatingSkillWeight": "تعذّر تحديث وزن الدرجة",
   "saving": "جاري الحفظ...",

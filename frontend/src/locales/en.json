@@ -2878,6 +2878,7 @@
   "currentSkills": "Current Skills",
   "scoreWeight": "Score Weight",
   "editWeight": "Edit Score Weight",
+  "editBehaviourScore": "Edit points",
   "scoreWeightUpdated": "Score weight updated",
   "errorUpdatingSkillWeight": "Failed to update the score weight",
   "saving": "Saving...",
