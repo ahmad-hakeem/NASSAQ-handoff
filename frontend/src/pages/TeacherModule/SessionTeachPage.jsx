@@ -3795,6 +3795,7 @@ export default function SessionTeachPage() {
         followupData={followupData}
         setFollowupData={setFollowupData}
         followupStreakBonus={followupStreakBonus}
+        streakBonusEnabled={streakBonusEnabled}
         followupAbsences={followupAbsences}
         onAbsenceAdd={handleFollowupAbsenceAdd}
         onAbsenceRemove={handleFollowupAbsenceRemove}
@@ -4107,6 +4108,7 @@ function FollowupRecordDialog({
   followupColumns, setFollowupColumns,
   followupData, setFollowupData,
   followupStreakBonus,
+  streakBonusEnabled,
   followupAbsences, onAbsenceAdd, onAbsenceRemove,
   followupTab, setFollowupTab,
   showAddColumnModal, setShowAddColumnModal,
@@ -4307,7 +4309,7 @@ function FollowupRecordDialog({
                 columns={followupColumns}
                 gradesData={followupData}
                 streakBonus={followupStreakBonus}
-                showStreakColumn
+                showStreakColumn={streakBonusEnabled}
                 onGradeChange={onGradeChange}
                 t={t}
               />
