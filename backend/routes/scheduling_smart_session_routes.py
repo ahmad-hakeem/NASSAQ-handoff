@@ -1558,6 +1558,77 @@ async def delete_grade_column(
     return {"success": True}
 
 
+@class_teaching_router.get("/class/{class_id}/student-grades")
+async def get_class_student_grades(
+    class_id: str,
+    subject_id: Optional[str] = Query(default=None, max_length=100),
+    current_user: dict = Depends(get_current_user),
+):
+    """Aggregated per-student grades for the class "Student Record" tab
+    (سجل الطلاب).
+
+    Each committed live session writes one ``student_grades`` doc per
+    (session, student, coursework column) with a value already clamped to
+    the column's [0, max] (see ``commit_session_scores``). The record shows
+    the AVERAGE of those per-session values per (student, column), rounded
+    to 1 decimal, so values stay on the column's fixed /max scale. The
+    denominator is the number of sessions where THAT student has a row for
+    THAT column — absent/no-data students never got rows, so those lessons
+    don't count against them.
+
+    Tenant scope is derived from the CLASS row (never the caller): a §6.7
+    collaborator's own workspace tenant differs from the host class's
+    school_id, and filtering by caller tenant would silently return zero
+    rows for exactly the co-teaching path. Access itself is enforced by
+    ``_verify_class_access`` (school linkage tables / IT ownership /
+    collaborator widening / §8 inv. 3 cross-workspace 404).
+
+    Aggregation runs in SQL (AVG .. GROUP BY) so a busy class with
+    thousands of rows can never be truncated by a fetch limit.
+    """
+    await _verify_class_access(class_id, current_user)
+    cls = await gd_find_one(db.session, "classes", {"id": class_id})
+    if not cls:
+        raise HTTPException(status_code=404, detail="Class not found")
+    class_school = str(cls.get("school_id") or cls.get("tenant_id") or "")
+
+    from sqlalchemy import text as _sql_text
+
+    params: Dict[str, Any] = {"class_id": class_id, "school_id": class_school}
+    subject_clause = ""
+    if subject_id:
+        subject_clause = "AND data->>'subject_id' = :subject_id"
+        params["subject_id"] = subject_id
+    stmt = _sql_text(
+        """
+        SELECT data->>'student_id' AS student_id,
+               data->>'column_id'  AS column_id,
+               AVG((data->>'score')::float) AS avg_score,
+               COUNT(*) AS sessions
+        FROM generic_documents
+        WHERE collection = 'student_grades'
+          AND data->>'class_id' = :class_id
+          AND COALESCE(data->>'school_id', data->>'tenant_id') = :school_id
+          AND data->>'student_id' IS NOT NULL
+          AND data->>'column_id' IS NOT NULL
+          AND (data->>'score') ~ '^-?[0-9]+(\\.[0-9]+)?$'
+          {subject_clause}
+        GROUP BY 1, 2
+        """.replace("{subject_clause}", subject_clause)
+    )
+    result = await db.session.execute(stmt, params)
+    grades = [
+        {
+            "student_id": row.student_id,
+            "column_id": row.column_id,
+            "score": round(float(row.avg_score), 1),
+            "sessions": int(row.sessions),
+        }
+        for row in result.all()
+    ]
+    return {"class_id": class_id, "subject_id": subject_id, "grades": grades}
+
+
 # ============== LEGACY ROUTES ==============
 @router.get("/")
 async def root():

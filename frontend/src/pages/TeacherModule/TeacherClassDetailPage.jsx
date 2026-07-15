@@ -280,8 +280,27 @@ export default function TeacherClassDetailPage() {
     if (!classId) return;
     setGradesLoading(true);
     try {
-      const res = await api.get(`/class/${classId}/grade-columns`);
-      setGradeColumns(res.data || []);
+      // Columns + stored grades load together: the record must show the
+      // accumulated per-student values committed by live sessions, not an
+      // empty (all-zeros) sheet. Server values are the baseline; local
+      // (unsaved) typing only overlays after load.
+      const [colsRes, gradesRes] = await Promise.all([
+        api.get(`/class/${classId}/grade-columns`),
+        // Degrade gracefully: if the grades read fails, still show the
+        // columns (empty sheet) instead of blanking the whole tab.
+        api.get(`/class/${classId}/student-grades`).catch((e) => {
+          console.error('Error loading student grades:', e);
+          return null;
+        }),
+      ]);
+      setGradeColumns(colsRes.data || []);
+      if (gradesRes) {
+        const stored = {};
+        (gradesRes.data?.grades || []).forEach((g) => {
+          stored[`${g.student_id}_${g.column_id}`] = g.score;
+        });
+        setStudentGrades(stored);
+      }
     } catch (err) {
       console.error('Error loading grade columns:', err);
     } finally {
