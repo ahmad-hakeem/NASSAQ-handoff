@@ -5,6 +5,7 @@ Auto-consolidated during Phase 8 modularization.
 from fastapi import APIRouter, HTTPException, Depends, Query, Body, Request
 from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone
+from sqlalchemy import text as sa_text
 import uuid
 
 # Task #473 — Audit of role_dashboards_mod.py:
@@ -2249,7 +2250,45 @@ async def get_student_analytics(
             "created_at": i.get("recorded_at", "")
         })
 
-    skills = await gd_find(db.session, "student_skills", {"student_id": student_id}, order_by="recorded_at", desc_order=True, limit=50)
+    # Build the skills list by querying student_skills SQL table directly.
+    # Skills are personal achievements — we show all recorded skills for the
+    # student regardless of which class they were in when they were recorded.
+    # This is essential for students who have been transferred between classes.
+    # A fresh async session is used to avoid ContextVar/transaction scope
+    # issues with the module-level db.session for ORM-backed tables.
+    from db import async_session_factory as _sf
+    _skill_sql = sa_text("""
+        SELECT skill_type_id, class_id, session_id, created_at
+        FROM student_skills
+        WHERE student_id = :sid
+        ORDER BY created_at DESC
+    """)
+    try:
+        async with _sf() as _sk_session:
+            _skill_result = await _sk_session.execute(_skill_sql, {"sid": student_id})
+            _skill_rows = _skill_result.mappings().all()
+    except Exception as _sk_err:
+        logger.warning("skills query failed for student %s: %s", student_id, _sk_err)
+        _skill_rows = []
+
+    _seen_skill_types: dict = {}
+    for _sr in _skill_rows:
+        _btype = str(_sr.get("skill_type_id") or "").strip()
+        if not _btype:
+            continue
+        if _btype not in _seen_skill_types:
+            _loc = _localize_behaviour_type(_btype, category="skill")
+            _seen_skill_types[_btype] = {
+                "skill_type_id": _btype,
+                "skill_name": _loc["name_ar"],
+                "name_ar": _loc["name_ar"],
+                "name_en": _loc["name_en"],
+                "count": 1,
+                "recorded_at": str(_sr.get("created_at") or ""),
+            }
+        else:
+            _seen_skill_types[_btype]["count"] += 1
+    skills = list(_seen_skill_types.values())
 
     behavior_records = await gd_find(db.session, "behavior", {"student_id": student_id}, order_by="date", desc_order=True, limit=200)
     if student_class_id:

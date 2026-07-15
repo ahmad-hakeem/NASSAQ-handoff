@@ -1609,7 +1609,9 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                       <CardContent className="flex flex-wrap gap-2">
                         {studentDetails.skills.slice(0, 8).map((skill, idx) => (
                           <Badge key={idx} variant="outline" className="text-xs">
-                            {skill.skill_name} {skill.level ? `(${skill.level})` : ''}
+                            {localizeBeh(skill) || skill.skill_name}
+                            {skill.count > 1 ? ` ×${skill.count}` : ''}
+                            {skill.level ? ` (${skill.level})` : ''}
                           </Badge>
                         ))}
                       </CardContent>
