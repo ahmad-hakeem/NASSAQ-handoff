@@ -1,6 +1,5 @@
 import { useTheme, useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
-import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
 import { SubjectsManager } from '../components/subjects/SubjectsManager';
 import { Sun, Moon, Globe, ArrowLeft } from 'lucide-react';
@@ -44,7 +43,6 @@ export const SubjectsPage = () => {
           <SubjectsManager />
         </div>
       </div>
-      <HakimAssistant />
     </Sidebar>
   );
 };

@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme, useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
-import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import HakimPresence from '../components/hakim/HakimPresence';
 import { NotificationBell } from '../components/notifications/NotificationBell';
 import { SchoolDashboardContent } from '../components/dashboard/SchoolDashboardContent';
@@ -55,7 +54,6 @@ export const SchoolDashboard = () => {
           <SchoolDashboardContent />
         </div>
       </div>
-      <HakimAssistant />
     </Sidebar>
   );
 };

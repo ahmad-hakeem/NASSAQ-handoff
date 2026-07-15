@@ -18,7 +18,6 @@ import {
   AlertCircle, Star, Timer, Activity, Award, ThumbsUp,
   ThumbsDown, Heart, StickyNote, AlertTriangle
 } from 'lucide-react';
-import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 const STATUS_MAP = {
@@ -567,7 +566,6 @@ export default function TeacherSessionsManagePage() {
           </DialogContent>
         </Dialog>
 
-        <HakimAssistant />
       </div>
     </Sidebar>
   );

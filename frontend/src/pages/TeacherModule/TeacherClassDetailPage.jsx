@@ -28,7 +28,6 @@ import {
   Eye, EyeOff, Plus, Trash2, Edit3, Upload, FileSpreadsheet,
   Settings, Info, X, Check, Minus, CircleDot, History, XCircle
 } from 'lucide-react';
-import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import HakimPresence from '../../components/hakim/HakimPresence';
 import FollowupGradesTable from '../../components/teacher/FollowupGradesTable';
 import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialog';
@@ -1439,7 +1438,9 @@ export default function TeacherClassDetailPage() {
             <p className="text-sm text-muted-foreground font-tajawal">{t('loading2')}</p>
           </div>
         ) : (
-          <div className="px-4 sm:px-6 py-4 space-y-4">
+          /* pb-24 keeps the last curriculum-row edit/delete actions clear of
+             the global Hakim launcher zone (bottom inline-end corner). */
+          <div className="px-4 sm:px-6 pt-4 pb-24 space-y-4">
             <div className="flex items-center gap-3 p-3 rounded-2xl bg-violet-50/80 dark:bg-violet-950/30 border border-violet-100/50 dark:border-violet-800/30">
               <HakimPresence size="xs" showMessage={true} messagePosition="bottom" />
             </div>
@@ -1521,7 +1522,6 @@ export default function TeacherClassDetailPage() {
         onRemoveCustomSkill={(idx) => setCustomSkills((prev) => prev.filter((_, j) => j !== idx))}
       />
 
-      <HakimAssistant />
     </Sidebar>
   );
 }

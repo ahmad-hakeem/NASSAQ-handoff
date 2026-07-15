@@ -6,7 +6,6 @@ import useParentDashboard from '../../hooks/useParentDashboard';
 import CurrentClassCard from '../../components/parent/CurrentClassCard';
 import UpcomingClasses from '../../components/parent/UpcomingClasses';
 import WeeklyStory from '../../components/parent/WeeklyStory';
-import HakimChatWidget from '../../components/parent/HakimChatWidget';
 import BackgroundRefreshChip from '../../components/parent/BackgroundRefreshChip';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -585,12 +584,8 @@ const ParentPortalDashboard = () => {
           </Card>
         )}
 
-        {selectedChildId && (
-          <HakimChatWidget
-            childId={selectedChildId}
-            childName={liveData?.student?.name?.split(' ')[0] || selectedChild?.name}
-          />
-        )}
+        {/* Hakim chat is mounted globally via GlobalHakimMount (App.js) —
+            it binds to the active child from ParentActiveStudentContext. */}
       </div>
     </PortalLayout>
   );

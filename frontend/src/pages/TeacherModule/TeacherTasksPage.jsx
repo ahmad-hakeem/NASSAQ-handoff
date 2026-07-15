@@ -9,7 +9,6 @@ import {
   ClipboardCheck, Users, CheckCircle2, Clock, AlertCircle,
   Loader2, RefreshCw, BookOpen, FileText, ArrowLeft
 } from 'lucide-react';
-import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 export default function TeacherTasksPage() {
@@ -209,7 +208,6 @@ export default function TeacherTasksPage() {
           )}
         </div>
       </div>
-      <HakimAssistant />
     </Sidebar>
   );
 }

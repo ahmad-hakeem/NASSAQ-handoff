@@ -1,7 +1,6 @@
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
-import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { NotificationBell } from '../components/notifications/NotificationBell';
 import { SchoolDashboardContent } from '../components/dashboard/SchoolDashboardContent';
 import { Button } from '../components/ui/button';
@@ -57,7 +56,6 @@ export default function PrincipalDashboard() {
           <SchoolDashboardContent />
         </div>
       </div>
-      <HakimAssistant />
     </Sidebar>
   );
 }

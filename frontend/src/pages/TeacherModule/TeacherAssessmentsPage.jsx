@@ -16,7 +16,6 @@ import {
   FileText, Plus, Edit2, Trash2, Eye, Loader2, RefreshCw,
   GraduationCap, ClipboardList, Save, CheckCircle2, Clock, BookOpen
 } from 'lucide-react';
-import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 const ASSESSMENT_TYPES = [
@@ -439,7 +438,6 @@ export default function TeacherAssessmentsPage() {
           </DialogContent>
         </Dialog>
       </div>
-      <HakimAssistant />
     </Sidebar>
   );
 }

@@ -19,7 +19,6 @@ import {
   BookOpen, FileText, Plus, Upload, Download, Loader2, RefreshCw,
   Video, File, Image, Link2, Trash2, Edit2, Eye, FolderOpen, Search
 } from 'lucide-react';
-import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 const RESOURCE_TYPES = [
@@ -427,7 +426,6 @@ export default function TeacherResourcesPage() {
           </DialogContent>
         </Dialog>
       </div>
-      <HakimAssistant />
     </Sidebar>
   );
 }

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme, useTranslation } from '../contexts/ThemeContext';
 import { Footer } from '../components/layout/Footer';
-import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import {
   ArrowLeft, ArrowRight, Zap, Sparkles, CheckCircle2, Check,
   ClipboardList, Activity, Brain, Send, Award, Star,
@@ -661,7 +660,6 @@ export const TeacherExperiencePage = () => {
       </section>
 
       <Footer />
-      <HakimAssistant />
     </div>
   );
 };

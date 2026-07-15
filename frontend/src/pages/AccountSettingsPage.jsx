@@ -4,7 +4,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { isGenericName } from '../components/GenericNameGuard';
 import { Sidebar } from '../components/layout/Sidebar';
-import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import TeachingStatsHero from '../components/teacher/TeachingStatsHero';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -2902,7 +2901,6 @@ const AccountSettingsPageInner = () => {
           </DialogContent>
         </Dialog>
       </div>
-      <HakimAssistant />
       <ImageCropModal
         open={cropModalOpen}
         onOpenChange={setCropModalOpen}

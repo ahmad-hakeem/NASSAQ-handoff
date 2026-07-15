@@ -5,7 +5,6 @@ import { useCanViewInternalIds } from '../hooks/useCanViewInternalIds';
 import { maskInternalId } from '../utils/internalId';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { Sidebar } from '../components/layout/Sidebar';
-import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -756,7 +755,6 @@ export const TeacherAttendancePage = () => {
           </DialogContent>
         </Dialog>
       </div>
-      <HakimAssistant />
     </Sidebar>
   );
 };

@@ -17,7 +17,6 @@ import {
   CheckCircle2, Activity, Flame, Building2, MapPin, Star, Briefcase,
   Bell, Check, CircleDot, Timer, Sparkles, Plus
 } from 'lucide-react';
-import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import { NotificationBell } from '../../components/notifications/NotificationBell';
 import { formatHijriDate, formatFullDate } from '../../utils/hijriDate';
 import ReactivationBanner from '../../components/teacher/ReactivationBanner';
@@ -707,7 +706,6 @@ export default function TeacherHomePage() {
 
         </div>
       </div>
-      <HakimAssistant />
     </Sidebar>
   );
 }

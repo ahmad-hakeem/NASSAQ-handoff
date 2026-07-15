@@ -15,7 +15,6 @@ import {
   ClipboardCheck, Users, Check, X, Clock, FileText,
   Loader2, Save, CheckCircle2, ArrowRight, ArrowLeft
 } from 'lucide-react';
-import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 
@@ -472,7 +471,6 @@ export default function TeacherAttendanceManagePage() {
           </DialogContent>
         </Dialog>
       </div>
-      <HakimAssistant />
     </Sidebar>
   );
 }

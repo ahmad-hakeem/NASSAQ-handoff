@@ -123,7 +123,6 @@ const HakimAssistantInner = () => {
   // handler becomes a no-op and never overwrites the kept answer with an error.
   const pendingRef = useRef(null);
   const { api, user } = useAuth();
-  const { isRTL } = useTheme();
   const { language } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
@@ -700,17 +699,20 @@ const HakimAssistantInner = () => {
 
   return (
     <>
-      <div className={`fixed bottom-6 z-50 ${isRTL ? 'left-6' : 'right-6'}`}>
+      {/* Launcher: z-40 (below Radix dialogs/drawers at z-50) so modals are
+          never blocked by the floating button; logical end-6 = right in LTR,
+          left in RTL. Sized 56px so it can't cover row action icons. */}
+      <div className="fixed bottom-6 end-6 z-40">
         {showGreeting && !isOpen && (
           <div
-            className={`absolute bottom-24 ${isRTL ? 'left-0' : 'right-0'} animate-fade-up`}
+            className="absolute bottom-16 end-0 animate-fade-up"
             style={{ animationDuration: '0.3s' }}
           >
             <div className="bg-white dark:bg-gray-800 text-foreground rounded-2xl shadow-2xl px-5 py-3.5 text-base font-cairo font-bold border-2 border-[#1B93A4]/25 whitespace-nowrap">
               <div className="flex items-center gap-2.5">
                 <span className="text-gray-800 dark:text-gray-100">{greetingText}</span>
               </div>
-              <div className={`absolute bottom-[-7px] ${isRTL ? 'left-6' : 'right-6'} w-3.5 h-3.5 bg-white dark:bg-gray-800 border-b-2 border-r-2 border-[#1B93A4]/25 transform rotate-45`} />
+              <div className="absolute bottom-[-7px] end-6 w-3.5 h-3.5 bg-white dark:bg-gray-800 border-b-2 border-r-2 border-[#1B93A4]/25 transform rotate-45" />
             </div>
           </div>
         )}
@@ -719,7 +721,7 @@ const HakimAssistantInner = () => {
           data-testid="hakim-toggle-btn"
           onClick={toggleOpen}
           className={`
-            relative w-20 h-20 rounded-2xl overflow-hidden
+            relative w-14 h-14 rounded-2xl overflow-hidden
             transition-all duration-500 hover:scale-110
             ring-2 ring-[#7C3AED]/30 ring-offset-2 ring-offset-white dark:ring-offset-gray-900
             ${stateGlow}
@@ -729,7 +731,7 @@ const HakimAssistantInner = () => {
         >
           {isOpen ? (
             <div className="w-full h-full bg-gradient-to-br from-[#7C3AED] to-[#1B93A4] flex items-center justify-center">
-              <ChevronDown className="h-7 w-7 text-white" />
+              <ChevronDown className="h-6 w-6 text-white" />
             </div>
           ) : (
             <img
@@ -748,10 +750,9 @@ const HakimAssistantInner = () => {
         <Card
           data-testid="hakim-chat-window"
           className={`
-            fixed bottom-28 z-50 w-[440px] max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100vh-8rem)]
+            fixed bottom-24 end-6 z-50 w-[440px] max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100vh-8rem)]
             rounded-2xl shadow-2xl border-0 overflow-hidden flex flex-col
             animate-fade-up
-            ${isRTL ? 'left-6' : 'right-6'}
           `}
           style={{ animationDuration: '0.25s' }}
         >

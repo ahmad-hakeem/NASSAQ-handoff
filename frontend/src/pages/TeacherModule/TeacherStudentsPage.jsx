@@ -26,7 +26,6 @@ import {
   Lightbulb, Activity, MessageSquare, Send, Plus, UserPlus, Link2, Upload,
   Pencil, Trash2
 } from 'lucide-react';
-import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import AddStudentWizard from '../../components/wizards/AddStudentWizard';
 
 // Phase 1 IT — server-side cap (#192 spec §5.6).
@@ -2139,7 +2138,6 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
           />
         )}
       </div>
-      {!embedded && <HakimAssistant />}
     </Shell>
   );
 }

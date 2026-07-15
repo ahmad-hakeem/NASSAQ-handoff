@@ -728,8 +728,10 @@ const PermanentHakimWidget = ({ insights, isRTL, onAction, stats }) => {
     return <Sparkles className="h-3.5 w-3.5 mt-0.5 shrink-0 text-violet-400" />;
   };
 
+  // bottom-28 so the insights widget stacks ABOVE the global Hakim
+  // launcher (56px at bottom-6) instead of colliding in the same corner.
   return (
-    <div className="fixed bottom-6 end-6 z-40 flex flex-col items-end gap-3" style={{ maxWidth: '400px' }}>
+    <div className="fixed bottom-28 end-6 z-40 flex flex-col items-end gap-3" style={{ maxWidth: '400px' }}>
       {panelOpen && hasInsights && (
         <div className="w-[360px] max-h-[350px] overflow-y-auto bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-violet-200 dark:border-violet-800 animate-in slide-in-from-bottom-4 fade-in duration-300">
           <div className="sticky top-0 bg-gradient-to-r from-violet-600 to-purple-600 text-white px-4 py-3 rounded-t-2xl flex items-center justify-between">

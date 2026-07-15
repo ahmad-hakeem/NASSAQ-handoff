@@ -71,7 +71,9 @@ const MarkdownMessage = ({ content }) => {
   );
 };
 
-const HakimChatWidget = ({ childId, childName }) => {
+// `raised` lifts the launcher above PortalLayout's mobile bottom nav
+// (lg:hidden fixed bottom-0) so the two never overlap on small screens.
+const HakimChatWidget = ({ childId, childName, raised = false }) => {
   const { api, user } = useAuth();
   const { isRTL } = useTheme();
   const { t } = useTranslation();
@@ -268,12 +270,12 @@ const HakimChatWidget = ({ childId, childName }) => {
   return (
     <>
       {/* Floating Action Button — identical visual language to admin HakimAssistant */}
-      <div className={`fixed bottom-6 z-50 ${isRTL ? 'left-6' : 'right-6'}`}>
+      <div className={`fixed ${raised ? 'bottom-24 lg:bottom-6' : 'bottom-6'} end-6 z-40`}>
         <button
           data-testid="hakim-toggle-btn"
           onClick={toggleOpen}
           className={`
-            relative w-20 h-20 rounded-2xl overflow-hidden
+            relative w-14 h-14 rounded-2xl overflow-hidden
             transition-all duration-500 hover:scale-110
             ring-2 ring-[#7C3AED]/30 ring-offset-2 ring-offset-white dark:ring-offset-gray-900
             ${stateGlow}
@@ -284,7 +286,7 @@ const HakimChatWidget = ({ childId, childName }) => {
         >
           {isOpen ? (
             <div className="w-full h-full bg-gradient-to-br from-[#7C3AED] to-[#1B93A4] flex items-center justify-center">
-              <ChevronDown className="h-7 w-7 text-white" />
+              <ChevronDown className="h-6 w-6 text-white" />
             </div>
           ) : (
             <img
@@ -305,10 +307,9 @@ const HakimChatWidget = ({ childId, childName }) => {
         <Card
           data-testid="hakim-chat-window"
           className={`
-            fixed bottom-28 z-50 w-[440px] max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100vh-8rem)]
+            fixed ${raised ? 'bottom-40 lg:bottom-24' : 'bottom-24'} end-6 z-50 w-[440px] max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100vh-8rem)]
             rounded-2xl shadow-2xl border-0 overflow-hidden flex flex-col
             animate-fade-up
-            ${isRTL ? 'left-6' : 'right-6'}
           `}
           style={{ animationDuration: '0.25s' }}
           dir={isRTL ? 'rtl' : 'ltr'}

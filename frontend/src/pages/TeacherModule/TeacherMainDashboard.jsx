@@ -19,7 +19,6 @@ import {
   Timer, CircleDot, School, Sparkles, Zap, TrendingUp, Star,
   FolderOpen, ArrowLeft, ArrowRight, Check, Plus
 } from 'lucide-react';
-import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import { NotificationBell } from '../../components/notifications/NotificationBell';
 import ReactivationBanner from '../../components/teacher/ReactivationBanner';
 import OnboardingTrigger from '../../components/teacher/OnboardingTour/OnboardingTrigger';
@@ -1149,7 +1148,6 @@ export default function TeacherMainDashboard() {
 
         </div>
       </div>
-      <HakimAssistant />
     </Sidebar>
   );
 }

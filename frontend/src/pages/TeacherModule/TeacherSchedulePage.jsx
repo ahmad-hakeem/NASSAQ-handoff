@@ -15,7 +15,6 @@ import {
   Users, Loader2, RefreshCw, Printer, Download, Play,
   MapPin, AlertTriangle, Timer, CalendarDays, Eye
 } from 'lucide-react';
-import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 const DAYS = [
@@ -776,7 +775,6 @@ export default function TeacherSchedulePage() {
           </DialogContent>
         </Dialog>
       </div>
-      <HakimAssistant />
     </Sidebar>
   );
 }

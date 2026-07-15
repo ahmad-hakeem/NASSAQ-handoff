@@ -17,7 +17,6 @@ import {
   Heart, ThumbsUp, ThumbsDown, AlertTriangle, Award, Plus,
   Search, Loader2, RefreshCw, Users, Star, TrendingUp, Filter
 } from 'lucide-react';
-import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 const BEHAVIOR_TYPES = {
@@ -515,7 +514,6 @@ export default function TeacherBehaviorPage() {
           </DialogContent>
         </Dialog>
       </div>
-      <HakimAssistant />
     </Sidebar>
   );
 }

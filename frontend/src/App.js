@@ -10,6 +10,7 @@ import { MfaStepUpProvider } from "./contexts/MfaStepUpContext";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { GenericNameGuard } from "./components/GenericNameGuard";
 import AppRoutes from "./routes/appRoutes";
+import GlobalHakimMount from "./components/hakim/GlobalHakimMount";
 import { BetaBanner } from "./components/BetaDisclaimer";
 import PerimeterGateBridge from "./components/PerimeterGateBridge";
 
@@ -31,6 +32,10 @@ function App() {
                     <GenericNameGuard>
                       <AppRoutes />
                     </GenericNameGuard>
+                    {/* Hakim is mounted ONCE globally (route/role rules live
+                        inside GlobalHakimMount) — never mount HakimAssistant
+                        or HakimChatWidget from individual pages. */}
+                    <GlobalHakimMount />
                     <Toaster />
                   </ParentActiveStudentProvider>
                 </BrowserRouter>

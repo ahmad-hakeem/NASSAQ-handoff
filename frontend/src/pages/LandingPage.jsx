@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Footer } from '../components/layout/Footer';
-import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Link } from 'react-router-dom';
@@ -2217,7 +2216,6 @@ export const LandingPage = () => {
       </section>
 
       <Footer />
-      <HakimAssistant />
     </div>
   );
 };
