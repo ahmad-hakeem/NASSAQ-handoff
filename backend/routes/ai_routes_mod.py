@@ -2995,15 +2995,19 @@ async def get_at_risk_students(
             factors: List[str] = []
             issue_type = None
             if att_rate < 80:
-                factors.append("انخفاض الحضور")
+                factors.append("انخفاض الحضور خلال آخر 30 يوماً")
                 issue_type = "attendance"
             if grade_avg < 60:
-                factors.append("تدني الأداء الأكاديمي")
+                factors.append("تدني الأداء الأكاديمي خلال آخر 30 يوماً")
                 issue_type = issue_type or "academic"
             if not factors:
                 continue
 
-            risk_score = int(min(att_rate, grade_avg))
+            # risk_level is a TRUE risk scale: higher = more risk.  The FE
+            # renders >=70 as high risk and >=50 as moderate, so the score
+            # must grow as the underlying metric (attendance % / grade %)
+            # deteriorates — never return the raw health metric here.
+            risk_score = max(0, min(100, 100 - int(min(att_rate, grade_avg))))
             at_risk.append({
                 "id": sid,
                 # class_id lets the teacher UI deep-link straight to the
@@ -3019,19 +3023,30 @@ async def get_at_risk_students(
                 "factors": factors,
             })
 
-        at_risk.sort(key=lambda r: r["risk_level"])
+        # Highest risk first so the [:20] cut keeps the worst cases.
+        at_risk.sort(key=lambda r: r["risk_level"], reverse=True)
         return at_risk[:20]
 
     overview = await get_students_overview(refresh=0, current_user=current_user)
     result = []
     for row in overview["intervention_list"][:20]:
+        # intervention_list carries the hakim health score (higher = better,
+        # see `at_risk_like = risk_score < 75` above). The radar contract is
+        # the opposite — a risk scale where higher = worse — so invert here.
+        health = row["risk_score"] if isinstance(row["risk_score"], (int, float)) else 100
+        # Attendance/participation/behaviour components are 30-day windowed
+        # in the hakim engine; the academic fallback reads all-time grades,
+        # so the window disclosure only applies to the former.
+        label = row["issue_label_ar"]
+        if row["issue_type"] != "academic":
+            label = f"{label} خلال آخر 30 يوماً"
         result.append({
             "id": row["student_id"],
             "name": row["name"],
             "grade": row["class_name"],
-            "risk_level": row["risk_score"],
+            "risk_level": max(0, min(100, int(round(100 - health)))),
             "risk_type": row["issue_type"],
-            "factors": [row["issue_label_ar"]],
+            "factors": [label],
         })
     return result
 
