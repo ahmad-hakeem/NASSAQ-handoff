@@ -56,7 +56,13 @@ const fmtDate = (value) => {
  */
 export default function TeacherStudentProfileDialog({ student, open, onClose, classLabel }) {
   const { api, isRTL } = useAuth();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
+
+  const localizeBeh = (record) => {
+    if (!record) return '';
+    if (language === 'ar') return record.name_ar || record.note || '';
+    return record.name_en || record.note || '';
+  };
   const { nassaqError } = useNassaqAlert();
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -318,7 +324,7 @@ export default function TeacherStudentProfileDialog({ student, open, onClose, cl
                       {details.participation.recent.slice(0, 5).map((inter, idx) => (
                         <div key={idx} className="flex items-center justify-between p-2 rounded bg-muted/30">
                           <div>
-                            <p className="text-sm font-medium">{inter.note || inter.type}</p>
+                            <p className="text-sm font-medium">{localizeBeh(inter) || inter.type}</p>
                             <p className="text-xs text-muted-foreground">{fmtDate(inter.created_at)}</p>
                           </div>
                           {inter.points != null && (
@@ -354,7 +360,7 @@ export default function TeacherStudentProfileDialog({ student, open, onClose, cl
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="font-medium text-sm">{record.note || (t('note') || 'ملاحظة')}</span>
+                            <span className="font-medium text-sm">{localizeBeh(record) || t('note') || 'ملاحظة'}</span>
                             <Badge variant={(record.points || 0) > 0 ? 'default' : 'destructive'}>
                               {(record.points || 0) > 0 ? '+' : ''}{record.points || 0}
                             </Badge>

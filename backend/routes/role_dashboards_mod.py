@@ -1945,6 +1945,81 @@ def _as_clean_number(value: float):
     return int(rounded) if rounded == int(rounded) else rounded
 
 
+# ---------------------------------------------------------------------------
+# Behaviour-type localisation helpers
+# Maps every known slug / enum to (name_ar, name_en) so that the analytics
+# and student-stats endpoints can return bilingual labels instead of raw
+# English internal identifiers.  Unknown slugs fall back to category names.
+# ---------------------------------------------------------------------------
+_BEHAVIOUR_SLUG_NAMES: dict = {
+    # ---- legacy predefined positive behaviours ----
+    "respect":         ("احترام", "Respect"),
+    "commitment":      ("التزام", "Commitment"),
+    "helping_others":  ("مساعدة الآخرين", "Helping Others"),
+    "good":            ("سلوك جيد", "Good Behaviour"),
+    # ---- legacy predefined negative behaviours ----
+    "disruption":      ("إزعاج", "Disruption"),
+    "non_compliance":  ("عدم التزام", "Non-compliance"),
+    "interruption":    ("مقاطعة التعليمات", "Interruption"),
+    # ---- legacy skill behaviours ----
+    "skill-leadership":        ("مهارة القيادة", "Leadership Skill"),
+    "skill-cooperation":       ("مهارة التعاون", "Cooperation Skill"),
+    "skill-initiative":        ("مهارة المبادرة", "Initiative Skill"),
+    "skill-creativity":        ("مهارة الإبداع", "Creativity Skill"),
+    "skill-communication":     ("مهارة التواصل", "Communication Skill"),
+    "skill-problem-solving":   ("مهارة حل المشكلات", "Problem-Solving Skill"),
+    "skill-critical-thinking": ("مهارة التفكير النقدي", "Critical Thinking Skill"),
+    "skill-time-management":   ("مهارة إدارة الوقت", "Time Management Skill"),
+    # ---- question answer results ----
+    "correct": ("إجابة صحيحة", "Correct"),
+    "wrong":   ("إجابة خاطئة", "Wrong"),
+    "skipped": ("تم التخطي", "Skipped"),
+    # ---- participation types ----
+    "verbal":    ("مشاركة شفهية", "Verbal Participation"),
+    "written":   ("مشاركة كتابية", "Written Participation"),
+    "مشاركة":   ("مشاركة", "Participation"),
+}
+
+_BEHAVIOUR_CATEGORY_FALLBACK: dict = {
+    "positive": ("سلوك إيجابي", "Positive Behaviour"),
+    "negative": ("سلوك سلبي",   "Negative Behaviour"),
+    "skill":    ("مهارة",       "Skill"),
+}
+
+
+def _localize_behaviour_type(
+    slug: str,
+    category: str | None = None,
+    name_ar_override: str | None = None,
+    name_en_override: str | None = None,
+) -> dict:
+    """Return ``{"name_ar": ..., "name_en": ...}`` for a behaviour_type slug.
+
+    Resolution order:
+    1. Explicit overrides (from a DB lookup of the behaviour_types table).
+    2. ``custom:*`` prefix — use the suffix as both names (teacher-typed label,
+       often already in Arabic).
+    3. ``_BEHAVIOUR_SLUG_NAMES`` lookup for legacy predefined slugs.
+    4. Category fallback (positive / negative / skill).
+    5. Last resort: raw slug.
+    """
+    if name_ar_override or name_en_override:
+        return {
+            "name_ar": name_ar_override or name_en_override or slug,
+            "name_en": name_en_override or name_ar_override or slug,
+        }
+    if slug and slug.startswith("custom:"):
+        label = slug[len("custom:"):]
+        return {"name_ar": label, "name_en": label}
+    if slug in _BEHAVIOUR_SLUG_NAMES:
+        ar, en = _BEHAVIOUR_SLUG_NAMES[slug]
+        return {"name_ar": ar, "name_en": en}
+    if category in _BEHAVIOUR_CATEGORY_FALLBACK:
+        ar, en = _BEHAVIOUR_CATEGORY_FALLBACK[category]
+        return {"name_ar": ar, "name_en": en}
+    return {"name_ar": slug or "سلوك", "name_en": slug or "Behaviour"}
+
+
 @router.get("/classes/{class_id}/student-stats")
 async def get_class_student_stats(
     class_id: str,
@@ -2150,15 +2225,27 @@ async def get_student_analytics(
     for i in interactions:
         itype = i.get("interaction_type", "")
         note = ""
+        localized: dict = {}
         if itype == "participation":
             note = i.get("participation_type", "مشاركة")
+            localized = _localize_behaviour_type(note)
         elif itype == "behaviour":
             note = i.get("behaviour_details") or i.get("behaviour_type") or "سلوك"
+            bslug = i.get("behaviour_type") or ""
+            bcat = i.get("behaviour_category") or ""
+            bdetails = i.get("behaviour_details") or ""
+            if bdetails and bslug.startswith("bhv_"):
+                localized = {"name_ar": bdetails, "name_en": bdetails}
+            else:
+                localized = _localize_behaviour_type(bslug, category=bcat)
         elif itype == "question":
             note = i.get("answer_result", "سؤال")
+            localized = _localize_behaviour_type(note)
         interaction_records.append({
             "type": itype,
             "note": note,
+            "name_ar": localized.get("name_ar", note),
+            "name_en": localized.get("name_en", note),
             "created_at": i.get("recorded_at", "")
         })
 
@@ -2178,8 +2265,18 @@ async def get_student_analytics(
             # surfaced in the dedicated skills section instead.
             continue
         total_behavior += signed
+        bslug = b.get("behaviour_type") or ""
+        bcat = b.get("behaviour_category") or ""
+        bdetails = b.get("behaviour_details") or ""
+        raw_note = bdetails or bslug or "سلوك"
+        if bdetails and bslug.startswith("bhv_"):
+            bh_localized: dict = {"name_ar": bdetails, "name_en": bdetails}
+        else:
+            bh_localized = _localize_behaviour_type(bslug, category=bcat)
         session_beh_records.append({
-            "note": b.get("behaviour_details") or b.get("behaviour_type") or "سلوك",
+            "note": raw_note,
+            "name_ar": bh_localized.get("name_ar", raw_note),
+            "name_en": bh_localized.get("name_en", raw_note),
             "points": signed,
             "created_at": b.get("recorded_at", "")
         })

@@ -69,7 +69,13 @@ export function TeacherStudentsPanel(props) {
 }
 
 export default function TeacherStudentsPage({ embedded = false } = {}) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
+
+  const localizeBeh = (record) => {
+    if (!record) return '';
+    if (language === 'ar') return record.name_ar || record.note || '';
+    return record.name_en || record.note || '';
+  };
   const { user, api, isRTL } = useAuth();
   const canViewInternalIds = useCanViewInternalIds();
   const isIndependentTeacher = user?.role === 'independent_teacher';
@@ -1777,7 +1783,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                           {studentDetails.participation.recent.slice(0, 5).map((inter, idx) => (
                             <div key={idx} className="flex items-center justify-between p-2 rounded bg-muted/30">
                               <div>
-                                <p className="text-sm font-medium">{inter.note || inter.type}</p>
+                                <p className="text-sm font-medium">{localizeBeh(inter) || inter.type}</p>
                                 <p className="text-xs text-muted-foreground">{inter.created_at ? new Date(inter.created_at).toLocaleDateString('ar-SA') : ''}</p>
                               </div>
                               {inter.points != null && (
@@ -1811,7 +1817,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                               } border`}
                             >
                               <div className="flex items-center justify-between">
-                                <span className="font-medium text-sm">{record.note || (t('note'))}</span>
+                                <span className="font-medium text-sm">{localizeBeh(record) || t('note')}</span>
                                 <Badge variant={(record.points || 0) > 0 ? 'default' : 'destructive'}>
                                   {(record.points || 0) > 0 ? '+' : ''}{record.points || 0}
                                 </Badge>
