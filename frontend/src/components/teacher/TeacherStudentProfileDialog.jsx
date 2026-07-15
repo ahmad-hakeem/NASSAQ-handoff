@@ -28,6 +28,15 @@ const gradeColor = (grade) => {
   return 'text-red-600';
 };
 
+// Normalize a single grade record to a 0-100 percentage so the color
+// scale never misreads e.g. a 5/5 score as 5%.
+const recordPercentage = (grade) => {
+  const pct = grade?.percentage != null ? Number(grade.percentage) : NaN;
+  if (Number.isFinite(pct)) return pct;
+  const max = Number(grade?.max_score) || 100;
+  return ((Number(grade?.score) || 0) / (max || 100)) * 100;
+};
+
 const fmtDate = (value) => {
   if (!value) return '';
   try {
@@ -149,7 +158,7 @@ export default function TeacherStudentProfileDialog({ student, open, onClose, cl
                 <Card>
                   <CardContent className="p-4 text-center">
                     <FileText className="h-7 w-7 mx-auto mb-1 text-blue-600" aria-hidden="true" />
-                    <div className={`text-2xl font-bold ${gradeColor(gradeAverage)}`}>{gradeAverage}</div>
+                    <div className={`text-2xl font-bold ${gradeColor(gradeAverage)}`}>{gradeAverage}%</div>
                     <div className="text-xs text-muted-foreground">{t('avgGrade') || 'متوسط الدرجات'}</div>
                   </CardContent>
                 </Card>
@@ -260,7 +269,7 @@ export default function TeacherStudentProfileDialog({ student, open, onClose, cl
                 <Card>
                   <CardContent className="p-4 flex items-center justify-between">
                     <span className="text-sm font-medium">{t('overallAverage') || 'المعدل العام'}</span>
-                    <div className={`text-2xl font-bold ${gradeColor(gradeAverage)}`}>{gradeAverage}</div>
+                    <div className={`text-2xl font-bold ${gradeColor(gradeAverage)}`}>{gradeAverage}%</div>
                   </CardContent>
                 </Card>
               )}
@@ -278,7 +287,7 @@ export default function TeacherStudentProfileDialog({ student, open, onClose, cl
                             <p className="font-medium text-sm">{grade.assessment_name || grade.subject_name}</p>
                             <p className="text-xs text-muted-foreground">{grade.type || (t('assessment') || 'تقييم')}</p>
                           </div>
-                          <Badge className={gradeColor(grade.score || 0)}>
+                          <Badge className={gradeColor(recordPercentage(grade))}>
                             {grade.score || 0} / {grade.max_score || 100}
                           </Badge>
                         </div>

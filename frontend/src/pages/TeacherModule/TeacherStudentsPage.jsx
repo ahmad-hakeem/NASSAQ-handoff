@@ -732,6 +732,15 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
     return 'text-red-600';
   };
 
+  // Normalize a single grade record to a 0-100 percentage so the color
+  // scale never misreads e.g. a 5/5 score as 5%.
+  const recordPercentage = (grade) => {
+    const pct = grade?.percentage != null ? Number(grade.percentage) : NaN;
+    if (Number.isFinite(pct)) return pct;
+    const max = Number(grade?.max_score) || 100;
+    return ((Number(grade?.score) || 0) / (max || 100)) * 100;
+  };
+
   // 2026-05-19 — `embedded` mode skips the Sidebar shell, the floating
   // HakimAssistant, and the gradient page-background so the panel can be
   // rendered as a sub-tab inside another page (TeacherClassesPage) without
@@ -841,7 +850,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
             </div>
             <div className="text-center p-3 rounded-lg bg-white dark:bg-gray-800">
               <div className="text-2xl font-bold text-blue-600">
-                {Math.round(filteredStudents.reduce((s, st) => s + (st.average_grade || 0), 0) / filteredStudents.length) || 0}
+                {Math.round(filteredStudents.reduce((s, st) => s + (st.average_grade || 0), 0) / filteredStudents.length) || 0}%
               </div>
               <div className="text-xs text-muted-foreground">{t('avgGrade')}</div>
             </div>
@@ -991,7 +1000,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                       <div className="p-2 rounded bg-blue-50 dark:bg-blue-900/20">
                         <FileText className="h-4 w-4 mx-auto mb-1 text-blue-600" />
                         <div className={`text-sm font-bold ${getGradeColor(student.average_grade || 0)}`}>
-                          {student.average_grade || 0}
+                          {student.average_grade || 0}%
                         </div>
                         <div className="text-[10px] text-muted-foreground">{t('grade4')}</div>
                       </div>
@@ -1566,7 +1575,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                     <Card>
                       <CardContent className="p-4 text-center">
                         <FileText className="h-7 w-7 mx-auto mb-1 text-blue-600" />
-                        <div className="text-2xl font-bold">{studentDetails?.grades?.average ?? selectedStudent?.average_grade ?? 0}</div>
+                        <div className="text-2xl font-bold">{studentDetails?.grades?.average ?? selectedStudent?.average_grade ?? 0}%</div>
                         <div className="text-xs text-muted-foreground">{t('avgGrade')}</div>
                       </CardContent>
                     </Card>
@@ -1718,7 +1727,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                       <CardContent className="p-4 flex items-center justify-between">
                         <span className="text-sm font-medium">{t('overallAverage')}</span>
                         <div className={`text-2xl font-bold ${getGradeColor(studentDetails.grades.average)}`}>
-                          {studentDetails.grades.average}
+                          {studentDetails.grades.average}%
                         </div>
                       </CardContent>
                     </Card>
@@ -1737,7 +1746,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                                 <p className="font-medium text-sm">{grade.assessment_name || grade.subject_name}</p>
                                 <p className="text-xs text-muted-foreground">{grade.type || (t('assessment'))}</p>
                               </div>
-                              <Badge className={getGradeColor(grade.score || 0)}>
+                              <Badge className={getGradeColor(recordPercentage(grade))}>
                                 {grade.score || 0} / {grade.max_score || 100}
                               </Badge>
                             </div>

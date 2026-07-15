@@ -1859,6 +1859,92 @@ async def create_behavior_record(
     return {"message": "تم تسجيل الملاحظة السلوكية", "record": record}
 
 
+# ----- Student-profile overview metrics (سجل الطلاب → نظرة عامة) ------------
+# Shared helpers so /classes/{id}/student-stats and /students/{id}/analytics
+# can never disagree on how the four overview numbers (attendance %,
+# avg grade %, behavior points, participations) are derived. Semantics
+# mirror the canonical scoring model in engines/session_engine.py
+# (compute_session_scores):
+#   * reversed (undone) interactions never count;
+#   * a "participation" is any active engagement event — an answered
+#     question (correct OR wrong), an active/initiative participation,
+#     an evaluation, or a recitation. no_answer / inactive / refused and
+#     behaviour/skill events are NOT participations;
+#   * behavior points are signed: positive => +points (default +2),
+#     negative => -points (default -2); skill events are performance,
+#     not behavior;
+#   * the grade average is normalised to a 0-100 percentage using the
+#     stored ``percentage`` else score/max_score (legacy docs without a
+#     max_score are treated as out-of-100).
+
+def _interaction_is_reversed(it: dict) -> bool:
+    data = it.get("data")
+    if isinstance(data, dict) and data.get("reversed"):
+        return True
+    return bool(it.get("reversed"))
+
+
+def _interaction_is_participatory(it: dict) -> bool:
+    itype = it.get("interaction_type") or it.get("type")
+    if itype == "question":
+        return it.get("answer_result") in ("correct", "wrong")
+    if itype == "participation":
+        return it.get("participation_type") not in ("inactive", "refused")
+    return itype in ("evaluation", "recitation")
+
+
+def _behaviour_signed_points(it: dict) -> Optional[int]:
+    """Signed behavior points for a behaviour interaction, or ``None`` when
+    the event carries no behavior points (skills, unknown categories)."""
+    itype = it.get("interaction_type") or it.get("type")
+    if itype != "behaviour":
+        return None
+    cat = it.get("behaviour_category")
+    if cat not in ("positive", "negative"):
+        return None
+    try:
+        pts = abs(int(float(it.get("points"))))
+    except (TypeError, ValueError):
+        pts = 2
+    if pts == 0:
+        pts = 2
+    return pts if cat == "positive" else -pts
+
+
+def _grade_percentage(g: dict) -> Optional[float]:
+    """Normalise one grade doc to a 0-100 percentage (None = not gradable)."""
+    try:
+        pct = float(g.get("percentage"))
+    except (TypeError, ValueError):
+        pct = None
+    if pct is None:
+        try:
+            score = float(g.get("score"))
+        except (TypeError, ValueError):
+            return None
+        try:
+            max_score = float(g.get("max_score"))
+        except (TypeError, ValueError):
+            max_score = 0.0
+        if max_score <= 0:
+            max_score = 100.0
+        pct = score / max_score * 100.0
+    return max(0.0, min(pct, 100.0))
+
+
+def _doc_points_number(r: dict) -> float:
+    try:
+        return float(r.get("points") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _as_clean_number(value: float):
+    """Return an int when the value is integral, else a 1-decimal float."""
+    rounded = round(value, 1)
+    return int(rounded) if rounded == int(rounded) else rounded
+
+
 @router.get("/classes/{class_id}/student-stats")
 async def get_class_student_stats(
     class_id: str,
@@ -1883,86 +1969,87 @@ async def get_class_student_stats(
     if not student_ids:
         return {}
 
-    att_totals = {}
-    att_present = {}
+    _CAP = 50000
+    attendance_rows = await gd_find(db.session, "attendance", {"student_id": {"$in": student_ids}}, limit=_CAP)
+    session_att_rows = await gd_find(db.session, "session_attendance", {"student_id": {"$in": student_ids}, "is_draft": {"$ne": True}}, limit=_CAP)
+    grade_rows = await gd_find(db.session, "grades", {"student_id": {"$in": student_ids}}, limit=_CAP)
+    behavior_docs = await gd_find(db.session, "behavior", {"student_id": {"$in": student_ids}}, limit=_CAP)
+    interaction_rows = await gd_find(db.session, "session_interactions", {"student_id": {"$in": student_ids}}, limit=_CAP)
 
-    attendance_pipeline = [
-        {"$match": {"student_id": {"$in": student_ids}}},
-        {"$group": {
-            "_id": "$student_id",
-            "total": {"$sum": 1},
-            "present": {"$sum": {"$cond": [{"$eq": ["$status", "present"]}, 1, 0]}},
-        }}
-    ]
-    __doc_list = await _gd_aggregate(db.session, "attendance", attendance_pipeline)
-    for doc in __doc_list:
-        sid = doc["_id"]
-        att_totals[sid] = doc["total"]
-        att_present[sid] = doc["present"]
+    per = {sid: {
+        "att_total": 0, "att_present": 0, "linked_sessions": set(),
+        "grade_pcts": [], "behavior": 0.0,
+        "part_events": 0, "part_sessions": set(), "attended_sessions": set(),
+    } for sid in student_ids}
 
-    session_att_pipeline = [
-        {"$match": {"student_id": {"$in": student_ids}, "is_draft": {"$ne": True}}},
-        {"$group": {
-            "_id": "$student_id",
-            "total": {"$sum": 1},
-            "present": {"$sum": {"$cond": [{"$eq": ["$status", "present"]}, 1, 0]}},
-        }}
-    ]
-    __doc_list = await _gd_aggregate(db.session, "session_attendance", session_att_pipeline)
-    for doc in __doc_list:
-        sid = doc["_id"]
-        att_totals[sid] = att_totals.get(sid, 0) + doc["total"]
-        att_present[sid] = att_present.get(sid, 0) + doc["present"]
+    for r in attendance_rows:
+        st = per.get(r.get("student_id"))
+        if st is None:
+            continue
+        sess = r.get("session_id")
+        if sess:
+            st["linked_sessions"].add(sess)
+        st["att_total"] += 1
+        if r.get("status") == "present":
+            st["att_present"] += 1
+            if sess:
+                st["attended_sessions"].add(sess)
 
-    attendance_results = {}
-    for sid in student_ids:
-        total = att_totals.get(sid, 0)
-        present = att_present.get(sid, 0)
-        attendance_results[sid] = round((present / total * 100) if total > 0 else 0, 1)
+    for r in session_att_rows:
+        st = per.get(r.get("student_id"))
+        if st is None:
+            continue
+        sess = r.get("session_id")
+        if sess and sess in st["linked_sessions"]:
+            # Same session already counted via its attendance-table row —
+            # counting both double-counted the session.
+            continue
+        st["att_total"] += 1
+        if r.get("status") == "present":
+            st["att_present"] += 1
+            if sess:
+                st["attended_sessions"].add(sess)
 
-    grades_pipeline = [
-        {"$match": {"student_id": {"$in": student_ids}}},
-        {"$group": {
-            "_id": "$student_id",
-            "avg_score": {"$avg": "$score"},
-            "count": {"$sum": 1}
-        }}
-    ]
-    grades_results = {}
-    __doc_list = await _gd_aggregate(db.session, "grades", grades_pipeline)
-    for doc in __doc_list:
-        grades_results[doc["_id"]] = round(doc["avg_score"] or 0, 1)
+    for g in grade_rows:
+        st = per.get(g.get("student_id"))
+        if st is None:
+            continue
+        pct = _grade_percentage(g)
+        if pct is not None:
+            st["grade_pcts"].append(pct)
 
-    behavior_pipeline = [
-        {"$match": {"student_id": {"$in": student_ids}}},
-        {"$group": {
-            "_id": "$student_id",
-            "total_points": {"$sum": "$points"},
-        }}
-    ]
-    behavior_results = {}
-    __doc_list = await _gd_aggregate(db.session, "behavior", behavior_pipeline)
-    for doc in __doc_list:
-        behavior_results[doc["_id"]] = doc.get("total_points", 0)
+    for b in behavior_docs:
+        st = per.get(b.get("student_id"))
+        if st is None:
+            continue
+        st["behavior"] += _doc_points_number(b)
 
-    session_behavior_pipeline = [
-        {"$match": {"student_id": {"$in": student_ids}, "interaction_type": "behaviour"}},
-        {"$group": {
-            "_id": "$student_id",
-            "count": {"$sum": 1},
-        }}
-    ]
-    __doc_list = await _gd_aggregate(db.session, "session_interactions", session_behavior_pipeline)
-    for doc in __doc_list:
-        sid = doc["_id"]
-        behavior_results[sid] = behavior_results.get(sid, 0) + doc.get("count", 0)
+    for it in interaction_rows:
+        st = per.get(it.get("student_id"))
+        if st is None or _interaction_is_reversed(it):
+            continue
+        if _interaction_is_participatory(it):
+            st["part_events"] += 1
+            if it.get("session_id"):
+                st["part_sessions"].add(it["session_id"])
+        signed = _behaviour_signed_points(it)
+        if signed is not None:
+            st["behavior"] += signed
 
     result = {}
     for sid in student_ids:
+        st = per[sid]
+        total, present = st["att_total"], st["att_present"]
+        attended = len(st["attended_sessions"])
+        part_sessions = len(st["part_sessions"])
+        rate_base = max(attended, part_sessions)
         result[sid] = {
-            "attendance_rate": attendance_results.get(sid, 0),
-            "average_grade": grades_results.get(sid, 0),
-            "behavior_points": behavior_results.get(sid, 0)
+            "attendance_rate": round((present / total * 100) if total > 0 else 0, 1),
+            "average_grade": round(sum(st["grade_pcts"]) / len(st["grade_pcts"]), 1) if st["grade_pcts"] else 0,
+            "behavior_points": _as_clean_number(st["behavior"]),
+            "participation_count": st["part_events"],
+            "participation_rate": round((part_sessions / rate_base * 100) if rate_base > 0 else 0, 1),
+            "total_sessions_attended": attended,
         }
 
     return result
@@ -1995,12 +2082,19 @@ async def get_student_analytics(
                 if not session_check:
                     raise HTTPException(status_code=403, detail="ليس لديك صلاحية لعرض بيانات هذا الطالب")
 
-    attendance_records = await gd_find(db.session, "attendance", {"student_id": student_id}, order_by="date", desc_order=True, limit=100)
+    attendance_records = await gd_find(db.session, "attendance", {"student_id": student_id}, order_by="date", desc_order=True, limit=1000)
 
-    session_att_raw = await gd_find(db.session, "session_attendance", {"student_id": student_id, "is_draft": {"$ne": True}}, order_by="recorded_at", desc_order=True, limit=100)
+    session_att_raw = await gd_find(db.session, "session_attendance", {"student_id": student_id, "is_draft": {"$ne": True}}, order_by="recorded_at", desc_order=True, limit=1000)
+
+    linked_session_ids = {r.get("session_id") for r in attendance_records if r.get("session_id")}
 
     session_att = []
     for r in session_att_raw:
+        sess = r.get("session_id")
+        if sess and sess in linked_session_ids:
+            # Same session already counted via its attendance-table row —
+            # counting both double-counted the session.
+            continue
         date_val = r.get("recorded_at", "")
         if isinstance(date_val, str) and len(date_val) >= 10:
             date_val = date_val[:10]
@@ -2029,13 +2123,28 @@ async def get_student_analytics(
         for k, v in sorted(monthly_attendance.items())
     ]
 
-    grades = await gd_find(db.session, "grades", {"student_id": student_id}, order_by="created_at", desc_order=True, limit=50)
-    avg_grade = round(sum(g.get("score", 0) for g in grades) / len(grades), 1) if grades else 0
+    student_class_id = student.get("class_id")
 
-    interactions = await gd_find(db.session, "session_interactions", {"student_id": student_id}, order_by="recorded_at", desc_order=True, limit=50)
+    grades = await gd_find(db.session, "grades", {"student_id": student_id}, order_by="created_at", desc_order=True, limit=500)
+    if student_class_id:
+        # Scope to the currently-open class; legacy docs without a class_id
+        # are kept (fail-open) so old data never silently disappears.
+        grades = [g for g in grades if not g.get("class_id") or g.get("class_id") == student_class_id]
+    grade_pcts = [p for p in (_grade_percentage(g) for g in grades) if p is not None]
+    avg_grade = round(sum(grade_pcts) / len(grade_pcts), 1) if grade_pcts else 0
 
-    participation_count = sum(1 for i in interactions if i.get("interaction_type") == "participation")
-    behavior_interactions = [i for i in interactions if i.get("interaction_type") == "behaviour"]
+    interactions = await gd_find(db.session, "session_interactions", {"student_id": student_id}, order_by="recorded_at", desc_order=True, limit=2000)
+    interactions = [i for i in interactions if not _interaction_is_reversed(i)]
+    if student_class_id:
+        class_sessions = await gd_find(db.session, "class_sessions", {"class_id": student_class_id}, limit=10000)
+        class_session_ids = {cs.get("id") for cs in class_sessions if cs.get("id")}
+        if class_session_ids:
+            # Scope to the current class; fail-open when the class has no
+            # sessions yet so an anomaly never blanks the whole history.
+            interactions = [i for i in interactions if not i.get("session_id") or i.get("session_id") in class_session_ids]
+
+    participation_count = sum(1 for i in interactions if _interaction_is_participatory(i))
+    behavior_interactions = [i for i in interactions if (i.get("interaction_type") or i.get("type")) == "behaviour"]
 
     interaction_records = []
     for i in interactions:
@@ -2055,17 +2164,26 @@ async def get_student_analytics(
 
     skills = await gd_find(db.session, "student_skills", {"student_id": student_id}, order_by="recorded_at", desc_order=True, limit=50)
 
-    behavior_records = await gd_find(db.session, "behavior", {"student_id": student_id}, order_by="date", desc_order=True, limit=20)
+    behavior_records = await gd_find(db.session, "behavior", {"student_id": student_id}, order_by="date", desc_order=True, limit=200)
+    if student_class_id:
+        behavior_records = [b for b in behavior_records if not b.get("class_id") or b.get("class_id") == student_class_id]
 
-    total_behavior = sum(r.get("points", 0) for r in behavior_records) + len(behavior_interactions)
+    total_behavior = sum(_doc_points_number(r) for r in behavior_records)
 
     session_beh_records = []
     for b in behavior_interactions:
+        signed = _behaviour_signed_points(b)
+        if signed is None:
+            # Skill events are performance, not behavior points — they are
+            # surfaced in the dedicated skills section instead.
+            continue
+        total_behavior += signed
         session_beh_records.append({
             "note": b.get("behaviour_details") or b.get("behaviour_type") or "سلوك",
-            "points": 1 if b.get("behaviour_category") == "positive" else -1,
+            "points": signed,
             "created_at": b.get("recorded_at", "")
         })
+    total_behavior = _as_clean_number(total_behavior)
 
     return {
         "attendance": {
