@@ -1569,11 +1569,20 @@ async def get_class_subjects(
     private per teacher): the record spec requires switching between ALL
     subjects attached to the class, and grade read access is already
     class-level via ``_verify_class_access``. The list is the union of:
-      * ``teacher_assignments`` for the class (any teacher),
-      * ``schedule_sessions`` for the class (any teacher),
+      * ``schedule_sessions`` for the class (any teacher) — the class
+        timetable is the authoritative "subjects taught in THIS class",
       * subjects that actually have ``student_grades`` docs for the class —
-        so stored grades can never become unreachable if an assignment is
-        later removed.
+        so stored grades can never become unreachable if a timetable is
+        later regenerated without that subject,
+      * the class row's own ``subject_id`` when present.
+
+    ``teacher_assignments`` is deliberately NOT part of the primary union:
+    assignment rows can over-assign (e.g. a whole school catalogue linked
+    to every class by bulk assignment/seeding), which flooded this
+    dropdown with subjects never taught in the class — like chemistry on
+    a grade-6 class. It is used only as a FALLBACK when the primary union
+    is empty (class not yet scheduled and nothing graded), so the record
+    tab never goes blank for a brand-new class.
 
     Each subject carries ``has_grades`` so the client can surface where
     data exists. ``default_subject_id`` prefers the caller's own first
@@ -1591,10 +1600,6 @@ async def get_class_subjects(
     class_school = str(cls.get("school_id") or cls.get("tenant_id") or "")
 
     pairs: Dict[str, str] = {}
-    for ta in await gd_find(db.session, "teacher_assignments", {"class_id": class_id}, limit=500):
-        sid = ta.get("subject_id")
-        if sid:
-            pairs.setdefault(sid, ta.get("subject_name") or "")
     for ss in await gd_find(db.session, "schedule_sessions", {"class_id": class_id}, limit=1000):
         sid = ss.get("subject_id")
         if sid:
@@ -1620,6 +1625,20 @@ async def get_class_subjects(
     graded_ids = {row.subject_id for row in graded_rows.all() if row.subject_id}
     for gsid in graded_ids:
         pairs.setdefault(gsid, "")
+
+    if not pairs:
+        # Fallback only: nothing scheduled and nothing graded yet. Active
+        # assignments keep the tab usable for a brand-new class (and for
+        # IT classes whose subject link exists only as an assignment row).
+        for ta in await gd_find(
+            db.session,
+            "teacher_assignments",
+            {"class_id": class_id, "is_active": {"$ne": False}},
+            limit=500,
+        ):
+            sid = ta.get("subject_id")
+            if sid:
+                pairs.setdefault(sid, ta.get("subject_name") or "")
 
     subjects: List[Dict[str, Any]] = []
     for sub_id, name in pairs.items():

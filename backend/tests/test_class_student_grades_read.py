@@ -307,3 +307,133 @@ async def test_class_subjects_cross_workspace_404(client):
         headers=it_headers(stranger["uid"], stranger["user"]["role"], stranger["wsid"]),
     )
     assert r.status_code == 404
+
+
+async def _seed_schedule_session(
+    *, school_id: str, class_id: str, subject_id: str, subject_name: str = ""
+) -> None:
+    await gd_insert(db.session, "schedule_sessions", {
+        "id": str(uuid.uuid4()),
+        "school_id": school_id,
+        "schedule_id": str(uuid.uuid4()),
+        "class_id": class_id,
+        "subject_id": subject_id,
+        "subject_name": subject_name,
+        "day_of_week": "sunday",
+    })
+
+
+@pytest.mark.asyncio
+async def test_class_subjects_scoped_to_timetable_not_assignments(client, tenant_a):
+    """Regression (سجل الطلاب dropdown flood): when the class HAS a
+    timetable, subjects that exist only as teacher_assignments rows
+    (over-assignment — e.g. the whole school catalogue bulk-linked to
+    every class) must NOT appear. Only scheduled + graded subjects do."""
+    class_id = await _seed_class(tenant_a)
+    # Caller's assignment subject is ALSO scheduled → stays visible.
+    teacher = await _seed_teacher_with_class(tenant_a, class_id)
+    from engines.sql_utils import gd_find as _gd_find
+    tas = await _gd_find(db.session, "teacher_assignments",
+                         {"class_id": class_id, "teacher_id": teacher["teacher_id"]})
+    scheduled = tas[0]["subject_id"]
+    await _seed_schedule_session(
+        school_id=tenant_a, class_id=class_id,
+        subject_id=scheduled, subject_name="مادة",
+    )
+    # Colleague's assignment subject is NEVER scheduled in this class
+    # (the chemistry-on-grade-6 case) → must be excluded.
+    other = await _seed_teacher_with_class(tenant_a, class_id)
+    other_tas = await _gd_find(db.session, "teacher_assignments",
+                               {"class_id": class_id, "teacher_id": other["teacher_id"]})
+    unscheduled = other_tas[0]["subject_id"]
+    assert unscheduled != scheduled
+
+    r = await client.get(f"/class/{class_id}/subjects", headers=_headers(teacher))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    ids = {s["id"] for s in body["subjects"]}
+    assert ids == {scheduled}, "assignment-only subject leaked into the class dropdown"
+    assert body["default_subject_id"] == scheduled
+
+
+@pytest.mark.asyncio
+async def test_class_subjects_switching_classes_stays_scoped(client, tenant_a):
+    """Two classes of the same teacher must resolve DIFFERENT subject sets
+    (the dropdown must follow the selected class, not the teacher)."""
+    class_a = await _seed_class(tenant_a)
+    class_b = await _seed_class(tenant_a)
+    teacher = await _seed_teacher_with_class(tenant_a, class_a)
+    # Link the same teacher to class_b too (second assignment row).
+    subj_b = await _seed_subject(tenant_a, "مادة ب")
+    await gd_insert(db.session, "teacher_assignments", {
+        "id": str(uuid.uuid4()),
+        "school_id": tenant_a,
+        "teacher_id": teacher["teacher_id"],
+        "class_id": class_b,
+        "subject_id": subj_b,
+    })
+    from engines.sql_utils import gd_find as _gd_find
+    tas = await _gd_find(db.session, "teacher_assignments",
+                         {"class_id": class_a, "teacher_id": teacher["teacher_id"]})
+    subj_a = tas[0]["subject_id"]
+    await _seed_schedule_session(school_id=tenant_a, class_id=class_a, subject_id=subj_a)
+    await _seed_schedule_session(school_id=tenant_a, class_id=class_b, subject_id=subj_b)
+
+    ra = await client.get(f"/class/{class_a}/subjects", headers=_headers(teacher))
+    rb = await client.get(f"/class/{class_b}/subjects", headers=_headers(teacher))
+    assert ra.status_code == 200 and rb.status_code == 200
+    assert {s["id"] for s in ra.json()["subjects"]} == {subj_a}
+    assert {s["id"] for s in rb.json()["subjects"]} == {subj_b}
+
+
+@pytest.mark.asyncio
+async def test_class_subjects_it_scoped_to_class_sessions(client):
+    """IT: a workspace with several subjects must only surface the ones
+    actually scheduled/graded in THIS class — not the whole workspace
+    subject list."""
+    ctx = await mk_it_workspace()
+    in_class = await _seed_subject(ctx["wsid"], "مادة الفصل")
+    elsewhere = await _seed_subject(ctx["wsid"], "مادة أخرى")
+    await _seed_schedule_session(
+        school_id=ctx["wsid"], class_id=ctx["class_id"],
+        subject_id=in_class, subject_name="مادة الفصل",
+    )
+    # The other subject exists in the workspace and even has an
+    # assignment row on this class — still excluded (unscheduled).
+    await gd_insert(db.session, "teacher_assignments", {
+        "id": str(uuid.uuid4()),
+        "school_id": ctx["wsid"],
+        "teacher_id": ctx["teacher_id"],
+        "class_id": ctx["class_id"],
+        "subject_id": elsewhere,
+    })
+    r = await client.get(
+        f"/class/{ctx['class_id']}/subjects",
+        headers=it_headers(ctx["uid"], ctx["user"]["role"], ctx["wsid"]),
+    )
+    assert r.status_code == 200, r.text
+    assert {s["id"] for s in r.json()["subjects"]} == {in_class}
+
+
+@pytest.mark.asyncio
+async def test_class_subjects_fallback_ignores_inactive_assignments(client, tenant_a):
+    """No timetable + no grades → assignment fallback fires, but soft-
+    deleted (is_active=False) assignment rows stay hidden."""
+    class_id = await _seed_class(tenant_a)
+    teacher = await _seed_teacher_with_class(tenant_a, class_id)
+    from engines.sql_utils import gd_find as _gd_find
+    tas = await _gd_find(db.session, "teacher_assignments",
+                         {"class_id": class_id, "teacher_id": teacher["teacher_id"]})
+    active_subj = tas[0]["subject_id"]
+    stale_subj = await _seed_subject(tenant_a, "مادة ملغاة")
+    await gd_insert(db.session, "teacher_assignments", {
+        "id": str(uuid.uuid4()),
+        "school_id": tenant_a,
+        "teacher_id": teacher["teacher_id"],
+        "class_id": class_id,
+        "subject_id": stale_subj,
+        "is_active": False,
+    })
+    r = await client.get(f"/class/{class_id}/subjects", headers=_headers(teacher))
+    assert r.status_code == 200, r.text
+    assert {s["id"] for s in r.json()["subjects"]} == {active_subj}
