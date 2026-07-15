@@ -690,159 +690,84 @@ const ClassCard = ({ classItem, isRTL, onEdit, onDelete, onView, onReactivate, v
   );
 };
 
-const PermanentHakimWidget = ({ insights, isRTL, onAction, stats }) => {
+// Inline Hakim insights card (same in-content pattern as the main dashboard's
+// Hakim card). The floating corner is reserved for the ONE global Hakim
+// chatbot launcher mounted from App.js — never render a second floating
+// Hakim persona on a page.
+const HakimInsightsCard = ({ insights, onAction }) => {
   const { t } = useTranslation();
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [currentBubble, setCurrentBubble] = useState(0);
-  const hasInsights = insights && insights.length > 0 && insights.some(i => i.severity !== 'success');
-
-  const bubbleMessages = useMemo(() => {
-    const msgs = [];
-    if (hasInsights) {
-      const highCount = insights.filter(i => i.severity === 'high').length;
-      if (highCount > 0) msgs.push(t('criticalAlertsMsg', { count: highCount }));
-      insights.forEach(i => {
-        if (i.severity === 'high' || i.severity === 'medium') msgs.push(i.message);
-      });
-    }
-    if (!hasInsights || msgs.length === 0) {
-      msgs.push(t('everythingLooksGreatWellDone'));
-    }
-    if (stats) {
-      msgs.push(t('studentsTeachersStatusMsg', { students: stats.totalStudents, teachers: stats.totalTeachers }));
-    }
-    return msgs;
-  }, [insights, hasInsights, isRTL, stats]);
-
-  useEffect(() => {
-    if (bubbleMessages.length <= 1) return;
-    const interval = setInterval(() => {
-      setCurrentBubble(prev => (prev + 1) % bubbleMessages.length);
-    }, 6000);
-    return () => clearInterval(interval);
-  }, [bubbleMessages.length]);
+  const actionable = (insights || []).filter(i => i.severity !== 'success');
+  const hasIssues = actionable.length > 0;
+  const rows = hasIssues ? actionable : (insights || []);
+  if (rows.length === 0) return null;
 
   const severityIcon = (sev) => {
-    if (sev === 'high') return <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-red-500" />;
-    if (sev === 'medium') return <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />;
-    return <Sparkles className="h-3.5 w-3.5 mt-0.5 shrink-0 text-violet-400" />;
+    if (sev === 'high') return <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-red-500" aria-hidden="true" />;
+    if (sev === 'medium') return <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" aria-hidden="true" />;
+    return <Sparkles className="h-4 w-4 mt-0.5 shrink-0 text-violet-400" aria-hidden="true" />;
   };
 
-  // bottom-28 so the insights widget stacks ABOVE the global Hakim
-  // launcher (56px at bottom-6) instead of colliding in the same corner.
   return (
-    <div className="fixed bottom-28 end-6 z-40 flex flex-col items-end gap-3" style={{ maxWidth: '400px' }}>
-      {panelOpen && hasInsights && (
-        <div className="w-[360px] max-h-[350px] overflow-y-auto bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-violet-200 dark:border-violet-800 animate-in slide-in-from-bottom-4 fade-in duration-300">
-          <div className="sticky top-0 bg-gradient-to-r from-violet-600 to-purple-600 text-white px-4 py-3 rounded-t-2xl flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center overflow-hidden">
-                <img src="/hakim-poses/analyzing-data.png" alt="" className="hakim-img w-10 h-10 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
-              </div>
-              <div>
-                <h4 className="font-bold text-sm">{t('hakimAnalysis')}</h4>
-                <p className="text-[10px] text-white/70">{t('insightsNeedReview', { count: insights.length })}</p>
-              </div>
+    <Card className="border-0 shadow-lg bg-gradient-to-r from-violet-50 to-cyan-50 dark:from-violet-950/30 dark:to-cyan-950/30 overflow-hidden" data-testid="hakim-insights-card">
+      <CardContent className="p-5">
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 flex flex-col items-center gap-1.5">
+            <div className="w-20 h-20 rounded-2xl overflow-hidden shadow-lg border-2 border-violet-200 dark:border-violet-700 bg-gradient-to-br from-violet-50 to-cyan-50 dark:from-violet-900/30 dark:to-cyan-900/30 p-1">
+              <img src="/hakim-poses/analyzing-data.png" alt="" aria-hidden="true"
+                className="hakim-img w-full h-full object-contain drop-shadow-md"
+                style={{ animation: 'hakimInsightsFloat 4s ease-in-out infinite' }}
+                onError={(e) => { e.target.style.display = 'none'; }} />
             </div>
-            <Button variant="ghost" size="icon" className="h-6 w-6 text-white/70 hover:text-white hover:bg-white/10" onClick={() => setPanelOpen(false)}>
-              <X className="h-4 w-4" />
-            </Button>
+            <span className="text-[10px] font-cairo font-bold text-brand-purple/60">{t('hakimAi')}</span>
           </div>
-          <div className="p-3 space-y-2">
-            {insights.map((insight, i) => (
-              <div key={i} className={`flex items-start justify-between gap-2 p-3 rounded-xl border transition-all hover:shadow-sm ${
-                insight.severity === 'high' ? 'bg-red-50/80 dark:bg-red-950/20 border-red-200 dark:border-red-800' :
-                insight.severity === 'medium' ? 'bg-amber-50/80 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800' :
-                'bg-violet-50/80 dark:bg-violet-950/20 border-violet-100 dark:border-violet-800'
-              }`}>
-                <div className="flex items-start gap-2 flex-1 min-w-0">
-                  {severityIcon(insight.severity)}
-                  <div className="flex-1 min-w-0">
-                    <span className="text-xs font-medium block">{insight.message}</span>
-                    {insight.suggestion && (
-                      <span className="text-[10px] text-muted-foreground mt-0.5 block">{insight.suggestion}</span>
-                    )}
+          <div className="flex-1 min-w-0 space-y-3">
+            <div>
+              <p className="text-base font-bold font-cairo text-brand-navy dark:text-brand-turquoise">{t('hakimAnalysis')}</p>
+              {hasIssues && (
+                <p className="text-xs text-muted-foreground mt-0.5">{t('insightsNeedReview', { count: actionable.length })}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              {rows.map((insight, i) => (
+                <div key={i} data-testid={`hakim-insight-${i}`}
+                  className={`flex items-start justify-between gap-2 p-3 rounded-xl border transition-all hover:shadow-sm ${
+                    insight.severity === 'high' ? 'bg-red-50/80 dark:bg-red-950/20 border-red-200 dark:border-red-800' :
+                    insight.severity === 'medium' ? 'bg-amber-50/80 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800' :
+                    insight.severity === 'success' ? 'bg-emerald-50/80 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800' :
+                    'bg-violet-50/80 dark:bg-violet-950/20 border-violet-100 dark:border-violet-800'
+                  }`}>
+                  <div className="flex items-start gap-2 flex-1 min-w-0">
+                    {insight.severity === 'success'
+                      ? <Sparkles className="h-4 w-4 mt-0.5 shrink-0 text-emerald-500" aria-hidden="true" />
+                      : severityIcon(insight.severity)}
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium block font-tajawal">{insight.message}</span>
+                      {insight.suggestion && (
+                        <span className="text-xs text-muted-foreground mt-0.5 block">{insight.suggestion}</span>
+                      )}
+                    </div>
                   </div>
+                  {insight.action && (
+                    <Button size="sm" variant="outline"
+                      className={`shrink-0 h-7 text-[10px] rounded-lg ${
+                        insight.severity === 'high' ? 'border-red-300 text-red-700 hover:bg-red-100 hover:text-red-700' :
+                        insight.severity === 'medium' ? 'border-amber-300 text-amber-700 hover:bg-amber-100 hover:text-amber-700' :
+                        'border-violet-300 text-violet-700 hover:bg-violet-100 hover:text-violet-700'
+                      }`}
+                      data-testid={`hakim-insight-action-${i}`}
+                      onClick={() => onAction(insight.action, insight.data)}>
+                      <ArrowRight className="h-3 w-3 me-1" aria-hidden="true" />
+                      {t('view2')}
+                    </Button>
+                  )}
                 </div>
-                {insight.action && (
-                  <Button size="sm" variant="outline"
-                    className={`shrink-0 h-7 text-[10px] rounded-lg ${
-                      insight.severity === 'high' ? 'border-red-300 text-red-700 hover:bg-red-100 hover:text-red-700' :
-                      insight.severity === 'medium' ? 'border-amber-300 text-amber-700 hover:bg-amber-100 hover:text-amber-700' :
-                      'border-violet-300 text-violet-700 hover:bg-violet-100 hover:text-violet-700'
-                    }`}
-                    onClick={() => { onAction(insight.action, insight.data); setPanelOpen(false); }}>
-                    <ArrowRight className="h-3 w-3 me-1" />
-                    {t('view2')}
-                  </Button>
-                )}
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
-      )}
-
-      {!panelOpen && (
-        <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 max-w-[280px]">
-          <div className="relative bg-white dark:bg-gray-800 rounded-2xl rounded-br-sm shadow-lg border border-violet-200 dark:border-violet-700 px-4 py-2.5">
-            <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed font-tajawal" key={currentBubble}>
-              <span className="animate-in fade-in duration-500">{bubbleMessages[currentBubble]}</span>
-            </p>
-            {hasInsights && (
-              <button onClick={() => setPanelOpen(true)} className="text-[10px] text-violet-600 dark:text-violet-400 font-semibold mt-1 hover:underline block">
-                {t('viewInsightsArrow', { count: insights.length })}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="relative group cursor-pointer" onClick={() => setPanelOpen(!panelOpen)}
-        title={t('hakimSmartAssistant')}>
-        <div className={`w-[72px] h-[72px] rounded-full overflow-hidden bg-white shadow-xl ring-3 ${hasInsights ? 'ring-violet-400 animate-[hakim-ring-pulse_2s_ease-in-out_infinite]' : 'ring-violet-200'} flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:shadow-2xl`}>
-          <img src="/hakim-poses/detecting-patterns.png" alt="Hakim" className="hakim-img w-20 h-20 object-contain animate-[hakim-alive_4s_ease-in-out_infinite]"
-            onError={(e) => {
-              e.target.style.display = 'none';
-              const parent = e.target.parentElement;
-              if (parent && !parent.querySelector('.hakim-fallback-emoji')) {
-                const span = document.createElement('span');
-                span.className = 'hakim-fallback-emoji text-3xl';
-                span.textContent = '🧠';
-                parent.appendChild(span);
-              }
-            }} />
-        </div>
-        {hasInsights && (
-          <span className="absolute -top-1 -end-1 w-6 h-6 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center shadow-md animate-[hakim-badge_2s_ease-in-out_infinite]">
-            {insights.length}
-          </span>
-        )}
-        <span className="absolute -bottom-0.5 -end-0.5 w-4.5 h-4.5 rounded-full bg-emerald-400 border-2 border-white animate-[hakim-online_1.5s_ease-in-out_infinite]" />
-      </div>
-
-      <style>{`
-        @keyframes hakim-alive {
-          0%, 100% { transform: translateY(0px) scale(1); }
-          15% { transform: translateY(-4px) scale(1.03); }
-          30% { transform: translateY(0px) scale(1); }
-          45% { transform: translateY(-2px) scale(1.01) rotate(2deg); }
-          60% { transform: translateY(1px) scale(1) rotate(0deg); }
-          80% { transform: translateY(-1px) scale(1.02); }
-        }
-        @keyframes hakim-ring-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); }
-          50% { box-shadow: 0 0 0 8px rgba(139, 92, 246, 0); }
-        }
-        @keyframes hakim-badge {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.15); }
-        }
-        @keyframes hakim-online {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.6; transform: scale(0.85); }
-        }
-      `}</style>
-    </div>
+        <style>{`@keyframes hakimInsightsFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }`}</style>
+      </CardContent>
+    </Card>
   );
 };
 
@@ -1779,6 +1704,8 @@ export default function UsersClassesManagement() {
             );
           })()}
 
+          <HakimInsightsCard insights={hakimInsights} onAction={handleHakimAction} />
+
           <div className="flex items-center gap-3 min-w-0">
             <div className="flex-1 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {(() => {
@@ -2087,8 +2014,6 @@ export default function UsersClassesManagement() {
             </>
           )}
         </main>
-
-        <PermanentHakimWidget insights={hakimInsights} isRTL={isRTL} onAction={handleHakimAction} stats={stats} />
 
         <AddPickerDialog open={showAddPicker} onClose={() => setShowAddPicker(false)} isRTL={isRTL} onSelect={handleAddSelect} />
 
