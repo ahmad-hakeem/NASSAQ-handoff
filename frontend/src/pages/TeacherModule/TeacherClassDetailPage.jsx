@@ -107,6 +107,16 @@ export default function TeacherClassDetailPage() {
   const [gradeColumns, setGradeColumns] = useState([]);
   const [studentGrades, setStudentGrades] = useState({});
   const [gradesLoading, setGradesLoading] = useState(false);
+  // Records tab must know the class's subject list BEFORE fetching grades,
+  // otherwise the first fetch would mix all subjects together (the exact
+  // ambiguity this scoping exists to prevent). false = context not resolved
+  // yet; true = subjects known (possibly empty → legacy unscoped fallback).
+  // NOTE: deliberately separate from curriculumSubjects — the record list is
+  // CLASS-WIDE (all subjects taught in the class, per spec) while curriculum
+  // subjects are private to the signed-in teacher.
+  const [recordSubjects, setRecordSubjects] = useState([]);
+  const [recordSubjectId, setRecordSubjectId] = useState(null);
+  const [recordSubjectsReady, setRecordSubjectsReady] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
   const [showQuickAddCol, setShowQuickAddCol] = useState(false);
   const [newColName, setNewColName] = useState('');
@@ -247,7 +257,37 @@ export default function TeacherClassDetailPage() {
   useEffect(() => {
     setSelectedSubjectId(null);
     setCurriculumSubjects([]);
+    setRecordSubjects([]);
+    setRecordSubjectId(null);
+    setRecordSubjectsReady(false);
   }, [classId]);
+
+  // Resolve the subject context for the Student Record tab: all subjects
+  // taught in the class + which of them actually have grades. The default
+  // selection is server-decided (the caller's own subject when they teach
+  // in the class, else the first subject with grades).
+  useEffect(() => {
+    if (activeTab !== 'records' || recordSubjectsReady || !classId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get(`/class/${classId}/subjects`);
+        if (cancelled) return;
+        const subs = Array.isArray(res.data?.subjects) ? res.data.subjects : [];
+        setRecordSubjects(subs);
+        if (subs.length > 0) {
+          const def = res.data?.default_subject_id || subs[0].id;
+          setRecordSubjectId((prev) => prev || def);
+        }
+      } catch (err) {
+        // Fall back to the unscoped legacy view rather than an empty tab.
+        console.error('Error loading class subjects:', err);
+      } finally {
+        if (!cancelled) setRecordSubjectsReady(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab, recordSubjectsReady, api, classId]);
 
   const fetchCurriculum = useCallback(async () => {
     if (!classId) return;
@@ -279,16 +319,23 @@ export default function TeacherClassDetailPage() {
   const fetchGradeColumns = useCallback(async () => {
     if (!classId) return;
     setGradesLoading(true);
+    // Wait for the subject context: fetching before subjects resolve would
+    // briefly show grades mixed across ALL subjects. The subjects effect
+    // flips recordSubjectsReady and this callback re-runs.
+    if (!recordSubjectsReady) return;
     try {
       // Columns + stored grades load together: the record must show the
       // accumulated per-student values committed by live sessions, not an
       // empty (all-zeros) sheet. Server values are the baseline; local
       // (unsaved) typing only overlays after load.
+      const gradesParams = recordSubjectId
+        ? { params: { subject_id: recordSubjectId } }
+        : undefined;
       const [colsRes, gradesRes] = await Promise.all([
         api.get(`/class/${classId}/grade-columns`),
         // Degrade gracefully: if the grades read fails, still show the
         // columns (empty sheet) instead of blanking the whole tab.
-        api.get(`/class/${classId}/student-grades`).catch((e) => {
+        api.get(`/class/${classId}/student-grades`, gradesParams).catch((e) => {
           console.error('Error loading student grades:', e);
           return null;
         }),
@@ -299,6 +346,8 @@ export default function TeacherClassDetailPage() {
         (gradesRes.data?.grades || []).forEach((g) => {
           stored[`${g.student_id}_${g.column_id}`] = g.score;
         });
+        // Wholesale replace so no stale scores from the previous subject
+        // linger after a switch.
         setStudentGrades(stored);
       }
     } catch (err) {
@@ -306,7 +355,7 @@ export default function TeacherClassDetailPage() {
     } finally {
       setGradesLoading(false);
     }
-  }, [api, classId]);
+  }, [api, classId, recordSubjectsReady, recordSubjectId]);
 
   useEffect(() => {
     if (activeTab === 'curriculum') fetchCurriculum();
@@ -828,8 +877,38 @@ export default function TeacherClassDetailPage() {
 
         {/* Toolbar — mirrors كشف المتابعة */}
         <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg bg-muted/40 dark:bg-card/40 border border-border">
-          <div className="text-xs text-muted-foreground font-cairo">
-            {students.length} طالب
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Subject context: switcher for multi-subject classes, a static
+                badge for single-subject ones — the teacher must always know
+                WHICH subject's record is on screen. */}
+            {recordSubjects.length > 1 ? (
+              <Select value={recordSubjectId || ''} onValueChange={(v) => setRecordSubjectId(v)}>
+                <SelectTrigger className="h-9 min-w-[180px] gap-1.5 bg-background" data-testid="records-subject-select">
+                  <BookOpen className="h-3.5 w-3.5 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+                  <SelectValue placeholder={t('selectSubject')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {recordSubjects.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      <span className="flex items-center gap-2">
+                        {s.name || s.id}
+                        {s.has_grades && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-brand-turquoise inline-block" aria-hidden="true" />
+                        )}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : recordSubjects.length === 1 ? (
+              <Badge variant="secondary" className="gap-1.5 h-7 px-2.5 font-cairo text-xs" data-testid="records-subject-badge">
+                <BookOpen className="h-3.5 w-3.5 text-brand-turquoise" strokeWidth={1.5} aria-hidden="true" />
+                {recordSubjects[0].name || recordSubjects[0].id}
+              </Badge>
+            ) : null}
+            <div className="text-xs text-muted-foreground font-cairo">
+              {students.length} طالب
+            </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <Button size="sm" variant="outline" className="gap-1.5 font-cairo" onClick={() => fileInputRef.current?.click()}>

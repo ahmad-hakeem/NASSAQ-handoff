@@ -1558,6 +1558,99 @@ async def delete_grade_column(
     return {"success": True}
 
 
+@class_teaching_router.get("/class/{class_id}/subjects")
+async def get_class_subjects(
+    class_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Subject context for the Student Record (سجل الطلاب) tab.
+
+    CLASS-WIDE by design (unlike the curriculum tab, whose plans are
+    private per teacher): the record spec requires switching between ALL
+    subjects attached to the class, and grade read access is already
+    class-level via ``_verify_class_access``. The list is the union of:
+      * ``teacher_assignments`` for the class (any teacher),
+      * ``schedule_sessions`` for the class (any teacher),
+      * subjects that actually have ``student_grades`` docs for the class —
+        so stored grades can never become unreachable if an assignment is
+        later removed.
+
+    Each subject carries ``has_grades`` so the client can surface where
+    data exists. ``default_subject_id`` prefers the caller's own first
+    subject (a teacher lands on THEIR subject), then the first subject
+    with grades, then the first subject overall.
+
+    Tenant scope for the graded-subjects probe derives from the CLASS row
+    (never the caller) — same §6.7 collaborator rationale as the
+    student-grades read below.
+    """
+    await _verify_class_access(class_id, current_user)
+    cls = await gd_find_one(db.session, "classes", {"id": class_id})
+    if not cls:
+        raise HTTPException(status_code=404, detail="Class not found")
+    class_school = str(cls.get("school_id") or cls.get("tenant_id") or "")
+
+    pairs: Dict[str, str] = {}
+    for ta in await gd_find(db.session, "teacher_assignments", {"class_id": class_id}, limit=500):
+        sid = ta.get("subject_id")
+        if sid:
+            pairs.setdefault(sid, ta.get("subject_name") or "")
+    for ss in await gd_find(db.session, "schedule_sessions", {"class_id": class_id}, limit=1000):
+        sid = ss.get("subject_id")
+        if sid:
+            pairs.setdefault(sid, ss.get("subject_name") or "")
+    sid = cls.get("subject_id")
+    if sid:
+        pairs.setdefault(sid, cls.get("subject_name") or "")
+
+    from sqlalchemy import text as _sql_text
+    graded_stmt = _sql_text(
+        """
+        SELECT DISTINCT data->>'subject_id' AS subject_id
+        FROM generic_documents
+        WHERE collection = 'student_grades'
+          AND data->>'class_id' = :class_id
+          AND COALESCE(data->>'school_id', data->>'tenant_id') = :school_id
+          AND data->>'subject_id' IS NOT NULL
+        """
+    )
+    graded_rows = await db.session.execute(
+        graded_stmt, {"class_id": class_id, "school_id": class_school}
+    )
+    graded_ids = {row.subject_id for row in graded_rows.all() if row.subject_id}
+    for gsid in graded_ids:
+        pairs.setdefault(gsid, "")
+
+    subjects: List[Dict[str, Any]] = []
+    for sub_id, name in pairs.items():
+        if not name:
+            subj = await gd_find_one(db.session, "subjects", {"id": sub_id})
+            name = (subj or {}).get("name") or (subj or {}).get("name_ar") or ""
+        subjects.append({"id": sub_id, "name": name, "has_grades": sub_id in graded_ids})
+    # Subjects with recorded grades first, then alphabetically — keeps long
+    # school lists usable without hiding anything.
+    subjects.sort(key=lambda x: (not x["has_grades"], x.get("name") or ""))
+
+    mine = await _resolve_curriculum_subjects(class_id, current_user, cls)
+    mine_ids = [m["id"] for m in mine if m.get("id") in pairs]
+    default_subject_id = None
+    if mine_ids:
+        # Among the caller's own subjects, land on one that actually has
+        # grades when possible — an empty default sheet next to a sibling
+        # subject full of data reads as a bug to the teacher.
+        default_subject_id = next(
+            (m for m in mine_ids if m in graded_ids), mine_ids[0]
+        )
+    elif subjects:
+        default_subject_id = subjects[0]["id"]
+
+    return {
+        "class_id": class_id,
+        "subjects": subjects,
+        "default_subject_id": default_subject_id,
+    }
+
+
 @class_teaching_router.get("/class/{class_id}/student-grades")
 async def get_class_student_grades(
     class_id: str,

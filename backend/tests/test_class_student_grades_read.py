@@ -211,3 +211,99 @@ async def test_cross_workspace_it_404(client):
         headers=it_headers(stranger["uid"], stranger["user"]["role"], stranger["wsid"]),
     )
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /class/{class_id}/subjects — subject context for the record tab
+# ---------------------------------------------------------------------------
+
+async def _seed_subject(tenant: str, name: str) -> str:
+    sid = str(uuid.uuid4())
+    await gd_insert(db.session, "subjects", {
+        "id": sid, "school_id": tenant, "name": name, "is_active": True,
+    })
+    return sid
+
+
+@pytest.mark.asyncio
+async def test_class_subjects_class_wide_with_caller_default(client, tenant_a):
+    """The record subject list is CLASS-WIDE (spec: switch between all
+    subjects attached to the class) — another teacher's subject appears —
+    but the DEFAULT lands on the caller's own subject."""
+    class_id = await _seed_class(tenant_a)
+    teacher = await _seed_teacher_with_class(tenant_a, class_id)   # caller
+    other = await _seed_teacher_with_class(tenant_a, class_id)     # colleague
+    assert other["teacher_id"] != teacher["teacher_id"]
+
+    # The caller's own subject id (from their assignment row).
+    from engines.sql_utils import gd_find as _gd_find
+    tas = await _gd_find(db.session, "teacher_assignments",
+                         {"class_id": class_id, "teacher_id": teacher["teacher_id"]})
+    my_subject = tas[0]["subject_id"]
+
+    r = await client.get(f"/class/{class_id}/subjects", headers=_headers(teacher))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    ids = {s["id"] for s in body["subjects"]}
+    assert len(ids) == 2  # caller's + colleague's subjects, class-wide
+    assert my_subject in ids
+    assert body["default_subject_id"] == my_subject
+    assert all(s["has_grades"] is False for s in body["subjects"])
+
+
+@pytest.mark.asyncio
+async def test_class_subjects_includes_graded_orphan_subject(client, tenant_a):
+    """A subject that only exists in stored grade docs (assignment later
+    removed) must still appear — otherwise its grades become unreachable."""
+    class_id = await _seed_class(tenant_a)
+    teacher = await _seed_teacher_with_class(tenant_a, class_id)
+    orphan = await _seed_subject(tenant_a, "مادة محذوفة التكليف")
+    await _seed_grade_row(school_id=tenant_a, class_id=class_id,
+                          student_id=str(uuid.uuid4()), column_id=str(uuid.uuid4()),
+                          score=4, subject_id=orphan)
+
+    r = await client.get(f"/class/{class_id}/subjects", headers=_headers(teacher))
+    assert r.status_code == 200, r.text
+    by_id = {s["id"]: s for s in r.json()["subjects"]}
+    assert orphan in by_id
+    assert by_id[orphan]["has_grades"] is True
+    assert by_id[orphan]["name"] == "مادة محذوفة التكليف"
+    # graded subjects sort first
+    assert r.json()["subjects"][0]["id"] == orphan
+
+
+@pytest.mark.asyncio
+async def test_class_subjects_it_owner_single_subject(client):
+    """IT single-subject class resolves exactly one subject via the
+    teacher_assignments path (the classes table has no subject_id column,
+    so the class-row fallback never fires for real rows)."""
+    ctx = await mk_it_workspace()
+    subj = await _seed_subject(ctx["wsid"], "مادة مستقلة")
+    await gd_insert(db.session, "teacher_assignments", {
+        "id": str(uuid.uuid4()),
+        "school_id": ctx["wsid"],
+        "teacher_id": ctx["teacher_id"],
+        "class_id": ctx["class_id"],
+        "subject_id": subj,
+    })
+    r = await client.get(
+        f"/class/{ctx['class_id']}/subjects",
+        headers=it_headers(ctx["uid"], ctx["user"]["role"], ctx["wsid"]),
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    subs = body["subjects"]
+    assert [s["id"] for s in subs] == [subj]
+    assert subs[0]["name"] == "مادة مستقلة"
+    assert body["default_subject_id"] == subj
+
+
+@pytest.mark.asyncio
+async def test_class_subjects_cross_workspace_404(client):
+    host = await mk_it_workspace()
+    stranger = await mk_it_workspace(with_class=False, with_student=False, with_parent=False)
+    r = await client.get(
+        f"/class/{host['class_id']}/subjects",
+        headers=it_headers(stranger["uid"], stranger["user"]["role"], stranger["wsid"]),
+    )
+    assert r.status_code == 404
