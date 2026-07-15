@@ -135,9 +135,11 @@
     "postcss": "^8.5.14",
     "qs": "^6.15.2",
     "serialize-javascript": "^7.0.3",
+    "shell-quote": "^1.10.0",
     "underscore": "^1.13.8",
     "uuid": "^11.1.1",
     "webpack-dev-server": "5.2.4",
+    "websocket-driver": "^0.7.5",
     "ws": "^8.21.0",
     "yaml": "^1.10.3"
   },
@@ -158,9 +160,11 @@
     "postcss": "^8.5.14",
     "qs": "^6.15.2",
     "serialize-javascript": "^7.0.3",
+    "shell-quote": "^1.10.0",
     "underscore": "^1.13.8",
     "uuid": "^11.1.1",
     "webpack-dev-server": "5.2.4",
+    "websocket-driver": "^0.7.5",
     "ws": "^8.21.0",
     "yaml": "^1.10.3"
   }

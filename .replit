@@ -24,6 +24,10 @@ args = "Backend API"
 task = "workflow.run"
 args = "Frontend Dev"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "fe-build"
+
   [[workflows.workflow]]
 name = "Backend API"
 author = "agent"
@@ -47,6 +51,17 @@ outputType = "webview"
 task = "shell.exec"
 args = "cd frontend && PORT=5000 BROWSER=none npx craco start"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "fe-build"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd frontend && CI=false npm run build"
+
+[workflows.workflow.metadata]
+isValidation = true
 
 [[ports]]
 localPort = 5000
