@@ -26,6 +26,15 @@ from dependencies import (
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, _gd_aggregate
 from auth_scope import is_independent_workspace_id
 from utils.it_schedule import compute_it_slot_times, normalize_it_day
+from utils.session_settings import (
+    sanitize_homework_view_mode as ss_sanitize_homework_view_mode,
+    sanitize_recitation_attempts as ss_sanitize_recitation_attempts,
+    sanitize_extra_columns as ss_sanitize_extra_columns,
+    load_tenant_participation_max as ss_load_tenant_participation_max,
+    sanitize_participation_scores as ss_sanitize_participation_scores,
+    sanitize_custom_element_fields as ss_sanitize_custom_element_fields,
+    custom_fields_from_record as ss_custom_fields_from_record,
+)
 
 
 from shared_models import (
@@ -4230,6 +4239,9 @@ async def get_session_settings(
         "skill_enabled": False,
         "extra_columns": [],
         "participation_scores": {},
+        # Custom element definitions (تعريفات العناصر) — shared template
+        # fields also served by GET /class/{class_id}/session-settings.
+        **ss_custom_fields_from_record(None),
     }
     # Read correct_answer_weight from the live session document so the UI
     # always reflects the value actually used by the scoring engine, even
@@ -4275,6 +4287,7 @@ async def get_session_settings(
         "skill_enabled": record.get("skill_enabled", False),
         "extra_columns": record.get("extra_columns", []),
         "participation_scores": record.get("participation_scores", {}),
+        **ss_custom_fields_from_record(record),
         "correct_answer_weight": session_doc_weight,
         "effective_correct_answer_weight": effective_correct_answer_weight,
         "streak_bonus_value": session_doc_bonus,
@@ -4295,67 +4308,18 @@ async def save_session_settings(
     s_id = payload.get("subject_id") or (session.get("subject_id") if session else None)
     lookup = {"class_id": c_id, "subject_id": s_id, "tenant_id": tenant_id} if c_id and s_id else {"session_id": session_id, "tenant_id": tenant_id}
     existing = await gd_find_one(db.session, "session_settings", lookup)
-    # Fetch the tenant's configured participation max (falls back to 100)
-    _p_max_setting = None
-    if tenant_id:
-        try:
-            _p_max_setting = await gd_find_one(
-                db.session, "tenant_settings",
-                {"tenant_id": tenant_id, "setting_key": "participation_max"}
-            )
-        except Exception as _pme:
-            logger.warning("save_session_settings: failed to load participation_max for tenant=%s: %s", tenant_id, _pme)
-    if _p_max_setting and isinstance(_p_max_setting.get("value"), (int, float)):
-        tenant_participation_max = int(_p_max_setting["value"])
-    else:
-        if not _p_max_setting and tenant_id:
-            logger.warning(
-                "save_session_settings: no participation_max configured for tenant=%s — falling back to 100",
-                tenant_id
-            )
-        tenant_participation_max = 100
-    # Validate enum / numeric ranges
-    hv_mode = payload.get("homework_view_mode", "not_submitted")
-    if hv_mode not in ("not_submitted", "submitted"):
-        hv_mode = "not_submitted"
-    try:
-        attempts = int(payload.get("recitation_max_attempts", 1) or 1)
-    except (TypeError, ValueError):
-        attempts = 1
-    attempts = max(1, min(3, attempts))
-    raw_cols = payload.get("extra_columns", []) or []
-    extra_columns = []
-    if isinstance(raw_cols, list):
-        for c in raw_cols:
-            if not isinstance(c, dict):
-                continue
-            extra_columns.append({
-                "id": str(c.get("id") or f"col_{int(datetime.utcnow().timestamp() * 1000)}"),
-                "name": str(c.get("name") or "")[:100],
-                "type": c.get("type") if c.get("type") in ("grade", "check", "text") else "grade",
-                "maxGrade": int(c.get("maxGrade") or 0),
-                "group": c.get("group") if c.get("group") in ("coursework", "exams") else "coursework",
-                "hidden": bool(c.get("hidden", False)),
-            })
-    _valid_participation_types = {"active", "initiative", "inactive", "refused"}
-    raw_p_scores = payload.get("participation_scores") or {}
-    participation_scores = {}
-    if isinstance(raw_p_scores, dict):
-        for k, v in raw_p_scores.items():
-            if k not in _valid_participation_types:
-                continue
-            try:
-                iv = int(v)
-            except (TypeError, ValueError):
-                continue
-            if iv < 1:
-                continue
-            if iv > tenant_participation_max:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"قيمة المشاركة ({iv}) تتجاوز الحد الأقصى المسموح به للمدرسة ({tenant_participation_max})"
-                )
-            participation_scores[k] = iv
+    # Validation is shared with POST /class/{class_id}/session-settings via
+    # backend/utils/session_settings.py so the two template writers never
+    # drift apart (same enum/range/clamp rules, same Arabic 422 message).
+    tenant_participation_max = await ss_load_tenant_participation_max(
+        db.session, tenant_id, gd_find_one
+    )
+    hv_mode = ss_sanitize_homework_view_mode(payload.get("homework_view_mode", "not_submitted"))
+    attempts = ss_sanitize_recitation_attempts(payload.get("recitation_max_attempts", 1))
+    extra_columns = ss_sanitize_extra_columns(payload.get("extra_columns", []) or [])
+    participation_scores = ss_sanitize_participation_scores(
+        payload.get("participation_scores") or {}, tenant_participation_max
+    )
     # Validate and persist correct_answer_weight on the live session document.
     # The session document (class_sessions) is the authoritative storage for
     # this field; session_settings is NOT updated for it because the weight is
@@ -4479,6 +4443,10 @@ async def save_session_settings(
         "participation_scores": participation_scores,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+    # Custom element definitions (تعريفات العناصر): only keys explicitly
+    # present in the payload are written — an absent key never touches the
+    # stored value, so partial POSTs (pre-teach weight control) are safe.
+    record_data.update(ss_sanitize_custom_element_fields(payload))
     if existing:
         await gd_update_one(db.session, "session_settings", lookup, {"$set": record_data})
     else:

@@ -30,6 +30,7 @@ import confetti from 'canvas-confetti';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { BEHAVIOURS, DEFAULT_EVALUATION_ITEMS, DEFAULT_EVAL_IDS } from '../../config/sessionElements';
 import {
   mergeFollowupData,
   mergeFollowupAbsences,
@@ -67,18 +68,10 @@ const PARTICIPATION = [
   { id: 'refused', label: 'رفض', labelKey: 'participationRefused', icon: XCircle, color: 'bg-red-500', score: '-1' },
 ];
 
-const BEHAVIOURS = {
-  positive: [
-    { id: 'respect', label: 'احترام', labelKey: 'behaviourRespect', points: '+2' },
-    { id: 'commitment', label: 'التزام', labelKey: 'behaviourCommitment', points: '+2' },
-    { id: 'helping_others', label: 'مساعدة الآخرين', labelKey: 'behaviourHelpingOthers', points: '+2' },
-  ],
-  negative: [
-    { id: 'disruption', label: 'إزعاج', labelKey: 'behaviourDisruption', points: '-2' },
-    { id: 'non_compliance', label: 'عدم التزام', labelKey: 'behaviourNonCompliance', points: '-2' },
-    { id: 'interruption', label: 'مقاطعة', labelKey: 'behaviourInterruption', points: '-1' },
-  ],
-};
+// Built-in behaviours (BEHAVIOURS) and the four default evaluation items
+// (DEFAULT_EVALUATION_ITEMS / DEFAULT_EVAL_IDS) are imported from
+// config/sessionElements — the shared single source of truth with the
+// فصولي → إعدادات الحصة dialog (TeacherClassDetailPage).
 
 // Icon + color maps for evaluation items configured in the
 // SidebarSettingsDialog. Mirrors the maps used inside that dialog so
@@ -95,16 +88,10 @@ const SIDEBAR_EVAL_COLORS = {
   purple:  'bg-purple-500/15 border-purple-400/40 hover:bg-purple-500/25',
   gray:    'bg-foreground/5 border-border hover:bg-foreground/10',
 };
-// IDs of the four built-in evaluation items. The sidebar already
-// renders dedicated, hard-wired buttons for these (they have bespoke
-// confetti/scoring/recitation behavior), so we filter them out when
-// rendering the *additional* user-added items below them.
-const DEFAULT_EVAL_IDS = new Set([
-  'eval_default_correct',
-  'eval_default_wrong',
-  'eval_default_homework',
-  'eval_default_recite',
-]);
+// DEFAULT_EVAL_IDS (imported above): the sidebar renders dedicated,
+// hard-wired buttons for the four built-in evaluation items (bespoke
+// confetti/scoring/recitation behavior), so user-added items are
+// filtered against this set when rendered below them.
 
 const LOG_ICONS = {
   correct: CheckCircle2,
@@ -328,10 +315,12 @@ export default function SessionTeachPage() {
   const [showFollowupRecord, setShowFollowupRecord] = useState(false);
   const [customPositiveBehaviours, setCustomPositiveBehaviours] = useState([]);
   const [customNegativeBehaviours, setCustomNegativeBehaviours] = useState([]);
-  // Per-lesson score overrides for the BUILT-IN behaviours (id → positive
-  // magnitude 1–100). Lives only in this lesson's sessionStorage snapshot —
-  // the next lesson starts back at the shared defaults. Custom behaviours
-  // store their edited score directly on the array entry instead.
+  // Score overrides for the BUILT-IN behaviours (id → positive magnitude
+  // 1–100). This lesson's sessionStorage snapshot wins while the lesson is
+  // live; on save the overrides persist onto the class+subject
+  // session_settings template so the NEXT lesson (and فصولي → إعدادات
+  // الحصة) hydrates the same values. Custom behaviours store their edited
+  // score directly on the array entry instead.
   const [behaviourScoreOverrides, setBehaviourScoreOverrides] = useState({});
   // Edit the score of an already-listed behaviour from the settings dialog.
   // Built-in ids go into the override map; custom ids update the matching
@@ -351,12 +340,7 @@ export default function SessionTeachPage() {
     )));
   };
   const [customSkills, setCustomSkills] = useState([]);
-  const [customEvaluationItems, setCustomEvaluationItems] = useState([
-    { id: 'eval_default_correct',  name: 'إجابة صحيحة',     color: 'emerald', icon: 'CheckCircle2',    points: 1  },
-    { id: 'eval_default_wrong',    name: 'إجابة خاطئة',     color: 'red',     icon: 'XCircle',         points: 0  },
-    { id: 'eval_default_homework', name: 'لم يسلّم الواجب',  color: 'amber',   icon: 'ClipboardCheck',  points: -1 },
-    { id: 'eval_default_recite',   name: 'تسميع',           color: 'purple',  icon: 'Mic',             points: 2  },
-  ]);
+  const [customEvaluationItems, setCustomEvaluationItems] = useState([...DEFAULT_EVALUATION_ITEMS]);
   const [followupData, setFollowupData] = useState({});
   const [followupColumns, setFollowupColumns] = useState([]);
   const [followupAbsences, setFollowupAbsences] = useState({});
@@ -623,6 +607,37 @@ export default function SessionTeachPage() {
       const esbv = s.effective_streak_bonus_value;
       setEffectiveStreakBonusValue(esbv != null ? Number(esbv) : 5);
       setStreakBonusEnabled(s.streak_bonus_enabled !== false);
+      // Hydrate custom element definitions (تعريفات العناصر) from the shared
+      // class+subject template — but only for keys this lesson's own
+      // sessionStorage snapshot does NOT already carry. The snapshot wins so
+      // mid-lesson edits are never clobbered by a slower settings GET after
+      // a refresh; a fresh lesson (no snapshot) starts from the template.
+      let snap = {};
+      try {
+        snap = JSON.parse(sessionStorage.getItem(`session_state_${sessionId}`) || '{}') || {};
+      } catch { snap = {}; }
+      if (!snap.customPositiveBehaviours?.length && Array.isArray(s.custom_positive_behaviours) && s.custom_positive_behaviours.length) {
+        setCustomPositiveBehaviours(s.custom_positive_behaviours);
+      }
+      if (!snap.customNegativeBehaviours?.length && Array.isArray(s.custom_negative_behaviours) && s.custom_negative_behaviours.length) {
+        setCustomNegativeBehaviours(s.custom_negative_behaviours);
+      }
+      if (!snap.customSkills?.length && Array.isArray(s.custom_skills) && s.custom_skills.length) {
+        setCustomSkills(s.custom_skills);
+      }
+      if (!snap.customEvaluationItems?.length && Array.isArray(s.custom_evaluation_items) && s.custom_evaluation_items.length) {
+        // The template stores only user-added items; the four built-ins are
+        // re-prepended locally so the dialog keeps rendering defaults ∪ custom.
+        setCustomEvaluationItems((prev) => [
+          ...prev.filter((x) => DEFAULT_EVAL_IDS.has(x.id)),
+          ...s.custom_evaluation_items.filter((x) => x && !DEFAULT_EVAL_IDS.has(x.id)),
+        ]);
+      }
+      const snapHasOverrides = snap.behaviourScoreOverrides && Object.keys(snap.behaviourScoreOverrides).length > 0;
+      if (!snapHasOverrides && s.behaviour_score_overrides && typeof s.behaviour_score_overrides === 'object'
+          && Object.keys(s.behaviour_score_overrides).length > 0) {
+        setBehaviourScoreOverrides(s.behaviour_score_overrides);
+      }
     } catch (e) {
       console.error('Error loading session settings:', e);
     }
@@ -653,6 +668,16 @@ export default function SessionTeachPage() {
         streak_bonus_enabled: streakBonusEnabled,
         skill_enabled: skillEnabled,
         participation_scores: participationScores,
+        // Custom element definitions (تعريفات العناصر) — persisted onto the
+        // same class+subject template so فصولي → إعدادات الحصة shows the
+        // identical lists and the next lesson hydrates them. Built-in
+        // evaluation items are stripped: the template stores only user-added
+        // ones (the four defaults are re-prepended locally on hydration).
+        custom_positive_behaviours: customPositiveBehaviours,
+        custom_negative_behaviours: customNegativeBehaviours,
+        custom_skills: customSkills,
+        custom_evaluation_items: customEvaluationItems.filter((x) => x && !DEFAULT_EVAL_IDS.has(x.id)),
+        behaviour_score_overrides: behaviourScoreOverrides,
       };
       // Only include correct_answer_weight when the teacher explicitly changed
       // it in this dialog session. Omitting the key entirely means "don't touch"
@@ -814,7 +839,7 @@ export default function SessionTeachPage() {
     } catch (e) {
       // Non-fatal — leave canUndo as-is if the peek fails
     }
-  }, [sessionId]);
+  }, [api, sessionId]);
 
   const loadActivityLog = async () => {
     try {

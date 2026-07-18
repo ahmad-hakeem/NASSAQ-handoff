@@ -23,6 +23,14 @@ from dependencies import (
     REPORT_TYPES, generate_student_qr_code
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+from utils.session_settings import (
+    sanitize_homework_view_mode as ss_sanitize_homework_view_mode,
+    sanitize_recitation_attempts as ss_sanitize_recitation_attempts,
+    load_tenant_participation_max as ss_load_tenant_participation_max,
+    sanitize_participation_scores as ss_sanitize_participation_scores,
+    sanitize_custom_element_fields as ss_sanitize_custom_element_fields,
+    custom_fields_from_record as ss_custom_fields_from_record,
+)
 
 
 from shared_models import (
@@ -1556,6 +1564,104 @@ async def delete_grade_column(
     await _verify_class_access(existing["class_id"], current_user)
     await gd_delete_one(db.session, "grade_columns", {"id": column_id})
     return {"success": True}
+
+
+# ============== CLASS-LEVEL SESSION-SETTINGS TEMPLATE ==============
+# The same session_settings row (keyed {class_id, subject_id, tenant_id})
+# that the live lesson reads/writes via /session/{sid}/settings, exposed
+# from the فصولي → class page so its "إعدادات الحصة" dialog edits the SAME
+# template the next lesson will hydrate from. Validation is shared with
+# the lesson route via backend/utils/session_settings.py.
+#
+# Session-scoped fields (correct_answer_weight / streak_bonus_value on
+# class_sessions) are intentionally absent here — they belong to a live
+# session only. Tenant scope derives from the CLASS row (never the
+# caller), same §6.7 collaborator rationale as the grade reads above; for
+# owners the class tenant equals the caller tenant, so both surfaces hit
+# the same row.
+
+async def _resolve_class_tenant(class_id: str) -> str:
+    cls = await gd_find_one(db.session, "classes", {"id": class_id})
+    if not cls:
+        raise HTTPException(status_code=404, detail="الفصل غير موجود")
+    return str(cls.get("school_id") or cls.get("tenant_id") or "")
+
+
+@class_teaching_router.get("/class/{class_id}/session-settings")
+async def get_class_session_settings(
+    class_id: str,
+    subject_id: str = Query(..., min_length=1, max_length=100),
+    current_user: dict = Depends(get_current_user),
+):
+    await _verify_class_access(class_id, current_user)
+    tenant_id = await _resolve_class_tenant(class_id)
+    record = await gd_find_one(
+        db.session, "session_settings",
+        {"class_id": class_id, "subject_id": subject_id, "tenant_id": tenant_id},
+    )
+    record = record or {}
+    return {
+        "class_id": class_id,
+        "subject_id": subject_id,
+        "exists": bool(record),
+        "participation_enabled": record.get("participation_enabled", True),
+        "homework_enabled": record.get("homework_enabled", True),
+        "homework_view_mode": record.get("homework_view_mode", "not_submitted"),
+        "recitation_enabled": record.get("recitation_enabled", False),
+        "recitation_max_attempts": record.get("recitation_max_attempts", 1),
+        "streak_bonus_enabled": record.get("streak_bonus_enabled", True),
+        "skill_enabled": record.get("skill_enabled", False),
+        "participation_scores": record.get("participation_scores", {}),
+        **ss_custom_fields_from_record(record),
+    }
+
+
+@class_teaching_router.post("/class/{class_id}/session-settings")
+async def save_class_session_settings(
+    class_id: str,
+    payload: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    await _verify_class_access(class_id, current_user, write=True)
+    tenant_id = await _resolve_class_tenant(class_id)
+    subject_id = str(payload.get("subject_id") or "").strip()[:100]
+    if not subject_id:
+        raise HTTPException(status_code=422, detail="يجب تحديد المادة أولاً")
+    lookup = {"class_id": class_id, "subject_id": subject_id, "tenant_id": tenant_id}
+    existing = await gd_find_one(db.session, "session_settings", lookup)
+    tenant_participation_max = await ss_load_tenant_participation_max(
+        db.session, tenant_id, gd_find_one
+    )
+    record_data = {
+        "class_id": class_id,
+        "subject_id": subject_id,
+        "tenant_id": tenant_id,
+        "participation_enabled": bool(payload.get("participation_enabled", True)),
+        "homework_enabled": bool(payload.get("homework_enabled", True)),
+        "homework_view_mode": ss_sanitize_homework_view_mode(
+            payload.get("homework_view_mode", "not_submitted")),
+        "recitation_enabled": bool(payload.get("recitation_enabled", False)),
+        "recitation_max_attempts": ss_sanitize_recitation_attempts(
+            payload.get("recitation_max_attempts", 1)),
+        "skill_enabled": bool(payload.get("skill_enabled", False)),
+        "participation_scores": ss_sanitize_participation_scores(
+            payload.get("participation_scores") or {}, tenant_participation_max),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    # Absent-key = don't-touch for streak_bonus_enabled (same contract as
+    # the lesson route) so a client that doesn't render the toggle never
+    # silently re-enables it.
+    if "streak_bonus_enabled" in payload:
+        record_data["streak_bonus_enabled"] = bool(payload.get("streak_bonus_enabled"))
+    elif not existing:
+        record_data["streak_bonus_enabled"] = True
+    record_data.update(ss_sanitize_custom_element_fields(payload))
+    if existing:
+        await gd_update_one(db.session, "session_settings", lookup, {"$set": record_data})
+    else:
+        record_data["created_at"] = datetime.now(timezone.utc).isoformat()
+        await gd_insert(db.session, "session_settings", record_data)
+    return {"success": True, "class_id": class_id, "subject_id": subject_id}
 
 
 @class_teaching_router.get("/class/{class_id}/subjects")

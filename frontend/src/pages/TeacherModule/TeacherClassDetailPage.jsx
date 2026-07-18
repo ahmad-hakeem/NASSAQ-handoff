@@ -37,6 +37,7 @@ import TeacherStudentProfileDialog from '../../components/teacher/TeacherStudent
 
 import { useTranslation } from '../../contexts/ThemeContext';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { BEHAVIOURS, DEFAULT_EVALUATION_ITEMS, DEFAULT_EVAL_IDS } from '../../config/sessionElements';
 
 const GRADE_COLORS = {
   '1': 'bg-sky-500 dark:bg-sky-600',
@@ -126,51 +127,75 @@ export default function TeacherClassDetailPage() {
 
   const [studentSearch, setStudentSearch] = useState('');
 
-  // ===== Sidebar Settings (إعدادات الشريط الجانبي) — class-level, persisted in localStorage =====
+  // ===== إعدادات الحصة — class+subject session_settings template =====
+  // The server template (same row the live lesson hydrates from via
+  // /session/{sid}/settings) is the single source of truth. The legacy
+  // localStorage blob is read ONCE as a migration fallback when no server
+  // template exists yet, and deleted after the first successful save.
   const SIDEBAR_KEY = `class_sidebar_settings_${classId || 'unknown'}`;
   const [showSidebarSettings, setShowSidebarSettings] = useState(false);
   const [customSkills, setCustomSkills] = useState([]);
   const [customPositiveBehaviours, setCustomPositiveBehaviours] = useState([]);
   const [customNegativeBehaviours, setCustomNegativeBehaviours] = useState([]);
-  const [customEvaluationItems, setCustomEvaluationItems] = useState([
-    { id: 'eval_default_correct',  name: 'إجابة صحيحة',     color: 'emerald', icon: 'CheckCircle2',    points: 1  },
-    { id: 'eval_default_wrong',    name: 'إجابة خاطئة',     color: 'red',     icon: 'XCircle',         points: 0  },
-    { id: 'eval_default_homework', name: 'لم يسلّم الواجب',  color: 'amber',   icon: 'ClipboardCheck',  points: -1 },
-    { id: 'eval_default_recite',   name: 'تسميع',           color: 'purple',  icon: 'Mic',             points: 2  },
-  ]);
+  const [customEvaluationItems, setCustomEvaluationItems] = useState([...DEFAULT_EVALUATION_ITEMS]);
+  const [behaviourScoreOverrides, setBehaviourScoreOverrides] = useState({});
   // Skills toggle (preserves legacy toggle row in the Skills tab UI)
-  const [skillEnabled, setSkillEnabled] = useState(true);
+  const [skillEnabled, setSkillEnabled] = useState(false);
+  const [skillTypes, setSkillTypes] = useState([]);
+  const [settingsSubjectId, setSettingsSubjectId] = useState(null);
+  const [settingsSubjectsLoading, setSettingsSubjectsLoading] = useState(false);
+  const [participationEnabled, setParticipationEnabled] = useState(true);
+  const [homeworkEnabled, setHomeworkEnabled] = useState(true);
+  const [homeworkViewMode, setHomeworkViewMode] = useState('not_submitted');
+  const [recitationEnabled, setRecitationEnabled] = useState(false);
+  const [recitationMaxAttempts, setRecitationMaxAttempts] = useState(1);
+  const [streakBonusEnabled, setStreakBonusEnabled] = useState(true);
+  const [participationScores, setParticipationScores] = useState({});
+  const [showAddOtherItems, setShowAddOtherItems] = useState(false);
+  // أنماط التقييم draft inside the dialog — diffed against the last-loaded
+  // grade-columns baseline on Save (same pattern as the live lesson).
+  const [followupColumns, setFollowupColumns] = useState([]);
+  const followupColumnsBaseline = useRef([]);
+  const followupColumnsLoaded = useRef(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  // Guards the silent on-close save: never POST until the template GET for
+  // the current subject has resolved, or a fast open→close could overwrite
+  // an existing template with pristine defaults.
+  const templateHydratedRef = useRef(false);
+  const templateRequestRef = useRef(0);
 
-  // Hydrate from localStorage on classId change. Migrate any legacy
-  // string[] entries in behaviours -> {id, name, points} objects.
-  useEffect(() => {
-    if (!classId) return;
-    try {
-      const raw = localStorage.getItem(SIDEBAR_KEY);
-      if (!raw) return;
-      const s = JSON.parse(raw);
-      const migrate = (arr, defaultPoints) => (arr || []).map((b, i) => (
-        typeof b === 'string'
-          ? { id: `legacy_${defaultPoints > 0 ? 'p' : 'n'}_${i}_${b}`, name: b, points: defaultPoints }
-          : b
-      ));
-      if (Array.isArray(s.customSkills)) setCustomSkills(s.customSkills);
-      if (Array.isArray(s.customPositiveBehaviours)) setCustomPositiveBehaviours(migrate(s.customPositiveBehaviours, 2));
-      if (Array.isArray(s.customNegativeBehaviours)) setCustomNegativeBehaviours(migrate(s.customNegativeBehaviours, -2));
-      if (Array.isArray(s.customEvaluationItems) && s.customEvaluationItems.length) setCustomEvaluationItems(s.customEvaluationItems);
-      if (typeof s.skillEnabled === 'boolean') setSkillEnabled(s.skillEnabled);
-    } catch { /* ignore */ }
-  }, [classId, SIDEBAR_KEY]);
+  // Edit the score of an already-listed behaviour from the settings dialog.
+  // Built-in ids go into the override map; custom ids update the matching
+  // array entry, keeping the sign convention (+ for positive, - for
+  // negative). Identical logic to SessionTeachPage.updateBehaviourScore.
+  const updateBehaviourScore = (category, id, magnitude) => {
+    const mag = Math.round(Math.abs(Number(magnitude)));
+    if (!Number.isFinite(mag) || mag <= 0 || mag > 100) return;
+    const isBuiltIn = (BEHAVIOURS[category] || []).some((b) => b.id === id);
+    if (isBuiltIn) {
+      setBehaviourScoreOverrides((prev) => ({ ...prev, [id]: mag }));
+      return;
+    }
+    const signed = category === 'positive' ? mag : -mag;
+    const setter = category === 'positive' ? setCustomPositiveBehaviours : setCustomNegativeBehaviours;
+    setter((prev) => prev.map((x) => (
+      typeof x === 'object' && x !== null && x.id === id ? { ...x, points: signed } : x
+    )));
+  };
 
-  // Persist to localStorage on change
+  // Reset template state when navigating between classes so one class's
+  // settings can never leak into another's dialog.
   useEffect(() => {
-    if (!classId) return;
-    try {
-      localStorage.setItem(SIDEBAR_KEY, JSON.stringify({
-        customSkills, customPositiveBehaviours, customNegativeBehaviours, customEvaluationItems, skillEnabled,
-      }));
-    } catch { /* ignore */ }
-  }, [classId, SIDEBAR_KEY, customSkills, customPositiveBehaviours, customNegativeBehaviours, customEvaluationItems, skillEnabled]);
+    setSettingsSubjectId(null);
+    setCustomSkills([]);
+    setCustomPositiveBehaviours([]);
+    setCustomNegativeBehaviours([]);
+    setCustomEvaluationItems([...DEFAULT_EVALUATION_ITEMS]);
+    setBehaviourScoreOverrides({});
+    setSkillEnabled(false);
+    followupColumnsLoaded.current = false;
+    templateHydratedRef.current = false;
+  }, [classId]);
 
   const teacherId = user?.teacher_id || user?.id;
   const fileInputRef = useRef(null);
@@ -245,7 +270,7 @@ export default function TeacherClassDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [api, classId, teacherId]);
+  }, [api, classId, teacherId, t]);
 
   useEffect(() => {
     fetchClassData();
@@ -360,6 +385,297 @@ export default function TeacherClassDetailPage() {
     if (activeTab === 'curriculum') fetchCurriculum();
     else if (activeTab === 'records') fetchGradeColumns();
   }, [activeTab, fetchCurriculum, fetchGradeColumns]);
+
+  // ===== إعدادات الحصة dialog wiring =====
+
+  // Legacy localStorage blob — migration fallback only (read when the server
+  // template does not exist yet). Migrates legacy string[] behaviours to
+  // {id, name, points} objects, same as the old hydrate effect did.
+  const readLegacySidebarSettings = useCallback(() => {
+    try {
+      const raw = localStorage.getItem(SIDEBAR_KEY);
+      if (!raw) return null;
+      const s = JSON.parse(raw);
+      const migrate = (arr, defaultPoints) => (arr || []).map((b, i) => (
+        typeof b === 'string'
+          ? { id: `legacy_${defaultPoints > 0 ? 'p' : 'n'}_${i}_${b}`, name: b, points: defaultPoints }
+          : b
+      ));
+      return {
+        customSkills: Array.isArray(s.customSkills) ? s.customSkills : [],
+        customPositiveBehaviours: migrate(s.customPositiveBehaviours, 2),
+        customNegativeBehaviours: migrate(s.customNegativeBehaviours, -2),
+        customEvaluationItems: Array.isArray(s.customEvaluationItems) ? s.customEvaluationItems : [],
+        skillEnabled: typeof s.skillEnabled === 'boolean' ? s.skillEnabled : null,
+      };
+    } catch { return null; }
+  }, [SIDEBAR_KEY]);
+
+  const loadSkillTypes = useCallback(async () => {
+    try {
+      const res = await api.get('/skills-types');
+      setSkillTypes(res.data || []);
+    } catch (e) {
+      console.error('Error loading skill types:', e);
+    }
+  }, [api]);
+
+  // Persist a new score weight (وزن الدرجة) for a registered skill —
+  // durable and school-scoped server-side, same as the live lesson.
+  const updateSkillType = async (skillId, points) => {
+    try {
+      await api.put(`/skills-types/${skillId}`, { points });
+      await loadSkillTypes();
+      toast.success(t('scoreWeightUpdated') || 'تم تحديث وزن الدرجة');
+    } catch (e) {
+      console.error('Error updating skill type:', e);
+      toast.error(getApiErrorMessage(e) || t('errorOccurred') || 'Error');
+    }
+  };
+
+  // Adapt backend grade-column shape to the dialog's local column shape
+  // (identical to the live lesson's adapter so ids/groups stay aligned).
+  const adaptDialogColumn = (c) => ({
+    id: c.id,
+    name: c.name,
+    group: c.column_type === 'exams' ? 'exams' : 'coursework',
+    maxGrade: c.max_grade,
+    hidden: c.visible === false,
+    type: 'grade',
+    _order: c.order ?? 0,
+  });
+
+  const loadDialogGradeColumns = useCallback(async () => {
+    if (!classId) return;
+    try {
+      const res = await api.get(`/class/${classId}/grade-columns`);
+      const adapted = (Array.isArray(res.data) ? res.data : [])
+        .map(adaptDialogColumn)
+        .sort((a, b) => (a._order || 0) - (b._order || 0));
+      setFollowupColumns(adapted);
+      followupColumnsBaseline.current = adapted;
+      followupColumnsLoaded.current = true;
+      if (adapted.length > 0) setShowAddOtherItems(true);
+    } catch (e) {
+      console.error('loadDialogGradeColumns failed', e);
+    }
+  }, [api, classId]);
+
+  // Hydrate all dialog state from the class+subject template. When no
+  // template exists yet, fall back ONCE to the legacy localStorage blob so
+  // previously saved local customs survive the migration.
+  const loadSessionTemplate = useCallback(async (subjectId) => {
+    if (!classId || !subjectId) return;
+    templateHydratedRef.current = false;
+    // Latest-wins guard: if the teacher switches subjects while a GET is in
+    // flight, the superseded response must never hydrate (or a later silent
+    // close-save would write subject A's template into subject B's row).
+    const requestToken = ++templateRequestRef.current;
+    try {
+      const res = await api.get(`/class/${classId}/session-settings`, {
+        params: { subject_id: subjectId },
+      });
+      if (requestToken !== templateRequestRef.current) return;
+      const s = res.data || {};
+      setParticipationEnabled(s.participation_enabled !== false);
+      setHomeworkEnabled(s.homework_enabled !== false);
+      setHomeworkViewMode(s.homework_view_mode || 'not_submitted');
+      setRecitationEnabled(!!s.recitation_enabled);
+      setRecitationMaxAttempts(Number(s.recitation_max_attempts) || 1);
+      setStreakBonusEnabled(s.streak_bonus_enabled !== false);
+      setSkillEnabled(!!s.skill_enabled);
+      setParticipationScores(
+        s.participation_scores && typeof s.participation_scores === 'object'
+          ? s.participation_scores : {}
+      );
+      if (s.exists) {
+        setCustomPositiveBehaviours(Array.isArray(s.custom_positive_behaviours) ? s.custom_positive_behaviours : []);
+        setCustomNegativeBehaviours(Array.isArray(s.custom_negative_behaviours) ? s.custom_negative_behaviours : []);
+        setCustomSkills(Array.isArray(s.custom_skills) ? s.custom_skills : []);
+        // The template stores only user-added evaluation items; the four
+        // built-ins are re-prepended locally (defaults ∪ custom).
+        setCustomEvaluationItems([
+          ...DEFAULT_EVALUATION_ITEMS,
+          ...(Array.isArray(s.custom_evaluation_items) ? s.custom_evaluation_items : [])
+            .filter((x) => x && !DEFAULT_EVAL_IDS.has(x.id)),
+        ]);
+        setBehaviourScoreOverrides(
+          s.behaviour_score_overrides && typeof s.behaviour_score_overrides === 'object'
+            ? s.behaviour_score_overrides : {}
+        );
+      } else {
+        const legacy = readLegacySidebarSettings();
+        setCustomPositiveBehaviours(legacy?.customPositiveBehaviours || []);
+        setCustomNegativeBehaviours(legacy?.customNegativeBehaviours || []);
+        setCustomSkills(legacy?.customSkills || []);
+        setCustomEvaluationItems(
+          legacy?.customEvaluationItems?.length
+            ? [
+                ...DEFAULT_EVALUATION_ITEMS,
+                ...legacy.customEvaluationItems.filter((x) => x && !DEFAULT_EVAL_IDS.has(x.id)),
+              ]
+            : [...DEFAULT_EVALUATION_ITEMS]
+        );
+        setBehaviourScoreOverrides({});
+        if (typeof legacy?.skillEnabled === 'boolean') setSkillEnabled(legacy.skillEnabled);
+      }
+      templateHydratedRef.current = true;
+    } catch (e) {
+      console.error('Error loading session-settings template:', e);
+    }
+  }, [api, classId, readLegacySidebarSettings]);
+
+  // Resolve the class's subject list for the dialog picker. Reuses the
+  // records-tab list when already loaded, otherwise fetches it (the dialog
+  // can be opened from any tab).
+  const ensureSettingsSubjects = useCallback(async () => {
+    if (recordSubjects.length > 0) {
+      return recordSubjectId || recordSubjects[0]?.id || null;
+    }
+    setSettingsSubjectsLoading(true);
+    try {
+      const res = await api.get(`/class/${classId}/subjects`);
+      const subs = Array.isArray(res.data?.subjects) ? res.data.subjects : [];
+      setRecordSubjects(subs);
+      setRecordSubjectsReady(true);
+      const def = res.data?.default_subject_id || subs[0]?.id || null;
+      if (def) setRecordSubjectId((prev) => prev || def);
+      return def;
+    } catch (e) {
+      console.error('Error loading class subjects:', e);
+      return null;
+    } finally {
+      setSettingsSubjectsLoading(false);
+    }
+  }, [api, classId, recordSubjects, recordSubjectId]);
+
+  const openSessionSettings = useCallback(async () => {
+    setShowSidebarSettings(true);
+    loadSkillTypes();
+    loadDialogGradeColumns();
+    const def = await ensureSettingsSubjects();
+    const chosen = settingsSubjectId || def || null;
+    if (chosen) {
+      setSettingsSubjectId(chosen);
+      loadSessionTemplate(chosen);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ensureSettingsSubjects, loadDialogGradeColumns, loadSessionTemplate, loadSkillTypes, settingsSubjectId]);
+
+  // Propagate أنماط التقييم edits (add / rename / re-score / delete) to the
+  // class-level grade-columns API by diffing the dialog draft against the
+  // last-loaded baseline — same contract as the live lesson's حفظ النمط.
+  const syncDialogColumns = useCallback(async () => {
+    if (!classId) return true;
+    if (!followupColumnsLoaded.current) {
+      await loadDialogGradeColumns();
+      if (!followupColumnsLoaded.current) {
+        nassaqError(t('saveFailed') || 'فشل حفظ أعمدة النمط');
+        return false;
+      }
+      return true;
+    }
+    const baseline = followupColumnsBaseline.current || [];
+    const baselineById = new Map(baseline.map((c) => [String(c.id), c]));
+    const currentIds = new Set(followupColumns.map((c) => String(c.id)));
+    const ops = [];
+    let nextOrder = baseline.reduce((m, c) => Math.max(m, Number(c._order) || 0), 0);
+    followupColumns.forEach((col) => {
+      const base = baselineById.get(String(col.id));
+      if (!base) {
+        nextOrder += 1;
+        ops.push(api.post(`/class/${classId}/grade-columns`, {
+          name: String(col.name || '').trim() || (t('newColumn') || 'عمود جديد'),
+          column_type: col.group === 'exams' ? 'exams' : 'coursework',
+          max_grade: Math.max(1, Number(col.maxGrade) || 10),
+          order: nextOrder,
+        }));
+        return;
+      }
+      const body = {};
+      const trimmedName = String(col.name || '').trim();
+      if (trimmedName && trimmedName !== String(base.name)) body.name = trimmedName;
+      if (Number(col.maxGrade) !== Number(base.maxGrade)) {
+        body.max_grade = Math.max(1, Number(col.maxGrade) || 1);
+      }
+      if (Object.keys(body).length > 0) {
+        ops.push(api.put(`/grade-column/${col.id}`, body));
+      }
+    });
+    baseline.forEach((col) => {
+      if (!currentIds.has(String(col.id))) {
+        ops.push(api.delete(`/grade-column/${col.id}`));
+      }
+    });
+    if (ops.length === 0) return true;
+    const results = await Promise.allSettled(ops);
+    const failed = results.filter((r) => r.status === 'rejected');
+    await loadDialogGradeColumns();
+    if (failed.length > 0) {
+      const err = failed[0].reason;
+      nassaqError(getApiErrorMessage(err) || (t('saveFailed') || 'فشل حفظ أعمدة النمط'));
+      return false;
+    }
+    return true;
+  }, [api, classId, followupColumns, loadDialogGradeColumns, nassaqError, t]);
+
+  // Persist the full template. Explicit Save (dialog button) also syncs the
+  // pattern columns and closes the dialog; the silent variant runs on dialog
+  // close so تعريفات العناصر edits (no Save button on those tabs) are never
+  // lost, and skips columns (those keep requiring an explicit Save).
+  const saveSessionTemplate = useCallback(async ({ silent = false } = {}) => {
+    const subjectId = settingsSubjectId;
+    if (!subjectId) {
+      if (!silent) toast.error(t('selectSubjectFirst') || 'اختر المادة أولاً');
+      return false;
+    }
+    if (silent && !templateHydratedRef.current) return false;
+    if (!silent) setSavingSettings(true);
+    try {
+      if (!silent) {
+        const columnsSynced = await syncDialogColumns();
+        if (!columnsSynced) return false;
+      }
+      await api.post(`/class/${classId}/session-settings`, {
+        subject_id: subjectId,
+        participation_enabled: participationEnabled,
+        homework_enabled: homeworkEnabled,
+        homework_view_mode: homeworkViewMode,
+        recitation_enabled: recitationEnabled,
+        recitation_max_attempts: recitationMaxAttempts,
+        streak_bonus_enabled: streakBonusEnabled,
+        skill_enabled: skillEnabled,
+        participation_scores: participationScores,
+        custom_positive_behaviours: customPositiveBehaviours,
+        custom_negative_behaviours: customNegativeBehaviours,
+        custom_skills: customSkills,
+        custom_evaluation_items: customEvaluationItems.filter((x) => x && !DEFAULT_EVAL_IDS.has(x.id)),
+        behaviour_score_overrides: behaviourScoreOverrides,
+      });
+      // Server template now owns these settings — retire the legacy blob.
+      try { localStorage.removeItem(SIDEBAR_KEY); } catch { /* ignore */ }
+      if (!silent) {
+        toast.success(t('saved') || 'تم الحفظ');
+        setShowSidebarSettings(false);
+        // Refresh the records tab so column edits show up immediately.
+        fetchGradeColumns();
+      }
+      return true;
+    } catch (e) {
+      console.error('Error saving session-settings template:', e);
+      if (!silent) toast.error(getApiErrorMessage(e) || t('errorOccurred') || 'Error');
+      return false;
+    } finally {
+      if (!silent) setSavingSettings(false);
+    }
+  }, [
+    api, classId, settingsSubjectId, participationEnabled, homeworkEnabled,
+    homeworkViewMode, recitationEnabled, recitationMaxAttempts,
+    streakBonusEnabled, skillEnabled, participationScores,
+    customPositiveBehaviours, customNegativeBehaviours, customSkills,
+    customEvaluationItems, behaviourScoreOverrides, syncDialogColumns,
+    fetchGradeColumns, SIDEBAR_KEY, t,
+  ]);
 
   const handleToggleLesson = async (lesson) => {
     try {
@@ -1388,12 +1704,12 @@ export default function TeacherClassDetailPage() {
                   variant="outline"
                   size="sm"
                   className="h-9 gap-1.5 font-cairo"
-                  onClick={() => setShowSidebarSettings(true)}
-                  title={t('sidebarSettings')}
-                  aria-label={t('sidebarSettings')}
+                  onClick={openSessionSettings}
+                  title={t('sessionSettings')}
+                  aria-label={t('sessionSettings')}
                 >
                   <Settings className="h-4 w-4" />
-                  <span className="hidden sm:inline text-xs">{t('sidebarSettings')}</span>
+                  <span className="hidden sm:inline text-xs">{t('sessionSettings')}</span>
                 </Button>
                 <Button variant="outline" size="sm" className="h-9" onClick={fetchClassData} disabled={loading}>
                   <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -1499,27 +1815,93 @@ export default function TeacherClassDetailPage() {
         }}
       />
 
-      {/* Sidebar Settings Dialog (إعدادات الشريط الجانبي) — 3 tabs */}
+      {/* إعدادات الحصة — same master dialog as the live lesson (Group A
+          تعريفات العناصر + Group B تكوين الحصة), editing the shared
+          class+subject session_settings template. */}
       <SidebarSettingsDialog
         open={showSidebarSettings}
-        onOpenChange={setShowSidebarSettings}
+        onOpenChange={(open) => {
+          setShowSidebarSettings(open);
+          // Persist تعريفات العناصر edits on close — those tabs have no Save
+          // button. Guarded so a pre-hydration close can't clobber the template.
+          if (!open) saveSessionTemplate({ silent: true }).catch(() => {});
+        }}
         isRTL={isRTL}
         t={t}
         evaluationItems={customEvaluationItems}
         onAddEvaluationItem={(item) => setCustomEvaluationItems((prev) => [...prev, item])}
         onRemoveEvaluationItem={(id) => setCustomEvaluationItems((prev) => prev.filter((x) => x.id !== id))}
-        positiveBehaviours={customPositiveBehaviours}
-        negativeBehaviours={customNegativeBehaviours}
+        positiveBehaviours={[
+          // Built-in defaults render (read-only) alongside custom entries —
+          // the same defaults ∪ custom union the live-lesson dialog shows.
+          ...BEHAVIOURS.positive.map((b) => ({
+            id: b.id,
+            name: b.labelKey ? (t(b.labelKey) || b.label) : b.label,
+            points: Number(behaviourScoreOverrides[b.id]) > 0
+              ? Number(behaviourScoreOverrides[b.id])
+              : (Math.abs(Number(b.points)) || 0),
+            removable: false,
+          })),
+          ...customPositiveBehaviours,
+        ]}
+        negativeBehaviours={[
+          ...BEHAVIOURS.negative.map((b) => ({
+            id: b.id,
+            name: b.labelKey ? (t(b.labelKey) || b.label) : b.label,
+            points: Number(behaviourScoreOverrides[b.id]) > 0
+              ? Number(behaviourScoreOverrides[b.id])
+              : (Math.abs(Number(b.points)) || 0),
+            removable: false,
+          })),
+          ...customNegativeBehaviours,
+        ]}
         onAddPositiveBehaviour={(item) => setCustomPositiveBehaviours((prev) => [...prev, item])}
         onAddNegativeBehaviour={(item) => setCustomNegativeBehaviours((prev) => [...prev, item])}
-        onRemovePositiveBehaviour={(id) => setCustomPositiveBehaviours((prev) => prev.filter((x) => x.id !== id))}
-        onRemoveNegativeBehaviour={(id) => setCustomNegativeBehaviours((prev) => prev.filter((x) => x.id !== id))}
+        onRemovePositiveBehaviour={(id) => setCustomPositiveBehaviours((prev) => prev.filter((x) => (typeof x === 'string' ? `custom_${x}` !== id : x.id !== id)))}
+        onRemoveNegativeBehaviour={(id) => setCustomNegativeBehaviours((prev) => prev.filter((x) => (typeof x === 'string' ? `custom_${x}` !== id : x.id !== id)))}
+        onUpdateBehaviourScore={updateBehaviourScore}
         skillEnabled={skillEnabled}
         onToggleSkillEnabled={setSkillEnabled}
-        skillTypes={[]}
+        skillTypes={skillTypes}
         customSkills={customSkills}
         onAddCustomSkill={(name) => setCustomSkills((prev) => [...prev, name])}
         onRemoveCustomSkill={(idx) => setCustomSkills((prev) => prev.filter((_, j) => j !== idx))}
+        onUpdateSkillType={updateSkillType}
+        onUpdateCustomSkill={(idx, points) => setCustomSkills((prev) => prev.map((s, j) => {
+          if (j !== idx) return s;
+          if (typeof s === 'string') return { name: s, points };
+          return { ...s, points };
+        }))}
+        sessionConfig={{
+          showSubjectPicker: true,
+          subjectsList: recordSubjects.map((s) => ({ id: s.id, name: s.name })),
+          subjectsLoading: settingsSubjectsLoading,
+          subjectId: settingsSubjectId,
+          onSubjectIdChange: (id) => {
+            setSettingsSubjectId(id);
+            loadSessionTemplate(id);
+          },
+          participationEnabled,
+          onParticipationEnabledChange: setParticipationEnabled,
+          homeworkEnabled,
+          onHomeworkEnabledChange: setHomeworkEnabled,
+          homeworkViewMode,
+          onHomeworkViewModeChange: setHomeworkViewMode,
+          recitationEnabled,
+          onRecitationEnabledChange: setRecitationEnabled,
+          recitationMaxAttempts,
+          onRecitationMaxAttemptsChange: setRecitationMaxAttempts,
+          followupColumns,
+          onFollowupColumnsChange: setFollowupColumns,
+          showAddOtherItems,
+          onShowAddOtherItemsChange: setShowAddOtherItems,
+          participationScores,
+          onParticipationScoresChange: setParticipationScores,
+          streakBonusEnabled,
+          onStreakBonusEnabledChange: setStreakBonusEnabled,
+          onSave: () => saveSessionTemplate(),
+          saving: savingSettings,
+        }}
       />
 
     </Sidebar>
