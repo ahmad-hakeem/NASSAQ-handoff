@@ -13,7 +13,7 @@ import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import {
   Calendar, Clock, ChevronRight, ChevronLeft, BookOpen,
   Users, Loader2, RefreshCw, Printer, Download, Play,
-  MapPin, AlertTriangle, Timer, CalendarDays, Eye
+  MapPin, AlertTriangle, Timer, CalendarDays, Eye, Hourglass
 } from 'lucide-react';
 
 import { useTranslation } from '../../contexts/ThemeContext';
@@ -92,6 +92,8 @@ export default function TeacherSchedulePage() {
   const [scheduleVersion, setScheduleVersion] = useState(null);
   const [scheduleChanged, setScheduleChanged] = useState(false);
   const [monthDate, setMonthDate] = useState(new Date());
+  const [standbyData, setStandbyData] = useState(null);
+  const [showStandby, setShowStandby] = useState(true);
   const prevScheduleRef = useRef(null);
 
   const { nassaqError } = useNassaqAlert();
@@ -106,12 +108,14 @@ export default function TeacherSchedulePage() {
     const hasExistingData = (prevScheduleRef.current?.length || 0) > 0;
     if (!silent || !hasExistingData) setLoading(true);
     try {
-      const [scheduleRes, slotsRes] = await Promise.all([
+      const [scheduleRes, slotsRes, standbyRes] = await Promise.all([
         api.get(`/teacher/schedule/${teacherId}`).catch(() => ({ data: [] })),
-        api.get('/time-slots').catch(() => ({ data: [] }))
+        api.get('/time-slots').catch(() => ({ data: [] })),
+        api.get('/standby/roster/me').catch(() => ({ data: null })),
       ]);
       const newSchedule = scheduleRes.data || [];
       const newSlots = (slotsRes.data || []).filter(s => !s.is_break);
+      setStandbyData(standbyRes.data || null);
       
       if (prevScheduleRef.current !== null) {
         const hashSchedule = (list) => JSON.stringify(
@@ -175,6 +179,28 @@ export default function TeacherSchedulePage() {
     return schedule.filter(s => s.day_of_week === todayKey)
       .sort((a, b) => (a.slot_number || a.period_number || 0) - (b.slot_number || b.period_number || 0));
   }, [schedule, todayKey]);
+
+  // Map of "${dayKey}_${periodNumber}" → standby entry for O(1) grid lookup.
+  const standbyByKey = useMemo(() => {
+    const m = new Map();
+    for (const dayObj of (standbyData?.days || [])) {
+      for (const entry of (dayObj.periods || [])) {
+        m.set(`${dayObj.day}_${entry.period}`, entry);
+      }
+    }
+    return m;
+  }, [standbyData]);
+
+  const todayStandby = useMemo(() => {
+    if (!todayKey) return [];
+    const result = [];
+    for (const [key, entry] of standbyByKey) {
+      if (key.startsWith(`${todayKey}_`)) result.push(entry);
+    }
+    return result.sort((a, b) => a.period - b.period);
+  }, [standbyByKey, todayKey]);
+
+  const totalStandbySlots = standbyData?.total_slots || 0;
 
   const currentSession = useMemo(() => {
     void tick; // eslint-disable-line react-hooks/exhaustive-deps
@@ -458,6 +484,39 @@ export default function TeacherSchedulePage() {
             </div>
           )}
 
+          {showStandby && todayStandby.length > 0 && !isWeekend && (
+            <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 print:hidden">
+              <div className="flex items-center gap-2 mb-2">
+                <Hourglass className="h-4 w-4 text-amber-500" strokeWidth={1.5} aria-hidden="true" />
+                <span className="text-sm font-cairo font-bold text-amber-800 dark:text-amber-200">
+                  حصص انتظارك اليوم ({todayStandby.length})
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {todayStandby.map((entry, i) => (
+                  <div key={i} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
+                    entry.status === 'assigned'
+                      ? 'bg-amber-200 text-amber-900 border-amber-300 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-700'
+                      : 'bg-white text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                  }`}>
+                    <span className="font-cairo">
+                      {['الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة','السابعة','الثامنة','التاسعة','العاشرة'][entry.period - 1]
+                        ? `الحصة ${['الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة','السابعة','الثامنة','التاسعة','العاشرة'][entry.period - 1]}`
+                        : `الحصة ${entry.period}`}
+                    </span>
+                    {entry.status === 'assigned' && entry.class_name && (
+                      <span className="opacity-75">• {entry.class_name}</span>
+                    )}
+                    {entry.status === 'assigned'
+                      ? <Badge className="text-[9px] px-1 py-0 bg-amber-300 text-amber-900 dark:bg-amber-800 dark:text-amber-100">مُسنَدة</Badge>
+                      : <Badge variant="outline" className="text-[9px] px-1 py-0 border-amber-300 text-amber-600 dark:border-amber-700 dark:text-amber-400">انتظار</Badge>
+                    }
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {(currentSession || nextSession) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print:hidden">
               {currentSession && (
@@ -517,14 +576,33 @@ export default function TeacherSchedulePage() {
             </Card>
           )}
 
-          <div className="flex items-center justify-between print:hidden">
-            <Tabs value={view} onValueChange={setView}>
-              <TabsList>
-                <TabsTrigger value="weekly">{t('weekly')}</TabsTrigger>
-                <TabsTrigger value="daily">{t('daily2')}</TabsTrigger>
-                <TabsTrigger value="monthly">{t('monthly')}</TabsTrigger>
-              </TabsList>
-            </Tabs>
+          <div className="flex items-center justify-between print:hidden flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <Tabs value={view} onValueChange={setView}>
+                <TabsList>
+                  <TabsTrigger value="weekly">{t('weekly')}</TabsTrigger>
+                  <TabsTrigger value="daily">{t('daily2')}</TabsTrigger>
+                  <TabsTrigger value="monthly">{t('monthly')}</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <Button
+                variant={showStandby ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setShowStandby(s => !s)}
+                className={showStandby
+                  ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-500'
+                  : 'text-amber-600 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30'}
+                aria-pressed={showStandby}
+              >
+                <Hourglass className="h-4 w-4 me-1.5" strokeWidth={1.5} aria-hidden="true" />
+                حصص الانتظار
+                {totalStandbySlots > 0 && (
+                  <Badge className={`ms-1.5 text-[10px] px-1.5 ${showStandby ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'}`}>
+                    {totalStandbySlots}
+                  </Badge>
+                )}
+              </Button>
+            </div>
 
             {view === 'daily' && (
               <div className="flex items-center gap-2">
@@ -601,6 +679,15 @@ export default function TeacherSchedulePage() {
                                 {cell.sessions.length > 0 && (
                                   <Badge variant="outline" className="text-[10px] px-1.5">{cell.sessions.length} {isRTL ? 'حصة' : 'cls'}</Badge>
                                 )}
+                                {showStandby && cell.dayKey && (() => {
+                                  let count = 0;
+                                  for (const [k] of standbyByKey) { if (k.startsWith(`${cell.dayKey}_`)) count++; }
+                                  return count > 0 ? (
+                                    <Badge className="text-[10px] px-1.5 bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                      <Hourglass className="h-2.5 w-2.5 me-0.5 inline" aria-hidden="true" />{count}
+                                    </Badge>
+                                  ) : null;
+                                })()}
                               </div>
                             </td>
                           );
@@ -652,9 +739,12 @@ export default function TeacherSchedulePage() {
                         </td>
                         {(view === 'weekly' ? DAYS : [DAYS.find(d => d.key === selectedDay)]).map(day => {
                           const sessions = getSessionsForCell(day.key, slot.id, slot.slot_number || slot.period_number, slot.start_time);
+                          const slotPeriodKey = `${day.key}_${slot.slot_number || slot.period_number || (idx + 1)}`;
+                          const standbyEntry = showStandby ? standbyByKey.get(slotPeriodKey) : null;
+                          const hasContent = sessions.length > 0 || standbyEntry;
                           return (
                             <td key={`${day.key}-${slot.id}`} className={`p-2 border-b border-s min-h-[80px] ${getDayTintClass(day.key)} ${day.key === todayKey ? 'ring-1 ring-inset ring-brand-turquoise/30' : ''}`}>
-                              {sessions.length > 0 ? (
+                              {hasContent ? (
                                 <div className="space-y-1">
                                   {sessions.map(session => {
                                     const status = getSessionStatus(session, day.key);
@@ -690,6 +780,33 @@ export default function TeacherSchedulePage() {
                                       </div>
                                     );
                                   })}
+                                  {standbyEntry && (
+                                    <div className="p-2 rounded-lg border-2 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30">
+                                      <div className="flex items-center gap-2">
+                                        <Hourglass className="h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" strokeWidth={1.5} aria-hidden="true" />
+                                        <div className="min-w-0 flex-1">
+                                          <p className="font-medium text-sm truncate text-amber-800 dark:text-amber-200 font-cairo">
+                                            {standbyEntry.status === 'assigned'
+                                              ? (standbyEntry.subject_name || 'حصة مُسنَدة')
+                                              : 'حصة انتظار'}
+                                          </p>
+                                          {standbyEntry.class_name && (
+                                            <div className="flex items-center gap-0.5 text-xs text-amber-600 dark:text-amber-400">
+                                              <Users className="h-3 w-3" aria-hidden="true" />
+                                              {standbyEntry.class_name}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <Badge className={`mt-1 text-[10px] ${
+                                        standbyEntry.status === 'assigned'
+                                          ? 'bg-amber-200 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200'
+                                          : 'bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400'
+                                      }`}>
+                                        {standbyEntry.status === 'assigned' ? 'مُسنَدة' : 'في الانتظار'}
+                                      </Badge>
+                                    </div>
+                                  )}
                                 </div>
                               ) : (
                                 <div className="h-16 border-2 border-dashed border-muted-foreground/20 rounded-lg flex items-center justify-center text-muted-foreground/50 text-xs">
@@ -707,7 +824,7 @@ export default function TeacherSchedulePage() {
             </Card>
           )}
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 print:hidden">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 print:hidden">
             <Card>
               <CardContent className="p-4 text-center">
                 <div className="text-3xl font-bold text-brand-navy dark:text-brand-turquoise">{schedule.length}</div>
@@ -730,6 +847,15 @@ export default function TeacherSchedulePage() {
               <CardContent className="p-4 text-center">
                 <div className="text-3xl font-bold text-purple-600">{[...new Set(schedule.map(s => s.subject_name))].length}</div>
                 <div className="text-sm text-muted-foreground">{t('subjects6')}</div>
+              </CardContent>
+            </Card>
+            <Card className="border-amber-200 dark:border-amber-800">
+              <CardContent className="p-4 text-center">
+                <div className="flex items-center justify-center gap-1.5 mb-1">
+                  <Hourglass className="h-5 w-5 text-amber-500" strokeWidth={1.5} aria-hidden="true" />
+                  <div className="text-3xl font-bold text-amber-600 dark:text-amber-400">{totalStandbySlots}</div>
+                </div>
+                <div className="text-sm text-muted-foreground">حصص الانتظار</div>
               </CardContent>
             </Card>
           </div>
