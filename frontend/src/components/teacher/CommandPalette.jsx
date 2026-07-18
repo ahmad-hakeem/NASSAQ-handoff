@@ -8,6 +8,8 @@ import {
   Sparkles,
   CalendarDays,
   Clock,
+  Compass,
+  GraduationCap,
   X,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -17,18 +19,33 @@ const RECENTS_STORAGE_PREFIX = 'nassaq_cmdk_recents_';
 const MAX_RECENTS = 10;
 const MIN_QUERY_LEN = 2;
 const DEBOUNCE_MS = 180;
+const MAX_NAV_RESULTS = 8;
+
+// Roles that hit the school-staff palette endpoint. Independent teachers
+// keep their own workspace endpoint; every other role (parent,
+// platform_admin, …) gets navigation-only search with no network calls.
+const SCHOOL_STAFF_ROLES = [
+  'teacher',
+  'school_principal',
+  'school_admin',
+  'school_sub_admin',
+];
 
 const CATEGORY_META = {
+  navigation: { icon: Compass, labelKey: 'cmdkCategoryNavigation' },
   students: { icon: Users, labelKey: 'cmdkCategoryStudents' },
   classes: { icon: SchoolIcon, labelKey: 'cmdkCategoryClasses' },
+  teachers: { icon: GraduationCap, labelKey: 'cmdkCategoryTeachers' },
   subjects: { icon: BookOpen, labelKey: 'cmdkCategorySubjects' },
   lesson_plans: { icon: Sparkles, labelKey: 'cmdkCategoryLessonPlans' },
   calendar_events: { icon: CalendarDays, labelKey: 'cmdkCategoryCalendarEvents' },
 };
 
 const CATEGORY_ORDER = [
+  'navigation',
   'students',
   'classes',
+  'teachers',
   'subjects',
   'lesson_plans',
   'calendar_events',
@@ -70,7 +87,7 @@ const writeRecent = (userId, item) => {
   }
 };
 
-const CommandPalette = () => {
+const CommandPalette = ({ effectiveRole, menuItems }) => {
   const { api, user } = useAuth();
   const { t, isRTL } = useTranslation();
   const navigate = useNavigate();
@@ -84,11 +101,15 @@ const CommandPalette = () => {
   const inputRef = useRef(null);
   const reqIdRef = useRef(0);
 
-  const isIT = user?.role === 'independent_teacher';
+  const role = effectiveRole || user?.role || '';
+  const searchEndpoint = role === 'independent_teacher'
+    ? '/independent-teacher/search'
+    : SCHOOL_STAFF_ROLES.includes(role)
+      ? '/search/palette'
+      : null;
 
   // ---- global Cmd/Ctrl+K hotkey -----------------------------------------
   useEffect(() => {
-    if (!isIT) return undefined;
     const handler = (e) => {
       const isK = e.key === 'k' || e.key === 'K';
       if (isK && (e.metaKey || e.ctrlKey)) {
@@ -98,15 +119,14 @@ const CommandPalette = () => {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [isIT]);
+  }, []);
 
   // ---- listen to a custom open event so the sidebar icon can trigger it -
   useEffect(() => {
-    if (!isIT) return undefined;
     const opener = () => setOpen(true);
     window.addEventListener('nassaq:open-command-palette', opener);
     return () => window.removeEventListener('nassaq:open-command-palette', opener);
-  }, [isIT]);
+  }, []);
 
   // ---- when opened: focus input + load recents --------------------------
   useEffect(() => {
@@ -121,11 +141,11 @@ const CommandPalette = () => {
     return () => window.clearTimeout(id);
   }, [open, user?.id]);
 
-  // ---- debounced search -------------------------------------------------
+  // ---- debounced search (roles with a backend palette endpoint only) ----
   useEffect(() => {
     if (!open) return undefined;
     const trimmed = (query || '').trim();
-    if (trimmed.length < MIN_QUERY_LEN) {
+    if (trimmed.length < MIN_QUERY_LEN || !searchEndpoint) {
       setPayload(null);
       setLoading(false);
       return undefined;
@@ -134,7 +154,7 @@ const CommandPalette = () => {
     setLoading(true);
     const t1 = window.setTimeout(async () => {
       try {
-        const res = await api.get('/independent-teacher/search', {
+        const res = await api.get(searchEndpoint, {
           params: { q: trimmed, limit: 8 },
         });
         if (reqIdRef.current === myReq) {
@@ -148,9 +168,46 @@ const CommandPalette = () => {
       }
     }, DEBOUNCE_MS);
     return () => window.clearTimeout(t1);
-  }, [query, open, api]);
+  }, [query, open, api, searchEndpoint]);
 
-  const flat = useMemo(() => flattenResults(payload), [payload]);
+  // ---- client-side navigation search over the caller's own sidebar menu -
+  const navResults = useMemo(() => {
+    const trimmed = (query || '').trim().toLowerCase();
+    if (trimmed.length < MIN_QUERY_LEN) return [];
+    const out = [];
+    for (const item of menuItems || []) {
+      if (Array.isArray(item.subItems)) {
+        for (const sub of item.subItems) {
+          if (sub.href && (sub.label || '').toLowerCase().includes(trimmed)) {
+            out.push({
+              id: `nav-${sub.href}`,
+              category: 'navigation',
+              primary: sub.label,
+              secondary: item.label || '',
+              href: sub.href,
+            });
+          }
+        }
+      }
+      if (item.href && (item.label || '').toLowerCase().includes(trimmed)) {
+        out.push({
+          id: `nav-${item.href}`,
+          category: 'navigation',
+          primary: item.label,
+          secondary: '',
+          href: item.href,
+        });
+      }
+    }
+    return out.slice(0, MAX_NAV_RESULTS);
+  }, [query, menuItems]);
+
+  const merged = useMemo(() => {
+    if (!navResults.length && !payload) return null;
+    return { navigation: navResults, ...(payload || {}) };
+  }, [navResults, payload]);
+
+  const flat = useMemo(() => flattenResults(merged), [merged]);
   const showRecents = (query || '').trim().length < MIN_QUERY_LEN;
   const visible = showRecents ? recents : flat;
 
@@ -180,12 +237,12 @@ const CommandPalette = () => {
     }
   };
 
-  if (!isIT || !open) return null;
+  if (!open) return null;
 
   // group results by category preserving order, but keep one flat index map
   const grouped = CATEGORY_ORDER
-    .map((cat) => ({ cat, items: payload?.[cat] || [] }))
-    .filter((g) => g.items.length > 0);
+    .map((cat) => ({ cat, items: merged?.[cat] || [] }))
+    .filter((g) => Array.isArray(g.items) && g.items.length > 0);
 
   let runningIndex = -1;
   const indexFor = () => {
@@ -284,7 +341,7 @@ const CommandPalette = () => {
                 {recents.map((item) => renderRow(item, indexFor()))}
               </div>
             )
-          ) : loading && !payload ? (
+          ) : loading && !merged ? (
             <div className="px-4 py-8 text-center text-sm text-muted-foreground" data-testid="cmdk-loading">
               {t('cmdkLoading')}
             </div>

@@ -4867,6 +4867,8 @@
   "cmdkHintHotkey": "Ctrl/⌘ + K",
   "cmdkCategoryStudents": "Students",
   "cmdkCategoryClasses": "Classes",
+  "cmdkCategoryTeachers": "Teachers",
+  "cmdkCategoryNavigation": "Navigation",
   "cmdkCategorySubjects": "Subjects",
   "cmdkCategoryLessonPlans": "Lesson plans",
   "cmdkCategoryCalendarEvents": "Calendar",

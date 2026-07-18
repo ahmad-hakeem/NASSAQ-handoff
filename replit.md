@@ -35,7 +35,7 @@ A comprehensive, multi-tenant school management platform with AI-powered feature
   - `frontend/src/services/apiClient.js`: Centralized API service layer.
   - `frontend/src/components/`: Reusable UI components.
   - `frontend/src/context/AuthContext.js`: Authentication context.
-  - `frontend/src/i18n/`: Internationalization locale files (`ar.json`, `en.json`).
+  - `frontend/src/locales/`: Internationalization locale files (`ar.json`, `en.json`).
   - `frontend/src/utils/hijriDate.js`: Hijri/Gregorian date conversion utility.
   - `frontend/src/pages/SchedulePageNew.jsx`: Master schedule grid (workspace redesign 2026-05-06: sticky band, chip-collapsed alerts/insights, no pager UI).
   - `frontend/src/config/scheduleConfig.js`: `MASTER_GRID_TEACHER_WINDOW = 200` — single window size, no pagination.

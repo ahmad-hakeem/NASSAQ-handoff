@@ -13,7 +13,6 @@ import {
   Globe,
 } from 'lucide-react';
 import { Button } from '../../ui/button';
-import { Badge } from '../../ui/badge';
 import { BetaBadge } from '../../BetaDisclaimer';
 import CommandPalette from '../../teacher/CommandPalette';
 import { useTheme } from '../../../contexts/ThemeContext';
@@ -60,7 +59,6 @@ export default function SidebarContent({
   isActive,
   expandedGroups,
   onToggleGroup,
-  unreadInbox,
   availableRoles,
   onOpenRoleSwitcher,
   isSwitchedRole,
@@ -97,7 +95,7 @@ export default function SidebarContent({
 
   return (
     <div className="flex flex-col h-full">
-      <CommandPalette />
+      <CommandPalette effectiveRole={effectiveRole} menuItems={menuItems} />
 
       {/* ── Top area ── */}
       {collapsed ? (
@@ -153,19 +151,17 @@ export default function SidebarContent({
             </Button>
           )}
 
-          {/* Command palette — independent_teacher only */}
-          {effectiveRole === 'independent_teacher' && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => window.dispatchEvent(new CustomEvent('nassaq:open-command-palette'))}
-              className="text-white/70 hover:text-white hover:bg-white/10 w-11 h-11"
-              data-testid="sidebar-cmdk-btn"
-              title={t('cmdkOpen')}
-            >
-              <Search className="h-5 w-5" />
-            </Button>
-          )}
+          {/* Command palette — all roles (unified search entry point) */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => window.dispatchEvent(new CustomEvent('nassaq:open-command-palette'))}
+            className="text-white/70 hover:text-white hover:bg-white/10 w-11 h-11"
+            data-testid="sidebar-cmdk-btn"
+            title={t('cmdkOpen')}
+          >
+            <Search className="h-5 w-5" />
+          </Button>
         </div>
       ) : (
         /* Expanded: logo row + inline controls */
@@ -177,18 +173,16 @@ export default function SidebarContent({
             </Link>
 
             <div className="flex items-center gap-1">
-              {effectiveRole === 'independent_teacher' && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => window.dispatchEvent(new CustomEvent('nassaq:open-command-palette'))}
-                  className="text-white/70 hover:text-white hover:bg-white/10"
-                  data-testid="sidebar-cmdk-btn"
-                  title={t('cmdkOpen')}
-                >
-                  <Search className="h-5 w-5" />
-                </Button>
-              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => window.dispatchEvent(new CustomEvent('nassaq:open-command-palette'))}
+                className="text-white/70 hover:text-white hover:bg-white/10"
+                data-testid="sidebar-cmdk-btn"
+                title={t('cmdkOpen')}
+              >
+                <Search className="h-5 w-5" />
+              </Button>
               {availableRoles.length > 1 && (
                 <Button
                   variant="ghost"
@@ -291,15 +285,6 @@ export default function SidebarContent({
               >
                 <item.icon className="h-5 w-5 flex-shrink-0" />
                 {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-                {item.showUnreadBadge && unreadInbox > 0 && (
-                  <Badge
-                    variant="destructive"
-                    className={`h-5 min-w-[1.25rem] px-1.5 text-[10px] font-semibold flex items-center justify-center rounded-full ${collapsed ? 'absolute top-1 end-1' : 'ms-auto'}`}
-                    data-testid={`sidebar-badge-${item.href.replace(/\//g, '-')}`}
-                  >
-                    {unreadInbox > 99 ? '99+' : unreadInbox}
-                  </Badge>
-                )}
               </Link>
             );
           })}

@@ -4867,6 +4867,8 @@
   "cmdkHintHotkey": "Ctrl/⌘ + K",
   "cmdkCategoryStudents": "الطلاب",
   "cmdkCategoryClasses": "الفصول",
+  "cmdkCategoryTeachers": "المعلمون",
+  "cmdkCategoryNavigation": "التنقل",
   "cmdkCategorySubjects": "المواد",
   "cmdkCategoryLessonPlans": "خطط الدروس",
   "cmdkCategoryCalendarEvents": "التقويم",

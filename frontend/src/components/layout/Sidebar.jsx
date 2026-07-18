@@ -79,36 +79,6 @@ export const Sidebar = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // 2026-05-18 — IT unread inbox counter for the unified
-  // "التواصل والإشعارات" entry (Phase-1 badge migration).
-  const [unreadInbox, setUnreadInbox] = useState(0);
-  const isIndependentTeacher = (user?.role || '').toLowerCase() === 'independent_teacher';
-
-  useEffect(() => {
-    if (!isIndependentTeacher || !token) {
-      setUnreadInbox(0);
-      return undefined;
-    }
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const res = await api.get('/independent-teacher/notifications/unread-count');
-        if (!cancelled) setUnreadInbox(Number(res?.data?.unread_count) || 0);
-      } catch {
-        if (!cancelled) setUnreadInbox(0);
-      }
-    };
-    load();
-    const interval = setInterval(load, 60000);
-    const onRefresh = () => load();
-    window.addEventListener('notifications:refresh', onRefresh);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-      window.removeEventListener('notifications:refresh', onRefresh);
-    };
-  }, [api, token, isIndependentTeacher]);
-
   const { nassaqError, nassaqWarning } = useNassaqAlert();
 
   const fetchAvailableRoles = useCallback(async () => {
@@ -373,8 +343,6 @@ export const Sidebar = ({ children }) => {
         href: '/teacher/communication',
         roles: ['teacher', 'independent_teacher'],
         dataTour: 'sidebar-communication',
-        // 2026-05-18 — IT unread inbox badge sits on this unified entry.
-        showUnreadBadge: true,
       },
       { icon: Network, label: t('aiInsights'), href: '/ai-insights', roles: ['teacher', 'independent_teacher'] },
       // 2026-05-18 — Unified "الملف الشخصي والإعدادات" entry → /account/settings hub.
@@ -478,7 +446,6 @@ export const Sidebar = ({ children }) => {
           isActive={isActive}
           expandedGroups={expandedGroups}
           onToggleGroup={onToggleGroup}
-          unreadInbox={unreadInbox}
           availableRoles={availableRoles}
           onOpenRoleSwitcher={onOpenRoleSwitcher}
           isSwitchedRole={isSwitchedRole}

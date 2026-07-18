@@ -38,6 +38,7 @@ SCOPED_ENDPOINTS = [
     ("GET", "/attendance/report/summary"),
     ("GET", "/attendance/excuses"),
     ("GET", "/search/global?q=a"),
+    ("GET", "/search/palette?q=ab"),
     ("GET", "/search/autocomplete?q=a"),
     ("GET", "/directory/students"),
     ("GET", "/directory/teachers"),
@@ -218,3 +219,203 @@ async def test_directory_search_cross_tenant_isolation(
     found_student_ids = {s["id"] for s in r.json().get("students", [])}
     assert a["student_id"] in found_student_ids
     assert b["student_id"] not in found_student_ids
+
+
+# ------------------------------------------------------------------ (C)
+# Sanitized payloads + the school-staff command palette (/search/palette).
+
+# Any key containing one of these substrings must NEVER appear anywhere in a
+# search/directory response body (raw `users` rows carry password_hash and
+# MFA/reset material; raw student/parent rows carry family PII fields that
+# the projections intentionally drop).
+_SENSITIVE_KEY_PATTERNS = (
+    "password", "mfa", "secret", "reset_token", "token_hash", "otp",
+)
+
+
+def _assert_no_sensitive_keys(obj, path="$"):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            kl = str(k).lower()
+            assert not any(p in kl for p in _SENSITIVE_KEY_PATTERNS), (
+                f"sensitive key {k!r} leaked at {path}"
+            )
+            _assert_no_sensitive_keys(v, f"{path}.{k}")
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            _assert_no_sensitive_keys(v, f"{path}[{i}]")
+
+
+async def _mk_role_user_headers(role: UserRole, tenant_id) -> dict:
+    uid = str(uuid.uuid4())
+    await gd_insert(db.session, "users", {
+        "id": uid,
+        "role": role.value,
+        "tenant_id": tenant_id,
+        "email": f"u-{uid}@t.test",
+        "full_name": f"U-{uid[:6]}",
+        "is_active": True,
+        "password_hash": "x",
+    })
+    token = create_access_token({
+        "sub": uid, "role": role.value, "tenant_id": tenant_id,
+    })
+    return {"Authorization": f"Bearer {token}"}, uid
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", [
+    UserRole.PARENT,
+    # UserRole.STUDENT is denied even earlier: student login is globally
+    # disabled at get_current_user (401), so the palette is unreachable.
+    UserRole.INDEPENDENT_TEACHER,
+    UserRole.PLATFORM_ADMIN,
+])
+async def test_palette_denies_non_school_staff(client, tenant_a, role):
+    """/search/palette is school-staff only: parents/students must not
+    enumerate school data, platform admins have no school context, and
+    independent teachers use their own workspace endpoint."""
+    headers, _ = await _mk_role_user_headers(role, tenant_a)
+    r = await client.get("/search/palette?q=ab", headers=headers)
+    assert r.status_code == 403, f"{role} -> {r.status_code} {r.text}"
+
+
+@pytest.mark.asyncio
+async def test_palette_unreachable_for_student_accounts(client, tenant_a):
+    """Students are blocked at authentication itself (global student-login
+    gate) — the palette must stay unreachable (401), never 200."""
+    headers, _ = await _mk_role_user_headers(UserRole.STUDENT, tenant_a)
+    r = await client.get("/search/palette?q=ab", headers=headers)
+    assert r.status_code == 401, r.text
+
+
+@pytest.mark.asyncio
+async def test_palette_leadership_results_scoped_and_projected(
+    client, tenant_a, tenant_b
+):
+    """Leadership palette: sees own-tenant students/classes/teachers with
+    role-aware hrefs, never tenant-B rows, and only the minimal projection
+    {id, category, primary, secondary, href} — no raw rows, no PII keys."""
+    a = await _seed_tenant_with_directory_rows(tenant_a, "A")
+    b = await _seed_tenant_with_directory_rows(tenant_b, "B")
+    headers, _ = await _mk_role_user_headers(UserRole.SCHOOL_ADMIN, tenant_a)
+
+    r = await client.get("/search/palette?q=student", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert set(body.keys()) == {"q", "students", "classes", "teachers"}
+    _assert_no_sensitive_keys(body)
+
+    student_ids = {s["id"] for s in body["students"]}
+    assert a["student_id"] in student_ids
+    assert b["student_id"] not in student_ids
+    for item in body["students"]:
+        assert set(item.keys()) == {"id", "category", "primary", "secondary", "href"}
+        assert item["href"] == f"/principal/students/{item['id']}"
+        # Least-PII: the national id must never be surfaced as display text.
+        assert "national" not in str(item.get("secondary", "")).lower()
+
+    # Teachers category is leadership-only and must be tenant-scoped too.
+    r = await client.get("/search/palette?q=teacher", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    _assert_no_sensitive_keys(body)
+    teacher_ids = {t["id"] for t in body["teachers"]}
+    assert a["teacher_user_id"] in teacher_ids
+    assert b["teacher_user_id"] not in teacher_ids
+    for item in body["teachers"]:
+        assert item["href"] == "/admin/users-management?filter=teachers"
+
+    # Classes route leadership to the management page.
+    r = await client.get("/search/palette?q=class", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    class_ids = {c["id"] for c in body["classes"]}
+    assert a["class_id"] in class_ids
+    assert b["class_id"] not in class_ids
+    for item in body["classes"]:
+        assert item["href"] == "/admin/users-management?filter=classes"
+
+
+@pytest.mark.asyncio
+async def test_palette_teacher_is_class_scoped(client, tenant_a):
+    """A teacher only sees students of classes they are assigned to; the
+    teachers category stays empty; hrefs use the teacher deep-link."""
+    seeded = await _seed_tenant_with_directory_rows(tenant_a, "A")
+
+    # Second student in a class the teacher is NOT assigned to.
+    other_cls = str(uuid.uuid4())
+    await gd_insert(db.session, "classes", {
+        "id": other_cls, "school_id": tenant_a, "tenant_id": tenant_a,
+        "name": "A-other-class",
+    })
+    other_stu = str(uuid.uuid4())
+    await gd_insert(db.session, "students", {
+        "id": other_stu, "school_id": tenant_a, "tenant_id": tenant_a,
+        "full_name": "A-student-other", "class_id": other_cls,
+        "is_active": True,
+    })
+
+    headers, teacher_uid = await _mk_role_user_headers(UserRole.TEACHER, tenant_a)
+    # Real school teachers live in BOTH `users` (login) and `teachers`
+    # (authoritative row keyed by school_id). teacher_assignments.teacher_id
+    # is an FK to teachers.id; get_current_user auto-links via email.
+    teacher_row_id = str(uuid.uuid4())
+    await gd_insert(db.session, "teachers", {
+        "id": teacher_row_id, "school_id": tenant_a,
+        "full_name": "A-teacher-row", "email": f"u-{teacher_uid}@t.test",
+        "is_active": True,
+    })
+    subj_id = str(uuid.uuid4())
+    await gd_insert(db.session, "subjects", {
+        "id": subj_id, "school_id": tenant_a, "tenant_id": tenant_a,
+        "name": "A-subject",
+    })
+    await gd_insert(db.session, "teacher_assignments", {
+        "id": str(uuid.uuid4()), "tenant_id": tenant_a,
+        "teacher_id": teacher_row_id, "class_id": seeded["class_id"],
+        "subject_id": subj_id, "is_active": True,
+    })
+
+    r = await client.get("/search/palette?q=student", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    _assert_no_sensitive_keys(body)
+    student_ids = {s["id"] for s in body["students"]}
+    assert seeded["student_id"] in student_ids
+    assert other_stu not in student_ids, "teacher saw a student outside their classes"
+    assert body["teachers"] == [], "teachers category must be leadership-only"
+    for item in body["students"]:
+        assert item["href"].startswith(f"/teacher/students?student_id={item['id']}")
+
+
+@pytest.mark.asyncio
+async def test_palette_short_query_returns_empty_payload(client, tenant_a):
+    """Sub-min-length queries return an empty payload, never an error, so
+    the FE can call on every keystroke."""
+    headers, _ = await _mk_role_user_headers(UserRole.SCHOOL_ADMIN, tenant_a)
+    r = await client.get("/search/palette?q=a", headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"q": "a", "students": [], "classes": [], "teachers": []}
+
+
+@pytest.mark.asyncio
+async def test_search_global_and_directory_teachers_sanitized(
+    client, tenant_a
+):
+    """Regression: /search/global and /directory/teachers used to return
+    RAW users rows (password_hash + MFA fields) to any authenticated
+    caller. Both must now return only projected display fields."""
+    await _seed_tenant_with_directory_rows(tenant_a, "A")
+    headers, _ = await _mk_role_user_headers(UserRole.SCHOOL_ADMIN, tenant_a)
+
+    r = await client.get("/search/global?q=A-", headers=headers)
+    assert r.status_code == 200, r.text
+    _assert_no_sensitive_keys(r.json())
+
+    r = await client.get("/directory/teachers", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    _assert_no_sensitive_keys(body)
+    for t in body.get("teachers", []):
+        assert set(t.keys()) <= {"id", "full_name", "email", "phone", "is_active"}
