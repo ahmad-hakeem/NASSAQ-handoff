@@ -3090,10 +3090,13 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         user_ids = [t.get("user_id") for t in teacher_rows if t.get("user_id")]
         if not user_ids:
             return {"teachers": [], "children": children_out}
+        # ``independent_teacher`` is included because in an IT workspace the
+        # workspace owner IS the child's teacher (same teachers-row +
+        # schedule_sessions chain), just under a different user role.
         users = await gd_find(db.session, "users",
                               {"id": {"$in": user_ids},
                                "tenant_id": school_id,
-                               "role": "teacher",
+                               "role": {"$in": ["teacher", "independent_teacher"]},
                                "is_active": True},
                               limit=1000)
         users_by_id = {u["id"]: u for u in users if u.get("id")}
@@ -3158,7 +3161,26 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             {"tenant_id": school_id, "role": "school_admin", "is_active": True},
             order_by="created_at", desc_order=False, limit=1,
         )
-        return admins[0] if admins else None
+        if admins:
+            return admins[0]
+        # Independent-Teacher workspace: principals/admins never exist there —
+        # the workspace owner IS the administration. Strictly gated on the
+        # schools-row discriminator (tenant_type/school_type) so real schools
+        # without an admin stay fail-closed (503), never a silent fallback.
+        school = await gd_find_one(db.session, "schools", {"id": school_id})
+        if school and (
+            school.get("tenant_type") == "independent_teacher"
+            or school.get("school_type") == "independent_teacher"
+        ):
+            owners = await gd_find(
+                db.session, "users",
+                {"tenant_id": school_id, "role": "independent_teacher",
+                 "is_active": True},
+                order_by="created_at", desc_order=False, limit=1,
+            )
+            if owners:
+                return owners[0]
+        return None
 
     # ============= QUICK MESSAGE (Communication Center) =============
 
@@ -3211,7 +3233,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             receiver = await gd_find_one(db.session, "users", {
                 "id": requested_uid,
                 "tenant_id": school_id,
-                "role": "teacher",
+                "role": {"$in": ["teacher", "independent_teacher"]},
                 "is_active": True,
             })
             if not receiver:

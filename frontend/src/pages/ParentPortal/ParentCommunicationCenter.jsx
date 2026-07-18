@@ -145,7 +145,11 @@ const ParentCommunicationCenter = () => {
       setTimeout(() => setShowSuccess(false), 5000);
       await refreshInbox();
     } catch (err) {
-      nassaqError(t('errorSendingMessage'));
+      // Backend errors carry safe, user-facing Arabic reasons (e.g. "لا يوجد
+      // مسؤول متاح لاستلام الرسالة حالياً") — surface them instead of a
+      // generic failure so the parent knows WHY the send was rejected.
+      const detail = err?.response?.data?.detail;
+      nassaqError(typeof detail === 'string' && detail ? detail : t('errorSendingMessage'));
     } finally {
       setSending(false);
     }
