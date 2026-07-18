@@ -418,6 +418,13 @@ export default function SessionTeachPage() {
   const homeworkBaselineFor = (viewMode) => (viewMode === 'submitted' ? 'not_done' : 'done');
   const [recitationEnabled, setRecitationEnabled] = useState(false);
   const [recitationMaxAttempts, setRecitationMaxAttempts] = useState(1);
+  // The attempt options offered in the recitation UI derive from the saved
+  // Session Settings value (عدد المحاولات المسموح بها) — never a hardcoded
+  // [1, 2, 3]. Clamped to the backend's 1..3 contract.
+  const allowedRecitationMax = Math.max(1, Math.min(3, Number(recitationMaxAttempts) || 1));
+  const recitationAttemptOptions = Array.from({ length: allowedRecitationMax }, (_, i) => i + 1);
+  const recitationGridColsClass =
+    allowedRecitationMax === 1 ? 'grid-cols-1' : allowedRecitationMax === 2 ? 'grid-cols-2' : 'grid-cols-3';
   const [skillEnabled, setSkillEnabled] = useState(false);
   const [showAddOtherItems, setShowAddOtherItems] = useState(false);
   const [participationScores, setParticipationScores] = useState({});
@@ -441,6 +448,11 @@ export default function SessionTeachPage() {
       (actionTab === 'skill' && !skillEnabled);
     if (disabled) setActionTab('question');
   }, [actionTab, participationEnabled, homeworkEnabled, recitationEnabled, skillEnabled]);
+  // Keep the selected attempt inside the allowed range — e.g. when the teacher
+  // lowers max attempts in Session Settings while "3" was still selected.
+  useEffect(() => {
+    setRecitationAttempts((prev) => Math.min(prev, allowedRecitationMax));
+  }, [allowedRecitationMax]);
   // If the underlying capability is toggled OFF while its popover is open, dismiss it —
   // otherwise we'd leave a stranded popover anchored to a button that no longer renders.
   useEffect(() => {
@@ -2715,8 +2727,8 @@ export default function SessionTeachPage() {
                   <div className="space-y-3">
                     <div>
                       <div className="text-muted-foreground text-[11px] mb-1.5 font-cairo">{t('attempts')}</div>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {[1, 2, 3].map(n => (
+                      <div className={`grid ${recitationGridColsClass} gap-1.5`}>
+                        {recitationAttemptOptions.map(n => (
                           <button
                             key={n}
                             onClick={() => setRecitationAttempts(n)}
@@ -3134,8 +3146,8 @@ export default function SessionTeachPage() {
             <div className="space-y-3">
               <div>
                 <div className="text-muted-foreground text-[11px] mb-1.5 font-cairo">{t('attempts') || 'المحاولات'}</div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {[1, 2, 3].map(n => (
+                <div className={`grid ${recitationGridColsClass} gap-1.5`}>
+                  {recitationAttemptOptions.map(n => (
                     <button
                       key={n}
                       onClick={() => setRecitationAttempts(n)}

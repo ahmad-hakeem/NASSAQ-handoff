@@ -4532,8 +4532,10 @@ class TeacherSessionEngine:
             attempt_count = int(attempts)
         except (TypeError, ValueError):
             attempt_count = 1
-        if attempt_count < 1:
-            attempt_count = 1
+        # Mirror the session-settings contract (recitation_max_attempts is
+        # clamped to 1..3 on save) so a stray client can never persist an
+        # out-of-range attempt count.
+        attempt_count = max(1, min(3, attempt_count))
         note_text = (note or "").strip() or None
 
         interaction = {
