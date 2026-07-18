@@ -592,9 +592,9 @@ async def test_collab_read_scope_blocks_writes(client):
     r = await client.get(f"/classes/{host['class_id']}/students", headers=_h(collab))
     assert r.status_code == 200, r.text
     # …and `caller_collab_mode_for_class` reports 'read', which is what
-    # IT-reachable write surfaces would gate on (the curriculum-plan /
-    # grade-columns surface is router-blocked from IT today, so we
-    # assert the helper directly here for forward-compatibility).
+    # IT-reachable write surfaces gate on (the curriculum-plan /
+    # grade-columns router IS mounted ungated and IT-reachable — see
+    # backend/app/routes.py — so this asserts the helper contract directly).
     assert await caller_collab_mode_for_class(
         db.session, collab["user"], host["class_id"],
     ) == "read"

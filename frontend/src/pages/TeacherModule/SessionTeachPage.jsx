@@ -601,11 +601,10 @@ export default function SessionTeachPage() {
       setRecitationEnabled(!!s.recitation_enabled);
       setRecitationMaxAttempts(Number(s.recitation_max_attempts) || 1);
       setSkillEnabled(!!s.skill_enabled);
-      // Hydrate followup columns from saved settings if any (single source of truth)
-      if (Array.isArray(s.extra_columns) && s.extra_columns.length > 0) {
-        setFollowupColumns(s.extra_columns.map(migrateColumn));
-        setShowAddOtherItems(true);
-      }
+      // NOTE: followup columns are deliberately NOT hydrated from the legacy
+      // session_settings.extra_columns blob — the class-level grade-columns
+      // API is the single source of truth (loaded by the classIdForGrades
+      // effect below), shared with كشف المتابعة and فصولي → سجل الطلاب.
       if (s.participation_scores && typeof s.participation_scores === 'object') {
         setParticipationScores(s.participation_scores);
       }
@@ -653,7 +652,6 @@ export default function SessionTeachPage() {
         recitation_max_attempts: recitationMaxAttempts,
         streak_bonus_enabled: streakBonusEnabled,
         skill_enabled: skillEnabled,
-        extra_columns: followupColumns,
         participation_scores: participationScores,
       };
       // Only include correct_answer_weight when the teacher explicitly changed
@@ -666,6 +664,16 @@ export default function SessionTeachPage() {
       // save never clobbers a previously saved bonus override.
       if (streakBonusValueDirty) {
         settingsPayload.streak_bonus_value = streakBonusValue;
+      }
+      // Propagate أنماط التقييم column edits (add / rename / re-score /
+      // delete) to the class-level grade-columns API FIRST — it is the
+      // single source of truth shared with كشف المتابعة and فصولي →
+      // سجل الطلاب. The legacy extra_columns blob is no longer written.
+      const columnsSynced = await syncPatternColumns();
+      if (!columnsSynced) {
+        // Keep the dialog open so the teacher can retry; the column list was
+        // refreshed to server truth so a retry never duplicates columns.
+        return;
       }
       await api.post(`/session/${sessionId}/settings`, settingsPayload);
       // When the homework submission view-mode changed, re-baseline every
@@ -1168,6 +1176,12 @@ export default function SessionTeachPage() {
 
   const classIdForGrades = sessionInfo?.class_id || sessionInfo?.classId || null;
 
+  // Baseline of the last-loaded backend columns — diffed against the local
+  // followupColumns list when حفظ النمط syncs أنماط التقييم edits.
+  const gradeColumnsBaselineRef = useRef([]);
+  const gradeColumnsLoadedRef = useRef(false);
+  const patternsAutoExpandedRef = useRef(false);
+
   const loadClassGradeColumns = useCallback(async () => {
     if (!classIdForGrades) return;
     try {
@@ -1177,10 +1191,27 @@ export default function SessionTeachPage() {
         .map(adaptBackendColumn)
         .sort((a, b) => (a._order || 0) - (b._order || 0));
       setFollowupColumns(adapted);
+      gradeColumnsBaselineRef.current = adapted;
+      gradeColumnsLoadedRef.current = true;
+      // Auto-expand the pattern editor once so existing columns are visible
+      // in أنماط التقييم without an extra click (mirrors the legacy
+      // extra_columns auto-expand behaviour).
+      if (adapted.length > 0 && !patternsAutoExpandedRef.current) {
+        patternsAutoExpandedRef.current = true;
+        setShowAddOtherItems(true);
+      }
     } catch (e) {
       console.error('loadClassGradeColumns failed', e);
     }
   }, [api, classIdForGrades]);
+
+  // Hydrate أنماط التقييم from the class-level grade-columns API as soon as
+  // the class id is known — the pattern editor must show the same canonical
+  // columns as كشف المتابعة and فصولي → سجل الطلاب, never a stale local copy
+  // (the legacy session_settings.extra_columns hydration was removed).
+  useEffect(() => {
+    if (classIdForGrades) loadClassGradeColumns();
+  }, [classIdForGrades, loadClassGradeColumns]);
 
   const addClassGradeColumn = useCallback(async ({ name, group, maxGrade }) => {
     if (!classIdForGrades) {
@@ -1242,6 +1273,69 @@ export default function SessionTeachPage() {
       return false;
     }
   }, [api, loadClassGradeColumns, t]);
+
+  // حفظ النمط — propagate أنماط التقييم edits (add / rename / re-score /
+  // delete) to the class-level grade-columns API by diffing the editor's
+  // local list against the last-loaded backend baseline. New rows carry
+  // client-side `col_*` ids (never sent to the server); backend rows keep
+  // their UUIDs so grade values stay attached across all consumers.
+  const syncPatternColumns = useCallback(async () => {
+    if (!classIdForGrades) return true; // no class context — nothing to sync
+    if (!gradeColumnsLoadedRef.current) {
+      // Baseline never loaded (mount fetch failed) — recover to server truth
+      // instead of diffing against nothing, which would duplicate columns.
+      await loadClassGradeColumns();
+      if (!gradeColumnsLoadedRef.current) {
+        nassaqError(t('saveFailed') || 'فشل حفظ أعمدة النمط');
+        return false;
+      }
+      return true;
+    }
+    const baseline = gradeColumnsBaselineRef.current || [];
+    const baselineById = new Map(baseline.map((c) => [String(c.id), c]));
+    const currentIds = new Set(followupColumns.map((c) => String(c.id)));
+    const ops = [];
+    let nextOrder = baseline.reduce((m, c) => Math.max(m, Number(c._order) || 0), 0);
+    followupColumns.forEach((col) => {
+      const base = baselineById.get(String(col.id));
+      if (!base) {
+        nextOrder += 1;
+        ops.push(api.post(`/class/${classIdForGrades}/grade-columns`, {
+          name: String(col.name || '').trim() || (t('newColumn') || 'عمود جديد'),
+          column_type: col.group === 'exams' ? 'exams' : 'coursework',
+          max_grade: Math.max(1, Number(col.maxGrade) || 10),
+          order: nextOrder,
+        }));
+        return;
+      }
+      const body = {};
+      const trimmedName = String(col.name || '').trim();
+      if (trimmedName && trimmedName !== String(base.name)) body.name = trimmedName;
+      if (Number(col.maxGrade) !== Number(base.maxGrade)) {
+        body.max_grade = Math.max(1, Number(col.maxGrade) || 1);
+      }
+      if (Object.keys(body).length > 0) {
+        ops.push(api.put(`/grade-column/${col.id}`, body));
+      }
+    });
+    baseline.forEach((col) => {
+      if (!currentIds.has(String(col.id))) {
+        ops.push(api.delete(`/grade-column/${col.id}`));
+      }
+    });
+    if (ops.length === 0) return true;
+    const results = await Promise.allSettled(ops);
+    const failed = results.filter((r) => r.status === 'rejected');
+    // Always re-pull the canonical list so the editor and baseline reflect
+    // whatever actually landed — a retry then only re-issues real leftovers.
+    await loadClassGradeColumns();
+    if (failed.length > 0) {
+      const err = failed[0].reason;
+      nassaqError(getApiErrorMessage(err) || (t('saveFailed') || 'فشل حفظ أعمدة النمط'));
+      return false;
+    }
+    return true;
+  }, [api, classIdForGrades, followupColumns, loadClassGradeColumns, nassaqError, t]);
 
   // Re-fetch class-level columns AND the follow-up record whenever the
   // كشف المتابعة dialog is opened, so the Live Class always shows the same

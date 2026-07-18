@@ -1142,7 +1142,7 @@ export default function SidebarSettingsDialog({
                     value={col.maxGrade}
                     onChange={(e) => updateColumn(ci, { maxGrade: parseInt(e.target.value) || 0 })}
                     className="w-14 text-center text-xs bg-card dark:bg-muted rounded border px-1 py-0.5 font-cairo"
-                    min={0}
+                    min={1}
                     max={100}
                   />
                   <button
