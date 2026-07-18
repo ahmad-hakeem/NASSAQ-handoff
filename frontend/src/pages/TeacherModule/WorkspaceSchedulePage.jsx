@@ -72,6 +72,7 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
     periods_per_day: 7,
     period_minutes: 45,
     sessions: [],
+    slot_times: [],
     classes: [],
     subjects: [],
   });
@@ -95,6 +96,7 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
         periods_per_day: Number(data?.periods_per_day) || 7,
         period_minutes: Number(data?.period_minutes) || 45,
         sessions: slots,
+        slot_times: Array.isArray(data?.slot_times) ? data.slot_times : [],
         classes: Array.isArray(data?.classes) ? data.classes : [],
         subjects: Array.isArray(data?.subjects) ? data.subjects : [],
       });
@@ -120,6 +122,13 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
     () => Array.from({ length: grid.periods_per_day }, (_, i) => i + 1),
     [grid.periods_per_day],
   );
+
+  // slot_number → {start_time, end_time} for time-range display in row headers.
+  const slotTimesMap = useMemo(() => {
+    const m = new Map();
+    for (const t of grid.slot_times) m.set(t.slot_number, t);
+    return m;
+  }, [grid.slot_times]);
 
   const openEditor = (day, slot) => {
     const existing = sessionsByKey.get(slotKey(day, slot));
@@ -359,11 +368,20 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
                 <tbody>
                   {slots.map((slot, idx) => (
                     <tr key={slot} className={idx % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-muted/15'}>
-                      {/* Period number / ordinal label */}
+                      {/* Period number / ordinal label + time range */}
                       <td className="border border-border p-3 bg-muted/30 sticky start-0 z-10">
                         <div className="text-sm font-medium text-foreground/80 font-cairo whitespace-nowrap">
                           {`الحصة ${ARABIC_ORDINALS[idx] || slot}`}
                         </div>
+                        {(() => {
+                          const slotTime = slotTimesMap.get(slot);
+                          if (!slotTime?.start_time) return null;
+                          return (
+                            <div className="text-xs text-muted-foreground mt-0.5 whitespace-nowrap font-tajawal">
+                              {slotTime.start_time.slice(0, 5)} - {slotTime.end_time?.slice(0, 5)}
+                            </div>
+                          );
+                        })()}
                       </td>
                       {/* Day cells */}
                       {grid.working_days.map(d => {

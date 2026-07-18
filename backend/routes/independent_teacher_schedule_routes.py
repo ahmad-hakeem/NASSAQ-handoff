@@ -48,6 +48,7 @@ from engines.audit_engine import AuditLogEngine
 from engines.sql_utils import gd_find, gd_find_one, model_to_dict
 from pg_models import ScheduleSession
 from repositories import Repos
+from utils.it_schedule import compute_it_slot_times
 
 logger = logging.getLogger("nassaq.it_schedule")
 
@@ -145,6 +146,9 @@ async def _load_settings(school_id: str) -> Dict[str, Any]:
         "working_days": working_days,
         "periods_per_day": int(settings.get("periods_per_day") or 7),
         "period_minutes": int(settings.get("period_duration") or 45),
+        # Full raw doc passed through so callers can derive per-slot times via
+        # compute_it_slot_times without an extra DB round-trip.
+        "_raw": settings,
     }
 
 
@@ -237,6 +241,16 @@ async def get_schedule_grid(
     )
 
     slot_payloads = [_slot_payload(s) for s in sessions]
+
+    # Derive per-slot start/end times from the workspace period config so the
+    # frontend can display timing alongside each period row — matching the
+    # school teacher schedule UI (spec §5.4, timing-parity requirement).
+    slot_times_map = compute_it_slot_times(settings.get("_raw"))
+    slot_times_list = [
+        {"slot_number": k, "start_time": v[0], "end_time": v[1]}
+        for k, v in sorted(slot_times_map.items())
+    ]
+
     return {
         "workspace_id": school_id,
         "teacher_id": teacher_id,
@@ -247,6 +261,9 @@ async def get_schedule_grid(
         # is preserved as a back-compat alias for in-flight clients only.
         "slots": slot_payloads,
         "sessions": slot_payloads,
+        # Per-slot timing derived from workspace period configuration.
+        # Each entry: {slot_number, start_time ("HH:MM"), end_time ("HH:MM")}.
+        "slot_times": slot_times_list,
         "classes": [
             {"id": c.get("id"), "name": c.get("name")} for c in classes
         ],
