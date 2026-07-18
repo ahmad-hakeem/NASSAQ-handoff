@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, CalendarDays, Trash2, Check, Printer, Plus } from 'lucide-react';
+import { Loader2, CalendarDays, Trash2, Check, Printer, Plus, BookOpen, Clock } from 'lucide-react';
 
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
@@ -9,11 +9,36 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../..
 import { Button } from '../../components/ui/button';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { getDayBandClass, getDayTintClass, getDayTextOnBand } from '../../components/schedule/grid-theme';
 
 const DAY_LABELS = {
   sun: 'الأحد', mon: 'الاثنين', tue: 'الثلاثاء', wed: 'الأربعاء',
   thu: 'الخميس', fri: 'الجمعة', sat: 'السبت',
 };
+
+// Map the IT short day keys (sun/mon/…) to the long keys used by dayPalette.
+const SHORT_TO_LONG_DAY = {
+  sun: 'sunday', mon: 'monday', tue: 'tuesday',
+  wed: 'wednesday', thu: 'thursday', fri: 'friday', sat: 'saturday',
+};
+
+// Arabic ordinal labels for period rows (matches school teacher schedule).
+const ARABIC_ORDINALS = ['الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة','السابعة','الثامنة','التاسعة','العاشرة'];
+
+// Subject-to-color map matching the school teacher schedule palette.
+const IT_SUBJECT_COLORS = {
+  'اللغة العربية':       'bg-blue-50   border-blue-300   text-blue-800',
+  'الرياضيات':           'bg-green-50  border-green-300  text-green-800',
+  'العلوم':              'bg-purple-50 border-purple-300 text-purple-800',
+  'اللغة الإنجليزية':   'bg-red-50    border-red-300    text-red-800',
+  'الدراسات الاجتماعية':'bg-amber-50  border-amber-300  text-amber-800',
+  'التربية الإسلامية':  'bg-emerald-50 border-emerald-300 text-emerald-800',
+  'الحاسب الآلي':       'bg-cyan-50   border-cyan-300   text-cyan-800',
+  'المهارات الرقمية':   'bg-teal-50   border-teal-300   text-teal-800',
+  'التربية الفنية':     'bg-pink-50   border-pink-300   text-pink-800',
+  'التربية البدنية':    'bg-indigo-50 border-indigo-300 text-indigo-800',
+};
+const IT_SUBJECT_COLOR_DEFAULT = 'bg-slate-50 border-slate-300 text-slate-700';
 
 const slotKey = (day, slot) => `${day}__${slot}`;
 
@@ -305,45 +330,83 @@ export function WorkspaceSchedulePanel({ embedded = false, onNavigateToClasses }
               </div>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-sm" data-testid="workspace-schedule-grid">
                 <thead>
                   <tr>
-                    <th className="bg-slate-50 border border-slate-200 p-2 w-20 text-emerald-800">الحصة</th>
-                    {grid.working_days.map(d => (
-                      <th key={d} className="bg-slate-50 border border-slate-200 p-2 text-emerald-800">
-                        {DAY_LABELS[d] || d}
-                      </th>
-                    ))}
+                    {/* Period label column header */}
+                    <th className="bg-muted/50 border border-border p-3 w-28 text-start sticky start-0 z-10">
+                      <div className="flex items-center gap-1.5 text-foreground/70">
+                        <Clock className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+                        <span className="text-sm font-medium font-cairo">الحصة</span>
+                      </div>
+                    </th>
+                    {/* One colored band header per working day */}
+                    {grid.working_days.map(d => {
+                      const longKey = SHORT_TO_LONG_DAY[d] || d;
+                      return (
+                        <th
+                          key={d}
+                          className={`border border-border p-3 text-center font-cairo font-bold text-sm min-w-[120px] ${getDayBandClass(longKey)} ${getDayTextOnBand(longKey)}`}
+                        >
+                          {DAY_LABELS[d] || d}
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
-                  {slots.map(slot => (
-                    <tr key={slot}>
-                      <td className="border border-slate-200 p-2 text-center font-semibold text-slate-600 bg-slate-50">
-                        {slot}
+                  {slots.map((slot, idx) => (
+                    <tr key={slot} className={idx % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-muted/15'}>
+                      {/* Period number / ordinal label */}
+                      <td className="border border-border p-3 bg-muted/30 sticky start-0 z-10">
+                        <div className="text-sm font-medium text-foreground/80 font-cairo whitespace-nowrap">
+                          {`الحصة ${ARABIC_ORDINALS[idx] || slot}`}
+                        </div>
                       </td>
+                      {/* Day cells */}
                       {grid.working_days.map(d => {
+                        const longKey = SHORT_TO_LONG_DAY[d] || d;
                         const cell = sessionsByKey.get(slotKey(d, slot));
+                        const subjectColor = cell
+                          ? (IT_SUBJECT_COLORS[cell.subject_name] || IT_SUBJECT_COLOR_DEFAULT)
+                          : '';
                         return (
-                          <td key={d} className="border border-slate-200 p-1 align-top">
+                          <td
+                            key={d}
+                            className={`border border-border p-2 align-top ${getDayTintClass(longKey)}`}
+                          >
                             <button
                               type="button"
                               onClick={() => openEditor(d, slot)}
                               data-testid={cell ? `slot-${d}-${slot}` : `workspace-schedule-empty-slot-${d}-${slot}`}
-                              className={`w-full min-h-[64px] rounded-lg p-2 text-right transition ${cell
-                                ? 'bg-emerald-50 border border-emerald-300 text-emerald-900 hover:bg-emerald-100'
-                                : 'bg-white border border-dashed border-workspace-accent-border/60 text-workspace-accent/60 hover:border-workspace-accent hover:text-workspace-accent-fg hover:bg-workspace-accent-light/40'
+                              className={`w-full min-h-[76px] rounded-lg p-2 transition-all text-start ${
+                                cell
+                                  ? `bg-white dark:bg-gray-900 border-2 ${subjectColor} hover:shadow-md hover:-translate-y-0.5`
+                                  : 'bg-white/60 border-2 border-dashed border-muted-foreground/25 hover:border-muted-foreground/50 hover:bg-white/80'
                               }`}
                             >
                               {cell ? (
-                                <>
-                                  <div className="font-semibold">{cell.class_name || '—'}</div>
-                                  <div className="text-xs opacity-80">{cell.subject_name || '—'}</div>
-                                </>
+                                <div className="flex items-start gap-1.5">
+                                  <BookOpen
+                                    className="h-3.5 w-3.5 mt-0.5 flex-shrink-0 opacity-60"
+                                    strokeWidth={1.5}
+                                    aria-hidden="true"
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-cairo font-semibold text-sm leading-tight truncate">
+                                      {cell.subject_name || '—'}
+                                    </p>
+                                    <p className="text-xs opacity-70 leading-tight mt-0.5 truncate">
+                                      {cell.class_name || '—'}
+                                    </p>
+                                  </div>
+                                </div>
                               ) : (
-                                <div className="text-xs">إضافة</div>
+                                <div className="flex items-center justify-center h-full min-h-[60px] text-xs text-muted-foreground/50 font-cairo">
+                                  فارغ
+                                </div>
                               )}
                             </button>
                           </td>
