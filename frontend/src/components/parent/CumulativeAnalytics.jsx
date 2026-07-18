@@ -259,7 +259,11 @@ const CumulativeAnalytics = ({ childId, viewerRole = 'parent' }) => {
               </div>
               <div className="p-2 bg-muted/40 rounded-lg text-center">
                 <p className="text-xs text-muted-foreground">{t('homeworkCompletion')}</p>
-                <p className="text-sm font-bold">{follow_up.breakdown?.homework_rate}%</p>
+                <p className="text-sm font-bold">
+                  {typeof follow_up.breakdown?.homework_rate === 'number'
+                    ? `${follow_up.breakdown.homework_rate}%`
+                    : '—'}
+                </p>
               </div>
               <div className="p-2 bg-muted/40 rounded-lg text-center">
                 <p className="text-xs text-muted-foreground">{t('participation')}</p>

@@ -377,6 +377,84 @@ async def _resolve_class_today_sessions(session, school_id, class_id, today_en):
     return resolved
 
 
+async def _merged_homework_counts(session, child: dict, school_id,
+                                  week_start: str = None, week_end: str = None):
+    """Merged homework (done, total) across BOTH homework data models.
+
+    Homework lives in two disjoint stores that any summary metric must merge
+    (the الواجبات tab already does — see get_child_homework):
+      1. Digital assignments: `student_assignments` posts (class/grade scoped)
+         paired with `assignment_submissions` by the student.
+      2. Lesson-recorded homework: `session_homework` rows the teacher marks
+         during a live lesson ("سلم"/"لم يسلم", status done/not_done).
+
+    Counting only the digital model made the cumulative analytics show 0%
+    for lesson-only schools while the homework tab showed real submissions.
+
+    `session_homework` has no school_id column, so each lesson row is only
+    counted when its session resolves to a `class_sessions` row in the
+    caller's tenant (same fail-closed rule as the homework tab).
+
+    Optional week bounds (ISO date strings) scope digital assignments by
+    due_date and lesson homework by the session date.
+    """
+    child_id = child.get("id")
+    child_school = child.get("school_id") or school_id
+    class_id = child.get("class_id")
+    grade_id = child.get("grade_id") or child.get("grade")
+
+    done = 0
+    total = 0
+
+    # ── Digital assignments (same scoping as the الواجبات tab) ────────────
+    query = {"school_id": child_school, "is_active": True}
+    if class_id:
+        query["$or"] = [
+            {"class_ids": class_id},
+            {"class_id": class_id},
+            {"grade_id": grade_id},
+        ]
+    if week_start and week_end:
+        query["due_date"] = {"$gte": week_start, "$lte": week_end}
+    assignments = await gd_find(session, "student_assignments", query, limit=200)
+    if assignments:
+        submissions = await gd_find(
+            session, "assignment_submissions", {"student_id": child_id}, limit=500
+        )
+        submitted_ids = {s.get("assignment_id") for s in submissions}
+        total += len(assignments)
+        done += sum(1 for a in assignments if a.get("id") in submitted_ids)
+
+    # ── Lesson-recorded homework (teacher follow-up sheet) ────────────────
+    lesson_hw = await gd_find(
+        session, "session_homework", {"student_id": child_id}, limit=500
+    )
+    lesson_hw = [h for h in lesson_hw if h.get("status") in ("done", "not_done")]
+    if lesson_hw:
+        sess_ids = list({h.get("session_id") for h in lesson_hw if h.get("session_id")})
+        sess_rows = await gd_find(
+            session, "class_sessions", {"id": {"$in": sess_ids}}, limit=len(sess_ids)
+        ) if sess_ids else []
+        sess_map = {s.get("id"): s for s in sess_rows}
+        for h in lesson_hw:
+            sess = sess_map.get(h.get("session_id"))
+            # Fail closed: unresolvable session = tenant unprovable.
+            if not sess:
+                continue
+            sess_school = sess.get("school_id") or sess.get("tenant_id")
+            if sess_school and child_school and sess_school != child_school:
+                continue
+            if week_start and week_end:
+                sess_date = str(sess.get("date") or h.get("recorded_at") or "")[:10]
+                if not (week_start[:10] <= sess_date <= week_end[:10]):
+                    continue
+            total += 1
+            if h.get("status") == "done":
+                done += 1
+
+    return done, total
+
+
 def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
     """Setup parent portal routes"""
 
@@ -1702,26 +1780,17 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         })
 
         # ----- Homework completion (this week, best-effort) -----
-        # Honest empty: when the school doesn't track assignments we leave
+        # Honest empty: when the school doesn't track homework we leave
         # both at 0 so the ranker simply skips the homework cards.
+        # Merged sources: digital assignments + lesson-recorded homework
+        # ("سلم"/"لم يسلم"), same as the الواجبات tab and cumulative analytics.
         homework_total = 0
         homework_done = 0
         try:
-            class_id = child.get("class_id")
-            if class_id:
-                week_assignments = await gd_find(db.session, "student_assignments", {
-                    "class_id": class_id,
-                    "school_id": tenant_school_id,
-                    "due_date": {"$gte": week_start.isoformat(), "$lte": week_end.isoformat()},
-                }, limit=50)
-                if week_assignments:
-                    assignment_ids = [a.get("id") for a in week_assignments if a.get("id")]
-                    submissions = await gd_find(db.session, "assignment_submissions", {
-                        "student_id": child_id,
-                        "assignment_id": {"$in": assignment_ids},
-                    }, limit=50) if assignment_ids else []
-                    homework_total = len(week_assignments)
-                    homework_done = len(submissions)
+            homework_done, homework_total = await _merged_homework_counts(
+                db.session, child, tenant_school_id,
+                week_start.isoformat(), week_end.isoformat(),
+            )
         except Exception as e:
             logger.debug(f"weekly homework signal lookup failed: {e}")
 
@@ -1948,29 +2017,18 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         subjects_payload.sort(key=lambda x: x["average"], reverse=True)
 
         # ----- Homework (this week, best-effort) -----
+        # Merged sources: digital assignments + lesson-recorded homework
+        # ("سلم"/"لم يسلم"), same as the الواجبات tab and cumulative analytics.
         hw_total = 0
         hw_done = 0
-        hw_available = False
         try:
-            class_id = child.get("class_id")
-            if class_id:
-                week_assignments = await gd_find(db.session, "student_assignments", {
-                    "class_id": class_id,
-                    "school_id": tenant_school_id,
-                    "due_date": _date_range(week_start, week_end),
-                }, limit=100)
-                if week_assignments:
-                    hw_available = True
-                    assignment_ids = [a.get("id") for a in week_assignments if a.get("id")]
-                    submissions = await gd_find(db.session, "assignment_submissions", {
-                        "student_id": child_id,
-                        "school_id": tenant_school_id,
-                        "assignment_id": {"$in": assignment_ids},
-                    }, limit=200) if assignment_ids else []
-                    hw_total = len(week_assignments)
-                    hw_done = len({s.get("assignment_id") for s in submissions if s.get("assignment_id")})
+            hw_done, hw_total = await _merged_homework_counts(
+                db.session, child, tenant_school_id,
+                week_start.isoformat(), week_end.isoformat(),
+            )
         except Exception as e:
             logger.debug(f"weekly-analysis homework lookup failed: {e}")
+        hw_available = hw_total > 0
         hw_rate = round((hw_done / hw_total) * 100) if hw_total > 0 else None
 
         # ----- Per-day attendance series for the chart -----
@@ -2892,18 +2950,26 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         present_att = await _att_count(db.session, {"student_id": child_id, "status": "present"})
         att_rate = round((present_att / total_att * 100), 1) if total_att > 0 else 0
 
-        assignments = await gd_find(db.session, "student_assignments", {
-            "$or": [{"class_id": class_id}, {"grade_id": child.get("grade_id")}]
-        }, limit=200) if class_id else []
-        submissions = await gd_find(db.session, "assignment_submissions", {
-            "student_id": child_id
-        }, limit=200)
-        homework_rate = round(len(submissions) / max(1, len(assignments)) * 100, 1)
+        # Merged homework metric: digital assignments AND lesson-recorded
+        # homework ("سلم"/"لم يسلم") — the same two sources the الواجبات tab
+        # shows, so the summary can never contradict the homework list.
+        hw_done, hw_total = await _merged_homework_counts(
+            db.session, child, child_school_id
+        )
+        homework_rate = round(hw_done / hw_total * 100, 1) if hw_total > 0 else None
 
-        if homework_rate < 60:
+        if homework_rate is not None and homework_rate < 60:
             weaknesses.append({"area": "واجبات غير مكتملة", "detail": f"نسبة إنجاز {homework_rate}%"})
 
-        follow_up_score = (att_rate * 0.3) + (homework_rate * 0.3) + (min(total_participation, 50) / 50 * 100 * 0.2) + (overall_avg * 0.2)
+        # Composite: when the school tracks no homework at all (neither
+        # digital nor lesson-recorded), the homework component is excluded
+        # and the remaining weights are renormalized — an untracked metric
+        # must not drag the score to "بحاجة دعم".
+        participation_score = min(total_participation, 50) / 50 * 100
+        weighted = [(att_rate, 0.3), (participation_score, 0.2), (overall_avg, 0.2)]
+        if homework_rate is not None:
+            weighted.append((homework_rate, 0.3))
+        follow_up_score = sum(v * w for v, w in weighted) / sum(w for _, w in weighted)
         if follow_up_score >= 75:
             follow_up_status = "مستقر"
         elif follow_up_score >= 50:

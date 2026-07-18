@@ -272,7 +272,9 @@ const BreakdownBar = ({ label, value, color }) => (
     <div className="flex-1 h-2 bg-muted/40 rounded-full overflow-hidden">
       <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(value || 0, 100)}%` }} />
     </div>
-    <span className="text-xs font-medium text-muted-foreground w-10 text-left tabular-nums">{Math.round(value || 0)}%</span>
+    <span className="text-xs font-medium text-muted-foreground w-10 text-left tabular-nums">
+      {typeof value === 'number' ? `${Math.round(value)}%` : '—'}
+    </span>
   </div>
 );
 
