@@ -44,7 +44,7 @@ const notificationTypeConfig = {
   emergency: { icon: AlertOctagon, color: 'text-red-600' },
 };
 
-export const NotificationBell = () => {
+export const NotificationBell = ({ triggerClassName = '' }) => {
   const { t } = useTranslation();
   const { api, user } = useAuth();
   const { isRTL } = useTheme();
@@ -203,7 +203,7 @@ export const NotificationBell = () => {
         <Button 
           variant="ghost" 
           size="icon" 
-          className="relative rounded-xl"
+          className={`relative rounded-xl${triggerClassName ? ` ${triggerClassName}` : ''}`}
           data-testid="notification-bell"
         >
           <Bell className="h-5 w-5" />

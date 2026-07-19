@@ -16,6 +16,7 @@ import { Button } from '../../ui/button';
 import { BetaBadge } from '../../BetaDisclaimer';
 import CommandPalette from '../../teacher/CommandPalette';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { NotificationBell } from '../../notifications/NotificationBell';
 
 const LOGO_WHITE = '/nassaq-logo-white.png';
 
@@ -351,6 +352,9 @@ export default function SidebarContent({
                 </p>
               </div>
             </button>
+            <NotificationBell
+              triggerClassName="flex-shrink-0 text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+            />
             <Button
               variant="ghost"
               size="icon"
@@ -403,6 +407,9 @@ export default function SidebarContent({
               )}
             </div>
           </button>
+          <NotificationBell
+            triggerClassName="w-11 h-11 text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+          />
           <Button
             variant="ghost"
             size="icon"
