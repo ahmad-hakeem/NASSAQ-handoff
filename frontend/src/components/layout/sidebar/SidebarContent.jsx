@@ -318,73 +318,63 @@ export default function SidebarContent({
             </div>
           )}
 
-          {/* Identity row */}
-          <button
-            type="button"
-            onClick={() => { onNavigate('/account/settings'); onCloseMobile(); }}
-            className="flex items-center gap-3 w-full min-w-0 text-start rounded-xl p-1 -mx-1 hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-brand-turquoise/60 transition-colors mb-2"
-            title={t('accountSettings')}
-            aria-label={t('accountSettings')}
-            data-testid="sidebar-footer-account"
-          >
-            <div className="w-9 h-9 rounded-xl bg-brand-turquoise flex items-center justify-center overflow-hidden flex-shrink-0">
-              {user.avatar_url ? (
-                <img src={user.avatar_url} alt={user.full_name} className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-white font-semibold text-sm">{user.full_name?.charAt(0)}</span>
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{user.full_name}</p>
-                {effectiveRole === 'independent_teacher' && (
-                  <span
-                    className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-workspace-accent-light text-workspace-accent-fg border border-workspace-accent-border flex-shrink-0"
-                    data-testid="sidebar-it-role-badge"
-                    title={isRTL ? 'معلم مستقل' : 'Independent Teacher'}
-                  >
-                    IT
-                  </span>
+          {/* Identity + actions — single row */}
+          <div className="flex items-center gap-1 -mx-1">
+            <button
+              type="button"
+              onClick={() => { onNavigate('/account/settings'); onCloseMobile(); }}
+              className="flex items-center gap-2.5 flex-1 min-w-0 text-start rounded-xl p-1 hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-brand-turquoise/60 transition-colors"
+              title={t('accountSettings')}
+              aria-label={t('accountSettings')}
+              data-testid="sidebar-footer-account"
+            >
+              <div className="w-9 h-9 rounded-xl bg-brand-turquoise flex items-center justify-center overflow-hidden flex-shrink-0">
+                {user.avatar_url ? (
+                  <img src={user.avatar_url} alt={user.full_name} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-white font-semibold text-sm">{user.full_name?.charAt(0)}</span>
                 )}
               </div>
-              <p className="text-xs text-white/50 truncate">
-                {getRoleLabel(effectiveRole, isRTL)}
-              </p>
-            </div>
-          </button>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white truncate leading-tight">{user.full_name}</p>
+                <p className="text-xs text-white/50 truncate leading-tight">
+                  {getRoleLabel(effectiveRole, isRTL)}
+                </p>
+              </div>
+            </button>
 
-          {/* Action row */}
-          <div className="flex items-center justify-end gap-0.5">
-            <NotificationBell
-              triggerClassName="text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-            />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleLanguage}
-              className="text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
-              data-testid="sidebar-language-toggle"
-              title={isRTL ? 'English' : 'العربية'}
-              aria-label={isRTL ? 'Switch to English' : 'التبديل إلى العربية'}
-            >
-              <Globe className="h-5 w-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onLogout}
-              disabled={loggingOut}
-              className="text-red-300/70 hover:text-red-200 hover:bg-red-500/20 rounded-xl transition-colors"
-              data-testid="logout-btn"
-              title={t('logout')}
-              aria-label={t('logout')}
-            >
-              {loggingOut ? (
-                <RefreshCw className="h-5 w-5 animate-spin" />
-              ) : (
-                <LogOut className="h-5 w-5" />
-              )}
-            </Button>
+            <div className="flex items-center flex-shrink-0">
+              <NotificationBell
+                triggerClassName="h-8 w-8 text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleLanguage}
+                className="h-8 w-8 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
+                data-testid="sidebar-language-toggle"
+                title={isRTL ? 'English' : 'العربية'}
+                aria-label={isRTL ? 'Switch to English' : 'التبديل إلى العربية'}
+              >
+                <Globe className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onLogout}
+                disabled={loggingOut}
+                className="h-8 w-8 text-red-300/70 hover:text-red-200 hover:bg-red-500/20 rounded-xl transition-colors"
+                data-testid="logout-btn"
+                title={t('logout')}
+                aria-label={t('logout')}
+              >
+                {loggingOut ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <LogOut className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       )}
