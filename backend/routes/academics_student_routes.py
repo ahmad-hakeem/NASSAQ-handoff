@@ -453,7 +453,7 @@ async def get_class_students(
         raise HTTPException(status_code=404, detail="الفصل غير موجود")
     class_name = cls.get("name")
 
-    students = await gd_find(db.session, "students", query, limit=1000)
+    students = await gd_find(db.session, "students", query, order_by="full_name", desc_order=False, limit=1000)
 
     # IT §6.7 — cross-workspace collaborators receive a strictly
     # downscoped roster: only the minimum classroom-teaching fields.

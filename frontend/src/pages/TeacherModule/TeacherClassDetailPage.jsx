@@ -222,7 +222,11 @@ export default function TeacherClassDetailPage() {
 
       const scheduleData = Array.isArray(scheduleRes?.data) ? scheduleRes.data : [];
       const classSchedule = scheduleData.filter(s => s.class_id === classId);
-      const studentsList = Array.isArray(studentsRes?.data) ? studentsRes.data : [];
+      const studentsList = Array.isArray(studentsRes?.data)
+        ? [...studentsRes.data].sort((a, b) =>
+            (a.full_name || '').localeCompare(b.full_name || '', 'ar', { sensitivity: 'base' })
+          )
+        : [];
       const statsMap = (statsRes?.data && typeof statsRes.data === 'object' && !Array.isArray(statsRes.data)) ? statsRes.data : {};
 
       const enrichedStudents = studentsList.map(student => {
