@@ -147,6 +147,13 @@ RATE_LIMITS = {
     # admin account cannot script a tight loop and burn shared model quota.
     # The deterministic fallback keeps the endpoint usable when AI is off.
     "/api/subjects/hakim-code": {"max": 20, "window": 60},
+    # SECURITY (teacher-permissions audit 2026-07-19): POST
+    # /hakim/student/{id}/ai-plans issues a live LLM call per request and
+    # persists a plan_history row. 5/60s mirrors /api/hakim/analyze. POST-only
+    # so the cheap sibling GET reads sharing the prefix (improvement-plan,
+    # risk, behaviour, grade-trend, plan-history, longitudinal) stay
+    # unthrottled for normal dashboard fan-out.
+    "/api/hakim/student/": {"max": 5, "window": 60, "methods": {"POST"}},
     # SECURITY (task #483): per-IP outer caps on the auth hot path.
     # - /api/auth/refresh: bounds refresh-token rotation / family-revocation
     #   probing from an attacker holding a stolen refresh token. 30/60s

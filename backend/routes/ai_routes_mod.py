@@ -3244,8 +3244,11 @@ async def hakim_update_intervention_status(
     intervention_id: str,
     new_status: str = Query(..., pattern="^(active|completed|dismissed|expired)$"),
     notes: str = Query(None),
+    # school_sub_admin can CREATE interventions (POST /ai/insights/intervention)
+    # and LIST them (GET /hakim/interventions); excluding it here was an
+    # inconsistency — the leadership trio acts as one role set (replit.md).
     current_user: dict = Depends(require_roles([
-        UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_PRINCIPAL
+        UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.SCHOOL_PRINCIPAL
     ])),
 ):
     school_id = current_user.get("tenant_id")
@@ -3263,6 +3266,22 @@ async def hakim_update_intervention_status(
     update["follow_ups"] = (await gd_find_one(db.session, "ai_interventions", {"id": intervention_id}) or {}).get("follow_ups", []) or []
     update["follow_ups"].append(follow_up)
     await gd_update_one(db.session, "ai_interventions", {"id": intervention_id}, update)
+
+    # Audit trail — creation is audited (intervention.<action_type>); status
+    # modification must be too, or the plan lifecycle has a blind spot.
+    await gd_insert(db.session, "audit_logs", {
+        "id": str(uuid.uuid4()),
+        "school_id": school_id,
+        "performed_by": current_user.get("id"),
+        "actor_role": current_user.get("role"),
+        "action": "intervention.status_change",
+        "entity_type": "student",
+        "entity_id": intervention.get("student_id"),
+        "target_id": intervention.get("student_id"),
+        "target_type": "student",
+        "details": {"intervention_id": intervention_id, "new_status": new_status, "notes": notes},
+        "created_at": datetime.now(timezone.utc),
+    })
     return {"success": True, "message": "تم تحديث حالة خطة التدخل"}
 
 
@@ -3288,7 +3307,18 @@ async def hakim_student_improvement_plan(
 @router.post("/hakim/student/{student_id}/ai-plans")
 async def hakim_student_ai_plans(
     student_id: str,
-    current_user: dict = Depends(get_current_user),
+    # SECURITY (teacher-permissions audit 2026-07-19): plan generation is a
+    # leadership action (FE exposes it only on the leadership StudentProfilePage)
+    # and triggers an uncached LLM call + a persisted plan_history row. The old
+    # get_current_user-only gate let teachers, parents and even the student
+    # themselves invoke it via raw API (all pass can_view_student). Role set
+    # mirrors the tested sibling POST /ai/insights/intervention contract
+    # (platform_admin deliberately excluded there too) + independent_teacher,
+    # who is the sole admin of their workspace.
+    current_user: dict = Depends(require_roles([
+        UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN,
+        UserRole.SCHOOL_PRINCIPAL, UserRole.INDEPENDENT_TEACHER,
+    ])),
 ):
     school_id = current_user.get("tenant_id")
     if not school_id:
@@ -3390,7 +3420,10 @@ async def hakim_student_ai_plans(
         "school_id": school_id,
         "plans": plans,
         "plan_source": plan_source,
-        "generated_by": current_user.get("user_id"),
+        # get_current_user returns the users row — the key is "id", never
+        # "user_id" (the old read left generated_by permanently NULL, breaking
+        # plan-generation attribution).
+        "generated_by": current_user.get("id"),
         "generated_by_name": current_user.get("full_name", ""),
         "generated_at": generated_at,
     }
@@ -3398,6 +3431,22 @@ async def hakim_student_ai_plans(
         await gd_insert(db.session, "plan_history", history_doc)
     except Exception as e:
         print(f"[WARN] Failed to save plan history: {e}")
+
+    # Audit trail — mirrors the POST /ai/insights/intervention pattern so
+    # every plan-producing action is visible in audit_logs.
+    await gd_insert(db.session, "audit_logs", {
+        "id": str(uuid.uuid4()),
+        "school_id": school_id,
+        "performed_by": current_user.get("id"),
+        "actor_role": current_user.get("role"),
+        "action": "ai_plans.generate",
+        "entity_type": "student",
+        "entity_id": student_id,
+        "target_id": student_id,
+        "target_type": "student",
+        "details": {"plan_source": plan_source, "history_id": history_doc["id"]},
+        "created_at": datetime.now(timezone.utc),
+    })
 
     return {
         "success": True,
@@ -3434,7 +3483,17 @@ async def get_student_plan_history(
 async def export_student_plans_docx(
     student_id: str,
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    # SECURITY (teacher-permissions audit 2026-07-19): the export renders
+    # caller-supplied plan content under the official school/class/student
+    # letterhead. get_current_user alone let ANY same-tenant account (any
+    # teacher, parent, or student) export a stamped document for any student
+    # in the school — both a tenant-wide disclosure of student name/class and
+    # a document-forgery surface. Leadership + IT only, matching the sole FE
+    # caller (leadership StudentProfilePage) and the ai-plans gate.
+    current_user: dict = Depends(require_roles([
+        UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN,
+        UserRole.SCHOOL_PRINCIPAL, UserRole.INDEPENDENT_TEACHER,
+    ])),
 ):
     from docx import Document
     from docx.shared import Inches, Pt, Cm, RGBColor, Emu
@@ -3456,9 +3515,16 @@ async def export_student_plans_docx(
         raise HTTPException(400, "لا توجد خطط للتصدير")
 
     school_id = current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
     student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود")
+    # Object-level check on top of the role gate — matches every sibling
+    # student-scoped hakim route in this file (404 for cross-tenant above,
+    # 403 for same-tenant-but-unrelated here).
+    if not await can_view_student(db.session, current_user, student_id):
+        raise HTTPException(403, "لا يمكنك الوصول لبيانات هذا الطالب")
 
     school = await gd_find_one(db.session, "schools", {"id": school_id})
     school_name = school.get("name", "") if school else ""
@@ -3704,7 +3770,12 @@ async def export_student_plans_docx(
 async def export_student_plans_pdf(
     student_id: str,
     request: Request,
-    current_user: dict = Depends(get_current_user),
+    # SECURITY (teacher-permissions audit 2026-07-19): same gate as the DOCX
+    # export above — leadership + IT only, plus per-student can_view_student.
+    current_user: dict = Depends(require_roles([
+        UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN,
+        UserRole.SCHOOL_PRINCIPAL, UserRole.INDEPENDENT_TEACHER,
+    ])),
 ):
     import arabic_reshaper
     from bidi.algorithm import get_display
@@ -3749,9 +3820,16 @@ async def export_student_plans_pdf(
         raise HTTPException(400, "لا توجد خطط للتصدير")
 
     school_id = current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
     student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود")
+    # Object-level check on top of the role gate — matches every sibling
+    # student-scoped hakim route in this file (404 for cross-tenant above,
+    # 403 for same-tenant-but-unrelated here).
+    if not await can_view_student(db.session, current_user, student_id):
+        raise HTTPException(403, "لا يمكنك الوصول لبيانات هذا الطالب")
 
     school = await gd_find_one(db.session, "schools", {"id": school_id})
     school_name = school.get("name", "") if school else ""
@@ -4030,6 +4108,8 @@ async def get_student_longitudinal(
     current_user: dict = Depends(get_current_user),
 ):
     school_id = current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
     student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود")
@@ -4241,9 +4321,16 @@ async def export_student_full_profile_docx(
     sections = body.get("sections", [])
 
     school_id = current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
     student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود")
+    # Object-level check on top of the role gate — matches every sibling
+    # student-scoped hakim route in this file (404 for cross-tenant above,
+    # 403 for same-tenant-but-unrelated here).
+    if not await can_view_student(db.session, current_user, student_id):
+        raise HTTPException(403, "لا يمكنك الوصول لبيانات هذا الطالب")
 
     school = await gd_find_one(db.session, "schools", {"id": school_id})
     school_name = school.get("name", "") if school else ""
@@ -4528,9 +4615,16 @@ async def export_student_full_profile_pdf(
     sections = body.get("sections", [])
 
     school_id = current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
     student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id, "is_active": True})
     if not student:
         raise HTTPException(404, "الطالب غير موجود")
+    # Object-level check on top of the role gate — matches every sibling
+    # student-scoped hakim route in this file (404 for cross-tenant above,
+    # 403 for same-tenant-but-unrelated here).
+    if not await can_view_student(db.session, current_user, student_id):
+        raise HTTPException(403, "لا يمكنك الوصول لبيانات هذا الطالب")
 
     school = await gd_find_one(db.session, "schools", {"id": school_id})
     school_name = school.get("name", "") if school else ""
