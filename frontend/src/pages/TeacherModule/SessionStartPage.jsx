@@ -388,7 +388,7 @@ export default function SessionStartPage() {
               <div className="w-6 h-6 rounded-lg bg-brand-turquoise/20 flex items-center justify-center">
                 <GraduationCap className="h-3.5 w-3.5 text-brand-turquoise" />
               </div>
-              <h1 className={`font-cairo font-bold ${themeStyles.text} text-base`}>{t('attendanceConfirmation') || 'تأكيد الحضور'}</h1>
+              <h1 className={`font-cairo font-bold ${isDark ? 'text-foreground' : 'text-white'} text-base`}>{t('attendanceConfirmation') || 'تأكيد الحضور'}</h1>
             </div>
             <p className={`${themeStyles.textSub} text-[11px] font-tajawal mt-0.5 truncate`}>
               <span className="font-semibold">{sessionInfo?.subjectName}</span>
