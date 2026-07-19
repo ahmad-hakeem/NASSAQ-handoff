@@ -11,6 +11,8 @@ from zoneinfo import ZoneInfo
 SAUDI_TZ = ZoneInfo("Asia/Riyadh")
 import uuid
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert
+from auth_scope import is_independent_workspace_id
+from utils.it_schedule import normalize_it_day, compute_it_slot_times
 
 import logging
 
@@ -318,6 +320,48 @@ async def _resolve_class_today_sessions(session, school_id, class_id, today_en):
     """
     if not class_id or not today_en:
         return []
+
+    # Independent-Teacher synthetic workspaces (spec §5.4) store their grid
+    # directly in `schedule_sessions` (status="scheduled", short day codes,
+    # empty start/end times) with NO timetables/timetable_sessions parent —
+    # the modern-engine read below would always return []. Mirror the IT
+    # teacher-schedule reader: slot_number IS the period, times come from the
+    # workspace period config clock.
+    if is_independent_workspace_id(school_id):
+        rows = await gd_find(session, "schedule_sessions", {
+            "school_id": school_id,
+            "class_id": class_id,
+            "status": "scheduled",
+        }, limit=500)
+        settings = await gd_find_one(session, "school_settings", {"school_id": school_id}) or {}
+        slot_times = compute_it_slot_times(settings)
+        resolved = []
+        seen = set()
+        for r in rows:
+            if normalize_it_day(r.get("day_of_week")) != today_en:
+                continue
+            try:
+                slot_int = int(r.get("slot_number"))
+            except (TypeError, ValueError):
+                continue
+            if slot_int in seen:  # stale duplicate row can't double up
+                continue
+            seen.add(slot_int)
+            slot_start, slot_end = slot_times.get(slot_int, ("", ""))
+            resolved.append({
+                "period": slot_int,
+                "raw_period": slot_int,
+                "subject_id": r.get("subject_id"),
+                "teacher_id": r.get("teacher_id"),
+                # Denormalised names ride along so the today-live widget can
+                # fall back to them when the teachers/subjects lookup misses.
+                "subject_name": r.get("subject_name") or "",
+                "teacher_name": r.get("teacher_name") or "",
+                "start_time": _norm_hhmm(slot_start),
+                "end_time": _norm_hhmm(slot_end),
+            })
+        resolved.sort(key=lambda x: (x.get("period") or 0))
+        return resolved
 
     timetable = await gd_find_one(session, "timetables", {
         "school_id": school_id,
@@ -1067,13 +1111,90 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
         day_en_to_ar = {
             "sunday": "الأحد", "monday": "الاثنين", "tuesday": "الثلاثاء",
-            "wednesday": "الأربعاء", "thursday": "الخميس"
+            "wednesday": "الأربعاء", "thursday": "الخميس",
+            "friday": "الجمعة", "saturday": "السبت"
         }
         days_order = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس"]
         schedule_by_day = {day: [] for day in days_order}
         periods: list = []
 
-        if child.get("class_id"):
+        # Independent-Teacher synthetic workspaces (spec §5.4) store the grid
+        # directly in `schedule_sessions` (status="scheduled") with short day
+        # codes ("sun"), slot_number as the period, denormalised
+        # subject/teacher names and EMPTY start/end times — and never create a
+        # timetables/timetable_sessions parent, so the modern-engine read
+        # below always came back empty for IT children. Mirror the IT
+        # teacher-schedule reader (`_resolve_it_teacher_sessions`): slot times
+        # come from the workspace period-config clock, and weekend days
+        # (IT teachers can schedule Saturday/Friday) are appended to the day
+        # list only when sessions actually exist there.
+        if child.get("class_id") and is_independent_workspace_id(school_id):
+            rows = await gd_find(db.session, "schedule_sessions", {
+                "school_id": school_id,
+                "class_id": child.get("class_id"),
+                "status": "scheduled",
+            }, limit=500)
+
+            settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id}) or {}
+            slot_times = compute_it_slot_times(settings)
+
+            # Fallback names for rows missing the denormalised copy (no N+1).
+            sub_ids = list({s.get("subject_id") for s in rows if s.get("subject_id")})
+            subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100) if sub_ids else []
+            sub_map = {s["id"]: (s.get("name_ar") or s.get("name_en") or s.get("name") or "") for s in subs}
+
+            weekend_present = []  # ordered: friday then saturday, if used
+            seen = set()
+            max_slot = 0
+            for r in rows:
+                day_full = normalize_it_day(r.get("day_of_week"))
+                day_ar = day_en_to_ar.get(day_full, "")
+                if not day_ar:
+                    continue
+                try:
+                    slot_int = int(r.get("slot_number"))
+                except (TypeError, ValueError):
+                    continue
+                if (day_ar, slot_int) in seen:  # stale duplicate rows
+                    continue
+                seen.add((day_ar, slot_int))
+                if day_ar not in schedule_by_day:
+                    schedule_by_day[day_ar] = []
+                    if day_ar not in weekend_present:
+                        weekend_present.append(day_ar)
+                max_slot = max(max_slot, slot_int)
+                slot_start, slot_end = slot_times.get(slot_int, ("", ""))
+                schedule_by_day[day_ar].append({
+                    "period": slot_int,
+                    "raw_period": slot_int,
+                    "subject": r.get("subject_name") or sub_map.get(r.get("subject_id")) or "غير محدد",
+                    # Denormalised name on the row is the primary source
+                    # (written by the IT editor at save time).
+                    "teacher": r.get("teacher_name") or "غير محدد",
+                    "start_time": slot_start or "",
+                    "end_time": slot_end or "",
+                })
+
+            # Weekend columns at the end, Friday before Saturday (matches the
+            # IT teacher read page's _DAY_ORDER).
+            for day_ar in ("الجمعة", "السبت"):
+                if day_ar in weekend_present:
+                    days_order.append(day_ar)
+
+            # Canonical period rows for the grid view: the full workspace
+            # period clock (same rows the IT teacher's own grid shows),
+            # extended if a stored slot exceeds the configured count.
+            n_periods = max(len(slot_times), max_slot)
+            periods = [
+                {
+                    "period": i,
+                    "label": str(i),
+                    "start_time": (slot_times.get(i) or ("", ""))[0] or "",
+                    "end_time": (slot_times.get(i) or ("", ""))[1] or "",
+                }
+                for i in range(1, n_periods + 1)
+            ]
+        elif child.get("class_id"):
             timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
                 sort=[("created_at", -1)])
             if timetable:
@@ -1169,7 +1290,11 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
         now = datetime.now(SAUDI_TZ)
         current_time = now.strftime("%H:%M")
-        day_map = {6: "sunday", 0: "monday", 1: "tuesday", 2: "wednesday", 3: "thursday"}
+        # Friday/Saturday included so IT-workspace children (whose teachers
+        # can schedule weekend lessons) resolve a real "today"; real schools
+        # simply have no sessions on those days → no_schedule, as before.
+        day_map = {6: "sunday", 0: "monday", 1: "tuesday", 2: "wednesday",
+                   3: "thursday", 4: "friday", 5: "saturday"}
         today_en = day_map.get(now.weekday(), "")
 
         resolved_today = await _resolve_class_today_sessions(
@@ -1188,9 +1313,11 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             for s in resolved_today:
                 today_sessions.append({
                     "period": s.get("period"),
-                    "subject": sub_map.get(s.get("subject_id"), "غير محدد"),
+                    # IT rows carry denormalised names as a fallback when the
+                    # subjects/teachers lookup misses.
+                    "subject": sub_map.get(s.get("subject_id")) or s.get("subject_name") or "غير محدد",
                     "subject_id": s.get("subject_id"),
-                    "teacher": tch_map.get(s.get("teacher_id"), "غير محدد"),
+                    "teacher": tch_map.get(s.get("teacher_id")) or s.get("teacher_name") or "غير محدد",
                     "teacher_id": s.get("teacher_id"),
                     "start_time": s.get("start_time"),
                     "end_time": s.get("end_time"),
@@ -1304,7 +1431,11 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 "completed_periods": completed_count,
                 "remaining_periods": len(upcoming_classes) + (1 if current_class else 0),
                 "all_sessions": today_sessions,
-                "is_school_day": today_en in day_map.values(),
+                # Sun–Thu are always school days (pre-existing behaviour).
+                # Friday/Saturday only count as a school day when sessions
+                # actually exist (IT workspaces can schedule weekend lessons);
+                # real schools keep the weekend "outside school hours" caption.
+                "is_school_day": (today_en not in ("friday", "saturday")) or bool(today_sessions),
                 "server_time": current_time,
                 "day_status": day_status,
             },
