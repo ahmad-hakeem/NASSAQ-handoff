@@ -28,6 +28,10 @@ args = "Frontend Dev"
 task = "workflow.run"
 args = "fe-build"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "fe-test-continue"
+
   [[workflows.workflow]]
 name = "Backend API"
 author = "agent"
@@ -59,6 +63,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd frontend && CI=false npm run build"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "fe-test-continue"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd frontend && CI=true npx react-scripts test --watchAll=false --testPathPattern='SessionsManageTab.continueSession'"
 
 [workflows.workflow.metadata]
 isValidation = true

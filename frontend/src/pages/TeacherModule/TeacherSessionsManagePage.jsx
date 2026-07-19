@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 
 import { useTranslation } from '../../contexts/ThemeContext';
+import { TEACHING_RESUME_STATUSES, ATTENDANCE_RESUME_STATUSES } from './SessionsManageTab';
 const STATUS_MAP = {
   completed: { label: 'مكتملة', labelEn: 'Completed', color: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-500/30' },
   ended: { label: 'منتهية', labelEn: 'Ended', color: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-500/30' },
@@ -143,6 +144,52 @@ export default function TeacherSessionsManagePage() {
         weekday: 'short', year: 'numeric', month: 'short', day: 'numeric'
       });
     } catch (e) { console.error('Date format error:', e); return dateStr; }
+  };
+
+  // A session is resumable while it is in a non-terminal lifecycle state.
+  // Attendance-stage resume additionally needs the lesson identifiers that
+  // the session start page requires to re-enter the flow.
+  const canResumeSession = (session) => {
+    if (!session) return false;
+    if (TEACHING_RESUME_STATUSES.includes(session.status)) return true;
+    return (
+      ATTENDANCE_RESUME_STATUSES.includes(session.status) &&
+      Boolean(session.schedule_session_id && session.class_id && session.subject_id)
+    );
+  };
+
+  const resumeSession = (session) => {
+    setShowDetail(false);
+    const sessionId = session.id || session._id;
+    if (TEACHING_RESUME_STATUSES.includes(session.status)) {
+      // Same navigation contract SessionStartPage uses to resume a running
+      // lesson: SessionTeachPage reads state.sessionId and self-hydrates the
+      // rest from GET /session/{id}; class/subject names are display-only.
+      navigate('/teacher/session/teach', {
+        state: {
+          sessionId,
+          sessionInfo: {
+            class_name: session.class_name,
+            subject_name: session.subject_name,
+          },
+          startTime: session.start_time || null,
+        },
+      });
+      return;
+    }
+    // Attendance-stage: POST /session/start on the start page resumes the
+    // same active session and lands on the attendance step.
+    navigate('/teacher/session/start', {
+      state: {
+        lesson: {
+          schedule_session_id: session.schedule_session_id,
+          class_id: session.class_id,
+          subject_id: session.subject_id,
+          className: session.class_name,
+          subject: session.subject_name,
+        },
+      },
+    });
   };
 
   const openSessionDetail = async (session) => {
@@ -542,11 +589,11 @@ export default function TeacherSessionsManagePage() {
                 )}
 
                 <div className="flex gap-2 pt-2">
-                  {(selectedSession.status === 'in_progress' || selectedSession.status === 'teaching_in_progress' || selectedSession.status === 'interaction_running') && (
+                  {canResumeSession(selectedSession) && (
                     <Button
                       size="sm"
                       className="flex-1 bg-blue-600 hover:bg-blue-700"
-                      onClick={() => { setShowDetail(false); navigate(`/teacher/session/${selectedSession.id || selectedSession._id}`); }}
+                      onClick={() => resumeSession(selectedSession)}
                     >
                       <Play className="w-4 h-4" />
                       <span className={isRTL ? 'mr-2' : 'ml-2'}>{t('continueSession')}</span>
