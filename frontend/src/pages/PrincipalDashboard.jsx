@@ -1,7 +1,6 @@
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
-import { NotificationBell } from '../components/notifications/NotificationBell';
 import { SchoolDashboardContent } from '../components/dashboard/SchoolDashboardContent';
 import { Button } from '../components/ui/button';
 import {
@@ -47,7 +46,6 @@ export default function PrincipalDashboard() {
               <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-xl h-9 w-9" data-testid="theme-toggle">
                 {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </Button>
-              <NotificationBell />
             </div>
           </div>
         </header>

@@ -1,6 +1,5 @@
 import { useTheme } from '../../contexts/ThemeContext';
 import { Button } from '../ui/button';
-import { NotificationBell } from '../notifications/NotificationBell';
 import { Sun, Moon, Globe } from 'lucide-react';
 
 export const Header = ({ title, subtitle, children }) => {
@@ -23,9 +22,6 @@ export const Header = ({ title, subtitle, children }) => {
         <div className="flex items-center gap-3">
           {/* Custom content */}
           {children}
-          
-          {/* Notification Bell */}
-          <NotificationBell />
           
           {/* Language Toggle */}
           <Button 

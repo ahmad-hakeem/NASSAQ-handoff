@@ -8,7 +8,6 @@ import { ScrollArea, ScrollBar } from '../components/ui/scroll-area';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger
 } from '../components/ui/dropdown-menu';
-import { NotificationBell } from '../components/notifications/NotificationBell';
 import {
   User, Edit, Star, Download, Sun, Moon, Globe, GraduationCap,
   ChevronRight, ChevronLeft, Key, UserX, UserCheck, Trash2, Send,
@@ -119,7 +118,6 @@ export default function StudentProfilePage() {
               </nav>
             </div>
             <div className="flex items-center gap-2">
-              <NotificationBell />
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleTheme}>
                 {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </Button>

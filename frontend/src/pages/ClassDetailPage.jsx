@@ -19,7 +19,6 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuTrigger, DropdownMenuSeparator
 } from '../components/ui/dropdown-menu';
-import { NotificationBell } from '../components/notifications/NotificationBell';
 import AddStudentWizard from '../components/wizards/AddStudentWizard';
 import { getApiErrorMessage } from '../utils/apiError';
 import { useSchoolNavigation } from '../utils/studentNavigation';
@@ -476,7 +475,6 @@ export default function ClassDetailPage() {
               </Button>
               <Button variant="ghost" size="icon" className="h-9 w-9" onClick={toggleLanguage}><Globe className="h-5 w-5" /></Button>
               <Button variant="ghost" size="icon" className="h-9 w-9" onClick={toggleTheme}>{isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}</Button>
-              <NotificationBell />
             </div>
           </div>
         </header>

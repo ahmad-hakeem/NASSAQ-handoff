@@ -19,7 +19,6 @@ import {
   Timer, CircleDot, School, Sparkles, Zap, TrendingUp, Star,
   FolderOpen, ArrowLeft, ArrowRight, Check, Plus
 } from 'lucide-react';
-import { NotificationBell } from '../../components/notifications/NotificationBell';
 import ReactivationBanner from '../../components/teacher/ReactivationBanner';
 import OnboardingTrigger from '../../components/teacher/OnboardingTour/OnboardingTrigger';
 
@@ -522,10 +521,6 @@ export default function TeacherMainDashboard() {
                   <span className="text-[10px] font-cairo font-bold text-brand-purple">{portfolioProgress}%</span>
                 </div>
               </button>
-
-              <div className="relative">
-                <NotificationBell />
-              </div>
 
               <Button size="sm" variant="outline" onClick={handleRefresh} disabled={refreshing}
                 className="rounded-xl border-border/50 hover:bg-muted gap-2 font-tajawal text-xs">

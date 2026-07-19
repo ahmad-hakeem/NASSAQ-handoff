@@ -13,7 +13,6 @@ import {
   Globe, Sun, Moon
 } from 'lucide-react';
 import { Sidebar } from '../components/layout/Sidebar';
-import { NotificationBell } from '../components/notifications/NotificationBell';
 import { formatHijriOnly, formatGregorianArabic } from '../utils/hijriDate';
 
 import { useTheme, useTranslation } from '../contexts/ThemeContext';
@@ -161,7 +160,6 @@ export default function TeacherDashboard() {
               <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-xl h-9 w-9" data-testid="teacher-theme-toggle">
                 {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </Button>
-              <NotificationBell />
             </div>
           </div>
         </header>

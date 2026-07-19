@@ -3,7 +3,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme, useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import HakimPresence from '../components/hakim/HakimPresence';
-import { NotificationBell } from '../components/notifications/NotificationBell';
 import { SchoolDashboardContent } from '../components/dashboard/SchoolDashboardContent';
 import { Button } from '../components/ui/button';
 import {
@@ -39,7 +38,6 @@ export const SchoolDashboard = () => {
               <Button variant="ghost" size="icon" onClick={toggleTheme} data-testid="theme-toggle">
                 {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </Button>
-              <NotificationBell />
             </div>
           </div>
         </header>

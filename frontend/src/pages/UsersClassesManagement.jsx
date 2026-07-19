@@ -33,7 +33,6 @@ import {
 } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { CANONICAL_GRADES } from '../utils/stageGrade';
-import { NotificationBell } from '../components/notifications/NotificationBell';
 import AddStudentWizard from '../components/wizards/AddStudentWizard';
 import { AddTeacherWizard } from '../components/wizards/AddTeacherWizard';
 import CreateClassWizard from '../components/wizards/CreateClassWizard';
@@ -1639,7 +1638,6 @@ export default function UsersClassesManagement() {
               </Button>
               <Button variant="ghost" size="icon" onClick={toggleLanguage}><Globe className="h-5 w-5" /></Button>
               <Button variant="ghost" size="icon" onClick={toggleTheme}>{isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}</Button>
-              <NotificationBell />
             </div>
           </div>
         </header>

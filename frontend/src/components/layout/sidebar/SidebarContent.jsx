@@ -318,48 +318,51 @@ export default function SidebarContent({
             </div>
           )}
 
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => { onNavigate('/account/settings'); onCloseMobile(); }}
-              className="flex items-center gap-3 flex-1 min-w-0 text-start rounded-xl p-1 -m-1 hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-brand-turquoise/60 transition-colors"
-              title={t('accountSettings')}
-              aria-label={t('accountSettings')}
-              data-testid="sidebar-footer-account"
-            >
-              <div className="w-10 h-10 rounded-xl bg-brand-turquoise flex items-center justify-center overflow-hidden flex-shrink-0">
-                {user.avatar_url ? (
-                  <img src={user.avatar_url} alt={user.full_name} className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-white font-semibold">{user.full_name?.charAt(0)}</span>
+          {/* Identity row */}
+          <button
+            type="button"
+            onClick={() => { onNavigate('/account/settings'); onCloseMobile(); }}
+            className="flex items-center gap-3 w-full min-w-0 text-start rounded-xl p-1 -mx-1 hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-brand-turquoise/60 transition-colors mb-2"
+            title={t('accountSettings')}
+            aria-label={t('accountSettings')}
+            data-testid="sidebar-footer-account"
+          >
+            <div className="w-9 h-9 rounded-xl bg-brand-turquoise flex items-center justify-center overflow-hidden flex-shrink-0">
+              {user.avatar_url ? (
+                <img src={user.avatar_url} alt={user.full_name} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-white font-semibold text-sm">{user.full_name?.charAt(0)}</span>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <p className="text-sm font-medium text-white truncate">{user.full_name}</p>
+                {effectiveRole === 'independent_teacher' && (
+                  <span
+                    className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-workspace-accent-light text-workspace-accent-fg border border-workspace-accent-border flex-shrink-0"
+                    data-testid="sidebar-it-role-badge"
+                    title={isRTL ? 'معلم مستقل' : 'Independent Teacher'}
+                  >
+                    IT
+                  </span>
                 )}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <p className="text-sm font-medium text-white truncate">{user.full_name}</p>
-                  {effectiveRole === 'independent_teacher' && (
-                    <span
-                      className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-workspace-accent-light text-workspace-accent-fg border border-workspace-accent-border flex-shrink-0"
-                      data-testid="sidebar-it-role-badge"
-                      title={isRTL ? 'معلم مستقل' : 'Independent Teacher'}
-                    >
-                      {isRTL ? 'معلم مستقل' : 'IT'}
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-white/50 truncate">
-                  {getRoleLabel(effectiveRole, isRTL)}
-                </p>
-              </div>
-            </button>
+              <p className="text-xs text-white/50 truncate">
+                {getRoleLabel(effectiveRole, isRTL)}
+              </p>
+            </div>
+          </button>
+
+          {/* Action row */}
+          <div className="flex items-center justify-end gap-0.5">
             <NotificationBell
-              triggerClassName="flex-shrink-0 text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+              triggerClassName="text-white/70 hover:text-white hover:bg-white/10 transition-colors"
             />
             <Button
               variant="ghost"
               size="icon"
               onClick={toggleLanguage}
-              className="flex-shrink-0 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
+              className="text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
               data-testid="sidebar-language-toggle"
               title={isRTL ? 'English' : 'العربية'}
               aria-label={isRTL ? 'Switch to English' : 'التبديل إلى العربية'}
@@ -371,7 +374,7 @@ export default function SidebarContent({
               size="icon"
               onClick={onLogout}
               disabled={loggingOut}
-              className="flex-shrink-0 text-red-300/70 hover:text-red-200 hover:bg-red-500/20 rounded-xl transition-colors"
+              className="text-red-300/70 hover:text-red-200 hover:bg-red-500/20 rounded-xl transition-colors"
               data-testid="logout-btn"
               title={t('logout')}
               aria-label={t('logout')}
