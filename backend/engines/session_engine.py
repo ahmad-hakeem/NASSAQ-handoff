@@ -23,6 +23,7 @@ import logging
 
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, gd_delete_many
 from utils.parent_resolution import resolve_students_parent_user_ids
+from utils.student_health import summarize_student_health
 
 logger = logging.getLogger("nassaq.session_engine")
 
@@ -1005,6 +1006,10 @@ class TeacherSessionEngine:
                 "interaction_count": agg.get("interaction_count", 0),
                 "question_count": agg.get("question_count", 0),
                 "eval_positive_count": agg.get("eval_positive_count", 0),
+                # Compact health/behavior visibility flags (chip keys +
+                # booleans only — free text is served exclusively by the
+                # per-student detail endpoint). Family data never included.
+                **summarize_student_health(student),
             })
         
         # Sort by gender (males first based on RTL layout)

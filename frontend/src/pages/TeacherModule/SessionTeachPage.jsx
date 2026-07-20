@@ -24,13 +24,15 @@ import {
   Download, History, FileSpreadsheet,
   Settings, UsersRound, User, Table2, GripVertical, Search, Mic,
   PanelRightClose, PanelRightOpen, ArrowRight, ArrowLeft, MoreHorizontal,
-  Save, FileText, RotateCcw, Eye, ShieldAlert, X
+  Save, FileText, RotateCcw, Eye, ShieldAlert, X, HeartPulse
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 import { getApiErrorMessage } from '../../utils/apiError';
 import { BEHAVIOURS, DEFAULT_EVALUATION_ITEMS, DEFAULT_EVAL_IDS } from '../../config/sessionElements';
+import { HEALTH_BADGES, badgeLabel } from '../../config/healthBadges';
+import StudentHealthDialog from '../../components/teacher/StudentHealthDialog';
 import {
   mergeFollowupData,
   mergeFollowupAbsences,
@@ -40,16 +42,9 @@ import {
   computeManualKeys,
 } from './followupPersistence';
 
-// Health condition badges (mirrors SessionStartPage)
-const HEALTH_BADGES = {
-  diabetes: { icon: Heart, color: 'text-red-500', bg: 'bg-red-100 dark:bg-red-500/20', labelKey: 'healthBadgeDiabetes' },
-  allergy: { icon: AlertTriangle, color: 'text-amber-500', bg: 'bg-amber-100 dark:bg-amber-500/20', labelKey: 'healthBadgeAllergy' },
-  asthma: { icon: Heart, color: 'text-blue-500', bg: 'bg-blue-100 dark:bg-blue-500/20', labelKey: 'healthBadgeAsthma' },
-  epilepsy: { icon: ShieldAlert, color: 'text-purple-500', bg: 'bg-purple-100 dark:bg-purple-500/20', labelKey: 'healthBadgeEpilepsy' },
-  vision: { icon: Eye, color: 'text-cyan-500', bg: 'bg-cyan-100 dark:bg-cyan-500/20', labelKey: 'healthBadgeVision' },
-  social_case: { icon: ShieldAlert, color: 'text-orange-500', bg: 'bg-orange-100 dark:bg-orange-500/20', labelKey: 'healthBadgeSocialCase' },
-  special_needs: { icon: Heart, color: 'text-pink-500', bg: 'bg-pink-100 dark:bg-pink-500/20', labelKey: 'healthBadgeSpecialNeeds' },
-};
+// Health condition badges — shared vocabulary-correct config (see
+// frontend/src/config/healthBadges.js; keys mirror what the parent portal
+// actually stores in students.profile_settings).
 const GENDER_COLORS = {
   male: { bg: 'bg-sky-600', ring: 'ring-sky-400', label: 'طلاب', labelKey: 'maleStudents', icon: 'M', light: 'bg-sky-500/10 dark:bg-sky-900/30' },
   female: { bg: 'bg-pink-600', ring: 'ring-pink-400', label: 'طالبات', labelKey: 'femaleStudents', icon: 'F', light: 'bg-pink-500/10 dark:bg-pink-900/30' },
@@ -308,6 +303,8 @@ export default function SessionTeachPage() {
   const groupsLoadedRef = useRef(false);
   const groupsSaveRef = useRef(null);
   const [showGroupModal, setShowGroupModal] = useState(false);
+  // In-session read-only health/behavior detail dialog (fetches fresh on open).
+  const [healthStudent, setHealthStudent] = useState(null);
   // Session settings (إعدادات الحصة) are now rendered as a tab group inside
   // SidebarSettingsDialog. The legacy `showSettingsModal` boolean is gone —
   // the gear button toggles `showSidebarSettings` for both groups.
@@ -2570,6 +2567,7 @@ export default function SessionTeachPage() {
                             homeworkEnabled={homeworkEnabled}
                             homeworkStatus={homeworkStatuses[student.id]}
                             onToggleHomework={toggleHomework}
+                            onShowHealth={setHealthStudent}
                           />
                         ))}
                       </div>
@@ -2595,6 +2593,7 @@ export default function SessionTeachPage() {
                           homeworkEnabled={homeworkEnabled}
                           homeworkStatus={homeworkStatuses[student.id]}
                           onToggleHomework={toggleHomework}
+                          onShowHealth={setHealthStudent}
                         />
                       ))}
                     </div>
@@ -2644,6 +2643,7 @@ export default function SessionTeachPage() {
                             homeworkEnabled={homeworkEnabled}
                             homeworkStatus={homeworkStatuses[student.id]}
                             onToggleHomework={toggleHomework}
+                            onShowHealth={setHealthStudent}
                           />
                         ))}
                       </div>
@@ -2664,6 +2664,7 @@ export default function SessionTeachPage() {
                     homeworkEnabled={homeworkEnabled}
                     homeworkStatus={homeworkStatuses[student.id]}
                     onToggleHomework={toggleHomework}
+                    onShowHealth={setHealthStudent}
                   />
                 ))}
               </div>
@@ -3820,6 +3821,15 @@ export default function SessionTeachPage() {
         </DialogContent>
       </Dialog>
 
+      {/* In-session read-only health & behavior detail (fetches fresh on open;
+          family data excluded server-side) */}
+      <StudentHealthDialog
+        open={!!healthStudent}
+        onClose={() => setHealthStudent(null)}
+        sessionId={sessionId}
+        student={healthStudent}
+      />
+
       {/* Master Settings Dialog (إعدادات الحصة) —
           merges Group A (تعريفات العناصر) + Group B (تكوين الحصة).
           The legacy stand-alone "Session Settings" modal was deleted; its
@@ -4875,7 +4885,7 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
 }
 
 
-function StudentRow({ student, isFlashing, isSelected, onClick, onMenu, onSendNote, homeworkEnabled, homeworkStatus, onToggleHomework }) {
+function StudentRow({ student, isFlashing, isSelected, onClick, onMenu, onSendNote, homeworkEnabled, homeworkStatus, onToggleHomework, onShowHealth }) {
   const { t } = useTranslation();
   const homeworkLabel = t('modeHomework');
   const noteLabel = t('note');
@@ -4943,11 +4953,21 @@ function StudentRow({ student, isFlashing, isSelected, onClick, onMenu, onSendNo
           if (!def) return null;
           const Icon = def.icon;
           return (
-            <span key={i} title={c} className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${def.bg}`}>
-              <Icon className={`h-3 w-3 ${def.color}`} />
+            <span key={i} title={badgeLabel(HEALTH_BADGES, c)} className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${def.bg}`}>
+              <Icon className={`h-3 w-3 ${def.color}`} strokeWidth={1.5} aria-hidden="true" />
             </span>
           );
         })}
+        {onShowHealth && (student.has_health_alert || student.has_behavior_alert) && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onShowHealth(student); }}
+            className="inline-flex items-center justify-center w-6 h-6 flex-none rounded-full bg-rose-500/10 border border-rose-400/40 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+            aria-label={`الملف الصحي للطالب ${student.full_name}`}
+            title="عرض الملاحظات الصحية والسلوكية"
+          >
+            <HeartPulse className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+          </button>
+        )}
         {count > 0 && (
           <span className="ms-auto text-[10px] text-muted-foreground tabular-nums hidden sm:inline">
             <span className="text-emerald-600 dark:text-emerald-400 font-bold">{positive}</span>/{count}

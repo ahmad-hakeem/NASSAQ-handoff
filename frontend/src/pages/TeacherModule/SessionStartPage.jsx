@@ -6,6 +6,7 @@ import { Badge } from '../../components/ui/badge';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import { getApiErrorMessage } from '../../utils/apiError';
+import { HEALTH_BADGES, badgeLabel } from '../../config/healthBadges';
 import {
   Users, CheckCircle2, Loader2, Play,
   ArrowRight, UserCheck, UserX, Sun, Moon,
@@ -26,15 +27,9 @@ const STATUS_CONFIG = {
   },
 };
 
-const HEALTH_BADGES = {
-  diabetes: { icon: Heart, color: 'text-red-500', bg: 'bg-red-100 dark:bg-red-500/20' },
-  allergy: { icon: AlertTriangle, color: 'text-amber-500', bg: 'bg-amber-100 dark:bg-amber-500/20' },
-  asthma: { icon: Heart, color: 'text-blue-500', bg: 'bg-blue-100 dark:bg-blue-500/20' },
-  epilepsy: { icon: ShieldAlert, color: 'text-purple-500', bg: 'bg-purple-100 dark:bg-purple-500/20' },
-  vision: { icon: Eye, color: 'text-cyan-500', bg: 'bg-cyan-100 dark:bg-cyan-500/20' },
-  social_case: { icon: ShieldAlert, color: 'text-orange-500', bg: 'bg-orange-100 dark:bg-orange-500/20' },
-  special_needs: { icon: Heart, color: 'text-pink-500', bg: 'bg-pink-100 dark:bg-pink-500/20' },
-};
+// HEALTH_BADGES now comes from the shared vocabulary-correct config
+// (frontend/src/config/healthBadges.js) — keys mirror what the parent portal
+// actually stores in students.profile_settings.health_conditions.
 
 const MALE_AVATARS = [
   (color) => `<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="40" cy="40" r="40" fill="${color}"/><circle cx="40" cy="32" r="16" fill="#FBBF24"/><path d="M24 28c0-12 8-18 16-18s16 6 16 18" fill="#1E293B"/><circle cx="33" cy="32" r="2.5" fill="#1E293B"/><circle cx="47" cy="32" r="2.5" fill="#1E293B"/><path d="M36 40c0 2 1.8 3 4 3s4-1 4-3" stroke="#1E293B" stroke-width="1.5" stroke-linecap="round"/><rect x="28" y="48" width="24" height="20" rx="4" fill="#3B82F6"/></svg>`,
@@ -741,8 +736,8 @@ function StudentCard({ student, index, onUpdate, theme, themeStyles, t, isDark }
                 const badge = HEALTH_BADGES[cond] || HEALTH_BADGES.social_case;
                 const Icon = badge.icon;
                 return (
-                  <span key={cond} className={`w-4 h-4 rounded-full ${badge.bg} flex items-center justify-center`} title={t(`healthBadge${cond.charAt(0).toUpperCase()}${cond.slice(1).replace(/_([a-z])/g, (_, c) => c.toUpperCase())}`) || cond}>
-                    <Icon className={`h-2.5 w-2.5 ${badge.color}`} />
+                  <span key={cond} className={`w-4 h-4 rounded-full ${badge.bg} flex items-center justify-center`} title={badgeLabel(HEALTH_BADGES, cond)}>
+                    <Icon className={`h-2.5 w-2.5 ${badge.color}`} strokeWidth={1.5} aria-hidden="true" />
                   </span>
                 );
               })}

@@ -2881,6 +2881,42 @@ async def get_session_students(
     }
 
 
+@router.get("/session/{session_id}/students/{student_id}/health")
+async def get_session_student_health(
+    session_id: str,
+    student_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    التفاصيل الصحية والسلوكية لطالب داخل الحصة (قراءة فقط)
+    Read-only health + behavioral detail for one student in this session.
+
+    Fetched fresh on every dialog open. Authorization mirrors every other
+    in-session route (``_verify_session_owner``: owner -> admin -> cross-tenant
+    404 -> same-tenant 403), and the student must belong to the session's
+    class so a session id can never become a pivot into other classes'
+    records. Family-situation data is excluded at the helper level and never
+    reaches this response.
+    """
+    session = await _verify_session_owner(session_id, current_user)
+    student = await gd_find_one(db.session, "students", {
+        "id": student_id,
+        "class_id": session.get("class_id"),
+        "is_active": True,
+    })
+    if not student:
+        # 404 (never 403) — do not confirm rows outside this session's class.
+        raise HTTPException(status_code=404, detail="الطالب غير موجود في هذه الحصة")
+
+    from utils.student_health import build_student_health_detail
+    detail = build_student_health_detail(student)
+    return {
+        "student_id": student_id,
+        "full_name": student.get("full_name"),
+        **detail,
+    }
+
+
 @router.put("/session/{session_id}/attendance/{student_id}")
 async def update_student_attendance(
     session_id: str,
