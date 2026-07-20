@@ -9,9 +9,10 @@ import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
 import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
-import { Loader2, Sparkles, BookOpen, Save, Pencil, Trash2, X, Check } from 'lucide-react';
+import { Loader2, Sparkles, BookOpen, Save, Pencil, Trash2, Eye } from 'lucide-react';
 import { formatHijriDate } from '../../utils/hijriDate';
 import { getApiErrorMessage } from '../../utils/apiError';
+import LessonPlanDetailsDialog, { PlanPreview } from './LessonPlanDetailsDialog';
 
 // Phase 2 §6.4 (Task #209) — IT-only light AI lesson-planning assistant.
 // Backend pins workspace_school_id == itw_{user_id} + created_by ==
@@ -27,74 +28,8 @@ const DEFAULT_FORM = {
   language: 'ar',
 };
 
-function PlanPreview({ plan }) {
-  if (!plan || typeof plan !== 'object') return null;
-  const objectives = Array.isArray(plan.objectives) ? plan.objectives : [];
-  const activities = Array.isArray(plan.activities) ? plan.activities : [];
-  const materials = Array.isArray(plan.materials) ? plan.materials : [];
-  return (
-    <div className="space-y-4 text-sm leading-relaxed">
-      {plan.title && (
-        <h3 className="text-lg font-bold text-gray-900">{plan.title}</h3>
-      )}
-      {!!objectives.length && (
-        <section>
-          <h4 className="font-semibold text-gray-700 mb-1">الأهداف</h4>
-          <ul className="list-disc pr-5 space-y-1">
-            {objectives.map((o, i) => <li key={i}>{String(o)}</li>)}
-          </ul>
-        </section>
-      )}
-      {plan.warmup && (
-        <section>
-          <h4 className="font-semibold text-gray-700 mb-1">التهيئة</h4>
-          <p>{String(plan.warmup)}</p>
-        </section>
-      )}
-      {!!activities.length && (
-        <section>
-          <h4 className="font-semibold text-gray-700 mb-1">الأنشطة</h4>
-          <ol className="list-decimal pr-5 space-y-2">
-            {activities.map((a, i) => (
-              <li key={i}>
-                <div className="font-medium">
-                  {a?.name || `نشاط ${i + 1}`}
-                  {a?.duration_minutes ? ` — ${a.duration_minutes} د` : ''}
-                </div>
-                {a?.description && (
-                  <div className="text-gray-600">{String(a.description)}</div>
-                )}
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
-      {plan.assessment && (
-        <section>
-          <h4 className="font-semibold text-gray-700 mb-1">التقييم</h4>
-          <p>{String(plan.assessment)}</p>
-        </section>
-      )}
-      {plan.homework && (
-        <section>
-          <h4 className="font-semibold text-gray-700 mb-1">الواجب</h4>
-          <p>{String(plan.homework)}</p>
-        </section>
-      )}
-      {!!materials.length && (
-        <section>
-          <h4 className="font-semibold text-gray-700 mb-1">المواد</h4>
-          <ul className="list-disc pr-5 space-y-1">
-            {materials.map((m, i) => <li key={i}>{String(m)}</li>)}
-          </ul>
-        </section>
-      )}
-      {plan.summary && !plan.title && (
-        <p className="whitespace-pre-wrap">{String(plan.summary)}</p>
-      )}
-    </div>
-  );
-}
+// PlanPreview moved to ./LessonPlanDetailsDialog (spec 2026-07-20) so the
+// generate panel and the saved-plan details dialog share one renderer.
 
 // 2026-05-18 — Lesson planner relocated from the main sidebar into a
 // tab inside "فصولي" (Teacher Classes Page). The panel below is now
@@ -117,8 +52,11 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
   const [classes, setClasses] = useState([]);
   const [classId, setClassId] = useState('');
   const [savedPlans, setSavedPlans] = useState([]);
-  const [editingId, setEditingId] = useState(null);
-  const [editDraft, setEditDraft] = useState({ topic: '', subject: '', grade_level: '', duration_minutes: '', title: '' });
+  // Full view/edit dialog (spec 2026-07-20) — replaces the old 5-field
+  // inline row editor so the teacher sees/edits the WHOLE stored plan.
+  const [detailPlan, setDetailPlan] = useState(null);
+  const [detailMode, setDetailMode] = useState('view');
+  const [detailOpen, setDetailOpen] = useState(false);
   const [rowBusy, setRowBusy] = useState(null);
   // Task #251 — deep-link via /teacher/lesson-planner?plan_id=… opened
   // from the IT command palette. Tracks scroll-to + brief highlight ring
@@ -271,56 +209,22 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
     return { used, max, remaining, exhausted, percent, nextResetAr };
   }, [quota]);
 
-  const startEdit = useCallback((p) => {
-    setEditingId(p.id);
-    setEditDraft({
-      topic: p.topic || '',
-      subject: p.subject || '',
-      grade_level: p.grade_level || '',
-      duration_minutes: p.duration_minutes ?? '',
-      title: p.plan?.title || '',
-    });
+  // Spec 2026-07-20 — opening a saved plan shows the FULL stored plan
+  // (objectives/warmup/activities/assessment/homework/materials) plus
+  // the linked class; the dialog handles the PUT + save-to-class calls.
+  const openDetails = useCallback((p, nextMode) => {
+    setDetailPlan(p);
+    setDetailMode(nextMode);
+    setDetailOpen(true);
   }, []);
 
-  const cancelEdit = useCallback(() => {
-    setEditingId(null);
-    setEditDraft({ topic: '', subject: '', grade_level: '', duration_minutes: '', title: '' });
-  }, []);
-
-  const saveEdit = useCallback(async (p) => {
-    if (!editDraft.topic?.trim()) {
-      nassaqError('موضوع الدرس مطلوب.', { title: 'حقل مطلوب' });
-      return;
-    }
-    setRowBusy(p.id);
-    try {
-      const nextPlan = { ...(p.plan || {}) };
-      if (editDraft.title?.trim()) {
-        nextPlan.title = editDraft.title.trim();
-      } else {
-        delete nextPlan.title;
-      }
-      const body = {
-        topic: editDraft.topic.trim(),
-        subject: editDraft.subject?.trim() || null,
-        grade_level: editDraft.grade_level?.trim() || null,
-        duration_minutes: editDraft.duration_minutes
-          ? Number(editDraft.duration_minutes)
-          : null,
-        plan: nextPlan,
-      };
-      await api.put(`/independent-teacher/lesson-plans/${p.id}`, body);
-      nassaqInfo('تم حفظ التعديلات.', { title: 'تم التحديث' });
-      cancelEdit();
-      refresh();
-    } catch (err) {
-      const msg = getApiErrorMessage(err)
-        || 'تعذّر حفظ التعديلات. حاول مرة أخرى.';
-      nassaqError(String(msg), { title: 'فشل التعديل' });
-    } finally {
-      setRowBusy(null);
-    }
-  }, [api, editDraft, cancelEdit, refresh, nassaqError, nassaqInfo]);
+  // Resolve a plan's linked class to a display name via the (already
+  // assignment-scoped) classes list; null class_id → not linked.
+  const classNameById = useMemo(() => {
+    const map = {};
+    for (const c of classes) map[c.id] = c.name_ar || c.name || c.id;
+    return map;
+  }, [classes]);
 
   const askDelete = useCallback((p) => {
     nassaqConfirm(
@@ -329,7 +233,7 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
         setRowBusy(p.id);
         try {
           await api.delete(`/independent-teacher/lesson-plans/${p.id}`);
-          if (editingId === p.id) cancelEdit();
+          setDetailOpen(false);
           refresh();
         } catch (err) {
           const msg = getApiErrorMessage(err)
@@ -341,7 +245,7 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
       },
       { title: 'تأكيد الحذف', confirmText: 'حذف', cancelText: 'إلغاء' },
     );
-  }, [api, editingId, cancelEdit, refresh, nassaqConfirm, nassaqError]);
+  }, [api, refresh, nassaqConfirm, nassaqError]);
 
   const quotaBadge = useMemo(() => {
     if (!quota) return null;
@@ -558,84 +462,50 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
                     key: 'topic',
                     header: 'الموضوع',
                     primary: true,
-                    render: (p) => {
-                      const isEditing = editingId === p.id;
-                      return (
-                        <div
-                          data-testid={`saved-plan-row-${p.id}`}
-                          className={
-                            highlightedPlanId === p.id
-                              ? 'ring-2 ring-brand-navy/60 rounded-md p-1 -m-1 transition-shadow'
-                              : ''
-                          }
-                        >
-                          {isEditing ? (
-                            <div className="space-y-2">
-                              <div>
-                                <label className="text-xs font-medium text-gray-700">الموضوع</label>
-                                <Input
-                                  value={editDraft.topic}
-                                  onChange={(e) => setEditDraft((d) => ({ ...d, topic: e.target.value }))}
-                                  maxLength={500}
-                                />
-                              </div>
-                              <div>
-                                <label className="text-xs font-medium text-gray-700">العنوان</label>
-                                <Input
-                                  value={editDraft.title}
-                                  onChange={(e) => setEditDraft((d) => ({ ...d, title: e.target.value }))}
-                                  maxLength={500}
-                                />
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="min-w-0">
-                              <div className="font-semibold break-words">{p.topic}</div>
-                              {p.plan?.title && (
-                                <div className="text-xs text-gray-600 font-normal mt-0.5 break-words">
-                                  {p.plan.title}
-                                </div>
-                              )}
+                    render: (p) => (
+                      <div
+                        data-testid={`saved-plan-row-${p.id}`}
+                        className={
+                          highlightedPlanId === p.id
+                            ? 'ring-2 ring-brand-navy/60 rounded-md p-1 -m-1 transition-shadow'
+                            : ''
+                        }
+                      >
+                        <div className="min-w-0">
+                          <div className="font-semibold break-words">{p.topic}</div>
+                          {p.plan?.title && (
+                            <div className="text-xs text-gray-600 font-normal mt-0.5 break-words">
+                              {p.plan.title}
                             </div>
                           )}
                         </div>
-                      );
-                    },
+                      </div>
+                    ),
                   },
                   {
                     key: 'subject',
                     header: 'المادة',
-                    render: (p) => (editingId === p.id ? (
-                      <Input
-                        value={editDraft.subject}
-                        onChange={(e) => setEditDraft((d) => ({ ...d, subject: e.target.value }))}
-                        maxLength={200}
-                      />
-                    ) : (p.subject || '—')),
+                    render: (p) => (p.subject || '—'),
                   },
                   {
                     key: 'grade_level',
                     header: 'الصف',
-                    render: (p) => (editingId === p.id ? (
-                      <Input
-                        value={editDraft.grade_level}
-                        onChange={(e) => setEditDraft((d) => ({ ...d, grade_level: e.target.value }))}
-                        maxLength={200}
-                      />
-                    ) : (p.grade_level || '—')),
+                    render: (p) => (p.grade_level || '—'),
                   },
                   {
                     key: 'duration_minutes',
                     header: 'المدة (د)',
-                    render: (p) => (editingId === p.id ? (
-                      <Input
-                        type="number"
-                        min={5}
-                        max={600}
-                        value={editDraft.duration_minutes}
-                        onChange={(e) => setEditDraft((d) => ({ ...d, duration_minutes: e.target.value }))}
-                      />
-                    ) : (p.duration_minutes ? `${p.duration_minutes} د` : '—')),
+                    render: (p) => (p.duration_minutes ? `${p.duration_minutes} د` : '—'),
+                  },
+                  {
+                    key: 'class',
+                    header: 'الفصل',
+                    render: (p) => {
+                      if (!p.class_id) {
+                        return <span className="text-gray-500">غير مرتبط</span>;
+                      }
+                      return classNameById[p.class_id] || '—';
+                    },
                   },
                   {
                     key: 'actions',
@@ -644,34 +514,25 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
                     cellClassName: 'text-end',
                     render: (p) => {
                       const busy = rowBusy === p.id;
-                      const isEditing = editingId === p.id;
-                      if (isEditing) {
-                        return (
-                          <div className="flex justify-end gap-2 flex-wrap">
-                            <Button variant="ghost" size="sm" onClick={cancelEdit} disabled={busy}>
-                              <X className="w-4 h-4 ml-1" /> إلغاء
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={() => saveEdit(p)}
-                              disabled={busy || !editDraft.topic?.trim()}
-                            >
-                              {busy ? <Loader2 className="w-4 h-4 ml-1 animate-spin" /> : <Check className="w-4 h-4 ml-1" />}
-                              حفظ التغييرات
-                            </Button>
-                          </div>
-                        );
-                      }
                       return (
                         <div className="flex justify-end gap-2 flex-wrap">
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => startEdit(p)}
+                            onClick={() => openDetails(p, 'view')}
+                            disabled={busy}
+                            title="عرض"
+                          >
+                            <Eye className="w-4 h-4 ml-1" strokeWidth={1.5} aria-hidden="true" /> عرض
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openDetails(p, 'edit')}
                             disabled={busy}
                             title="تعديل"
                           >
-                            <Pencil className="w-4 h-4 ml-1" /> تعديل
+                            <Pencil className="w-4 h-4 ml-1" strokeWidth={1.5} aria-hidden="true" /> تعديل
                           </Button>
                           <Button
                             variant="ghost"
@@ -683,7 +544,7 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
                             {busy ? (
                               <Loader2 className="w-4 h-4 ml-1 animate-spin" />
                             ) : (
-                              <Trash2 className="w-4 h-4 ml-1 text-red-600" />
+                              <Trash2 className="w-4 h-4 ml-1 text-red-600" strokeWidth={1.5} aria-hidden="true" />
                             )}
                             حذف
                           </Button>
@@ -696,6 +557,15 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
             </CardContent>
           </Card>
         )}
+
+        <LessonPlanDetailsDialog
+          plan={detailPlan}
+          mode={detailMode}
+          open={detailOpen}
+          onOpenChange={setDetailOpen}
+          classes={classes}
+          onSaved={refresh}
+        />
     </>
   );
 

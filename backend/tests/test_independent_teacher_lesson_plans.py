@@ -544,6 +544,74 @@ async def test_update_lesson_plan_edits_and_scrubs_plan(client):
 
 
 # ----------------------------------------------------------------------
+# (i2) PUT — school teacher full-plan round-trip (spec 2026-07-20).
+# The FE details dialog sends the WHOLE plan JSONB (objectives, warmup,
+# activities, assessment, homework, materials + unknown keys preserved);
+# pin that a role=teacher caller can persist and read back every section.
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_school_teacher_update_full_plan_round_trip(client):
+    user = await _mk_school_teacher()
+    now = datetime.now(timezone.utc)
+    plan_id = str(uuid.uuid4())
+    await gd_insert(db.session, "lesson_plans", {
+        "id": plan_id,
+        "workspace_school_id": user["tenant_id"],
+        "created_by": user["id"],
+        "topic": "old-topic",
+        "language": "ar",
+        "plan": {"title": "old", "extra_notes": "keep-me"},
+        "is_saved": True,
+        "created_at": now, "updated_at": now,
+    })
+    h = _headers(user["id"], user["role"], user["tenant_id"])
+    full_plan = {
+        "title": "خطة كاملة",
+        "extra_notes": "keep-me",
+        "objectives": ["هدف 1", "هدف 2"],
+        "warmup": "تهيئة",
+        "activities": [
+            {"name": "نشاط", "duration_minutes": 15, "description": "وصف"},
+        ],
+        "assessment": "تقييم",
+        "homework": "واجب",
+        "materials": ["سبورة"],
+    }
+    r = await client.put(
+        f"/independent-teacher/lesson-plans/{plan_id}",
+        headers=h,
+        json={
+            "topic": "new-topic",
+            "grade_level": "الرابع",
+            "duration_minutes": 45,
+            "language": "ar",
+            "plan": full_plan,
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()["lesson_plan"]
+    assert body["topic"] == "new-topic"
+    assert body["plan"]["objectives"] == ["هدف 1", "هدف 2"]
+    assert body["plan"]["warmup"] == "تهيئة"
+    assert body["plan"]["activities"] == [
+        {"name": "نشاط", "duration_minutes": 15, "description": "وصف"},
+    ]
+    assert body["plan"]["assessment"] == "تقييم"
+    assert body["plan"]["homework"] == "واجب"
+    assert body["plan"]["materials"] == ["سبورة"]
+    # Unknown keys the FE editor doesn't know about must survive.
+    assert body["plan"]["extra_notes"] == "keep-me"
+
+    # Read back through the list endpoint — the serializer must return
+    # the identical full plan (this is what the FE dialog renders).
+    r2 = await client.get("/independent-teacher/lesson-plans", headers=h)
+    assert r2.status_code == 200, r2.text
+    rows = [p for p in r2.json()["lesson_plans"] if p["id"] == plan_id]
+    assert rows and rows[0]["plan"]["objectives"] == ["هدف 1", "هدف 2"]
+    assert rows[0]["plan"]["extra_notes"] == "keep-me"
+
+
+# ----------------------------------------------------------------------
 # (j) PUT cross-workspace plan_id → 404
 # ----------------------------------------------------------------------
 @pytest.mark.asyncio

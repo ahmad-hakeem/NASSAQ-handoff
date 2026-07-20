@@ -11,7 +11,7 @@ Object {
     "sm:p-6": 1,
     "sm:text-2xl": 1,
   },
-  "element_count": 119,
+  "element_count": 134,
   "inner_width": 360,
   "matched_breakpoints": Object {
     "2xl": false,
@@ -37,7 +37,7 @@ Object {
     "sm:p-6": 1,
     "sm:text-2xl": 1,
   },
-  "element_count": 119,
+  "element_count": 134,
   "inner_width": 414,
   "matched_breakpoints": Object {
     "2xl": false,
@@ -63,7 +63,7 @@ Object {
     "sm:p-6": 1,
     "sm:text-2xl": 1,
   },
-  "element_count": 119,
+  "element_count": 134,
   "inner_width": 768,
   "matched_breakpoints": Object {
     "2xl": false,
@@ -89,7 +89,7 @@ Object {
     "sm:p-6": 1,
     "sm:text-2xl": 1,
   },
-  "element_count": 119,
+  "element_count": 134,
   "inner_width": 1024,
   "matched_breakpoints": Object {
     "2xl": false,
