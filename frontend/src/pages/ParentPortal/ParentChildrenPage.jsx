@@ -6,12 +6,14 @@ import { useAuth } from '../../contexts/AuthContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent } from '../../components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
+import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { LoadingState } from '../../components/ui/LoadingState';
 import StudentProfileDialog from '../../components/parent/StudentProfileDialog';
+import { getTalentConfig } from '../../components/student-profile/ProfileComponents';
 import {
   User as UserIcon, GraduationCap, CheckCircle, TrendingUp, Calendar,
-  ClipboardList, Heart, Pencil,
+  ClipboardList, Heart, Pencil, Sparkles, Star, Trophy,
 } from 'lucide-react';
 
 const WeeklyAnalysisPanel = lazy(() => import('../../components/parent/WeeklyAnalysisPanel'));
@@ -255,6 +257,48 @@ const ParentChildrenPage = () => {
                       </div>
                     </div>
                   </div>
+
+                  {/* المواهب والمهارات — read-only mirror of the talents the
+                      school stores on the student record (same values +
+                      colors as the admin profile via getTalentConfig).
+                      Hidden cleanly when the school has recorded none. */}
+                  {(activeChild.talents?.length > 0) && (
+                    <div
+                      className="p-3 rounded-xl bg-brand-turquoise/5 dark:bg-brand-turquoise/10 border border-brand-turquoise/20 dark:border-brand-turquoise/25 space-y-2.5"
+                      data-testid="parent-child-talents"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-cairo font-bold text-foreground flex items-center gap-1.5">
+                          <Sparkles className="h-4 w-4 text-brand-turquoise" aria-hidden="true" />
+                          {t('talentsSkills')}
+                        </p>
+                        {activeChild.is_gifted && (
+                          <Badge
+                            className="bg-gradient-to-r from-yellow-400 to-amber-500 text-white border-0 px-2.5 py-0.5 font-cairo text-[11px]"
+                            data-testid="badge-gifted-student"
+                          >
+                            <Trophy className="h-3 w-3 me-1" aria-hidden="true" />
+                            {t('giftedStudent')}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {activeChild.talents.map((talent) => {
+                          const cfg = getTalentConfig(talent);
+                          return (
+                            <span
+                              key={talent}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-cairo font-medium ${cfg.color}`}
+                              data-testid={`talent-chip-${talent}`}
+                            >
+                              <Star className="h-3.5 w-3.5 fill-current opacity-60" aria-hidden="true" />
+                              {isRTL ? cfg.ar : cfg.en}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Weekly academic analysis — backend-aggregated, real
                       data only. NO per-child key here on purpose: the

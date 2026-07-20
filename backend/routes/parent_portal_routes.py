@@ -840,6 +840,12 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 "attendance_rate": att_rate,
                 "average_score": avg_score,
                 "gender": s.get("gender", ""),
+                # المواهب والمهارات — same fields the School-Admin profile
+                # stores on the students row; parents see the identical
+                # read-only values (is_gifted derivation mirrors the admin
+                # serializer in academics_student_routes.py).
+                "talents": s.get("talents") or [],
+                "is_gifted": len(s.get("talents") or []) > 0 or bool(s.get("is_gifted")),
             })
 
         return {"children": children, "total": len(children)}
@@ -942,6 +948,9 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "student_number": child.get("student_number"),
             "enrollment_date": child.get("enrollment_date"),
             "profile_picture": child.get("profile_picture"),
+            # المواهب والمهارات — read-only mirror of the admin-managed fields.
+            "talents": child.get("talents") or [],
+            "is_gifted": len(child.get("talents") or []) > 0 or bool(child.get("is_gifted")),
         }
 
     # ============= CHILD GRADES =============
@@ -2751,6 +2760,10 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             # cover. Bounded by _PROFILE_OTHER_TEXT_MAX on write.
             "other_health_details": (child.get("profile_settings") or {}).get("other_health_details", ""),
             "other_behavior_details": (child.get("profile_settings") or {}).get("other_behavior_details", ""),
+            # المواهب والمهارات — read-only for parents (managed by the school
+            # admin from the full student profile; PUT below never touches it).
+            "talents": child.get("talents") or [],
+            "is_gifted": len(child.get("talents") or []) > 0 or bool(child.get("is_gifted")),
         }
 
     # Whitelist of values allowed in each list/single-value profile field.
