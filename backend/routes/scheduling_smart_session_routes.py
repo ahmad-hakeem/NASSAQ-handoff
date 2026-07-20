@@ -1174,6 +1174,47 @@ async def get_curriculum_plan(
     class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
     date_range = await _get_curriculum_date_range(class_doc or {})
     subjects = await _resolve_curriculum_subjects(class_id, current_user, class_doc)
+
+    # Smart Lesson Plan Assistant bridge: plans generated in the assistant and
+    # "saved to class" live in the `lesson_plans` collection (NOT
+    # `curriculum_lessons`), so they were invisible here. Merge them at read
+    # time — single source of truth, so later edits in the assistant stay live.
+    # Scope: the CALLER'S OWN saved plans only (created_by == users.id, the
+    # ownership key the assistant routes pin on) inside the caller's workspace/
+    # school tenant. Leadership gets [] — assistant plans are creator-private
+    # (the assistant list route itself filters by created_by); widening them to
+    # leadership is a separate product decision. Deliberately NOT filtered by
+    # subject_id: assistant plans carry a free-text subject, and hiding them
+    # behind a non-matching filter would re-create the invisibility bug.
+    assistant_plans: List[Dict[str, Any]] = []
+    if _is_curriculum_teacher_scope(role):
+        from auth_scope import independent_workspace_id, require_request_school_id
+        from routes.independent_teacher_lesson_plans_routes import (
+            _serialize as _serialize_assistant_plan,
+        )
+        try:
+            caller_workspace = (
+                independent_workspace_id(current_user)
+                or require_request_school_id(current_user)
+            )
+        except HTTPException:
+            caller_workspace = None
+        if caller_workspace:
+            plan_rows = await gd_find(
+                db.session,
+                "lesson_plans",
+                {
+                    "class_id": class_id,
+                    "is_saved": True,
+                    "created_by": current_user["id"],
+                    "workspace_school_id": caller_workspace,
+                },
+                order_by="created_at",
+                desc_order=True,
+                limit=200,
+            )
+            assistant_plans = [_serialize_assistant_plan(r) for r in (plan_rows or [])]
+
     return {
         "lessons": lessons,
         "total": total,
@@ -1183,6 +1224,7 @@ async def get_curriculum_plan(
         "curriculum_end_date": date_range.get("curriculum_end_date"),
         "subjects": subjects,
         "selected_subject_id": subject_id or None,
+        "assistant_plans": assistant_plans,
     }
 
 

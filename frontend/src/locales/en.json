@@ -899,6 +899,8 @@
   "currentYear": "Current Year",
   "curriculumBehindSchedule": "Curriculum is behind schedule",
   "curriculumPlan": "Curriculum Plan",
+  "assistantPlansSection": "Smart Assistant Lesson Plans",
+  "assistantPlansHint": "Plans you generated with the smart assistant and saved to this class",
   "curriculumProgress": "Curriculum Progress",
   "customNote": "Custom Note",
   "customRange": "Custom Range",

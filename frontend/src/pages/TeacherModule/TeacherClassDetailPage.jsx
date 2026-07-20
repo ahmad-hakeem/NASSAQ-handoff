@@ -26,7 +26,8 @@ import {
   GraduationCap, Clock, ChevronLeft, ChevronDown, ChevronUp,
   Play, Search, AlertTriangle, CheckCircle2, Award, Activity,
   Eye, EyeOff, Plus, Trash2, Edit3, Upload, FileSpreadsheet,
-  Settings, Info, X, Check, Minus, CircleDot, History, XCircle
+  Settings, Info, X, Check, Minus, CircleDot, History, XCircle,
+  Sparkles
 } from 'lucide-react';
 import HakimPresence from '../../components/hakim/HakimPresence';
 import FollowupGradesTable from '../../components/teacher/FollowupGradesTable';
@@ -34,6 +35,7 @@ import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialo
 import InlineAttendanceTable from '../../components/teacher/InlineAttendanceTable';
 import CollaboratorsTab from '../../components/teacher/CollaboratorsTab';
 import TeacherStudentProfileDialog from '../../components/teacher/TeacherStudentProfileDialog';
+import LessonPlanDetailsDialog from './LessonPlanDetailsDialog';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 import { getApiErrorMessage } from '../../utils/apiError';
@@ -86,6 +88,10 @@ export default function TeacherClassDetailPage() {
   const [curriculumSubjects, setCurriculumSubjects] = useState([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState(null);
   const [expandedWeeks, setExpandedWeeks] = useState({});
+  // Smart Lesson Plan Assistant plans saved to this class (returned by the
+  // curriculum-plan endpoint as `assistant_plans`). Clicking one opens the
+  // shared LessonPlanDetailsDialog in view mode.
+  const [assistantPlanDialog, setAssistantPlanDialog] = useState(null);
   const [showAddLesson, setShowAddLesson] = useState(false);
   const [newLessonTitle, setNewLessonTitle] = useState('');
   const [newLessonWeek, setNewLessonWeek] = useState(1);
@@ -988,6 +994,10 @@ export default function TeacherClassDetailPage() {
     return col.name;
   };
 
+  const assistantPlans = Array.isArray(curriculumData.assistant_plans)
+    ? curriculumData.assistant_plans
+    : [];
+
   const renderCurriculumTab = () => (
     <div className="space-y-4">
       {curriculumError && (
@@ -1060,6 +1070,50 @@ export default function TeacherClassDetailPage() {
           {curriculumData.progress >= 80 ? t('onSchedule') : isBehind ? t('behind') : t('onSchedule')}
         </Badge>
       </div>
+
+      {/* Smart Lesson Plan Assistant plans saved to this class. Rendered as a
+          distinct AI (purple) group — they live in the assistant's own store,
+          not the weekly curriculum_lessons plan, so they carry no week/order
+          and never affect the progress metrics above. */}
+      {!curriculumLoading && assistantPlans.length > 0 && (
+        <Card className="border-brand-purple/25 bg-brand-purple/5 dark:bg-brand-purple/10 overflow-hidden">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-brand-purple/15 flex items-center justify-center flex-shrink-0">
+                <Sparkles className="h-4 w-4 text-brand-purple" strokeWidth={1.5} aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-medium text-sm font-cairo">{t('assistantPlansSection')}</p>
+                <p className="text-xs text-muted-foreground font-tajawal">{t('assistantPlansHint')}</p>
+              </div>
+              <Badge className="ms-auto bg-brand-purple/15 text-brand-purple border-0 text-xs shrink-0">
+                {assistantPlans.length}
+              </Badge>
+            </div>
+            <div className="space-y-1.5">
+              {assistantPlans.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setAssistantPlanDialog(p)}
+                  className="w-full flex items-center gap-3 p-2.5 rounded-lg bg-background/70 hover:bg-background transition-colors duration-150 text-start"
+                >
+                  <BookOpen className="h-4 w-4 text-brand-purple flex-shrink-0" strokeWidth={1.5} aria-hidden="true" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-tajawal truncate">{p.plan?.title || p.topic}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {[p.subject, p.duration_minutes ? `${p.duration_minutes} ${t('minutes')}` : null]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                  </div>
+                  <span className="text-xs text-brand-purple font-medium shrink-0">{t('viewDetails')}</span>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {curriculumLoading ? (
         <div className="flex items-center justify-center py-12">
@@ -1805,6 +1859,16 @@ export default function TeacherClassDetailPage() {
         open={!!profileStudent}
         onClose={() => setProfileStudent(null)}
         classLabel={classData?.grade_name}
+      />
+
+      {/* Details for a Smart Lesson Plan Assistant plan saved to this class —
+          same shared dialog as the assistant page, so edits stay in sync. */}
+      <LessonPlanDetailsDialog
+        plan={assistantPlanDialog}
+        open={!!assistantPlanDialog}
+        onOpenChange={(open) => { if (!open) setAssistantPlanDialog(null); }}
+        classes={classData ? [classData] : []}
+        onSaved={fetchCurriculum}
       />
 
       <input

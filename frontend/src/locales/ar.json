@@ -903,6 +903,8 @@
   "currentYear": "العام الحالي",
   "curriculumBehindSchedule": "المنهج متأخر عن الخطة المقررة",
   "curriculumPlan": "خطة المنهج",
+  "assistantPlansSection": "خطط مساعد الدروس الذكي",
+  "assistantPlansHint": "خطط أنشأتها عبر المساعد الذكي وحفظتها لهذا الفصل",
   "curriculumProgress": "تقدم المنهج",
   "customNote": "ملاحظة مخصصة",
   "customRange": "نطاق مخصص",
