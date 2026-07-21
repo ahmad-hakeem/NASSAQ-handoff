@@ -99,8 +99,12 @@ export const HakimPlanCard = ({ type, plan, isRTL, loading, onGenerate, onExport
       </div>
       {hasPlan && (
         <>
-          <button onClick={() => setStepsOpen(!stepsOpen)}
-            className="w-full flex items-center justify-between px-4 py-2.5 border-t border-b border-border/30 bg-muted/20 hover:bg-muted/40 transition-colors">
+          {/* div[role=button] (not <button>): the header contains nested Button
+              actions (export/redo) and <button> may not contain <button>. */}
+          <div role="button" tabIndex={0} aria-expanded={stepsOpen}
+            onClick={() => setStepsOpen(!stepsOpen)}
+            onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStepsOpen(!stepsOpen); } }}
+            className="w-full flex items-center justify-between px-4 py-2.5 border-t border-b border-border/30 bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer">
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium font-cairo">{plan.title || (isRTL ? cfg.title_ar : cfg.title_en)}</span>
               {plan.steps && <span className="text-[10px] text-muted-foreground">({plan.steps.length} {t('steps')})</span>}
@@ -118,7 +122,7 @@ export const HakimPlanCard = ({ type, plan, isRTL, loading, onGenerate, onExport
               </Button>
               {stepsOpen ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
             </div>
-          </button>
+          </div>
           {stepsOpen && (
             <CardContent className="p-4 space-y-2.5">
               {plan.summary && <p className="text-xs text-muted-foreground bg-muted/30 p-2.5 rounded-lg leading-relaxed font-tajawal">{plan.summary}</p>}

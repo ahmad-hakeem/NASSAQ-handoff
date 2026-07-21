@@ -10,7 +10,9 @@ import { Progress } from '../ui/progress';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import {
   Loader2, ClipboardCheck, FileText, Star, TrendingUp, GraduationCap,
+  ClipboardList,
 } from 'lucide-react';
+import StudentPlansSection from './StudentPlansSection';
 
 const EMPTY_DETAILS = {
   attendance: { rate: 0, total: 0, present: 0, absent: 0, late: 0, trend: [], recent: [] },
@@ -51,12 +53,19 @@ const fmtDate = (value) => {
  * gradebook (My Classes -> Student Record). It self-fetches the same
  * `/students/{id}/analytics` summary the teacher students page already uses,
  * so it inherits the exact teacher object-level authorization (no new access).
- * It intentionally omits principal-only actions (edit / suspend / AI plans)
- * and parent messaging — it is purely for inspecting a student's details.
+ * It intentionally omits principal-only actions (edit / suspend) and parent
+ * messaging — it is for inspecting a student's details. Independent teachers
+ * additionally get the Hakim smart-plans tab (remedial/enrichment), matching
+ * the leadership profile; the backend already gates those routes to
+ * leadership + IT with per-student `can_view_student` scoping.
  */
 export default function TeacherStudentProfileDialog({ student, open, onClose, classLabel }) {
-  const { api, isRTL } = useAuth();
+  const { api, isRTL, user } = useAuth();
   const { t, language } = useTranslation();
+  // Hakim smart plans (remedial/enrichment) are IT-only: the backend role
+  // gate on /hakim/.../ai-plans and the plan exports denies regular school
+  // teachers, so the tab must not render for them.
+  const isIndependentTeacher = user?.role === 'independent_teacher';
 
   const localizeBeh = (record) => {
     if (!record) return '';
@@ -145,11 +154,17 @@ export default function TeacherStudentProfileDialog({ student, open, onClose, cl
           </div>
         ) : (
           <Tabs defaultValue="overview" className="mt-4">
-            <TabsList className="grid grid-cols-4 w-full">
+            <TabsList className={`grid w-full ${isIndependentTeacher ? 'grid-cols-5' : 'grid-cols-4'}`}>
               <TabsTrigger value="overview">{t('overview') || 'نظرة عامة'}</TabsTrigger>
               <TabsTrigger value="attendance">{t('attendance2') || 'الحضور'}</TabsTrigger>
               <TabsTrigger value="grades">{t('grades') || 'الدرجات'}</TabsTrigger>
               <TabsTrigger value="behavior">{t('behavior') || 'السلوك'}</TabsTrigger>
+              {isIndependentTeacher && (
+                <TabsTrigger value="plans" className="gap-1" data-testid="tab-student-plans">
+                  <ClipboardList className="h-3.5 w-3.5" aria-hidden="true" />
+                  {isRTL ? 'الخطط' : 'Plans'}
+                </TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="overview" className="space-y-4 mt-4">
@@ -377,6 +392,16 @@ export default function TeacherStudentProfileDialog({ student, open, onClose, cl
                 </CardContent>
               </Card>
             </TabsContent>
+
+            {/* Hakim smart plans (الخطة العلاجية / الخطة الإثرائية) — IT only */}
+            {isIndependentTeacher && (
+              <TabsContent value="plans" className="mt-4">
+                <StudentPlansSection
+                  studentId={student?.id}
+                  studentName={student?.full_name}
+                />
+              </TabsContent>
+            )}
           </Tabs>
         )}
       </DialogContent>

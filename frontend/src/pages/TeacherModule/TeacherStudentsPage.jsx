@@ -24,8 +24,9 @@ import {
   BookOpen, Calendar, ChevronLeft, BarChart3, Brain, Target,
   CheckCircle, AlertTriangle, Sparkles, ArrowUpCircle, ArrowDownCircle,
   Lightbulb, Activity, MessageSquare, Send, Plus, UserPlus, Link2, Upload,
-  Pencil, Trash2
+  Pencil, Trash2, ClipboardList
 } from 'lucide-react';
+import StudentPlansSection from '../../components/teacher/StudentPlansSection';
 import AddStudentWizard from '../../components/wizards/AddStudentWizard';
 
 // Phase 1 IT — server-side cap (#192 spec §5.6).
@@ -1557,7 +1558,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
               </div>
             ) : studentDetails && (
               <Tabs defaultValue="overview" className="mt-4">
-                <TabsList className="grid grid-cols-3 sm:grid-cols-5 w-full">
+                <TabsList className={`grid grid-cols-3 w-full ${isIndependentTeacher ? 'sm:grid-cols-6' : 'sm:grid-cols-5'}`}>
                   <TabsTrigger value="overview">{t('overview')}</TabsTrigger>
                   <TabsTrigger value="attendance">{t('attendance2')}</TabsTrigger>
                   <TabsTrigger value="grades">{t('grades')}</TabsTrigger>
@@ -1566,6 +1567,15 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                     <Brain className="h-3.5 w-3.5" />
                     {isRTL ? 'تحليل ذكي' : 'AI Insights'}
                   </TabsTrigger>
+                  {/* Hakim smart plans (remedial/enrichment) — IT only. Regular
+                      school teachers are denied by the backend role gate on
+                      /hakim/.../ai-plans, so the tab must not render for them. */}
+                  {isIndependentTeacher && (
+                    <TabsTrigger value="plans" className="gap-1" data-testid="tab-student-plans">
+                      <ClipboardList className="h-3.5 w-3.5" />
+                      {isRTL ? 'الخطط' : 'Plans'}
+                    </TabsTrigger>
+                  )}
                 </TabsList>
 
                 <TabsContent value="overview" className="space-y-4 mt-4">
@@ -2021,6 +2031,16 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
                     </Card>
                   )}
                 </TabsContent>
+
+                {/* Hakim smart plans (الخطة العلاجية / الخطة الإثرائية) — IT only */}
+                {isIndependentTeacher && (
+                  <TabsContent value="plans" className="mt-4">
+                    <StudentPlansSection
+                      studentId={selectedStudent?.id}
+                      studentName={selectedStudent?.full_name}
+                    />
+                  </TabsContent>
+                )}
               </Tabs>
             )}
           </DialogContent>
