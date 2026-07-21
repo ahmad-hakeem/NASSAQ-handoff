@@ -164,10 +164,12 @@ export default function TeacherHomePage() {
     return () => clearInterval(interval);
   }, [fetchTeacherData, fetchDayStatus, fetchPortfolioProgress]);
 
-  // Task #310 — count personal-calendar events for IT only. Tri-state
-  // (null = unknown) so a transient API failure can't falsely flip the
-  // dashboard into the brand-new empty state for a workspace that
-  // actually has events.
+  // Personal calendar events for IT — both powers the brand-new empty-state
+  // detection (count) and the home-page upcoming-events widget (full list).
+  // Tri-state count (null = unknown) keeps the empty-state suppressed on
+  // transient errors so a failed fetch never hides a real workspace.
+  const [itCalendarEvents, setItCalendarEvents] = useState([]);
+
   useEffect(() => {
     if (!isIndependentTeacher) { setItEventsCount(0); return; }
     let cancelled = false;
@@ -175,9 +177,12 @@ export default function TeacherHomePage() {
       try {
         const res = await api.get('/independent-teacher/calendar/events');
         const data = Array.isArray(res?.data) ? res.data : (res?.data?.events || []);
-        if (!cancelled) setItEventsCount(data.length);
+        if (!cancelled) {
+          setItEventsCount(data.length);
+          setItCalendarEvents(data);
+        }
       } catch (e) {
-        // Leave as null — empty-state stays suppressed on transient errors.
+        // Leave count as null — empty-state stays suppressed on transient errors.
       }
     })();
     return () => { cancelled = true; };
@@ -508,6 +513,103 @@ export default function TeacherHomePage() {
                     </div>
                   ))}
                 </div>
+              </div>
+            );
+          })()}
+
+          {/* Personal Calendar Widget — IT only. Surfaces today's and upcoming
+              (next 7 days) personal events so the teacher never has to leave
+              the home page to check their calendar. Data comes from the same
+              /independent-teacher/calendar/events fetch already on this page;
+              no extra network request needed. Navigates to the full calendar
+              tab for viewing, creating, or editing events. */}
+          {isIndependentTeacher && (() => {
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const sevenDaysLater = new Date();
+            sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+            const sevenStr = sevenDaysLater.toISOString().slice(0, 10);
+
+            const relevant = (itCalendarEvents || [])
+              .filter(ev => ev.date && ev.date >= todayStr && ev.date <= sevenStr)
+              .sort((a, b) => a.date.localeCompare(b.date))
+              .slice(0, 5);
+
+            const EVENT_DOT = {
+              trip: 'bg-violet-500', parents: 'bg-pink-500', report: 'bg-amber-500',
+              exam: 'bg-emerald-500', holiday: 'bg-sky-500', meeting: 'bg-blue-500',
+            };
+
+            const fmtDate = (iso) => {
+              try {
+                const d = new Date(iso);
+                if (Number.isNaN(d.getTime())) return iso;
+                const months = isRTL
+                  ? ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر']
+                  : ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                return `${d.getDate()} ${months[d.getMonth()]}`;
+              } catch { return iso; }
+            };
+
+            return (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="font-cairo font-bold text-base text-foreground flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-workspace-accent/15 flex items-center justify-center">
+                      <Calendar className="h-3.5 w-3.5 text-workspace-accent" strokeWidth={1.5} aria-hidden="true" />
+                    </div>
+                    {t('itHomeCalendarTitle')}
+                  </h2>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs text-workspace-accent hover:bg-workspace-accent/10 hover:text-workspace-accent font-tajawal gap-1"
+                    onClick={() => navigate('/teacher/classes?tab=calendar')}
+                  >
+                    {t('itHomeCalendarViewAll')}
+                    {isRTL ? <ChevronLeft className="h-3 w-3" /> : null}
+                  </Button>
+                </div>
+
+                {relevant.length === 0 ? (
+                  <div
+                    className="rounded-xl border border-dashed border-workspace-accent/30 bg-workspace-accent-light/20 p-4 text-center cursor-pointer hover:bg-workspace-accent-light/30 transition-colors"
+                    onClick={() => navigate('/teacher/classes?tab=calendar')}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && navigate('/teacher/classes?tab=calendar')}
+                  >
+                    <Calendar className="h-8 w-8 mx-auto mb-2 text-workspace-accent/40" strokeWidth={1.5} aria-hidden="true" />
+                    <p className="text-sm text-muted-foreground font-tajawal">{t('itHomeCalendarEmpty')}</p>
+                    <p className="text-xs text-muted-foreground/60 font-tajawal mt-0.5">{t('itHomeCalendarEmptyHint')}</p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-workspace-accent/20 bg-card shadow-sm overflow-hidden divide-y divide-border/50">
+                    {relevant.map((ev) => {
+                      const isEvToday = ev.date === todayStr;
+                      const dot = EVENT_DOT[ev.type] || 'bg-slate-400';
+                      const title = isRTL ? (ev.title_ar || ev.title_en || '') : (ev.title_en || ev.title_ar || '');
+                      return (
+                        <div
+                          key={ev.id}
+                          className={`flex items-center gap-3 px-3.5 py-2.5 ${isEvToday ? 'bg-workspace-accent/5' : ''}`}
+                        >
+                          <div className="flex flex-col items-center gap-0.5 flex-shrink-0 w-10 text-center">
+                            <span className={`text-[10px] font-tajawal font-bold ${isEvToday ? 'text-workspace-accent' : 'text-muted-foreground/60'}`}>
+                              {isEvToday ? t('itHomeCalendarToday') : fmtDate(ev.date)}
+                            </span>
+                          </div>
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dot}`} aria-hidden="true" />
+                          <span className="flex-1 min-w-0 text-sm font-tajawal text-foreground truncate">{title}</span>
+                          {isEvToday && (
+                            <Badge className="bg-workspace-accent/15 text-workspace-accent border-0 text-[10px] font-tajawal px-1.5 py-0 flex-shrink-0">
+                              {t('itHomeCalendarToday')}
+                            </Badge>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })()}
