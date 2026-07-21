@@ -30,8 +30,14 @@ import {
  * All four enforce role gate + per-student `can_view_student`, so this
  * component adds zero new access — the API refuses students outside the
  * caller's workspace regardless of what the UI requests.
+ *
+ * `enrichmentOnly` (school teacher, 2026-07-21): renders only the enrichment
+ * plan surface — no remedial card, no remedial/both export options, and the
+ * generate call requests plan_type "enrichment". The backend independently
+ * forces the same restriction for the teacher role, so this prop is UX
+ * consistency, not the enforcement point.
  */
-export default function StudentPlansSection({ studentId, studentName }) {
+export default function StudentPlansSection({ studentId, studentName, enrichmentOnly = false }) {
   const { api, isRTL } = useAuth();
   const { t } = useTranslation();
   const { nassaqError } = useNassaqAlert();
@@ -58,7 +64,7 @@ export default function StudentPlansSection({ studentId, studentName }) {
       if (hydrate) {
         // Records arrive newest-first; surface the most recent plan of each
         // type so previously generated plans stay visible after reopening.
-        const latestRemedial = records.find((r) => r.plans?.remedial_plan);
+        const latestRemedial = enrichmentOnly ? null : records.find((r) => r.plans?.remedial_plan);
         const latestEnrichment = records.find((r) => r.plans?.enrichment_plan);
         if (latestRemedial) setRemedialPlan(latestRemedial.plans.remedial_plan);
         if (latestEnrichment) setEnrichmentPlan(latestEnrichment.plans.enrichment_plan);
@@ -81,17 +87,19 @@ export default function StudentPlansSection({ studentId, studentName }) {
     const setLoadFn = planType === 'remedial' ? setLoadingRemedial : setLoadingEnrichment;
     setLoadFn(true);
     try {
-      const res = await api.post(`/hakim/student/${studentId}/ai-plans`, {});
+      const res = await api.post(`/hakim/student/${studentId}/ai-plans`,
+        enrichmentOnly ? { plan_type: 'enrichment' } : {});
       const plans = res.data?.plans;
       if (plans) {
         // The endpoint generates both plans in one call; fill whichever the
         // user asked for and opportunistically hydrate the sibling card.
+        // In enrichmentOnly mode the backend already omits the remedial plan.
         if (planType === 'remedial') {
           if (plans.remedial_plan) setRemedialPlan(plans.remedial_plan);
           if (plans.enrichment_plan) setEnrichmentPlan((prev) => prev || plans.enrichment_plan);
         } else {
           if (plans.enrichment_plan) setEnrichmentPlan(plans.enrichment_plan);
-          if (plans.remedial_plan) setRemedialPlan((prev) => prev || plans.remedial_plan);
+          if (!enrichmentOnly && plans.remedial_plan) setRemedialPlan((prev) => prev || plans.remedial_plan);
         }
       }
       toast.success(t('planGeneratedByHakim'));
@@ -104,7 +112,7 @@ export default function StudentPlansSection({ studentId, studentName }) {
   };
 
   const openExportModal = (planType) => {
-    setExportPlanType(planType || 'both');
+    setExportPlanType(enrichmentOnly ? 'enrichment' : (planType || 'both'));
     setExportFormat('pdf');
     setExportOpen(true);
   };
@@ -166,13 +174,15 @@ export default function StudentPlansSection({ studentId, studentName }) {
         </div>
       </div>
 
-      <HakimPlanCard type="remedial" plan={remedialPlan} isRTL={isRTL} loading={loadingRemedial}
-        onGenerate={() => generatePlan('remedial')} onExport={remedialPlan ? openExportModal : null} />
+      {!enrichmentOnly && (
+        <HakimPlanCard type="remedial" plan={remedialPlan} isRTL={isRTL} loading={loadingRemedial}
+          onGenerate={() => generatePlan('remedial')} onExport={remedialPlan ? openExportModal : null} />
+      )}
 
       <HakimPlanCard type="enrichment" plan={enrichmentPlan} isRTL={isRTL} loading={loadingEnrichment}
         onGenerate={() => generatePlan('enrichment')} onExport={enrichmentPlan ? openExportModal : null} />
 
-      {remedialPlan && enrichmentPlan && (
+      {!enrichmentOnly && remedialPlan && enrichmentPlan && (
         <Button variant="outline"
           className="w-full gap-2 border-brand-navy/20 text-brand-navy hover:bg-brand-navy/5 hover:text-brand-navy focus-visible:text-brand-navy"
           onClick={() => openExportModal('both')} disabled={exporting}>
@@ -194,7 +204,9 @@ export default function StudentPlansSection({ studentId, studentName }) {
           ) : (
             <div className="space-y-2">
               {planHistory.map((entry, i) => {
-                const hasRemedial = !!entry.plans?.remedial_plan;
+                // enrichmentOnly (school teacher): never surface remedial
+                // metadata — defense-in-depth; the API already sanitizes.
+                const hasRemedial = !enrichmentOnly && !!entry.plans?.remedial_plan;
                 const hasEnrichment = !!entry.plans?.enrichment_plan;
                 return (
                   <div key={entry.id || i} className="flex items-center gap-3 p-3 rounded-xl border hover:bg-muted/20 transition-colors">
@@ -232,7 +244,7 @@ export default function StudentPlansSection({ studentId, studentName }) {
             <div className="space-y-2">
               <Label className="text-sm font-medium font-cairo">{t('planType')}</Label>
               <RadioGroup value={exportPlanType} onValueChange={setExportPlanType} className="space-y-2">
-                {remedialPlan && (
+                {!enrichmentOnly && remedialPlan && (
                   <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${exportPlanType === 'remedial' ? 'border-rose-300 bg-rose-50/50 dark:border-rose-700 dark:bg-rose-950/20' : 'border-border hover:border-rose-200'}`}>
                     <RadioGroupItem value="remedial" />
                     <Stethoscope className="h-4 w-4 text-rose-500 flex-shrink-0" />
@@ -246,7 +258,7 @@ export default function StudentPlansSection({ studentId, studentName }) {
                     <span className="text-sm font-medium">{t('enrichmentPlan')}</span>
                   </label>
                 )}
-                {remedialPlan && enrichmentPlan && (
+                {!enrichmentOnly && remedialPlan && enrichmentPlan && (
                   <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${exportPlanType === 'both' ? 'border-brand-navy/30 bg-brand-navy/5 dark:border-brand-navy/50 dark:bg-brand-navy/10' : 'border-border hover:border-brand-navy/20'}`}>
                     <RadioGroupItem value="both" />
                     <FileText className="h-4 w-4 text-brand-navy flex-shrink-0" />

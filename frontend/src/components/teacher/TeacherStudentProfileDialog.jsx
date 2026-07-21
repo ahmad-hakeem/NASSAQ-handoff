@@ -62,9 +62,9 @@ const fmtDate = (value) => {
 export default function TeacherStudentProfileDialog({ student, open, onClose, classLabel }) {
   const { api, isRTL, user } = useAuth();
   const { t, language } = useTranslation();
-  // Hakim smart plans (remedial/enrichment) are IT-only: the backend role
-  // gate on /hakim/.../ai-plans and the plan exports denies regular school
-  // teachers, so the tab must not render for them.
+  // Hakim smart plans: independent teachers get remedial + enrichment;
+  // regular school teachers get the enrichment plan only (2026-07-21 —
+  // backend enforces the same restriction server-side).
   const isIndependentTeacher = user?.role === 'independent_teacher';
 
   const localizeBeh = (record) => {
@@ -154,17 +154,15 @@ export default function TeacherStudentProfileDialog({ student, open, onClose, cl
           </div>
         ) : (
           <Tabs defaultValue="overview" className="mt-4">
-            <TabsList className={`grid w-full ${isIndependentTeacher ? 'grid-cols-5' : 'grid-cols-4'}`}>
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="overview">{t('overview') || 'نظرة عامة'}</TabsTrigger>
               <TabsTrigger value="attendance">{t('attendance2') || 'الحضور'}</TabsTrigger>
               <TabsTrigger value="grades">{t('grades') || 'الدرجات'}</TabsTrigger>
               <TabsTrigger value="behavior">{t('behavior') || 'السلوك'}</TabsTrigger>
-              {isIndependentTeacher && (
-                <TabsTrigger value="plans" className="gap-1" data-testid="tab-student-plans">
-                  <ClipboardList className="h-3.5 w-3.5" aria-hidden="true" />
-                  {isRTL ? 'الخطط' : 'Plans'}
-                </TabsTrigger>
-              )}
+              <TabsTrigger value="plans" className="gap-1" data-testid="tab-student-plans">
+                <ClipboardList className="h-3.5 w-3.5" aria-hidden="true" />
+                {isRTL ? 'الخطط' : 'Plans'}
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-4 mt-4">
@@ -393,15 +391,15 @@ export default function TeacherStudentProfileDialog({ student, open, onClose, cl
               </Card>
             </TabsContent>
 
-            {/* Hakim smart plans (الخطة العلاجية / الخطة الإثرائية) — IT only */}
-            {isIndependentTeacher && (
-              <TabsContent value="plans" className="mt-4">
-                <StudentPlansSection
-                  studentId={student?.id}
-                  studentName={student?.full_name}
-                />
-              </TabsContent>
-            )}
+            {/* Hakim smart plans — IT: remedial + enrichment; school teacher:
+                enrichment only (الخطة الإثرائية) */}
+            <TabsContent value="plans" className="mt-4">
+              <StudentPlansSection
+                studentId={student?.id}
+                studentName={student?.full_name}
+                enrichmentOnly={!isIndependentTeacher}
+              />
+            </TabsContent>
           </Tabs>
         )}
       </DialogContent>

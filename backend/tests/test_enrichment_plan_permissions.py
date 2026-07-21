@@ -67,7 +67,10 @@ async def test_ai_plans_allowed_sub_admin_and_principal(client, school_sub_admin
 
 
 @pytest.mark.asyncio
-async def test_ai_plans_denied_teacher(client, teacher_headers, a_student, monkeypatch):
+async def test_ai_plans_denied_unassigned_teacher(client, teacher_headers, a_student, monkeypatch):
+    """2026-07-21: teachers pass the role gate now (enrichment-only grant),
+    but an UNASSIGNED teacher must still be stopped by can_view_student —
+    a_student has class_id=None and this teacher teaches nothing."""
     _force_fallback(monkeypatch)
     r = await client.post(AI_PLANS.format(sid=a_student["id"]), headers=teacher_headers)
     assert r.status_code == 403
@@ -145,6 +148,8 @@ async def test_export_pdf_allowed_school_admin(client, school_admin_headers, a_s
 
 @pytest.mark.asyncio
 async def test_export_docx_denied_teacher_parent_student(client, teacher_headers, parent_headers, student_headers, a_student):
+    # teacher: remedial export is 403 (enrichment-only grant, 2026-07-21);
+    # parent: 403 at the role gate.
     for headers in (teacher_headers, parent_headers):
         r = await client.post(EXPORT_DOCX.format(sid=a_student["id"]), json=PLAN_BODY, headers=headers)
         assert r.status_code == 403, (r.status_code, r.text)
@@ -224,6 +229,138 @@ async def test_export_docx_allowed_independent_teacher(client):
     r = await client.post(EXPORT_DOCX.format(sid=student_id), json=PLAN_BODY, headers=headers)
     assert r.status_code == 200, r.text
     assert "wordprocessingml" in r.headers.get("content-type", "")
+
+
+# ---------------------------------------------------------------------------
+# School TEACHER — enrichment-only grant (2026-07-21)
+# ---------------------------------------------------------------------------
+
+ENRICHMENT_BODY = {
+    "plan_type": "enrichment",
+    "enrichment_plan": {
+        "title": "الخطة الإثرائية",
+        "summary": "خطة اختبارية",
+        "steps": [
+            {"title": "خطوة", "description": "وصف", "duration": "أسبوع", "responsible": "معلم المادة"},
+        ],
+        "expected_outcome": "تطوير المهارات",
+    },
+}
+
+
+async def _seed_assigned_teacher(tenant_id: str):
+    """Teacher + class + student in that class, linked via a class_sessions
+    doc (the second can_view_student branch — avoids the teachers/subjects
+    FK chain that teacher_assignments requires)."""
+    import uuid as _uuid
+    from engines.sql_utils import gd_insert
+    from dependencies import create_access_token
+
+    uid = str(_uuid.uuid4())
+    await gd_insert(_db.session, "users", {
+        "id": uid, "role": "teacher", "tenant_id": tenant_id,
+        "email": f"t-{uid}@t.test", "full_name": "معلم مدرسة",
+        "is_active": True, "password_hash": "x",
+    })
+    class_id = str(_uuid.uuid4())
+    await gd_insert(_db.session, "classes", {
+        "id": class_id, "school_id": tenant_id, "name": "1-أ", "is_active": True,
+    })
+    student_id = str(_uuid.uuid4())
+    await gd_insert(_db.session, "students", {
+        "id": student_id, "school_id": tenant_id, "full_name": "طالب فصل",
+        "class_id": class_id, "is_active": True,
+    })
+    await gd_insert(_db.session, "class_sessions", {
+        "id": str(_uuid.uuid4()), "school_id": tenant_id,
+        "teacher_id": uid, "class_id": class_id,
+    })
+    token = create_access_token({"sub": uid, "role": "teacher", "tenant_id": tenant_id})
+    return {"Authorization": f"Bearer {token}"}, student_id
+
+
+@pytest.mark.asyncio
+async def test_ai_plans_assigned_teacher_enrichment_only(client, tenant_a, monkeypatch):
+    """An assigned teacher can generate plans, but response AND persisted
+    history must carry the enrichment plan only — never remedial — even
+    when the request asks for both."""
+    _force_fallback(monkeypatch)
+    headers, student_id = await _seed_assigned_teacher(tenant_a)
+
+    r = await client.post(AI_PLANS.format(sid=student_id),
+                          json={"plan_type": "both"}, headers=headers)
+    assert r.status_code == 200, r.text
+    plans = r.json().get("plans") or {}
+    assert "enrichment_plan" in plans
+    assert "remedial_plan" not in plans, "remedial plan leaked to teacher response"
+
+    history = await gd_find(_db.session, "plan_history", {"student_id": student_id})
+    assert history, "plan_history row missing"
+    for h in history:
+        assert "remedial_plan" not in (h.get("plans") or {}), \
+            "remedial plan leaked into persisted plan_history"
+
+
+@pytest.mark.asyncio
+async def test_export_teacher_enrichment_allowed_remedial_denied(client, tenant_a):
+    headers, student_id = await _seed_assigned_teacher(tenant_a)
+
+    # enrichment export allowed (both formats)
+    r = await client.post(EXPORT_DOCX.format(sid=student_id), json=ENRICHMENT_BODY, headers=headers)
+    assert r.status_code == 200, r.text
+    assert "wordprocessingml" in r.headers.get("content-type", "")
+    r = await client.post(EXPORT_PDF.format(sid=student_id), json=ENRICHMENT_BODY, headers=headers)
+    assert r.status_code == 200, r.text
+    assert "pdf" in r.headers.get("content-type", "")
+
+    # remedial and both are denied for teachers
+    for plan_type in ("remedial", "both"):
+        body = {**PLAN_BODY, "plan_type": plan_type}
+        r = await client.post(EXPORT_DOCX.format(sid=student_id), json=body, headers=headers)
+        assert r.status_code == 403, (plan_type, r.status_code, r.text)
+        r = await client.post(EXPORT_PDF.format(sid=student_id), json=body, headers=headers)
+        assert r.status_code == 403, (plan_type, r.status_code, r.text)
+
+
+@pytest.mark.asyncio
+async def test_plan_history_sanitized_for_teacher(client, tenant_a):
+    """The read path must not leak remedial content either: history rows
+    generated by leadership carry both plans — teachers must receive them
+    with remedial_plan stripped, and remedial-only rows hidden entirely."""
+    import uuid as _uuid
+    from engines.sql_utils import gd_insert
+
+    headers, student_id = await _seed_assigned_teacher(tenant_a)
+    await gd_insert(_db.session, "plan_history", {
+        "id": str(_uuid.uuid4()), "student_id": student_id, "school_id": tenant_a,
+        "plans": {"remedial_plan": {"title": "علاجية"}, "enrichment_plan": {"title": "إثرائية"}},
+        "plan_source": "ai", "generated_at": "2026-07-20T00:00:00",
+    })
+    await gd_insert(_db.session, "plan_history", {
+        "id": str(_uuid.uuid4()), "student_id": student_id, "school_id": tenant_a,
+        "plans": {"remedial_plan": {"title": "علاجية فقط"}},
+        "plan_source": "ai", "generated_at": "2026-07-19T00:00:00",
+    })
+
+    r = await client.get(f"/hakim/student/{student_id}/plan-history", headers=headers)
+    assert r.status_code == 200, r.text
+    records = r.json()
+    assert len(records) == 1, "remedial-only row must be invisible to teachers"
+    for rec in records:
+        assert "remedial_plan" not in (rec.get("plans") or {}), \
+            "remedial plan leaked to teacher via plan-history"
+        assert "enrichment_plan" in rec["plans"]
+
+
+@pytest.mark.asyncio
+async def test_ai_plans_leadership_still_gets_both(client, school_admin_headers, a_student, monkeypatch):
+    """Regression guard: the enrichment-only stripping must NOT affect
+    leadership callers — default plan_type stays 'both'."""
+    _force_fallback(monkeypatch)
+    r = await client.post(AI_PLANS.format(sid=a_student["id"]), headers=school_admin_headers)
+    assert r.status_code == 200, r.text
+    plans = r.json().get("plans") or {}
+    assert "remedial_plan" in plans and "enrichment_plan" in plans
 
 
 # ---------------------------------------------------------------------------
