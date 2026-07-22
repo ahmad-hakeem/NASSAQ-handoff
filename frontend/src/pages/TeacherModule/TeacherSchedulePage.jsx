@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 import { useTranslation } from '../../contexts/ThemeContext';
+import { standbyUsesSlotNumberSpace, standbyRowPeriod } from '../../utils/standbyGridMapping';
 const DAYS = [
   { key: 'sunday', ar: 'الأحد', en: 'Sun', idx: 0 },
   { key: 'monday', ar: 'الاثنين', en: 'Mon', idx: 1 },
@@ -201,6 +202,22 @@ export default function TeacherSchedulePage() {
   }, [standbyByKey, todayKey]);
 
   const totalStandbySlots = standbyData?.total_slots || 0;
+
+  // Standby entries are keyed by LOGICAL period ordinal (contiguous 1..N over
+  // teaching periods) — the grid row's logical ordinal is its contiguous index
+  // (idx + 1) over break-filtered slots, NOT slot_number (which counts breaks).
+  const standbySlotSpace = useMemo(() => {
+    // Use the roster's declared period universe (covers the whole timetable,
+    // not just this teacher's assigned slots) so legacy slot-number-space
+    // timetables are detected even when the teacher's own periods are small.
+    const periods = (standbyData?.periods || [])
+      .map((p) => Number(p) || 0)
+      .filter((p) => p > 0);
+    if (periods.length === 0) {
+      for (const [, entry] of standbyByKey) periods.push(entry.period || 0);
+    }
+    return standbyUsesSlotNumberSpace(periods, timeSlots);
+  }, [standbyData, standbyByKey, timeSlots]);
 
   const currentSession = useMemo(() => {
     void tick; // eslint-disable-line react-hooks/exhaustive-deps
@@ -739,7 +756,7 @@ export default function TeacherSchedulePage() {
                         </td>
                         {(view === 'weekly' ? DAYS : [DAYS.find(d => d.key === selectedDay)]).map(day => {
                           const sessions = getSessionsForCell(day.key, slot.id, slot.slot_number || slot.period_number, slot.start_time);
-                          const slotPeriodKey = `${day.key}_${slot.slot_number || slot.period_number || (idx + 1)}`;
+                          const slotPeriodKey = `${day.key}_${standbyRowPeriod(slot, idx, standbySlotSpace)}`;
                           const standbyEntry = showStandby ? standbyByKey.get(slotPeriodKey) : null;
                           const hasContent = sessions.length > 0 || standbyEntry;
                           return (
