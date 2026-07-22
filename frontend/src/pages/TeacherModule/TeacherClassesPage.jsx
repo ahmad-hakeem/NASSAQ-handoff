@@ -234,15 +234,14 @@ export default function TeacherClassesPage() {
     custom_skills: [],
     participation_scores: {},
   });
-  // Transient local state for the canonical SidebarSettingsDialog's Group A
-  // tabs (evaluation items + behaviours). The current /teacher/{id}/session-settings
-  // contract doesn't persist these, but we still back them with real state so
-  // the add/remove interactions work identically to the Interactive Class flow
-  // — i.e. the UI is fully functional within the open session, even if the
-  // values are not yet persisted server-side.
+  // Local state for the canonical SidebarSettingsDialog's Group A tabs
+  // (evaluation items, behaviours, behaviour score overrides). These are
+  // persisted server-side via the updated /teacher/{id}/session-settings
+  // contract and hydrated from the GET response on subject selection.
   const [classEvaluationItems, setClassEvaluationItems] = useState([]);
   const [classPositiveBehaviours, setClassPositiveBehaviours] = useState([]);
   const [classNegativeBehaviours, setClassNegativeBehaviours] = useState([]);
+  const [classBehaviourScoreOverrides, setClassBehaviourScoreOverrides] = useState({});
   const [settingsShowAddOtherItems, setSettingsShowAddOtherItems] = useState(false);
   const [settingsFollowupColumns, setSettingsFollowupColumns] = useState([]);
 
@@ -454,19 +453,30 @@ export default function TeacherClassesPage() {
     setSettingsLoading(true);
     try {
       const res = await api.get(`/teacher/${teacherId}/session-settings?subject_id=${subjectId}`);
-      if (res.data && !Array.isArray(res.data)) {
+      const s = (res.data && !Array.isArray(res.data)) ? res.data : null;
+      if (s) {
+        // Group B — session configuration toggles
         setSessionConfig({
-          participation_enabled: res.data.participation_enabled ?? true,
-          homework_enabled: res.data.homework_enabled ?? false,
-          homework_mode: res.data.homework_mode ?? 'didnt_submit',
-          recitation_enabled: res.data.recitation_enabled ?? false,
-          recitation_attempts: res.data.recitation_attempts ?? 1,
-          skills_enabled: res.data.skills_enabled ?? false,
-          custom_skills: res.data.custom_skills ?? [],
-          participation_scores: (res.data.participation_scores && typeof res.data.participation_scores === 'object')
-            ? res.data.participation_scores
+          participation_enabled: s.participation_enabled ?? true,
+          homework_enabled: s.homework_enabled ?? false,
+          homework_mode: s.homework_mode ?? 'didnt_submit',
+          recitation_enabled: s.recitation_enabled ?? false,
+          recitation_attempts: s.recitation_attempts ?? 1,
+          skills_enabled: s.skills_enabled ?? false,
+          custom_skills: s.custom_skills ?? [],
+          participation_scores: (s.participation_scores && typeof s.participation_scores === 'object')
+            ? s.participation_scores
             : {},
         });
+        // Group A — custom element definitions (hydrate from server so the
+        // modal shows the same data as the class-specific lesson settings).
+        setClassPositiveBehaviours(Array.isArray(s.custom_positive_behaviours) ? s.custom_positive_behaviours : []);
+        setClassNegativeBehaviours(Array.isArray(s.custom_negative_behaviours) ? s.custom_negative_behaviours : []);
+        setClassEvaluationItems(Array.isArray(s.custom_evaluation_items) ? s.custom_evaluation_items : []);
+        setClassBehaviourScoreOverrides(
+          s.behaviour_score_overrides && typeof s.behaviour_score_overrides === 'object'
+            ? s.behaviour_score_overrides : {}
+        );
       } else {
         setSessionConfig({
           participation_enabled: true,
@@ -476,7 +486,12 @@ export default function TeacherClassesPage() {
           recitation_attempts: 1,
           skills_enabled: false,
           custom_skills: [],
+          participation_scores: {},
         });
+        setClassPositiveBehaviours([]);
+        setClassNegativeBehaviours([]);
+        setClassEvaluationItems([]);
+        setClassBehaviourScoreOverrides({});
       }
     } catch (err) {
       console.error('Error loading session settings:', err);
@@ -491,10 +506,9 @@ export default function TeacherClassesPage() {
     loadSessionSettings(subjectId);
   };
 
-  // Persist the current sessionConfig to the per-teacher / per-subject template.
-  // Reused as the canonical SidebarSettingsDialog Save handler — the legacy
-  // "add more elements?" confirm step was removed to match the Interactive
-  // Class UX, which saves directly with no intermediate prompt.
+  // Persist the current sessionConfig + Group A custom element definitions
+  // to the per-teacher / per-subject template. Both groups are now stored
+  // server-side via the updated /teacher/{id}/session-settings contract.
   const doSaveSettings = async () => {
     if (!settingsSubject) {
       nassaqError(t('noSubjectSelected') || t('selectSubjectFirst'));
@@ -505,6 +519,11 @@ export default function TeacherClassesPage() {
       await api.put(`/teacher/${teacherId}/session-settings`, {
         subject_id: settingsSubject,
         ...sessionConfig,
+        // Group A — custom element fields (absent = don't-touch on existing records)
+        custom_positive_behaviours: classPositiveBehaviours,
+        custom_negative_behaviours: classNegativeBehaviours,
+        custom_evaluation_items: classEvaluationItems,
+        behaviour_score_overrides: classBehaviourScoreOverrides,
       });
       toast.success(t('patternSaved'));
       setShowSettingsModal(false);
@@ -1202,15 +1221,16 @@ export default function TeacherClassesPage() {
             setSettingsSubject('');
             setSettingsShowAddOtherItems(false);
             setSettingsFollowupColumns([]);
+            setClassEvaluationItems([]);
+            setClassPositiveBehaviours([]);
+            setClassNegativeBehaviours([]);
+            setClassBehaviourScoreOverrides({});
           }
         }}
         isRTL={isRTL}
         t={t}
-        // Group A — element definitions. "My Classes" only persists custom
-        // skill names through the existing PUT contract; evaluation items and
-        // behaviours are kept in transient local state so add/remove behaves
-        // identically to the Interactive Class flow without forking the
-        // backend payload.
+        // Group A — element definitions persisted server-side and hydrated
+        // from GET /teacher/{id}/session-settings on subject selection.
         evaluationItems={classEvaluationItems}
         onAddEvaluationItem={(item) => setClassEvaluationItems((prev) => [...prev, item])}
         onRemoveEvaluationItem={(id) =>
@@ -1229,6 +1249,9 @@ export default function TeacherClassesPage() {
           setClassNegativeBehaviours((prev) =>
             prev.filter((x) => (typeof x === 'string' ? `custom_${x}` !== id : x.id !== id))
           )
+        }
+        onUpdateBehaviourScore={(category, id, magnitude) =>
+          setClassBehaviourScoreOverrides((prev) => ({ ...prev, [id]: magnitude }))
         }
         skillEnabled={!!sessionConfig.skills_enabled}
         onToggleSkillEnabled={(v) => setSessionConfig((p) => ({ ...p, skills_enabled: v }))}

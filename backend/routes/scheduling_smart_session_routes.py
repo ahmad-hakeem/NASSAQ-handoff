@@ -711,7 +711,12 @@ class SessionSettingsRequest(BaseModel):
     recitation_enabled: bool = False
     recitation_attempts: int = 1
     skills_enabled: bool = False
-    custom_skills: List[str] = []
+    custom_skills: List = []
+    # Group A custom element fields — same contract as /class/{id}/session-settings
+    custom_positive_behaviours: Optional[List] = None
+    custom_negative_behaviours: Optional[List] = None
+    custom_evaluation_items: Optional[List] = None
+    behaviour_score_overrides: Optional[dict] = None
 
 class SessionSettingsResponse(BaseModel):
     id: str
@@ -758,7 +763,9 @@ async def get_session_settings(
         query["subject_id"] = subject_id
     settings = await gd_find(db.session, "session_settings", query, limit=100)
     if subject_id and settings:
-        return settings[0]
+        # Include Group A custom element fields so the فصولي modal shows
+        # the same data as the class-specific lesson settings dialog.
+        return {**settings[0], **ss_custom_fields_from_record(settings[0])}
     return settings
 
 
@@ -789,15 +796,20 @@ async def save_session_settings(
         "custom_skills": request.custom_skills,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+    # Persist Group A custom element fields using the shared sanitizer so
+    # the فصولي modal and the class-specific dialog use the same contract.
+    # Absent-key = don't-touch (mirrors the class route's streak_bonus contract).
+    req_dict = request.dict()
+    data.update(ss_sanitize_custom_element_fields(req_dict))
     if existing:
         await gd_update_one(db.session, "session_settings", {"id": existing["id"]}, data)
-        return {**data, "id": existing["id"]}
+        return {**data, **ss_custom_fields_from_record(data), "id": existing["id"]}
     else:
         doc_id = str(uuid.uuid4())
         data["id"] = doc_id
         data["created_at"] = datetime.now(timezone.utc).isoformat()
         await gd_insert(db.session, "session_settings", data)
-        return data
+        return {**data, **ss_custom_fields_from_record(data)}
 
 
 # ============== CURRICULUM PLAN ==============
