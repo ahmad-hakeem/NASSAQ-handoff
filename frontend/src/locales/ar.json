@@ -4631,9 +4631,9 @@
   "itEmptyLessonPlansDescription": "وَلِّد أوّل خطة درس بمساعدة الذكاء الاصطناعي. اكتب موضوع الدرس في الأعلى ثم اضغط \"توليد الخطة\" لتبدأ.",
   "itEmptyLessonPlansCta": "ابدأ بكتابة موضوع الدرس",
   "itHomeCalendarTitle": "تقويمي الشخصي",
-  "itHomeCalendarViewAll": "عرض الكل",
+  "itHomeCalendarViewAll": "عرض التقويم",
   "itHomeCalendarToday": "اليوم",
-  "itHomeCalendarEmpty": "لا توجد أحداث شخصية قريبة",
+  "itHomeCalendarEmpty": "لا توجد أحداث قادمة في تقويمك الشخصي",
   "itHomeCalendarEmptyHint": "يمكنك إضافة أحداث من صفحة التقويم الشخصي",
   "itEmptyPersonalCalendarTitle": "تقويمك الشخصي فارغ",
   "itEmptyPersonalCalendarDescription": "أضِف أوّل حدث إلى تقويمك الشخصي — اجتماع، تذكير، أو مهمة. هذه الأحداث تظهر لك فقط ولن يراها أي معلم آخر.",
@@ -5491,5 +5491,7 @@
   "targetDateCannotBeInPast": "لا يمكن تحديد تاريخ هدف في الماضي",
   "timestamp": "الوقت",
   "undoEventEvaluation": "تقييم",
-  "uptime": "مدة التشغيل"
+  "uptime": "مدة التشغيل",
+  "itHomeCalendarSubtitle": "أحداثك الشخصية القادمة — كما تظهر في الجدول والتقويم",
+  "itHomeCalendarEmptyCta": "أضف حدثًا"
 }

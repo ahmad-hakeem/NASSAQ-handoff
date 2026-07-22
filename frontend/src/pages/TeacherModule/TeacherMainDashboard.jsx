@@ -17,7 +17,7 @@ import {
   ChevronRight, FileText, CalendarDays,
   RefreshCw, MessageSquare, Play, Target, Activity, Flame, Award,
   Timer, CircleDot, School, Sparkles, Zap, TrendingUp, Star,
-  FolderOpen, ArrowLeft, ArrowRight, Check, Plus
+  FolderOpen, ArrowLeft, ArrowRight, Check, Plus, Loader2
 } from 'lucide-react';
 import ReactivationBanner from '../../components/teacher/ReactivationBanner';
 import OnboardingTrigger from '../../components/teacher/OnboardingTour/OnboardingTrigger';
@@ -149,6 +149,36 @@ const PeriodTimeline = ({ upcomingLessons, totalPeriods, currentPeriod, isSchool
   );
 };
 
+// Personal-calendar event-type meta for the IT home widget. Mirrors the
+// EVENT_TYPES map in components/dashboard/AdminCalendar.jsx (the تقويمي
+// الشخصي tab) so the two surfaces label/color events identically.
+const IT_EVENT_TYPE_META = {
+  trip:    { label_ar: 'رحلة',         label_en: 'Trip',    dot: 'bg-violet-500' },
+  parents: { label_ar: 'أولياء الأمور', label_en: 'Parents', dot: 'bg-pink-500' },
+  report:  { label_ar: 'تقرير',        label_en: 'Report',  dot: 'bg-amber-500' },
+  exam:    { label_ar: 'اختبار',       label_en: 'Exam',    dot: 'bg-emerald-500' },
+  holiday: { label_ar: 'إجازة',        label_en: 'Holiday', dot: 'bg-sky-500' },
+  meeting: { label_ar: 'اجتماع',       label_en: 'Meeting', dot: 'bg-blue-500' },
+};
+
+const IT_CAL_SHORT_MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const IT_CAL_SHORT_MONTHS_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// Date-only formatting: parse the Y-M-D string manually — never
+// `new Date(iso)` on a date-only value (UTC-midnight off-by-one).
+const formatItEventDate = (isoDate, isRTL) => {
+  if (!isoDate || typeof isoDate !== 'string') return '';
+  const [, m, d] = isoDate.split('-').map(Number);
+  if (!m || !d) return isoDate;
+  const months = isRTL ? IT_CAL_SHORT_MONTHS_AR : IT_CAL_SHORT_MONTHS_EN;
+  return `${d} ${months[m - 1] || ''}`;
+};
+
+const localTodayISODate = () => {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+};
+
 export default function TeacherMainDashboard() {
   const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
@@ -182,6 +212,20 @@ export default function TeacherMainDashboard() {
   // never hit the IT-only endpoint.
   const isIndependentTeacher = user?.role === 'independent_teacher';
   const [itEventsCount, setItEventsCount] = useState(null);
+  // Personal-calendar home widget shares the SAME fetch as the empty-state
+  // count above (single source of truth = /independent-teacher/calendar
+  // /events, the exact endpoint the تقويمي الشخصي tab reads), so the home
+  // page and the Schedule & Calendar tab can never disagree.
+  const [itEvents, setItEvents] = useState(null);
+  const todayISODate = localTodayISODate();
+  // Today's + future events, soonest first, capped for the compact card.
+  const itUpcomingEvents = useMemo(() => {
+    if (!Array.isArray(itEvents)) return [];
+    return itEvents
+      .filter((e) => typeof e?.date === 'string' && e.date >= todayISODate)
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+      .slice(0, 5);
+  }, [itEvents, todayISODate]);
 
   const teacherId = user?.teacher_id || user?.id;
   const teacherSubject = user?.primary_subject_name || user?.specialization || '';
@@ -301,15 +345,18 @@ export default function TeacherMainDashboard() {
   // only flip the empty-state on a *confirmed* zero so a transient API
   // failure can't falsely hide a workspace that actually has events.
   useEffect(() => {
-    if (!isIndependentTeacher) { setItEventsCount(0); return; }
+    if (!isIndependentTeacher) { setItEventsCount(0); setItEvents([]); return; }
     let cancelled = false;
     (async () => {
       try {
         const res = await api.get('/independent-teacher/calendar/events');
         const data = Array.isArray(res?.data) ? res.data : (res?.data?.events || []);
-        if (!cancelled) setItEventsCount(data.length);
+        if (!cancelled) { setItEventsCount(data.length); setItEvents(data); }
       } catch (e) {
-        // Leave as null — empty-state stays suppressed on transient errors.
+        // Count stays null — the Task #310 empty-state stays suppressed on
+        // transient errors. The widget, however, must not spin forever:
+        // resolve it to an empty list so it shows the calm empty state.
+        if (!cancelled) setItEvents([]);
       }
     })();
     return () => { cancelled = true; };
@@ -824,6 +871,104 @@ export default function TeacherMainDashboard() {
 
             {/* C) School Day Timeline moved into the Welcome Card above */}
           </section>
+
+          {/* IT-only: personal calendar widget — same data source as the
+              تقويمي الشخصي tab in /teacher/planning (Schedule & Calendar). */}
+          {isIndependentTeacher && (
+            <section data-testid="it-home-personal-calendar">
+              <Card className="border border-border/50 shadow-sm overflow-hidden">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <CardTitle className="flex items-center gap-3 text-lg font-cairo">
+                      <div className="w-9 h-9 rounded-xl bg-workspace-accent flex items-center justify-center shadow-md">
+                        <CalendarDays className="h-4 w-4 text-white" aria-hidden="true" />
+                      </div>
+                      <span>
+                        {t('itHomeCalendarTitle')}
+                        <span className="block text-xs font-tajawal font-normal text-muted-foreground mt-0.5">
+                          {t('itHomeCalendarSubtitle')}
+                        </span>
+                      </span>
+                    </CardTitle>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="rounded-xl font-cairo text-workspace-accent hover:bg-workspace-accent-light/40 hover:text-workspace-accent-fg"
+                      onClick={() => navigate('/teacher/planning?tab=calendar')}
+                      data-testid="it-home-calendar-view-all"
+                    >
+                      {t('itHomeCalendarViewAll')}
+                      <NavArrow className="h-4 w-4 ms-1" aria-hidden="true" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {itEvents === null ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-5 w-5 animate-spin text-workspace-accent" aria-hidden="true" />
+                    </div>
+                  ) : itUpcomingEvents.length === 0 ? (
+                    <div
+                      className="text-center py-8 rounded-xl border border-dashed border-workspace-accent-border bg-workspace-accent-light/20"
+                      data-testid="it-home-calendar-empty"
+                    >
+                      <CalendarDays className="h-10 w-10 mx-auto mb-3 text-workspace-accent opacity-40" aria-hidden="true" />
+                      <p className="text-sm text-muted-foreground font-tajawal mb-4">{t('itHomeCalendarEmpty')}</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-xl font-cairo border-workspace-accent-border text-workspace-accent hover:bg-workspace-accent-light/40"
+                        onClick={() => navigate('/teacher/planning?tab=calendar')}
+                        data-testid="it-home-calendar-empty-cta"
+                      >
+                        <Plus className="h-4 w-4 me-1" aria-hidden="true" />
+                        {t('itHomeCalendarEmptyCta')}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {itUpcomingEvents.map((event) => {
+                        const meta = IT_EVENT_TYPE_META[event.type] || IT_EVENT_TYPE_META.meeting;
+                        const isToday = event.date === todayISODate;
+                        return (
+                          <div
+                            key={event.id}
+                            className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+                              isToday
+                                ? 'border-workspace-accent-border bg-workspace-accent-light/30'
+                                : 'border-border/50 bg-muted/20 hover:border-workspace-accent-border/60'
+                            }`}
+                            data-testid={`it-home-calendar-event-${event.id}`}
+                          >
+                            <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${meta.dot}`} aria-hidden="true" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium font-tajawal truncate">
+                                {isRTL ? (event.title_ar || event.title_en) : (event.title_en || event.title_ar)}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {isRTL ? meta.label_ar : meta.label_en}
+                              </p>
+                            </div>
+                            <div className="text-end flex-shrink-0">
+                              {isToday ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-cairo bg-workspace-accent text-white">
+                                  {t('itHomeCalendarToday')}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground font-tajawal whitespace-nowrap">
+                                  {formatItEventDate(event.date, isRTL)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </section>
+          )}
 
           {/* Metric Cards — HIDDEN per request (logic kept intact) */}
           {false && (

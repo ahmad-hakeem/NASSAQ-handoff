@@ -63,37 +63,21 @@ const VALID_TABS = new Set(['schedule', 'calendar', 'settings']);
  */
 export default function TimeManagementHubPage() {
   const navigate = useNavigate();
-  const { user, api, isRTL, token, fetchPermissions } = useAuth();
+  const { user, api, isRTL } = useAuth();
   const { t } = useTranslation();
   const { nassaqError } = useNassaqAlert();
 
   const isIndependentTeacher = user?.role === 'independent_teacher';
 
-  // Personal-calendar tab is gated on the same FE permission slice
-  // the retired sidebar entry used (`events.author_own`). Fail-closed
-  // while the lazy /auth/me/permissions fetch is still in flight so
-  // the tab doesn't flash visible before the gate resolves.
-  const [perms, setPerms] = useState(null);
-  useEffect(() => {
-    let cancelled = false;
-    if (!token || !fetchPermissions) return undefined;
-    (async () => {
-      try {
-        const data = await fetchPermissions();
-        if (cancelled) return;
-        const list = Array.isArray(data?.permissions)
-          ? data.permissions
-          : Array.isArray(data?.effective_permissions)
-            ? data.effective_permissions
-            : Array.isArray(data) ? data : [];
-        setPerms(new Set(list.map((p) => String(p))));
-      } catch {
-        if (!cancelled) setPerms(new Set());
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [token, fetchPermissions]);
-  const canUsePersonalCalendar = !!(perms && perms.has('events.author_own'));
+  // Personal-calendar tab gates on ROLE, not the lazy /auth/me/permissions
+  // fetch. The backend base set for independent_teacher always includes
+  // `events.author_own` (rbac.py — Phase 2 §6.3), so the fetch could only
+  // ever false-negative: fetchPermissions() returns null both on error AND
+  // when another mounted caller (Sidebar) already has a fetch in flight,
+  // which this page used to coerce into an empty permission set — hiding
+  // the tab permanently (the "تقويمي الشخصي disappeared" regression).
+  // Server-side authorization is enforced on every calendar route anyway.
+  const canUsePersonalCalendar = isIndependentTeacher;
 
   const [searchParams, setSearchParams] = useSearchParams();
   const _rawTab = searchParams.get('tab');
