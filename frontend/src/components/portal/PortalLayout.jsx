@@ -19,7 +19,6 @@ import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { Button } from '../ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Sidebar } from '../layout/Sidebar';
-import { NotificationBell } from '../notifications/NotificationBell';
 import ShellStudentSwitcher from '../parent/ShellStudentSwitcher';
 import {
   Home,
@@ -44,7 +43,7 @@ const LOGO_WHITE = '/nassaq-logo-white.png';
 /* -------------------------------------------------------------------------- */
 /*  Parent shell — shared right-side Sidebar + thin top utility bar           */
 /* -------------------------------------------------------------------------- */
-const ParentShell = ({ children, hideHeaderNotifications }) => {
+const ParentShell = ({ children }) => {
   const { t } = useTranslation();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const { user } = useAuth();
@@ -86,7 +85,6 @@ const ParentShell = ({ children, hideHeaderNotifications }) => {
               <Button variant="ghost" size="icon" onClick={toggleTheme}>
                 {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </Button>
-              {!hideHeaderNotifications && <NotificationBell />}
             </div>
           </div>
         </header>
@@ -313,7 +311,7 @@ const StudentShell = ({ children, hideHeaderNotifications }) => {
 
 export const PortalLayout = ({ children, portalType = 'student', hideHeaderNotifications = false }) => {
   if (portalType === 'parent') {
-    return <ParentShell hideHeaderNotifications={hideHeaderNotifications}>{children}</ParentShell>;
+    return <ParentShell>{children}</ParentShell>;
   }
   return <StudentShell hideHeaderNotifications={hideHeaderNotifications}>{children}</StudentShell>;
 };
