@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
@@ -55,8 +55,9 @@ import {
   TableRow,
 } from '@/shared/components/ui/table';
 import { Link } from 'react-router-dom';
-import AddStudentWizard from '@/features/teachers/components/wizards/AddStudentWizard';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
+
+const AddStudentWizard = lazy(() => import('@/features/teachers/components/wizards/AddStudentWizard'));
 
 export const StudentsPage = () => {
   const { t } = useTranslation();
@@ -379,15 +380,19 @@ export const StudentsPage = () => {
               <Plus className="h-5 w-5 me-2" />
               {t('addStudent')}
             </Button>
-            <AddStudentWizard
-              open={createDialogOpen}
-              onOpenChange={setCreateDialogOpen}
-              onSuccess={() => { setCreateDialogOpen(false); fetchData(); }}
-              api={api}
-              isRTL={isRTL}
-              grades={grades || []}
-              classes={classes || []}
-            />
+            <Suspense fallback={null}>
+              {createDialogOpen && (
+                <AddStudentWizard
+                  open={createDialogOpen}
+                  onOpenChange={setCreateDialogOpen}
+                  onSuccess={() => { setCreateDialogOpen(false); fetchData(); }}
+                  api={api}
+                  isRTL={isRTL}
+                  grades={grades || []}
+                  classes={classes || []}
+                />
+              )}
+            </Suspense>
           </div>
 
           <Card className="card-nassaq">

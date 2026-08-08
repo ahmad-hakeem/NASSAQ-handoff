@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
 import { Button } from '@/shared/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/components/ui/card';
 import { Badge } from '@/shared/components/ui/badge';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
@@ -15,14 +15,15 @@ import {
   TrendingUp, TrendingDown, AlertTriangle, Bell, User, BookOpenCheck,
   School, Layers, ClipboardList, HeartPulse, Loader2, ArrowUpRight,
   Database, Wifi, CircleDot, MessagesSquare, UserCog, LayoutDashboard,
-  ChevronLeft, Target
+  ChevronLeft, Target, UserPlus, Search
 } from 'lucide-react';
 import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell, PieChart, Pie
 } from 'recharts';
-import CreateSchoolWizard from '@/features/teachers/components/wizards/CreateSchoolWizard';
-import CreateUserWizard from '@/features/teachers/components/wizards/CreateUserWizard';
 import QuickAIOperationsPanel from '@/features/hakim/components/ai/QuickAIOperationsPanel';
+
+const CreateSchoolWizard = lazy(() => import('@/features/teachers/components/wizards/CreateSchoolWizard'));
+const CreateUserWizard = lazy(() => import('@/features/teachers/components/wizards/CreateUserWizard'));
 
 const HAKIM_AVATAR = '/hakim-poses/analyzing-data.png';
 
@@ -681,19 +682,23 @@ export const AdminDashboard = () => {
         </div>
       </div>
 
-      <CreateSchoolWizard
-        open={showAddSchoolWizard}
-        onOpenChange={setShowAddSchoolWizard}
-        onSuccess={() => { setShowAddSchoolWizard(false); fetchAllData(true); }}
-        api={api}
-        isRTL={isRTL}
-      />
-      {showCreateUserWizard && (
-        <CreateUserWizard
-          onClose={() => setShowCreateUserWizard(false)}
-          onSuccess={() => { setShowCreateUserWizard(false); fetchAllData(true); }}
-        />
-      )}
+      <Suspense fallback={null}>
+        {showAddSchoolWizard && (
+          <CreateSchoolWizard
+            open={showAddSchoolWizard}
+            onOpenChange={setShowAddSchoolWizard}
+            onSuccess={() => { setShowAddSchoolWizard(false); fetchAllData(true); }}
+            api={api}
+            isRTL={isRTL}
+          />
+        )}
+        {showCreateUserWizard && (
+          <CreateUserWizard
+            onClose={() => setShowCreateUserWizard(false)}
+            onSuccess={() => { setShowCreateUserWizard(false); fetchAllData(true); }}
+          />
+        )}
+      </Suspense>
     </Sidebar>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { usePlatformAdminSchoolPreview } from '@/shared/hooks/usePlatformAdminSchoolPreview';
@@ -27,7 +27,7 @@ import {
   FileEdit, Trash2, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { Textarea } from '@/shared/components/ui/textarea';
-import CreateSchoolWizard from '@/features/teachers/components/wizards/CreateSchoolWizard';
+const CreateSchoolWizard = lazy(() => import('@/features/teachers/components/wizards/CreateSchoolWizard'));
 import { Sidebar } from '@/shared/components/layout/Sidebar';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
 
@@ -791,14 +791,17 @@ export default function TenantsManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Create School Wizard */}
-      <CreateSchoolWizard
-        open={showCreateWizard}
-        onOpenChange={setShowCreateWizard}
-        onSuccess={handleSchoolCreated}
-        api={api}
-        isRTL={isRTL}
-      />
+      <Suspense fallback={null}>
+        {showCreateWizard && (
+          <CreateSchoolWizard
+            open={showCreateWizard}
+            onOpenChange={setShowCreateWizard}
+            onSuccess={handleSchoolCreated}
+            api={api}
+            isRTL={isRTL}
+          />
+        )}
+      </Suspense>
     </Sidebar>
   );
 }

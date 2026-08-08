@@ -44,11 +44,13 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/shared/contexts/AuthContext';
-import { SendNotificationWizard } from '@/features/teachers/components/wizards/SendNotificationWizard';
-import { CreateScheduleWizard } from '@/features/teachers/components/wizards/CreateScheduleWizard';
-import { LiveSessionsMonitor } from '@/features/teachers/components/wizards/LiveSessionsMonitor';
+import { lazy, Suspense } from 'react';
 import { AdminCalendar } from './AdminCalendar';
 import { HakeemPlan } from './HakeemPlan';
+
+const SendNotificationWizard = lazy(() => import('@/features/teachers/components/wizards/SendNotificationWizard').then(m => ({ default: m.SendNotificationWizard })));
+const CreateScheduleWizard = lazy(() => import('@/features/teachers/components/wizards/CreateScheduleWizard').then(m => ({ default: m.CreateScheduleWizard })));
+const LiveSessionsMonitor = lazy(() => import('@/features/teachers/components/wizards/LiveSessionsMonitor').then(m => ({ default: m.LiveSessionsMonitor })));
 
 const SchoolDayProgress = ({ isRTL }) => {
   const { t } = useTranslation();
@@ -639,9 +641,17 @@ export const SchoolDashboardContent = () => {
         </SectionErrorBoundary>
       </section>
 
-      <SendNotificationWizard open={showSendNotificationWizard} onOpenChange={setShowSendNotificationWizard} />
-      <CreateScheduleWizard open={showCreateScheduleWizard} onOpenChange={setShowCreateScheduleWizard} />
-      <LiveSessionsMonitor open={showLiveSessionsMonitor} onOpenChange={setShowLiveSessionsMonitor} />
+      <Suspense fallback={null}>
+        {showSendNotificationWizard && (
+          <SendNotificationWizard open={showSendNotificationWizard} onOpenChange={setShowSendNotificationWizard} />
+        )}
+        {showCreateScheduleWizard && (
+          <CreateScheduleWizard open={showCreateScheduleWizard} onOpenChange={setShowCreateScheduleWizard} />
+        )}
+        {showLiveSessionsMonitor && (
+          <LiveSessionsMonitor open={showLiveSessionsMonitor} onOpenChange={setShowLiveSessionsMonitor} />
+        )}
+      </Suspense>
     </div>
   );
 };

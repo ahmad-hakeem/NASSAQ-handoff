@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -33,16 +33,17 @@ import {
 } from '@/shared/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { CANONICAL_GRADES } from '@/shared/models/utils/stageGrade';
-import AddStudentWizard from '@/features/teachers/components/wizards/AddStudentWizard';
-import { AddTeacherWizard } from '@/features/teachers/components/wizards/AddTeacherWizard';
-import CreateClassWizard from '@/features/teachers/components/wizards/CreateClassWizard';
-import TeacherProfileDialog from '@/features/platform/components/management/TeacherProfileDialog';
-import ParentProfileDialog from '@/features/platform/components/management/ParentProfileDialog';
 import StudentClassGrid from '@/features/platform/components/management/StudentClassGrid';
-import NoorImportPanel from '@/features/platform/components/management/NoorImportPanel';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
 import { executeStudentTransfer } from '@/shared/models/utils/studentTransfer';
 import { useCanViewInternalIds } from '@/shared/hooks/useCanViewInternalIds';
+
+const AddStudentWizard = lazy(() => import('@/features/teachers/components/wizards/AddStudentWizard'));
+const AddTeacherWizard = lazy(() => import('@/features/teachers/components/wizards/AddTeacherWizard').then(m => ({ default: m.AddTeacherWizard })));
+const CreateClassWizard = lazy(() => import('@/features/teachers/components/wizards/CreateClassWizard'));
+const TeacherProfileDialog = lazy(() => import('@/features/platform/components/management/TeacherProfileDialog'));
+const ParentProfileDialog = lazy(() => import('@/features/platform/components/management/ParentProfileDialog'));
+const NoorImportPanel = lazy(() => import('@/features/platform/components/management/NoorImportPanel'));
 import { maskInternalId } from '@/shared/models/utils/internalId';
 import { useSchoolNavigation } from '@/shared/models/utils/studentNavigation';
 
@@ -2019,45 +2020,51 @@ export default function UsersClassesManagement() {
 
         <AddPickerDialog open={showAddPicker} onClose={() => setShowAddPicker(false)} isRTL={isRTL} onSelect={handleAddSelect} />
 
-        {showStudentWizard && (
-          <AddStudentWizard
-            open={showStudentWizard}
-            onOpenChange={(val) => { if (!val) setShowStudentWizard(false); }}
-            onSuccess={handleStudentCreated}
-            api={api}
-            isRTL={isRTL}
-            grades={grades}
-            classes={classes}
-          />
-        )}
-        {showTeacherWizard && (
-          <AddTeacherWizard
-            open={showTeacherWizard}
-            onOpenChange={(val) => { if (!val) setShowTeacherWizard(false); }}
-            onSuccess={handleTeacherCreated}
-          />
-        )}
-        {showClassWizard && (
-          <CreateClassWizard
-            open={showClassWizard}
-            onOpenChange={(val) => { if (!val) setShowClassWizard(false); }}
-            onSuccess={handleClassCreated}
-          />
-        )}
+        <Suspense fallback={null}>
+          {showStudentWizard && (
+            <AddStudentWizard
+              open={showStudentWizard}
+              onOpenChange={(val) => { if (!val) setShowStudentWizard(false); }}
+              onSuccess={handleStudentCreated}
+              api={api}
+              isRTL={isRTL}
+              grades={grades}
+              classes={classes}
+            />
+          )}
+          {showTeacherWizard && (
+            <AddTeacherWizard
+              open={showTeacherWizard}
+              onOpenChange={(val) => { if (!val) setShowTeacherWizard(false); }}
+              onSuccess={handleTeacherCreated}
+            />
+          )}
+          {showClassWizard && (
+            <CreateClassWizard
+              open={showClassWizard}
+              onOpenChange={(val) => { if (!val) setShowClassWizard(false); }}
+              onSuccess={handleClassCreated}
+            />
+          )}
 
-        <TeacherProfileDialog
-          open={teacherProfileOpen}
-          onClose={() => setTeacherProfileOpen(false)}
-          teacher={selectedTeacher}
-          onRefresh={fetchAllData}
-        />
+          {teacherProfileOpen && (
+            <TeacherProfileDialog
+              open={teacherProfileOpen}
+              onClose={() => setTeacherProfileOpen(false)}
+              teacher={selectedTeacher}
+              onRefresh={fetchAllData}
+            />
+          )}
 
-        <ParentProfileDialog
-          open={parentProfileOpen}
-          onClose={() => setParentProfileOpen(false)}
-          parent={selectedParent}
-          onRefresh={fetchAllData}
-        />
+          {parentProfileOpen && (
+            <ParentProfileDialog
+              open={parentProfileOpen}
+              onClose={() => setParentProfileOpen(false)}
+              parent={selectedParent}
+              onRefresh={fetchAllData}
+            />
+          )}
+        </Suspense>
 
         <Dialog open={viewDialogOpen} onOpenChange={(open) => { setViewDialogOpen(open); if (!open) { setViewClassEditing(false); setViewClassForm({}); } }}>
           <DialogContent className="sm:max-w-[500px]">

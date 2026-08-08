@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
@@ -61,8 +61,9 @@ import {
   TableRow,
 } from '@/shared/components/ui/table';
 import { Link } from 'react-router-dom';
-import { RelinkAssignmentsWizard } from '@/features/academics/components/classes/RelinkAssignmentsWizard';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
+
+const RelinkAssignmentsWizard = lazy(() => import('@/features/academics/components/classes/RelinkAssignmentsWizard').then(m => ({ default: m.RelinkAssignmentsWizard })));
 
 export const ClassesPage = () => {
   const { t } = useTranslation();
@@ -898,13 +899,17 @@ export const ClassesPage = () => {
           )}
         </div>
       </div>
-      <RelinkAssignmentsWizard
-        open={relinkOpen}
-        onOpenChange={setRelinkOpen}
-        classId={relinkClassId}
-        api={api}
-        onDone={() => fetchData({ includeInactive: showInactive })}
-      />
+      <Suspense fallback={null}>
+        {relinkOpen && (
+          <RelinkAssignmentsWizard
+            open={relinkOpen}
+            onOpenChange={setRelinkOpen}
+            classId={relinkClassId}
+            api={api}
+            onDone={() => fetchData({ includeInactive: showInactive })}
+          />
+        )}
+      </Suspense>
     </Sidebar>
   );
 };

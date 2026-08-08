@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
@@ -62,11 +62,12 @@ import {
   TableRow,
 } from '@/shared/components/ui/table';
 import { Link } from 'react-router-dom';
-import { AddTeacherWizard } from '@/features/teachers/components/wizards/AddTeacherWizard';
-import { BulkTeacherImport } from '@/features/teachers/components/wizards/BulkTeacherImport';
-import AddStudentWizard from '@/features/teachers/components/wizards/AddStudentWizard';
 import { TeacherSchedulePrefsDialog } from '@/features/teachers/components/teacher/TeacherSchedulePrefsDialog';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
+
+const AddTeacherWizard = lazy(() => import('@/features/teachers/components/wizards/AddTeacherWizard').then(m => ({ default: m.AddTeacherWizard })));
+const BulkTeacherImport = lazy(() => import('@/features/teachers/components/wizards/BulkTeacherImport').then(m => ({ default: m.BulkTeacherImport })));
+const AddStudentWizard = lazy(() => import('@/features/teachers/components/wizards/AddStudentWizard'));
 
 export const TeachersPage = () => {
   const { t } = useTranslation();
@@ -764,37 +765,45 @@ export const TeachersPage = () => {
           )}
         </div>
         
-        {/* Add Teacher Wizard */}
-        <AddTeacherWizard 
-          open={wizardOpen} 
-          onOpenChange={(val) => setWizardOpen(val)}
-          onSuccess={() => {
-            fetchData();
-          }}
-        />
-        
-        {/* Bulk Import Wizard */}
-        <BulkTeacherImport 
-          open={bulkImportOpen} 
-          onClose={() => {
-            setBulkImportOpen(false);
-            fetchData();
-          }} 
-        />
-        
-        {/* Add Student Wizard */}
-        <AddStudentWizard 
-          open={studentWizardOpen}
-          onOpenChange={setStudentWizardOpen}
-          isRTL={isRTL}
-          api={api}
-          grades={grades}
-          classes={classes}
-          onSuccess={() => {
-            toast.success(t('studentAddedSuccessfully'));
-            fetchData();
-          }}
-        />
+        <Suspense fallback={null}>
+          {/* Add Teacher Wizard */}
+          {wizardOpen && (
+            <AddTeacherWizard 
+              open={wizardOpen} 
+              onOpenChange={(val) => setWizardOpen(val)}
+              onSuccess={() => {
+                fetchData();
+              }}
+            />
+          )}
+          
+          {/* Bulk Import Wizard */}
+          {bulkImportOpen && (
+            <BulkTeacherImport 
+              open={bulkImportOpen} 
+              onClose={() => {
+                setBulkImportOpen(false);
+                fetchData();
+              }} 
+            />
+          )}
+          
+          {/* Add Student Wizard */}
+          {studentWizardOpen && (
+            <AddStudentWizard 
+              open={studentWizardOpen}
+              onOpenChange={setStudentWizardOpen}
+              isRTL={isRTL}
+              api={api}
+              grades={grades}
+              classes={classes}
+              onSuccess={() => {
+                toast.success(t('studentAddedSuccessfully'));
+                fetchData();
+              }}
+            />
+          )}
+        </Suspense>
 
         {/* Schedule Preferences & Constraints Dialog (Task #95) */}
         <TeacherSchedulePrefsDialog

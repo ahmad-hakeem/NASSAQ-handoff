@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
 import { Button } from '@/shared/components/ui/button';
@@ -17,7 +17,7 @@ import {
   Users, Filter, RefreshCw, UserPlus, Building2, ChevronLeft,
   ChevronRight, ChevronsLeft, ChevronsRight, AlertTriangle,
 } from 'lucide-react';
-import CreateUserWizard from '@/features/teachers/components/wizards/CreateUserWizard';
+const CreateUserWizard = lazy(() => import('@/features/teachers/components/wizards/CreateUserWizard'));
 import { useAuth } from '@/shared/contexts/AuthContext';
 
 import {
@@ -854,14 +854,18 @@ export default function UsersManagement() {
           onClose={() => setRequestDetailsDialog(null)}
         />
 
-        <CreateUserWizard
-          open={showCreateWizard}
-          onOpenChange={(o) => { setShowCreateWizard(o); if (!o) setPreselectedSchool(null); }}
-          onSuccess={() => { toast.success('تم إنشاء الحساب بنجاح!'); setPreselectedSchool(null); fetchUsers(); fetchManagementStats(); }}
-          api={api}
-          isRTL={isRTL}
-          preselectedSchool={preselectedSchool}
-        />
+        <Suspense fallback={null}>
+          {showCreateWizard && (
+            <CreateUserWizard
+              open={showCreateWizard}
+              onOpenChange={(o) => { setShowCreateWizard(o); if (!o) setPreselectedSchool(null); }}
+              onSuccess={() => { toast.success('تم إنشاء الحساب بنجاح!'); setPreselectedSchool(null); fetchUsers(); fetchManagementStats(); }}
+              api={api}
+              isRTL={isRTL}
+              preselectedSchool={preselectedSchool}
+            />
+          )}
+        </Suspense>
 
         <EditUserSheet
           user={showEditUser}
