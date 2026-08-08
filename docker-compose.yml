@@ -8,6 +8,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-nassaq}
     volumes:
       - nassaq_pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nassaq} -d ${POSTGRES_DB:-nassaq}"]
       interval: 5s
