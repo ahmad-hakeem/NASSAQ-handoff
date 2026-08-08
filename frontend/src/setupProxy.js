@@ -1,3 +1,7 @@
+if (process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID) {
+  module.exports = function () {};
+  return;
+}
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
 module.exports = function (app) {

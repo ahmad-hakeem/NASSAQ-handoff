@@ -17,7 +17,7 @@ import {
   withAlertAttendanceContext,
   ALERT_CONTEXT_PARAM,
   ALERT_CONTEXT_VALUE,
-} from '../utils/alertRoutes';
+} from '@/shared/models/utils/alertRoutes';
 
 describe('buildAlertRouteMap — role-aware AI Insights alert fallback', () => {
   test('teacher scope routes attendance/behaviour to self-scoping pages', () => {

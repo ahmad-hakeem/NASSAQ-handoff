@@ -34,7 +34,7 @@ jest.mock('react-router-dom', () => ({
   useLocation: () => ({ state: { sessionId: 'sess-1', sessionInfo: {} } }),
 }), { virtual: true });
 
-jest.mock('../contexts/AuthContext', () => ({
+jest.mock('@/shared/contexts/AuthContext', () => ({
   useAuth: () => ({
     user: { id: 'teacher-1', teacher_id: 'teacher-1' },
     api: mockApi,
@@ -42,22 +42,22 @@ jest.mock('../contexts/AuthContext', () => ({
   }),
 }));
 
-jest.mock('../contexts/ThemeContext', () => ({
+jest.mock('@/shared/contexts/ThemeContext', () => ({
   useTranslation: () => ({ t: (k) => k }),
   useTheme: () => ({ isDark: false, toggleTheme: jest.fn() }),
 }));
 
-jest.mock('../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => ({ nassaqError: jest.fn(), nassaqConfirm: jest.fn() }),
 }));
 
 // Stub heavy child components — irrelevant to the group hydration contract.
-jest.mock('../components/SectionErrorBoundary', () => ({ children }) => <>{children}</>);
-jest.mock('../components/teacher/FollowupGradesTable', () => () => null);
-jest.mock('../components/teacher/SidebarSettingsDialog', () => () => null);
-jest.mock('../components/teacher/InlineAttendanceTable', () => () => null);
+jest.mock('@/shared/components/SectionErrorBoundary', () => ({ children }) => <>{children}</>);
+jest.mock('@/features/teachers/components/teacher/FollowupGradesTable', () => () => null);
+jest.mock('@/features/teachers/components/teacher/SidebarSettingsDialog', () => () => null);
+jest.mock('@/features/teachers/components/teacher/InlineAttendanceTable', () => () => null);
 
-import SessionTeachPage from '../pages/TeacherModule/SessionTeachPage';
+import SessionTeachPage from '@/features/teachers/pages/TeacherModule/SessionTeachPage';
 
 function mockApiGet(groupsResponse) {
   mockGet.mockImplementation((url) => {

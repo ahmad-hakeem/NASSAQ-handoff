@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useParams, useLocation } from "react-router-dom";
-import { ProtectedRoute, PublicRoute } from "../components/guards/RouteGuards";
-import { useAuth } from "../contexts/AuthContext";
+import { ProtectedRoute, PublicRoute } from "@/features/auth/components/guards/RouteGuards";
+import { useAuth } from "@/shared/contexts/AuthContext";
 
 // Redirect helper: maps the legacy standalone parent child sub-routes
 // (/parent/child/:childId, /schedule, /homework, /behaviour) onto the unified
@@ -32,154 +32,154 @@ const CanonicalSchoolAlias = ({ to, children }) => {
 };
 
 // --- Eager: small + first-paint critical (no recharts/jspdf chains) ---
-import { LoginPage } from "../pages/LoginPage";
+import { LoginPage } from "@/features/auth/pages/LoginPage";
 // PublicShell eagerly imports both LandingPage and TeacherExperiencePage
 // and keeps them mounted between tab switches (task #495) so switching
 // between / and /for-teachers preserves scroll position and in-progress
 // animations and the transition is an opacity crossfade rather than a
 // remount. Routing therefore renders PublicShell directly for both
 // paths and the shell picks which page to display.
-import { PublicShell } from "../components/layout/PublicShell";
+import { PublicShell } from "@/shared/components/layout/PublicShell";
 
 // --- Lazy: every other page becomes its own chunk ---
 // Webpack dedupes shared modules across these chunks, so heavy deps (recharts,
 // jspdf, html2canvas, etc.) are downloaded only when a route that needs them
 // is actually visited.
 
-const RegisterPage = lazy(() => import("../pages/RegisterPage").then(m => ({ default: m.RegisterPage })));
-const TeacherSelfRegistration = lazy(() => import("../pages/TeacherSelfRegistration").then(m => ({ default: m.TeacherSelfRegistration })));
-const RegistrationConfirmationPage = lazy(() => import("../pages/RegistrationConfirmationPage"));
-const ForgotPasswordPage = lazy(() => import("../pages/ForgotPasswordPage"));
-const ResetPasswordPage = lazy(() => import("../pages/ResetPasswordPage"));
-const ForcePasswordChange = lazy(() => import("../pages/ForcePasswordChange"));
+const RegisterPage = lazy(() => import("@/features/auth/pages/RegisterPage").then(m => ({ default: m.RegisterPage })));
+const TeacherSelfRegistration = lazy(() => import("@/features/auth/pages/TeacherSelfRegistration").then(m => ({ default: m.TeacherSelfRegistration })));
+const RegistrationConfirmationPage = lazy(() => import("@/features/auth/pages/RegistrationConfirmationPage"));
+const ForgotPasswordPage = lazy(() => import("@/features/auth/pages/ForgotPasswordPage"));
+const ResetPasswordPage = lazy(() => import("@/features/auth/pages/ResetPasswordPage"));
+const ForcePasswordChange = lazy(() => import("@/features/auth/pages/ForcePasswordChange"));
 // Spec §5.1 IT first-login MFA enrolment surface (mounted under
 // /auth/mfa/enroll — the redirect target referenced by RouteGuards,
 // LoginPage.resolveRedirectTarget, RegisterPage, and the IT onboarding
 // wizard's mfa_enrollment_required handler).
-const MfaEnrollPage = lazy(() => import("../pages/MfaEnrollPage"));
+const MfaEnrollPage = lazy(() => import("@/features/auth/pages/MfaEnrollPage"));
 // Task #206 — public parent-invitation accept landing (IT §6.2c).
-const ParentInvitationAcceptPage = lazy(() => import("../pages/ParentInvitationAcceptPage"));
+const ParentInvitationAcceptPage = lazy(() => import("@/features/communication/pages/ParentInvitationAcceptPage"));
 // Task #210 — IT §6.7 cross-workspace collaborator accept landing.
-const CollabInvitationAcceptPage = lazy(() => import("../pages/CollabInvitationAcceptPage"));
-const AccountErasedPage = lazy(() => import("../pages/AccountErasedPage"));
-const PrivacyPolicyPage = lazy(() => import("../pages/PrivacyPolicyPage"));
-const TermsAndConditionsPage = lazy(() => import("../pages/TermsAndConditionsPage"));
+const CollabInvitationAcceptPage = lazy(() => import("@/features/communication/pages/CollabInvitationAcceptPage"));
+const AccountErasedPage = lazy(() => import("@/features/auth/pages/AccountErasedPage"));
+const PrivacyPolicyPage = lazy(() => import("@/features/landing/pages/PrivacyPolicyPage"));
+const TermsAndConditionsPage = lazy(() => import("@/features/landing/pages/TermsAndConditionsPage"));
 
 // Heavy: AdminDashboard pulls recharts
-const AdminDashboard = lazy(() => import("../pages/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
-const SchoolDashboard = lazy(() => import("../pages/SchoolDashboard").then(m => ({ default: m.SchoolDashboard })));
-const TeacherDashboard = lazy(() => import("../pages/TeacherDashboard"));
-const PrincipalDashboard = lazy(() => import("../pages/PrincipalDashboard"));
+const AdminDashboard = lazy(() => import("@/features/dashboard/pages/AdminDashboard").then(m => ({ default: m.AdminDashboard })));
+const SchoolDashboard = lazy(() => import("@/features/dashboard/pages/SchoolDashboard").then(m => ({ default: m.SchoolDashboard })));
+const TeacherDashboard = lazy(() => import("@/features/dashboard/pages/TeacherDashboard"));
+const PrincipalDashboard = lazy(() => import("@/features/dashboard/pages/PrincipalDashboard"));
 
-const TeachersPage = lazy(() => import("../pages/TeachersPage").then(m => ({ default: m.TeachersPage })));
-const UsersClassesManagement = lazy(() => import("../pages/UsersClassesManagement"));
-const ClassDetailPage = lazy(() => import("../pages/ClassDetailPage"));
-const AdminStudentProfilePage = lazy(() => import("../pages/StudentProfilePage"));
-const StudentsPage = lazy(() => import("../pages/StudentsPage").then(m => ({ default: m.StudentsPage })));
-const ClassesPage = lazy(() => import("../pages/ClassesPage").then(m => ({ default: m.ClassesPage })));
-const SubjectsPage = lazy(() => import("../pages/SubjectsPage").then(m => ({ default: m.SubjectsPage })));
-const SchedulePageNew = lazy(() => import("../pages/SchedulePageNew"));
-const StandbyRosterPage = lazy(() => import("../pages/StandbyRosterPage"));
-const TimeSlotsPage = lazy(() => import("../pages/TimeSlotsPage").then(m => ({ default: m.TimeSlotsPage })));
-const TeacherAssignmentsPage = lazy(() => import("../pages/TeacherAssignmentsPage").then(m => ({ default: m.TeacherAssignmentsPage })));
-const AttendancePage = lazy(() => import("../pages/AttendancePage").then(m => ({ default: m.AttendancePage })));
-const TeacherAttendancePage = lazy(() => import("../pages/TeacherAttendancePage").then(m => ({ default: m.TeacherAttendancePage })));
-const AssessmentPage = lazy(() => import("../pages/AssessmentPage").then(m => ({ default: m.AssessmentPage })));
-const NotificationsPage = lazy(() => import("../pages/NotificationsPage").then(m => ({ default: m.NotificationsPage })));
+const TeachersPage = lazy(() => import("@/features/teachers/pages/TeachersPage").then(m => ({ default: m.TeachersPage })));
+const UsersClassesManagement = lazy(() => import("@/features/academics/pages/UsersClassesManagement"));
+const ClassDetailPage = lazy(() => import("@/features/academics/pages/ClassDetailPage"));
+const AdminStudentProfilePage = lazy(() => import("@/features/students/pages/StudentProfilePage"));
+const StudentsPage = lazy(() => import("@/features/students/pages/StudentsPage").then(m => ({ default: m.StudentsPage })));
+const ClassesPage = lazy(() => import("@/features/academics/pages/ClassesPage").then(m => ({ default: m.ClassesPage })));
+const SubjectsPage = lazy(() => import("@/features/academics/pages/SubjectsPage").then(m => ({ default: m.SubjectsPage })));
+const SchedulePageNew = lazy(() => import("@/features/schedule/pages/SchedulePageNew"));
+const StandbyRosterPage = lazy(() => import("@/features/schedule/pages/StandbyRosterPage"));
+const TimeSlotsPage = lazy(() => import("@/features/schedule/pages/TimeSlotsPage").then(m => ({ default: m.TimeSlotsPage })));
+const TeacherAssignmentsPage = lazy(() => import("@/features/teachers/pages/TeacherAssignmentsPage").then(m => ({ default: m.TeacherAssignmentsPage })));
+const AttendancePage = lazy(() => import("@/features/attendance/pages/AttendancePage").then(m => ({ default: m.AttendancePage })));
+const TeacherAttendancePage = lazy(() => import("@/features/teachers/pages/TeacherAttendancePage").then(m => ({ default: m.TeacherAttendancePage })));
+const AssessmentPage = lazy(() => import("@/features/assessment/pages/AssessmentPage").then(m => ({ default: m.AssessmentPage })));
+const NotificationsPage = lazy(() => import("@/features/communication/pages/NotificationsPage").then(m => ({ default: m.NotificationsPage })));
 
 // Teacher Module barrel — webpack will share the underlying module across these chunks
-const TeacherHomePage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherHomePage })));
-const TeacherResponsiveDashboard = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherResponsiveDashboard })));
-const SessionStartPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.SessionStartPage })));
-const SessionTeachPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.SessionTeachPage })));
-const TeacherSchedulePage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherSchedulePage })));
-const TeacherClassesPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherClassesPage })));
+const TeacherHomePage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TeacherHomePage })));
+const TeacherResponsiveDashboard = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TeacherResponsiveDashboard })));
+const SessionStartPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.SessionStartPage })));
+const SessionTeachPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.SessionTeachPage })));
+const TeacherSchedulePage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TeacherSchedulePage })));
+const TeacherClassesPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TeacherClassesPage })));
 // 2026-05-19 — Time Management Hub: dedicated IT-only page hosting
 // the schedule / personal calendar / schedule settings tabs that
 // were previously cluttering the "فصولي" page.
-const TimeManagementHubPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TimeManagementHubPage })));
-const TeacherClassDetailPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherClassDetailPage })));
-const TeacherTasksPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherTasksPage })));
-const TeacherAttendanceManagePage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAttendanceManagePage })));
-const TeacherAssessmentsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAssessmentsPage })));
-const TeacherBehaviorPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherBehaviorPage })));
-const TeacherStudentsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherStudentsPage })));
-const ITParentsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.ITParentsPage })));
+const TimeManagementHubPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TimeManagementHubPage })));
+const TeacherClassDetailPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TeacherClassDetailPage })));
+const TeacherTasksPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TeacherTasksPage })));
+const TeacherAttendanceManagePage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TeacherAttendanceManagePage })));
+const TeacherAssessmentsPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TeacherAssessmentsPage })));
+const TeacherBehaviorPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TeacherBehaviorPage })));
+const TeacherStudentsPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TeacherStudentsPage })));
+const ITParentsPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.ITParentsPage })));
 // 2026-05-19 — IA refactor: ImportStudentsPage / BulkImportPage default
 // page exports are no longer rendered from any route. The standalone
 // /teacher/import-students and /teacher/bulk-import routes now redirect
 // to /teacher/classes?tab=import, which embeds the headless
 // BulkImportPanel directly. The lazy imports were removed to drop dead
 // code from the route bundle.
-const TeacherAchievementsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAchievementsPage })));
-const TeacherCommunicationPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherCommunicationPage })));
-const TeacherResourcesPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherResourcesPage })));
-const WorkspaceSchedulePage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.WorkspaceSchedulePage })));
+const TeacherAchievementsPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TeacherAchievementsPage })));
+const TeacherCommunicationPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TeacherCommunicationPage })));
+const TeacherResourcesPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TeacherResourcesPage })));
+const WorkspaceSchedulePage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.WorkspaceSchedulePage })));
 // 2026-05-19 — IA refactor: TeacherPersonalCalendarPage default export
 // is no longer rendered from any route. /teacher/calendar now redirects
 // to /teacher/classes?tab=calendar, which embeds the headless
 // TeacherPersonalCalendarPanel directly. The lazy import was removed
 // to drop dead code from the route bundle.
-const LessonPlannerPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.LessonPlannerPage })));
-const TeacherSubjectsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherSubjectsPage })));
-const TeacherAuditLogPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherAuditLogPage })));
+const LessonPlannerPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.LessonPlannerPage })));
+const TeacherSubjectsPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TeacherSubjectsPage })));
+const TeacherAuditLogPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TeacherAuditLogPage })));
 // 2026-05-19 — TeacherAnalyticsPage was merged into AIInsightsPage as
 // the "التحليلات الرقمية" tab; /teacher/analytics now redirects to
 // /ai-insights so existing bookmarks keep working.
-const TeacherNotificationsPage = lazy(() => import("../pages/TeacherModule").then(m => ({ default: m.TeacherNotificationsPage })));
+const TeacherNotificationsPage = lazy(() => import("@/features/teachers/pages/TeacherModule").then(m => ({ default: m.TeacherNotificationsPage })));
 
-const ProductHubPage = lazy(() => import("../pages/ProductHubPage").then(m => ({ default: m.ProductHubPage })));
-const ProductHubSubmitPage = lazy(() => import("../pages/ProductHubSubmitPage").then(m => ({ default: m.ProductHubSubmitPage })));
-const ProductHubIssuePage = lazy(() => import("../pages/ProductHubIssuePage").then(m => ({ default: m.ProductHubIssuePage })));
+const ProductHubPage = lazy(() => import("@/features/product-hub/pages/ProductHubPage").then(m => ({ default: m.ProductHubPage })));
+const ProductHubSubmitPage = lazy(() => import("@/features/product-hub/pages/ProductHubSubmitPage").then(m => ({ default: m.ProductHubSubmitPage })));
+const ProductHubIssuePage = lazy(() => import("@/features/product-hub/pages/ProductHubIssuePage").then(m => ({ default: m.ProductHubIssuePage })));
 
-const PlatformSchoolsPage = lazy(() => import("../pages/PlatformSchoolsPage").then(m => ({ default: m.PlatformSchoolsPage })));
-const PlatformSchoolDetailPage = lazy(() => import("../pages/PlatformSchoolDetailPage"));
-const PlatformUsersPage = lazy(() => import("../pages/PlatformUsersPage").then(m => ({ default: m.PlatformUsersPage })));
-const PlatformNotificationsPage = lazy(() => import("../pages/PlatformNotificationsPage").then(m => ({ default: m.PlatformNotificationsPage })));
-const PlatformSettingsPage = lazy(() => import("../pages/PlatformSettingsPage").then(m => ({ default: m.PlatformSettingsPage })));
-const RulesManagementPage = lazy(() => import("../pages/RulesManagementPage").then(m => ({ default: m.RulesManagementPage })));
+const PlatformSchoolsPage = lazy(() => import("@/features/platform/pages/PlatformSchoolsPage").then(m => ({ default: m.PlatformSchoolsPage })));
+const PlatformSchoolDetailPage = lazy(() => import("@/features/platform/pages/PlatformSchoolDetailPage"));
+const PlatformUsersPage = lazy(() => import("@/features/platform/pages/PlatformUsersPage").then(m => ({ default: m.PlatformUsersPage })));
+const PlatformNotificationsPage = lazy(() => import("@/features/communication/pages/PlatformNotificationsPage").then(m => ({ default: m.PlatformNotificationsPage })));
+const PlatformSettingsPage = lazy(() => import("@/features/platform/pages/PlatformSettingsPage").then(m => ({ default: m.PlatformSettingsPage })));
+const RulesManagementPage = lazy(() => import("@/features/assessment/pages/RulesManagementPage").then(m => ({ default: m.RulesManagementPage })));
 // Task #225 — IT §6.8 platform-admin hard-delete UI for archived workspaces.
-const PlatformWorkspacePurgePage = lazy(() => import("../pages/PlatformWorkspacePurgePage").then(m => ({ default: m.PlatformWorkspacePurgePage })));
+const PlatformWorkspacePurgePage = lazy(() => import("@/features/platform/pages/PlatformWorkspacePurgePage").then(m => ({ default: m.PlatformWorkspacePurgePage })));
 // Heavy: SystemMonitoringPage pulls recharts
-const SystemMonitoringPage = lazy(() => import("../pages/SystemMonitoringPage").then(m => ({ default: m.SystemMonitoringPage })));
-const IntegrationsPage = lazy(() => import("../pages/IntegrationsPage"));
+const SystemMonitoringPage = lazy(() => import("@/features/platform/pages/SystemMonitoringPage").then(m => ({ default: m.SystemMonitoringPage })));
+const IntegrationsPage = lazy(() => import("@/features/platform/pages/IntegrationsPage"));
 // Heavy: SecurityCenterPage already dynamic-imports jspdf+html2canvas at click time
-const SecurityCenterPage = lazy(() => import("../pages/SecurityCenterPage"));
-const CommunicationNotificationsPage = lazy(() => import("../pages/CommunicationNotificationsPage").then(m => ({ default: m.CommunicationNotificationsPage })));
-const CommunicationCenterPage = lazy(() => import("../pages/CommunicationCenterPage").then(m => ({ default: m.CommunicationCenterPage })));
-const TenantsManagement = lazy(() => import("../pages/TenantsManagement"));
-const TeacherClassAssignmentPage = lazy(() => import("../pages/TeacherClassAssignmentPage"));
-const IndependentTeacherOnboardingWizard = lazy(() => import("../pages/IndependentTeacherOnboardingWizard"));
+const SecurityCenterPage = lazy(() => import("@/features/platform/pages/SecurityCenterPage"));
+const CommunicationNotificationsPage = lazy(() => import("@/features/communication/pages/CommunicationNotificationsPage").then(m => ({ default: m.CommunicationNotificationsPage })));
+const CommunicationCenterPage = lazy(() => import("@/features/communication/pages/CommunicationCenterPage").then(m => ({ default: m.CommunicationCenterPage })));
+const TenantsManagement = lazy(() => import("@/features/platform/pages/TenantsManagement"));
+const TeacherClassAssignmentPage = lazy(() => import("@/features/teachers/pages/TeacherClassAssignmentPage"));
+const IndependentTeacherOnboardingWizard = lazy(() => import("@/features/teachers/pages/IndependentTeacherOnboardingWizard"));
 
-const SchoolSettingsPagePro = lazy(() => import("../pages/SchoolSettingsPagePro"));
-const AIInsightsPage = lazy(() => import("../pages/AIInsightsPage").then(m => ({ default: m.AIInsightsPage })));
-const AccountSettingsPage = lazy(() => import("../pages/AccountSettingsPage").then(m => ({ default: m.AccountSettingsPage })));
-const UsersManagement = lazy(() => import("../pages/UsersManagement"));
-const UserDetailsPage = lazy(() => import("../pages/UserDetailsPage"));
-const AuditLogsPage = lazy(() => import("../pages/AuditLogsPage"));
+const SchoolSettingsPagePro = lazy(() => import("@/features/settings/pages/SchoolSettingsPagePro"));
+const AIInsightsPage = lazy(() => import("@/features/hakim/pages/AIInsightsPage").then(m => ({ default: m.AIInsightsPage })));
+const AccountSettingsPage = lazy(() => import("@/features/settings/pages/AccountSettingsPage").then(m => ({ default: m.AccountSettingsPage })));
+const UsersManagement = lazy(() => import("@/features/platform/pages/UsersManagement"));
+const UserDetailsPage = lazy(() => import("@/features/platform/pages/UserDetailsPage"));
+const AuditLogsPage = lazy(() => import("@/features/platform/pages/AuditLogsPage"));
 
 // Student Portal barrel — recharts via StudentTabsContent stays in student chunks only
-const StudentPortalDashboard = lazy(() => import("../pages/StudentPortal").then(m => ({ default: m.StudentPortalDashboard })));
-const StudentSchedulePage = lazy(() => import("../pages/StudentPortal").then(m => ({ default: m.StudentSchedulePage })));
-const StudentGradesPage = lazy(() => import("../pages/StudentPortal").then(m => ({ default: m.StudentGradesPage })));
-const StudentAttendancePage = lazy(() => import("../pages/StudentPortal").then(m => ({ default: m.StudentAttendancePage })));
-const StudentProfilePage = lazy(() => import("../pages/StudentPortal").then(m => ({ default: m.StudentProfilePage })));
-const StudentProgressPage = lazy(() => import("../pages/StudentPortal").then(m => ({ default: m.StudentProgressPage })));
-const StudentAchievementsPage = lazy(() => import("../pages/StudentPortal").then(m => ({ default: m.StudentAchievementsPage })));
+const StudentPortalDashboard = lazy(() => import("@/features/student-portal/pages/StudentPortal").then(m => ({ default: m.StudentPortalDashboard })));
+const StudentSchedulePage = lazy(() => import("@/features/student-portal/pages/StudentPortal").then(m => ({ default: m.StudentSchedulePage })));
+const StudentGradesPage = lazy(() => import("@/features/student-portal/pages/StudentPortal").then(m => ({ default: m.StudentGradesPage })));
+const StudentAttendancePage = lazy(() => import("@/features/student-portal/pages/StudentPortal").then(m => ({ default: m.StudentAttendancePage })));
+const StudentProfilePage = lazy(() => import("@/features/student-portal/pages/StudentPortal").then(m => ({ default: m.StudentProfilePage })));
+const StudentProgressPage = lazy(() => import("@/features/student-portal/pages/StudentPortal").then(m => ({ default: m.StudentProgressPage })));
+const StudentAchievementsPage = lazy(() => import("@/features/student-portal/pages/StudentPortal").then(m => ({ default: m.StudentAchievementsPage })));
 
 // Parent Portal barrel — recharts via parent/AnalyticsCharts + WeeklyStory stays in parent chunks only
-const ParentPortalDashboard = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentPortalDashboard })));
-const ChildDetailsPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ChildDetailsPage })));
-const ChildSchedulePage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ChildSchedulePage })));
-const ParentChildrenPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentChildrenPage })));
-const ChildBehaviorPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ChildBehaviorPage })));
-const ChildHomeworkPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ChildHomeworkPage })));
-const ParentMessagesPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentMessagesPage })));
-const ParentMeetingRequestPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentMeetingRequestPage })));
-const ParentSettingsPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentSettingsPage })));
-const ParentLegalDocumentPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentLegalDocumentPage })));
-const ParentCommunicationCenter = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.ParentCommunicationCenter })));
-const ParentStudentAnalyticsPage = lazy(() => import("../pages/ParentPortal").then(m => ({ default: m.StudentAnalyticsPage })));
+const ParentPortalDashboard = lazy(() => import("@/features/parent-portal/pages/ParentPortal").then(m => ({ default: m.ParentPortalDashboard })));
+const ChildDetailsPage = lazy(() => import("@/features/parent-portal/pages/ParentPortal").then(m => ({ default: m.ChildDetailsPage })));
+const ChildSchedulePage = lazy(() => import("@/features/parent-portal/pages/ParentPortal").then(m => ({ default: m.ChildSchedulePage })));
+const ParentChildrenPage = lazy(() => import("@/features/parent-portal/pages/ParentPortal").then(m => ({ default: m.ParentChildrenPage })));
+const ChildBehaviorPage = lazy(() => import("@/features/parent-portal/pages/ParentPortal").then(m => ({ default: m.ChildBehaviorPage })));
+const ChildHomeworkPage = lazy(() => import("@/features/parent-portal/pages/ParentPortal").then(m => ({ default: m.ChildHomeworkPage })));
+const ParentMessagesPage = lazy(() => import("@/features/parent-portal/pages/ParentPortal").then(m => ({ default: m.ParentMessagesPage })));
+const ParentMeetingRequestPage = lazy(() => import("@/features/parent-portal/pages/ParentPortal").then(m => ({ default: m.ParentMeetingRequestPage })));
+const ParentSettingsPage = lazy(() => import("@/features/parent-portal/pages/ParentPortal").then(m => ({ default: m.ParentSettingsPage })));
+const ParentLegalDocumentPage = lazy(() => import("@/features/parent-portal/pages/ParentPortal").then(m => ({ default: m.ParentLegalDocumentPage })));
+const ParentCommunicationCenter = lazy(() => import("@/features/parent-portal/pages/ParentPortal").then(m => ({ default: m.ParentCommunicationCenter })));
+const ParentStudentAnalyticsPage = lazy(() => import("@/features/parent-portal/pages/ParentPortal").then(m => ({ default: m.StudentAnalyticsPage })));
 
 const SCHOOL_ROLES = ['school_principal', 'school_admin', 'school_sub_admin'];
 const SCHOOL_PRINCIPAL_ROLES = ['school_principal', 'school_admin'];

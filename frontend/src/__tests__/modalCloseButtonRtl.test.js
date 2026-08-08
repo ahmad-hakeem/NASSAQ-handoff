@@ -22,15 +22,15 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '../components/ui/dialog';
+} from '@/shared/components/ui/dialog';
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
-} from '../components/ui/sheet';
-import { AlertDialogHeader } from '../components/ui/alert-dialog';
-import { DrawerHeader } from '../components/ui/drawer';
+} from '@/shared/components/ui/sheet';
+import { AlertDialogHeader } from '@/shared/components/ui/alert-dialog';
+import { DrawerHeader } from '@/shared/components/ui/drawer';
 
 const getCloseButton = () =>
   screen.getByRole('button', { name: /close/i });

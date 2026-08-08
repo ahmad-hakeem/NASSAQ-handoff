@@ -31,7 +31,7 @@ jest.mock('react-router-dom', () => ({
   }),
 }), { virtual: true });
 
-jest.mock('../contexts/AuthContext', () => ({
+jest.mock('@/shared/contexts/AuthContext', () => ({
   useAuth: () => ({
     user: { id: 'teacher-1', teacher_id: 'teacher-1' },
     api: mockApi,
@@ -39,23 +39,23 @@ jest.mock('../contexts/AuthContext', () => ({
   }),
 }));
 
-jest.mock('../contexts/ThemeContext', () => ({
+jest.mock('@/shared/contexts/ThemeContext', () => ({
   useTranslation: () => ({ t: (k) => k }),
   useTheme: () => ({ isDark: false, toggleTheme: jest.fn() }),
 }));
 
-jest.mock('../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => ({ nassaqError: jest.fn(), nassaqConfirm: jest.fn() }),
 }));
 
 // Stub heavy child components — irrelevant to the finalize contract.
-jest.mock('../components/SectionErrorBoundary', () => ({ children }) => <>{children}</>);
-jest.mock('../components/teacher/FollowupGradesTable', () => () => null);
-jest.mock('../components/teacher/SidebarSettingsDialog', () => () => null);
+jest.mock('@/shared/components/SectionErrorBoundary', () => ({ children }) => <>{children}</>);
+jest.mock('@/features/teachers/components/teacher/FollowupGradesTable', () => () => null);
+jest.mock('@/features/teachers/components/teacher/SidebarSettingsDialog', () => () => null);
 
 // The attendance register itself is unit-tested separately; here we only need it
 // to surface a control that fires `onStatusChange` (marking the register dirty).
-jest.mock('../components/teacher/InlineAttendanceTable', () => (props) => (
+jest.mock('@/features/teachers/components/teacher/InlineAttendanceTable', () => (props) => (
   <button
     data-testid="mock-mark-absent"
     onClick={() => props.onStatusChange && props.onStatusChange('s1', 'absent')}
@@ -66,7 +66,7 @@ jest.mock('../components/teacher/InlineAttendanceTable', () => (props) => (
 
 // Mock the dialog primitive so the modal renders its children when open and we
 // can drive `onOpenChange(false)` (the close path that triggers finalize).
-jest.mock('../components/ui/dialog', () => {
+jest.mock('@/shared/components/ui/dialog', () => {
   const Passthrough = ({ children }) => <div>{children}</div>;
   return {
     Dialog: ({ open, onOpenChange, children }) =>
@@ -90,7 +90,7 @@ jest.mock('../components/ui/dialog', () => {
   };
 });
 
-import SessionTeachPage from '../pages/TeacherModule/SessionTeachPage';
+import SessionTeachPage from '@/features/teachers/pages/TeacherModule/SessionTeachPage';
 
 const countGetCalls = (suffix) =>
   mockGet.mock.calls.filter(([url]) => typeof url === 'string' && url.endsWith(suffix)).length;

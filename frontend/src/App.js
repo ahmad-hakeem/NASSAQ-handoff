@@ -1,18 +1,18 @@
 import "@/App.css";
 import { BrowserRouter } from "react-router-dom";
-import { Toaster } from "./components/ui/sonner";
-import { AuthProvider } from "./contexts/AuthContext";
-import { ThemeProvider } from "./contexts/ThemeContext";
-import { WebSocketProvider } from "./contexts/WebSocketContext";
-import { ParentActiveStudentProvider } from "./contexts/ParentActiveStudentContext";
-import { NassaqAlertProvider } from "./components/ui/NassaqAlertDialog";
-import { MfaStepUpProvider } from "./contexts/MfaStepUpContext";
-import ErrorBoundary from "./components/ErrorBoundary";
-import { GenericNameGuard } from "./components/GenericNameGuard";
+import { Toaster } from "@/shared/components/ui/sonner";
+import { AuthProvider } from "@/shared/contexts/AuthContext";
+import { ThemeProvider } from "@/shared/contexts/ThemeContext";
+import { WebSocketProvider } from "@/shared/contexts/WebSocketContext";
+import { ParentActiveStudentProvider } from "@/shared/contexts/ParentActiveStudentContext";
+import { NassaqAlertProvider } from "@/shared/components/ui/NassaqAlertDialog";
+import { MfaStepUpProvider } from "@/shared/contexts/MfaStepUpContext";
+import ErrorBoundary from "@/shared/components/ErrorBoundary";
+import { GenericNameGuard } from "@/shared/components/GenericNameGuard";
 import AppRoutes from "./routes/appRoutes";
-import GlobalHakimMount from "./components/hakim/GlobalHakimMount";
-import { BetaBanner } from "./components/BetaDisclaimer";
-import PerimeterGateBridge from "./components/PerimeterGateBridge";
+import GlobalHakimMount from "@/features/hakim/components/hakim/GlobalHakimMount";
+import { BetaBanner } from "@/shared/components/BetaDisclaimer";
+import PerimeterGateBridge from "@/shared/components/PerimeterGateBridge";
 
 function App() {
   return (

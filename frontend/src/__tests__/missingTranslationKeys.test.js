@@ -15,8 +15,8 @@ const fs = require('fs');
 const path = require('path');
 
 const SRC = path.resolve(__dirname, '..');
-const AR = require('../locales/ar.json');
-const EN = require('../locales/en.json');
+const AR = require('@/locales/ar.json');
+const EN = require('@/locales/en.json');
 
 function walk(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

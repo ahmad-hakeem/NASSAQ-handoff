@@ -51,7 +51,7 @@ jest.mock('react-router-dom', () => ({
   }),
 }), { virtual: true });
 
-jest.mock('../contexts/AuthContext', () => ({
+jest.mock('@/shared/contexts/AuthContext', () => ({
   useAuth: () => ({
     user: { id: 'teacher-1', name: 'Ahmed Teacher', role: mockRole, school_id: 'school-1' },
     api: { get: mockGet, post: mockPost },
@@ -59,23 +59,23 @@ jest.mock('../contexts/AuthContext', () => ({
   }),
 }));
 
-jest.mock('../contexts/ThemeContext', () => ({
+jest.mock('@/shared/contexts/ThemeContext', () => ({
   useTranslation: () => ({ t: (k) => k, isRTL: false, dir: 'ltr' }),
   useTheme: () => ({ isDark: false, toggleTheme: jest.fn() }),
 }));
 
-jest.mock('../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => ({ nassaqError: jest.fn(), nassaqConfirm: jest.fn() }),
   NassaqAlertDialog: () => null,
 }));
 
-jest.mock('../components/SectionErrorBoundary', () => ({ children }) => <>{children}</>);
-jest.mock('../components/teacher/FollowupGradesTable', () => () => null);
-jest.mock('../components/teacher/InlineAttendanceTable', () => () => null);
+jest.mock('@/shared/components/SectionErrorBoundary', () => ({ children }) => <>{children}</>);
+jest.mock('@/features/teachers/components/teacher/FollowupGradesTable', () => () => null);
+jest.mock('@/features/teachers/components/teacher/InlineAttendanceTable', () => () => null);
 
 // Render the dialog shell inline (open ⇒ children) so the REAL
 // SidebarSettingsDialog content is exercised without Radix portal complexity.
-jest.mock('../components/ui/dialog', () => {
+jest.mock('@/shared/components/ui/dialog', () => {
   const Passthrough = ({ children }) => <div>{children}</div>;
   return {
     Dialog: ({ open, children }) => (open ? <div>{children}</div> : null),
@@ -93,8 +93,8 @@ jest.mock('../components/ui/dialog', () => {
 
 // Components under test (imported AFTER mocks). SidebarSettingsDialog is NOT
 // mocked — the whole point is to verify the real behaviours tab.
-import SidebarSettingsDialog from '../components/teacher/SidebarSettingsDialog';
-import SessionTeachPage from '../pages/TeacherModule/SessionTeachPage';
+import SidebarSettingsDialog from '@/features/teachers/components/teacher/SidebarSettingsDialog';
+import SessionTeachPage from '@/features/teachers/pages/TeacherModule/SessionTeachPage';
 
 // ---------------------------------------------------------------------------
 // Dialog-level contract

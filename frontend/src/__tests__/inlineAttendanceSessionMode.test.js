@@ -21,15 +21,15 @@ jest.mock('sonner', () => ({
   toast: { success: jest.fn(), error: jest.fn(), info: jest.fn() },
 }));
 
-jest.mock('../contexts/AuthContext', () => ({
+jest.mock('@/shared/contexts/AuthContext', () => ({
   useAuth: () => ({ api: mockApi, isRTL: true }),
 }));
 
-jest.mock('../contexts/ThemeContext', () => ({
+jest.mock('@/shared/contexts/ThemeContext', () => ({
   useTranslation: () => ({ t: (k) => k }),
 }));
 
-import InlineAttendanceTable from '../components/teacher/InlineAttendanceTable';
+import InlineAttendanceTable from '@/features/teachers/components/teacher/InlineAttendanceTable';
 
 const STUDENTS = [
   { id: 's1', full_name: 'علي', attendance_status: 'present' },

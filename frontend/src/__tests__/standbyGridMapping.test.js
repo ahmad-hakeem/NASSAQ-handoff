@@ -1,4 +1,4 @@
-import { standbyUsesSlotNumberSpace, standbyRowPeriod } from '../utils/standbyGridMapping';
+import { standbyUsesSlotNumberSpace, standbyRowPeriod } from '@/shared/models/utils/standbyGridMapping';
 
 // Break-filtered rows of a real school whose time_slots count breaks:
 // slot_numbers 1,2,3,[4=break],5,6,7,[8=break],9 → 7 teaching rows.
