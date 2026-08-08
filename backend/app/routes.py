@@ -645,9 +645,12 @@ def _register_static_fallback(app):
                 headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"},
             )
     else:
+        from fastapi import Request as _Request
         @app.get("/")
-        async def root_redirect():
-            frontend_url = os.environ.get("FRONTEND_URL", "")
-            if frontend_url:
+        async def root_redirect(request: _Request):
+            frontend_url = (os.environ.get("FRONTEND_URL") or "").rstrip("/")
+            current_base = f"{request.url.scheme}://{request.url.netloc}".rstrip("/")
+            if frontend_url and frontend_url != current_base:
                 return RedirectResponse(url=frontend_url)
             return {"status": "NASSAQ API is running", "docs": "/docs", "health": "/system/health"}
+
